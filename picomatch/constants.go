@@ -15,22 +15,22 @@ const (
 )
 
 const (
-	DOT_LITERAL    = `\.`
-	PLUS_LITERAL   = `\+`
-	QMARK_LITERAL  = `\?`
-	SLASH_LITERAL  = `\/`
-	ONE_CHAR       = `(?=.)`
-	QMARK          = `[^/]`
-	END_ANCHOR     = `(?:` + SLASH_LITERAL + `|$)`
-	START_ANCHOR   = `(?:^|` + SLASH_LITERAL + `)`
-	DOTS_SLASH     = DOT_LITERAL + `{1,2}` + END_ANCHOR
-	NO_DOT         = `(?!` + DOT_LITERAL + `)`
-	NO_DOTS        = `(?!` + START_ANCHOR + DOTS_SLASH + `)`
-	NO_DOT_SLASH   = `(?!` + DOT_LITERAL + `{0,1}` + END_ANCHOR + `)`
-	NO_DOTS_SLASH  = `(?!` + DOTS_SLASH + `)`
-	QMARK_NO_DOT   = `[^.` + SLASH_LITERAL + `]`
-	STAR           = QMARK + `*?`
-	SEP            = "/"
+	DOT_LITERAL   = `\.`
+	PLUS_LITERAL  = `\+`
+	QMARK_LITERAL = `\?`
+	SLASH_LITERAL = `\/`
+	ONE_CHAR      = `(?=.)`
+	QMARK         = `[^/]`
+	END_ANCHOR    = `(?:` + SLASH_LITERAL + `|$)`
+	START_ANCHOR  = `(?:^|` + SLASH_LITERAL + `)`
+	DOTS_SLASH    = DOT_LITERAL + `{1,2}` + END_ANCHOR
+	NO_DOT        = `(?!` + DOT_LITERAL + `)`
+	NO_DOTS       = `(?!` + START_ANCHOR + DOTS_SLASH + `)`
+	NO_DOT_SLASH  = `(?!` + DOT_LITERAL + `{0,1}` + END_ANCHOR + `)`
+	NO_DOTS_SLASH = `(?!` + DOTS_SLASH + `)`
+	QMARK_NO_DOT  = `[^.` + SLASH_LITERAL + `]`
+	STAR          = QMARK + `*?`
+	SEP           = "/"
 )
 
 // PlatformChars holds the regex building blocks for a given platform.
@@ -137,7 +137,7 @@ var POSIX_REGEX_SOURCE = map[string]string{
 	"graph":  `\x21-\x7E`,
 	"lower":  "a-z",
 	"print":  `\x20-\x7E `,
-	"punct":  `\-!"#$%&'()\*+,./:;<=>?@[\]^_` + "`{|}~",
+	"punct":  "\\-!\"#$%&'()\\*+,./:;<=>?@\\[\\]\\\\^_`{|}~",
 	"space":  ` \t\r\n\v\f`,
 	"upper":  "A-Z",
 	"word":   "A-Za-z0-9_",
@@ -174,8 +174,8 @@ const regexRemoveBackslashPattern = `(?:\[.*?[^\\]\]|\\(?=.))`
 // --- Replacements for reducing parsing time ---
 // JS source: constants.js lines 101-106
 var REPLACEMENTS = map[string]string{
-	"***":     "*",
-	"**/**":   "**",
+	"***":      "*",
+	"**/**":    "**",
 	"**/**/**": "**",
 }
 
@@ -194,38 +194,38 @@ const (
 	CHAR_RIGHT_PARENTHESES = 41 // )
 	CHAR_ASTERISK          = 42 // *
 
-	CHAR_AMPERSAND          = 38  // &
-	CHAR_AT                 = 64  // @
-	CHAR_BACKWARD_SLASH     = 92  // \
-	CHAR_CARRIAGE_RETURN    = 13  // \r
-	CHAR_CIRCUMFLEX_ACCENT  = 94  // ^
-	CHAR_COLON              = 58  // :
-	CHAR_COMMA              = 44  // ,
-	CHAR_DOT                = 46  // .
-	CHAR_DOUBLE_QUOTE       = 34  // "
-	CHAR_EQUAL              = 61  // =
-	CHAR_EXCLAMATION_MARK   = 33  // !
-	CHAR_FORM_FEED          = 12  // \f
-	CHAR_FORWARD_SLASH      = 47  // /
-	CHAR_GRAVE_ACCENT       = 96  // `
-	CHAR_HASH               = 35  // #
-	CHAR_HYPHEN_MINUS       = 45  // -
-	CHAR_LEFT_ANGLE_BRACKET = 60  // <
-	CHAR_LEFT_CURLY_BRACE   = 123 // {
-	CHAR_LEFT_SQUARE_BRACKET  = 91  // [
-	CHAR_LINE_FEED            = 10  // \n
-	CHAR_NO_BREAK_SPACE       = 160 // \u00A0
-	CHAR_PERCENT              = 37  // %
-	CHAR_PLUS                 = 43  // +
-	CHAR_QUESTION_MARK        = 63  // ?
-	CHAR_RIGHT_ANGLE_BRACKET  = 62  // >
-	CHAR_RIGHT_CURLY_BRACE    = 125 // }
-	CHAR_RIGHT_SQUARE_BRACKET = 93  // ]
-	CHAR_SEMICOLON            = 59  // ;
-	CHAR_SINGLE_QUOTE         = 39  // '
-	CHAR_SPACE                = 32  //
-	CHAR_TAB                  = 9   // \t
-	CHAR_UNDERSCORE           = 95  // _
-	CHAR_VERTICAL_LINE        = 124 // |
+	CHAR_AMPERSAND                = 38    // &
+	CHAR_AT                       = 64    // @
+	CHAR_BACKWARD_SLASH           = 92    // \
+	CHAR_CARRIAGE_RETURN          = 13    // \r
+	CHAR_CIRCUMFLEX_ACCENT        = 94    // ^
+	CHAR_COLON                    = 58    // :
+	CHAR_COMMA                    = 44    // ,
+	CHAR_DOT                      = 46    // .
+	CHAR_DOUBLE_QUOTE             = 34    // "
+	CHAR_EQUAL                    = 61    // =
+	CHAR_EXCLAMATION_MARK         = 33    // !
+	CHAR_FORM_FEED                = 12    // \f
+	CHAR_FORWARD_SLASH            = 47    // /
+	CHAR_GRAVE_ACCENT             = 96    // `
+	CHAR_HASH                     = 35    // #
+	CHAR_HYPHEN_MINUS             = 45    // -
+	CHAR_LEFT_ANGLE_BRACKET       = 60    // <
+	CHAR_LEFT_CURLY_BRACE         = 123   // {
+	CHAR_LEFT_SQUARE_BRACKET      = 91    // [
+	CHAR_LINE_FEED                = 10    // \n
+	CHAR_NO_BREAK_SPACE           = 160   // \u00A0
+	CHAR_PERCENT                  = 37    // %
+	CHAR_PLUS                     = 43    // +
+	CHAR_QUESTION_MARK            = 63    // ?
+	CHAR_RIGHT_ANGLE_BRACKET      = 62    // >
+	CHAR_RIGHT_CURLY_BRACE        = 125   // }
+	CHAR_RIGHT_SQUARE_BRACKET     = 93    // ]
+	CHAR_SEMICOLON                = 59    // ;
+	CHAR_SINGLE_QUOTE             = 39    // '
+	CHAR_SPACE                    = 32    //
+	CHAR_TAB                      = 9     // \t
+	CHAR_UNDERSCORE               = 95    // _
+	CHAR_VERTICAL_LINE            = 124   // |
 	CHAR_ZERO_WIDTH_NOBREAK_SPACE = 65279 // \uFEFF
 )

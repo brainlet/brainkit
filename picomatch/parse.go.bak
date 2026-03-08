@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/dlclark/regexp2"
 )
@@ -17,7 +16,6 @@ type Token struct {
 	Type        string
 	Value       string
 	Output      string
-	OutputSet   bool // true when Output was explicitly set (even if empty)
 	OutputIndex int
 	TokensIndex int
 	Prev        *Token
@@ -98,21 +96,9 @@ func syntaxError(typ, char string) string {
 	return fmt.Sprintf(`Missing %s: "%s" - use "\\\\%s" to match literal characters`, typ, char, char)
 }
 
-// Parse parses a glob pattern using picomatch's public API semantics.
-// This mirrors picomatch.parse(), which disables fastpaths.
-func Parse(input string, opts *Options) *ParseState {
-	parsedOpts := &Options{Fastpaths: boolPtr(false)}
-	if opts != nil {
-		cloned := *opts
-		cloned.Fastpaths = boolPtr(false)
-		parsedOpts = &cloned
-	}
-	return parseInternal(input, parsedOpts)
-}
-
-// parseInternal mirrors lib/parse.js directly.
+// Parse parses a glob pattern into a ParseState with regex output.
 // JS source: parse.js lines 55-991
-func parseInternal(input string, opts *Options) *ParseState {
+func Parse(input string, opts *Options) *ParseState {
 	if opts == nil {
 		opts = &Options{}
 	}
@@ -195,21 +181,21 @@ func parseInternal(input string, opts *Options) *ParseState {
 
 	// JS source: parse.js lines 111-127
 	state := &ParseState{
-		Input:     input,
-		Index:     -1,
-		Start:     0,
-		Dot:       opts.Dot,
-		Consumed:  "",
-		Output:    "",
-		Prefix:    "",
+		Input:    input,
+		Index:    -1,
+		Start:    0,
+		Dot:      opts.Dot,
+		Consumed: "",
+		Output:   "",
+		Prefix:   "",
 		Backtrack: false,
-		Negated:   false,
-		Brackets:  0,
-		Braces:    0,
-		Parens:    0,
-		Quotes:    0,
-		Globstar:  false,
-		Tokens:    tokens,
+		Negated:  false,
+		Brackets: 0,
+		Braces:   0,
+		Parens:   0,
+		Quotes:   0,
+		Globstar: false,
+		Tokens:   tokens,
 	}
 
 	// JS source: parse.js line 129
@@ -235,13 +221,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 	advance := func() string {
 		state.Index++
 		if state.Index < inputLen {
-			if input[state.Index] < utf8.RuneSelf {
-				return string(input[state.Index])
-			}
-			_, size := utf8.DecodeRuneInString(input[state.Index:])
-			ch := input[state.Index : state.Index+size]
-			state.Index += size - 1
-			return ch
+			return string(input[state.Index])
 		}
 		return ""
 	}
@@ -256,25 +236,12 @@ func parseInternal(input string, opts *Options) *ParseState {
 		state.Index += num
 	}
 
-	tokenOutput := func(tok *Token) string {
-		if tok.OutputSet || tok.Output != "" {
-			return tok.Output
-		}
-		return tok.Value
-	}
-	trimOutput := func(n int) {
-		if n <= 0 {
-			return
-		}
-		if n >= len(state.Output) {
-			state.Output = ""
-			return
-		}
-		state.Output = state.Output[:len(state.Output)-n]
-	}
-
 	appendTok := func(tok *Token) {
-		state.Output += tokenOutput(tok)
+		out := tok.Output
+		if out == "" {
+			out = tok.Value
+		}
+		state.Output += out
 		consume(tok.Value, 0)
 	}
 
@@ -329,7 +296,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 			isExtg := tok.Extglob || (len(extglobs) > 0 && (tok.Type == "pipe" || tok.Type == "paren"))
 
 			if tok.Type != "slash" && tok.Type != "paren" && !isBrace && !isExtg {
-				trimOutput(len(prev.Output))
+				state.Output = state.Output[:len(state.Output)-len(prev.Output)]
 				prev.Type = "star"
 				prev.Value = "*"
 				prev.Output = starStr
@@ -343,7 +310,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 		}
 
 		// JS source: parse.js lines 210-219
-		if tok.Value != "" || tok.OutputSet || tok.Output != "" {
+		if tok.Value != "" || tok.Output != "" {
 			appendTok(tok)
 		}
 		if prev != nil && prev.Type == "text" && tok.Type == "text" {
@@ -358,7 +325,6 @@ func parseInternal(input string, opts *Options) *ParseState {
 
 		tok.Prev = prev
 		tokens = append(tokens, tok)
-		state.Tokens = tokens
 		prev = tok
 	}
 
@@ -388,7 +354,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 				return ""
 			}
 			return oneChar
-		}(), OutputSet: true})
+		}()})
 		push(&Token{Type: "paren", Extglob: true, Value: advance(), Output: output})
 		extglobs = append(extglobs, token)
 	}
@@ -408,18 +374,18 @@ func parseInternal(input string, opts *Options) *ParseState {
 			}
 
 			if extglobStar != starStr || eos() || matchStr(`^\)+$`, remaining()) {
-				output = ")$))" + extglobStar
-				token.Close = output
+				output = token.Close + ")$))" + extglobStar
 			}
 
 			if strings.Contains(token.Inner, "*") {
 				rest := remaining()
 				if rest != "" && matchStr(`^\.[^\\/\.]+$`, rest) {
-					exprOpts := *opts
-					exprOpts.Fastpaths = boolPtr(false)
-					expr := parseInternal(rest, &exprOpts)
-					output = ")" + expr.Output + ")" + extglobStar + ")"
-					token.Close = output
+					expr := Parse(rest, &Options{
+						Fastpaths: boolPtr(false),
+						Windows:   opts.Windows,
+						Dot:       opts.Dot,
+					})
+					output = token.Close + ")" + expr.Output + ")" + extglobStar + ")"
 				}
 			}
 
@@ -566,10 +532,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 					if strings.Contains(inner, ":") {
 						idx := strings.LastIndex(prev.Value, "[")
 						pre := prev.Value[:idx]
-						rest := ""
-						if idx+2 <= len(prev.Value) {
-							rest = prev.Value[idx+2:]
-						}
+						rest := prev.Value[idx+2:]
 						if posix, ok := POSIX_REGEX_SOURCE[rest]; ok {
 							prev.Value = pre + posix
 							state.Backtrack = true
@@ -695,9 +658,6 @@ func parseInternal(input string, opts *Options) *ParseState {
 			}
 
 			prev.Value += value
-			if prev.Posix && strings.Contains(prev.Value[1:], "[:") {
-				prev.Value = prev.Value[:1] + strings.ReplaceAll(prev.Value[1:], "[", `\[`)
-			}
 			appendTok(&Token{Value: value})
 
 			// JS source: parse.js lines 525-543
@@ -708,7 +668,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 			}
 
 			escaped := escapeRegex(prev.Value)
-			trimOutput(len(prev.Value))
+			state.Output = state.Output[:len(state.Output)-len(prev.Value)]
 
 			if opts.LiteralBrackets != nil && *opts.LiteralBrackets {
 				state.Output += escaped
@@ -759,7 +719,6 @@ func parseInternal(input string, opts *Options) *ParseState {
 
 				for i := len(arr) - 1; i >= 0; i-- {
 					tokens = tokens[:len(tokens)-1]
-					state.Tokens = tokens
 					if arr[i].Type == "brace" {
 						break
 					}
@@ -781,7 +740,11 @@ func parseInternal(input string, opts *Options) *ParseState {
 				output = `\}`
 				state.Output = out
 				for _, t := range toks {
-					state.Output += tokenOutput(t)
+					if t.Output != "" {
+						state.Output += t.Output
+					} else {
+						state.Output += t.Value
+					}
 				}
 			}
 
@@ -826,7 +789,6 @@ func parseInternal(input string, opts *Options) *ParseState {
 				state.Consumed = ""
 				state.Output = ""
 				tokens = tokens[:len(tokens)-1]
-				state.Tokens = tokens
 				prev = bos
 				continue
 			}
@@ -915,7 +877,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 				continue
 			}
 
-			if (prev != nil && prev.Value == "(") || (opts.Regex != nil && !*opts.Regex) {
+			if (prev != nil && prev.Value == "(") || opts.Regex == boolPtr(false) {
 				push(&Token{Type: "plus", Value: value, Output: plusLiteral})
 				continue
 			}
@@ -933,7 +895,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 		// JS source: parse.js lines 764-772
 		if value == "@" {
 			if !opts.Noextglob && peek(1) == "(" && peek(2) != "?" {
-				push(&Token{Type: "at", Extglob: true, Value: value, Output: "", OutputSet: true})
+				push(&Token{Type: "at", Extglob: true, Value: value, Output: ""})
 				continue
 			}
 
@@ -993,14 +955,14 @@ func parseInternal(input string, opts *Options) *ParseState {
 			afterStar := before != nil && (before.Type == "star" || before.Type == "globstar")
 
 			if opts.Bash && (!isStart || (len(rest) > 0 && rest[0] != '/')) {
-				push(&Token{Type: "star", Value: value, Output: "", OutputSet: true})
+				push(&Token{Type: "star", Value: value, Output: ""})
 				continue
 			}
 
 			isBr := state.Braces > 0 && (prior.Type == "comma" || prior.Type == "brace")
 			isExtg := len(extglobs) > 0 && (prior.Type == "pipe" || prior.Type == "paren")
 			if !isStart && prior.Type != "paren" && !isBr && !isExtg {
-				push(&Token{Type: "star", Value: value, Output: "", OutputSet: true})
+				push(&Token{Type: "star", Value: value, Output: ""})
 				continue
 			}
 
@@ -1028,7 +990,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 			}
 
 			if prior.Type == "slash" && prior.Prev.Type != "bos" && !afterStar && eos() {
-				trimOutput(len(prior.Output + prev.Output))
+				state.Output = state.Output[:len(state.Output)-len(prior.Output+prev.Output)]
 				prior.Output = "(?:" + prior.Output
 
 				strictEnd := ")"
@@ -1053,7 +1015,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 					end = "|$"
 				}
 
-				trimOutput(len(prior.Output + prev.Output))
+				state.Output = state.Output[:len(state.Output)-len(prior.Output+prev.Output)]
 				prior.Output = "(?:" + prior.Output
 
 				prev.Type = "globstar"
@@ -1065,7 +1027,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 
 				consume(value+advance(), 0)
 
-				push(&Token{Type: "slash", Value: "/", Output: "", OutputSet: true})
+				push(&Token{Type: "slash", Value: "/", Output: ""})
 				continue
 			}
 
@@ -1076,12 +1038,12 @@ func parseInternal(input string, opts *Options) *ParseState {
 				state.Output = prev.Output
 				state.Globstar = true
 				consume(value+advance(), 0)
-				push(&Token{Type: "slash", Value: "/", Output: "", OutputSet: true})
+				push(&Token{Type: "slash", Value: "/", Output: ""})
 				continue
 			}
 
 			// Remove single star from output
-			trimOutput(len(prev.Output))
+			state.Output = state.Output[:len(state.Output)-len(prev.Output)]
 
 			prev.Type = "globstar"
 			prev.Output = globstarFn(opts.Dot)
@@ -1106,7 +1068,7 @@ func parseInternal(input string, opts *Options) *ParseState {
 			continue
 		}
 
-		if prev != nil && (prev.Type == "bracket" || prev.Type == "paren") && opts.Regex != nil && *opts.Regex {
+		if prev != nil && (prev.Type == "bracket" || prev.Type == "paren") && opts.Regex == boolPtr(true) {
 			tok.Output = value
 			push(tok)
 			continue
@@ -1170,7 +1132,11 @@ func parseInternal(input string, opts *Options) *ParseState {
 	if state.Backtrack {
 		state.Output = ""
 		for _, tok := range state.Tokens {
-			state.Output += tokenOutput(tok)
+			if tok.Output != "" {
+				state.Output += tok.Output
+			} else {
+				state.Output += tok.Value
+			}
 			if tok.Suffix != "" {
 				state.Output += tok.Suffix
 			}
@@ -1387,8 +1353,9 @@ func replaceBackslashRuns(output string) string {
 				i++
 			}
 			if count%2 == 0 {
-				result.WriteString(`\\`)
+				result.WriteString(strings.Repeat(`\\`, count/2))
 			} else {
+				result.WriteString(strings.Repeat(`\\`, (count-1)/2))
 				result.WriteByte('\\')
 			}
 		} else {

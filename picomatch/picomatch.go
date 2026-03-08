@@ -13,18 +13,18 @@ import (
 // JS source: picomatch.js — options used across all functions
 type Options struct {
 	// Core matching options
-	Windows       bool // Treat paths as Windows-style (backslash separator)
-	Posix         bool // Force POSIX mode (forward slash separator, no Windows auto-detect)
-	Dot           bool // Match dotfiles (files starting with .)
-	Nocase        bool // Case-insensitive matching
-	Contains      bool // Match anywhere in string (don't anchor to start/end)
-	MatchBase     bool // Match basename only (like find's -name)
-	Basename      bool // Alias for MatchBase
-	Bash          bool // Bash-style matching
-	Capture       bool // Create capturing groups in regex
-	Regex         *bool // When true, treat glob as regex in certain contexts
-	StrictSlashes bool // Don't add optional trailing slash
-	StrictBrackets bool // Throw on unmatched brackets
+	Windows        bool  // Treat paths as Windows-style (backslash separator)
+	Posix          bool  // Force POSIX mode (forward slash separator, no Windows auto-detect)
+	Dot            bool  // Match dotfiles (files starting with .)
+	Nocase         bool  // Case-insensitive matching
+	Contains       bool  // Match anywhere in string (don't anchor to start/end)
+	MatchBase      bool  // Match basename only (like find's -name)
+	Basename       bool  // Alias for MatchBase
+	Bash           bool  // Bash-style matching
+	Capture        bool  // Create capturing groups in regex
+	Regex          *bool // When true, treat glob as regex in certain contexts
+	StrictSlashes  bool  // Don't add optional trailing slash
+	StrictBrackets bool  // Throw on unmatched brackets
 
 	// Feature toggles
 	Nobrace    bool // Disable brace expansion
@@ -40,13 +40,13 @@ type Options struct {
 	Fastpaths *bool // Enable/disable fastpaths (default: true)
 
 	// Content options
-	KeepQuotes     bool // Keep double quotes in output
+	KeepQuotes      bool  // Keep double quotes in output
 	LiteralBrackets *bool // Force literal bracket matching
-	Unescape       bool // Remove backslashes from output
+	Unescape        bool  // Remove backslashes from output
 
 	// String processing
-	MaxLength int    // Maximum allowed pattern length
-	Prepend   string // String to prepend to regex output
+	MaxLength int                 // Maximum allowed pattern length
+	Prepend   string              // String to prepend to regex output
 	Format    func(string) string // Custom format function
 
 	// Callbacks
@@ -284,7 +284,7 @@ func MakeRe(input string, options *Options) *compiledRegex {
 	}
 
 	if parsed.Output == "" {
-		parsed = Parse(input, opts)
+		parsed = parseInternal(input, opts)
 	}
 
 	return CompileRe(parsed, opts, false, true)
@@ -328,6 +328,8 @@ func ToRegex(source string, options *Options) *regexp2.Regexp {
 		opts = &Options{}
 	}
 
+	source = normalizeJSRegexSource(source)
+
 	flags := regexp2.None
 	if opts.Flags != "" {
 		if strings.Contains(opts.Flags, "i") {
@@ -350,6 +352,105 @@ func ToRegex(source string, options *Options) *regexp2.Regexp {
 	}
 
 	return re
+}
+
+func normalizeJSRegexSource(source string) string {
+	source = normalizeJSCharClasses(source)
+
+	var b strings.Builder
+	b.Grow(len(source))
+
+	for i := 0; i < len(source); {
+		if source[i] != '\\' {
+			b.WriteByte(source[i])
+			i++
+			continue
+		}
+
+		j := i
+		for j < len(source) && source[j] == '\\' {
+			j++
+		}
+
+		if j < len(source) && isASCIIAlpha(source[j]) && (j-i)%2 == 1 {
+			for k := 0; k < (j-i)/2; k++ {
+				b.WriteString(`\\`)
+			}
+			if isSupportedJSEscapeStart(source[j]) {
+				b.WriteByte('\\')
+			}
+			b.WriteByte(source[j])
+			i = j + 1
+			continue
+		}
+
+		b.WriteString(source[i:j])
+		i = j
+	}
+
+	return b.String()
+}
+
+func normalizeJSCharClasses(source string) string {
+	var b strings.Builder
+	b.Grow(len(source))
+
+	inClass := false
+	escaped := false
+
+	for i := 0; i < len(source); i++ {
+		ch := source[i]
+
+		if !inClass {
+			b.WriteByte(ch)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '[' {
+				inClass = true
+			}
+			continue
+		}
+
+		if escaped {
+			b.WriteByte(ch)
+			escaped = false
+			continue
+		}
+
+		switch ch {
+		case '\\':
+			b.WriteByte(ch)
+			escaped = true
+		case '[':
+			b.WriteString(`\[`)
+		case ']':
+			b.WriteByte(ch)
+			inClass = false
+		default:
+			b.WriteByte(ch)
+		}
+	}
+
+	return b.String()
+}
+
+func isASCIIAlpha(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+}
+
+func isSupportedJSEscapeStart(ch byte) bool {
+	switch ch {
+	case 'b', 'B', 'c', 'd', 'D', 'f', 'n', 'p', 'P', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x', 'k':
+		return true
+	default:
+		return false
+	}
 }
 
 // CompilePosix creates a matcher without Windows auto-detection.

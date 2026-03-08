@@ -456,7 +456,10 @@ func Scan(input string, scanOpts *ScanOptions) ScanState {
 				n = start
 			}
 			i := slashes[idx]
-			value := input[n:i]
+			value := ""
+			if n <= i {
+				value = input[n:i]
+			}
 
 			if opts.Tokens {
 				if idx == 0 && start != 0 {

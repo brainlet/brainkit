@@ -5,7 +5,7 @@ import "testing"
 
 // Note: The JS source defines base options as { strictSlashes: true, posix: true, regex: true }
 // and wraps isMatch to always pass these. We replicate that here.
-var posixOpts = &Options{StrictSlashes: true, Posix: true}
+var posixOpts = &Options{StrictSlashes: true, Posix: true, Regex: boolPtr(true)}
 
 func TestPosixClasses(t *testing.T) {
 

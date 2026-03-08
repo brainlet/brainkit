@@ -1,0 +1,136 @@
+package graymatter
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestRead(t *testing.T) {
+	fixture := func(name string) string {
+		return filepath.Join("testdata", "fixtures", name)
+	}
+
+	t.Run("should extract YAML front matter from files with content", func(t *testing.T) {
+		file, err := Read(fixture("basic.txt"))
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+
+		// path property on file object
+		if file.Path == "" {
+			t.Error("expected path property")
+		}
+		// data.title property
+		if file.Data["title"] != "Basic" {
+			t.Errorf("expected title 'Basic', got %v", file.Data["title"])
+		}
+		if file.Content != "this is content." {
+			t.Errorf("expected content 'this is content.', got %q", file.Content)
+		}
+	})
+
+	t.Run("should parse complex YAML front matter", func(t *testing.T) {
+		file, err := Read(fixture("complex.md"))
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+
+		// data property exists
+		if file.Data == nil {
+			t.Error("expected data property")
+		}
+		if file.Data["root"] != "_gh_pages" {
+			t.Errorf("expected root '_gh_pages', got %v", file.Data["root"])
+		}
+
+		// path property on file
+		if file.Path == "" {
+			t.Error("expected path property")
+		}
+		// content property
+		if file.Content == "" {
+			t.Error("expected content property")
+		}
+		// orig property
+		if file.Orig == nil {
+			t.Error("expected orig property")
+		}
+	})
+
+	t.Run("should return an object when a file is empty", func(t *testing.T) {
+		file, err := Read(fixture("empty.md"))
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+
+		if file.Path == "" {
+			t.Error("expected path property")
+		}
+		if file.Data == nil {
+			t.Error("expected data property")
+		}
+		if file.Content == "" {
+			t.Error("expected content property")
+		}
+		if file.Orig == nil {
+			t.Error("expected orig property")
+		}
+	})
+
+	t.Run("should return an object when no front matter exists", func(t *testing.T) {
+		file, err := Read(fixture("hasnt-matter.md"))
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+
+		if file.Path == "" {
+			t.Error("expected path property")
+		}
+		if file.Data == nil {
+			t.Error("expected data property")
+		}
+		if file.Content == "" {
+			t.Error("expected content property")
+		}
+		if file.Orig == nil {
+			t.Error("expected orig property")
+		}
+	})
+
+	t.Run("should parse YAML files directly", func(t *testing.T) {
+		file, err := Read(fixture("all.yaml"))
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+
+		if file.Path == "" {
+			t.Error("expected path property")
+		}
+		if file.Data == nil {
+			t.Error("expected data property")
+		}
+		if file.Content == "" {
+			t.Error("expected content property")
+		}
+		if file.Orig == nil {
+			t.Error("expected orig property")
+		}
+		if file.Data["one"] != "foo" || file.Data["two"] != "bar" || file.Data["three"] != "baz" {
+			t.Errorf("expected data {one: foo, two: bar, three: baz}, got %v", file.Data)
+		}
+	})
+}
+
+func TestReadFile(t *testing.T) {
+	// Test with absolute path
+	t.Run("should read file with absolute path", func(t *testing.T) {
+		file, err := Read("/Users/davidroman/Documents/code/brainlet/brainkit/gray-matter/testdata/fixtures/basic.txt")
+		if err != nil {
+			t.Fatalf("Read returned error: %v", err)
+		}
+		if file.Data["title"] != "Basic" {
+			t.Errorf("expected title 'Basic', got %v", file.Data["title"])
+		}
+	})
+}
+

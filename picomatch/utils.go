@@ -70,21 +70,33 @@ func removeBackslashesManual(str string) string {
 	b.Grow(len(str))
 	i := 0
 	for i < len(str) {
-		if str[i] == '\\' && i+1 < len(str) {
-			// Check if this is inside a bracket expression
-			// The JS regex: /(?:\[.*?[^\\]\]|\\(?=.))/g
-			// This matches either bracket expressions or escaped chars.
-			// For escaped chars outside brackets, remove the backslash.
-			// For bracket expressions, keep them as-is.
-			// Simplified: just output the next char, skip the backslash
-			i++
-			b.WriteByte(str[i])
-		} else if str[i] == '\\' {
-			// trailing backslash — keep it
-			b.WriteByte(str[i])
-		} else {
-			b.WriteByte(str[i])
+		if str[i] == '[' {
+			end := -1
+			for j := i + 1; j < len(str); j++ {
+				if str[j] == ']' && j > i+1 && str[j-1] != '\\' {
+					end = j
+					break
+				}
+			}
+			if end != -1 {
+				b.WriteString(str[i : end+1])
+				i = end + 1
+				continue
+			}
 		}
+
+		if str[i] == '\\' && i+1 < len(str) {
+			i++
+			continue
+		}
+
+		if str[i] == '\\' {
+			b.WriteByte(str[i])
+			i++
+			continue
+		}
+
+		b.WriteByte(str[i])
 		i++
 	}
 	return b.String()

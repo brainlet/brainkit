@@ -1258,7 +1258,7 @@ func TestExtglobs(t *testing.T) {
 		// extglobs.js line 713-715: platform-specific test for literal backslash in filename
 		if runtime.GOOS != "windows" {
 			// extglobs.js line 714
-			assertMatch(t, true, `a\(b`, `a\\\\\\(b`)
+			assertMatch(t, true, `a\(b`, "a\\\\\\"+"(b")
 		}
 		// extglobs.js line 716
 		assertMatch(t, true, "a(b", "a(b")
