@@ -1,17 +1,21 @@
 package graymatter
 
+import (
+	"strings"
+
+	gmengines "github.com/brainlet/brainkit/gray-matter/engines"
+)
+
 // DefaultOptions returns an Options struct with sensible defaults applied.
-// The defaults are:
-//   - Language: "yaml"
-//   - Delimiters: [2]string{"---", "---"}
-//   - Engines: empty map (ready for custom engines)
-//   - ExcerptSeparator: "\n"
 func DefaultOptions() Options {
 	return Options{
-		Language:         "yaml",
-		Delimiters:       [2]string{"---", "---"},
-		Engines:          make(map[string]Engine),
-		ExcerptSeparator: "\n",
+		Language:   "yaml",
+		Delimiters: [2]string{"---", "---"},
+		Engines: map[string]Engine{
+			"yaml":       gmengines.YAML{},
+			"json":       gmengines.JSON{},
+			"javascript": javascriptEngine{},
+		},
 	}
 }
 
@@ -40,4 +44,47 @@ func NormalizeDelimiters(delimiters any) [2]string {
 	default:
 		return [2]string{"---", "---"}
 	}
+}
+
+func resolveOptions(opts ...Options) Options {
+	resolved := DefaultOptions()
+	if len(opts) == 0 {
+		return resolved
+	}
+
+	in := opts[0]
+	resolved.Parser = in.Parser
+	resolved.Eval = in.Eval
+	resolved.Excerpt = in.Excerpt
+	resolved.ExcerptSeparator = in.ExcerptSeparator
+	resolved.Sections = in.Sections
+	resolved.Section = in.Section
+	resolved.SectionDelimiter = in.SectionDelimiter
+	resolved.Data = in.Data
+
+	if in.Language != "" {
+		resolved.Language = strings.ToLower(in.Language)
+	} else if in.Lang != "" {
+		resolved.Language = strings.ToLower(in.Lang)
+	}
+
+	if in.Delims != nil {
+		resolved.Delimiters = in.Delims
+	} else if in.Delimiters != nil {
+		resolved.Delimiters = in.Delimiters
+	}
+
+	if in.Parsers != nil {
+		for key, engine := range in.Parsers {
+			resolved.Engines[key] = engine
+		}
+	}
+
+	if in.Engines != nil {
+		for key, engine := range in.Engines {
+			resolved.Engines[key] = engine
+		}
+	}
+
+	return resolved
 }

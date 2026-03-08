@@ -11,7 +11,8 @@ func TestParseYAML(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if file.Data["one"] != "foo" || file.Data["two"] != "bar" || file.Data["three"] != "baz" {
+		data := dataMap(t, file.Data)
+		if data["one"] != "foo" || data["two"] != "bar" || data["three"] != "baz" {
 			t.Errorf("expected {one: foo, two: bar, three: baz}, got %v", file.Data)
 		}
 	})
@@ -21,7 +22,8 @@ func TestParseYAML(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if file.Data["one"] != "foo" || file.Data["two"] != "bar" || file.Data["three"] != "baz" {
+		data := dataMap(t, file.Data)
+		if data["one"] != "foo" || data["two"] != "bar" || data["three"] != "baz" {
 			t.Errorf("expected {one: foo, two: bar, three: baz}, got %v", file.Data)
 		}
 	})
@@ -31,8 +33,9 @@ func TestParseYAML(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if actual.Data["title"] != "YAML" {
-			t.Errorf("expected title 'YAML', got %v", actual.Data["title"])
+		data := dataMap(t, actual.Data)
+		if data["title"] != "YAML" {
+			t.Errorf("expected title 'YAML', got %v", data["title"])
 		}
 		// Check file object has data, content, orig properties
 		if actual.Data == nil {
@@ -47,8 +50,9 @@ func TestParseYAML(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if actual.Data["title"] != "autodetect-no-lang" {
-			t.Errorf("expected title 'autodetect-no-lang', got %v", actual.Data["title"])
+		data := dataMap(t, actual.Data)
+		if data["title"] != "autodetect-no-lang" {
+			t.Errorf("expected title 'autodetect-no-lang', got %v", data["title"])
 		}
 		// Check file object has data, content, orig properties
 		if actual.Data == nil {
@@ -63,8 +67,9 @@ func TestParseYAML(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if actual.Data["title"] != "autodetect-yaml" {
-			t.Errorf("expected title 'autodetect-yaml', got %v", actual.Data["title"])
+		data := dataMap(t, actual.Data)
+		if data["title"] != "autodetect-yaml" {
+			t.Errorf("expected title 'autodetect-yaml', got %v", data["title"])
 		}
 		// Check file object has data, content, orig properties
 		if actual.Data == nil {

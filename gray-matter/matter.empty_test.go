@@ -10,7 +10,7 @@ func TestEmpty(t *testing.T) {
 		if file1.Content != "This is content" {
 			t.Errorf("expected content 'This is content', got %q", file1.Content)
 		}
-		if len(file1.Data) != 0 {
+		if len(dataMap(t, file1.Data)) != 0 {
 			t.Errorf("expected empty data, got %v", file1.Data)
 		}
 
@@ -18,7 +18,7 @@ func TestEmpty(t *testing.T) {
 		if file2.Content != "This is content" {
 			t.Errorf("expected content 'This is content', got %q", file2.Content)
 		}
-		if len(file2.Data) != 0 {
+		if len(dataMap(t, file2.Data)) != 0 {
 			t.Errorf("expected empty data, got %v", file2.Data)
 		}
 
@@ -26,7 +26,7 @@ func TestEmpty(t *testing.T) {
 		if file3.Content != "This is content" {
 			t.Errorf("expected content 'This is content', got %q", file3.Content)
 		}
-		if len(file3.Data) != 0 {
+		if len(dataMap(t, file3.Data)) != 0 {
 			t.Errorf("expected empty data, got %v", file3.Data)
 		}
 	})

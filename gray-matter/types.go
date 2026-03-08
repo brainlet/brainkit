@@ -1,106 +1,149 @@
 package graymatter
 
-import "strings"
+import (
+	"fmt"
+	"strings"
 
-// File represents the result of parsing front-matter from input.
-// Matches GrayMatterFile<I> interface from TypeScript.
+	"github.com/dop251/goja"
+)
+
+// File mirrors the JS gray-matter return shape as closely as practical in Go.
 type File struct {
-	// Data is the parsed front-matter as a map of key-value pairs.
-	Data map[string]any `json:"data"`
-	// Content is the input string with front-matter removed.
+	Data     any       `json:"data"`
+	Content  string    `json:"content"`
+	Excerpt  string    `json:"excerpt,omitempty"`
+	Orig     any       `json:"orig"`
+	Language string    `json:"language"`
+	Matter   string    `json:"matter"`
+	Path     string    `json:"path,omitempty"`
+	IsEmpty  bool      `json:"isEmpty"`
+	Empty    string    `json:"empty,omitempty"`
+	Sections []Section `json:"sections,omitempty"`
+}
+
+// Section mirrors the objects produced by section-matter.
+type Section struct {
+	Key     string `json:"key"`
+	Data    string `json:"data"`
 	Content string `json:"content"`
-	// Excerpt is an optional excerpt extracted from the content.
-	Excerpt string `json:"excerpt,omitempty"`
-	// Orig is the original input (string or []byte).
-	Orig any `json:"orig"`
-	// Language is the front-matter language that was parsed (e.g., "yaml").
-	Language string `json:"language"`
-	// Matter is the raw, un-parsed front-matter string.
-	Matter string `json:"matter"`
-	// Path is the filepath of the source file.
-	Path string `json:"path,omitempty"`
-	// IsEmpty is true when the front-matter is empty (whitespace/comments only).
-	IsEmpty bool `json:"isEmpty"`
-	// Empty is the original front-matter string when front-matter is empty.
-	Empty string `json:"empty,omitempty"`
 }
 
-// Stringify converts the file's data back to a string in the given language,
-// wrapping it in delimiters and prepending it to the content.
-func (f *File) Stringify(lang string) string {
-	if f == nil {
+// JSFunction wraps a JavaScript function parsed by the built-in javascript engine.
+type JSFunction struct {
+	runtime *goja.Runtime
+	value   goja.Value
+}
+
+func (f JSFunction) String() string {
+	if f.value == nil {
 		return ""
 	}
+	return f.value.String()
+}
 
-	if strings.TrimSpace(lang) == "" {
-		out, err := StringifyFile(*f, nil)
-		if err != nil {
-			return ""
-		}
-		return out
+// Call invokes the wrapped JavaScript function and exports the result back to Go values.
+func (f JSFunction) Call(args ...any) (any, error) {
+	if f.runtime == nil || f.value == nil {
+		return nil, fmt.Errorf("graymatter: javascript function is not initialized")
 	}
 
-	out, err := StringifyFile(*f, nil, Options{Language: lang})
+	fn, ok := goja.AssertFunction(f.value)
+	if !ok {
+		return nil, fmt.Errorf("graymatter: value is not callable")
+	}
+
+	values := make([]goja.Value, len(args))
+	for i, arg := range args {
+		values[i] = f.runtime.ToValue(arg)
+	}
+
+	result, err := fn(goja.Undefined(), values...)
 	if err != nil {
-		return ""
+		return nil, err
 	}
-	return out
+	return exportJSValue(f.runtime, result), nil
 }
 
-// Options holds configuration for parsing and stringifying front-matter.
-// Matches GrayMatterOption<I, O> interface from TypeScript.
+// DataMap returns the parsed front-matter as a map when the parsed value is object-like.
+func (f File) DataMap() map[string]any {
+	return toMap(f.Data)
+}
+
+// Stringify mirrors the JS file.stringify helper.
+func (f *File) Stringify(data any, opts ...Options) (string, error) {
+	if f == nil {
+		return "", nil
+	}
+
+	if len(opts) > 0 {
+		resolved := resolveOptions(opts...)
+		if resolved.Language != "" {
+			f.Language = resolved.Language
+		}
+	}
+
+	return StringifyFile(*f, data, opts...)
+}
+
+// Options mirrors gray-matter's options, including deprecated aliases still used by the JS package.
 type Options struct {
-	// Parser is an optional custom parser function.
-	Parser any `json:"parser,omitempty"`
-	// Eval enables evaluation of JavaScript front-matter.
-	Eval bool `json:"eval,omitempty"`
-	// Excerpt enables excerpt extraction. Can be true/false or a custom function.
-	Excerpt any `json:"excerpt,omitempty"`
-	// ExcerptSeparator defines the separator for extracting excerpts.
-	ExcerptSeparator string `json:"excerpt_separator,omitempty"`
-	// Engines is a map of language names to parser/stringifier engines.
-	Engines map[string]Engine `json:"engines,omitempty"`
-	// Language specifies the front-matter language to use (default: "yaml").
-	Language string `json:"language,omitempty"`
-	// Delimiters specifies the front-matter delimiters.
-	// Can be a string (same open/close) or a 2-element slice [open, close].
-	Delimiters any `json:"delimiters,omitempty"`
+	Parser           any               `json:"parser,omitempty"`
+	Eval             bool              `json:"eval,omitempty"`
+	Excerpt          any               `json:"excerpt,omitempty"`
+	ExcerptSeparator string            `json:"excerpt_separator,omitempty"`
+	Engines          map[string]Engine `json:"engines,omitempty"`
+	Parsers          map[string]Engine `json:"parsers,omitempty"`
+	Language         string            `json:"language,omitempty"`
+	Lang             string            `json:"lang,omitempty"`
+	Delimiters       any               `json:"delimiters,omitempty"`
+	Delims           any               `json:"delims,omitempty"`
+	Sections         bool              `json:"sections,omitempty"`
+	Section          any               `json:"section,omitempty"`
+	SectionDelimiter string            `json:"section_delimiter,omitempty"`
+	Data             any               `json:"data,omitempty"`
 }
 
-// Engine defines the interface for parsing and stringifying front-matter.
-// Engines can be functions or objects with Parse/Stringify methods.
+// Engine mirrors gray-matter engines: parse is required, stringify is optional.
 type Engine interface {
-	// Parse converts a front-matter string to a map of key-value pairs.
-	Parse(input string) (map[string]any, error)
-	// Stringify converts a map of key-value pairs to a front-matter string.
-	Stringify(data map[string]any) (string, error)
+	Parse(input string) (any, error)
+	Stringify(data any) (string, error)
 }
 
-// EngineFunc is a function adapter that implements Engine for parse-only engines.
-type EngineFunc func(input string) (map[string]any, error)
+// EngineFunc adapts a parse-only function into an Engine.
+type EngineFunc func(input string) (any, error)
 
-// Parse implements the Engine interface.
-func (f EngineFunc) Parse(input string) (map[string]any, error) {
+func (f EngineFunc) Parse(input string) (any, error) {
 	return f(input)
 }
 
-// Stringify implements the Engine interface - returns error for parse-only engines.
-func (f EngineFunc) Stringify(data map[string]any) (string, error) {
-	return "", nil
+func (f EngineFunc) Stringify(data any) (string, error) {
+	return "", fmt.Errorf("stringify not implemented")
 }
 
-// EngineWithStringify is an engine that has both Parse and Stringify methods.
+// EngineWithStringify adapts parse/stringify functions into an Engine.
 type EngineWithStringify struct {
-	ParseFunc     func(input string) (map[string]any, error)
-	StringifyFunc func(data map[string]any) (string, error)
+	ParseFunc     func(input string) (any, error)
+	StringifyFunc func(data any) (string, error)
 }
 
-// Parse implements the Engine interface.
-func (e EngineWithStringify) Parse(input string) (map[string]any, error) {
+func (e EngineWithStringify) Parse(input string) (any, error) {
+	if e.ParseFunc == nil {
+		return nil, fmt.Errorf("parse not implemented")
+	}
 	return e.ParseFunc(input)
 }
 
-// Stringify implements the Engine interface.
-func (e EngineWithStringify) Stringify(data map[string]any) (string, error) {
+func (e EngineWithStringify) Stringify(data any) (string, error) {
+	if e.StringifyFunc == nil {
+		return "", fmt.Errorf("stringify not implemented")
+	}
 	return e.StringifyFunc(data)
+}
+
+func normalizeLanguageName(language string) string {
+	lang := strings.ToLower(strings.TrimSpace(language))
+	if lang == "" {
+		return "yaml"
+	}
+	return lang
 }

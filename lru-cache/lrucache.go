@@ -4,7 +4,9 @@ package lrucache
 // TS source: https://github.com/isaacs/node-lru-cache/blob/main/src/index.ts
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,6 +63,8 @@ const (
 	DisposeDelete DisposeReason = "delete"
 	// DisposeExpire means the item's TTL expired.
 	DisposeExpire DisposeReason = "expire"
+	// DisposeFetch means an inflight fetch resolved to undefined or failed.
+	DisposeFetch DisposeReason = "fetch"
 )
 
 // InsertReason indicates why an item was added to the cache.
@@ -100,6 +104,22 @@ type Status[V any] struct {
 	OldValue *V
 	// Has is the result of a Has() operation: "hit", "stale", or "miss".
 	Has string
+	// Fetch is the result of a Fetch() operation.
+	Fetch string
+	// FetchDispatched indicates that FetchMethod was invoked.
+	FetchDispatched bool
+	// FetchUpdated indicates that the fetched value updated the cache.
+	FetchUpdated bool
+	// FetchError stores a fetch rejection/abort reason.
+	FetchError error
+	// FetchAborted indicates that the fetch received an abort signal.
+	FetchAborted bool
+	// FetchAbortIgnored indicates that the abort signal was ignored.
+	FetchAbortIgnored bool
+	// FetchResolved indicates that the fetch resolved successfully.
+	FetchResolved bool
+	// FetchRejected indicates that the fetch rejected with an error.
+	FetchRejected bool
 	// Get is the result of a Get() operation: "stale", "hit", or "miss".
 	Get string
 	// ReturnedStale is true if a stale value was returned.
@@ -186,6 +206,26 @@ type Options[K comparable, V any] struct {
 	// TS source: OptionsBase.onInsert (line ~960)
 	OnInsert func(value V, key K, reason InsertReason)
 
+	// FetchMethod implements Fetch/ForceFetch behavior.
+	// staleValue is nil on a cache miss.
+	FetchMethod func(key K, staleValue *V, opts FetcherOptions[K, V]) (value V, ok bool, err error)
+
+	// MemoMethod implements Memo behavior.
+	// staleValue is nil on a cache miss.
+	MemoMethod func(key K, staleValue *V, opts MemoizerOptions[K, V]) V
+
+	// NoDeleteOnFetchRejection preserves stale data when FetchMethod returns an error.
+	NoDeleteOnFetchRejection bool
+
+	// AllowStaleOnFetchRejection returns stale data when FetchMethod returns an error.
+	AllowStaleOnFetchRejection bool
+
+	// AllowStaleOnFetchAbort returns stale data when an inflight fetch is aborted.
+	AllowStaleOnFetchAbort bool
+
+	// IgnoreFetchAbort allows a fetch to continue updating the cache after abort.
+	IgnoreFetchAbort bool
+
 	// NowFn provides a custom monotonic clock for testing.
 	// Must return time in milliseconds. Default: time.Now() monotonic ms.
 	NowFn func() int64
@@ -240,6 +280,86 @@ type PeekOptions struct {
 	AllowStale *bool
 }
 
+// FetchOptions overrides cache-level options for a single Fetch()/ForceFetch() call.
+type FetchOptions[K comparable, V any] struct {
+	AllowStale                  *bool
+	UpdateAgeOnGet              *bool
+	NoDeleteOnStaleGet          *bool
+	TTL                         *int64
+	NoDisposeOnSet              *bool
+	NoUpdateTTL                 *bool
+	SizeCalculation             func(value V, key K) int
+	Size                        int
+	NoDeleteOnFetchRejection    *bool
+	AllowStaleOnFetchRejection  *bool
+	AllowStaleOnFetchAbort      *bool
+	IgnoreFetchAbort            *bool
+	ForceRefresh                bool
+	Context                     any
+	Signal                      context.Context
+	Status                      *Status[V]
+}
+
+// MemoOptions overrides cache-level options for a single Memo() call.
+type MemoOptions[K comparable, V any] struct {
+	AllowStale         *bool
+	UpdateAgeOnGet     *bool
+	NoDeleteOnStaleGet *bool
+	TTL                *int64
+	NoDisposeOnSet     *bool
+	NoUpdateTTL        *bool
+	SizeCalculation    func(value V, key K) int
+	Size               int
+	ForceRefresh       bool
+	Context            any
+	Status             *Status[V]
+}
+
+// ResolvedFetchOptions are passed to FetchMethod after cache defaults are applied.
+type ResolvedFetchOptions[K comparable, V any] struct {
+	AllowStale                 bool
+	UpdateAgeOnGet             bool
+	NoDeleteOnStaleGet         bool
+	TTL                        int64
+	NoDisposeOnSet             bool
+	NoUpdateTTL                bool
+	SizeCalculation            func(value V, key K) int
+	Size                       int
+	NoDeleteOnFetchRejection   bool
+	AllowStaleOnFetchRejection bool
+	AllowStaleOnFetchAbort     bool
+	IgnoreFetchAbort           bool
+	Status                     *Status[V]
+	Signal                     context.Context
+}
+
+// ResolvedMemoOptions are passed to MemoMethod after cache defaults are applied.
+type ResolvedMemoOptions[K comparable, V any] struct {
+	AllowStale         bool
+	UpdateAgeOnGet     bool
+	NoDeleteOnStaleGet bool
+	TTL                int64
+	NoDisposeOnSet     bool
+	NoUpdateTTL        bool
+	SizeCalculation    func(value V, key K) int
+	Size               int
+	Start              int64
+	Status             *Status[V]
+}
+
+// FetcherOptions are passed to Options.FetchMethod.
+type FetcherOptions[K comparable, V any] struct {
+	Signal  context.Context
+	Options *ResolvedFetchOptions[K, V]
+	Context any
+}
+
+// MemoizerOptions are passed to Options.MemoMethod.
+type MemoizerOptions[K comparable, V any] struct {
+	Options *ResolvedMemoOptions[K, V]
+	Context any
+}
+
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -250,6 +370,100 @@ type disposeTask[K comparable, V any] struct {
 	value  V
 	key    K
 	reason DisposeReason
+}
+
+type cacheValue[V any] struct {
+	value *V
+	fetch *backgroundFetch[V]
+}
+
+type fetchResult[V any] struct {
+	value *V
+	err   error
+}
+
+type backgroundFetch[V any] struct {
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+
+	stale *V
+
+	mu        sync.Mutex
+	done      chan struct{}
+	completed bool
+	result    fetchResult[V]
+}
+
+func newValueSlot[V any](v V) *cacheValue[V] {
+	vv := v
+	return &cacheValue[V]{value: &vv}
+}
+
+func newFetchSlot[V any](bf *backgroundFetch[V]) *cacheValue[V] {
+	return &cacheValue[V]{fetch: bf}
+}
+
+func (cv *cacheValue[V]) isBackgroundFetch() bool {
+	return cv != nil && cv.fetch != nil
+}
+
+func (cv *cacheValue[V]) visibleValue() *V {
+	if cv == nil {
+		return nil
+	}
+	if cv.fetch != nil {
+		return cv.fetch.stale
+	}
+	return cv.value
+}
+
+func (cv *cacheValue[V]) actualValue() *V {
+	if cv == nil || cv.fetch != nil {
+		return nil
+	}
+	return cv.value
+}
+
+func newBackgroundFetch[V any](ctx context.Context, cancel context.CancelCauseFunc, stale *V) *backgroundFetch[V] {
+	return &backgroundFetch[V]{
+		ctx:    ctx,
+		cancel: cancel,
+		stale:  stale,
+		done:   make(chan struct{}),
+	}
+}
+
+func (bf *backgroundFetch[V]) complete(value *V, err error) bool {
+	bf.mu.Lock()
+	defer bf.mu.Unlock()
+	if bf.completed {
+		return false
+	}
+	bf.completed = true
+	bf.result = fetchResult[V]{value: value, err: err}
+	close(bf.done)
+	return true
+}
+
+func (bf *backgroundFetch[V]) wait() fetchResult[V] {
+	<-bf.done
+	bf.mu.Lock()
+	defer bf.mu.Unlock()
+	return bf.result
+}
+
+func clonePtr[V any](v V) *V {
+	vv := v
+	return &vv
+}
+
+var warned sync.Map
+
+func warnOnce(code, warningType, msg string) {
+	if _, loaded := warned.LoadOrStore(code, struct{}{}); loaded {
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "[%s] %s: %s\n", code, warningType, msg)
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +489,10 @@ type LRUCache[K comparable, V any] struct {
 	allowStale     bool
 	noDisposeOnSet bool
 	noUpdateTTL    bool
+	noDeleteOnFetchRejection   bool
+	allowStaleOnFetchAbort     bool
+	allowStaleOnFetchRejection bool
+	ignoreFetchAbort           bool
 	noDeleteOnStaleGet bool
 	sizeCalculation    func(V, K) int
 
@@ -282,11 +500,14 @@ type LRUCache[K comparable, V any] struct {
 	dispose      func(V, K, DisposeReason)
 	disposeAfter func(V, K, DisposeReason)
 	onInsert     func(V, K, InsertReason)
+	fetchMethod  func(K, *V, FetcherOptions[K, V]) (V, bool, error)
+	memoMethod   func(K, *V, MemoizerOptions[K, V]) V
 
 	// --- Feature flags (cached from callbacks for fast checks) ---
 	hasDispose      bool
 	hasDisposeAfter bool
 	hasOnInsert     bool
+	hasFetchMethod  bool
 
 	// --- Core data structure ---
 	// Parallel arrays + index-based doubly-linked list.
@@ -297,7 +518,7 @@ type LRUCache[K comparable, V any] struct {
 	// prev[i] = index of next less-recently-used item
 	keyMap  map[K]int // key → array index (TS: #keyMap)
 	keyList []*K      // index → key pointer, nil = empty slot (TS: #keyList)
-	valList []*V      // index → value pointer, nil = empty slot (TS: #valList)
+	valList []*cacheValue[V] // index → value/background fetch, nil = empty slot
 	next    []int     // forward linked list pointers (TS: #next)
 	prev    []int     // backward linked list pointers (TS: #prev)
 	head    int       // LRU end index (TS: #head)
@@ -361,20 +582,23 @@ func New[K comparable, V any](o Options[K, V]) *LRUCache[K, V] {
 
 	// Validate sizeCalculation
 	if o.SizeCalculation != nil && o.MaxSize == 0 && o.MaxEntrySize == 0 {
-		// sizeCalculation without maxSize is allowed but useless
+		panic("cannot set sizeCalculation without setting maxSize or maxEntrySize")
 	}
 
 	// Must have at least one limiting factor
 	// TS source: lines ~1395-1405
-	if max == 0 && o.MaxSize == 0 && (o.TTL == 0 || !o.TTLAutopurge) {
-		panic("at least one of max, maxSize, or ttl (with ttlAutopurge) must be specified")
+	if max == 0 && o.MaxSize == 0 && o.TTL == 0 {
+		panic("at least one of max, maxSize, or ttl must be specified")
 	}
 
-	// TTL resolution defaults to 0
+	// TTL resolution defaults to 1
 	// TS source: line ~1480
 	ttlResolution := o.TTLResolution
+	if ttlResolution == 0 {
+		ttlResolution = 1
+	}
 	if ttlResolution < 0 {
-		ttlResolution = 0
+		ttlResolution = 1
 	}
 
 	// MaxEntrySize defaults to MaxSize
@@ -402,14 +626,21 @@ func New[K comparable, V any](o Options[K, V]) *LRUCache[K, V] {
 		allowStale:     o.AllowStale,
 		noDisposeOnSet: o.NoDisposeOnSet,
 		noUpdateTTL:    o.NoUpdateTTL,
-		noDeleteOnStaleGet: o.NoDeleteOnStaleGet,
-		sizeCalculation:    o.SizeCalculation,
+		noDeleteOnFetchRejection:   o.NoDeleteOnFetchRejection,
+		allowStaleOnFetchAbort:     o.AllowStaleOnFetchAbort,
+		allowStaleOnFetchRejection: o.AllowStaleOnFetchRejection,
+		ignoreFetchAbort:           o.IgnoreFetchAbort,
+		noDeleteOnStaleGet:         o.NoDeleteOnStaleGet,
+		sizeCalculation:            o.SizeCalculation,
 		dispose:      o.Dispose,
 		disposeAfter: o.DisposeAfter,
 		onInsert:     o.OnInsert,
+		fetchMethod:  o.FetchMethod,
+		memoMethod:   o.MemoMethod,
 		hasDispose:      o.Dispose != nil,
 		hasDisposeAfter: o.DisposeAfter != nil,
 		hasOnInsert:     o.OnInsert != nil,
+		hasFetchMethod:  o.FetchMethod != nil,
 		nowFn:           nowFn,
 	}
 
@@ -423,7 +654,7 @@ func New[K comparable, V any](o Options[K, V]) *LRUCache[K, V] {
 
 	c.keyMap = make(map[K]int, cap)
 	c.keyList = make([]*K, cap)
-	c.valList = make([]*V, cap)
+	c.valList = make([]*cacheValue[V], cap)
 	c.next = make([]int, cap)
 	c.prev = make([]int, cap)
 	c.free = make([]int, 0, cap)
@@ -434,10 +665,18 @@ func New[K comparable, V any](o Options[K, V]) *LRUCache[K, V] {
 		c.initializeTTLTracking()
 	}
 
-	// Initialize size tracking if maxSize is set
+	// Initialize size tracking if size limits are set
 	// TS source: lines ~1515-1520
-	if o.MaxSize > 0 {
+	if maxEntrySize > 0 {
 		c.initializeSizeTracking()
+	}
+
+	if !o.TTLAutopurge && max == 0 && o.MaxSize == 0 && o.TTL > 0 {
+		warnOnce(
+			"LRU_CACHE_UNBOUNDED",
+			"UnboundedCacheWarning",
+			"TTL caching without ttlAutopurge, max, or maxSize can result in unbounded memory consumption.",
+		)
 	}
 
 	return c
@@ -498,7 +737,7 @@ func (c *LRUCache[K, V]) ensureIndex(index int) {
 	}
 
 	c.keyList = growSlicePtr[K](c.keyList, newCap)
-	c.valList = growSlicePtr[V](c.valList, newCap)
+	c.valList = growSliceCacheValue[V](c.valList, newCap)
 	c.next = growSliceInt(c.next, newCap)
 	c.prev = growSliceInt(c.prev, newCap)
 	if c.ttls != nil {
@@ -519,6 +758,12 @@ func (c *LRUCache[K, V]) ensureIndex(index int) {
 
 func growSlicePtr[T any](s []*T, newCap int) []*T {
 	grown := make([]*T, newCap)
+	copy(grown, s)
+	return grown
+}
+
+func growSliceCacheValue[V any](s []*cacheValue[V], newCap int) []*cacheValue[V] {
+	grown := make([]*cacheValue[V], newCap)
 	copy(grown, s)
 	return grown
 }
@@ -757,20 +1002,27 @@ func (c *LRUCache[K, V]) evict(free bool) int {
 	k := c.keyList[head]
 	v := c.valList[head]
 
-	// Call dispose callbacks
+	// Call dispose callbacks or abort an inflight fetch.
 	if k != nil && v != nil {
-		if c.hasDispose || c.hasDisposeAfter {
+		if v.isBackgroundFetch() {
+			v.fetch.cancel(fmt.Errorf("evicted"))
+		} else if c.hasDispose || c.hasDisposeAfter {
+			value := v.actualValue()
+			if value == nil {
+				goto evictAfterCallbacks
+			}
 			if c.hasDispose {
-				c.dispose(*v, *k, DisposeEvict)
+				c.dispose(*value, *k, DisposeEvict)
 			}
 			if c.hasDisposeAfter {
 				c.disposed = append(c.disposed, disposeTask[K, V]{
-					value: *v, key: *k, reason: DisposeEvict,
+					value: *value, key: *k, reason: DisposeEvict,
 				})
 			}
 		}
 	}
 
+evictAfterCallbacks:
 	c.removeItemSize(head)
 
 	// Cancel autopurge timer
@@ -835,21 +1087,28 @@ func (c *LRUCache[K, V]) internalDelete(k K, reason DisposeReason) bool {
 	// Remove size tracking
 	c.removeItemSize(index)
 
-	// Call dispose
+	// Call dispose or abort an inflight fetch.
 	v := c.valList[index]
 	if v != nil {
-		if c.hasDispose || c.hasDisposeAfter {
+		if v.isBackgroundFetch() {
+			v.fetch.cancel(fmt.Errorf("deleted"))
+		} else if c.hasDispose || c.hasDisposeAfter {
+			value := v.actualValue()
+			if value == nil {
+				goto deleteAfterCallbacks
+			}
 			if c.hasDispose {
-				c.dispose(*v, k, reason)
+				c.dispose(*value, k, reason)
 			}
 			if c.hasDisposeAfter {
 				c.disposed = append(c.disposed, disposeTask[K, V]{
-					value: *v, key: k, reason: reason,
+					value: *value, key: k, reason: reason,
 				})
 			}
 		}
 	}
 
+deleteAfterCallbacks:
 	// Remove from key map
 	delete(c.keyMap, k)
 	c.keyList[index] = nil
@@ -886,13 +1145,21 @@ func (c *LRUCache[K, V]) internalClear(reason DisposeReason) {
 		v := c.valList[index]
 		k := c.keyList[index]
 		if v != nil && k != nil {
-			if c.hasDispose {
-				c.dispose(*v, *k, reason)
-			}
-			if c.hasDisposeAfter {
-				c.disposed = append(c.disposed, disposeTask[K, V]{
-					value: *v, key: *k, reason: reason,
-				})
+			if v.isBackgroundFetch() {
+				v.fetch.cancel(fmt.Errorf("deleted"))
+			} else {
+				value := v.actualValue()
+				if value == nil {
+					return true
+				}
+				if c.hasDispose {
+					c.dispose(*value, *k, reason)
+				}
+				if c.hasDisposeAfter {
+					c.disposed = append(c.disposed, disposeTask[K, V]{
+						value: *value, key: *k, reason: reason,
+					})
+				}
 			}
 		}
 		return true
@@ -1025,6 +1292,356 @@ func (c *LRUCache[K, V]) runDisposeTasks(tasks []disposeTask[K, V]) {
 	}
 }
 
+func (c *LRUCache[K, V]) resolveFetchOptions(opt FetchOptions[K, V]) ResolvedFetchOptions[K, V] {
+	resolved := ResolvedFetchOptions[K, V]{
+		AllowStale:                 c.allowStale,
+		UpdateAgeOnGet:             c.updateAgeOnGet,
+		NoDeleteOnStaleGet:         c.noDeleteOnStaleGet,
+		TTL:                        c.ttl,
+		NoDisposeOnSet:             c.noDisposeOnSet,
+		NoUpdateTTL:                c.noUpdateTTL,
+		SizeCalculation:            c.sizeCalculation,
+		NoDeleteOnFetchRejection:   c.noDeleteOnFetchRejection,
+		AllowStaleOnFetchRejection: c.allowStaleOnFetchRejection,
+		AllowStaleOnFetchAbort:     c.allowStaleOnFetchAbort,
+		IgnoreFetchAbort:           c.ignoreFetchAbort,
+		Status:                     opt.Status,
+		Signal:                     opt.Signal,
+	}
+	if opt.AllowStale != nil {
+		resolved.AllowStale = *opt.AllowStale
+	}
+	if opt.UpdateAgeOnGet != nil {
+		resolved.UpdateAgeOnGet = *opt.UpdateAgeOnGet
+	}
+	if opt.NoDeleteOnStaleGet != nil {
+		resolved.NoDeleteOnStaleGet = *opt.NoDeleteOnStaleGet
+	}
+	if opt.TTL != nil {
+		resolved.TTL = *opt.TTL
+	}
+	if opt.NoDisposeOnSet != nil {
+		resolved.NoDisposeOnSet = *opt.NoDisposeOnSet
+	}
+	if opt.NoUpdateTTL != nil {
+		resolved.NoUpdateTTL = *opt.NoUpdateTTL
+	}
+	if opt.SizeCalculation != nil {
+		resolved.SizeCalculation = opt.SizeCalculation
+	}
+	if opt.Size > 0 {
+		resolved.Size = opt.Size
+	}
+	if opt.NoDeleteOnFetchRejection != nil {
+		resolved.NoDeleteOnFetchRejection = *opt.NoDeleteOnFetchRejection
+	}
+	if opt.AllowStaleOnFetchRejection != nil {
+		resolved.AllowStaleOnFetchRejection = *opt.AllowStaleOnFetchRejection
+	}
+	if opt.AllowStaleOnFetchAbort != nil {
+		resolved.AllowStaleOnFetchAbort = *opt.AllowStaleOnFetchAbort
+	}
+	if opt.IgnoreFetchAbort != nil {
+		resolved.IgnoreFetchAbort = *opt.IgnoreFetchAbort
+	}
+	return resolved
+}
+
+func (c *LRUCache[K, V]) resolveMemoOptions(opt MemoOptions[K, V]) ResolvedMemoOptions[K, V] {
+	resolved := ResolvedMemoOptions[K, V]{
+		AllowStale:         c.allowStale,
+		UpdateAgeOnGet:     c.updateAgeOnGet,
+		NoDeleteOnStaleGet: c.noDeleteOnStaleGet,
+		TTL:                c.ttl,
+		NoDisposeOnSet:     c.noDisposeOnSet,
+		NoUpdateTTL:        c.noUpdateTTL,
+		SizeCalculation:    c.sizeCalculation,
+		Status:             opt.Status,
+	}
+	if opt.AllowStale != nil {
+		resolved.AllowStale = *opt.AllowStale
+	}
+	if opt.UpdateAgeOnGet != nil {
+		resolved.UpdateAgeOnGet = *opt.UpdateAgeOnGet
+	}
+	if opt.NoDeleteOnStaleGet != nil {
+		resolved.NoDeleteOnStaleGet = *opt.NoDeleteOnStaleGet
+	}
+	if opt.TTL != nil {
+		resolved.TTL = *opt.TTL
+	}
+	if opt.NoDisposeOnSet != nil {
+		resolved.NoDisposeOnSet = *opt.NoDisposeOnSet
+	}
+	if opt.NoUpdateTTL != nil {
+		resolved.NoUpdateTTL = *opt.NoUpdateTTL
+	}
+	if opt.SizeCalculation != nil {
+		resolved.SizeCalculation = opt.SizeCalculation
+	}
+	if opt.Size > 0 {
+		resolved.Size = opt.Size
+	}
+	return resolved
+}
+
+func (c *LRUCache[K, V]) allocIndexLocked() int {
+	if c.size == 0 {
+		return c.tail
+	}
+	if len(c.free) > 0 {
+		index := c.free[len(c.free)-1]
+		c.free = c.free[:len(c.free)-1]
+		return index
+	}
+	if c.max > 0 && c.size == c.max {
+		return c.evict(false)
+	}
+	return c.size
+}
+
+func (c *LRUCache[K, V]) setFetchPlaceholderLocked(
+	k K,
+	index int,
+	exists bool,
+	bf *backgroundFetch[V],
+	options ResolvedFetchOptions[K, V],
+) int {
+	if !exists {
+		index = c.allocIndexLocked()
+		c.ensureIndex(index)
+		kCopy := k
+		c.keyList[index] = &kCopy
+		c.valList[index] = newFetchSlot(bf)
+		c.keyMap[k] = index
+		c.next[c.tail] = index
+		c.prev[index] = c.tail
+		c.tail = index
+		c.size++
+		c.addItemSize(index, 0, nil)
+		if options.TTL != 0 && c.ttls == nil {
+			c.initializeTTLTracking()
+		}
+		if c.ttls != nil {
+			c.setItemTTL(index, options.TTL, 0)
+		}
+		return index
+	}
+	c.valList[index] = newFetchSlot(bf)
+	return index
+}
+
+func (c *LRUCache[K, V]) fetchSetOptions(options *ResolvedFetchOptions[K, V]) SetOptions[K, V] {
+	ttl := options.TTL
+	noDisposeOnSet := options.NoDisposeOnSet
+	noUpdateTTL := options.NoUpdateTTL
+	return SetOptions[K, V]{
+		TTL:             &ttl,
+		NoDisposeOnSet:  &noDisposeOnSet,
+		NoUpdateTTL:     &noUpdateTTL,
+		SizeCalculation: options.SizeCalculation,
+		Size:            options.Size,
+		Status:          options.Status,
+	}
+}
+
+func (c *LRUCache[K, V]) handleFetchFailure(
+	k K,
+	index int,
+	bf *backgroundFetch[V],
+	options *ResolvedFetchOptions[K, V],
+	err error,
+	proceed bool,
+) fetchResult[V] {
+	aborted := bf.ctx.Err() != nil
+	allowStaleAborted := aborted && options.AllowStaleOnFetchAbort
+	allowStale := allowStaleAborted || options.AllowStaleOnFetchRejection
+	noDelete := allowStale || options.NoDeleteOnFetchRejection
+
+	c.mu.Lock()
+	if index >= 0 && index < len(c.valList) {
+		slot := c.valList[index]
+		if slot != nil && slot.fetch == bf {
+			del := !noDelete || (!proceed && bf.stale == nil)
+			if del {
+				c.internalDelete(k, DisposeFetch)
+			} else if !allowStaleAborted && bf.stale != nil {
+				c.valList[index] = newValueSlot(*bf.stale)
+			}
+		}
+	}
+	tasks := c.drainDisposed()
+	c.mu.Unlock()
+	c.runDisposeTasks(tasks)
+
+	if allowStale {
+		if options.Status != nil && bf.stale != nil {
+			options.Status.ReturnedStale = true
+		}
+		return fetchResult[V]{value: bf.stale}
+	}
+	return fetchResult[V]{err: err}
+}
+
+func (c *LRUCache[K, V]) handleFetchSuccess(
+	k K,
+	index int,
+	bf *backgroundFetch[V],
+	options *ResolvedFetchOptions[K, V],
+	value *V,
+	updateCache bool,
+) fetchResult[V] {
+	aborted := bf.ctx.Err() != nil
+	ignoreAbort := options.IgnoreFetchAbort && value != nil
+	proceed := options.IgnoreFetchAbort || (options.AllowStaleOnFetchAbort && bf.stale != nil)
+
+	if options.Status != nil {
+		if aborted && !updateCache {
+			options.Status.FetchAborted = true
+			options.Status.FetchError = context.Cause(bf.ctx)
+			if ignoreAbort {
+				options.Status.FetchAbortIgnored = true
+			}
+		} else {
+			options.Status.FetchResolved = true
+		}
+	}
+
+	if aborted && !ignoreAbort && !updateCache {
+		return c.handleFetchFailure(k, index, bf, options, context.Cause(bf.ctx), proceed)
+	}
+
+	shouldSet := false
+	c.mu.Lock()
+	if index >= 0 && index < len(c.valList) {
+		slot := c.valList[index]
+		if slot != nil && slot.fetch == bf {
+			if value == nil {
+				if bf.stale != nil {
+					c.valList[index] = newValueSlot(*bf.stale)
+				} else {
+					c.internalDelete(k, DisposeFetch)
+				}
+			} else {
+				shouldSet = true
+			}
+		} else if ignoreAbort && updateCache && slot == nil && value != nil {
+			shouldSet = true
+		}
+	}
+	tasks := c.drainDisposed()
+	c.mu.Unlock()
+	c.runDisposeTasks(tasks)
+
+	if shouldSet && value != nil {
+		if options.Status != nil {
+			options.Status.FetchUpdated = true
+		}
+		c.Set(k, *value, c.fetchSetOptions(options))
+	}
+
+	return fetchResult[V]{value: value}
+}
+
+func (c *LRUCache[K, V]) startBackgroundFetch(
+	k K,
+	index int,
+	exists bool,
+	options ResolvedFetchOptions[K, V],
+	userContext any,
+) *backgroundFetch[V] {
+	var stale *V
+	if exists && index >= 0 && index < len(c.valList) && c.valList[index] != nil {
+		if visible := c.valList[index].visibleValue(); visible != nil {
+			stale = clonePtr(*visible)
+		}
+	}
+
+	ctx, cancel := context.WithCancelCause(context.Background())
+	bf := newBackgroundFetch(ctx, cancel, stale)
+	index = c.setFetchPlaceholderLocked(k, index, exists, bf, options)
+
+	stopSignal := func() bool { return false }
+	if options.Signal != nil {
+		stopSignal = context.AfterFunc(options.Signal, func() {
+			cancel(context.Cause(options.Signal))
+		})
+	}
+
+	type outcome struct {
+		value *V
+		err   error
+	}
+	outcomeCh := make(chan outcome, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				outcomeCh <- outcome{err: fmt.Errorf("%v", r)}
+			}
+		}()
+		value, ok, err := c.fetchMethod(k, stale, FetcherOptions[K, V]{
+			Signal:  ctx,
+			Options: &options,
+			Context: userContext,
+		})
+		if ok {
+			outcomeCh <- outcome{value: clonePtr(value)}
+			return
+		}
+		outcomeCh <- outcome{err: err}
+	}()
+
+	if options.Status != nil {
+		options.Status.FetchDispatched = true
+	}
+
+	go func() {
+		defer stopSignal()
+
+		abortedEarly := false
+		updateCache := false
+		abortCh := ctx.Done()
+
+		for {
+			select {
+			case out := <-outcomeCh:
+				var result fetchResult[V]
+				if out.err != nil {
+					if options.Status != nil {
+						options.Status.FetchRejected = true
+						options.Status.FetchError = out.err
+					}
+					result = c.handleFetchFailure(k, index, bf, &options, out.err, false)
+				} else {
+					result = c.handleFetchSuccess(k, index, bf, &options, out.value, updateCache)
+				}
+				if !abortedEarly {
+					bf.complete(result.value, result.err)
+				}
+				return
+			case <-abortCh:
+				abortCh = nil
+				if !options.IgnoreFetchAbort || options.AllowStaleOnFetchAbort {
+					if options.Status != nil {
+						options.Status.FetchAborted = true
+						options.Status.FetchError = context.Cause(ctx)
+					}
+					proceed := options.IgnoreFetchAbort || (options.AllowStaleOnFetchAbort && bf.stale != nil)
+					result := c.handleFetchFailure(k, index, bf, &options, context.Cause(ctx), proceed)
+					bf.complete(result.value, result.err)
+					abortedEarly = true
+					updateCache = options.AllowStaleOnFetchAbort
+					if !options.AllowStaleOnFetchAbort {
+						return
+					}
+				}
+			}
+		}
+	}()
+
+	return bf
+}
+
 // ===========================================================================
 // PUBLIC METHODS
 // ===========================================================================
@@ -1114,9 +1731,8 @@ func (c *LRUCache[K, V]) Set(k K, v V, opts ...SetOptions[K, V]) *LRUCache[K, V]
 
 		// Store key and value
 		kCopy := k
-		vCopy := v
 		c.keyList[index] = &kCopy
-		c.valList[index] = &vCopy
+		c.valList[index] = newValueSlot(v)
 		c.keyMap[k] = index
 
 		// Link into doubly-linked list at tail (MRU position)
@@ -1142,31 +1758,43 @@ func (c *LRUCache[K, V]) Set(k K, v V, opts ...SetOptions[K, V]) *LRUCache[K, V]
 		c.moveToTail(index)
 
 		oldVal := c.valList[index]
-		same := oldVal != nil && sameValue(v, *oldVal)
+		oldActual := oldVal.actualValue()
+		same := oldActual != nil && sameValue(v, *oldActual)
 
 		if !same {
 			// Value changed: dispose old, store new
 			// TS source: lines ~2132-2162
-			// (Skipping BackgroundFetch handling - JS-only pattern)
 			if !noDisposeOnSet && oldVal != nil {
-				if c.hasDispose {
-					c.dispose(*oldVal, k, DisposeSet)
-				}
-				if c.hasDisposeAfter {
-					c.disposed = append(c.disposed, disposeTask[K, V]{
-						value: *oldVal, key: k, reason: DisposeSet,
-					})
+				if oldVal.isBackgroundFetch() {
+					oldVal.fetch.cancel(fmt.Errorf("replaced"))
+					if stale := oldVal.fetch.stale; stale != nil {
+						if c.hasDispose {
+							c.dispose(*stale, k, DisposeSet)
+						}
+						if c.hasDisposeAfter {
+							c.disposed = append(c.disposed, disposeTask[K, V]{
+								value: *stale, key: k, reason: DisposeSet,
+							})
+						}
+					}
+				} else if oldActual != nil {
+					if c.hasDispose {
+						c.dispose(*oldActual, k, DisposeSet)
+					}
+					if c.hasDisposeAfter {
+						c.disposed = append(c.disposed, disposeTask[K, V]{
+							value: *oldActual, key: k, reason: DisposeSet,
+						})
+					}
 				}
 			}
 			c.removeItemSize(index)
 			c.addItemSize(index, size, status)
-			vCopy := v
-			c.valList[index] = &vCopy
+			c.valList[index] = newValueSlot(v)
 			if status != nil {
 				status.Set = "replace"
-				if oldVal != nil {
-					oldV := *oldVal
-					status.OldValue = &oldV
+				if oldVisible := oldVal.visibleValue(); oldVisible != nil {
+					status.OldValue = clonePtr(*oldVisible)
 				}
 			}
 		} else if status != nil {
@@ -1203,6 +1831,191 @@ func (c *LRUCache[K, V]) Set(k K, v V, opts ...SetOptions[K, V]) *LRUCache[K, V]
 	c.runDisposeTasks(tasks)
 
 	return c
+}
+
+// Fetch returns a cached value or loads it via FetchMethod.
+// It matches the node-lru-cache fetch() behavior as closely as Go allows:
+// a non-nil error represents a rejected fetch promise, while ok=false/error=nil
+// represents a resolved undefined fetch.
+func (c *LRUCache[K, V]) Fetch(k K, opts ...FetchOptions[K, V]) (V, bool, error) {
+	var raw FetchOptions[K, V]
+	if len(opts) > 0 {
+		raw = opts[0]
+	}
+	resolved := c.resolveFetchOptions(raw)
+
+	if !c.hasFetchMethod {
+		if resolved.Status != nil {
+			resolved.Status.Fetch = "get"
+		}
+		allowStale := resolved.AllowStale
+		updateAgeOnGet := resolved.UpdateAgeOnGet
+		noDeleteOnStaleGet := resolved.NoDeleteOnStaleGet
+		v, ok := c.Get(k, GetOptions[V]{
+			AllowStale:         &allowStale,
+			UpdateAgeOnGet:     &updateAgeOnGet,
+			NoDeleteOnStaleGet: &noDeleteOnStaleGet,
+			Status:             resolved.Status,
+		})
+		return v, ok, nil
+	}
+
+	c.mu.Lock()
+	index, exists := c.keyMap[k]
+	if !exists {
+		if resolved.Status != nil {
+			resolved.Status.Fetch = "miss"
+		}
+		bf := c.startBackgroundFetch(k, -1, false, resolved, raw.Context)
+		c.mu.Unlock()
+		result := bf.wait()
+		var zero V
+		if result.err != nil {
+			return zero, false, result.err
+		}
+		if result.value == nil {
+			return zero, false, nil
+		}
+		return *result.value, true, nil
+	}
+
+	slot := c.valList[index]
+	if slot != nil && slot.isBackgroundFetch() {
+		stale := resolved.AllowStale && slot.visibleValue() != nil
+		if resolved.Status != nil {
+			resolved.Status.Fetch = "inflight"
+			if stale {
+				resolved.Status.ReturnedStale = true
+			}
+		}
+		if stale {
+			value := slot.visibleValue()
+			c.mu.Unlock()
+			return *value, true, nil
+		}
+		bf := slot.fetch
+		c.mu.Unlock()
+		result := bf.wait()
+		var zero V
+		if result.err != nil {
+			return zero, false, result.err
+		}
+		if result.value == nil {
+			return zero, false, nil
+		}
+		return *result.value, true, nil
+	}
+
+	isStale := c.isStale(index)
+	if !raw.ForceRefresh && !isStale {
+		if resolved.Status != nil {
+			resolved.Status.Fetch = "hit"
+		}
+		c.moveToTail(index)
+		if resolved.UpdateAgeOnGet {
+			c.updateItemAge(index)
+		}
+		if resolved.Status != nil {
+			c.statusTTL(resolved.Status, index)
+		}
+		value := slot.actualValue()
+		c.mu.Unlock()
+		if value == nil {
+			var zero V
+			return zero, false, nil
+		}
+		return *value, true, nil
+	}
+
+	bf := c.startBackgroundFetch(k, index, true, resolved, raw.Context)
+	stale := bf.stale != nil && resolved.AllowStale
+	if resolved.Status != nil {
+		if isStale {
+			resolved.Status.Fetch = "stale"
+			if stale {
+				resolved.Status.ReturnedStale = true
+			}
+		} else {
+			resolved.Status.Fetch = "refresh"
+		}
+	}
+	if stale {
+		value := *bf.stale
+		c.mu.Unlock()
+		return value, true, nil
+	}
+	c.mu.Unlock()
+
+	result := bf.wait()
+	var zero V
+	if result.err != nil {
+		return zero, false, result.err
+	}
+	if result.value == nil {
+		return zero, false, nil
+	}
+	return *result.value, true, nil
+}
+
+// ForceFetch is Fetch, but it rejects undefined resolutions.
+func (c *LRUCache[K, V]) ForceFetch(k K, opts ...FetchOptions[K, V]) (V, error) {
+	v, ok, err := c.Fetch(k, opts...)
+	if err != nil {
+		var zero V
+		return zero, err
+	}
+	if !ok {
+		var zero V
+		return zero, fmt.Errorf("fetch() returned undefined")
+	}
+	return v, nil
+}
+
+// Memo returns a cached value or computes it via MemoMethod.
+func (c *LRUCache[K, V]) Memo(k K, opts ...MemoOptions[K, V]) V {
+	if c.memoMethod == nil {
+		panic("no memoMethod provided to constructor")
+	}
+
+	var raw MemoOptions[K, V]
+	if len(opts) > 0 {
+		raw = opts[0]
+	}
+	resolved := c.resolveMemoOptions(raw)
+
+	allowStale := resolved.AllowStale
+	updateAgeOnGet := resolved.UpdateAgeOnGet
+	noDeleteOnStaleGet := resolved.NoDeleteOnStaleGet
+	v, ok := c.Get(k, GetOptions[V]{
+		AllowStale:         &allowStale,
+		UpdateAgeOnGet:     &updateAgeOnGet,
+		NoDeleteOnStaleGet: &noDeleteOnStaleGet,
+		Status:             resolved.Status,
+	})
+	if !raw.ForceRefresh && ok {
+		return v
+	}
+
+	var stale *V
+	if ok {
+		stale = clonePtr(v)
+	}
+	value := c.memoMethod(k, stale, MemoizerOptions[K, V]{
+		Options: &resolved,
+		Context: raw.Context,
+	})
+	ttl := resolved.TTL
+	noDisposeOnSet := resolved.NoDisposeOnSet
+	noUpdateTTL := resolved.NoUpdateTTL
+	c.Set(k, value, SetOptions[K, V]{
+		TTL:             &ttl,
+		NoDisposeOnSet:  &noDisposeOnSet,
+		NoUpdateTTL:     &noUpdateTTL,
+		SizeCalculation: resolved.SizeCalculation,
+		Size:            resolved.Size,
+		Status:          resolved.Status,
+	})
+	return value
 }
 
 // ---------------------------------------------------------------------------
@@ -1254,8 +2067,7 @@ func (c *LRUCache[K, V]) Get(k K, opts ...GetOptions[V]) (V, bool) {
 		c.mu.Unlock()
 		return zero, false
 	}
-
-	value := *vp
+	fetching := vp.isBackgroundFetch()
 
 	if status != nil {
 		c.statusTTL(status, index)
@@ -1266,18 +2078,21 @@ func (c *LRUCache[K, V]) Get(k K, opts ...GetOptions[V]) (V, bool) {
 		if status != nil {
 			status.Get = "stale"
 		}
-		// (Skipping BackgroundFetch handling - JS-only pattern)
-		if !noDeleteOnStaleGet {
+		if !fetching && !noDeleteOnStaleGet {
 			c.internalDelete(k, DisposeExpire)
 		}
 		tasks := c.drainDisposed()
 		c.mu.Unlock()
 		c.runDisposeTasks(tasks)
 		if allowStale {
+			value := vp.visibleValue()
+			if value == nil {
+				return zero, false
+			}
 			if status != nil {
 				status.ReturnedStale = true
 			}
-			return value, true
+			return *value, true
 		}
 		return zero, false
 	}
@@ -1287,12 +2102,24 @@ func (c *LRUCache[K, V]) Get(k K, opts ...GetOptions[V]) (V, bool) {
 	if status != nil {
 		status.Get = "hit"
 	}
+	if fetching {
+		value := vp.visibleValue()
+		c.mu.Unlock()
+		if value == nil {
+			return zero, false
+		}
+		return *value, true
+	}
 	c.moveToTail(index)
 	if updateAgeOnGet {
 		c.updateItemAge(index)
 	}
+	value := vp.actualValue()
 	c.mu.Unlock()
-	return value, true
+	if value == nil {
+		return zero, false
+	}
+	return *value, true
 }
 
 // ---------------------------------------------------------------------------
@@ -1329,6 +2156,9 @@ func (c *LRUCache[K, V]) Has(k K, opts ...HasOptions[V]) bool {
 		if status != nil {
 			status.Has = "miss"
 		}
+		return false
+	}
+	if c.valList[index].isBackgroundFetch() && c.valList[index].visibleValue() == nil {
 		return false
 	}
 
@@ -1416,7 +2246,11 @@ func (c *LRUCache[K, V]) Peek(k K, opts ...PeekOptions) (V, bool) {
 	if v == nil {
 		return zero, false
 	}
-	return *v, true
+	value := v.visibleValue()
+	if value == nil {
+		return zero, false
+	}
+	return *value, true
 }
 
 // ---------------------------------------------------------------------------
@@ -1436,9 +2270,12 @@ func (c *LRUCache[K, V]) Pop() (V, bool) {
 	for c.size > 0 {
 		val := c.valList[c.head]
 		c.evict(true)
-		// (Skipping BackgroundFetch handling - JS-only pattern)
 		if val != nil {
-			result = *val
+			value := val.visibleValue()
+			if value == nil {
+				continue
+			}
+			result = *value
 			found = true
 			break
 		}
@@ -1474,11 +2311,15 @@ func (c *LRUCache[K, V]) Find(fn func(v V, k K) bool, opts ...GetOptions[V]) (V,
 		if v == nil {
 			return true
 		}
+		value := v.visibleValue()
+		if value == nil {
+			return true
+		}
 		k := c.keyList[index]
 		if k == nil {
 			return true
 		}
-		if fn(*v, *k) {
+		if fn(*value, *k) {
 			foundKey = k
 			return false // stop iteration
 		}
@@ -1511,7 +2352,11 @@ func (c *LRUCache[K, V]) ForEach(fn func(v V, k K)) {
 		v := c.valList[index]
 		k := c.keyList[index]
 		if v != nil && k != nil {
-			fn(*v, *k)
+			value := v.visibleValue()
+			if value == nil {
+				return true
+			}
+			fn(*value, *k)
 		}
 		return true
 	})
@@ -1527,7 +2372,11 @@ func (c *LRUCache[K, V]) RForEach(fn func(v V, k K)) {
 		v := c.valList[index]
 		k := c.keyList[index]
 		if v != nil && k != nil {
-			fn(*v, *k)
+			value := v.visibleValue()
+			if value == nil {
+				return true
+			}
+			fn(*value, *k)
 		}
 		return true
 	})
@@ -1587,8 +2436,12 @@ func (c *LRUCache[K, V]) Info(k K) *Entry[V] {
 	if v == nil {
 		return nil
 	}
+	value := v.visibleValue()
+	if value == nil {
+		return nil
+	}
 
-	entry := &Entry[V]{Value: *v}
+	entry := &Entry[V]{Value: *value}
 
 	if c.ttls != nil && c.starts != nil {
 		ttl := c.ttls[index]
@@ -1678,8 +2531,11 @@ func (c *LRUCache[K, V]) Entries() [][2]any {
 	c.forEachIndex(false, func(index int) bool {
 		v := c.valList[index]
 		k := c.keyList[index]
-		if v != nil && k != nil {
-			result = append(result, [2]any{*k, *v})
+		if v != nil && k != nil && !v.isBackgroundFetch() {
+			value := v.actualValue()
+			if value != nil {
+				result = append(result, [2]any{*k, *value})
+			}
 		}
 		return true
 	})
@@ -1694,7 +2550,7 @@ func (c *LRUCache[K, V]) Keys() []K {
 	result := make([]K, 0, c.size)
 	c.forEachIndex(false, func(index int) bool {
 		k := c.keyList[index]
-		if k != nil && c.valList[index] != nil {
+		if k != nil && c.valList[index] != nil && !c.valList[index].isBackgroundFetch() {
 			result = append(result, *k)
 		}
 		return true
@@ -1710,8 +2566,11 @@ func (c *LRUCache[K, V]) Values() []V {
 	result := make([]V, 0, c.size)
 	c.forEachIndex(false, func(index int) bool {
 		v := c.valList[index]
-		if v != nil && c.keyList[index] != nil {
-			result = append(result, *v)
+		if v != nil && c.keyList[index] != nil && !v.isBackgroundFetch() {
+			value := v.actualValue()
+			if value != nil {
+				result = append(result, *value)
+			}
 		}
 		return true
 	})
@@ -1727,8 +2586,11 @@ func (c *LRUCache[K, V]) REntries() [][2]any {
 	c.forEachRIndex(false, func(index int) bool {
 		v := c.valList[index]
 		k := c.keyList[index]
-		if v != nil && k != nil {
-			result = append(result, [2]any{*k, *v})
+		if v != nil && k != nil && !v.isBackgroundFetch() {
+			value := v.actualValue()
+			if value != nil {
+				result = append(result, [2]any{*k, *value})
+			}
 		}
 		return true
 	})
@@ -1743,7 +2605,7 @@ func (c *LRUCache[K, V]) RKeys() []K {
 	result := make([]K, 0, c.size)
 	c.forEachRIndex(false, func(index int) bool {
 		k := c.keyList[index]
-		if k != nil && c.valList[index] != nil {
+		if k != nil && c.valList[index] != nil && !c.valList[index].isBackgroundFetch() {
 			result = append(result, *k)
 		}
 		return true
@@ -1759,8 +2621,11 @@ func (c *LRUCache[K, V]) RValues() []V {
 	result := make([]V, 0, c.size)
 	c.forEachRIndex(false, func(index int) bool {
 		v := c.valList[index]
-		if v != nil && c.keyList[index] != nil {
-			result = append(result, *v)
+		if v != nil && c.keyList[index] != nil && !v.isBackgroundFetch() {
+			value := v.actualValue()
+			if value != nil {
+				result = append(result, *value)
+			}
 		}
 		return true
 	})
@@ -1794,8 +2659,12 @@ func (c *LRUCache[K, V]) Dump() []DumpEntry[K, V] {
 		if k == nil || v == nil {
 			return true
 		}
+		value := v.visibleValue()
+		if value == nil {
+			return true
+		}
 
-		entry := Entry[V]{Value: *v}
+		entry := Entry[V]{Value: *value}
 
 		if c.ttls != nil && c.starts != nil {
 			entry.TTL = c.ttls[index]

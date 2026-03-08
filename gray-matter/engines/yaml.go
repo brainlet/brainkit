@@ -8,8 +8,8 @@ import (
 type YAML struct{}
 
 // Parse converts a YAML front-matter string to a map of key-value pairs.
-func (YAML) Parse(input string) (map[string]any, error) {
-	var out map[string]any
+func (YAML) Parse(input string) (any, error) {
+	var out any
 	if err := yaml.Unmarshal([]byte(input), &out); err != nil {
 		return nil, err
 	}
@@ -20,7 +20,7 @@ func (YAML) Parse(input string) (map[string]any, error) {
 }
 
 // Stringify converts a map of key-value pairs to a YAML string.
-func (YAML) Stringify(data map[string]any) (string, error) {
+func (YAML) Stringify(data any) (string, error) {
 	bytes, err := yaml.Marshal(data)
 	if err != nil {
 		return "", err

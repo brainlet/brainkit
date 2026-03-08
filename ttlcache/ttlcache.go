@@ -1,751 +1,836 @@
 package ttlcache
 
-// Go port of @isaacs/ttlcache
-// TS source: https://github.com/isaacs/ttlcache/blob/main/src/index.ts
-
 import (
 	"errors"
 	"math"
+	"reflect"
+	"slices"
+	"sync"
 	"time"
 )
 
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
+const (
+	timerMaxMs         = int64(1<<31 - 1)
+	infinityExpiration = int64(math.MaxInt64)
+)
 
-// now returns the current time in milliseconds.
-// TS source: now() function
-func now() float64 {
-	return float64(time.Now().UnixMilli())
-}
+var (
+	ErrMaxMustBePositive      = errors.New("max must be positive integer or Infinity")
+	ErrTTLMustBePositive      = errors.New("ttl must be positive integer or Infinity")
+	ErrTTLMustBePositiveIfSet = errors.New("ttl must be positive integer or Infinity if set")
+)
 
-// isPosInt returns true if n is a positive integer.
-// TS source: isPosInt (line 104)
-func isPosInt(n int64) bool {
-	return n > 0
-}
-
-// isPosIntOrInf returns true if n is a positive integer or 0 (infinity).
-// TS source: isPosIntOrInf (line 104)
-func isPosIntOrInf(n int64) bool {
-	return n >= 0
-}
-
-// ---------------------------------------------------------------------------
-// Error types
-// ---------------------------------------------------------------------------
-
-// ErrMaxMustBePositive is returned when max is not a positive integer.
-var ErrMaxMustBePositive = errors.New("max must be a positive integer")
-
-// ErrTTLMustBePositive is returned when TTL is not a positive duration.
-var ErrTTLMustBePositive = errors.New("ttl must be a positive duration")
-
-// ---------------------------------------------------------------------------
-// Type definitions
-// ---------------------------------------------------------------------------
-
-// DisposeReason indicates why an item was removed from the cache.
-// TS source: DisposeReason (line 21)
 type DisposeReason string
 
 const (
-	// DisposeSet means the item was overwritten by a new value.
-	DisposeSet DisposeReason = "set"
-	// DisposeDelete means the item was explicitly deleted.
+	DisposeSet    DisposeReason = "set"
 	DisposeDelete DisposeReason = "delete"
-	// DisposeStale means the item was removed as stale/expired.
-	DisposeStale DisposeReason = "stale"
-	// DisposeEvict means the item was evicted to make room.
-	DisposeEvict DisposeReason = "evict"
+	DisposeStale  DisposeReason = "stale"
+	DisposeEvict  DisposeReason = "evict"
 )
 
-// DisposeFunction is called when an item is removed from the cache.
-// TS source: DisposeFunction (lines 23-27)
 type DisposeFunction[K comparable, V any] func(value V, key K, reason DisposeReason)
 
-// ---------------------------------------------------------------------------
-// Option types
-// ---------------------------------------------------------------------------
-
-// TTLCacheOptions configures the TTLCache behavior.
-// TS source: TTLCacheOptions (lines 33-60)
 type TTLCacheOptions[K comparable, V any] struct {
-	// Max is the maximum number of items in the cache.
-	// 0 means infinity (unbounded).
-	Max *int
-
-	// TTL is the default time-to-live for all items.
-	// 0 means no expiration.
-	// Must be a positive duration if set.
-	TTL *time.Duration
-
-	// UpdateAgeOnGet resets the TTL start time when Get() retrieves an item.
+	Max            *int
+	TTL            *time.Duration
 	UpdateAgeOnGet bool
-
-	// CheckAgeOnGet checks the remaining age when getting items.
-	// If not set, expired items may be returned that haven't been preemptively purged.
-	CheckAgeOnGet bool
-
-	// UpdateAgeOnHas resets the TTL start time when Has() checks an item.
+	CheckAgeOnGet  bool
 	UpdateAgeOnHas bool
-
-	// CheckAgeOnHas checks the remaining age when checking for an item's presence.
-	// If not set, expired items will return true if they haven't been preemptively purged.
-	CheckAgeOnHas bool
-
-	// NoUpdateTTL prevents updating the TTL when setting a new value for an existing key.
-	NoUpdateTTL bool
-
-	// Dispose is called when an item is removed from the cache.
-	Dispose DisposeFunction[K, V]
-
-	// NoDisposeOnSet prevents calling dispose when setting an existing key to a new value.
+	CheckAgeOnHas  bool
+	NoUpdateTTL    bool
+	Dispose        DisposeFunction[K, V]
 	NoDisposeOnSet bool
 }
 
-// SetOptions overrides cache-level options for a single Set() call.
-// TS source: SetOptions (lines 62-65)
 type SetOptions[K comparable, V any] struct {
-	// TTL overrides the cache TTL for this item. nil = use cache default.
-	TTL *time.Duration
-
-	// NoUpdateTTL overrides the cache NoUpdateTTL for this call.
-	NoUpdateTTL *bool
-
-	// NoDisposeOnSet overrides the cache NoDisposeOnSet for this call.
+	TTL            *time.Duration
+	NoUpdateTTL    *bool
 	NoDisposeOnSet *bool
 }
 
-// GetOptions overrides cache-level options for a single Get() call.
-// TS source: GetOptions (lines 66-69)
 type GetOptions[K comparable, V any] struct {
-	// UpdateAgeOnGet overrides the cache UpdateAgeOnGet for this call.
 	UpdateAgeOnGet *bool
-
-	// TTL overrides the cache TTL for this item. nil = use cache default.
-	TTL *time.Duration
-
-	// CheckAgeOnGet overrides the cache CheckAgeOnGet for this call.
-	CheckAgeOnGet *bool
+	TTL            *time.Duration
+	CheckAgeOnGet  *bool
 }
 
-// HasOptions overrides cache-level options for a single Has() call.
-// TS source: HasOptions (lines 71-74)
 type HasOptions[K comparable, V any] struct {
-	// UpdateAgeOnHas overrides the cache UpdateAgeOnHas for this call.
 	UpdateAgeOnHas *bool
-
-	// TTL overrides the cache TTL for this item. nil = use cache default.
-	TTL *time.Duration
-
-	// CheckAgeOnHas overrides the cache CheckAgeOnHas for this call.
-	CheckAgeOnHas *bool
+	TTL            *time.Duration
+	CheckAgeOnHas  *bool
 }
 
-// ---------------------------------------------------------------------------
-// TTLCache struct
-// TS source: class TTLCache (lines 76-131)
-// ---------------------------------------------------------------------------
+type Entry[K comparable, V any] struct {
+	Key   K
+	Value V
+}
 
-// TTLCache is a time-to-live cache with optional expiration and size limits.
-// Not thread-safe (matching TS source which is single-threaded).
+type timerHandle interface {
+	Stop() bool
+}
+
+type disposal[K comparable, V any] struct {
+	key    K
+	value  V
+	reason DisposeReason
+}
+
+// TTLCache is a Go port of @isaacs/ttlcache.
+//
+// Go-specific notes:
+//   - nil TTL means "unset default TTL", matching JS undefined.
+//   - a zero time.Duration means Infinity when provided explicitly.
+//   - timers are synchronized because Go timers fire in separate goroutines.
 type TTLCache[K comparable, V any] struct {
-	// expirations maps expiration timestamps to keys that expire at that time.
-	expirations map[int64][]K
+	mu sync.Mutex
 
-	// data stores the key-value pairs.
-	data map[K]V
+	expirations     map[int64][]K
+	expirationOrder []int64
+	data            map[K]V
+	expirationMap   map[K]int64
 
-	// expirationMap maps keys to their expiration timestamp.
-	// 0 represents Infinity (immortal keys).
-	expirationMap map[K]int64
-
-	// ttl is the default TTL in milliseconds.
-	ttl *time.Duration
-
-	// max is the maximum number of items (0 = infinity).
-	max int
-
-	// updateAgeOnGet resets TTL on Get() if true.
+	ttl            *time.Duration
+	max            int
 	updateAgeOnGet bool
-
-	// updateAgeOnHas resets TTL on Has() if true.
 	updateAgeOnHas bool
-
-	// noUpdateTTL prevents updating TTL on Set() for existing keys.
-	noUpdateTTL bool
-
-	// noDisposeOnSet prevents calling dispose on Set() for existing keys.
+	noUpdateTTL    bool
 	noDisposeOnSet bool
+	checkAgeOnGet  bool
+	checkAgeOnHas  bool
+	dispose        DisposeFunction[K, V]
+	hasDispose     bool
 
-	// checkAgeOnGet checks TTL on Get() if true.
-	checkAgeOnGet bool
+	timer              timerHandle
+	timerExpiration    int64
+	hasTimerExpiration bool
 
-	// checkAgeOnHas checks TTL on Has() if true.
-	checkAgeOnHas bool
+	immortalKeys  map[K]struct{}
+	immortalOrder []K
 
-	// dispose is called when an item is removed.
-	dispose DisposeFunction[K, V]
-
-	// timer is the background timer for purging stale items.
-	timer *time.Timer
-
-	// timerExpiration is the expiration time of the current timer.
-	timerExpiration *int64
-
-	// immortalKeys contains keys that should never expire.
-	immortalKeys map[K]struct{}
+	nowFn     func() float64
+	afterFunc func(time.Duration, func()) timerHandle
 }
 
-// New creates a new TTLCache with the given options.
-// TS source: constructor (lines 93-131)
-func New[K comparable, V any](opts TTLCacheOptions[K, V]) (*TTLCache[K, V], error) {
-	// Validate max
-	// TS source: lines 109-111
-	max := 0
-	if opts.Max != nil {
-		max = *opts.Max
-	}
-	if max < 0 {
-		return nil, ErrMaxMustBePositive
+func New[K comparable, V any](opts ...TTLCacheOptions[K, V]) (*TTLCache[K, V], error) {
+	var o TTLCacheOptions[K, V]
+	if len(opts) > 0 {
+		o = opts[0]
 	}
 
-	// Validate TTL
-	// TS source: lines 104-108
-	if opts.TTL != nil {
-		ttl := *opts.TTL
-		if ttl <= 0 {
-			return nil, ErrTTLMustBePositive
+	max := 0
+	if o.Max != nil {
+		if *o.Max <= 0 {
+			return nil, ErrMaxMustBePositive
+		}
+		max = *o.Max
+	}
+
+	if o.TTL != nil {
+		if err := validatePositiveTTL(*o.TTL, ErrTTLMustBePositiveIfSet); err != nil {
+			return nil, err
 		}
 	}
 
-	// Initialize dispose function
-	// TS source: lines 120-127
-	var dispose DisposeFunction[K, V]
-	if opts.Dispose != nil {
-		dispose = opts.Dispose
-	} else {
-		dispose = func(value V, key K, reason DisposeReason) {}
+	dispose := o.Dispose
+	if dispose == nil {
+		dispose = func(V, K, DisposeReason) {}
 	}
 
-	c := &TTLCache[K, V]{
+	return &TTLCache[K, V]{
 		expirations:    make(map[int64][]K),
 		data:           make(map[K]V),
 		expirationMap:  make(map[K]int64),
-		ttl:            opts.TTL,
+		ttl:            o.TTL,
 		max:            max,
-		updateAgeOnGet: opts.UpdateAgeOnGet,
-		checkAgeOnGet:  opts.CheckAgeOnGet,
-		updateAgeOnHas: opts.UpdateAgeOnHas,
-		checkAgeOnHas:  opts.CheckAgeOnHas,
-		noUpdateTTL:    opts.NoUpdateTTL,
-		noDisposeOnSet: opts.NoDisposeOnSet,
+		updateAgeOnGet: o.UpdateAgeOnGet,
+		updateAgeOnHas: o.UpdateAgeOnHas,
+		noUpdateTTL:    o.NoUpdateTTL,
+		noDisposeOnSet: o.NoDisposeOnSet,
+		checkAgeOnGet:  o.CheckAgeOnGet,
+		checkAgeOnHas:  o.CheckAgeOnHas,
 		dispose:        dispose,
+		hasDispose:     o.Dispose != nil,
 		immortalKeys:   make(map[K]struct{}),
-	}
-
-	return c, nil
+		nowFn:          defaultNow,
+		afterFunc:      realAfterFunc,
+	}, nil
 }
 
-// setTimer sets a timer to trigger at the given expiration time.
-// TS source: setTimer (lines 133-162)
-func (c *TTLCache[K, V]) setTimer(expiration int64, ttlMs int64) {
-	// If there's already a timer set for a sooner expiration, don't reschedule
-	if c.timerExpiration != nil && *c.timerExpiration < expiration {
-		return
+func defaultNow() float64 {
+	return float64(time.Now().UnixNano()) / float64(time.Millisecond)
+}
+
+func realAfterFunc(delay time.Duration, fn func()) timerHandle {
+	return time.AfterFunc(delay, fn)
+}
+
+func validatePositiveTTL(ttl time.Duration, err error) error {
+	if ttl == 0 {
+		return nil
+	}
+	if ttl < time.Millisecond {
+		return err
+	}
+	if ttl%time.Millisecond != 0 {
+		return err
+	}
+	return nil
+}
+
+func ttlMillis(ttl time.Duration) int64 {
+	return int64(ttl / time.Millisecond)
+}
+
+func valuesDiffer[V any](a, b V) bool {
+	av := any(a)
+	bv := any(b)
+	at := reflect.TypeOf(av)
+	bt := reflect.TypeOf(bv)
+
+	if at == nil || bt == nil {
+		return at != bt
 	}
 
-	// Stop existing timer
-	if c.timer != nil {
-		c.timer.Stop()
+	if at == bt && at.Comparable() {
+		return av != bv
 	}
 
-	// Calculate delay
-	nowMs := int64(now())
-	var delay time.Duration
-	if expiration > nowMs {
-		delay = time.Duration(expiration-nowMs) * time.Millisecond
-	} else {
-		delay = 1 * time.Millisecond
-	}
-
-	// Cap at TIMER_MAX (2^31 - 1 ms)
-	const timerMax = 1<<31 - 1
-	if delay.Milliseconds() > int64(timerMax) {
-		delay = time.Duration(timerMax) * time.Millisecond
-	}
-	if delay < 0 {
-		delay = 0
-	}
-
-	// Store expiration before starting timer
-	c.timerExpiration = &expiration
-
-	// Start the timer
-	c.timer = time.AfterFunc(delay, func() {
-		c.timer = nil
-		c.timerExpiration = nil
-		c.PurgeStale()
-
-		// Schedule next purge if there are more expirations
-		for exp := range c.expirations {
-			if exp > 0 {
-				c.setTimer(exp, exp-nowMs)
-				break
+	if at == bt {
+		if ap, ok := referencePointer(reflect.ValueOf(av)); ok {
+			if bp, ok := referencePointer(reflect.ValueOf(bv)); ok {
+				return ap != bp
 			}
 		}
-	})
+	}
+
+	return !reflect.DeepEqual(av, bv)
 }
 
-// cancelTimer stops the auto-purge timer.
-// TS source: cancelTimer (lines 167-173)
-func (c *TTLCache[K, V]) cancelTimer() {
-	if c.timer != nil {
-		c.timer.Stop()
-		c.timer = nil
-		c.timerExpiration = nil
-	}
-}
-
-// setTTL sets the TTL for a key.
-// TS source: setTTL (lines 199-224)
-func (c *TTLCache[K, V]) setTTL(key K, ttl *time.Duration) {
-	// Remove key from current expiration list
-	current, exists := c.expirationMap[key]
-	if exists && current != 0 {
-		expList := c.expirations[current]
-		if len(expList) <= 1 {
-			delete(c.expirations, current)
-		} else {
-			newList := make([]K, 0, len(expList)-1)
-			for _, k := range expList {
-				if k != key {
-					newList = append(newList, k)
-				}
-			}
-			c.expirations[current] = newList
+func referencePointer(v reflect.Value) (uintptr, bool) {
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
+		if v.IsNil() {
+			return 0, true
 		}
-	}
-
-	// Determine TTL value
-	var ttlMs int64
-	if ttl != nil {
-		ttlMs = ttl.Milliseconds()
-	}
-
-	if ttlMs > 0 {
-		// Key has expiration
-		delete(c.immortalKeys, key)
-		expiration := int64(now()) + ttlMs
-		c.expirationMap[key] = expiration
-		if c.expirations[expiration] == nil {
-			c.expirations[expiration] = []K{key}
-			c.setTimer(expiration, ttlMs)
-		} else {
-			c.expirations[expiration] = append(c.expirations[expiration], key)
-		}
-	} else {
-		// Key is immortal (no expiration) - in TS this is Infinity
-		c.immortalKeys[key] = struct{}{}
-		c.expirationMap[key] = 0 // 0 represents Infinity
+		return v.Pointer(), true
+	default:
+		return 0, false
 	}
 }
 
-// Set adds or updates an item in the cache.
-// TS source: set (lines 226-261)
-func (c *TTLCache[K, V]) Set(key K, value V, opts ...SetOptions[K, V]) *TTLCache[K, V] {
-	// Merge opts with cache defaults
-	var ttl *time.Duration
-	var noUpdateTTL bool
-	var noDisposeOnSet bool
-
-	if len(opts) > 0 {
-		o := opts[0]
-		if o.TTL != nil {
-			ttl = o.TTL
-		} else {
-			ttl = c.ttl
-		}
-		if o.NoUpdateTTL != nil {
-			noUpdateTTL = *o.NoUpdateTTL
-		} else {
-			noUpdateTTL = c.noUpdateTTL
-		}
-		if o.NoDisposeOnSet != nil {
-			noDisposeOnSet = *o.NoDisposeOnSet
-		} else {
-			noDisposeOnSet = c.noDisposeOnSet
-		}
-	} else {
-		ttl = c.ttl
-		noUpdateTTL = c.noUpdateTTL
-		noDisposeOnSet = c.noDisposeOnSet
-	}
-
-	// Validate TTL is positive or zero (infinity)
-	if ttl != nil && *ttl < 0 {
-		return c
-	}
-
-	// Check if key already exists
-	_, keyExists := c.expirationMap[key]
-
-	if keyExists {
-		// Key exists - may need to update TTL
-		if !noUpdateTTL {
-			c.setTTL(key, ttl)
-		}
-
-		// Get old value
-		oldValue := c.data[key]
-
-		// Update the value
-		c.data[key] = value
-
-		// Call dispose if noDisposeOnSet is false
-		// (dispose is called when value is overwritten)
-		if !noDisposeOnSet {
-			c.dispose(oldValue, key, DisposeSet)
-		}
-	} else {
-		// New key - set TTL and add to data
-		c.setTTL(key, ttl)
-		c.data[key] = value
-	}
-
-	// Evict if over capacity
-	for c.Size() > c.max && c.max > 0 {
-		c.purgeToCapacity()
-	}
-
-	return c
-}
-
-// Size returns the number of items in the cache.
-// TS source: size getter (line 366)
 func (c *TTLCache[K, V]) Size() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return len(c.data)
 }
 
-// purgeToCapacity removes items to bring cache within max size.
-// TS source: purgeToCapacity (lines 336-364)
-func (c *TTLCache[K, V]) purgeToCapacity() {
-	for exp, keys := range c.expirations {
-		// If removing all keys at this expiration gets us under max
-		if c.Size()-len(keys) >= c.max {
-			delete(c.expirations, exp)
-			for _, key := range keys {
-				if val, ok := c.data[key]; ok {
-					c.dispose(val, key, DisposeEvict)
-				}
-				delete(c.data, key)
-				delete(c.expirationMap, key)
-			}
+func (c *TTLCache[K, V]) SetTimer(expiration int64, ttlMs int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setTimerLocked(expiration, ttlMs)
+}
+
+func (c *TTLCache[K, V]) setTimerLocked(expiration int64, ttlMs int64) {
+	if c.hasTimerExpiration && c.timerExpiration < expiration {
+		return
+	}
+
+	if c.timer != nil {
+		c.timer.Stop()
+	}
+
+	delayMs := ttlMs
+	if delayMs < 0 {
+		delayMs = 0
+	}
+	if delayMs > timerMaxMs {
+		delayMs = timerMaxMs
+	}
+
+	c.timerExpiration = expiration
+	c.hasTimerExpiration = true
+	c.timer = c.afterFunc(time.Duration(delayMs)*time.Millisecond, func() {
+		c.mu.Lock()
+		c.timer = nil
+		c.hasTimerExpiration = false
+		c.mu.Unlock()
+
+		c.PurgeStale()
+
+		c.mu.Lock()
+		nextExpiration, ok := c.firstExpirationLocked()
+		if ok {
+			remaining := nextExpiration - int64(c.nowFn())
+			c.setTimerLocked(nextExpiration, remaining)
+		}
+		c.mu.Unlock()
+	})
+}
+
+func (c *TTLCache[K, V]) CancelTimer() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cancelTimerLocked()
+}
+
+func (c *TTLCache[K, V]) CancelTimers() {
+	c.CancelTimer()
+}
+
+func (c *TTLCache[K, V]) cancelTimerLocked() {
+	if c.timer != nil {
+		c.timer.Stop()
+		c.timer = nil
+		c.hasTimerExpiration = false
+	}
+}
+
+func (c *TTLCache[K, V]) SetTTL(key K, ttl ...time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var override *time.Duration
+	if len(ttl) > 0 {
+		t := ttl[0]
+		override = &t
+	}
+	c.setTTLLocked(key, c.resolveTTL(override))
+}
+
+func (c *TTLCache[K, V]) resolveTTL(override *time.Duration) *time.Duration {
+	if override != nil {
+		return override
+	}
+	return c.ttl
+}
+
+func (c *TTLCache[K, V]) setTTLLocked(key K, ttl *time.Duration) {
+	if current, ok := c.expirationMap[key]; ok {
+		if current == infinityExpiration {
+			c.removeImmortalLocked(key)
 		} else {
-			// Remove oldest entries to meet max
-			toRemove := c.Size() - c.max
-			type kv struct {
-				K K
-				V V
-			}
-			var entries []kv
-			for i := 0; i < toRemove && i < len(keys); i++ {
-				key := keys[i]
-				if val, ok := c.data[key]; ok {
-					entries = append(entries, kv{key, val})
-				}
-				delete(c.data, key)
-				delete(c.expirationMap, key)
-			}
-			for _, e := range entries {
-				c.dispose(e.V, e.K, DisposeEvict)
-			}
-			// Update expirations list
-			c.expirations[exp] = keys[toRemove:]
+			c.removeFromExpirationLocked(current, key)
+		}
+	}
+
+	if ttl != nil && *ttl != 0 {
+		expiration := int64(math.Floor(c.nowFn() + float64(ttlMillis(*ttl))))
+		c.expirationMap[key] = expiration
+		if _, ok := c.expirations[expiration]; !ok {
+			c.expirations[expiration] = []K{}
+			c.insertExpirationLocked(expiration)
+			c.setTimerLocked(expiration, ttlMillis(*ttl))
+		}
+		c.expirations[expiration] = append(c.expirations[expiration], key)
+		return
+	}
+
+	if _, ok := c.immortalKeys[key]; !ok {
+		c.immortalKeys[key] = struct{}{}
+		c.immortalOrder = append(c.immortalOrder, key)
+	}
+	c.expirationMap[key] = infinityExpiration
+}
+
+func (c *TTLCache[K, V]) insertExpirationLocked(expiration int64) {
+	idx, found := slices.BinarySearch(c.expirationOrder, expiration)
+	if found {
+		return
+	}
+	c.expirationOrder = slices.Insert(c.expirationOrder, idx, expiration)
+}
+
+func (c *TTLCache[K, V]) removeFromExpirationLocked(expiration int64, key K) {
+	keys, ok := c.expirations[expiration]
+	if !ok {
+		return
+	}
+	for i, existing := range keys {
+		if existing == key {
+			keys = slices.Delete(keys, i, i+1)
+			break
+		}
+	}
+	if len(keys) == 0 {
+		delete(c.expirations, expiration)
+		if idx, found := slices.BinarySearch(c.expirationOrder, expiration); found {
+			c.expirationOrder = slices.Delete(c.expirationOrder, idx, idx+1)
+		}
+		return
+	}
+	c.expirations[expiration] = keys
+}
+
+func (c *TTLCache[K, V]) removeImmortalLocked(key K) {
+	if _, ok := c.immortalKeys[key]; !ok {
+		return
+	}
+	delete(c.immortalKeys, key)
+	for i, existing := range c.immortalOrder {
+		if existing == key {
+			c.immortalOrder = slices.Delete(c.immortalOrder, i, i+1)
 			return
 		}
 	}
 }
 
-// Has checks if a key exists in the cache.
-// TS source: has (lines 263-282)
-func (c *TTLCache[K, V]) Has(key K, opts ...HasOptions[K, V]) bool {
-	// Handle options
-	var checkAgeOnHas, updateAgeOnHas bool
-	var ttl *time.Duration
-
+func (c *TTLCache[K, V]) Set(key K, value V, opts ...SetOptions[K, V]) *TTLCache[K, V] {
+	var opt *SetOptions[K, V]
 	if len(opts) > 0 {
-		o := opts[0]
-		if o.CheckAgeOnHas != nil {
-			checkAgeOnHas = *o.CheckAgeOnHas
-		} else {
-			checkAgeOnHas = c.checkAgeOnHas
-		}
-		if o.UpdateAgeOnHas != nil {
-			updateAgeOnHas = *o.UpdateAgeOnHas
-		} else {
-			updateAgeOnHas = c.updateAgeOnHas
-		}
-		if o.TTL != nil {
-			ttl = o.TTL
-		}
-	} else {
-		checkAgeOnHas = c.checkAgeOnHas
-		updateAgeOnHas = c.updateAgeOnHas
+		opt = &opts[0]
 	}
 
-	// Check if key exists
-	if _, exists := c.data[key]; exists {
-		// Check if expired (=== 0 in TS)
-		if checkAgeOnHas && c.GetRemainingTTL(key) == 0 {
-			c.Delete(key)
-			return false
-		}
-		// Update TTL if needed
-		if updateAgeOnHas {
-			c.setTTL(key, ttl)
-		}
-		return true
-	}
-	return false
-}
+	ttl := c.ttl
+	noUpdateTTL := c.noUpdateTTL
+	noDisposeOnSet := c.noDisposeOnSet
 
-// GetRemainingTTL returns the remaining TTL for a key in milliseconds.
-// TS source: getRemainingTTL (lines 284-291)
-// Returns MaxInt64 for immortal keys (representing Infinity in TS)
-func (c *TTLCache[K, V]) GetRemainingTTL(key K) int64 {
-	expiration, exists := c.expirationMap[key]
-	if !exists {
-		return 0
-	}
-	// 0 represents Infinity in our implementation
-	if expiration == 0 {
-		return math.MaxInt64 // represents Infinity
-	}
-	remaining := expiration - int64(now())
-	if remaining > 0 {
-		return remaining
-	}
-	return 0 // expired
-}
-
-// Get retrieves a value from the cache.
-// TS source: get (lines 293-310)
-func (c *TTLCache[K, V]) Get(key K, opts ...GetOptions[K, V]) (V, bool) {
-	// Handle options
-	var updateAgeOnGet, checkAgeOnGet bool
-	var ttl *time.Duration
-
-	if len(opts) > 0 {
-		o := opts[0]
-		if o.UpdateAgeOnGet != nil {
-			updateAgeOnGet = *o.UpdateAgeOnGet
-		} else {
-			updateAgeOnGet = c.updateAgeOnGet
+	if opt != nil {
+		if opt.TTL != nil {
+			ttl = opt.TTL
 		}
-		if o.CheckAgeOnGet != nil {
-			checkAgeOnGet = *o.CheckAgeOnGet
-		} else {
-			checkAgeOnGet = c.checkAgeOnGet
+		if opt.NoUpdateTTL != nil {
+			noUpdateTTL = *opt.NoUpdateTTL
 		}
-		if o.TTL != nil {
-			ttl = o.TTL
+		if opt.NoDisposeOnSet != nil {
+			noDisposeOnSet = *opt.NoDisposeOnSet
 		}
-	} else {
-		updateAgeOnGet = c.updateAgeOnGet
-		checkAgeOnGet = c.checkAgeOnGet
 	}
 
-	// Get value from data map
-	val, exists := c.data[key]
-	if !exists {
-		var zero V
-		return zero, false
+	if ttl != nil {
+		if err := validatePositiveTTL(*ttl, ErrTTLMustBePositive); err != nil {
+			panic(err)
+		}
 	}
 
-	// Check if expired when checkAgeOnGet is true (=== 0 in TS)
-	if checkAgeOnGet && c.GetRemainingTTL(key) == 0 {
-		// Inline delete - remove from all maps
-		delete(c.data, key)
-		exp, _ := c.expirationMap[key]
-		delete(c.expirationMap, key)
-		delete(c.immortalKeys, key)
-		// Remove from expirations list
-		if exp != 0 {
-			if list, ok := c.expirations[exp]; ok {
-				if len(list) <= 1 {
-					delete(c.expirations, exp)
-				} else {
-					newList := make([]K, 0, len(list)-1)
-					for _, k := range list {
-						if k != key {
-							newList = append(newList, k)
-						}
-					}
-					c.expirations[exp] = newList
+	c.mu.Lock()
+
+	var pending *disposal[K, V]
+	if _, exists := c.expirationMap[key]; exists {
+		if !noUpdateTTL {
+			c.setTTLLocked(key, ttl)
+		}
+
+		oldValue, hadValue := c.data[key]
+		if !hadValue || valuesDiffer(oldValue, value) {
+			c.data[key] = value
+			if hadValue && !noDisposeOnSet {
+				pending = &disposal[K, V]{
+					key:    key,
+					value:  oldValue,
+					reason: DisposeSet,
 				}
 			}
 		}
-		var zero V
-		return zero, false
+	} else {
+		c.setTTLLocked(key, ttl)
+		c.data[key] = value
 	}
 
-	// Update TTL if updateAgeOnGet is true
-	if updateAgeOnGet {
-		c.setTTL(key, ttl)
+	c.mu.Unlock()
+
+	if pending != nil {
+		c.dispose(pending.value, pending.key, pending.reason)
 	}
 
-	return val, true
+	if c.max > 0 {
+		for {
+			before := c.Size()
+			if before <= c.max {
+				break
+			}
+			c.PurgeToCapacity()
+			if after := c.Size(); after >= before {
+				break
+			}
+		}
+	}
+
+	return c
 }
 
-// Delete removes a key from the cache.
-// TS source: delete (lines 312-334)
-func (c *TTLCache[K, V]) Delete(key K) bool {
-	current, exists := c.expirationMap[key]
+func (c *TTLCache[K, V]) Has(key K, opts ...HasOptions[K, V]) bool {
+	var opt *HasOptions[K, V]
+	if len(opts) > 0 {
+		opt = &opts[0]
+	}
+
+	checkAgeOnHas := c.checkAgeOnHas
+	updateAgeOnHas := c.updateAgeOnHas
+	ttl := c.ttl
+
+	if opt != nil {
+		if opt.CheckAgeOnHas != nil {
+			checkAgeOnHas = *opt.CheckAgeOnHas
+		}
+		if opt.UpdateAgeOnHas != nil {
+			updateAgeOnHas = *opt.UpdateAgeOnHas
+		}
+		if opt.TTL != nil {
+			ttl = opt.TTL
+		}
+	}
+
+	c.mu.Lock()
+	_, exists := c.data[key]
 	if !exists {
+		c.mu.Unlock()
 		return false
 	}
 
-	value := c.data[key]
-	delete(c.data, key)
-	delete(c.expirationMap, key)
-	delete(c.immortalKeys, key)
-
-	// Remove from expirations list
-	if list, ok := c.expirations[current]; ok {
-		if len(list) <= 1 {
-			delete(c.expirations, current)
-		} else {
-			newList := make([]K, 0, len(list)-1)
-			for _, k := range list {
-				if k != key {
-					newList = append(newList, k)
-				}
-			}
-			c.expirations[current] = newList
+	if checkAgeOnHas && c.getRemainingTTLLocked(key) == 0 {
+		removed, hadRemoval := c.deleteLocked(key, DisposeDelete)
+		c.mu.Unlock()
+		if hadRemoval {
+			c.dispose(removed.value, removed.key, removed.reason)
+			c.cancelTimerIfEmpty()
 		}
+		return false
 	}
 
-	c.dispose(value, key, DisposeDelete)
-
-	if c.Size() == 0 {
-		c.cancelTimer()
+	if updateAgeOnHas {
+		c.setTTLLocked(key, ttl)
 	}
 
+	c.mu.Unlock()
 	return true
 }
 
-// Clear removes all items from the cache.
-// TS source: clear (lines 186-197)
-func (c *TTLCache[K, V]) Clear() {
-	// Collect entries for dispose if custom dispose is set
-	if c.dispose != nil {
-		for k, v := range c.data {
-			c.dispose(v, k, DisposeDelete)
+func (c *TTLCache[K, V]) GetRemainingTTL(key K) int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.getRemainingTTLLocked(key)
+}
+
+func (c *TTLCache[K, V]) getRemainingTTLLocked(key K) int64 {
+	expiration, ok := c.expirationMap[key]
+	if !ok {
+		return 0
+	}
+	if expiration == infinityExpiration {
+		return math.MaxInt64
+	}
+
+	remaining := float64(expiration) - c.nowFn()
+	if remaining <= 0 {
+		return 0
+	}
+	return int64(math.Ceil(remaining))
+}
+
+func (c *TTLCache[K, V]) Get(key K, opts ...GetOptions[K, V]) (V, bool) {
+	var opt *GetOptions[K, V]
+	if len(opts) > 0 {
+		opt = &opts[0]
+	}
+
+	updateAgeOnGet := c.updateAgeOnGet
+	checkAgeOnGet := c.checkAgeOnGet
+	ttl := c.ttl
+
+	if opt != nil {
+		if opt.UpdateAgeOnGet != nil {
+			updateAgeOnGet = *opt.UpdateAgeOnGet
 		}
+		if opt.CheckAgeOnGet != nil {
+			checkAgeOnGet = *opt.CheckAgeOnGet
+		}
+		if opt.TTL != nil {
+			ttl = opt.TTL
+		}
+	}
+
+	c.mu.Lock()
+	value, exists := c.data[key]
+	if !exists {
+		c.mu.Unlock()
+		var zero V
+		return zero, false
+	}
+
+	if checkAgeOnGet && c.getRemainingTTLLocked(key) == 0 {
+		removed, hadRemoval := c.deleteLocked(key, DisposeDelete)
+		c.mu.Unlock()
+		if hadRemoval {
+			c.dispose(removed.value, removed.key, removed.reason)
+			c.cancelTimerIfEmpty()
+		}
+		var zero V
+		return zero, false
+	}
+
+	if updateAgeOnGet {
+		c.setTTLLocked(key, ttl)
+	}
+
+	c.mu.Unlock()
+	return value, true
+}
+
+func (c *TTLCache[K, V]) Delete(key K) bool {
+	c.mu.Lock()
+	removed, ok := c.deleteLocked(key, DisposeDelete)
+	c.mu.Unlock()
+	if !ok {
+		return false
+	}
+
+	c.dispose(removed.value, removed.key, removed.reason)
+	c.cancelTimerIfEmpty()
+	return true
+}
+
+func (c *TTLCache[K, V]) deleteLocked(key K, reason DisposeReason) (disposal[K, V], bool) {
+	current, exists := c.expirationMap[key]
+	if !exists {
+		var zero disposal[K, V]
+		return zero, false
+	}
+
+	value, ok := c.data[key]
+	if !ok {
+		var zero V
+		value = zero
+	}
+
+	delete(c.data, key)
+	delete(c.expirationMap, key)
+	if current == infinityExpiration {
+		c.removeImmortalLocked(key)
+	} else {
+		c.removeFromExpirationLocked(current, key)
+	}
+
+	return disposal[K, V]{
+		key:    key,
+		value:  value,
+		reason: reason,
+	}, true
+}
+
+func (c *TTLCache[K, V]) cancelTimerIfEmpty() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.data) == 0 {
+		c.cancelTimerLocked()
+	}
+}
+
+func (c *TTLCache[K, V]) Clear() {
+	c.mu.Lock()
+	var entries []Entry[K, V]
+	if c.hasDispose {
+		entries = c.snapshotEntriesLocked()
 	}
 
 	c.data = make(map[K]V)
 	c.expirationMap = make(map[K]int64)
 	c.expirations = make(map[int64][]K)
+	c.expirationOrder = nil
 	c.immortalKeys = make(map[K]struct{})
-	c.cancelTimer()
+	c.immortalOrder = nil
+	c.cancelTimerLocked()
+	c.mu.Unlock()
+
+	for _, entry := range entries {
+		c.dispose(entry.Value, entry.Key, DisposeDelete)
+	}
 }
 
-// PurgeStale removes all expired items from the cache.
-// TS source: purgeStale (lines 370-396)
-func (c *TTLCache[K, V]) PurgeStale() {
-	n := int64(now())
+func (c *TTLCache[K, V]) PurgeToCapacity() {
+	if c.max <= 0 {
+		return
+	}
 
-	for exp, keys := range c.expirations {
-		if exp <= 0 || exp > n {
+	for {
+		c.mu.Lock()
+		expiration, ok := c.firstExpirationLocked()
+		if !ok {
+			c.mu.Unlock()
+			return
+		}
+
+		keys := append([]K(nil), c.expirations[expiration]...)
+		if len(keys) == 0 {
+			delete(c.expirations, expiration)
+			c.expirationOrder = c.expirationOrder[1:]
+			c.mu.Unlock()
 			continue
 		}
 
-		// Copy keys since we'll be modifying the map
-		keysCopy := make([]K, len(keys))
-		copy(keysCopy, keys)
-		delete(c.expirations, exp)
-
-		for _, key := range keysCopy {
-			if val, ok := c.data[key]; ok {
-				c.dispose(val, key, DisposeStale)
-			}
-			delete(c.data, key)
-			delete(c.expirationMap, key)
+		if len(c.data)-len(keys) >= c.max {
+			delete(c.expirations, expiration)
+			c.expirationOrder = c.expirationOrder[1:]
+			entries := c.collectDisposalsLocked(keys, DisposeEvict)
+			c.mu.Unlock()
+			c.runDisposals(entries)
+			continue
 		}
-	}
 
-	if c.Size() == 0 {
-		c.cancelTimer()
+		removeCount := len(c.data) - c.max
+		if removeCount <= 0 {
+			c.mu.Unlock()
+			return
+		}
+		if removeCount > len(keys) {
+			removeCount = len(keys)
+		}
+
+		removed := append([]K(nil), keys[:removeCount]...)
+		remaining := append([]K(nil), keys[removeCount:]...)
+		if len(remaining) == 0 {
+			delete(c.expirations, expiration)
+			c.expirationOrder = c.expirationOrder[1:]
+		} else {
+			c.expirations[expiration] = remaining
+		}
+
+		entries := c.collectDisposalsLocked(removed, DisposeEvict)
+		c.mu.Unlock()
+		c.runDisposals(entries)
+		return
 	}
 }
 
-// Entry represents a key-value pair in the cache.
-type Entry[K any, V any] struct {
-	Key   K
-	Value V
+func (c *TTLCache[K, V]) PurgeStale() {
+	for {
+		c.mu.Lock()
+		expiration, ok := c.firstExpirationLocked()
+		if !ok {
+			if len(c.data) == 0 {
+				c.cancelTimerLocked()
+			}
+			c.mu.Unlock()
+			return
+		}
+
+		now := int64(math.Ceil(c.nowFn()))
+		if expiration > now {
+			if len(c.data) == 0 {
+				c.cancelTimerLocked()
+			}
+			c.mu.Unlock()
+			return
+		}
+
+		keys := append([]K(nil), c.expirations[expiration]...)
+		delete(c.expirations, expiration)
+		c.expirationOrder = c.expirationOrder[1:]
+		entries := c.collectDisposalsLocked(keys, DisposeStale)
+		c.mu.Unlock()
+		c.runDisposals(entries)
+	}
 }
 
-// Entries returns a channel of all key-value pairs in the cache.
-// TS source: entries (lines 398-407)
+func (c *TTLCache[K, V]) firstExpirationLocked() (int64, bool) {
+	for len(c.expirationOrder) > 0 {
+		expiration := c.expirationOrder[0]
+		if keys, ok := c.expirations[expiration]; ok && len(keys) > 0 {
+			return expiration, true
+		}
+		c.expirationOrder = c.expirationOrder[1:]
+		delete(c.expirations, expiration)
+	}
+	return 0, false
+}
+
+func (c *TTLCache[K, V]) collectDisposalsLocked(keys []K, reason DisposeReason) []disposal[K, V] {
+	entries := make([]disposal[K, V], 0, len(keys))
+	for _, key := range keys {
+		value, ok := c.data[key]
+		if !ok {
+			var zero V
+			value = zero
+		}
+		delete(c.data, key)
+		delete(c.expirationMap, key)
+		entries = append(entries, disposal[K, V]{
+			key:    key,
+			value:  value,
+			reason: reason,
+		})
+	}
+	return entries
+}
+
+func (c *TTLCache[K, V]) runDisposals(entries []disposal[K, V]) {
+	for _, entry := range entries {
+		c.dispose(entry.value, entry.key, entry.reason)
+	}
+}
+
 func (c *TTLCache[K, V]) Entries() <-chan Entry[K, V] {
-	ch := make(chan Entry[K, V], c.Size())
-	go func() {
-		defer close(ch)
-		for _, keys := range c.expirations {
-			for _, key := range keys {
-				if val, ok := c.data[key]; ok {
-					ch <- Entry[K, V]{Key: key, Value: val}
-				}
-			}
-		}
-		for key := range c.immortalKeys {
-			if val, ok := c.data[key]; ok {
-				ch <- Entry[K, V]{Key: key, Value: val}
-			}
-		}
-	}()
+	c.mu.Lock()
+	entries := c.snapshotEntriesLocked()
+	c.mu.Unlock()
+
+	ch := make(chan Entry[K, V], len(entries))
+	for _, entry := range entries {
+		ch <- entry
+	}
+	close(ch)
 	return ch
 }
 
-// Keys returns a channel of all keys in the cache.
-// TS source: keys (lines 408-417)
+func (c *TTLCache[K, V]) snapshotEntriesLocked() []Entry[K, V] {
+	keys := c.snapshotKeysLocked()
+	entries := make([]Entry[K, V], 0, len(keys))
+	for _, key := range keys {
+		value, ok := c.data[key]
+		if !ok {
+			var zero V
+			value = zero
+		}
+		entries = append(entries, Entry[K, V]{Key: key, Value: value})
+	}
+	return entries
+}
+
 func (c *TTLCache[K, V]) Keys() <-chan K {
-	ch := make(chan K, c.Size())
-	go func() {
-		defer close(ch)
-		for _, keys := range c.expirations {
-			for _, key := range keys {
-				ch <- key
-			}
-		}
-		for key := range c.immortalKeys {
-			ch <- key
-		}
-	}()
+	c.mu.Lock()
+	keys := c.snapshotKeysLocked()
+	c.mu.Unlock()
+
+	ch := make(chan K, len(keys))
+	for _, key := range keys {
+		ch <- key
+	}
+	close(ch)
 	return ch
 }
 
-// Values returns a channel of all values in the cache.
-// TS source: values (lines 418-427)
+func (c *TTLCache[K, V]) snapshotKeysLocked() []K {
+	keys := make([]K, 0, len(c.expirationMap))
+	for _, expiration := range c.expirationOrder {
+		keys = append(keys, c.expirations[expiration]...)
+	}
+	keys = append(keys, c.immortalOrder...)
+	return keys
+}
+
 func (c *TTLCache[K, V]) Values() <-chan V {
-	ch := make(chan V, c.Size())
-	go func() {
-		defer close(ch)
-		for _, keys := range c.expirations {
-			for _, key := range keys {
-				if val, ok := c.data[key]; ok {
-					ch <- val
-				}
-			}
-		}
-		for key := range c.immortalKeys {
-			if val, ok := c.data[key]; ok {
-				ch <- val
-			}
-		}
-	}()
+	c.mu.Lock()
+	values := c.snapshotValuesLocked()
+	c.mu.Unlock()
+
+	ch := make(chan V, len(values))
+	for _, value := range values {
+		ch <- value
+	}
+	close(ch)
 	return ch
+}
+
+func (c *TTLCache[K, V]) snapshotValuesLocked() []V {
+	keys := c.snapshotKeysLocked()
+	values := make([]V, 0, len(keys))
+	for _, key := range keys {
+		value, ok := c.data[key]
+		if !ok {
+			var zero V
+			value = zero
+		}
+		values = append(values, value)
+	}
+	return values
 }

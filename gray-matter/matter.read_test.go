@@ -21,8 +21,9 @@ func TestRead(t *testing.T) {
 			t.Error("expected path property")
 		}
 		// data.title property
-		if file.Data["title"] != "Basic" {
-			t.Errorf("expected title 'Basic', got %v", file.Data["title"])
+		data := dataMap(t, file.Data)
+		if data["title"] != "Basic" {
+			t.Errorf("expected title 'Basic', got %v", data["title"])
 		}
 		if file.Content != "this is content." {
 			t.Errorf("expected content 'this is content.', got %q", file.Content)
@@ -39,8 +40,9 @@ func TestRead(t *testing.T) {
 		if file.Data == nil {
 			t.Error("expected data property")
 		}
-		if file.Data["root"] != "_gh_pages" {
-			t.Errorf("expected root '_gh_pages', got %v", file.Data["root"])
+		data := dataMap(t, file.Data)
+		if data["root"] != "_gh_pages" {
+			t.Errorf("expected root '_gh_pages', got %v", data["root"])
 		}
 
 		// path property on file
@@ -103,7 +105,8 @@ func TestRead(t *testing.T) {
 		// Orig exists as a field
 		_ = file.Orig
 
-		if file.Data["one"] != "foo" || file.Data["two"] != "bar" || file.Data["three"] != "baz" {
+		data := dataMap(t, file.Data)
+		if data["one"] != "foo" || data["two"] != "bar" || data["three"] != "baz" {
 			t.Errorf("expected data {one: foo, two: bar, three: baz}, got %v", file.Data)
 		}
 	})
@@ -116,8 +119,9 @@ func TestReadFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
-		if file.Data["title"] != "Basic" {
-			t.Errorf("expected title 'Basic', got %v", file.Data["title"])
+		data := dataMap(t, file.Data)
+		if data["title"] != "Basic" {
+			t.Errorf("expected title 'Basic', got %v", data["title"])
 		}
 	})
 }

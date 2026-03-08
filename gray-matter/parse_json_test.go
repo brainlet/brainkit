@@ -12,8 +12,9 @@ func TestParseJSON(t *testing.T) {
 			t.Fatalf("Read returned error: %v", err)
 		}
 
-		if actual.Data["title"] != "JSON" {
-			t.Errorf("expected title 'JSON', got %v", actual.Data["title"])
+		data := dataMap(t, actual.Data)
+		if data["title"] != "JSON" {
+			t.Errorf("expected title 'JSON', got %v", data["title"])
 		}
 	})
 
@@ -23,8 +24,9 @@ func TestParseJSON(t *testing.T) {
 			t.Fatalf("Read returned error: %v", err)
 		}
 
-		if actual.Data["title"] != "autodetect-JSON" {
-			t.Errorf("expected title 'autodetect-JSON', got %v", actual.Data["title"])
+		data := dataMap(t, actual.Data)
+		if data["title"] != "autodetect-JSON" {
+			t.Errorf("expected title 'autodetect-JSON', got %v", data["title"])
 		}
 	})
 }

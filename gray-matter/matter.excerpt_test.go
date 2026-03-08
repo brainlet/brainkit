@@ -17,8 +17,9 @@ func TestExcerpt(t *testing.T) {
 		if file.Excerpt != "foo\nbar\nbaz\n" {
 			t.Errorf("expected excerpt to be 'foo\\nbar\\nbaz\\n', got %q", file.Excerpt)
 		}
-		if file.Data["abc"] != "xyz" {
-			t.Errorf("expected data.abc to be 'xyz', got %v", file.Data["abc"])
+		data := dataMap(t, file.Data)
+		if data["abc"] != "xyz" {
+			t.Errorf("expected data.abc to be 'xyz', got %v", data["abc"])
 		}
 	})
 
@@ -34,8 +35,9 @@ func TestExcerpt(t *testing.T) {
 		if file.Excerpt != "" {
 			t.Errorf("expected excerpt to be empty, got %q", file.Excerpt)
 		}
-		if file.Data["abc"] != "xyz" {
-			t.Errorf("expected data.abc to be 'xyz', got %v", file.Data["abc"])
+		data := dataMap(t, file.Data)
+		if data["abc"] != "xyz" {
+			t.Errorf("expected data.abc to be 'xyz', got %v", data["abc"])
 		}
 	})
 
@@ -53,8 +55,9 @@ func TestExcerpt(t *testing.T) {
 		if file.Excerpt != "foo\nbar\nbaz\n" {
 			t.Errorf("expected excerpt to be 'foo\\nbar\\nbaz\\n', got %q", file.Excerpt)
 		}
-		if file.Data["abc"] != "xyz" {
-			t.Errorf("expected data.abc to be 'xyz', got %v", file.Data["abc"])
+		data := dataMap(t, file.Data)
+		if data["abc"] != "xyz" {
+			t.Errorf("expected data.abc to be 'xyz', got %v", data["abc"])
 		}
 	})
 
@@ -72,7 +75,7 @@ func TestExcerpt(t *testing.T) {
 		if file.Excerpt != "foo\nbar\nbaz\n" {
 			t.Errorf("expected excerpt to be 'foo\\nbar\\nbaz\\n', got %q", file.Excerpt)
 		}
-		if len(file.Data) != 0 {
+		if len(dataMap(t, file.Data)) != 0 {
 			t.Errorf("expected empty data, got %v", file.Data)
 		}
 	})

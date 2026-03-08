@@ -1,250 +1,205 @@
 package graymatter
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
-
-	"gopkg.in/yaml.v3"
+	"sync"
 )
 
+var (
+	emptyMatterCommentRE = regexp.MustCompile(`(?m)^\s*#[^\n]+`)
+
+	cacheMu sync.RWMutex
+	cache   = map[string]File{}
+)
+
+// Parse extracts and parses front-matter from the input string.
 func Parse(input string, opts ...Options) (File, error) {
-	resolved := resolveOptions(opts...)
-	delims := NormalizeDelimiters(resolved.Delimiters)
-	open := delims[0]
-	close := delims[1]
+	if input == "" {
+		return File{
+			Data:    map[string]any{},
+			Content: "",
+			Excerpt: "",
+			Orig:    input,
+		}, nil
+	}
+
+	normalized := stripBOM(input)
+	if len(opts) == 0 {
+		if cached, ok := getCachedFile(normalized); ok {
+			return cached, nil
+		}
+	}
 
 	file := File{
 		Data:     map[string]any{},
-		Content:  input,
+		Content:  normalized,
 		Excerpt:  "",
-		Orig:     input,
+		Orig:     []byte(input),
 		Language: "",
+		Matter:   "",
 		IsEmpty:  false,
-		Empty:    "",
 	}
 
-	if input == "" {
-		return file, nil
+	parsed, err := parseMatter(file, resolveOptions(opts...))
+	if err != nil {
+		return File{}, err
 	}
 
-	if !strings.HasPrefix(input, open) {
-		excerptFile(&file, resolved)
-		return file, nil
+	if len(opts) == 0 {
+		setCachedFile(normalized, parsed)
 	}
 
-	if len(input) > len(open) && input[len(open)] == open[len(open)-1] {
-		return file, nil
+	return parsed, nil
+}
+
+func parseMatter(file File, opts Options) (File, error) {
+	open, close := normalizedFence(opts)
+	str := file.Content
+
+	if opts.Language != "" {
+		file.Language = opts.Language
 	}
 
-	firstEOL := strings.IndexByte(input, '\n')
-	if firstEOL == -1 {
-		return file, nil
-	}
-
-	firstLine := strings.TrimRight(input[:firstEOL], "\r")
-	langRaw := ""
-	if len(firstLine) > len(open) {
-		langRaw = strings.TrimSpace(firstLine[len(open):])
-	}
-
-	// Only use resolved.Language if explicitly set by user
-	if len(opts) > 0 && opts[0].Language != "" {
-		file.Language = resolved.Language
-	} else if langRaw != "" {
-		file.Language = langRaw
-	} else {
-		file.Language = "yaml"
-	}
-
-	// Matter starts after the opening delimiter line (firstEOL + 1)
-	// But TS includes the newline after the opening delimiter in matter
-	matterStart := firstEOL + 1
-	closeStart, contentStart, found := findClosingDelimiterLine(input, close, matterStart)
-
-	if !found {
-		// No closing delimiter found - treat rest of string as matter
-		// Matter includes the newline after opening delimiter
-		file.Matter = "\n" + input[matterStart:]
-	} else {
-		// Matter includes the newline after opening delimiter
-		matterWithNewline := input[matterStart:closeStart]
-		// TS keeps one leading newline but strips trailing newline
-		// First add leading newline if not present (for consistency)
-		if !strings.HasPrefix(matterWithNewline, "\n") {
-			matterWithNewline = "\n" + matterWithNewline
+	openLen := len(open)
+	if !strings.HasPrefix(str, open) {
+		if err := excerptFile(&file, opts); err != nil {
+			return File{}, err
 		}
-		// Strip only ONE trailing newline (if present) - TS behavior
-		file.Matter = strings.TrimSuffix(matterWithNewline, "\n")
+		return file, nil
 	}
 
-	// Check if matter is empty (whitespace/comments only)
-	isEmpty, emptyStr := isEmptyMatter(file.Matter, input)
-	if isEmpty {
+	if len(str) > openLen && str[openLen] == open[len(open)-1] {
+		return file, nil
+	}
+
+	str = str[openLen:]
+	language := Language(str, opts)
+	if language.Name != "" {
+		file.Language = language.Name
+		str = str[len(language.Raw):]
+	}
+
+	closeIndex := strings.Index(str, "\n"+close)
+	if closeIndex == -1 {
+		closeIndex = len(str)
+	}
+
+	file.Matter = str[:closeIndex]
+
+	block := strings.TrimSpace(emptyMatterCommentRE.ReplaceAllString(file.Matter, ""))
+	if block == "" {
 		file.IsEmpty = true
-		file.Empty = emptyStr
+		file.Empty = file.Content
 		file.Data = map[string]any{}
 	} else {
-		parsed, err := parseMatterByLanguage(file.Language, file.Matter, resolved)
+		parsed, err := parseMatterByLanguage(file.Language, file.Matter, opts)
 		if err != nil {
 			return File{}, err
+		}
+		if parsed == nil {
+			parsed = map[string]any{}
 		}
 		file.Data = parsed
 	}
 
-	// Set content - TS preserves one leading newline when there are multiple
-	if found && contentStart <= len(input) {
-		content := input[contentStart:]
-		// TS preserves ONE leading newline when there are multiple newlines
-		// e.g., "\n\ncontent" becomes "\ncontent"
-		if len(content) >= 2 && content[0] == '\n' && content[1] == '\n' {
-			// Multiple leading newlines - strip to just one
-			content = content[1:]
-		}
-		// Also handle \r\n
-		if len(content) >= 2 && content[0] == '\r' && content[1] == '\r' {
-			content = content[1:]
-		}
-		file.Content = content
-	} else if !found {
-		// No closing delimiter - content is empty
+	if closeIndex == len(str) {
 		file.Content = ""
+	} else {
+		file.Content = str[closeIndex+len("\n"+close):]
+		if strings.HasPrefix(file.Content, "\r") {
+			file.Content = file.Content[1:]
+		}
+		if strings.HasPrefix(file.Content, "\n") {
+			file.Content = file.Content[1:]
+		}
 	}
 
-	// Extract excerpt
-	excerptFile(&file, resolved)
+	if err := excerptFile(&file, opts); err != nil {
+		return File{}, err
+	}
+
+	if opts.Sections || isCallable(opts.Section) {
+		parseSections(&file, opts)
+	}
 
 	return file, nil
 }
 
-// isEmptyMatter checks if the matter is empty (whitespace/comments only)
-func isEmptyMatter(matter, input string) (bool, string) {
-	re := regexp.MustCompile(`(?m)^\s*#[^\n]*\n?`)
-	cleaned := re.ReplaceAllString(matter, "")
-	cleaned = strings.TrimSpace(cleaned)
-
-	if cleaned == "" {
-		return true, input
-	}
-	return false, ""
-}
-
-// excerptFile extracts an excerpt from file.Content based on options
-func excerptFile(file *File, opts Options) {
-	// If explicitly disabled, don't extract
-	if opts.Excerpt == false {
-		file.Excerpt = ""
-		return
+func parseMatterByLanguage(language, matter string, opts Options) (any, error) {
+	if opts.Parser != nil {
+		return callParser(opts.Parser, matter, opts)
 	}
 
-	// Determine separator - default is the front-matter delimiter "---"
-	sep := opts.ExcerptSeparator
-	if sep == "" {
-		// No custom separator - use default
-		if opts.Excerpt == true {
-			// Default separator is the front-matter delimiter "---"
-			sep = "---"
-		} else {
-			file.Excerpt = ""
-			return
-		}
+	engine, err := getEngine(language, opts)
+	if err != nil {
+		return nil, err
+	}
+	if engine == nil {
+		return nil, fmt.Errorf("gray-matter engine %q is not registered", language)
 	}
 
-	// Find the separator in content and extract excerpt (but NOT including the separator)
-	idx := strings.Index(file.Content, sep)
-	if idx != -1 {
-		// Excerpt is content BEFORE the separator (matching TS)
-		file.Excerpt = file.Content[:idx]
+	parsed, err := engine.Parse(matter)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func resolveOptions(opts ...Options) Options {
-	resolved := DefaultOptions()
-	if len(opts) == 0 {
-		return resolved
-	}
-
-	in := opts[0]
-	resolved.Parser = in.Parser
-	resolved.Eval = in.Eval
-	resolved.Excerpt = in.Excerpt
-	resolved.ExcerptSeparator = in.ExcerptSeparator
-	if in.Language != "" {
-		resolved.Language = in.Language
-	}
-	if in.Delimiters != nil {
-		resolved.Delimiters = in.Delimiters
-	}
-	if in.Engines != nil {
-		resolved.Engines = make(map[string]Engine, len(in.Engines))
-		for key, engine := range in.Engines {
-			resolved.Engines[key] = engine
-		}
-	}
-
-	return resolved
-}
-
-func findClosingDelimiterLine(input, close string, from int) (closeStart int, contentStart int, found bool) {
-	pos := from
-	for pos <= len(input) {
-		nextEOLRel := strings.IndexByte(input[pos:], '\n')
-		if nextEOLRel == -1 {
-			line := strings.TrimRight(input[pos:], "\r")
-			if line == close {
-				return pos, len(input), true
-			}
-			return 0, 0, false
-		}
-
-		nextEOL := pos + nextEOLRel
-		line := strings.TrimRight(input[pos:nextEOL], "\r")
-		if line == close {
-			return pos, nextEOL + 1, true
-		}
-
-		pos = nextEOL + 1
-	}
-
-	return 0, 0, false
-}
-
-func parseMatterByLanguage(language, matter string, opts Options) (map[string]any, error) {
-	block := strings.TrimSpace(matter)
-	if block == "" {
+	if parsed == nil {
 		return map[string]any{}, nil
 	}
+	return parsed, nil
+}
 
-	lang := strings.ToLower(strings.TrimSpace(language))
-	if lang == "" {
-		lang = "yaml"
+func getEngine(language string, opts Options) (Engine, error) {
+	name := language
+	if strings.TrimSpace(name) == "" {
+		name = opts.Language
 	}
 
-	if engine, ok := opts.Engines[lang]; ok && engine != nil {
-		return engine.Parse(matter)
+	engine, ok := opts.Engines[name]
+	if !ok {
+		engine, ok = opts.Engines[engineAlias(name)]
 	}
+	if !ok || engine == nil {
+		return nil, fmt.Errorf("gray-matter engine %q is not registered", name)
+	}
+	return engine, nil
+}
 
-	switch lang {
+func engineAlias(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "js", "javascript":
+		return "javascript"
+	case "coffee", "coffeescript", "cson":
+		return "coffee"
 	case "yaml", "yml":
-		var out map[string]any
-		if err := yaml.Unmarshal([]byte(matter), &out); err != nil {
-			return nil, err
-		}
-		if out == nil {
-			return map[string]any{}, nil
-		}
-		return out, nil
-	case "json":
-		var out map[string]any
-		if err := json.Unmarshal([]byte(block), &out); err != nil {
-			return nil, err
-		}
-		if out == nil {
-			return map[string]any{}, nil
-		}
-		return out, nil
+		return "yaml"
 	default:
-		return nil, fmt.Errorf("graymatter: no parser engine for language %q", language)
+		return name
 	}
+}
+
+func normalizedFence(opts Options) (string, string) {
+	delims := NormalizeDelimiters(opts.Delimiters)
+	return delims[0], delims[1]
+}
+
+// ClearCache mirrors gray-matter.clearCache.
+func ClearCache() {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	cache = map[string]File{}
+}
+
+func getCachedFile(key string) (File, bool) {
+	cacheMu.RLock()
+	defer cacheMu.RUnlock()
+	file, ok := cache[key]
+	return file, ok
+}
+
+func setCachedFile(key string, file File) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	cache[key] = file
 }

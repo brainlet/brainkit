@@ -8,16 +8,19 @@ import (
 type JSON struct{}
 
 // Parse converts a JSON string to a map of key-value pairs.
-func (j JSON) Parse(input string) (map[string]any, error) {
-	var result map[string]any
+func (j JSON) Parse(input string) (any, error) {
+	var result any
 	if err := json.Unmarshal([]byte(input), &result); err != nil {
 		return nil, err
+	}
+	if result == nil {
+		return map[string]any{}, nil
 	}
 	return result, nil
 }
 
 // Stringify converts a map of key-value pairs to a JSON string.
-func (j JSON) Stringify(data map[string]any) (string, error) {
+func (j JSON) Stringify(data any) (string, error) {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", err

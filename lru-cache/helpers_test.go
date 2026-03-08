@@ -205,7 +205,24 @@ func assertDisposals[K comparable, V comparable](t *testing.T, got []disposal[K,
 // exposeValList returns the internal value list for white-box testing.
 // TS equivalent: expose(c).valList
 func exposeValList[K comparable, V any](c *LRUCache[K, V]) []*V {
+	out := make([]*V, len(c.valList))
+	for i, v := range c.valList {
+		if v != nil {
+			out[i] = v.visibleValue()
+		}
+	}
+	return out
+}
+
+func exposeRawValList[K comparable, V any](c *LRUCache[K, V]) []*cacheValue[V] {
 	return c.valList
+}
+
+func exposeIsBackgroundFetch[K comparable, V any](c *LRUCache[K, V], index int) bool {
+	if index < 0 || index >= len(c.valList) || c.valList[index] == nil {
+		return false
+	}
+	return c.valList[index].isBackgroundFetch()
 }
 
 // exposeKeyMap returns the internal key→index map.

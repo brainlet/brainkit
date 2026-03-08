@@ -3,11 +3,10 @@ package graymatter
 import (
 	"fmt"
 	"strings"
-
-	gmengines "github.com/brainlet/brainkit/gray-matter/engines"
 )
 
-func Stringify(file string, data map[string]any, opts ...Options) (string, error) {
+// Stringify stringifies front matter and appends it to the provided content string.
+func Stringify(file string, data any, opts ...Options) (string, error) {
 	if data == nil && len(opts) == 0 {
 		return file, nil
 	}
@@ -20,27 +19,42 @@ func Stringify(file string, data map[string]any, opts ...Options) (string, error
 	return StringifyFile(parsed, data, opts...)
 }
 
-func StringifyFile(file File, data map[string]any, opts ...Options) (string, error) {
+// StringifyFile stringifies a parsed file object back into front-matter plus content.
+func StringifyFile(file File, data any, opts ...Options) (string, error) {
 	resolved := resolveOptions(opts...)
+	content := file.Content
 
-	language := strings.TrimSpace(file.Language)
-	if language == "" {
-		language = strings.TrimSpace(resolved.Language)
+	if data == nil {
+		if file.Data != nil {
+			data = file.Data
+		} else if resolved.Data != nil {
+			data = resolved.Data
+		} else {
+			return content, nil
+		}
 	}
-	if language == "" {
+
+	language := file.Language
+	if strings.TrimSpace(language) == "" {
+		language = resolved.Language
+	}
+	if strings.TrimSpace(language) == "" {
 		language = "yaml"
 	}
 
-	engine, err := getStringifyEngine(language, resolved)
+	engine, err := getEngine(language, resolved)
 	if err != nil {
 		return "", err
 	}
+	if err := ensureStringifyEngine(engine, language); err != nil {
+		return "", err
+	}
 
-	merged := make(map[string]any, len(file.Data)+len(data))
-	for key, value := range file.Data {
+	merged := map[string]any{}
+	for key, value := range toMap(file.Data) {
 		merged[key] = value
 	}
-	for key, value := range data {
+	for key, value := range toMap(data) {
 		merged[key] = value
 	}
 
@@ -50,21 +64,17 @@ func StringifyFile(file File, data map[string]any, opts ...Options) (string, err
 	}
 	matter = strings.TrimSpace(matter)
 
-	delims := NormalizeDelimiters(resolved.Delimiters)
-	open := delims[0]
-	close := delims[1]
-
+	open, close := normalizedFence(resolved)
 	var buf strings.Builder
-	if matter != "" && matter != "{}" {
+	if matter != "{}" && matter != "" {
 		buf.WriteString(ensureTrailingNewline(open))
 		buf.WriteString(ensureTrailingNewline(matter))
 		buf.WriteString(ensureTrailingNewline(close))
 	}
 
-	content := file.Content
 	if strings.TrimSpace(file.Excerpt) != "" {
-		excerptTrimmed := strings.TrimSpace(file.Excerpt)
-		if !strings.Contains(content, excerptTrimmed) {
+		trimmed := strings.TrimSpace(file.Excerpt)
+		if !strings.Contains(content, trimmed) {
 			buf.WriteString(ensureTrailingNewline(file.Excerpt))
 			buf.WriteString(ensureTrailingNewline(close))
 		}
@@ -74,52 +84,24 @@ func StringifyFile(file File, data map[string]any, opts ...Options) (string, err
 	return buf.String(), nil
 }
 
-func getStringifyEngine(language string, opts Options) (Engine, error) {
-	lang := normalizeLanguage(language)
-
-	if engine, ok := opts.Engines[lang]; ok && engine != nil {
-		if err := validateStringifyEngine(engine, lang); err != nil {
-			return nil, err
-		}
-		return engine, nil
-	}
-
-	if lang == "yml" {
-		lang = "yaml"
-	}
-
-	switch lang {
-	case "yaml":
-		return gmengines.YAML{}, nil
-	case "json":
-		return gmengines.JSON{}, nil
-	default:
-		return nil, fmt.Errorf("graymatter: no stringify engine for language %q", language)
-	}
-}
-
-func validateStringifyEngine(engine Engine, language string) error {
+func ensureStringifyEngine(engine Engine, language string) error {
 	switch e := engine.(type) {
 	case EngineFunc:
-		return fmt.Errorf("graymatter: expected %q stringify engine to be available", language)
+		return fmt.Errorf("expected %q.stringify to be a function", language)
 	case EngineWithStringify:
 		if e.StringifyFunc == nil {
-			return fmt.Errorf("graymatter: expected %q stringify engine to be available", language)
+			return fmt.Errorf("expected %q.stringify to be a function", language)
 		}
 	case *EngineWithStringify:
 		if e == nil || e.StringifyFunc == nil {
-			return fmt.Errorf("graymatter: expected %q stringify engine to be available", language)
+			return fmt.Errorf("expected %q.stringify to be a function", language)
 		}
 	}
-	return nil
-}
 
-func normalizeLanguage(language string) string {
-	lang := strings.ToLower(strings.TrimSpace(language))
-	if lang == "" {
-		return "yaml"
+	if _, err := engine.Stringify(map[string]any{}); err != nil && strings.Contains(err.Error(), "not supported") {
+		return fmt.Errorf("expected %q.stringify to be a function", language)
 	}
-	return lang
+	return nil
 }
 
 func ensureTrailingNewline(str string) string {
