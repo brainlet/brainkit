@@ -1144,30 +1144,41 @@ func TestPMapMultipleSkipsAlgorithmicComplexity(t *testing.T) {
 		return data
 	}
 
+	// JS source: sizes 1_000, 10_000, 100_000 with ratio bounds 1.2x–15x.
+	// Go adaptation: use concurrency:1 to avoid goroutine scheduling overhead
+	// dominating the measurement (JS is single-threaded so this isn't an issue
+	// upstream). We're testing that skip filtering is O(n), not O(n²).
 	testData := [][]any{
 		generateSkipData(1000),
-		generateSkipData(5000),
-		generateSkipData(25000),
+		generateSkipData(10000),
+		generateSkipData(100000),
 	}
 	testDurationsMS := make([]float64, 0, len(testData))
 
+	skipMapper := func(value any, _ int) (any, error) {
+		if value == PMapSkip {
+			return PMapSkip, nil
+		}
+		return value, nil
+	}
+
+	// Warmup run to stabilize goroutine scheduler and allocator.
+	_, _ = PMap[any, int](generateSkipData(1000), skipMapper, Options{Concurrency: Int(1)})
+
 	for _, data := range testData {
 		start := time.Now()
-		_, err := PMap[any, int](data, func(value any, _ int) (any, error) {
-			if value == PMapSkip {
-				return PMapSkip, nil
-			}
-			return value, nil
-		})
+		_, err := PMap[any, int](data, skipMapper, Options{Concurrency: Int(1)})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		testDurationsMS = append(testDurationsMS, elapsedMS(start))
 	}
 
+	// With 10x size increase, expect between 1.2x and 15x time increase (O(n)).
+	// An O(n²) algorithm would show ~100x increase for 10x size.
 	for index := 0; index < len(testDurationsMS)-1; index++ {
 		smaller := testDurationsMS[index]
 		larger := testDurationsMS[index+1]
-		assertInRange(t, larger, 1.05*smaller, 25*smaller)
+		assertInRange(t, larger, 1.2*smaller, 15*smaller)
 	}
 }
