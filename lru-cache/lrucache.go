@@ -542,18 +542,30 @@ func growSliceInt64(s []int64, newCap int) []int64 {
 
 // getNow returns the current monotonic time in ms, with ttlResolution caching.
 // TS source: getNow closure inside #initializeTTLTracking (lines ~1588-1604)
+//
+// The TS version uses setTimeout to clear cachedNow after ttlResolution ms.
+// In Go, time.AfterFunc uses real wall-clock time which doesn't work with
+// mock clocks in tests. Instead, we use comparison-based invalidation:
+// call nowFn() and check if the clock has advanced past the resolution period.
+// This is semantically equivalent and works correctly with both real and mock clocks.
 func (c *LRUCache[K, V]) getNow() int64 {
 	if c.ttlResolution > 0 {
-		if cached := c.cachedNow.Load(); cached > 0 {
-			return cached
+		cached := c.cachedNow.Load()
+		if cached > 0 {
+			// Check if the resolution period has passed by asking the clock.
+			// TS equivalent: setTimeout(() => this.#cachedNow = 0, ttlResolution)
+			now := c.nowFn()
+			if now-cached < c.ttlResolution {
+				return cached
+			}
+			// Resolution period elapsed, update cache with fresh value.
+			c.cachedNow.Store(now)
+			return now
 		}
 	}
 	now := c.nowFn()
 	if c.ttlResolution > 0 {
 		c.cachedNow.Store(now)
-		time.AfterFunc(time.Duration(c.ttlResolution)*time.Millisecond, func() {
-			c.cachedNow.Store(0)
-		})
 	}
 	return now
 }

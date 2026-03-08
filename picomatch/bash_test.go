@@ -1,0 +1,1386 @@
+// bash_test.go — Faithful 1:1 port of picomatch/test/bash.js
+package picomatch
+
+import (
+	"testing"
+)
+
+func TestBash43SpecUnitTests(t *testing.T) {
+	t.Run("should handle regular globbing", func(t *testing.T) {
+		// bash.js line 9
+		assertMatch(t, false, "*", "a*")
+		// bash.js line 10
+		assertMatch(t, false, "**", "a*")
+		// bash.js line 11
+		assertMatch(t, false, "\\*", "a*")
+		// bash.js line 12
+		assertMatch(t, false, "a/*", "a*")
+		// bash.js line 13
+		assertMatch(t, false, "b", "a*")
+		// bash.js line 14
+		assertMatch(t, false, "bc", "a*")
+		// bash.js line 15
+		assertMatch(t, false, "bcd", "a*")
+		// bash.js line 16
+		assertMatch(t, false, "bdir/", "a*")
+		// bash.js line 17
+		assertMatch(t, false, "Beware", "a*")
+		// bash.js line 18
+		assertMatch(t, true, "a", "a*")
+		// bash.js line 19
+		assertMatch(t, true, "ab", "a*")
+		// bash.js line 20
+		assertMatch(t, true, "abc", "a*")
+
+		// bash.js line 22 — pattern \\a* in JS = literal \a* (backslash before a, then star)
+		// In JS: '\\a*' means the regex-level string is \a* — picomatch interprets
+		// the backslash as escaping the 'a', so it matches strings starting with 'a'.
+		assertMatch(t, false, "*", "\\a*")
+		// bash.js line 23
+		assertMatch(t, false, "**", "\\a*")
+		// bash.js line 24
+		assertMatch(t, false, "\\*", "\\a*")
+
+		// bash.js line 26
+		assertMatch(t, true, "a", "\\a*")
+		// bash.js line 27
+		assertMatch(t, false, "a/*", "\\a*")
+		// bash.js line 28
+		assertMatch(t, true, "abc", "\\a*")
+		// bash.js line 29
+		assertMatch(t, true, "abd", "\\a*")
+		// bash.js line 30
+		assertMatch(t, true, "abe", "\\a*")
+		// bash.js line 31
+		assertMatch(t, false, "b", "\\a*")
+		// bash.js line 32
+		assertMatch(t, false, "bb", "\\a*")
+		// bash.js line 33
+		assertMatch(t, false, "bcd", "\\a*")
+		// bash.js line 34
+		assertMatch(t, false, "bdir/", "\\a*")
+		// bash.js line 35
+		assertMatch(t, false, "Beware", "\\a*")
+		// bash.js line 36
+		assertMatch(t, false, "c", "\\a*")
+		// bash.js line 37
+		assertMatch(t, false, "ca", "\\a*")
+		// bash.js line 38
+		assertMatch(t, false, "cb", "\\a*")
+		// bash.js line 39
+		assertMatch(t, false, "d", "\\a*")
+		// bash.js line 40
+		assertMatch(t, false, "dd", "\\a*")
+		// bash.js line 41
+		assertMatch(t, false, "de", "\\a*")
+	})
+
+	t.Run("should match directories", func(t *testing.T) {
+		// bash.js line 45
+		assertMatch(t, false, "*", "b*/")
+		// bash.js line 46
+		assertMatch(t, false, "**", "b*/")
+		// bash.js line 47
+		assertMatch(t, false, "\\*", "b*/")
+		// bash.js line 48
+		assertMatch(t, false, "a", "b*/")
+		// bash.js line 49
+		assertMatch(t, false, "a/*", "b*/")
+		// bash.js line 50
+		assertMatch(t, false, "abc", "b*/")
+		// bash.js line 51
+		assertMatch(t, false, "abd", "b*/")
+		// bash.js line 52
+		assertMatch(t, false, "abe", "b*/")
+		// bash.js line 53
+		assertMatch(t, false, "b", "b*/")
+		// bash.js line 54
+		assertMatch(t, false, "bb", "b*/")
+		// bash.js line 55
+		assertMatch(t, false, "bcd", "b*/")
+		// bash.js line 56
+		assertMatch(t, true, "bdir/", "b*/")
+		// bash.js line 57
+		assertMatch(t, false, "Beware", "b*/")
+		// bash.js line 58
+		assertMatch(t, false, "c", "b*/")
+		// bash.js line 59
+		assertMatch(t, false, "ca", "b*/")
+		// bash.js line 60
+		assertMatch(t, false, "cb", "b*/")
+		// bash.js line 61
+		assertMatch(t, false, "d", "b*/")
+		// bash.js line 62
+		assertMatch(t, false, "dd", "b*/")
+		// bash.js line 63
+		assertMatch(t, false, "de", "b*/")
+	})
+
+	t.Run("should use escaped characters as literals", func(t *testing.T) {
+		// bash.js line 67 — pattern \\^ in JS string = literal \^
+		assertMatch(t, false, "*", "\\^")
+		// bash.js line 68
+		assertMatch(t, false, "**", "\\^")
+		// bash.js line 69
+		assertMatch(t, false, "\\*", "\\^")
+		// bash.js line 70
+		assertMatch(t, false, "a", "\\^")
+		// bash.js line 71
+		assertMatch(t, false, "a/*", "\\^")
+		// bash.js line 72
+		assertMatch(t, false, "abc", "\\^")
+		// bash.js line 73
+		assertMatch(t, false, "abd", "\\^")
+		// bash.js line 74
+		assertMatch(t, false, "abe", "\\^")
+		// bash.js line 75
+		assertMatch(t, false, "b", "\\^")
+		// bash.js line 76
+		assertMatch(t, false, "bb", "\\^")
+		// bash.js line 77
+		assertMatch(t, false, "bcd", "\\^")
+		// bash.js line 78
+		assertMatch(t, false, "bdir/", "\\^")
+		// bash.js line 79
+		assertMatch(t, false, "Beware", "\\^")
+		// bash.js line 80
+		assertMatch(t, false, "c", "\\^")
+		// bash.js line 81
+		assertMatch(t, false, "ca", "\\^")
+		// bash.js line 82
+		assertMatch(t, false, "cb", "\\^")
+		// bash.js line 83
+		assertMatch(t, false, "d", "\\^")
+		// bash.js line 84
+		assertMatch(t, false, "dd", "\\^")
+		// bash.js line 85
+		assertMatch(t, false, "de", "\\^")
+
+		// bash.js line 87 — pattern \\* in JS string = literal \*
+		// In picomatch, \* matches literal *.
+		assertMatch(t, true, "*", "\\*")
+		// bash.js line 88
+		assertMatch(t, true, "\\*", "\\*")
+		// bash.js line 89
+		assertMatch(t, false, "**", "\\*")
+		// bash.js line 90
+		assertMatch(t, false, "a", "\\*")
+		// bash.js line 91
+		assertMatch(t, false, "a/*", "\\*")
+		// bash.js line 92
+		assertMatch(t, false, "abc", "\\*")
+		// bash.js line 93
+		assertMatch(t, false, "abd", "\\*")
+		// bash.js line 94
+		assertMatch(t, false, "abe", "\\*")
+		// bash.js line 95
+		assertMatch(t, false, "b", "\\*")
+		// bash.js line 96
+		assertMatch(t, false, "bb", "\\*")
+		// bash.js line 97
+		assertMatch(t, false, "bcd", "\\*")
+		// bash.js line 98
+		assertMatch(t, false, "bdir/", "\\*")
+		// bash.js line 99
+		assertMatch(t, false, "Beware", "\\*")
+		// bash.js line 100
+		assertMatch(t, false, "c", "\\*")
+		// bash.js line 101
+		assertMatch(t, false, "ca", "\\*")
+		// bash.js line 102
+		assertMatch(t, false, "cb", "\\*")
+		// bash.js line 103
+		assertMatch(t, false, "d", "\\*")
+		// bash.js line 104
+		assertMatch(t, false, "dd", "\\*")
+		// bash.js line 105
+		assertMatch(t, false, "de", "\\*")
+
+		// bash.js line 107 — pattern a\\* in JS = a\* (literal a followed by literal *)
+		assertMatch(t, false, "*", "a\\*")
+		// bash.js line 108
+		assertMatch(t, false, "**", "a\\*")
+		// bash.js line 109
+		assertMatch(t, false, "\\*", "a\\*")
+		// bash.js line 110
+		assertMatch(t, false, "a", "a\\*")
+		// bash.js line 111
+		assertMatch(t, false, "a/*", "a\\*")
+		// bash.js line 112
+		assertMatch(t, false, "abc", "a\\*")
+		// bash.js line 113
+		assertMatch(t, false, "abd", "a\\*")
+		// bash.js line 114
+		assertMatch(t, false, "abe", "a\\*")
+		// bash.js line 115
+		assertMatch(t, false, "b", "a\\*")
+		// bash.js line 116
+		assertMatch(t, false, "bb", "a\\*")
+		// bash.js line 117
+		assertMatch(t, false, "bcd", "a\\*")
+		// bash.js line 118
+		assertMatch(t, false, "bdir/", "a\\*")
+		// bash.js line 119
+		assertMatch(t, false, "Beware", "a\\*")
+		// bash.js line 120
+		assertMatch(t, false, "c", "a\\*")
+		// bash.js line 121
+		assertMatch(t, false, "ca", "a\\*")
+		// bash.js line 122
+		assertMatch(t, false, "cb", "a\\*")
+		// bash.js line 123
+		assertMatch(t, false, "d", "a\\*")
+		// bash.js line 124
+		assertMatch(t, false, "dd", "a\\*")
+		// bash.js line 125
+		assertMatch(t, false, "de", "a\\*")
+
+		// bash.js line 127 — pattern *q*
+		assertMatch(t, true, "aqa", "*q*")
+		// bash.js line 128
+		assertMatch(t, true, "aaqaa", "*q*")
+		// bash.js line 129
+		assertMatch(t, false, "*", "*q*")
+		// bash.js line 130
+		assertMatch(t, false, "**", "*q*")
+		// bash.js line 131
+		assertMatch(t, false, "\\*", "*q*")
+		// bash.js line 132
+		assertMatch(t, false, "a", "*q*")
+		// bash.js line 133
+		assertMatch(t, false, "a/*", "*q*")
+		// bash.js line 134
+		assertMatch(t, false, "abc", "*q*")
+		// bash.js line 135
+		assertMatch(t, false, "abd", "*q*")
+		// bash.js line 136
+		assertMatch(t, false, "abe", "*q*")
+		// bash.js line 137
+		assertMatch(t, false, "b", "*q*")
+		// bash.js line 138
+		assertMatch(t, false, "bb", "*q*")
+		// bash.js line 139
+		assertMatch(t, false, "bcd", "*q*")
+		// bash.js line 140
+		assertMatch(t, false, "bdir/", "*q*")
+		// bash.js line 141
+		assertMatch(t, false, "Beware", "*q*")
+		// bash.js line 142
+		assertMatch(t, false, "c", "*q*")
+		// bash.js line 143
+		assertMatch(t, false, "ca", "*q*")
+		// bash.js line 144
+		assertMatch(t, false, "cb", "*q*")
+		// bash.js line 145
+		assertMatch(t, false, "d", "*q*")
+		// bash.js line 146
+		assertMatch(t, false, "dd", "*q*")
+		// bash.js line 147
+		assertMatch(t, false, "de", "*q*")
+
+		// bash.js line 149 — pattern \\** in JS = \** (literal backslash then **)
+		// Picomatch: \* matches literal *, then * is a wildcard star.
+		assertMatch(t, true, "*", "\\**")
+		// bash.js line 150
+		assertMatch(t, true, "**", "\\**")
+		// bash.js line 151
+		assertMatch(t, false, "\\*", "\\**")
+		// bash.js line 152
+		assertMatch(t, false, "a", "\\**")
+		// bash.js line 153
+		assertMatch(t, false, "a/*", "\\**")
+		// bash.js line 154
+		assertMatch(t, false, "abc", "\\**")
+		// bash.js line 155
+		assertMatch(t, false, "abd", "\\**")
+		// bash.js line 156
+		assertMatch(t, false, "abe", "\\**")
+		// bash.js line 157
+		assertMatch(t, false, "b", "\\**")
+		// bash.js line 158
+		assertMatch(t, false, "bb", "\\**")
+		// bash.js line 159
+		assertMatch(t, false, "bcd", "\\**")
+		// bash.js line 160
+		assertMatch(t, false, "bdir/", "\\**")
+		// bash.js line 161
+		assertMatch(t, false, "Beware", "\\**")
+		// bash.js line 162
+		assertMatch(t, false, "c", "\\**")
+		// bash.js line 163
+		assertMatch(t, false, "ca", "\\**")
+		// bash.js line 164
+		assertMatch(t, false, "cb", "\\**")
+		// bash.js line 165
+		assertMatch(t, false, "d", "\\**")
+		// bash.js line 166
+		assertMatch(t, false, "dd", "\\**")
+		// bash.js line 167
+		assertMatch(t, false, "de", "\\**")
+	})
+
+	t.Run("should work for quoted characters", func(t *testing.T) {
+		// bash.js line 171 — pattern "***" (literal quotes around three stars)
+		// JS: '"***"' → the Go string is `"***"` which is the 5-char pattern: "***"
+		assertMatch(t, false, "*", `"***"`)
+		// bash.js line 172
+		assertMatch(t, false, "**", `"***"`)
+		// bash.js line 173
+		assertMatch(t, false, "\\*", `"***"`)
+		// bash.js line 174
+		assertMatch(t, false, "a", `"***"`)
+		// bash.js line 175
+		assertMatch(t, false, "a/*", `"***"`)
+		// bash.js line 176
+		assertMatch(t, false, "abc", `"***"`)
+		// bash.js line 177
+		assertMatch(t, false, "abd", `"***"`)
+		// bash.js line 178
+		assertMatch(t, false, "abe", `"***"`)
+		// bash.js line 179
+		assertMatch(t, false, "b", `"***"`)
+		// bash.js line 180
+		assertMatch(t, false, "bb", `"***"`)
+		// bash.js line 181
+		assertMatch(t, false, "bcd", `"***"`)
+		// bash.js line 182
+		assertMatch(t, false, "bdir/", `"***"`)
+		// bash.js line 183
+		assertMatch(t, false, "Beware", `"***"`)
+		// bash.js line 184
+		assertMatch(t, false, "c", `"***"`)
+		// bash.js line 185
+		assertMatch(t, false, "ca", `"***"`)
+		// bash.js line 186
+		assertMatch(t, false, "cb", `"***"`)
+		// bash.js line 187
+		assertMatch(t, false, "d", `"***"`)
+		// bash.js line 188
+		assertMatch(t, false, "dd", `"***"`)
+		// bash.js line 189
+		assertMatch(t, false, "de", `"***"`)
+		// bash.js line 190
+		assertMatch(t, true, "***", `"***"`)
+
+		// bash.js line 192 — pattern '***' (literal single quotes around three stars)
+		// JS: "'***'" → Go string is `'***'`
+		assertMatch(t, false, "*", `'***'`)
+		// bash.js line 193
+		assertMatch(t, false, "**", `'***'`)
+		// bash.js line 194
+		assertMatch(t, false, "\\*", `'***'`)
+		// bash.js line 195
+		assertMatch(t, false, "a", `'***'`)
+		// bash.js line 196
+		assertMatch(t, false, "a/*", `'***'`)
+		// bash.js line 197
+		assertMatch(t, false, "abc", `'***'`)
+		// bash.js line 198
+		assertMatch(t, false, "abd", `'***'`)
+		// bash.js line 199
+		assertMatch(t, false, "abe", `'***'`)
+		// bash.js line 200
+		assertMatch(t, false, "b", `'***'`)
+		// bash.js line 201
+		assertMatch(t, false, "bb", `'***'`)
+		// bash.js line 202
+		assertMatch(t, false, "bcd", `'***'`)
+		// bash.js line 203
+		assertMatch(t, false, "bdir/", `'***'`)
+		// bash.js line 204
+		assertMatch(t, false, "Beware", `'***'`)
+		// bash.js line 205
+		assertMatch(t, false, "c", `'***'`)
+		// bash.js line 206
+		assertMatch(t, false, "ca", `'***'`)
+		// bash.js line 207
+		assertMatch(t, false, "cb", `'***'`)
+		// bash.js line 208
+		assertMatch(t, false, "d", `'***'`)
+		// bash.js line 209
+		assertMatch(t, false, "dd", `'***'`)
+		// bash.js line 210
+		assertMatch(t, false, "de", `'***'`)
+		// bash.js line 211 — JS: isMatch('\'***\'', "'***'")
+		// The input in JS is '\'***\'' which is the string: '***'
+		assertMatch(t, true, "'***'", `'***'`)
+
+		// bash.js line 213 — same pattern '"***"' again (duplicate block in original JS)
+		assertMatch(t, false, "*", `"***"`)
+		// bash.js line 214
+		assertMatch(t, false, "**", `"***"`)
+		// bash.js line 215
+		assertMatch(t, false, "\\*", `"***"`)
+		// bash.js line 216
+		assertMatch(t, false, "a", `"***"`)
+		// bash.js line 217
+		assertMatch(t, false, "a/*", `"***"`)
+		// bash.js line 218
+		assertMatch(t, false, "abc", `"***"`)
+		// bash.js line 219
+		assertMatch(t, false, "abd", `"***"`)
+		// bash.js line 220
+		assertMatch(t, false, "abe", `"***"`)
+		// bash.js line 221
+		assertMatch(t, false, "b", `"***"`)
+		// bash.js line 222
+		assertMatch(t, false, "bb", `"***"`)
+		// bash.js line 223
+		assertMatch(t, false, "bcd", `"***"`)
+		// bash.js line 224
+		assertMatch(t, false, "bdir/", `"***"`)
+		// bash.js line 225
+		assertMatch(t, false, "Beware", `"***"`)
+		// bash.js line 226
+		assertMatch(t, false, "c", `"***"`)
+		// bash.js line 227
+		assertMatch(t, false, "ca", `"***"`)
+		// bash.js line 228
+		assertMatch(t, false, "cb", `"***"`)
+		// bash.js line 229
+		assertMatch(t, false, "d", `"***"`)
+		// bash.js line 230
+		assertMatch(t, false, "dd", `"***"`)
+		// bash.js line 231
+		assertMatch(t, false, "de", `"***"`)
+
+		// bash.js line 233 — pattern '"*"*' (double-quote, star, double-quote, star)
+		assertMatch(t, true, "*", `"*"*`)
+		// bash.js line 234
+		assertMatch(t, true, "**", `"*"*`)
+		// bash.js line 235
+		assertMatch(t, false, "\\*", `"*"*`)
+		// bash.js line 236
+		assertMatch(t, false, "a", `"*"*`)
+		// bash.js line 237
+		assertMatch(t, false, "a/*", `"*"*`)
+		// bash.js line 238
+		assertMatch(t, false, "abc", `"*"*`)
+		// bash.js line 239
+		assertMatch(t, false, "abd", `"*"*`)
+		// bash.js line 240
+		assertMatch(t, false, "abe", `"*"*`)
+		// bash.js line 241
+		assertMatch(t, false, "b", `"*"*`)
+		// bash.js line 242
+		assertMatch(t, false, "bb", `"*"*`)
+		// bash.js line 243
+		assertMatch(t, false, "bcd", `"*"*`)
+		// bash.js line 244
+		assertMatch(t, false, "bdir/", `"*"*`)
+		// bash.js line 245
+		assertMatch(t, false, "Beware", `"*"*`)
+		// bash.js line 246
+		assertMatch(t, false, "c", `"*"*`)
+		// bash.js line 247
+		assertMatch(t, false, "ca", `"*"*`)
+		// bash.js line 248
+		assertMatch(t, false, "cb", `"*"*`)
+		// bash.js line 249
+		assertMatch(t, false, "d", `"*"*`)
+		// bash.js line 250
+		assertMatch(t, false, "dd", `"*"*`)
+		// bash.js line 251
+		assertMatch(t, false, "de", `"*"*`)
+	})
+
+	t.Run("should match escaped quotes", func(t *testing.T) {
+		// bash.js line 255 — pattern \\"**\\" in JS string = \"**\"
+		// JS: '\\"**\\"' → the actual pattern string is: \"**\"
+		assertMatch(t, false, "*", "\\\"**\\\"")
+		// bash.js line 256
+		assertMatch(t, false, "**", "\\\"**\\\"")
+		// bash.js line 257
+		assertMatch(t, false, "\\*", "\\\"**\\\"")
+		// bash.js line 258
+		assertMatch(t, false, "a", "\\\"**\\\"")
+		// bash.js line 259
+		assertMatch(t, false, "a/*", "\\\"**\\\"")
+		// bash.js line 260
+		assertMatch(t, false, "abc", "\\\"**\\\"")
+		// bash.js line 261
+		assertMatch(t, false, "abd", "\\\"**\\\"")
+		// bash.js line 262
+		assertMatch(t, false, "abe", "\\\"**\\\"")
+		// bash.js line 263
+		assertMatch(t, false, "b", "\\\"**\\\"")
+		// bash.js line 264
+		assertMatch(t, false, "bb", "\\\"**\\\"")
+		// bash.js line 265
+		assertMatch(t, false, "bcd", "\\\"**\\\"")
+		// bash.js line 266
+		assertMatch(t, false, "bdir/", "\\\"**\\\"")
+		// bash.js line 267
+		assertMatch(t, false, "Beware", "\\\"**\\\"")
+		// bash.js line 268
+		assertMatch(t, false, "c", "\\\"**\\\"")
+		// bash.js line 269
+		assertMatch(t, false, "ca", "\\\"**\\\"")
+		// bash.js line 270
+		assertMatch(t, false, "cb", "\\\"**\\\"")
+		// bash.js line 271
+		assertMatch(t, false, "d", "\\\"**\\\"")
+		// bash.js line 272
+		assertMatch(t, false, "dd", "\\\"**\\\"")
+		// bash.js line 273
+		assertMatch(t, false, "de", "\\\"**\\\"")
+		// bash.js line 274 — input '"**"' matches pattern \\"**\\"
+		assertMatch(t, true, "\"**\"", "\\\"**\\\"")
+
+		// bash.js line 276 — pattern foo/\\"**\\"/bar → foo/\"**\"/bar
+		assertMatch(t, false, "*", "foo/\\\"**\\\"/bar")
+		// bash.js line 277
+		assertMatch(t, false, "**", "foo/\\\"**\\\"/bar")
+		// bash.js line 278
+		assertMatch(t, false, "\\*", "foo/\\\"**\\\"/bar")
+		// bash.js line 279
+		assertMatch(t, false, "a", "foo/\\\"**\\\"/bar")
+		// bash.js line 280
+		assertMatch(t, false, "a/*", "foo/\\\"**\\\"/bar")
+		// bash.js line 281
+		assertMatch(t, false, "abc", "foo/\\\"**\\\"/bar")
+		// bash.js line 282
+		assertMatch(t, false, "abd", "foo/\\\"**\\\"/bar")
+		// bash.js line 283
+		assertMatch(t, false, "abe", "foo/\\\"**\\\"/bar")
+		// bash.js line 284
+		assertMatch(t, false, "b", "foo/\\\"**\\\"/bar")
+		// bash.js line 285
+		assertMatch(t, false, "bb", "foo/\\\"**\\\"/bar")
+		// bash.js line 286
+		assertMatch(t, false, "bcd", "foo/\\\"**\\\"/bar")
+		// bash.js line 287
+		assertMatch(t, false, "bdir/", "foo/\\\"**\\\"/bar")
+		// bash.js line 288
+		assertMatch(t, false, "Beware", "foo/\\\"**\\\"/bar")
+		// bash.js line 289
+		assertMatch(t, false, "c", "foo/\\\"**\\\"/bar")
+		// bash.js line 290
+		assertMatch(t, false, "ca", "foo/\\\"**\\\"/bar")
+		// bash.js line 291
+		assertMatch(t, false, "cb", "foo/\\\"**\\\"/bar")
+		// bash.js line 292
+		assertMatch(t, false, "d", "foo/\\\"**\\\"/bar")
+		// bash.js line 293
+		assertMatch(t, false, "dd", "foo/\\\"**\\\"/bar")
+		// bash.js line 294
+		assertMatch(t, false, "de", "foo/\\\"**\\\"/bar")
+		// bash.js line 295 — input is foo/"**"/bar
+		assertMatch(t, true, "foo/\"**\"/bar", "foo/\\\"**\\\"/bar")
+
+		// bash.js line 297 — pattern foo/\\"*\\"/bar → foo/\"*\"/bar
+		assertMatch(t, false, "*", "foo/\\\"*\\\"/bar")
+		// bash.js line 298
+		assertMatch(t, false, "**", "foo/\\\"*\\\"/bar")
+		// bash.js line 299
+		assertMatch(t, false, "\\*", "foo/\\\"*\\\"/bar")
+		// bash.js line 300
+		assertMatch(t, false, "a", "foo/\\\"*\\\"/bar")
+		// bash.js line 301
+		assertMatch(t, false, "a/*", "foo/\\\"*\\\"/bar")
+		// bash.js line 302
+		assertMatch(t, false, "abc", "foo/\\\"*\\\"/bar")
+		// bash.js line 303
+		assertMatch(t, false, "abd", "foo/\\\"*\\\"/bar")
+		// bash.js line 304
+		assertMatch(t, false, "abe", "foo/\\\"*\\\"/bar")
+		// bash.js line 305
+		assertMatch(t, false, "b", "foo/\\\"*\\\"/bar")
+		// bash.js line 306
+		assertMatch(t, false, "bb", "foo/\\\"*\\\"/bar")
+		// bash.js line 307
+		assertMatch(t, false, "bcd", "foo/\\\"*\\\"/bar")
+		// bash.js line 308
+		assertMatch(t, false, "bdir/", "foo/\\\"*\\\"/bar")
+		// bash.js line 309
+		assertMatch(t, false, "Beware", "foo/\\\"*\\\"/bar")
+		// bash.js line 310
+		assertMatch(t, false, "c", "foo/\\\"*\\\"/bar")
+		// bash.js line 311
+		assertMatch(t, false, "ca", "foo/\\\"*\\\"/bar")
+		// bash.js line 312
+		assertMatch(t, false, "cb", "foo/\\\"*\\\"/bar")
+		// bash.js line 313
+		assertMatch(t, false, "d", "foo/\\\"*\\\"/bar")
+		// bash.js line 314
+		assertMatch(t, false, "dd", "foo/\\\"*\\\"/bar")
+		// bash.js line 315
+		assertMatch(t, false, "de", "foo/\\\"*\\\"/bar")
+		// bash.js line 316 — input foo/"*"/bar matches pattern foo/\"*\"/bar
+		assertMatch(t, true, "foo/\"*\"/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 317
+		assertMatch(t, true, "foo/\"a\"/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 318
+		assertMatch(t, true, "foo/\"b\"/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 319
+		assertMatch(t, true, "foo/\"c\"/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 320 — single-quoted paths should NOT match double-quoted pattern
+		assertMatch(t, false, "foo/'*'/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 321
+		assertMatch(t, false, "foo/'a'/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 322
+		assertMatch(t, false, "foo/'b'/bar", "foo/\\\"*\\\"/bar")
+		// bash.js line 323
+		assertMatch(t, false, "foo/'c'/bar", "foo/\\\"*\\\"/bar")
+
+		// bash.js line 325 — pattern foo/"*"/bar (unescaped quotes, literal star in quotes)
+		assertMatch(t, false, "*", `foo/"*"/bar`)
+		// bash.js line 326
+		assertMatch(t, false, "**", `foo/"*"/bar`)
+		// bash.js line 327
+		assertMatch(t, false, "\\*", `foo/"*"/bar`)
+		// bash.js line 328
+		assertMatch(t, false, "a", `foo/"*"/bar`)
+		// bash.js line 329
+		assertMatch(t, false, "a/*", `foo/"*"/bar`)
+		// bash.js line 330
+		assertMatch(t, false, "abc", `foo/"*"/bar`)
+		// bash.js line 331
+		assertMatch(t, false, "abd", `foo/"*"/bar`)
+		// bash.js line 332
+		assertMatch(t, false, "abe", `foo/"*"/bar`)
+		// bash.js line 333
+		assertMatch(t, false, "b", `foo/"*"/bar`)
+		// bash.js line 334
+		assertMatch(t, false, "bb", `foo/"*"/bar`)
+		// bash.js line 335
+		assertMatch(t, false, "bcd", `foo/"*"/bar`)
+		// bash.js line 336
+		assertMatch(t, false, "bdir/", `foo/"*"/bar`)
+		// bash.js line 337
+		assertMatch(t, false, "Beware", `foo/"*"/bar`)
+		// bash.js line 338
+		assertMatch(t, false, "c", `foo/"*"/bar`)
+		// bash.js line 339
+		assertMatch(t, false, "ca", `foo/"*"/bar`)
+		// bash.js line 340
+		assertMatch(t, false, "cb", `foo/"*"/bar`)
+		// bash.js line 341
+		assertMatch(t, false, "d", `foo/"*"/bar`)
+		// bash.js line 342
+		assertMatch(t, false, "dd", `foo/"*"/bar`)
+		// bash.js line 343
+		assertMatch(t, false, "de", `foo/"*"/bar`)
+		// bash.js line 344 — foo/*/bar matches foo/"*"/bar
+		assertMatch(t, true, "foo/*/bar", `foo/"*"/bar`)
+		// bash.js line 345
+		assertMatch(t, true, `foo/"*"/bar`, `foo/"*"/bar`)
+		// bash.js line 346
+		assertMatch(t, false, `foo/"a"/bar`, `foo/"*"/bar`)
+		// bash.js line 347
+		assertMatch(t, false, `foo/"b"/bar`, `foo/"*"/bar`)
+		// bash.js line 348
+		assertMatch(t, false, `foo/"c"/bar`, `foo/"*"/bar`)
+		// bash.js line 349
+		assertMatch(t, false, "foo/'*'/bar", `foo/"*"/bar`)
+		// bash.js line 350
+		assertMatch(t, false, "foo/'a'/bar", `foo/"*"/bar`)
+		// bash.js line 351
+		assertMatch(t, false, "foo/'b'/bar", `foo/"*"/bar`)
+		// bash.js line 352
+		assertMatch(t, false, "foo/'c'/bar", `foo/"*"/bar`)
+
+		// bash.js line 354 — pattern \\'**\\' in JS = \'**\' (escaped single quotes)
+		// JS: "\\'**\\'" → the pattern string is: \'**\'
+		assertMatch(t, false, "*", "\\'**\\'")
+		// bash.js line 355
+		assertMatch(t, false, "**", "\\'**\\'")
+		// bash.js line 356
+		assertMatch(t, false, "\\*", "\\'**\\'")
+		// bash.js line 357
+		assertMatch(t, false, "a", "\\'**\\'")
+		// bash.js line 358
+		assertMatch(t, false, "a/*", "\\'**\\'")
+		// bash.js line 359
+		assertMatch(t, false, "abc", "\\'**\\'")
+		// bash.js line 360
+		assertMatch(t, false, "abd", "\\'**\\'")
+		// bash.js line 361
+		assertMatch(t, false, "abe", "\\'**\\'")
+		// bash.js line 362
+		assertMatch(t, false, "b", "\\'**\\'")
+		// bash.js line 363
+		assertMatch(t, false, "bb", "\\'**\\'")
+		// bash.js line 364
+		assertMatch(t, false, "bcd", "\\'**\\'")
+		// bash.js line 365
+		assertMatch(t, false, "bdir/", "\\'**\\'")
+		// bash.js line 366
+		assertMatch(t, false, "Beware", "\\'**\\'")
+		// bash.js line 367
+		assertMatch(t, false, "c", "\\'**\\'")
+		// bash.js line 368
+		assertMatch(t, false, "ca", "\\'**\\'")
+		// bash.js line 369
+		assertMatch(t, false, "cb", "\\'**\\'")
+		// bash.js line 370
+		assertMatch(t, false, "d", "\\'**\\'")
+		// bash.js line 371
+		assertMatch(t, false, "dd", "\\'**\\'")
+		// bash.js line 372
+		assertMatch(t, false, "de", "\\'**\\'")
+		// bash.js line 373 — input '**' matches pattern \'**\'
+		assertMatch(t, true, "'**'", "\\'**\\'")
+	})
+
+	t.Run("Pattern from Larry Wall Configure that caused bash to blow up", func(t *testing.T) {
+		// bash.js line 377
+		assertMatch(t, false, "*", "[a-c]b*")
+		// bash.js line 378
+		assertMatch(t, false, "**", "[a-c]b*")
+		// bash.js line 379
+		assertMatch(t, false, "\\*", "[a-c]b*")
+		// bash.js line 380
+		assertMatch(t, false, "a", "[a-c]b*")
+		// bash.js line 381
+		assertMatch(t, false, "a/*", "[a-c]b*")
+		// bash.js line 382
+		assertMatch(t, true, "abc", "[a-c]b*")
+		// bash.js line 383
+		assertMatch(t, true, "abd", "[a-c]b*")
+		// bash.js line 384
+		assertMatch(t, true, "abe", "[a-c]b*")
+		// bash.js line 385
+		assertMatch(t, false, "b", "[a-c]b*")
+		// bash.js line 386
+		assertMatch(t, true, "bb", "[a-c]b*")
+		// bash.js line 387
+		assertMatch(t, false, "bcd", "[a-c]b*")
+		// bash.js line 388
+		assertMatch(t, false, "bdir/", "[a-c]b*")
+		// bash.js line 389
+		assertMatch(t, false, "Beware", "[a-c]b*")
+		// bash.js line 390
+		assertMatch(t, false, "c", "[a-c]b*")
+		// bash.js line 391
+		assertMatch(t, false, "ca", "[a-c]b*")
+		// bash.js line 392
+		assertMatch(t, true, "cb", "[a-c]b*")
+		// bash.js line 393
+		assertMatch(t, false, "d", "[a-c]b*")
+		// bash.js line 394
+		assertMatch(t, false, "dd", "[a-c]b*")
+		// bash.js line 395
+		assertMatch(t, false, "de", "[a-c]b*")
+	})
+
+	t.Run("should support character classes", func(t *testing.T) {
+		// bash.js line 399
+		assertMatch(t, false, "*", "a*[^c]")
+		// bash.js line 400
+		assertMatch(t, false, "**", "a*[^c]")
+		// bash.js line 401
+		assertMatch(t, false, "\\*", "a*[^c]")
+		// bash.js line 402
+		assertMatch(t, false, "a", "a*[^c]")
+		// bash.js line 403
+		assertMatch(t, false, "a/*", "a*[^c]")
+		// bash.js line 404
+		assertMatch(t, false, "abc", "a*[^c]")
+		// bash.js line 405
+		assertMatch(t, true, "abd", "a*[^c]")
+		// bash.js line 406
+		assertMatch(t, true, "abe", "a*[^c]")
+		// bash.js line 407
+		assertMatch(t, false, "b", "a*[^c]")
+		// bash.js line 408
+		assertMatch(t, false, "bb", "a*[^c]")
+		// bash.js line 409
+		assertMatch(t, false, "bcd", "a*[^c]")
+		// bash.js line 410
+		assertMatch(t, false, "bdir/", "a*[^c]")
+		// bash.js line 411
+		assertMatch(t, false, "Beware", "a*[^c]")
+		// bash.js line 412
+		assertMatch(t, false, "c", "a*[^c]")
+		// bash.js line 413
+		assertMatch(t, false, "ca", "a*[^c]")
+		// bash.js line 414
+		assertMatch(t, false, "cb", "a*[^c]")
+		// bash.js line 415
+		assertMatch(t, false, "d", "a*[^c]")
+		// bash.js line 416
+		assertMatch(t, false, "dd", "a*[^c]")
+		// bash.js line 417
+		assertMatch(t, false, "de", "a*[^c]")
+		// bash.js line 418
+		assertMatch(t, false, "baz", "a*[^c]")
+		// bash.js line 419
+		assertMatch(t, false, "bzz", "a*[^c]")
+		// bash.js line 420
+		assertMatch(t, false, "BZZ", "a*[^c]")
+		// bash.js line 421
+		assertMatch(t, false, "beware", "a*[^c]")
+		// bash.js line 422
+		assertMatch(t, false, "BewAre", "a*[^c]")
+
+		// bash.js line 424
+		assertMatch(t, true, "a-b", "a[X-]b")
+		// bash.js line 425
+		assertMatch(t, true, "aXb", "a[X-]b")
+
+		// bash.js line 427
+		assertMatch(t, false, "*", "[a-y]*[^c]")
+		// bash.js line 428 — with { bash: true }
+		assertMatch(t, true, "a*", "[a-y]*[^c]", &Options{Bash: true})
+		// bash.js line 429
+		assertMatch(t, false, "**", "[a-y]*[^c]")
+		// bash.js line 430
+		assertMatch(t, false, "\\*", "[a-y]*[^c]")
+		// bash.js line 431
+		assertMatch(t, false, "a", "[a-y]*[^c]")
+		// bash.js line 432
+		assertMatch(t, true, "a123b", "[a-y]*[^c]", &Options{Bash: true})
+		// bash.js line 433
+		assertMatch(t, false, "a123c", "[a-y]*[^c]", &Options{Bash: true})
+		// bash.js line 434
+		assertMatch(t, true, "ab", "[a-y]*[^c]", &Options{Bash: true})
+		// bash.js line 435
+		assertMatch(t, false, "a/*", "[a-y]*[^c]")
+		// bash.js line 436
+		assertMatch(t, false, "abc", "[a-y]*[^c]")
+		// bash.js line 437
+		assertMatch(t, true, "abd", "[a-y]*[^c]")
+		// bash.js line 438
+		assertMatch(t, true, "abe", "[a-y]*[^c]")
+		// bash.js line 439
+		assertMatch(t, false, "b", "[a-y]*[^c]")
+		// bash.js line 440
+		assertMatch(t, true, "bd", "[a-y]*[^c]", &Options{Bash: true})
+		// bash.js line 441
+		assertMatch(t, true, "bb", "[a-y]*[^c]")
+		// bash.js line 442
+		assertMatch(t, true, "bcd", "[a-y]*[^c]")
+		// bash.js line 443
+		assertMatch(t, true, "bdir/", "[a-y]*[^c]")
+		// bash.js line 444
+		assertMatch(t, false, "Beware", "[a-y]*[^c]")
+		// bash.js line 445
+		assertMatch(t, false, "c", "[a-y]*[^c]")
+		// bash.js line 446
+		assertMatch(t, true, "ca", "[a-y]*[^c]")
+		// bash.js line 447
+		assertMatch(t, true, "cb", "[a-y]*[^c]")
+		// bash.js line 448
+		assertMatch(t, false, "d", "[a-y]*[^c]")
+		// bash.js line 449
+		assertMatch(t, true, "dd", "[a-y]*[^c]")
+		// bash.js line 450 — with { regex: true }
+		boolTrue := true
+		assertMatch(t, true, "dd", "[a-y]*[^c]", &Options{Regex: &boolTrue})
+		// bash.js line 451
+		assertMatch(t, true, "dd", "[a-y]*[^c]")
+		// bash.js line 452
+		assertMatch(t, true, "de", "[a-y]*[^c]")
+		// bash.js line 453
+		assertMatch(t, true, "baz", "[a-y]*[^c]")
+		// bash.js line 454
+		assertMatch(t, true, "bzz", "[a-y]*[^c]")
+		// bash.js line 455
+		assertMatch(t, true, "bzz", "[a-y]*[^c]")
+		// bash.js line 456 — with { regex: true }
+		assertMatch(t, false, "bzz", "[a-y]*[^c]", &Options{Regex: &boolTrue})
+		// bash.js line 457
+		assertMatch(t, false, "BZZ", "[a-y]*[^c]")
+		// bash.js line 458
+		assertMatch(t, true, "beware", "[a-y]*[^c]")
+		// bash.js line 459
+		assertMatch(t, false, "BewAre", "[a-y]*[^c]")
+
+		// bash.js line 461 — escaped star in path: a\\*b/* means a literal a*b/...
+		assertMatch(t, true, "a*b/ooo", "a\\*b/*")
+		// bash.js line 462
+		assertMatch(t, true, "a*b/ooo", "a\\*?/*")
+
+		// bash.js line 464 — pattern a[b]c
+		assertMatch(t, false, "*", "a[b]c")
+		// bash.js line 465
+		assertMatch(t, false, "**", "a[b]c")
+		// bash.js line 466
+		assertMatch(t, false, "\\*", "a[b]c")
+		// bash.js line 467
+		assertMatch(t, false, "a", "a[b]c")
+		// bash.js line 468
+		assertMatch(t, false, "a/*", "a[b]c")
+		// bash.js line 469
+		assertMatch(t, true, "abc", "a[b]c")
+		// bash.js line 470
+		assertMatch(t, false, "abd", "a[b]c")
+		// bash.js line 471
+		assertMatch(t, false, "abe", "a[b]c")
+		// bash.js line 472
+		assertMatch(t, false, "b", "a[b]c")
+		// bash.js line 473
+		assertMatch(t, false, "bb", "a[b]c")
+		// bash.js line 474
+		assertMatch(t, false, "bcd", "a[b]c")
+		// bash.js line 475
+		assertMatch(t, false, "bdir/", "a[b]c")
+		// bash.js line 476
+		assertMatch(t, false, "Beware", "a[b]c")
+		// bash.js line 477
+		assertMatch(t, false, "c", "a[b]c")
+		// bash.js line 478
+		assertMatch(t, false, "ca", "a[b]c")
+		// bash.js line 479
+		assertMatch(t, false, "cb", "a[b]c")
+		// bash.js line 480
+		assertMatch(t, false, "d", "a[b]c")
+		// bash.js line 481
+		assertMatch(t, false, "dd", "a[b]c")
+		// bash.js line 482
+		assertMatch(t, false, "de", "a[b]c")
+		// bash.js line 483
+		assertMatch(t, false, "baz", "a[b]c")
+		// bash.js line 484
+		assertMatch(t, false, "bzz", "a[b]c")
+		// bash.js line 485
+		assertMatch(t, false, "BZZ", "a[b]c")
+		// bash.js line 486
+		assertMatch(t, false, "beware", "a[b]c")
+		// bash.js line 487
+		assertMatch(t, false, "BewAre", "a[b]c")
+
+		// bash.js line 489 — pattern a["b"]c
+		assertMatch(t, false, "*", `a["b"]c`)
+		// bash.js line 490
+		assertMatch(t, false, "**", `a["b"]c`)
+		// bash.js line 491
+		assertMatch(t, false, "\\*", `a["b"]c`)
+		// bash.js line 492
+		assertMatch(t, false, "a", `a["b"]c`)
+		// bash.js line 493
+		assertMatch(t, false, "a/*", `a["b"]c`)
+		// bash.js line 494
+		assertMatch(t, true, "abc", `a["b"]c`)
+		// bash.js line 495
+		assertMatch(t, false, "abd", `a["b"]c`)
+		// bash.js line 496
+		assertMatch(t, false, "abe", `a["b"]c`)
+		// bash.js line 497
+		assertMatch(t, false, "b", `a["b"]c`)
+		// bash.js line 498
+		assertMatch(t, false, "bb", `a["b"]c`)
+		// bash.js line 499
+		assertMatch(t, false, "bcd", `a["b"]c`)
+		// bash.js line 500
+		assertMatch(t, false, "bdir/", `a["b"]c`)
+		// bash.js line 501
+		assertMatch(t, false, "Beware", `a["b"]c`)
+		// bash.js line 502
+		assertMatch(t, false, "c", `a["b"]c`)
+		// bash.js line 503
+		assertMatch(t, false, "ca", `a["b"]c`)
+		// bash.js line 504
+		assertMatch(t, false, "cb", `a["b"]c`)
+		// bash.js line 505
+		assertMatch(t, false, "d", `a["b"]c`)
+		// bash.js line 506
+		assertMatch(t, false, "dd", `a["b"]c`)
+		// bash.js line 507
+		assertMatch(t, false, "de", `a["b"]c`)
+		// bash.js line 508
+		assertMatch(t, false, "baz", `a["b"]c`)
+		// bash.js line 509
+		assertMatch(t, false, "bzz", `a["b"]c`)
+		// bash.js line 510
+		assertMatch(t, false, "BZZ", `a["b"]c`)
+		// bash.js line 511
+		assertMatch(t, false, "beware", `a["b"]c`)
+		// bash.js line 512
+		assertMatch(t, false, "BewAre", `a["b"]c`)
+
+		// bash.js line 514 — pattern a[\\\\b]c in JS string = a[\\b]c
+		// JS '\\\\' in a string literal = two backslash chars. So a[\\b]c matches a\c or abc.
+		assertMatch(t, false, "*", "a[\\\\b]c")
+		// bash.js line 515
+		assertMatch(t, false, "**", "a[\\\\b]c")
+		// bash.js line 516
+		assertMatch(t, false, "\\*", "a[\\\\b]c")
+		// bash.js line 517
+		assertMatch(t, false, "a", "a[\\\\b]c")
+		// bash.js line 518
+		assertMatch(t, false, "a/*", "a[\\\\b]c")
+		// bash.js line 519
+		assertMatch(t, true, "abc", "a[\\\\b]c")
+		// bash.js line 520
+		assertMatch(t, false, "abd", "a[\\\\b]c")
+		// bash.js line 521
+		assertMatch(t, false, "abe", "a[\\\\b]c")
+		// bash.js line 522
+		assertMatch(t, false, "b", "a[\\\\b]c")
+		// bash.js line 523
+		assertMatch(t, false, "bb", "a[\\\\b]c")
+		// bash.js line 524
+		assertMatch(t, false, "bcd", "a[\\\\b]c")
+		// bash.js line 525
+		assertMatch(t, false, "bdir/", "a[\\\\b]c")
+		// bash.js line 526
+		assertMatch(t, false, "Beware", "a[\\\\b]c")
+		// bash.js line 527
+		assertMatch(t, false, "c", "a[\\\\b]c")
+		// bash.js line 528
+		assertMatch(t, false, "ca", "a[\\\\b]c")
+		// bash.js line 529
+		assertMatch(t, false, "cb", "a[\\\\b]c")
+		// bash.js line 530
+		assertMatch(t, false, "d", "a[\\\\b]c")
+		// bash.js line 531
+		assertMatch(t, false, "dd", "a[\\\\b]c")
+		// bash.js line 532
+		assertMatch(t, false, "de", "a[\\\\b]c")
+		// bash.js line 533
+		assertMatch(t, false, "baz", "a[\\\\b]c")
+		// bash.js line 534
+		assertMatch(t, false, "bzz", "a[\\\\b]c")
+		// bash.js line 535
+		assertMatch(t, false, "BZZ", "a[\\\\b]c")
+		// bash.js line 536
+		assertMatch(t, false, "beware", "a[\\\\b]c")
+		// bash.js line 537
+		assertMatch(t, false, "BewAre", "a[\\\\b]c")
+
+		// bash.js line 539 — pattern a[\\b]c in JS string = a[\b]c (backslash-b inside bracket)
+		// JS '\\b' = \b (one backslash + b). So pattern is a[\b]c.
+		assertMatch(t, false, "*", "a[\\b]c")
+		// bash.js line 540
+		assertMatch(t, false, "**", "a[\\b]c")
+		// bash.js line 541
+		assertMatch(t, false, "\\*", "a[\\b]c")
+		// bash.js line 542
+		assertMatch(t, false, "a", "a[\\b]c")
+		// bash.js line 543
+		assertMatch(t, false, "a/*", "a[\\b]c")
+		// bash.js line 544
+		assertMatch(t, false, "abc", "a[\\b]c")
+		// bash.js line 545
+		assertMatch(t, false, "abd", "a[\\b]c")
+		// bash.js line 546
+		assertMatch(t, false, "abe", "a[\\b]c")
+		// bash.js line 547
+		assertMatch(t, false, "b", "a[\\b]c")
+		// bash.js line 548
+		assertMatch(t, false, "bb", "a[\\b]c")
+		// bash.js line 549
+		assertMatch(t, false, "bcd", "a[\\b]c")
+		// bash.js line 550
+		assertMatch(t, false, "bdir/", "a[\\b]c")
+		// bash.js line 551
+		assertMatch(t, false, "Beware", "a[\\b]c")
+		// bash.js line 552
+		assertMatch(t, false, "c", "a[\\b]c")
+		// bash.js line 553
+		assertMatch(t, false, "ca", "a[\\b]c")
+		// bash.js line 554
+		assertMatch(t, false, "cb", "a[\\b]c")
+		// bash.js line 555
+		assertMatch(t, false, "d", "a[\\b]c")
+		// bash.js line 556
+		assertMatch(t, false, "dd", "a[\\b]c")
+		// bash.js line 557
+		assertMatch(t, false, "de", "a[\\b]c")
+		// bash.js line 558
+		assertMatch(t, false, "baz", "a[\\b]c")
+		// bash.js line 559
+		assertMatch(t, false, "bzz", "a[\\b]c")
+		// bash.js line 560
+		assertMatch(t, false, "BZZ", "a[\\b]c")
+		// bash.js line 561
+		assertMatch(t, false, "beware", "a[\\b]c")
+		// bash.js line 562
+		assertMatch(t, false, "BewAre", "a[\\b]c")
+
+		// bash.js line 564 — pattern a[b-d]c
+		assertMatch(t, false, "*", "a[b-d]c")
+		// bash.js line 565
+		assertMatch(t, false, "**", "a[b-d]c")
+		// bash.js line 566
+		assertMatch(t, false, "\\*", "a[b-d]c")
+		// bash.js line 567
+		assertMatch(t, false, "a", "a[b-d]c")
+		// bash.js line 568
+		assertMatch(t, false, "a/*", "a[b-d]c")
+		// bash.js line 569
+		assertMatch(t, true, "abc", "a[b-d]c")
+		// bash.js line 570
+		assertMatch(t, false, "abd", "a[b-d]c")
+		// bash.js line 571
+		assertMatch(t, false, "abe", "a[b-d]c")
+		// bash.js line 572
+		assertMatch(t, false, "b", "a[b-d]c")
+		// bash.js line 573
+		assertMatch(t, false, "bb", "a[b-d]c")
+		// bash.js line 574
+		assertMatch(t, false, "bcd", "a[b-d]c")
+		// bash.js line 575
+		assertMatch(t, false, "bdir/", "a[b-d]c")
+		// bash.js line 576
+		assertMatch(t, false, "Beware", "a[b-d]c")
+		// bash.js line 577
+		assertMatch(t, false, "c", "a[b-d]c")
+		// bash.js line 578
+		assertMatch(t, false, "ca", "a[b-d]c")
+		// bash.js line 579
+		assertMatch(t, false, "cb", "a[b-d]c")
+		// bash.js line 580
+		assertMatch(t, false, "d", "a[b-d]c")
+		// bash.js line 581
+		assertMatch(t, false, "dd", "a[b-d]c")
+		// bash.js line 582
+		assertMatch(t, false, "de", "a[b-d]c")
+		// bash.js line 583
+		assertMatch(t, false, "baz", "a[b-d]c")
+		// bash.js line 584
+		assertMatch(t, false, "bzz", "a[b-d]c")
+		// bash.js line 585
+		assertMatch(t, false, "BZZ", "a[b-d]c")
+		// bash.js line 586
+		assertMatch(t, false, "beware", "a[b-d]c")
+		// bash.js line 587
+		assertMatch(t, false, "BewAre", "a[b-d]c")
+
+		// bash.js line 589 — pattern a?c
+		assertMatch(t, false, "*", "a?c")
+		// bash.js line 590
+		assertMatch(t, false, "**", "a?c")
+		// bash.js line 591
+		assertMatch(t, false, "\\*", "a?c")
+		// bash.js line 592
+		assertMatch(t, false, "a", "a?c")
+		// bash.js line 593
+		assertMatch(t, false, "a/*", "a?c")
+		// bash.js line 594
+		assertMatch(t, true, "abc", "a?c")
+		// bash.js line 595
+		assertMatch(t, false, "abd", "a?c")
+		// bash.js line 596
+		assertMatch(t, false, "abe", "a?c")
+		// bash.js line 597
+		assertMatch(t, false, "b", "a?c")
+		// bash.js line 598
+		assertMatch(t, false, "bb", "a?c")
+		// bash.js line 599
+		assertMatch(t, false, "bcd", "a?c")
+		// bash.js line 600
+		assertMatch(t, false, "bdir/", "a?c")
+		// bash.js line 601
+		assertMatch(t, false, "Beware", "a?c")
+		// bash.js line 602
+		assertMatch(t, false, "c", "a?c")
+		// bash.js line 603
+		assertMatch(t, false, "ca", "a?c")
+		// bash.js line 604
+		assertMatch(t, false, "cb", "a?c")
+		// bash.js line 605
+		assertMatch(t, false, "d", "a?c")
+		// bash.js line 606
+		assertMatch(t, false, "dd", "a?c")
+		// bash.js line 607
+		assertMatch(t, false, "de", "a?c")
+		// bash.js line 608
+		assertMatch(t, false, "baz", "a?c")
+		// bash.js line 609
+		assertMatch(t, false, "bzz", "a?c")
+		// bash.js line 610
+		assertMatch(t, false, "BZZ", "a?c")
+		// bash.js line 611
+		assertMatch(t, false, "beware", "a?c")
+		// bash.js line 612
+		assertMatch(t, false, "BewAre", "a?c")
+
+		// bash.js line 614
+		assertMatch(t, true, "man/man1/bash.1", "*/man*/bash.*")
+
+		// bash.js line 616 — pattern [^a-c]*
+		assertMatch(t, true, "*", "[^a-c]*")
+		// bash.js line 617
+		assertMatch(t, true, "**", "[^a-c]*")
+		// bash.js line 618
+		assertMatch(t, false, "a", "[^a-c]*")
+		// bash.js line 619
+		assertMatch(t, false, "a/*", "[^a-c]*")
+		// bash.js line 620
+		assertMatch(t, false, "abc", "[^a-c]*")
+		// bash.js line 621
+		assertMatch(t, false, "abd", "[^a-c]*")
+		// bash.js line 622
+		assertMatch(t, false, "abe", "[^a-c]*")
+		// bash.js line 623
+		assertMatch(t, false, "b", "[^a-c]*")
+		// bash.js line 624
+		assertMatch(t, false, "bb", "[^a-c]*")
+		// bash.js line 625
+		assertMatch(t, false, "bcd", "[^a-c]*")
+		// bash.js line 626
+		assertMatch(t, false, "bdir/", "[^a-c]*")
+		// bash.js line 627
+		assertMatch(t, true, "Beware", "[^a-c]*")
+		// bash.js line 628
+		assertMatch(t, true, "Beware", "[^a-c]*", &Options{Bash: true})
+		// bash.js line 629
+		assertMatch(t, false, "c", "[^a-c]*")
+		// bash.js line 630
+		assertMatch(t, false, "ca", "[^a-c]*")
+		// bash.js line 631
+		assertMatch(t, false, "cb", "[^a-c]*")
+		// bash.js line 632
+		assertMatch(t, true, "d", "[^a-c]*")
+		// bash.js line 633
+		assertMatch(t, true, "dd", "[^a-c]*")
+		// bash.js line 634
+		assertMatch(t, true, "de", "[^a-c]*")
+		// bash.js line 635
+		assertMatch(t, false, "baz", "[^a-c]*")
+		// bash.js line 636
+		assertMatch(t, false, "bzz", "[^a-c]*")
+		// bash.js line 637
+		assertMatch(t, true, "BZZ", "[^a-c]*")
+		// bash.js line 638
+		assertMatch(t, false, "beware", "[^a-c]*")
+		// bash.js line 639
+		assertMatch(t, true, "BewAre", "[^a-c]*")
+	})
+
+	t.Run("should support basic wildmatch brackets features", func(t *testing.T) {
+		// bash.js line 643
+		assertMatch(t, false, "aab", "a[]-]b")
+		// bash.js line 644
+		assertMatch(t, false, "ten", "[ten]")
+		// bash.js line 645
+		assertMatch(t, true, "]", "]")
+		// bash.js line 646
+		assertMatch(t, true, "a-b", "a[]-]b")
+		// bash.js line 647
+		assertMatch(t, true, "a]b", "a[]-]b")
+		// bash.js line 648
+		assertMatch(t, true, "a]b", "a[]]b")
+		// bash.js line 649
+		assertMatch(t, true, "aab", "a[\\]a\\-]b")
+		// bash.js line 650
+		assertMatch(t, true, "ten", "t[a-g]n")
+		// bash.js line 651
+		assertMatch(t, true, "ton", "t[^a-g]n")
+	})
+
+	t.Run("should support extended slash-matching features", func(t *testing.T) {
+		// bash.js line 655
+		assertMatch(t, false, "foo/bar", "f[^eiu][^eiu][^eiu][^eiu][^eiu]r")
+		// bash.js line 656
+		assertMatch(t, true, "foo/bar", "foo[/]bar")
+		// bash.js line 657
+		assertMatch(t, true, "foo-bar", "f[^eiu][^eiu][^eiu][^eiu][^eiu]r")
+	})
+
+	t.Run("should match escaped characters", func(t *testing.T) {
+		// bash.js line 661-664 — skipping process.platform !== 'win32' guard
+		// On non-Windows (our Go tests run on POSIX):
+		// bash.js line 662
+		assertMatch(t, true, "\\*", "\\*")
+		// bash.js line 663 — input XXX/\ matches pattern [A-Z]+/\\\\
+		// JS: isMatch('XXX/\\', '[A-Z]+/\\\\')
+		// The input is XXX/\ and the pattern is [A-Z]+/\\
+		assertMatch(t, true, "XXX/\\", "[A-Z]+/\\\\")
+
+		// bash.js line 666
+		assertMatch(t, true, "[ab]", "\\[ab]")
+		// bash.js line 667
+		assertMatch(t, true, "[ab]", "[\\[:]ab]")
+	})
+
+	t.Run("should consolidate extra stars", func(t *testing.T) {
+		// bash.js line 671
+		assertMatch(t, false, "bbc", "a**c")
+		// bash.js line 672
+		assertMatch(t, true, "abc", "a**c")
+		// bash.js line 673
+		assertMatch(t, false, "bbd", "a**c")
+
+		// bash.js line 675
+		assertMatch(t, false, "bbc", "a***c")
+		// bash.js line 676
+		assertMatch(t, true, "abc", "a***c")
+		// bash.js line 677
+		assertMatch(t, false, "bbd", "a***c")
+
+		// bash.js line 679
+		assertMatch(t, false, "bbc", "a*****?c")
+		// bash.js line 680
+		assertMatch(t, true, "abc", "a*****?c")
+		// bash.js line 681
+		assertMatch(t, false, "bbc", "a*****?c")
+
+		// bash.js line 683
+		assertMatch(t, true, "bbc", "?*****??")
+		// bash.js line 684
+		assertMatch(t, true, "abc", "?*****??")
+
+		// bash.js line 686
+		assertMatch(t, true, "bbc", "*****??")
+		// bash.js line 687
+		assertMatch(t, true, "abc", "*****??")
+
+		// bash.js line 689
+		assertMatch(t, true, "bbc", "?*****?c")
+		// bash.js line 690
+		assertMatch(t, true, "abc", "?*****?c")
+
+		// bash.js line 692
+		assertMatch(t, true, "bbc", "?***?****c")
+		// bash.js line 693
+		assertMatch(t, true, "abc", "?***?****c")
+		// bash.js line 694
+		assertMatch(t, false, "bbd", "?***?****c")
+
+		// bash.js line 696
+		assertMatch(t, true, "bbc", "?***?****?")
+		// bash.js line 697
+		assertMatch(t, true, "abc", "?***?****?")
+
+		// bash.js line 699
+		assertMatch(t, true, "bbc", "?***?****")
+		// bash.js line 700
+		assertMatch(t, true, "abc", "?***?****")
+
+		// bash.js line 702
+		assertMatch(t, true, "bbc", "*******c")
+		// bash.js line 703
+		assertMatch(t, true, "abc", "*******c")
+
+		// bash.js line 705
+		assertMatch(t, true, "bbc", "*******?")
+		// bash.js line 706
+		assertMatch(t, true, "abc", "*******?")
+
+		// bash.js line 708
+		assertMatch(t, true, "abcdecdhjk", "a*cd**?**??k")
+		// bash.js line 709
+		assertMatch(t, true, "abcdecdhjk", "a**?**cd**?**??k")
+		// bash.js line 710
+		assertMatch(t, true, "abcdecdhjk", "a**?**cd**?**??k***")
+		// bash.js line 711
+		assertMatch(t, true, "abcdecdhjk", "a**?**cd**?**??***k")
+		// bash.js line 712
+		assertMatch(t, true, "abcdecdhjk", "a**?**cd**?**??***k**")
+		// bash.js line 713
+		assertMatch(t, true, "abcdecdhjk", "a****c**?**??*****")
+	})
+
+	t.Run("none of these should output anything", func(t *testing.T) {
+		// bash.js line 717
+		assertMatch(t, false, "abc", "??**********?****?")
+		// bash.js line 718
+		assertMatch(t, false, "abc", "??**********?****c")
+		// bash.js line 719
+		assertMatch(t, false, "abc", "?************c****?****")
+		// bash.js line 720
+		assertMatch(t, false, "abc", "*c*?**")
+		// bash.js line 721
+		assertMatch(t, false, "abc", "a*****c*?**")
+		// bash.js line 722
+		assertMatch(t, false, "abc", "a********???*******")
+		// bash.js line 723
+		assertMatch(t, false, "a", "[]")
+		// bash.js line 724
+		assertMatch(t, false, "[", "[abc")
+	})
+}
