@@ -8,7 +8,7 @@ package slugify
 //
 // Adaptations from TS → Go:
 //   - "throws on undefined" → skipped (Go is statically typed, no undefined)
-//   - slugify('string', '_') shorthand → Options{Replacement: String("_")}
+//   - slugify('string', '_') shorthand is supported via Slugify("string", "_")
 //   - delete require.cache / re-require → not possible in Go; Extend tests
 //     save and restore the charMap manually
 //   - decodeURIComponent('a%CC%8A...') → literal Go string with combining chars
@@ -59,6 +59,11 @@ func TestReplaceWhitespaces(t *testing.T) {
 	// test/slugify.js line 17
 	assertEqual(t, Slugify("foo bar baz", Options{Replacement: String("_")}), "foo_bar_baz",
 		"custom replacement via options")
+}
+
+func TestReplacementStringShorthand(t *testing.T) {
+	assertEqual(t, Slugify("foo bar baz", "_"), "foo_bar_baz",
+		"string second arg matches JS replacement shorthand")
 }
 
 // ---------------------------------------------------------------------------
@@ -594,6 +599,21 @@ func TestLocaleFrench(t *testing.T) {
 	}
 }
 
+func TestLocalePortuguese(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"foo & bar", "foo-e-bar"},
+		{"100%", "100porcento"},
+		{"∞", "infinito"},
+	}
+	for _, tt := range tests {
+		got := Slugify(tt.input, Options{Locale: String("pt")})
+		assertEqual(t, got, tt.want, "pt locale: "+tt.input)
+	}
+}
+
 func TestLocaleSpanish(t *testing.T) {
 	tests := []struct {
 		input string
@@ -674,6 +694,31 @@ func TestLocaleDanish(t *testing.T) {
 	}
 }
 
+func TestLocaleNorwegian(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Å Æ Ø", "AA-AE-OE"},
+		{"å æ ø", "aa-ae-oe"},
+		{"foo & bar", "foo-og-bar"},
+	}
+	for _, tt := range tests {
+		got := Slugify(tt.input, Options{Locale: String("nb")})
+		assertEqual(t, got, tt.want, "nb locale: "+tt.input)
+	}
+}
+
+func TestLocaleItalian(t *testing.T) {
+	got := Slugify("foo & bar", Options{Locale: String("it")})
+	assertEqual(t, got, "foo-e-bar", "it locale: foo & bar")
+}
+
+func TestLocaleDutch(t *testing.T) {
+	got := Slugify("foo & bar", Options{Locale: String("nl")})
+	assertEqual(t, got, "foo-en-bar", "nl locale: foo & bar")
+}
+
 func TestLocaleSwedish(t *testing.T) {
 	tests := []struct {
 		input string
@@ -700,6 +745,11 @@ func TestEmptyString(t *testing.T) {
 
 func TestOnlySpaces(t *testing.T) {
 	assertEqual(t, Slugify("   "), "", "only spaces")
+}
+
+func TestUnicodeWhitespace(t *testing.T) {
+	assertEqual(t, Slugify("foo\u00a0bar"), "foo-bar",
+		"unicode whitespace collapses like JS \\s")
 }
 
 func TestMultipleConsecutiveSpaces(t *testing.T) {
@@ -738,33 +788,11 @@ func TestStrictWithLower(t *testing.T) {
 // test/slugify.js line 263: "normalize"
 // TS: decodeURIComponent('a%CC%8Aa%CC%88o%CC%88-123') → åäö-123
 // This tests NFC normalization of combining characters.
-// NOTE: Go port does not include NFC normalization (would require
-// golang.org/x/text). This test documents the known difference.
-// With NFC normalization, the combining forms would be composed into
-// precomposed characters that the charMap can handle.
+// The Go port applies NFC normalization just like the upstream JS code.
 // ---------------------------------------------------------------------------
 
 func TestNormalizeCombiningChars(t *testing.T) {
-	// The string "a\u030Aa\u0308o\u0308-123" uses combining characters:
-	//   a + combining ring above = å
-	//   a + combining diaeresis = ä
-	//   o + combining diaeresis = ö
-	// Without NFC normalization, these won't match the charMap (which has
-	// precomposed forms). This test documents the current behavior.
 	input := "a\u030Aa\u0308o\u0308-123"
-
-	// With NFC normalization (TS behavior), this would produce "aao-123"
-	// because å→a, ä→a, ö→o via charMap.
-	// Without NFC (current Go behavior), the combining marks are stripped
-	// by the default remove regex, leaving the base characters.
 	got := Slugify(input, Options{Remove: regexp.MustCompile(`[*+~.()'"!:@]`)})
-
-	// The base letters a, a, o remain; combining marks are stripped by
-	// the default remove regex; the hyphen and 123 pass through.
-	// This produces "aao-123" which happens to match the TS output,
-	// though for a different reason (regex stripping vs NFC + charMap).
-	t.Logf("normalize test: input=%q got=%q", input, got)
-	// We don't assert a specific value here since the behavior depends on
-	// whether combining marks are stripped by regex or normalized by NFC.
-	// Both paths produce reasonable output.
+	assertEqual(t, got, "aao-123", "combining chars normalize to NFC before lookup")
 }

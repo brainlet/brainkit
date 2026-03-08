@@ -1,6 +1,6 @@
 # slugify
 
-Go port of [slugify](https://github.com/sindresorhus/slugify).
+Go port of [simov/slugify](https://github.com/simov/slugify).
 
 ## Usage
 
@@ -8,19 +8,19 @@ Go port of [slugify](https://github.com/sindresorhus/slugify).
 import "github.com/brainlet/brainkit/slugify"
 
 // Basic usage
-slugify.Slugify("Hello World") // "hello-world"
+slugify.Slugify("some string") // "some-string"
 
-// Custom replacement character
-slugify.Slugify("Hello World", slugify.String("_")) // "hello_world"
+// JS-compatible replacement shorthand
+slugify.Slugify("some string", "_") // "some_string"
 
 // Lowercase
-slugify.Slugify("Hello World", slugify.Bool(true)) // "hello-world"
+slugify.Slugify("Foo bAr baZ", slugify.Options{Lower: slugify.Bool(true)}) // "foo-bar-baz"
 
 // Strict mode (alphanumeric only)
-slugify.Slugify("foo_bar!baz", &slugify.Options{Strict: slugify.Bool(true)}) // "foobarbaz"
+slugify.Slugify("foo_bar. -@-baz!", slugify.Options{Strict: slugify.Bool(true)}) // "foobar-baz"
 
 // Locale-specific transliteration
-slugify.Slugify("Ä Ö Ü", slugify.String("de")) // "AE-OE-UE"
+slugify.Slugify("Ä Ö Ü", slugify.Options{Locale: slugify.String("de")}) // "AE-OE-UE"
 
 // Extend with custom characters
 slugify.Extend(map[string]string{"☢": "radioactive"})
@@ -34,13 +34,19 @@ slugify.Slugify("unicode ♥ is ☢") // "unicode-love-is-radioactive"
 | Replacement | `*string` | `"-"` | Character to replace spaces |
 | Lower | `*bool` | `false` | Convert to lowercase |
 | Strict | `*bool` | `false` | Strip special characters |
-| Locale | `*string` | `nil` | Language code (de, fr, es, etc.) |
+| Locale | `*string` | `nil` | Language code (`de`, `fr`, `es`, etc.) |
 | Trim | `*bool` | `true` | Trim leading/trailing separators |
-| Remove | `*regexp.Regexp` | nil | Custom regex to remove |
+| Remove | `*regexp.Regexp` | default JS regex | Custom regex to remove |
+
+`Slugify` accepts either:
+
+- no second argument
+- a `string` replacement shorthand, matching the JS API
+- `slugify.Options` or `*slugify.Options`
 
 ## TS Source
 
-`/Users/davidroman/Documents/code/clones/slugify/`
+[simov/slugify](https://github.com/simov/slugify)
 
 ## Tests
 
@@ -51,21 +57,8 @@ go test -race ./slugify/...
 
 ## TS → Go Patterns
 
-### Optional Parameters → Pointer Fields
-
-TS: `options.replacement?: string`
-Go: `Replacement *string` — use `slugify.String("custom")` helper
-
-### undefined → nil
-
-TS uses `undefined` for omitted options. Go uses nil pointer values.
-
-### Extend → Global Mutex
-
-TS: `slugify.extend({...})` — modifies global charMap
-Go: `Extend(map[string]string)` — thread-safe with sync.RWMutex
-
-### Regex Options
-
-TS: `{remove: /regex/g}` — native RegExp
-Go: `Remove *regexp.Regexp` — use `regexp.MustCompile()` or pass compiled regex
+- Optional parameters become pointer fields in `Options`.
+- `undefined` becomes `nil`.
+- `extend()` maps to `Extend(map[string]string)`.
+- JS `string.normalize()` is mirrored with Go NFC normalization.
+- The built-in whitespace/default-remove behavior follows the JS implementation, including Unicode whitespace handling.

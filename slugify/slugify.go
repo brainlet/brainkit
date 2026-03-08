@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // ---------------------------------------------------------------------------
@@ -38,29 +41,104 @@ type Options struct {
 	Trim        *bool          // trim leading and trailing replacement chars, default: true
 }
 
-// ---------------------------------------------------------------------------
-// Default remove regex
-// TS source: line 42 — /[^\w\s$*_+~.()'"!\-:@]+/g
-// ---------------------------------------------------------------------------
-
-var defaultRemoveRegex = regexp.MustCompile(`[^\w\s$*_+~.()'\"!:@-]+`)
-
-// Strict mode regex: keep only A-Za-z0-9 and whitespace.
-// TS source: line 46 — /[^A-Za-z0-9\s]/g
-var strictRegex = regexp.MustCompile(`[^A-Za-z0-9\s]`)
-
-// Whitespace sequence regex for collapsing spaces into replacement.
-// TS source: line 55 — /\s+/g
-var whitespaceRegex = regexp.MustCompile(`\s+`)
-
-// ---------------------------------------------------------------------------
-// Global state
-// TS source: line 15 (charMap), line 16 (locales)
-// ---------------------------------------------------------------------------
-
 var (
 	mu sync.RWMutex
 )
+
+func defaultAllowedRune(r rune) bool {
+	if unicode.IsSpace(r) || isASCIIWord(r) {
+		return true
+	}
+
+	switch r {
+	case '$', '*', '_', '+', '~', '.', '(', ')', '\'', '"', '!', '-', ':', '@':
+		return true
+	default:
+		return false
+	}
+}
+
+func isASCIIWord(r rune) bool {
+	return isASCIIAlnum(r) || r == '_'
+}
+
+func isASCIIAlnum(r rune) bool {
+	return ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9')
+}
+
+func applyDefaultRemove(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for _, r := range s {
+		if defaultAllowedRune(r) {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+func applyStrictRemove(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for _, r := range s {
+		if unicode.IsSpace(r) || isASCIIAlnum(r) {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+func replaceWhitespaceRuns(s, replacement string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	inWhitespace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			inWhitespace = true
+			continue
+		}
+
+		if inWhitespace {
+			b.WriteString(replacement)
+			inWhitespace = false
+		}
+
+		b.WriteRune(r)
+	}
+
+	if inWhitespace {
+		b.WriteString(replacement)
+	}
+
+	return b.String()
+}
+
+func parseOptions(args []any) Options {
+	if len(args) == 0 {
+		return Options{}
+	}
+
+	switch arg := args[0].(type) {
+	case nil:
+		return Options{}
+	case string:
+		return Options{Replacement: String(arg)}
+	case Options:
+		return arg
+	case *Options:
+		if arg == nil {
+			return Options{}
+		}
+		return *arg
+	default:
+		return Options{}
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Slugify
@@ -73,14 +151,18 @@ var (
 // using a built-in character map, applies locale-specific overrides when
 // specified, and normalizes whitespace into a replacement character.
 //
-//	slugify.Slugify("foo bar")                                    // "foo-bar"
-//	slugify.Slugify("foo bar", slugify.Options{Lower: Bool(true)}) // "foo-bar"
-//	slugify.Slugify("Ä Ö Ü", slugify.Options{Locale: String("de")}) // "AE-OE-UE"
-func Slugify(s string, opts ...Options) string {
-	var opt Options
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
+// The optional second argument mirrors the JS API:
+//
+//   - string: shorthand for the replacement string
+//
+//   - Options / *Options: full option set
+//
+//     slugify.Slugify("foo bar")                                      // "foo-bar"
+//     slugify.Slugify("foo bar", "_")                                 // "foo_bar"
+//     slugify.Slugify("Foo bAr baZ", slugify.Options{Lower: Bool(true)}) // "foo-bar-baz"
+//     slugify.Slugify("Ä Ö Ü", slugify.Options{Locale: String("de")})    // "AE-OE-UE"
+func Slugify(s string, args ...any) string {
+	opt := parseOptions(args)
 
 	// Resolve defaults.
 	// TS source: line 29 — replacement defaults to "-"
@@ -95,29 +177,19 @@ func Slugify(s string, opts ...Options) string {
 		trim = *opt.Trim
 	}
 
-	// TS source: line 27 — locale lookup
+	// TS source: line 33 — string.normalize() defaults to NFC.
+	s = norm.NFC.String(s)
+
+	// TS source: lines 27 and 33-43 — locale lookup plus per-character reduction.
+	var b strings.Builder
+	b.Grow(len(s))
+
 	mu.RLock()
 	localMap := map[string]string(nil)
 	if opt.Locale != nil {
 		localMap = localeMap[*opt.Locale]
 	}
 	currentCharMap := charMap
-	mu.RUnlock()
-
-	// Determine the remove regex.
-	// TS source: line 42 — options.remove || default regex
-	removeRe := defaultRemoveRegex
-	if opt.Remove != nil {
-		removeRe = opt.Remove
-	}
-
-	// TS source: lines 33-43
-	// Build the slug by iterating over each rune.
-	// Note: TS does string.normalize() (NFC) first. Go strings are already
-	// UTF-8 encoded; full NFC normalization would require golang.org/x/text
-	// which is outside stdlib. The charMap handles the common precomposed forms.
-	var b strings.Builder
-	b.Grow(len(s))
 
 	for _, r := range s {
 		ch := string(r)
@@ -147,17 +219,22 @@ func Slugify(s string, opts ...Options) string {
 			appendStr = " "
 		}
 
-		// TS source: line 42 — apply remove regex to the mapped string
-		appendStr = removeRe.ReplaceAllString(appendStr, "")
+		// TS source: line 42 — apply options.remove || default regex.
+		if opt.Remove != nil {
+			appendStr = opt.Remove.ReplaceAllString(appendStr, "")
+		} else {
+			appendStr = applyDefaultRemove(appendStr)
+		}
 
 		b.WriteString(appendStr)
 	}
+	mu.RUnlock()
 
 	slug := b.String()
 
 	// TS source: lines 45-47 — strict mode strips non-alphanumeric
 	if opt.Strict != nil && *opt.Strict {
-		slug = strictRegex.ReplaceAllString(slug, "")
+		slug = applyStrictRemove(slug)
 	}
 
 	// TS source: lines 49-51 — trim whitespace
@@ -166,7 +243,7 @@ func Slugify(s string, opts ...Options) string {
 	}
 
 	// TS source: line 55 — replace whitespace sequences with replacement
-	slug = whitespaceRegex.ReplaceAllString(slug, replacement)
+	slug = replaceWhitespaceRuns(slug, replacement)
 
 	// TS source: lines 57-59 — lowercase
 	if opt.Lower != nil && *opt.Lower {
@@ -194,19 +271,18 @@ func Extend(customMap map[string]string) {
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // Character map
 // TS source: line 15 (charMap) — from config/charmap.json
 // ---------------------------------------------------------------------------
 
 var charMap = map[string]string{
-	"$": "dollar",
-	"%": "percent",
-	"&": "and",
-	"<": "less",
-	">": "greater",
-	"|": "or",
+	"$":      "dollar",
+	"%":      "percent",
+	"&":      "and",
+	"<":      "less",
+	">":      "greater",
+	"|":      "or",
 	"\u00a2": "cent",
 	"\u00a3": "pound",
 	"\u00a4": "currency",
@@ -842,7 +918,6 @@ var charMap = map[string]string{
 	"\ufef7": "laa",
 	"\ufef9": "lai",
 	"\ufefb": "la",
-
 }
 
 // ---------------------------------------------------------------------------
