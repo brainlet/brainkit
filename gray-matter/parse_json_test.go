@@ -1,12 +1,13 @@
 package graymatter
 
 import (
+	"path/filepath"
 	"testing"
 )
 
 func TestParseJSON(t *testing.T) {
 	t.Run("should parse JSON front matter", func(t *testing.T) {
-		actual, err := Read(fixturePath("lang-json.md"), Options{Language: "json"})
+		actual, err := Read(filepath.Join("testdata", "fixtures", "lang-json.md"), Options{Language: "json"})
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}
@@ -17,7 +18,7 @@ func TestParseJSON(t *testing.T) {
 	})
 
 	t.Run("should auto-detect JSON as the language", func(t *testing.T) {
-		actual, err := Read(fixturePath("autodetect-json.md"))
+		actual, err := Read(filepath.Join("testdata", "fixtures", "autodetect-json.md"))
 		if err != nil {
 			t.Fatalf("Read returned error: %v", err)
 		}

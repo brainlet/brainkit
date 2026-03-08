@@ -95,7 +95,7 @@ func expandRange(args []string, opts *Options) string {
 // syntaxError creates a syntax error message.
 // JS source: parse.js lines 44-46
 func syntaxError(typ, char string) string {
-	return fmt.Sprintf(`Missing %s: "%s" - use "\\\\%s" to match literal characters`, typ, char, char)
+	return fmt.Sprintf(`Missing %s: "%s" - use "\\%s" to match literal characters`, typ, char, char)
 }
 
 // Parse parses a glob pattern using picomatch's public API semantics.
@@ -695,16 +695,11 @@ func parseInternal(input string, opts *Options) *ParseState {
 			}
 
 			prev.Value += value
-			if prev.Posix && strings.Contains(prev.Value[1:], "[:") {
-				prev.Value = prev.Value[:1] + strings.ReplaceAll(prev.Value[1:], "[", `\[`)
-			}
 			appendTok(&Token{Value: value})
 
 			// JS source: parse.js lines 525-543
-			if opts.LiteralBrackets == nil || !*opts.LiteralBrackets {
-				if hasRegexChars(prevValue) {
-					continue
-				}
+			if (opts.LiteralBrackets != nil && !*opts.LiteralBrackets) || hasRegexChars(prevValue) {
+				continue
 			}
 
 			escaped := escapeRegex(prev.Value)

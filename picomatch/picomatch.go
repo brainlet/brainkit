@@ -3,8 +3,10 @@ package picomatch
 // Ported from: picomatch/lib/picomatch.js + picomatch/index.js
 
 import (
+	"reflect"
 	"runtime"
 	"strings"
+	"unsafe"
 
 	"github.com/dlclark/regexp2"
 )
@@ -91,6 +93,16 @@ type MatcherWithResult func(input string, returnObject bool) *MatchResult
 // This is the main entry point — equivalent to picomatch() in JS.
 // JS source: picomatch.js lines 31-97 + index.js lines 6-14
 func Compile(glob interface{}, opts *Options) Matcher {
+	matcher := CompileWithResult(glob, opts)
+	return func(input string) bool {
+		result := matcher(input, false)
+		return result != nil && result.IsMatch
+	}
+}
+
+// CompileWithResult creates a matcher that can return a MatchResult object.
+// This is the Go equivalent of calling the JS matcher with returnObject=true.
+func CompileWithResult(glob interface{}, opts *Options) MatcherWithResult {
 	if opts == nil {
 		opts = &Options{}
 	}
@@ -104,25 +116,34 @@ func Compile(glob interface{}, opts *Options) Matcher {
 	// Handle array of globs
 	// JS source: picomatch.js lines 32-42
 	if globs, ok := glob.([]string); ok {
-		fns := make([]Matcher, len(globs))
+		fns := make([]MatcherWithResult, len(globs))
 		for i, g := range globs {
-			fns[i] = Compile(g, opts)
+			fns[i] = CompileWithResult(g, opts)
 		}
-		return func(str string) bool {
+		return func(str string, returnObject bool) *MatchResult {
 			for _, fn := range fns {
-				if fn(str) {
-					return true
+				result := fn(str, true)
+				if result != nil && result.IsMatch {
+					return result
 				}
 			}
-			return false
+			if returnObject {
+				return &MatchResult{Input: str, Output: str, IsMatch: false}
+			}
+			return nil
 		}
+	}
+
+	if state, ok := glob.(*ParseState); ok {
+		re := CompileRe(state, opts, false, true)
+		posix := opts.Windows
+		return newMatcherWithResult(glob, state, re.re, posix, opts)
 	}
 
 	pattern, ok := glob.(string)
 	if !ok {
 		panic("Expected pattern to be a non-empty string")
 	}
-
 	if pattern == "" {
 		panic("Expected pattern to be a non-empty string")
 	}
@@ -134,8 +155,10 @@ func Compile(glob interface{}, opts *Options) Matcher {
 
 	posix := opts.Windows
 
-	// Build ignore matcher
-	// JS source: picomatch.js lines 59-63
+	return newMatcherWithResult(pattern, state, re.re, posix, opts)
+}
+
+func newMatcherWithResult(glob interface{}, state *ParseState, regex *regexp2.Regexp, posix bool, opts *Options) MatcherWithResult {
 	var isIgnored Matcher
 	if opts.Ignore != nil {
 		ignoreOpts := *opts
@@ -145,14 +168,14 @@ func Compile(glob interface{}, opts *Options) Matcher {
 		isIgnored = Compile(opts.Ignore, &ignoreOpts)
 	}
 
-	// Return matcher function
-	// JS source: picomatch.js lines 65-96
-	return func(input string) bool {
-		testResult := Test(input, re.re, opts, pattern, posix)
+	globPattern := globToString(glob)
+
+	return func(input string, returnObject bool) *MatchResult {
+		testResult := Test(input, regex, opts, globPattern, posix)
 		result := &MatchResult{
-			Glob:    pattern,
+			Glob:    globPattern,
 			State:   state,
-			Regex:   re.re,
+			Regex:   regex,
 			Posix:   posix,
 			Input:   input,
 			Output:  testResult.Output,
@@ -165,21 +188,28 @@ func Compile(glob interface{}, opts *Options) Matcher {
 		}
 
 		if !result.IsMatch {
-			return false
+			if returnObject {
+				return result
+			}
+			return nil
 		}
 
 		if isIgnored != nil && isIgnored(input) {
 			if opts.OnIgnore != nil {
 				opts.OnIgnore(result)
 			}
-			return false
+			result.IsMatch = false
+			if returnObject {
+				return result
+			}
+			return nil
 		}
 
 		if opts.OnMatch != nil {
 			opts.OnMatch(result)
 		}
 
-		return true
+		return result
 	}
 }
 
@@ -239,9 +269,7 @@ func Test(input string, regex *regexp2.Regexp, options *Options, glob string, po
 			}
 		}
 		m, _ := regex.FindStringMatch(output)
-		if m != nil {
-			return TestResult{IsMatch: true, Match: m, Output: output}
-		}
+		return TestResult{IsMatch: m != nil, Match: m, Output: output}
 	}
 
 	return TestResult{IsMatch: matched, Match: nil, Output: output}
@@ -249,8 +277,10 @@ func Test(input string, regex *regexp2.Regexp, options *Options, glob string, po
 
 // MatchBase matches the basename of a filepath against a regex.
 // JS source: picomatch.js lines 160-163
-func MatchBase(input string, regex *regexp2.Regexp, posix bool) bool {
-	base := basename(input, !posix)
+func MatchBase(input string, regex *regexp2.Regexp, _ bool) bool {
+	// Upstream matchBase() calls utils.basename(input) without forwarding
+	// the windows option, so matching is always split on '/' here.
+	base := basename(input, false)
 	ok, _ := regex.MatchString(base)
 	return ok
 }
@@ -320,6 +350,39 @@ func CompileRe(state *ParseState, options *Options, returnOutput bool, returnSta
 	return result
 }
 
+// CompileReOutput returns the raw parser output string.
+// This preserves the upstream compileRe(..., returnOutput=true) capability
+// without changing the static return type of CompileRe in Go.
+func CompileReOutput(state *ParseState, options *Options) string {
+	return state.Output
+}
+
+// MakeReOutput mirrors upstream makeRe(..., returnOutput=true).
+// When makeRe takes a fastpath, the returned string may already be wrapped.
+func MakeReOutput(input string, options *Options) string {
+	if input == "" {
+		panic("Expected a non-empty string")
+	}
+
+	opts := options
+	if opts == nil {
+		opts = &Options{}
+	}
+
+	parsed := &ParseState{Negated: false, Fastpaths: true}
+	if opts.Fastpaths == nil || *opts.Fastpaths {
+		if len(input) > 0 && (input[0] == '.' || input[0] == '*') {
+			parsed.Output = Fastpaths(input, opts)
+		}
+	}
+
+	if parsed.Output == "" {
+		parsed = parseInternal(input, opts)
+	}
+
+	return CompileReOutput(parsed, opts)
+}
+
 // ToRegex creates a regexp2.Regexp from a source string.
 // JS source: picomatch.js lines 320-328
 func ToRegex(source string, options *Options) *regexp2.Regexp {
@@ -328,6 +391,7 @@ func ToRegex(source string, options *Options) *regexp2.Regexp {
 		opts = &Options{}
 	}
 
+	publicSource := source
 	source = normalizeJSRegexSource(source)
 
 	flags := regexp2.None
@@ -351,10 +415,17 @@ func ToRegex(source string, options *Options) *regexp2.Regexp {
 		re, _ = regexp2.Compile(`$^`, regexp2.None)
 	}
 
+	if publicSource != source {
+		setRegexpSource(re, publicSource)
+	}
+
 	return re
 }
 
 func normalizeJSRegexSource(source string) string {
+	// Keep parser output/source fidelity separate from regexp2 compatibility:
+	// any transformation here should only adapt valid JS regex syntax that
+	// regexp2 cannot compile as-is.
 	source = normalizeJSCharClasses(source)
 
 	var b strings.Builder
@@ -446,7 +517,7 @@ func isASCIIAlpha(ch byte) bool {
 
 func isSupportedJSEscapeStart(ch byte) bool {
 	switch ch {
-	case 'b', 'B', 'c', 'd', 'D', 'f', 'n', 'p', 'P', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x', 'k':
+	case 'b', 'B', 'd', 'D', 'f', 'n', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x':
 		return true
 	default:
 		return false
@@ -462,4 +533,19 @@ func CompilePosix(glob interface{}, opts *Options) Matcher {
 	}
 	opts.Posix = true
 	return Compile(glob, opts)
+}
+
+func globToString(glob interface{}) string {
+	if s, ok := glob.(string); ok {
+		return s
+	}
+	if state, ok := glob.(*ParseState); ok && state != nil {
+		return state.Input
+	}
+	return ""
+}
+
+func setRegexpSource(re *regexp2.Regexp, source string) {
+	field := reflect.ValueOf(re).Elem().FieldByName("pattern")
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().SetString(source)
 }

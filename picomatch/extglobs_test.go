@@ -1256,6 +1256,8 @@ func TestExtglobs(t *testing.T) {
 
 	t.Run("should match escaped parens", func(t *testing.T) {
 		// extglobs.js line 713-715: platform-specific test for literal backslash in filename
+		// Keep Go string encodings runtime-equivalent to the upstream JS literal bytes.
+		// Raw strings are only valid here when they preserve the exact same runtime value.
 		if runtime.GOOS != "windows" {
 			// extglobs.js line 714
 			assertMatch(t, true, `a\(b`, "a\\\\\\"+"(b")

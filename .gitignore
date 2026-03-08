@@ -1,2 +1,5 @@
 .DS_Store
 .s*
+picomatch/testdata/upstream_audit_cases.js
+picomatch/audit_upstream_test.go
+

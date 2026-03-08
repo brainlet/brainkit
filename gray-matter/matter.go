@@ -58,16 +58,28 @@ func Parse(input string, opts ...Options) (File, error) {
 		file.Language = "yaml"
 	}
 
+	// Matter starts after the opening delimiter line (firstEOL + 1)
+	// But TS includes the newline after the opening delimiter in matter
 	matterStart := firstEOL + 1
 	closeStart, contentStart, found := findClosingDelimiterLine(input, close, matterStart)
+
 	if !found {
-		return file, nil
+		// No closing delimiter found - treat rest of string as matter
+		// Matter includes the newline after opening delimiter
+		file.Matter = "\n" + input[matterStart:]
+	} else {
+		// Matter includes the newline after opening delimiter
+		matterWithNewline := input[matterStart:closeStart]
+		// TS keeps one leading newline but strips trailing newline
+		// First add leading newline if not present (for consistency)
+		if !strings.HasPrefix(matterWithNewline, "\n") {
+			matterWithNewline = "\n" + matterWithNewline
+		}
+		// Strip only ONE trailing newline (if present) - TS behavior
+		file.Matter = strings.TrimSuffix(matterWithNewline, "\n")
 	}
 
-	file.Matter = input[matterStart:closeStart]
-
 	// Check if matter is empty (whitespace/comments only)
-	// TS does: file.matter.replace(/^\s*#[^\n]+/gm, '').trim()
 	isEmpty, emptyStr := isEmptyMatter(file.Matter, input)
 	if isEmpty {
 		file.IsEmpty = true
@@ -81,17 +93,23 @@ func Parse(input string, opts ...Options) (File, error) {
 		file.Data = parsed
 	}
 
-	// Set content - strip leading newline from content
-	if contentStart <= len(input) {
+	// Set content - TS preserves one leading newline when there are multiple
+	if found && contentStart <= len(input) {
 		content := input[contentStart:]
-		// Strip leading newlines
-		for len(content) > 0 && content[0] == '\n' {
+		// TS preserves ONE leading newline when there are multiple newlines
+		// e.g., "\n\ncontent" becomes "\ncontent"
+		if len(content) >= 2 && content[0] == '\n' && content[1] == '\n' {
+			// Multiple leading newlines - strip to just one
 			content = content[1:]
 		}
-		for len(content) > 0 && content[0] == '\r' {
+		// Also handle \r\n
+		if len(content) >= 2 && content[0] == '\r' && content[1] == '\r' {
 			content = content[1:]
 		}
 		file.Content = content
+	} else if !found {
+		// No closing delimiter - content is empty
+		file.Content = ""
 	}
 
 	// Extract excerpt
@@ -101,9 +119,7 @@ func Parse(input string, opts ...Options) (File, error) {
 }
 
 // isEmptyMatter checks if the matter is empty (whitespace/comments only)
-// Returns (isEmpty, emptyString) where emptyString is the original input if empty
 func isEmptyMatter(matter, input string) (bool, string) {
-	// Remove comment lines and check if anything remains
 	re := regexp.MustCompile(`(?m)^\s*#[^\n]*\n?`)
 	cleaned := re.ReplaceAllString(matter, "")
 	cleaned = strings.TrimSpace(cleaned)
@@ -116,24 +132,29 @@ func isEmptyMatter(matter, input string) (bool, string) {
 
 // excerptFile extracts an excerpt from file.Content based on options
 func excerptFile(file *File, opts Options) {
-	// Check if excerpt is disabled
+	// If explicitly disabled, don't extract
 	if opts.Excerpt == false {
+		file.Excerpt = ""
 		return
 	}
 
-	// Get separator - check data first, then options
+	// Determine separator - default is the front-matter delimiter "---"
 	sep := opts.ExcerptSeparator
 	if sep == "" {
-		sep = "\n"
+		// No custom separator - use default
+		if opts.Excerpt == true {
+			// Default separator is the front-matter delimiter "---"
+			sep = "---"
+		} else {
+			file.Excerpt = ""
+			return
+		}
 	}
 
-	if sep == "" {
-		return
-	}
-
-	// Find the separator in content and extract excerpt
+	// Find the separator in content and extract excerpt (but NOT including the separator)
 	idx := strings.Index(file.Content, sep)
 	if idx != -1 {
+		// Excerpt is content BEFORE the separator (matching TS)
 		file.Excerpt = file.Content[:idx]
 	}
 }

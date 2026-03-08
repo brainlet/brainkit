@@ -10,7 +10,7 @@ const MaxLength = 1024 * 64
 // JS source: constants.js lines 10-25
 
 const (
-	winSlash   = `\\\\/`
+	winSlash   = `\\/`
 	winNoSlash = `[^` + winSlash + `]`
 )
 
@@ -137,7 +137,7 @@ var POSIX_REGEX_SOURCE = map[string]string{
 	"graph":  `\x21-\x7E`,
 	"lower":  "a-z",
 	"print":  `\x20-\x7E `,
-	"punct":  "\\-!\"#$%&'()\\*+,./:;<=>?@\\[\\]\\\\^_`{|}~",
+	"punct":  "\\-!\"#$%&'()\\*+,./:;<=>?@[\\]^_`{|}~",
 	"space":  ` \t\r\n\v\f`,
 	"upper":  "A-Z",
 	"word":   "A-Za-z0-9_",

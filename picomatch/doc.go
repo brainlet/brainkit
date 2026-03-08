@@ -40,6 +40,13 @@
 //	matcher("foo.js")    // true
 //	matcher("foo.ts")    // false
 //
+//	resultMatcher := picomatch.CompileWithResult("*.js", nil)
+//	result := resultMatcher("foo.js", true)
+//	_ = result.IsMatch
+//
 //	re := picomatch.MakeRe("*.js", nil)
 //	ok, _ := re.MatchString("foo.js")  // true
+//
+//	output := picomatch.MakeReOutput("*.js", nil) // mirrors makeRe(..., true)
+//	_ = output
 package picomatch
