@@ -6,12 +6,11 @@
 // Key differences from TS:
 //   - Go generics [K comparable, V any] replace TS generics <K, V, FC>
 //   - sync.Mutex provides thread safety (TS is single-threaded)
-//   - fetch/memo/forceFetch methods are omitted (JS async/Promise patterns)
-//   - BackgroundFetch type is omitted (JS Promise pattern)
-//   - AbortController integration is omitted (no Go equivalent needed)
+//   - Fetch cancellation uses context.Context instead of AbortController
 //   - Iterators use callbacks or return slices instead of JS generators
 //   - time.Now() replaces performance.now()
 //   - (V, bool) return pattern replaces V | undefined
+//   - Fetch() returns (V, bool, error) to model resolved-undefined vs rejection
 //   - Dispose callbacks are called with the lock held; DisposeAfter is called
 //     after the lock is released. Neither callback should call cache methods.
 //
@@ -24,6 +23,8 @@
 //   - Status tracking for observability
 //   - AllowStale, NoDisposeOnSet, NoUpdateTTL, NoDeleteOnStaleGet
 //   - UpdateAgeOnGet, UpdateAgeOnHas
+//   - Fetch, ForceFetch, Memo, FetchMethod, MemoMethod
+//   - AllowStaleOnFetchRejection, AllowStaleOnFetchAbort, IgnoreFetchAbort
 //   - Dump/Load for serialization
 //   - PurgeStale, Info, GetRemainingTTL
 //   - Peek (get without LRU update)

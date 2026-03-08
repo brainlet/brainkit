@@ -61,13 +61,69 @@ func TestPopLRUOrder(t *testing.T) {
 	}
 }
 
-func TestPopWithBackgroundFetchesSkipped(t *testing.T) {
-	// TS source: test/pop.ts lines 16-52 — t.test('pop with background fetches')
-	// SKIP: This test relies on fetchMethod (async background fetches with abort signals
-	// and promise rejection), which is a JS-specific pattern not ported to Go.
-	// The fetchMethod concept (returning Promises for lazy-loaded values) has no
-	// direct equivalent in the Go port.
-	t.Skip("fetchMethod not ported to Go — JS-only async pattern with abort signals and promise rejection")
+func TestPopWithBackgroundFetches(t *testing.T) {
+	clock := newTestClock(1)
+	started := make(chan int, 4)
+
+	fetcher := func(key int, stale *int, opts FetcherOptions[int, int]) (int, bool, error) {
+		started <- key
+		<-opts.Signal.Done()
+		return 0, false, nil
+	}
+
+	f := New[int, int](Options[int, int]{
+		Max:         5,
+		TTL:         10,
+		NowFn:       clock.nowFn,
+		FetchMethod: fetcher,
+	})
+
+	f.Set(0, 0, SetOptions[int, int]{TTL: Int64(0)})
+	pf := startAsyncFetch(f, 1)
+	<-started
+	f.Set(2, 2, SetOptions[int, int]{TTL: Int64(0)})
+
+	v, ok := f.Pop()
+	assertTrue(t, ok, "first pop should succeed")
+	assertEqual(t, v, 0, "first pop should return 0")
+	assertEqual(t, f.Size(), 2, "size after first pop")
+
+	v, ok = f.Pop()
+	assertTrue(t, ok, "second pop should succeed")
+	assertEqual(t, v, 2, "second pop should return 2 after skipping inflight fetch")
+	assertEqual(t, f.Size(), 0, "size after second pop should be 0")
+
+	out := awaitFetchResult(t, pf)
+	if out.err == nil {
+		t.Fatal("expected aborted fetch to return an error after pop")
+	}
+
+	f.Set(0, 0, SetOptions[int, int]{TTL: Int64(0)})
+	f.Set(1, 111)
+	clock.advance(20)
+	pf = startAsyncFetch(f, 1)
+	<-started
+	f.Set(2, 2, SetOptions[int, int]{TTL: Int64(0)})
+
+	v, ok = f.Pop()
+	assertTrue(t, ok, "third pop should succeed")
+	assertEqual(t, v, 0, "third pop should return 0")
+	assertEqual(t, f.Size(), 2, "size after third pop")
+
+	v, ok = f.Pop()
+	assertTrue(t, ok, "fourth pop should succeed")
+	assertEqual(t, v, 111, "fourth pop should return stale value from inflight fetch")
+	assertEqual(t, f.Size(), 1, "size after fourth pop")
+
+	v, ok = f.Pop()
+	assertTrue(t, ok, "fifth pop should succeed")
+	assertEqual(t, v, 2, "fifth pop should return 2")
+	assertEqual(t, f.Size(), 0, "size after fifth pop")
+
+	out = awaitFetchResult(t, pf)
+	if out.err == nil {
+		t.Fatal("expected stale inflight fetch to be aborted by pop")
+	}
 }
 
 func TestPopDisposeAndDisposeAfter(t *testing.T) {

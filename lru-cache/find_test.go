@@ -3,9 +3,9 @@ package lrucache
 // Tests ported from node-lru-cache test/find.ts
 // TS source: https://github.com/isaacs/node-lru-cache/blob/main/test/find.ts
 //
-// The original test file uses fetchMethod and Promises extensively.
-// Only the synchronous Find() parts are ported here; all async fetch
-// parts are skipped since fetchMethod is a JS-only pattern.
+// The upstream test file mixes synchronous Find() assertions with fetch-driven
+// refresh scenarios. This file keeps the focused Find() assertions, while the
+// fetch-specific behavior now lives in fetch_test.go.
 //
 // Test helpers (assertEqual, assertTrue, assertFalse, etc.)
 // are defined in helpers_test.go — shared across all test files.
@@ -28,8 +28,8 @@ type valueHolder struct {
 func TestFindSync(t *testing.T) {
 	// TS source: test/find.ts lines 3-18 (top-level setup)
 	// The TS version creates a cache with max=5, ttl=1, fetchMethod, allowStale,
-	// and noDeleteOnStaleGet. We skip fetchMethod/ttl/allowStale/noDeleteOnStaleGet
-	// since those are tied to the async fetch pattern.
+	// and noDeleteOnStaleGet. The recency and predicate behavior being exercised
+	// here does not depend on the fetch-specific wiring.
 	//
 	// TS sets items 0..8 into a max=5 cache, so only items 4..8 remain.
 	// Then it tests Find() with various predicates.
@@ -44,9 +44,8 @@ func TestFindSync(t *testing.T) {
 	}
 
 	// TS source: test/find.ts lines 22-26
-	// The TS test does: const p = c.fetch(8, { forceRefresh: true })
-	// SKIP: forceRefresh fetch is a fetchMethod feature, not applicable in Go.
-	// Without the fetch, item 8 is already in the cache with { value: 8 }.
+	// The upstream test starts a refresh fetch for key 8 before the first Find().
+	// That refresh path is covered in fetch_test.go; key 8 is already present here.
 
 	t.Run("find existing value matches get", func(t *testing.T) {
 		// TS source: test/find.ts lines 24-27
@@ -82,14 +81,7 @@ func TestFindSync(t *testing.T) {
 		assertEqual(t, found.value, 8, "found value should be 8")
 	})
 
-	// TS source: test/find.ts lines 39-47
-	// SKIP: resolves[8]?.({ value: 10 }) and Promise-based assertions
-	// (testing that after a fetch resolves, find returns the updated value).
-	// This requires fetchMethod + async resolution, not applicable in Go.
-
-	// TS source: test/find.ts lines 49-66
-	// SKIP: c.fetch(99) and subsequent find tests for pending/resolved fetches.
-	// All of these rely on fetchMethod and Promise resolution.
+	// The upstream fetch-driven find cases are covered in fetch_test.go.
 }
 
 func TestFindAfterUpdate(t *testing.T) {

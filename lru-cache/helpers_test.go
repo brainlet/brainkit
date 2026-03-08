@@ -7,7 +7,7 @@ package lrucache
 //   - t.clock — a mock clock with advance(), enter(), exit(), now()
 //   - t.matchSnapshot — snapshot testing (we skip these, verify values directly)
 //   - t.strictSame — deep equality (we use assertSliceEqual / assertEntriesEqual)
-//   - t.rejects — promise rejection testing (not applicable in Go)
+//   - t.rejects — mapped to Fetch() / ForceFetch() error assertions in Go
 //   - expose() — exposes LRUCache internals for white-box testing
 //
 // Go equivalents:

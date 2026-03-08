@@ -18,15 +18,15 @@ cache.Delete("key")
 // Size-based eviction
 cache := lrucache.New[string, []byte](lrucache.Options[string, []byte]{
     MaxSize: 1 << 20, // 1 MB
-    SizeCalculation: func(v []byte, k string) int64 {
-        return int64(len(v))
+    SizeCalculation: func(v []byte, k string) int {
+        return len(v)
     },
 })
 
 // TTL-based expiration
 cache := lrucache.New[string, string](lrucache.Options[string, string]{
     Max: 500,
-    TTL: 5 * time.Minute,
+    TTL: int64((5 * time.Minute) / time.Millisecond),
 })
 
 // Dispose callback on eviction
@@ -38,8 +38,17 @@ cache := lrucache.New[string, *os.File](lrucache.Options[string, *os.File]{
 })
 
 // Per-operation overrides
-cache.Set("temp", 99, lrucache.SetOptions[int]{TTL: Int64p(1000)})
-val, ok := cache.Get("key", lrucache.GetOptions[int]{AllowStale: Boolp(true)})
+cache.Set("temp", 99, lrucache.SetOptions[string, int]{TTL: lrucache.Int64(1000)})
+val, ok := cache.Get("temp", lrucache.GetOptions[int]{AllowStale: lrucache.Bool(true)})
+
+// Background loading with context-based cancellation
+fetching := lrucache.New[string, int](lrucache.Options[string, int]{
+    Max: 100,
+    FetchMethod: func(k string, stale *int, opts lrucache.FetcherOptions[string, int]) (int, bool, error) {
+        return len(k), true, nil
+    },
+})
+fetched, ok, err := fetching.Fetch("abc")
 ```
 
 ## TS Source
@@ -55,16 +64,13 @@ cd lru-cache && go test ./...
 go test -race ./lru-cache/...
 ```
 
-37 tests covering: basic operations, TTL (basic, per-item, immortal, allowStale, noDeleteOnStaleGet, updateAgeOnGet, autopurge), dispose callbacks (evict/set/delete/clear reasons, noDisposeOnSet, disposeAfter), size tracking (maxSize, maxEntrySize), peek, pop, find, forEach/rForEach, keys/values/entries, dump/load, purgeStale, info, getRemainingTTL, onInsert, concurrent access.
+Package tests cover basic operations, TTL, size tracking, dispose callbacks, fetch/forceFetch/memo flows, stale-while-revalidate, abort handling, pop/find/iteration, dump/load, purgeStale, info, getRemainingTTL, onInsert, and concurrent access.
 
-## Omitted Features
+## Adaptations
 
-These TS features rely on JavaScript async/Promise patterns with no direct Go equivalent:
-
-- `fetch()` / `forceFetch()` / `memo()` — async data loading via fetchMethod
-- `BackgroundFetch` type — Promise-based background data fetching
-- `AbortController` / `AbortSignal` integration — JS cancellation pattern
-- Generator-based iterators — replaced with callbacks and slice returns
+- `Fetch()` returns `(V, bool, error)` instead of a Promise. `ok=false, err=nil` means the upstream promise would have resolved to `undefined`.
+- Fetch cancellation uses `context.Context` instead of `AbortController` / `AbortSignal`.
+- Generator-based iterators are exposed as slice-returning methods and callback-based iteration helpers.
 
 ## TS → Go Patterns
 
@@ -75,7 +81,7 @@ TS:  LRUCache<K extends {}, V extends {}, FC = unknown>
 Go:  LRUCache[K comparable, V any]
 ```
 
-FC (fetch context) type parameter omitted since fetch methods are not ported.
+Fetch/memo context is passed as `any` via `FetchOptions.Context` / `MemoOptions.Context`.
 
 ### undefined → nil Pointers
 
@@ -83,7 +89,7 @@ TS uses `undefined` for empty array slots and optional fields. Go uses pointer s
 
 ```
 TS:  #keyList: (K | undefined)[]           →  Go: keyList []*K
-TS:  #valList: (V | undefined)[]           →  Go: valList []*V
+TS:  #valList: (V | BackgroundFetch | undefined)[]  →  Go: valList []*cacheValue[V]
 TS:  ttl?: number                          →  Go: TTL *int64
 TS:  allowStale?: boolean                  →  Go: AllowStale *bool
 ```
@@ -93,9 +99,9 @@ TS:  allowStale?: boolean                  →  Go: AllowStale *bool
 TS uses `function*` generators for lazy iteration. Go returns concrete slices or uses callback-based iteration:
 
 ```
-TS:  *entries(): Generator<[K, V]>         →  Go: Entries() []Entry[K, V]
+TS:  *entries(): Generator<[K, V]>         →  Go: Entries() [][2]any
 TS:  *keys(): Generator<K>                 →  Go: Keys() []K
-TS:  for (const [k,v] of cache) { ... }    →  Go: cache.ForEach(func(v V, k K, cache *LRUCache[K,V]) { ... })
+TS:  for (const [k,v] of cache) { ... }    →  Go: cache.ForEach(func(v V, k K) { ... })
 ```
 
 ### setTimeout / clearTimeout → time.AfterFunc

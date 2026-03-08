@@ -282,22 +282,22 @@ type PeekOptions struct {
 
 // FetchOptions overrides cache-level options for a single Fetch()/ForceFetch() call.
 type FetchOptions[K comparable, V any] struct {
-	AllowStale                  *bool
-	UpdateAgeOnGet              *bool
-	NoDeleteOnStaleGet          *bool
-	TTL                         *int64
-	NoDisposeOnSet              *bool
-	NoUpdateTTL                 *bool
-	SizeCalculation             func(value V, key K) int
-	Size                        int
-	NoDeleteOnFetchRejection    *bool
-	AllowStaleOnFetchRejection  *bool
-	AllowStaleOnFetchAbort      *bool
-	IgnoreFetchAbort            *bool
-	ForceRefresh                bool
-	Context                     any
-	Signal                      context.Context
-	Status                      *Status[V]
+	AllowStale                 *bool
+	UpdateAgeOnGet             *bool
+	NoDeleteOnStaleGet         *bool
+	TTL                        *int64
+	NoDisposeOnSet             *bool
+	NoUpdateTTL                *bool
+	SizeCalculation            func(value V, key K) int
+	Size                       int
+	NoDeleteOnFetchRejection   *bool
+	AllowStaleOnFetchRejection *bool
+	AllowStaleOnFetchAbort     *bool
+	IgnoreFetchAbort           *bool
+	ForceRefresh               bool
+	Context                    any
+	Signal                     context.Context
+	Status                     *Status[V]
 }
 
 // MemoOptions overrides cache-level options for a single Memo() call.
@@ -478,23 +478,23 @@ type LRUCache[K comparable, V any] struct {
 
 	// --- Configuration (set in constructor, some publicly mutable in TS) ---
 
-	max            int   // Maximum item count (0 = unbounded by count)
-	maxSize        int   // Maximum total size (0 = no size tracking)
-	maxEntrySize   int   // Maximum single entry size (0 = no limit)
-	ttl            int64 // Default TTL in ms (0 = no TTL)
-	ttlResolution  int64 // Time caching resolution in ms
-	ttlAutopurge   bool  // Auto-delete expired items via timers
-	updateAgeOnGet bool
-	updateAgeOnHas bool
-	allowStale     bool
-	noDisposeOnSet bool
-	noUpdateTTL    bool
+	max                        int   // Maximum item count (0 = unbounded by count)
+	maxSize                    int   // Maximum total size (0 = no size tracking)
+	maxEntrySize               int   // Maximum single entry size (0 = no limit)
+	ttl                        int64 // Default TTL in ms (0 = no TTL)
+	ttlResolution              int64 // Time caching resolution in ms
+	ttlAutopurge               bool  // Auto-delete expired items via timers
+	updateAgeOnGet             bool
+	updateAgeOnHas             bool
+	allowStale                 bool
+	noDisposeOnSet             bool
+	noUpdateTTL                bool
 	noDeleteOnFetchRejection   bool
 	allowStaleOnFetchAbort     bool
 	allowStaleOnFetchRejection bool
 	ignoreFetchAbort           bool
-	noDeleteOnStaleGet bool
-	sizeCalculation    func(V, K) int
+	noDeleteOnStaleGet         bool
+	sizeCalculation            func(V, K) int
 
 	// --- Callbacks ---
 	dispose      func(V, K, DisposeReason)
@@ -516,15 +516,15 @@ type LRUCache[K comparable, V any] struct {
 	// The linked list goes: head (LRU) → ... → tail (MRU)
 	// next[i] = index of next more-recently-used item
 	// prev[i] = index of next less-recently-used item
-	keyMap  map[K]int // key → array index (TS: #keyMap)
-	keyList []*K      // index → key pointer, nil = empty slot (TS: #keyList)
+	keyMap  map[K]int        // key → array index (TS: #keyMap)
+	keyList []*K             // index → key pointer, nil = empty slot (TS: #keyList)
 	valList []*cacheValue[V] // index → value/background fetch, nil = empty slot
-	next    []int     // forward linked list pointers (TS: #next)
-	prev    []int     // backward linked list pointers (TS: #prev)
-	head    int       // LRU end index (TS: #head)
-	tail    int       // MRU end index (TS: #tail)
-	free    []int     // stack of freed indices for reuse (TS: #free via Stack)
-	size    int       // current item count (TS: #size)
+	next    []int            // forward linked list pointers (TS: #next)
+	prev    []int            // backward linked list pointers (TS: #prev)
+	head    int              // LRU end index (TS: #head)
+	tail    int              // MRU end index (TS: #tail)
+	free    []int            // stack of freed indices for reuse (TS: #free via Stack)
+	size    int              // current item count (TS: #size)
 
 	// --- TTL tracking (nil slices = TTL not initialized) ---
 	// TS source: #initializeTTLTracking (lines ~1520-1625)
@@ -615,33 +615,33 @@ func New[K comparable, V any](o Options[K, V]) *LRUCache[K, V] {
 	}
 
 	c := &LRUCache[K, V]{
-		max:            max,
-		maxSize:        o.MaxSize,
-		maxEntrySize:   maxEntrySize,
-		ttl:            o.TTL,
-		ttlResolution:  ttlResolution,
-		ttlAutopurge:   o.TTLAutopurge,
-		updateAgeOnGet: o.UpdateAgeOnGet,
-		updateAgeOnHas: o.UpdateAgeOnHas,
-		allowStale:     o.AllowStale,
-		noDisposeOnSet: o.NoDisposeOnSet,
-		noUpdateTTL:    o.NoUpdateTTL,
+		max:                        max,
+		maxSize:                    o.MaxSize,
+		maxEntrySize:               maxEntrySize,
+		ttl:                        o.TTL,
+		ttlResolution:              ttlResolution,
+		ttlAutopurge:               o.TTLAutopurge,
+		updateAgeOnGet:             o.UpdateAgeOnGet,
+		updateAgeOnHas:             o.UpdateAgeOnHas,
+		allowStale:                 o.AllowStale,
+		noDisposeOnSet:             o.NoDisposeOnSet,
+		noUpdateTTL:                o.NoUpdateTTL,
 		noDeleteOnFetchRejection:   o.NoDeleteOnFetchRejection,
 		allowStaleOnFetchAbort:     o.AllowStaleOnFetchAbort,
 		allowStaleOnFetchRejection: o.AllowStaleOnFetchRejection,
 		ignoreFetchAbort:           o.IgnoreFetchAbort,
 		noDeleteOnStaleGet:         o.NoDeleteOnStaleGet,
 		sizeCalculation:            o.SizeCalculation,
-		dispose:      o.Dispose,
-		disposeAfter: o.DisposeAfter,
-		onInsert:     o.OnInsert,
-		fetchMethod:  o.FetchMethod,
-		memoMethod:   o.MemoMethod,
-		hasDispose:      o.Dispose != nil,
-		hasDisposeAfter: o.DisposeAfter != nil,
-		hasOnInsert:     o.OnInsert != nil,
-		hasFetchMethod:  o.FetchMethod != nil,
-		nowFn:           nowFn,
+		dispose:                    o.Dispose,
+		disposeAfter:               o.DisposeAfter,
+		onInsert:                   o.OnInsert,
+		fetchMethod:                o.FetchMethod,
+		memoMethod:                 o.MemoMethod,
+		hasDispose:                 o.Dispose != nil,
+		hasDisposeAfter:            o.DisposeAfter != nil,
+		hasOnInsert:                o.OnInsert != nil,
+		hasFetchMethod:             o.FetchMethod != nil,
+		nowFn:                      nowFn,
 	}
 
 	// Pre-allocate parallel arrays

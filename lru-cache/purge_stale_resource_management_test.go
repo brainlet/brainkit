@@ -70,10 +70,11 @@ func countActiveTimers[K comparable, V any](c *LRUCache[K, V]) int {
 // "a cache that overwrites a hot key many times"
 //
 // Original TS assertions using setTimeout/clearTimeout counters:
-//   N sets of same key: t.equal(timeouts, N), t.equal(clears, N-1)
-//   set with ttl:0:     t.equal(timeoutsAfterSetTTL0, 0), t.equal(clearsAfterSetTTL0, 1)
-//   set with default:   t.equal(clearsAfterSetTTLDef, 0), t.equal(timeoutsAfterSetTTLDef, 1)
-//   delete:             t.equal(clearsAfterDelete, 1), t.equal(timeoutsAfterDelete, 0)
+//
+//	N sets of same key: t.equal(timeouts, N), t.equal(clears, N-1)
+//	set with ttl:0:     t.equal(timeoutsAfterSetTTL0, 0), t.equal(clearsAfterSetTTL0, 1)
+//	set with default:   t.equal(clearsAfterSetTTLDef, 0), t.equal(timeoutsAfterSetTTLDef, 1)
+//	delete:             t.equal(clearsAfterDelete, 1), t.equal(timeoutsAfterDelete, 0)
 //
 // Go adaptation: Instead of counting create/clear calls, we verify the resulting
 // active timer count after each operation. The invariant is the same: at most 1
@@ -151,8 +152,9 @@ func TestPurgeStaleResourceManagement_HotKeyOverwrite(t *testing.T) {
 // "evicting an item means no need for autopurge"
 //
 // Original TS assertions:
-//   after set 'a':     t.equal(clearsAfterSet, 0), t.equal(timeoutsAfterSet, 1)
-//   after eviction:    t.equal(clearsAfterEvict, 1), t.equal(timeoutsAfterEvict, 0)
+//
+//	after set 'a':     t.equal(clearsAfterSet, 0), t.equal(timeoutsAfterSet, 1)
+//	after eviction:    t.equal(clearsAfterEvict, 1), t.equal(timeoutsAfterEvict, 0)
 func TestPurgeStaleResourceManagement_EvictClearsTimer(t *testing.T) {
 	// test/purge-stale-resource-management.ts lines 82-86:
 	// const cache = new LRU<string, number>({ ttl: 10, max: 5, ttlAutopurge: true })
@@ -204,8 +206,9 @@ func TestPurgeStaleResourceManagement_EvictClearsTimer(t *testing.T) {
 // "clearing list clears autopurge timers"
 //
 // Original TS assertions:
-//   after 4 sets: t.equal(clearsAfterSet, 0), t.equal(timeoutsAfterSet, 4)
-//   after clear:  t.equal(clearsAfterClear, 4), t.equal(timeoutsAfterClear, 0)
+//
+//	after 4 sets: t.equal(clearsAfterSet, 0), t.equal(timeoutsAfterSet, 4)
+//	after clear:  t.equal(clearsAfterClear, 4), t.equal(timeoutsAfterClear, 0)
 func TestPurgeStaleResourceManagement_ClearClearsTimers(t *testing.T) {
 	// test/purge-stale-resource-management.ts lines 111-115:
 	// const cache = new LRU<string, number>({ ttl: 10, max: 5, ttlAutopurge: true })

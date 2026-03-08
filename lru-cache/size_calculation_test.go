@@ -203,21 +203,21 @@ func TestSizeCalculation_StoreStringsSizeLength(t *testing.T) {
 	// t.equal(c.calculatedSize, 10)
 	// t.equal(c.get('repeated'), 'j'.repeat(10))
 	c.Set("repeated", strings.Repeat("i", 10)) // TS source: line 70
-	checkSize(t, c)                              // TS source: line 71
-	c.Set("repeated", strings.Repeat("j", 10))  // TS source: line 72
-	checkSize(t, c)                              // TS source: line 73
-	c.Set("repeated", strings.Repeat("i", 10))  // TS source: line 74
-	checkSize(t, c)                              // TS source: line 75
-	c.Set("repeated", strings.Repeat("j", 10))  // TS source: line 76
-	checkSize(t, c)                              // TS source: line 77
-	c.Set("repeated", strings.Repeat("i", 10))  // TS source: line 78
-	checkSize(t, c)                              // TS source: line 79
-	c.Set("repeated", strings.Repeat("j", 10))  // TS source: line 80
-	checkSize(t, c)                              // TS source: line 81
-	c.Set("repeated", strings.Repeat("i", 10))  // TS source: line 82
-	checkSize(t, c)                              // TS source: line 83
-	c.Set("repeated", strings.Repeat("j", 10))  // TS source: line 84
-	checkSize(t, c)                              // TS source: line 85
+	checkSize(t, c)                            // TS source: line 71
+	c.Set("repeated", strings.Repeat("j", 10)) // TS source: line 72
+	checkSize(t, c)                            // TS source: line 73
+	c.Set("repeated", strings.Repeat("i", 10)) // TS source: line 74
+	checkSize(t, c)                            // TS source: line 75
+	c.Set("repeated", strings.Repeat("j", 10)) // TS source: line 76
+	checkSize(t, c)                            // TS source: line 77
+	c.Set("repeated", strings.Repeat("i", 10)) // TS source: line 78
+	checkSize(t, c)                            // TS source: line 79
+	c.Set("repeated", strings.Repeat("j", 10)) // TS source: line 80
+	checkSize(t, c)                            // TS source: line 81
+	c.Set("repeated", strings.Repeat("i", 10)) // TS source: line 82
+	checkSize(t, c)                            // TS source: line 83
+	c.Set("repeated", strings.Repeat("j", 10)) // TS source: line 84
+	checkSize(t, c)                            // TS source: line 85
 
 	// TS source: line 86 — t.equal(c.size, 1)
 	assertEqual(t, c.Size(), 1)
@@ -347,11 +347,11 @@ func TestSizeCalculation_DeleteWhileEmpty(t *testing.T) {
 	// TS source: lines 136-143
 	// Set the same key multiple times, verify size stays correct
 	c.Set(1, 1)     // TS source: line 136
-	checkSize(t, c)  // TS source: line 137
-	c.Set(1, 1)      // TS source: line 138
-	checkSize(t, c)  // TS source: line 139
-	c.Set(1, 1)      // TS source: line 140
-	checkSize(t, c)  // TS source: line 141
+	checkSize(t, c) // TS source: line 137
+	c.Set(1, 1)     // TS source: line 138
+	checkSize(t, c) // TS source: line 139
+	c.Set(1, 1)     // TS source: line 140
+	checkSize(t, c) // TS source: line 141
 	// TS source: line 142 — t.equal(c.size, 1)
 	assertEqual(t, c.Size(), 1)
 	// TS source: line 143 — t.equal(c.calculatedSize, 2)
@@ -621,29 +621,28 @@ func TestSizeCalculation_MaxEntrySizeNoMaxSize(t *testing.T) {
 	//     max: 10,
 	//     maxEntrySize: 10,
 	//     sizeCalculation: s => s.length,
-	//     fetchMethod: async n => 'x'.repeat(n),  <-- NOT in Go
+	//     fetchMethod: async n => 'x'.repeat(n),
 	//   })
 	//
 	// NOTE: The original TS test uses maxEntrySize WITHOUT maxSize.
-	// In the TS code, maxEntrySize alone triggers size tracking.
-	// In our Go port, size tracking is only initialized when MaxSize > 0.
-	// To faithfully test maxEntrySize behavior, we set MaxSize to a large
-	// value so it does not constrain the cache, but still enables size tracking.
+	// The Go port now matches that behavior, but we keep a large MaxSize here so
+	// the test exercises maxEntrySize as the only effective constraint.
 	c := New[int, string](Options[int, string]{
 		Max:          10,
-		MaxSize:      1000000,  // Large value to not constrain; enables size tracking
-		MaxEntrySize: 10,       // This is the actual constraint being tested
+		MaxSize:      1000000, // Large value to not constrain; enables size tracking
+		MaxEntrySize: 10,      // This is the actual constraint being tested
 		SizeCalculation: func(v string, k int) int {
 			// TS source: line 270 — sizeCalculation: s => s.length
 			return len(v)
 		},
+		FetchMethod: func(k int, stale *string, _ FetcherOptions[int, string]) (string, bool, error) {
+			return strings.Repeat("x", k), true, nil
+		},
 	})
 
 	// TS source: line 273 — t.equal(await c.fetch(2), 'xx')
-	// SKIP: fetch is async and not in Go. Simulate with Set + Get.
-	// fetch(2) would call fetchMethod(2) which returns 'xx' (length 2)
-	c.Set(2, strings.Repeat("x", 2))
-	v, ok := c.Get(2)
+	v, ok, err := c.Fetch(2)
+	assertEqual(t, err, error(nil))
 	assertTrue(t, ok)
 	assertEqual(t, v, "xx")
 
@@ -651,8 +650,8 @@ func TestSizeCalculation_MaxEntrySizeNoMaxSize(t *testing.T) {
 	assertEqual(t, c.Size(), 1)
 
 	// TS source: line 275 — t.equal(await c.fetch(3), 'xxx')
-	c.Set(3, strings.Repeat("x", 3))
-	v, ok = c.Get(3)
+	v, ok, err = c.Fetch(3)
+	assertEqual(t, err, error(nil))
 	assertTrue(t, ok)
 	assertEqual(t, v, "xxx")
 
@@ -663,8 +662,10 @@ func TestSizeCalculation_MaxEntrySizeNoMaxSize(t *testing.T) {
 	// t.equal(await c.fetch(11), 'x'.repeat(11))
 	// t.equal(c.size, 2)
 	// t.equal(c.has(11), false)
-	// Set a string of length 11, which exceeds maxEntrySize 10 => not stored
-	c.Set(11, strings.Repeat("x", 11))
+	v, ok, err = c.Fetch(11)
+	assertEqual(t, err, error(nil))
+	assertTrue(t, ok, "oversized fetch should still resolve the fetched value")
+	assertEqual(t, v, strings.Repeat("x", 11))
 	// TS source: line 278 — t.equal(c.size, 2)
 	assertEqual(t, c.Size(), 2, "item with size 11 > maxEntrySize 10 should not be stored")
 	// TS source: line 279 — t.equal(c.has(11), false)

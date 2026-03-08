@@ -39,8 +39,8 @@ const (
 	//
 	// Go adaptation: reduced iteration count for faster testing while still
 	// being sufficient to detect unbounded growth patterns.
-	avoidLeakMaxSize  = 100_000
-	avoidLeakItemSize = 1_000
+	avoidLeakMaxSize   = 100_000
+	avoidLeakItemSize  = 1_000
 	avoidLeakProfEvery = 10_000
 	avoidLeakN         = 100_000 // 100K vs 1M in TS — sufficient to detect leaks
 )

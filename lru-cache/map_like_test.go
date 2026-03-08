@@ -4,12 +4,14 @@ package lrucache
 // TS source: https://github.com/isaacs/node-lru-cache/blob/main/test/map-like.ts
 //
 // The original test file uses fetchMethod, clock.enter/exit, matchSnapshot,
-// and expose() extensively. We port the synchronous iteration parts only:
+// and expose() extensively. This port covers the concrete iteration behavior:
 //   - Keys(), Values(), Entries() on empty cache
+//   - Pending/resolved fetch placeholders in iteration views
 //   - Fill cache, test Keys/Values/Entries/RKeys/RValues/REntries
 //   - ForEach and RForEach
+//   - Stale entries excluded from normal iteration but retained in Dump()
 //   - ForEach/RForEach on empty cache doesn't call fn
-//   - Skip all fetchMethod, matchSnapshot, stale TTL manipulation parts
+//   - Skip only the JS-specific `this` binding behavior
 //
 // Test helpers (assertEqual, assertTrue, assertFalse, assertSliceEqual, etc.)
 // are defined in helpers_test.go — shared across all test files.
@@ -311,29 +313,96 @@ func TestMapLikeForEachEmpty(t *testing.T) {
 	})
 }
 
-func TestMapLikePendingFetchSkipped(t *testing.T) {
-	// TS source: test/map-like.ts lines 43-54 — pending fetch iteration
-	// SKIP: This section tests iteration behavior when fetchMethod has pending
-	// (unresolved) promises in the cache. fetchMethod is a JS-only async pattern
-	// not ported to Go.
-	t.Skip("fetchMethod not ported to Go — JS-only async pattern with pending promises")
+func TestMapLikePendingFetch(t *testing.T) {
+	started := make(chan int, 1)
+	replies := make(chan fetchReply[string], 1)
+	c := New[int, string](Options[int, string]{
+		Max:     5,
+		MaxSize: 5,
+		SizeCalculation: func(v string, k int) int {
+			return 1
+		},
+		FetchMethod: func(key int, stale *string, _ FetcherOptions[int, string]) (string, bool, error) {
+			started <- key
+			reply := <-replies
+			return reply.value, reply.ok, reply.err
+		},
+	})
+
+	pending := startAsyncFetch(c, 99)
+	<-started
+
+	assertEqual(t, len(c.Keys()), 0, "pending fetch keys")
+	assertEqual(t, len(c.Values()), 0, "pending fetch values")
+	assertEqual(t, len(c.Entries()), 0, "pending fetch entries")
+	assertEqual(t, len(c.RKeys()), 0, "pending fetch rkeys")
+	assertEqual(t, len(c.RValues()), 0, "pending fetch rvalues")
+	assertEqual(t, len(c.REntries()), 0, "pending fetch rentries")
+	assertEqual(t, len(c.Dump()), 0, "pending fetch dump")
+
+	foreachCalled := false
+	c.ForEach(func(v string, k int) { foreachCalled = true })
+	assertFalse(t, foreachCalled, "pending fetch should not appear in ForEach")
+	rforeachCalled := false
+	c.RForEach(func(v string, k int) { rforeachCalled = true })
+	assertFalse(t, rforeachCalled, "pending fetch should not appear in RForEach")
+
+	assertTrue(t, exposeIsBackgroundFetch(c, exposeKeyMap(c)[99]), "pending slot should be background fetch")
+	c.Delete(99)
+	out := awaitFetchResult(t, pending)
+	if out.err == nil {
+		t.Fatal("expected pending fetch to fail when deleted")
+	}
 }
 
-func TestMapLikeResolvedFetchSkipped(t *testing.T) {
-	// TS source: test/map-like.ts lines 60-72 — resolved fetch iteration
-	// SKIP: Tests iteration after resolving a fetch promise. fetchMethod is a
-	// JS-only async pattern not ported to Go.
-	t.Skip("fetchMethod not ported to Go — JS-only async pattern with resolved promises")
+func TestMapLikeResolvedFetch(t *testing.T) {
+	started := make(chan int, 1)
+	replies := make(chan fetchReply[string], 1)
+	c := New[int, string](Options[int, string]{
+		Max:     5,
+		MaxSize: 5,
+		SizeCalculation: func(v string, k int) int {
+			return 1
+		},
+		FetchMethod: func(key int, stale *string, _ FetcherOptions[int, string]) (string, bool, error) {
+			started <- key
+			reply := <-replies
+			return reply.value, reply.ok, reply.err
+		},
+	})
+
+	resolved := startAsyncFetch(c, 123)
+	<-started
+	replies <- fetchReply[string]{value: "123", ok: true}
+	out := awaitFetchResult(t, resolved)
+	assertEqual(t, out.err, error(nil), "resolved fetch error")
+	assertTrue(t, out.ok, "resolved fetch ok")
+	assertEqual(t, out.value, "123", "resolved fetch value")
+
+	assertSliceEqual(t, c.Keys(), []int{123}, "resolved fetch keys")
+	assertSliceEqual(t, c.Values(), []string{"123"}, "resolved fetch values")
+	assertEntryPairsEqual[int, string](t, c.Entries(), [][2]any{{123, "123"}}, "resolved fetch entries")
 }
 
-func TestMapLikeStaleEntrySkipped(t *testing.T) {
-	// TS source: test/map-like.ts lines 98-113 — stale entry iteration
-	// SKIP: This section manipulates internal TTL start times via expose() to
-	// force a stale entry, then uses clock.now() (fake clock) to test iteration
-	// behavior with stale items. The test uses matchSnapshot for all assertions.
-	// The fake clock + expose manipulation + matchSnapshot pattern would require
-	// substantial adaptation. The core TTL staleness logic is tested elsewhere.
-	t.Skip("stale entry iteration via internal TTL manipulation — tested in TTL-specific tests")
+func TestMapLikeStaleEntry(t *testing.T) {
+	clock := newTestClock(1)
+	c := New[int, string](Options[int, string]{
+		Max:   5,
+		TTL:   1,
+		NowFn: clock.nowFn,
+	})
+	for i := 0; i < 3; i++ {
+		c.Set(i, intToStr(i))
+	}
+	clock.advance(10)
+
+	assertEqual(t, len(c.Keys()), 0, "stale keys should be hidden")
+	assertEqual(t, len(c.Values()), 0, "stale values should be hidden")
+	assertEqual(t, len(c.Entries()), 0, "stale entries should be hidden")
+	assertEqual(t, len(c.RKeys()), 0, "stale rkeys should be hidden")
+	assertEqual(t, len(c.RValues()), 0, "stale rvalues should be hidden")
+	assertEqual(t, len(c.REntries()), 0, "stale rentries should be hidden")
+	assertEqual(t, len(c.Dump()), 3, "dump should retain stale entries")
 }
 
 // ---------------------------------------------------------------------------

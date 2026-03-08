@@ -24,6 +24,7 @@ import (
 // For every index i in [0, max):
 //   - if i is not head: next[prev[i]] == i
 //   - if i is not tail: prev[next[i]] == i
+//
 // This is the direct equivalent of the TS "integrity" helper at lines 27-39.
 func verifyListIntegrity(t *testing.T, c *LRUCache[int, int], msg string) {
 	t.Helper()
