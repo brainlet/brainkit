@@ -9,13 +9,11 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Local interface types
 // ---------------------------------------------------------------------------
 
-// Mastra is a stub for the Mastra instance.
-// STUB REASON: The real core.Mastra struct is used here only for GetStorage().
-// Could potentially be replaced with a direct *storage.MastraCompositeStore param
-// instead of going through the Mastra interface, but that would change the API.
+// Mastra is the narrow interface for the Mastra orchestrator used by analytics.
+// Only GetStorage() is needed — callers resolve domain stores externally.
 type Mastra interface {
 	GetStorage() *storage.MastraCompositeStore
 }

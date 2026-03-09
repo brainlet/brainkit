@@ -3,7 +3,6 @@ package scoretraces
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -11,64 +10,48 @@ import (
 	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
+	obstorage "github.com/brainlet/brainkit/agent-kit/core/storage/domains/observability"
+	"github.com/brainlet/brainkit/agent-kit/core/storage/domains/scores"
 )
 
 // ============================================================================
-// Stub types — kept local to avoid circular import dependencies
+// Storage type aliases — imported from real packages (no circular dependency)
+//
+// Previous stubs claimed circular dependencies that do not actually exist:
+//   - scoretraces -> storage/domains/observability: safe (observability does not import evals or scoretraces)
+//   - scoretraces -> storage/domains/scores: safe (scores imports evals, but evals does not import scoretraces)
+//   - scoretraces -> storage (parent): safe (storage does not import scoretraces)
 // ============================================================================
 
-// MastraStorage is a stub for the storage.MastraCompositeStore interface.
-// CIRCULAR DEP: Cannot import storage — storage/types.go imports evals.
-// The real MastraCompositeStore.GetStore takes storage.DomainName and returns
-// domains.StorageDomain (not (any, error)). Signature differs.
+// ObservabilityStore is the real observability storage interface.
+// Replaces the previous stub that used map[string]any arguments.
+type ObservabilityStore = obstorage.ObservabilityStorage
+
+// ScoresStore is the real scores storage interface.
+// Replaces the previous stub that used map[string]any arguments.
+type ScoresStore = scores.ScoresStorage
+
+// ScoreRowData is the canonical score record type from evals.
+// Replaces the previous simplified local version that only had 4 fields.
+type ScoreRowData = evals.ScoreRowData
+
+// MastraStorage is a narrow interface for accessing domain-specific storage.
+// This is NOT a false circular dependency stub — it is intentionally narrower
+// than storage.MastraCompositeStore to decouple scoretraces from the full
+// storage package. The real MastraCompositeStore.GetStore returns
+// domains.StorageDomain (not (any, error)), so callers must adapt. Importing
+// the storage package directly is safe (no cycle), but we keep a narrow
+// interface here for minimal coupling.
 type MastraStorage interface {
-	// GetStore returns a domain-specific store by name.
-	GetStore(domain string) (any, error)
+	// GetObservabilityStore returns the observability storage domain.
+	GetObservabilityStore() (ObservabilityStore, error)
+	// GetScoresStore returns the scores storage domain.
+	GetScoresStore() (ScoresStore, error)
 }
 
-// ObservabilityStore is a stub for the observability storage domain.
-// CIRCULAR DEP: Cannot import storage/domains/scores (which imports evals),
-// and the real observability.ObservabilityStorage has different method signatures
-// (GetTrace takes GetTraceArgs, returns *GetTraceResponse; UpdateSpan takes
-// UpdateSpanArgs). Kept as simplified interface matching local call patterns.
-type ObservabilityStore interface {
-	// GetTrace retrieves a trace by traceId.
-	GetTrace(args map[string]any) (*TraceRecord, error)
-	// UpdateSpan updates a span.
-	UpdateSpan(args map[string]any) error
-}
-
-// ScoresStore is a stub for the scores storage domain.
-// CIRCULAR DEP: Cannot import storage/domains/scores — it imports evals.
-// The real scores.ScoresStorage.SaveScore takes (ctx, scores.SaveScorePayload)
-// and returns (*ScoreRowData, error), not (map[string]any) → (*SaveScoreResult, error).
-type ScoresStore interface {
-	// SaveScore saves a score record.
-	SaveScore(payload map[string]any) (*SaveScoreResult, error)
-}
-
-// SaveScoreResult is the result of saving a score.
-// CIRCULAR DEP: Cannot use evals.ScoreRowData directly here because this local
-// ScoreRowData is a simplified version used only for span linking (fewer fields).
-type SaveScoreResult struct {
-	Score ScoreRowData `json:"score"`
-}
-
-// ScoreRowData is a simplified local version of evals.ScoreRowData.
-// Only includes the fields needed for span linking (ID, Score, Scorer, CreatedAt).
-// The real evals.ScoreRowData has 30+ fields. Using the full type would work
-// but this simplified version keeps the span-linking code focused.
-type ScoreRowData struct {
-	ID        string         `json:"id"`
-	Score     float64        `json:"score"`
-	Scorer    map[string]any `json:"scorer"`
-	CreatedAt any            `json:"createdAt"`
-}
-
-// WorkflowStepMastra is a stub for the Mastra interface available in workflow steps.
-// CIRCULAR DEP: Cannot import core — core/hooks.go imports evals.
-// This interface defines the minimal subset of core.Mastra methods needed by
-// the score traces workflow steps.
+// WorkflowStepMastra is a narrow interface for the Mastra orchestrator
+// available in workflow steps. Importing core/mastra directly is safe (no
+// cycle), but we keep a narrow interface for minimal coupling.
 type WorkflowStepMastra interface {
 	GetLogger() logger.IMastraLogger
 	GetStorage() MastraStorage
@@ -103,8 +86,8 @@ type RunScorerOnTargetParams struct {
 // Corresponds to TS: export async function runScorerOnTarget({...})
 func RunScorerOnTarget(ctx context.Context, params RunScorerOnTargetParams) error {
 	// Get observability store.
-	observabilityStoreRaw, err := params.Storage.GetStore("observability")
-	if err != nil || observabilityStoreRaw == nil {
+	observabilityStore, err := params.Storage.GetObservabilityStore()
+	if err != nil || observabilityStore == nil {
 		return mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "MASTRA_OBSERVABILITY_STORAGE_NOT_AVAILABLE",
 			Domain:   mastraerror.ErrorDomainStorage,
@@ -113,18 +96,14 @@ func RunScorerOnTarget(ctx context.Context, params RunScorerOnTargetParams) erro
 		})
 	}
 
-	observabilityStore, ok := observabilityStoreRaw.(ObservabilityStore)
-	if !ok {
-		return errors.New("observability store does not implement ObservabilityStore interface")
-	}
-
 	// Get the trace.
-	trace, err := observabilityStore.GetTrace(map[string]any{
-		"traceId": params.Target.TraceID,
+	traceResp, err := observabilityStore.GetTrace(ctx, obstorage.GetTraceArgs{
+		TraceID: params.Target.TraceID,
 	})
-	if err != nil || trace == nil {
+	if err != nil || traceResp == nil {
 		return fmt.Errorf("trace not found for scoring, traceId: %s", params.Target.TraceID)
 	}
+	trace := traceResp
 
 	// Find the target span.
 	var targetSpan *SpanRecord
@@ -171,46 +150,73 @@ func RunScorerOnTarget(ctx context.Context, params RunScorerOnTargetParams) erro
 		entityID = *targetSpan.EntityName
 	}
 
-	scorerResult := map[string]any{
-		"score":  result.Score,
-		"reason": result.Reason,
-		"input":  result.Input,
-		"output": result.Output,
-		"scorer": map[string]any{
+	// Convert score from any to float64.
+	scoreVal := float64(0)
+	switch s := result.Score.(type) {
+	case float64:
+		scoreVal = s
+	case float32:
+		scoreVal = float64(s)
+	case int:
+		scoreVal = float64(s)
+	case int64:
+		scoreVal = float64(s)
+	}
+
+	// Convert reason from any to string.
+	reasonStr := ""
+	if r, ok := result.Reason.(string); ok {
+		reasonStr = r
+	}
+
+	// Convert step results from any to map[string]any.
+	toMapAny := func(v any) map[string]any {
+		if m, ok := v.(map[string]any); ok {
+			return m
+		}
+		return nil
+	}
+
+	scorerResult := evals.SaveScorePayload{
+		ScorerID: params.Scorer.ID(),
+		EntityID: entityID,
+		RunID:    result.RunID,
+		Input:    result.Input,
+		Output:   result.Output,
+		Score:    scoreVal,
+		Reason:   reasonStr,
+		Scorer: map[string]any{
 			"id":          params.Scorer.ID(),
 			"name":        params.Scorer.Name(),
 			"description": params.Scorer.Description(),
 			"hasJudge":    params.Scorer.Judge() != nil,
 		},
-		"traceId":    params.Target.TraceID,
-		"spanId":     params.Target.SpanID,
-		"entityId":   entityID,
-		"entityType": string(targetSpan.SpanTyp),
-		"entity": map[string]any{
+		Source:     evals.ScoringSourceTest,
+		EntityType: evals.ScoringEntityType(targetSpan.SpanTyp),
+		Entity: map[string]any{
 			"traceId": targetSpan.TraceID,
 			"spanId":  targetSpan.SpanID,
 		},
-		"source":   "TEST",
-		"scorerId": params.Scorer.ID(),
-		"runId":    result.RunID,
+		TraceID: params.Target.TraceID,
+		SpanID:  params.Target.SpanID,
 
 		// Include prompt data if available.
-		"preprocessStepResult":  result.PreprocessStepResult,
-		"preprocessPrompt":      result.PreprocessPrompt,
-		"analyzeStepResult":     result.AnalyzeStepResult,
-		"analyzePrompt":         result.AnalyzePrompt,
-		"generateScorePrompt":   result.GenerateScorePrompt,
-		"generateReasonPrompt":  result.GenerateReasonPrompt,
+		PreprocessStepResult: toMapAny(result.PreprocessStepResult),
+		PreprocessPrompt:     result.PreprocessPrompt,
+		AnalyzeStepResult:    toMapAny(result.AnalyzeStepResult),
+		AnalyzePrompt:        result.AnalyzePrompt,
+		GenerateScorePrompt:  result.GenerateScorePrompt,
+		GenerateReasonPrompt: result.GenerateReasonPrompt,
 	}
 
 	// Validate and save the score.
-	savedScoreRecord, err := validateAndSaveScore(params.Storage, scorerResult)
+	savedScoreRecord, err := validateAndSaveScore(ctx, params.Storage, scorerResult)
 	if err != nil {
 		return err
 	}
 
 	// Attach score to span.
-	return attachScoreToSpan(params.Storage, targetSpan, savedScoreRecord)
+	return attachScoreToSpan(ctx, params.Storage, targetSpan, savedScoreRecord)
 }
 
 // buildScorerRun builds the ScorerRun input from the trace data.
@@ -243,9 +249,9 @@ func buildScorerRun(
 
 // validateAndSaveScore validates and saves a scorer result to storage.
 // Corresponds to TS: async function validateAndSaveScore({...})
-func validateAndSaveScore(storage MastraStorage, scorerResult map[string]any) (*ScoreRowData, error) {
-	scoresStoreRaw, err := storage.GetStore("scores")
-	if err != nil || scoresStoreRaw == nil {
+func validateAndSaveScore(ctx context.Context, storage MastraStorage, scorerResult evals.SaveScorePayload) (*ScoreRowData, error) {
+	scoresStore, err := storage.GetScoresStore()
+	if err != nil || scoresStore == nil {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "MASTRA_SCORES_STORAGE_NOT_AVAILABLE",
 			Domain:   mastraerror.ErrorDomainStorage,
@@ -254,36 +260,26 @@ func validateAndSaveScore(storage MastraStorage, scorerResult map[string]any) (*
 		})
 	}
 
-	scoresStore, ok := scoresStoreRaw.(ScoresStore)
-	if !ok {
-		return nil, errors.New("scores store does not implement ScoresStore interface")
-	}
-
 	// TODO: Apply saveScorePayloadSchema validation once zod-equivalent is available.
-	result, err := scoresStore.SaveScore(scorerResult)
+	result, err := scoresStore.SaveScore(ctx, scorerResult)
 	if err != nil {
 		return nil, err
 	}
 
-	return &result.Score, nil
+	return result, nil
 }
 
 // attachScoreToSpan attaches a score record to a span via its links field.
 // Corresponds to TS: async function attachScoreToSpan({...})
-func attachScoreToSpan(storage MastraStorage, span *SpanRecord, scoreRecord *ScoreRowData) error {
-	observabilityStoreRaw, err := storage.GetStore("observability")
-	if err != nil || observabilityStoreRaw == nil {
+func attachScoreToSpan(ctx context.Context, storage MastraStorage, span *SpanRecord, scoreRecord *ScoreRowData) error {
+	observabilityStore, err := storage.GetObservabilityStore()
+	if err != nil || observabilityStore == nil {
 		return mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "MASTRA_OBSERVABILITY_STORAGE_NOT_AVAILABLE",
 			Domain:   mastraerror.ErrorDomainStorage,
 			Category: mastraerror.ErrorCategorySystem,
 			Text:     "Observability storage domain is not available",
 		})
-	}
-
-	observabilityStore, ok := observabilityStoreRaw.(ObservabilityStore)
-	if !ok {
-		return errors.New("observability store does not implement ObservabilityStore interface")
 	}
 
 	// Build the link.
@@ -307,11 +303,11 @@ func attachScoreToSpan(storage MastraStorage, span *SpanRecord, scoreRecord *Sco
 
 	updatedLinks := append(existingLinks, link)
 
-	return observabilityStore.UpdateSpan(map[string]any{
-		"spanId":  span.SpanID,
-		"traceId": span.TraceID,
-		"updates": map[string]any{
-			"links": updatedLinks,
+	return observabilityStore.UpdateSpan(ctx, obstorage.UpdateSpanArgs{
+		SpanID:  span.SpanID,
+		TraceID: span.TraceID,
+		Updates: obstorage.UpdateSpanRecord{
+			Links: updatedLinks,
 		},
 	})
 }

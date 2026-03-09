@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit/agent-kit/core/events"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storageworkflows "github.com/brainlet/brainkit/agent-kit/core/storage/domains/workflows"
 	wf "github.com/brainlet/brainkit/agent-kit/core/workflows"
 )
 
@@ -64,13 +65,8 @@ func PersistStepUpdate(engine DefaultEngine, params PersistStepUpdateParams) err
 		return nil
 	}
 
-	storage := mastra.GetStorage()
-	if storage == nil {
-		return nil
-	}
-
-	store, err := storage.GetStore("workflows")
-	if err != nil || store == nil {
+	store := mastra.GetWorkflowsStore()
+	if store == nil {
 		return nil
 	}
 
@@ -105,11 +101,11 @@ func PersistStepUpdate(engine DefaultEngine, params PersistStepUpdateParams) err
 		snapshot.Result = params.Result
 	}
 
-	return store.PersistWorkflowSnapshot(wf.PersistWorkflowSnapshotParams{
+	return store.PersistWorkflowSnapshot(context.Background(), storageworkflows.PersistWorkflowSnapshotArgs{
 		WorkflowName: params.WorkflowID,
 		RunID:        params.RunID,
 		ResourceID:   params.ResourceID,
-		Snapshot:     snapshot,
+		Snapshot:     wf.WorkflowRunStateToMap(snapshot),
 	})
 }
 

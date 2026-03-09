@@ -188,8 +188,8 @@ func runScorerSafe(
 		Error:      nil,
 	}, ScorerPromptMetadata{
 		// TODO: Extract prompt metadata from scorer result once scorer.Run()
-		// returns these fields. Currently the ScorerRunResult stub doesn't
-		// include prompt metadata.
+		// returns these fields. Currently ScorerRunResult doesn't include
+		// prompt metadata.
 	}
 }
 

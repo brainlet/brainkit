@@ -4,6 +4,7 @@ package workflows
 import (
 	"fmt"
 
+	"github.com/brainlet/brainkit/agent-kit/core/interfaces"
 	"github.com/brainlet/brainkit/agent-kit/core/memory"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 )
@@ -60,9 +61,9 @@ type MemoryWrapper struct {
 	Options any
 }
 
-// AgentMethodType is a stub for ../../types.AgentMethodType.
-// CIRCULAR: cannot import parent agent package from agent/workflows sub-package.
-type AgentMethodType string
+// AgentMethodType is the shared agent method type, defined in core/interfaces
+// to break the circular dependency between agent and llm/model packages.
+type AgentMethodType = interfaces.AgentMethodType
 
 // PrepareToolsStepOptions holds options for creating a prepare-tools step.
 type PrepareToolsStepOptions struct {

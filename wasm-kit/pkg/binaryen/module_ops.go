@@ -158,6 +158,11 @@ func SetLowMemoryUnused(on bool) {
 	C.BinaryenSetLowMemoryUnused(cBool(on))
 }
 
+// GetLowMemoryUnused returns whether low memory is marked as unused.
+func GetLowMemoryUnused() bool {
+	return goBool(C.BinaryenGetLowMemoryUnused())
+}
+
 // SetZeroFilledMemory marks memory as zero-filled.
 func SetZeroFilledMemory(on bool) {
 	C.BinaryenSetZeroFilledMemory(cBool(on))
@@ -188,4 +193,252 @@ func ClearPassesToSkip() {
 func GetSideEffects(expr ExpressionRef, mod *Module) SideEffects {
 	return SideEffects(C.BinaryenExpressionGetSideEffects(
 		(C.BinaryenExpressionRef)(unsafe.Pointer(expr)), mod.ref))
+}
+
+// ---------------------------------------------------------------------------
+// Start function
+// ---------------------------------------------------------------------------
+
+// SetStart sets the start function for the module.
+func (m *Module) SetStart(fn FunctionRef) {
+	C.BinaryenSetStart(m.ref, (C.BinaryenFunctionRef)(unsafe.Pointer(fn)))
+}
+
+// ---------------------------------------------------------------------------
+// Debug info
+// ---------------------------------------------------------------------------
+
+// AddDebugInfoFileName adds a debug info file name and returns its index.
+func (m *Module) AddDebugInfoFileName(filename string) Index {
+	cs := C.CString(filename)
+	defer C.free(unsafe.Pointer(cs))
+	return Index(C.BinaryenModuleAddDebugInfoFileName(m.ref, cs))
+}
+
+// GetDebugInfoFileName returns the debug info file name at the given index.
+func (m *Module) GetDebugInfoFileName(index Index) string {
+	cs := C.BinaryenModuleGetDebugInfoFileName(m.ref, C.BinaryenIndex(index))
+	if cs == nil {
+		return ""
+	}
+	return C.GoString(cs)
+}
+
+// SetDebugLocation sets a debug location for an expression within a function.
+func (m *Module) SetDebugLocation(fn FunctionRef, expr ExpressionRef, fileIndex, line, col Index) {
+	C.BinaryenFunctionSetDebugLocation(
+		(C.BinaryenFunctionRef)(unsafe.Pointer(fn)),
+		(C.BinaryenExpressionRef)(unsafe.Pointer(expr)),
+		C.BinaryenIndex(fileIndex),
+		C.BinaryenIndex(line),
+		C.BinaryenIndex(col),
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Memory (full API with segments and offsets)
+// ---------------------------------------------------------------------------
+
+// DataSegment describes a data segment for SetMemoryFull.
+type DataSegment struct {
+	Name     string
+	Data     []byte
+	Passive  bool
+	Offset   ExpressionRef // offset expression, 0 for passive segments
+}
+
+// SetMemoryFull configures the module's memory with data segments and offset expressions.
+func (m *Module) SetMemoryFull(initial, maximum Index, exportName string, segments []DataSegment, shared bool, is64 bool, memoryName string) {
+	var cExport *C.char
+	if exportName != "" {
+		cExport = m.str(exportName)
+	}
+	n := len(segments)
+	if n == 0 {
+		C.BinaryenSetMemory(m.ref, C.BinaryenIndex(initial), C.BinaryenIndex(maximum),
+			cExport, nil, nil, nil, nil, nil, 0, cBool(shared), cBool(is64), m.str(memoryName))
+		return
+	}
+	cNames := make([]*C.char, n)
+	cData := make([]*C.char, n)
+	cPassive := make([]C.bool, n)
+	cOffsets := make([]C.BinaryenExpressionRef, n)
+	cSizes := make([]C.BinaryenIndex, n)
+	for i, seg := range segments {
+		cNames[i] = m.str(seg.Name)
+		if len(seg.Data) > 0 {
+			cData[i] = (*C.char)(unsafe.Pointer(&seg.Data[0]))
+		}
+		cPassive[i] = cBool(seg.Passive)
+		cOffsets[i] = (C.BinaryenExpressionRef)(unsafe.Pointer(seg.Offset))
+		cSizes[i] = C.BinaryenIndex(len(seg.Data))
+	}
+	C.BinaryenSetMemory(m.ref, C.BinaryenIndex(initial), C.BinaryenIndex(maximum),
+		cExport, &cNames[0], &cData[0], &cPassive[0], &cOffsets[0], &cSizes[0],
+		C.BinaryenIndex(n), cBool(shared), cBool(is64), m.str(memoryName))
+}
+
+// ---------------------------------------------------------------------------
+// Binary output with source map
+// ---------------------------------------------------------------------------
+
+// EmitBinaryWithSourceMap emits the module as a Wasm binary with an optional source map.
+func (m *Module) EmitBinaryWithSourceMap(sourceMapURL string) (binary []byte, sourceMap string) {
+	var cURL *C.char
+	if sourceMapURL != "" {
+		cURL = C.CString(sourceMapURL)
+		defer C.free(unsafe.Pointer(cURL))
+	}
+	result := C.BinaryenModuleAllocateAndWrite(m.ref, cURL)
+	defer C.free(result.binary)
+	binary = C.GoBytes(result.binary, C.int(result.binaryBytes))
+	if result.sourceMap != nil {
+		defer C.free(unsafe.Pointer(result.sourceMap))
+		sourceMap = C.GoString(result.sourceMap)
+	}
+	return
+}
+
+// ---------------------------------------------------------------------------
+// Module queries
+// ---------------------------------------------------------------------------
+
+// HasExport returns true if an export with the given name exists.
+func HasExport(mod *Module, name string) bool {
+	cs := C.CString(name)
+	defer C.free(unsafe.Pointer(cs))
+	ref := C.BinaryenGetExport(mod.ref, cs)
+	return ref != nil
+}
+
+// HasFunction returns true if a function with the given name exists.
+func HasFunction(mod *Module, name string) bool {
+	cs := C.CString(name)
+	defer C.free(unsafe.Pointer(cs))
+	ref := C.BinaryenGetFunction(mod.ref, cs)
+	return ref != nil
+}
+
+// ---------------------------------------------------------------------------
+// Pass arguments
+// ---------------------------------------------------------------------------
+
+// SetPassArgument sets a string argument for an optimization pass.
+func SetPassArgument(name, value string) {
+	cn := C.CString(name)
+	defer C.free(unsafe.Pointer(cn))
+	cv := C.CString(value)
+	defer C.free(unsafe.Pointer(cv))
+	C.BinaryenSetPassArgument(cn, cv)
+}
+
+// ClearPassArguments clears all pass arguments.
+func ClearPassArguments() {
+	C.BinaryenClearPassArguments()
+}
+
+// ---------------------------------------------------------------------------
+// Inline size configuration
+// ---------------------------------------------------------------------------
+
+// SetAlwaysInlineMaxSize sets the max function size to always inline.
+func SetAlwaysInlineMaxSize(size Index) {
+	C.BinaryenSetAlwaysInlineMaxSize(C.BinaryenIndex(size))
+}
+
+// SetFlexibleInlineMaxSize sets the max function size for flexible inlining.
+func SetFlexibleInlineMaxSize(size Index) {
+	C.BinaryenSetFlexibleInlineMaxSize(C.BinaryenIndex(size))
+}
+
+// SetOneCallerInlineMaxSize sets the max function size to inline when it has one caller.
+func SetOneCallerInlineMaxSize(size Index) {
+	C.BinaryenSetOneCallerInlineMaxSize(C.BinaryenIndex(size))
+}
+
+// ---------------------------------------------------------------------------
+// Interpret
+// ---------------------------------------------------------------------------
+
+// Interpret calls the Binaryen interpreter on the module.
+func (m *Module) Interpret() {
+	C.BinaryenModuleInterpret(m.ref)
+}
+
+// ---------------------------------------------------------------------------
+// Module closed-world and stack IR configuration
+// ---------------------------------------------------------------------------
+
+// SetClosedWorld marks the module as closed-world for optimizations.
+func SetClosedWorld(on bool) {
+	// BinaryenSetClosedWorld is not available in all Binaryen versions.
+	// Stub: no-op until confirmed available.
+}
+
+// SetGenerateStackIR controls StackIR generation during optimization.
+func SetGenerateStackIR(on bool) {
+	// Stub: not all Binaryen versions expose this.
+}
+
+// SetOptimizeStackIR controls StackIR optimization.
+func SetOptimizeStackIR(on bool) {
+	// Stub: not all Binaryen versions expose this.
+}
+
+// ---------------------------------------------------------------------------
+// Expression runner
+// ---------------------------------------------------------------------------
+
+// ExpressionRunnerCreate creates an expression runner (const evaluator).
+func ExpressionRunnerCreate(mod *Module, flags ExpressionRunnerFlags, maxDepth, maxLoopIterations Index) uintptr {
+	return uintptr(unsafe.Pointer(C.ExpressionRunnerCreate(
+		mod.ref,
+		C.ExpressionRunnerFlags(flags),
+		C.BinaryenIndex(maxDepth),
+		C.BinaryenIndex(maxLoopIterations),
+	)))
+}
+
+// ExpressionRunnerSetLocalValue sets a local value in the expression runner.
+func ExpressionRunnerSetLocalValue(runner uintptr, index Index, value ExpressionRef) bool {
+	return goBool(C.ExpressionRunnerSetLocalValue(
+		(C.ExpressionRunnerRef)(unsafe.Pointer(runner)),
+		C.BinaryenIndex(index),
+		(C.BinaryenExpressionRef)(unsafe.Pointer(value)),
+	))
+}
+
+// ExpressionRunnerSetGlobalValue sets a global value in the expression runner.
+func ExpressionRunnerSetGlobalValue(runner uintptr, name string, value ExpressionRef) bool {
+	cs := C.CString(name)
+	defer C.free(unsafe.Pointer(cs))
+	return goBool(C.ExpressionRunnerSetGlobalValue(
+		(C.ExpressionRunnerRef)(unsafe.Pointer(runner)),
+		cs,
+		(C.BinaryenExpressionRef)(unsafe.Pointer(value)),
+	))
+}
+
+// ExpressionRunnerRunAndDispose runs the expression runner and disposes it.
+func ExpressionRunnerRunAndDispose(runner uintptr, expr ExpressionRef) ExpressionRef {
+	return ExpressionRef(unsafe.Pointer(C.ExpressionRunnerRunAndDispose(
+		(C.ExpressionRunnerRef)(unsafe.Pointer(runner)),
+		(C.BinaryenExpressionRef)(unsafe.Pointer(expr)),
+	)))
+}
+
+// ---------------------------------------------------------------------------
+// Module read from binary
+// ---------------------------------------------------------------------------
+
+// ModuleRead creates a module from a Wasm binary buffer.
+func ModuleRead(data []byte) *Module {
+	if len(data) == 0 {
+		return nil
+	}
+	ref := C.BinaryenModuleRead((*C.char)(unsafe.Pointer(&data[0])), C.size_t(len(data)))
+	if ref == nil {
+		return nil
+	}
+	return &Module{ref: ref}
 }

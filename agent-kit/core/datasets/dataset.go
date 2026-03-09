@@ -5,19 +5,21 @@ import (
 	"context"
 	"errors"
 
-	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
 	"github.com/brainlet/brainkit/agent-kit/core/datasets/experiment"
+	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
 	"github.com/brainlet/brainkit/agent-kit/core/mastra"
 	"github.com/brainlet/brainkit/agent-kit/core/storage"
+	storagedatasets "github.com/brainlet/brainkit/agent-kit/core/storage/domains/datasets"
+	"github.com/brainlet/brainkit/agent-kit/core/storage/domains"
+	storageexperiments "github.com/brainlet/brainkit/agent-kit/core/storage/domains/experiments"
 )
 
 // ---------------------------------------------------------------------------
-// Cross-package interfaces (real imports, no circular dependency)
+// Cross-package types (real imports, no circular dependency)
 // ---------------------------------------------------------------------------
 
 // Mastra is the narrow interface for the Mastra orchestrator used by datasets.
-// No circular dependency: mastra does not import datasets.
-// Ported from: packages/core/src/datasets/dataset.ts — uses mastra instance
+// Ported from: packages/core/src/datasets/dataset.ts — uses mastra instance.
 type Mastra interface {
 	GetStorage() *storage.MastraCompositeStore
 	GetScorerByID(id string) mastra.MastraScorer
@@ -28,73 +30,31 @@ type Mastra interface {
 }
 
 // MastraCompositeStore is re-exported from the storage package.
-// No circular dependency: storage does not import datasets.
 type MastraCompositeStore = storage.MastraCompositeStore
 
-// DatasetsStorage is a stub for storage/domains/datasets DatasetsStorage.
-// STUB REASON: The real storage/domains/datasets.DatasetsStorage is itself a stub
-// (type alias for any). This interface defines the expected contract locally.
-type DatasetsStorage interface {
-	GetDatasetByID(ctx context.Context, id string) (DatasetRecord, error)
-	UpdateDataset(ctx context.Context, args map[string]any) (DatasetRecord, error)
-	AddItem(ctx context.Context, args map[string]any) (DatasetItem, error)
-	BatchInsertItems(ctx context.Context, args map[string]any) ([]DatasetItem, error)
-	GetItemByID(ctx context.Context, args map[string]any) (DatasetItem, error)
-	ListItems(ctx context.Context, args map[string]any) (any, error)
-	GetItemsByVersion(ctx context.Context, args map[string]any) ([]DatasetItem, error)
-	UpdateItem(ctx context.Context, args map[string]any) (DatasetItem, error)
-	DeleteItem(ctx context.Context, args map[string]any) error
-	BatchDeleteItems(ctx context.Context, args map[string]any) error
-	ListDatasetVersions(ctx context.Context, args map[string]any) (ListVersionsOutput, error)
-	GetItemHistory(ctx context.Context, itemID string) ([]DatasetItemRow, error)
-}
+// DatasetsStorage is the real storage interface from storage/domains/datasets.
+type DatasetsStorage = storagedatasets.DatasetsStorage
 
-// ExperimentsStorage is a stub for storage/domains/experiments ExperimentsStorage.
-// STUB REASON: Same as DatasetsStorage — the real type is a stub alias for any.
-type ExperimentsStorage interface {
-	CreateExperiment(ctx context.Context, input map[string]any) (ExperimentRecord, error)
-	ListExperiments(ctx context.Context, args map[string]any) (any, error)
-	GetExperimentByID(ctx context.Context, id string) (any, error)
-	ListExperimentResults(ctx context.Context, args map[string]any) (any, error)
-	DeleteExperiment(ctx context.Context, id string) error
-}
+// ExperimentsStorage is the real storage interface from storage/domains/experiments.
+type ExperimentsStorage = storageexperiments.ExperimentsStorage
 
-// DatasetRecord is a stub for storage/types DatasetRecord.
-// STUB REASON: The real storage.DatasetRecord is a struct with typed fields.
-// Replacing would require updating all code that constructs/accesses these as maps.
-type DatasetRecord = map[string]any
+// DatasetRecord is a dataset record from storage.
+type DatasetRecord = storagedatasets.DatasetRecord
 
-// DatasetItem is a stub for storage/types DatasetItem.
-// STUB REASON: Same as DatasetRecord — real type is a struct.
-type DatasetItem = map[string]any
+// DatasetItem is an item within a dataset from storage.
+type DatasetItem = storagedatasets.DatasetItem
 
-// DatasetItemRow is a stub for storage/types DatasetItemRow.
-// STUB REASON: Same as DatasetRecord — real type is a struct.
-type DatasetItemRow = map[string]any
+// DatasetItemRow is the raw database row for a dataset item (includes versioning fields).
+type DatasetItemRow = storagedatasets.DatasetItemRow
 
-// DatasetVersion is a stub for storage/types DatasetVersion.
-// STUB REASON: Same as DatasetRecord — real type is a struct.
-type DatasetVersion = map[string]any
+// DatasetVersion represents a dataset version record.
+type DatasetVersion = storagedatasets.DatasetVersion
 
-// ExperimentRecord is a stub for experiment record.
-// STUB REASON: Same as DatasetRecord — real type is a struct.
-type ExperimentRecord = map[string]any
+// ExperimentRecord is an experiment record from storage.
+type ExperimentRecord = storageexperiments.Experiment
 
-// ListVersionsOutput is a stub for list versions output.
-// Defined locally as this is a datasets-specific output type.
-type ListVersionsOutput struct {
-	Versions   []DatasetVersion `json:"versions"`
-	Pagination PaginationInfo   `json:"pagination"`
-}
-
-// PaginationInfo is a stub for pagination metadata.
-// Defined locally as a simplified version of the storage pagination types.
-type PaginationInfo struct {
-	Total   int  `json:"total"`
-	Page    int  `json:"page"`
-	PerPage any  `json:"perPage"` // int or false
-	HasMore bool `json:"hasMore"`
-}
+// ListVersionsOutput is the output for listing dataset versions.
+type ListVersionsOutput = storagedatasets.ListDatasetVersionsOutput
 
 // ============================================================================
 // Dataset
@@ -108,8 +68,8 @@ type Dataset struct {
 	// ID is the dataset ID.
 	ID string
 
-	mastra          Mastra
-	datasetsStore   DatasetsStorage
+	mastra           Mastra
+	datasetsStore    DatasetsStorage
 	experimentsStore ExperimentsStorage
 }
 
@@ -201,15 +161,15 @@ func (d *Dataset) getExperimentsStore(ctx context.Context) (ExperimentsStorage, 
 func (d *Dataset) GetDetails(ctx context.Context) (DatasetRecord, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return DatasetRecord{}, err
 	}
 
 	record, err := store.GetDatasetByID(ctx, d.ID)
 	if err != nil {
-		return nil, err
+		return DatasetRecord{}, err
 	}
-	if record == nil {
-		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
+	if record.ID == "" {
+		return DatasetRecord{}, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASET_NOT_FOUND",
 			Text:     "Dataset not found: " + d.ID,
 			Domain:   mastraerror.ErrorDomainStorage,
@@ -221,40 +181,28 @@ func (d *Dataset) GetDetails(ctx context.Context) (DatasetRecord, error) {
 
 // UpdateInput holds the fields for updating dataset metadata.
 type UpdateInput struct {
-	Name             *string        `json:"name,omitempty"`
-	Description      *string        `json:"description,omitempty"`
-	Metadata         map[string]any `json:"metadata,omitempty"`
-	InputSchema      any            `json:"inputSchema,omitempty"`
-	GroundTruthSchema any           `json:"groundTruthSchema,omitempty"`
+	Name              *string        `json:"name,omitempty"`
+	Description       *string        `json:"description,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	InputSchema       map[string]any `json:"inputSchema,omitempty"`
+	GroundTruthSchema map[string]any `json:"groundTruthSchema,omitempty"`
 }
 
 // Update updates dataset metadata and/or schemas.
 func (d *Dataset) Update(ctx context.Context, input UpdateInput) (DatasetRecord, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return DatasetRecord{}, err
 	}
 
-	args := map[string]any{
-		"id": d.ID,
-	}
-	if input.Name != nil {
-		args["name"] = *input.Name
-	}
-	if input.Description != nil {
-		args["description"] = *input.Description
-	}
-	if input.Metadata != nil {
-		args["metadata"] = input.Metadata
-	}
-	if input.InputSchema != nil {
-		args["inputSchema"] = input.InputSchema
-	}
-	if input.GroundTruthSchema != nil {
-		args["groundTruthSchema"] = input.GroundTruthSchema
-	}
-
-	return store.UpdateDataset(ctx, args)
+	return store.UpdateDataset(ctx, storagedatasets.UpdateDatasetInput{
+		ID:                d.ID,
+		Name:              input.Name,
+		Description:       input.Description,
+		Metadata:          input.Metadata,
+		InputSchema:       input.InputSchema,
+		GroundTruthSchema: input.GroundTruthSchema,
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -272,13 +220,13 @@ type AddItemInput struct {
 func (d *Dataset) AddItem(ctx context.Context, input AddItemInput) (DatasetItem, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return DatasetItem{}, err
 	}
-	return store.AddItem(ctx, map[string]any{
-		"datasetId":   d.ID,
-		"input":       input.Input,
-		"groundTruth": input.GroundTruth,
-		"metadata":    input.Metadata,
+	return store.AddItem(ctx, storagedatasets.AddDatasetItemInput{
+		DatasetID:   d.ID,
+		Input:       input.Input,
+		GroundTruth: input.GroundTruth,
+		Metadata:    input.Metadata,
 	})
 }
 
@@ -293,9 +241,19 @@ func (d *Dataset) AddItems(ctx context.Context, input AddItemsInput) ([]DatasetI
 	if err != nil {
 		return nil, err
 	}
-	return store.BatchInsertItems(ctx, map[string]any{
-		"datasetId": d.ID,
-		"items":     input.Items,
+
+	batchItems := make([]domains.BatchInsertItemInput, len(input.Items))
+	for i, item := range input.Items {
+		batchItems[i] = domains.BatchInsertItemInput{
+			Input:       item.Input,
+			GroundTruth: item.GroundTruth,
+			Metadata:    item.Metadata,
+		}
+	}
+
+	return store.BatchInsertItems(ctx, storagedatasets.BatchInsertItemsInput{
+		DatasetID: d.ID,
+		Items:     batchItems,
 	})
 }
 
@@ -309,11 +267,11 @@ type GetItemArgs struct {
 func (d *Dataset) GetItem(ctx context.Context, args GetItemArgs) (DatasetItem, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return DatasetItem{}, err
 	}
-	return store.GetItemByID(ctx, map[string]any{
-		"id":             args.ItemID,
-		"datasetVersion": args.Version,
+	return store.GetItemByID(ctx, storagedatasets.GetItemByIDArgs{
+		ID:             args.ItemID,
+		DatasetVersion: args.Version,
 	})
 }
 
@@ -326,22 +284,28 @@ type ListItemsArgs struct {
 }
 
 // ListItems lists items in the dataset, optionally at a specific version.
-func (d *Dataset) ListItems(ctx context.Context, args *ListItemsArgs) (any, error) {
+func (d *Dataset) ListItems(ctx context.Context, args *ListItemsArgs) (storagedatasets.ListDatasetItemsOutput, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storagedatasets.ListDatasetItemsOutput{}, err
 	}
 
 	if args != nil && args.Version != nil {
-		return store.GetItemsByVersion(ctx, map[string]any{
-			"datasetId": d.ID,
-			"version":   *args.Version,
+		items, err := store.GetItemsByVersion(ctx, storagedatasets.GetItemsByVersionArgs{
+			DatasetID: d.ID,
+			Version:   *args.Version,
 		})
+		if err != nil {
+			return storagedatasets.ListDatasetItemsOutput{}, err
+		}
+		return storagedatasets.ListDatasetItemsOutput{
+			Items: items,
+		}, nil
 	}
 
 	page := 0
 	perPage := 20
-	var search string
+	var search *string
 	if args != nil {
 		if args.Page != nil {
 			page = *args.Page
@@ -349,15 +313,17 @@ func (d *Dataset) ListItems(ctx context.Context, args *ListItemsArgs) (any, erro
 		if args.PerPage != nil {
 			perPage = *args.PerPage
 		}
-		search = args.Search
+		if args.Search != "" {
+			search = &args.Search
+		}
 	}
 
-	return store.ListItems(ctx, map[string]any{
-		"datasetId": d.ID,
-		"search":    search,
-		"pagination": map[string]any{
-			"page":    page,
-			"perPage": perPage,
+	return store.ListItems(ctx, storagedatasets.ListDatasetItemsInput{
+		DatasetID: d.ID,
+		Search:    search,
+		Pagination: domains.StoragePagination{
+			Page:    page,
+			PerPage: perPage,
 		},
 	})
 }
@@ -374,14 +340,14 @@ type UpdateItemInput struct {
 func (d *Dataset) UpdateItem(ctx context.Context, input UpdateItemInput) (DatasetItem, error) {
 	store, err := d.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return DatasetItem{}, err
 	}
-	return store.UpdateItem(ctx, map[string]any{
-		"id":          input.ItemID,
-		"datasetId":   d.ID,
-		"input":       input.Input,
-		"groundTruth": input.GroundTruth,
-		"metadata":    input.Metadata,
+	return store.UpdateItem(ctx, storagedatasets.UpdateDatasetItemInput{
+		ID:          input.ItemID,
+		DatasetID:   d.ID,
+		Input:       input.Input,
+		GroundTruth: input.GroundTruth,
+		Metadata:    input.Metadata,
 	})
 }
 
@@ -391,9 +357,9 @@ func (d *Dataset) DeleteItem(ctx context.Context, itemID string) error {
 	if err != nil {
 		return err
 	}
-	return store.DeleteItem(ctx, map[string]any{
-		"id":        itemID,
-		"datasetId": d.ID,
+	return store.DeleteItem(ctx, storagedatasets.DeleteItemArgs{
+		ID:        itemID,
+		DatasetID: d.ID,
 	})
 }
 
@@ -403,9 +369,9 @@ func (d *Dataset) DeleteItems(ctx context.Context, itemIDs []string) error {
 	if err != nil {
 		return err
 	}
-	return store.BatchDeleteItems(ctx, map[string]any{
-		"datasetId": d.ID,
-		"itemIds":   itemIDs,
+	return store.BatchDeleteItems(ctx, storagedatasets.BatchDeleteItemsInput{
+		DatasetID: d.ID,
+		ItemIDs:   itemIDs,
 	})
 }
 
@@ -437,11 +403,11 @@ func (d *Dataset) ListVersions(ctx context.Context, args *ListVersionsArgs) (*Li
 		}
 	}
 
-	out, err := store.ListDatasetVersions(ctx, map[string]any{
-		"datasetId": d.ID,
-		"pagination": map[string]any{
-			"page":    page,
-			"perPage": perPage,
+	out, err := store.ListDatasetVersions(ctx, storagedatasets.ListDatasetVersionsInput{
+		DatasetID: d.ID,
+		Pagination: domains.StoragePagination{
+			Page:    page,
+			PerPage: perPage,
 		},
 	})
 	if err != nil {
@@ -513,7 +479,7 @@ func (d *Dataset) StartExperimentAsync(ctx context.Context, config experiment.St
 	if err != nil {
 		return nil, err
 	}
-	if dataset == nil {
+	if dataset.ID == "" {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASET_NOT_FOUND",
 			Text:     "Dataset not found: " + d.ID,
@@ -531,36 +497,45 @@ func (d *Dataset) StartExperimentAsync(ctx context.Context, config experiment.St
 		targetID = "inline"
 	}
 
-	run, err := expStore.CreateExperiment(ctx, map[string]any{
-		"datasetId":      d.ID,
-		"datasetVersion": dataset["version"],
-		"targetType":     string(targetType),
-		"targetId":       targetID,
-		"totalItems":     0,
-		"name":           config.Name,
-		"description":    config.Description,
-		"metadata":       config.Metadata,
+	datasetID := d.ID
+	datasetVersion := dataset.Version
+
+	run, err := expStore.CreateExperiment(ctx, storageexperiments.CreateExperimentInput{
+		DatasetID:      &datasetID,
+		DatasetVersion: &datasetVersion,
+		TargetType:     domains.TargetType(targetType),
+		TargetID:       targetID,
+		TotalItems:     0,
+		Name:           nilIfEmpty(config.Name),
+		Description:    nilIfEmpty(config.Description),
+		Metadata:       config.Metadata,
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	experimentID, _ := run["id"].(string)
 
 	// Fire-and-forget — errors are silently caught
 	// TODO: Launch goroutine calling experiment.RunExperiment once wired.
 	// go func() {
 	//     _ = experiment.RunExperiment(ctx, d.mastra, experiment.ExperimentConfig{
 	//         DatasetID:    d.ID,
-	//         ExperimentID: experimentID,
+	//         ExperimentID: run.ID,
 	//         ...config,
 	//     })
 	// }()
 
 	return &StartExperimentAsyncResult{
-		ExperimentID: experimentID,
+		ExperimentID: run.ID,
 		Status:       "pending",
 	}, nil
+}
+
+// nilIfEmpty returns a pointer to s if non-empty, otherwise nil.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // ListExperimentsArgs holds the arguments for listing experiments.
@@ -570,10 +545,10 @@ type ListExperimentsArgs struct {
 }
 
 // ListExperiments lists all experiments (runs) for this dataset.
-func (d *Dataset) ListExperiments(ctx context.Context, args *ListExperimentsArgs) (any, error) {
+func (d *Dataset) ListExperiments(ctx context.Context, args *ListExperimentsArgs) (storageexperiments.ListExperimentsOutput, error) {
 	expStore, err := d.getExperimentsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storageexperiments.ListExperimentsOutput{}, err
 	}
 
 	page := 0
@@ -587,20 +562,21 @@ func (d *Dataset) ListExperiments(ctx context.Context, args *ListExperimentsArgs
 		}
 	}
 
-	return expStore.ListExperiments(ctx, map[string]any{
-		"datasetId": d.ID,
-		"pagination": map[string]any{
-			"page":    page,
-			"perPage": perPage,
+	datasetID := d.ID
+	return expStore.ListExperiments(ctx, storageexperiments.ListExperimentsInput{
+		DatasetID: &datasetID,
+		Pagination: domains.StoragePagination{
+			Page:    page,
+			PerPage: perPage,
 		},
 	})
 }
 
 // GetExperiment gets a specific experiment (run) by ID.
-func (d *Dataset) GetExperiment(ctx context.Context, experimentID string) (any, error) {
+func (d *Dataset) GetExperiment(ctx context.Context, experimentID string) (storageexperiments.Experiment, error) {
 	expStore, err := d.getExperimentsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storageexperiments.Experiment{}, err
 	}
 	return expStore.GetExperimentByID(ctx, experimentID)
 }
@@ -613,10 +589,10 @@ type ListExperimentResultsArgs struct {
 }
 
 // ListExperimentResults lists results for a specific experiment.
-func (d *Dataset) ListExperimentResults(ctx context.Context, args ListExperimentResultsArgs) (any, error) {
+func (d *Dataset) ListExperimentResults(ctx context.Context, args ListExperimentResultsArgs) (storageexperiments.ListExperimentResultsOutput, error) {
 	expStore, err := d.getExperimentsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storageexperiments.ListExperimentResultsOutput{}, err
 	}
 
 	page := 0
@@ -628,11 +604,11 @@ func (d *Dataset) ListExperimentResults(ctx context.Context, args ListExperiment
 		perPage = *args.PerPage
 	}
 
-	return expStore.ListExperimentResults(ctx, map[string]any{
-		"experimentId": args.ExperimentID,
-		"pagination": map[string]any{
-			"page":    page,
-			"perPage": perPage,
+	return expStore.ListExperimentResults(ctx, storageexperiments.ListExperimentResultsInput{
+		ExperimentID: args.ExperimentID,
+		Pagination: domains.StoragePagination{
+			Page:    page,
+			PerPage: perPage,
 		},
 	})
 }

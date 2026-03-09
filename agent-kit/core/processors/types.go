@@ -3,45 +3,45 @@ package processors
 
 import (
 	"context"
-	"time"
 
+	"github.com/brainlet/brainkit/agent-kit/core/agent/messagelist"
+	"github.com/brainlet/brainkit/agent-kit/core/agent/messagelist/state"
 	"github.com/brainlet/brainkit/agent-kit/core/llm/model"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	"github.com/brainlet/brainkit/agent-kit/core/stream"
 )
 
 // ---------------------------------------------------------------------------
 // Stub types for packages not yet ported
 // ---------------------------------------------------------------------------
 
-// MastraDBMessage is a stub for ../agent/message-list.MastraDBMessage.
-// STUB REASON: Importing agent would create a circular dependency since agent
-// imports processors. This struct replicates the agent package's MastraDBMessage shape.
-type MastraDBMessage struct {
-	ID         string                `json:"id"`
-	Role       string                `json:"role"`
-	Content    MastraMessageContentV2 `json:"content"`
-	CreatedAt  time.Time             `json:"createdAt"`
-	ThreadID   string                `json:"threadId,omitempty"`
-	ResourceID string                `json:"resourceId,omitempty"`
-	Type       string                `json:"type,omitempty"`
-}
+// MastraDBMessage is the primary message type stored in the database.
+// Previously a local stub; now imported from agent/messagelist/state since that
+// package does not import processors (the claimed circular dependency was false).
+type MastraDBMessage = state.MastraDBMessage
 
-// MastraMessageContentV2 is a stub for ../agent/message-list.MastraMessageContentV2.
-// STUB REASON: Same as MastraDBMessage — agent imports processors (circular).
-type MastraMessageContentV2 struct {
-	Format           int                    `json:"format"`
-	Parts            []MessagePart          `json:"parts"`
-	Content          string                 `json:"content,omitempty"`
-	Metadata         map[string]any         `json:"metadata,omitempty"`
-	ProviderMetadata map[string]any         `json:"providerMetadata,omitempty"`
-}
+// MastraMessageContentV2 is the V2 message content format.
+// Previously a local stub; now imported from agent/messagelist/state since that
+// package does not import processors (the claimed circular dependency was false).
+type MastraMessageContentV2 = state.MastraMessageContentV2
 
-// MessageList is a stub for ../agent/message-list.MessageList.
-// STUB REASON: Same as MastraDBMessage — agent imports processors (circular).
-// Now stores actual state so memory processors can use it for dedup, adding
-// historical messages, and persisting new input/response messages.
+// MastraMessageShared re-exports state.MastraMessageShared so struct literals in
+// this package and sub-packages can reference the embedded type by name.
+type MastraMessageShared = state.MastraMessageShared
+
+// MastraMessagePart re-exports state.MastraMessagePart for use in this package.
+type MastraMessagePart = state.MastraMessagePart
+
+// MessageList is a simplified message list implementation for use within processors.
+// NOT a circular-dependency stub — messagelist does NOT import processors, so the
+// import is safe.  However, the real messagelist.MessageList has a fundamentally
+// different API: it uses []*state.MastraDBMessage (pointers), accepts polymorphic
+// Add(messages any, source state.MessageSource) returning *MessageList, and depends
+// on sub-packages (adapters, cache, conversion, detection, merge, prompt).
+// Replacing this type would require rewriting the entire ProcessorRunner, so it
+// remains a purpose-built local implementation with a minimal API surface.
 //
 // Source tracking: each message is tagged with one of "input", "response", or
 // "memory" so that GetInputDB / GetResponseDB / GetAllDB can return the right
@@ -243,12 +243,11 @@ func (ml *MessageList) GetAllSystemMessages() []CoreMessageV4 { return nil }
 // Stub: no-op until MessageList is fully ported.
 func (ml *MessageList) ReplaceAllSystemMessages(msgs []CoreMessageV4) {}
 
-// CoreMessageV4 is a stub for @internal/ai-sdk-v4.CoreMessage.
-// ai-kit only ported V3 (@ai-sdk/provider-v6). V4/V5 types remain local stubs.
-type CoreMessageV4 struct {
-	Role    string `json:"role"`
-	Content any    `json:"content,omitempty"`
-}
+// CoreMessageV4 is imported from the messagelist package (no circular dependency).
+// The real type has 6 fields (Role, Content, ExperimentalProviderMetadata,
+// ProviderOptions, ID, Metadata). Processor call sites only use Role and Content,
+// but importing the canonical type ensures structural compatibility across packages.
+type CoreMessageV4 = messagelist.CoreMessageV4
 
 // StepResult is a stub for @internal/ai-sdk-v5.StepResult.
 // ai-kit only ported V3 (@ai-sdk/provider-v6). V4/V5 types remain local stubs.
@@ -267,34 +266,29 @@ type CallSettings struct {
 }
 
 // TripWireOptions holds options for the abort/tripwire mechanism.
-// STUB REASON: Part of the agent package's tripwire system. Agent imports processors (circular).
+// NOT a circular-dependency stub — agent does NOT import processors.
+// Kept as a local type because importing the entire agent package for a
+// 2-field struct would add a heavy transitive dependency (agent imports
+// memory, storage, stream, voice, etc.).
 type TripWireOptions struct {
 	Retry    bool `json:"retry,omitempty"`
 	Metadata any  `json:"metadata,omitempty"`
 }
 
-// ChunkType is a stub for ../stream.ChunkType.
-// STUB REASON: The stream package contains stub types itself. Importing it would add
-// a dependency with no real type benefit (stream.ChunkType is also a stub struct).
-type ChunkType struct {
-	Type    string `json:"type"`
-	Payload any    `json:"payload,omitempty"`
-}
+// ChunkType is the unified stream chunk type from the stream package.
+// Previously a local stub; now imported directly since stream does not import processors.
+type ChunkType = stream.ChunkType
 
-// DataChunkType is a stub for ../stream/types.DataChunkType.
-// STUB REASON: Same as ChunkType — stream package has only stub types.
-type DataChunkType struct {
-	Type string `json:"type"`
-	ID   string `json:"id,omitempty"`
-	Data any    `json:"data,omitempty"`
-}
+// DataChunkType represents a custom data event from the stream package.
+// Previously a local stub; now imported directly since stream does not import processors.
+type DataChunkType = stream.DataChunkType
 
 // InferSchemaOutput is a stub for ../stream.InferSchemaOutput.
-// STUB REASON: Same as ChunkType — stream package has only stub types.
+// Kept as any — same definition as in stream/base.
 type InferSchemaOutput = any
 
 // OutputSchema is a stub for ../stream.OutputSchema.
-// STUB REASON: Same as ChunkType — stream package has only stub types.
+// Kept as any — same definition as in stream/base.
 type OutputSchema = any
 
 // MastraLanguageModel is imported from the llm/model package.
@@ -331,10 +325,11 @@ type Mastra interface {
 // Ported from: packages/core/src/processors — uses mastra.getLogger()
 type MastraLogger = logger.IMastraLogger
 
-// Workflow is a stub for ../workflows.Workflow.
-// STUB REASON: Importing workflows would create a dependency that doesn't exist
-// in the current architecture. The real workflows.Workflow struct uses GetID().
-// This stub matches the real type's method signature.
+// Workflow is a minimal interface matching workflows.Workflow.GetID().
+// NOT a circular-dependency stub — workflows does NOT import processors.
+// Kept as an interface (rather than type Workflow = *workflows.Workflow)
+// because ProcessorWorkflow embeds it and any type with GetID() string
+// should satisfy it. This follows the Go idiom of accepting interfaces.
 type Workflow interface {
 	GetID() string
 }
@@ -759,16 +754,19 @@ type ProcessorWorkflow interface {
 	CreateRun() (WorkflowRun, error)
 }
 
-// WorkflowRun is a stub for workflow run instances.
-// STUB REASON: Importing workflows would add a dependency that doesn't exist
-// in the current architecture. This interface matches the subset of methods
-// used by the processor runner.
+// WorkflowRun is the processor-specific workflow run interface.
+// NOT a circular-dependency stub — workflows does NOT import processors.
+// Kept as a local interface because the real workflows.Run.Start takes
+// workflows.StartParams (with InitialState, OutputOptions, PerStep) and
+// returns *workflows.WorkflowResult, which is structurally different from
+// WorkflowRunStartOpts / *WorkflowRunResult used here.
 type WorkflowRun interface {
 	Start(opts WorkflowRunStartOpts) (*WorkflowRunResult, error)
 }
 
 // WorkflowRunStartOpts holds options for starting a workflow run.
-// STUB REASON: Same as WorkflowRun — workflow dependency not yet wired.
+// Local type — structurally different from workflows.StartParams (which has
+// InitialState, OutputOptions, PerStep fields not present here).
 type WorkflowRunStartOpts struct {
 	InputData            ProcessorStepOutput
 	RequestContext       *requestcontext.RequestContext
@@ -777,7 +775,8 @@ type WorkflowRunStartOpts struct {
 }
 
 // WorkflowRunResult holds the result of a workflow run.
-// STUB REASON: Same as WorkflowRun — workflow dependency not yet wired.
+// Local type — structurally different from workflows.WorkflowResult (which has
+// State, StepExecutionPath, ResumeLabels, Input, SuspendPayload, Suspended fields).
 type WorkflowRunResult struct {
 	Status  string                  `json:"status"`
 	Result  *ProcessorStepOutput    `json:"result,omitempty"`

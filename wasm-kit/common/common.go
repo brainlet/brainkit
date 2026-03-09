@@ -1,6 +1,6 @@
 package common
 
-type CommonFlags uint32
+type CommonFlags = uint32
 
 const (
 	CommonFlagsNone               CommonFlags = 0

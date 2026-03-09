@@ -11,90 +11,46 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/agent-kit/core/llm/model"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	"github.com/brainlet/brainkit/agent-kit/core/processors"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storagememory "github.com/brainlet/brainkit/agent-kit/core/storage/domains/memory"
+	"github.com/brainlet/brainkit/agent-kit/core/vector"
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for unported dependencies
+// Type aliases from vector and llm/model packages
 // ---------------------------------------------------------------------------
 
-// MastraVector is a simplified stub for ../../vector.MastraVector.
-// STUB REASON: The real vector.MastraVector interface uses different method signatures
-// (ctx context.Context as first param, different param/return types). Replacing this
-// would require updating all call sites in this file to pass context and use the real
-// param structs (vector.QueryVectorParams, vector.CreateIndexParams, vector.UpsertVectorParams).
-// The real interface also returns ([]string, error) from Upsert vs (error) here.
+// MastraVector is the subset of vector.MastraVector used by SemanticRecall.
+// Method signatures match the real interface (ctx as first param, real param types).
 type MastraVector interface {
-	Query(opts VectorQueryOptions) ([]VectorQueryResult, error)
-	CreateIndex(opts VectorCreateIndexOptions) error
-	Upsert(opts VectorUpsertOptions) error
+	Query(ctx context.Context, params vector.QueryVectorParams) ([]vector.QueryResult, error)
+	CreateIndex(ctx context.Context, params vector.CreateIndexParams) error
+	Upsert(ctx context.Context, params vector.UpsertVectorParams) ([]string, error)
 }
 
-// VectorQueryOptions holds parameters for vector queries.
-// STUB REASON: Simplified version of vector.QueryVectorParams (no ctx, fewer fields).
-type VectorQueryOptions struct {
-	IndexName   string         `json:"indexName"`
-	QueryVector []float64      `json:"queryVector"`
-	TopK        int            `json:"topK"`
-	Filter      map[string]any `json:"filter,omitempty"`
-}
+// Type aliases for vector types used in this file.
+type (
+	VectorQueryResult = vector.QueryResult
+)
 
-// VectorQueryResult holds a single vector query result.
-// STUB REASON: Subset of vector.QueryResult (missing Vector, Document fields).
-// Could be replaced with vector.QueryResult as a type alias since the real type
-// is a superset, but the interface signatures prevent direct import.
-type VectorQueryResult struct {
-	ID       string         `json:"id"`
-	Score    float64        `json:"score"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// VectorCreateIndexOptions holds parameters for creating a vector index.
-// STUB REASON: Simplified version of vector.CreateIndexParams (same core fields,
-// but Metric is string here vs vector.DistanceMetric in the real type).
-type VectorCreateIndexOptions struct {
-	IndexName string `json:"indexName"`
-	Dimension int    `json:"dimension"`
-	Metric    string `json:"metric"`
-}
-
-// VectorUpsertOptions holds parameters for upserting vectors.
-// STUB REASON: Simplified version of vector.UpsertVectorParams (missing SparseVectors,
-// DeleteFilter fields; Upsert returns error vs ([]string, error) in real type).
-type VectorUpsertOptions struct {
-	IndexName string           `json:"indexName"`
-	Vectors   [][]float64      `json:"vectors"`
-	IDs       []string         `json:"ids"`
-	Metadata  []map[string]any `json:"metadata,omitempty"`
-}
-
-// MastraEmbeddingModel is a stub for the AI SDK embedding model interface.
-// STUB REASON: The real embedding model interface (llm/model.EmbeddingModelV2) uses
-// different types (EmbedArgs vs EmbedOptions, different EmbedResult fields).
-// Additionally, ModelID() is ModelIDValue() in the real type.
+// MastraEmbeddingModel is the subset of model.EmbeddingModelV2 used by SemanticRecall.
+// Method signatures match the real interface.
 type MastraEmbeddingModel interface {
-	DoEmbed(opts EmbedOptions) (*EmbedResult, error)
+	DoEmbed(args model.EmbedArgs) (*model.EmbedResult, error)
 	ModelID() string
 }
 
-// EmbedOptions holds parameters for embedding.
-// STUB REASON: Equivalent to llm/model.EmbedArgs (same shape, different name).
-type EmbedOptions struct {
-	Values []string `json:"values"`
-}
+// Type aliases for embedding types used in this file and tests.
+type (
+	EmbedOptions = model.EmbedArgs
+	EmbedResult  = model.EmbedResult
+)
 
-// EmbedResult holds the result of an embedding operation.
-// STUB REASON: Subset of llm/model.EmbedResult (missing Warnings field).
-type EmbedResult struct {
-	Embeddings [][]float64 `json:"embeddings"`
-}
-
-// MastraEmbeddingOptions holds optional embedding parameters.
-// STUB REASON: The real vector.EmbeddingOptions has structured fields (MaxRetries,
-// Headers, MaxParallelCalls) vs this map[string]any. Kept as map for flexibility.
-type MastraEmbeddingOptions = map[string]any
+// MastraEmbeddingOptions aliases the real vector.EmbeddingOptions.
+type MastraEmbeddingOptions = vector.EmbeddingOptions
 
 
 // ---------------------------------------------------------------------------
@@ -342,6 +298,7 @@ func (sr *SemanticRecall) ProcessOutputResult(args processors.ProcessOutputResul
 		return nil, messageList, nil
 	}
 
+	ctx := context.Background()
 	resourceID := memCtx.ResourceID
 	indexName := sr.getDefaultIndexName()
 	if sr.indexName != "" {
@@ -435,7 +392,7 @@ func (sr *SemanticRecall) ProcessOutputResult(args processors.ProcessOutputResul
 			}
 			return nil, messageList, nil
 		}
-		if err := sr.vector.Upsert(VectorUpsertOptions{
+		if _, err := sr.vector.Upsert(ctx, vector.UpsertVectorParams{
 			IndexName: indexName,
 			Vectors:   vectors,
 			IDs:       ids,
@@ -513,7 +470,7 @@ func (sr *SemanticRecall) performSemanticSearch(ctx context.Context, query, thre
 			filter = map[string]any{"resource_id": resourceID}
 		}
 
-		results, err := sr.vector.Query(VectorQueryOptions{
+		results, err := sr.vector.Query(ctx, vector.QueryVectorParams{
 			IndexName:   indexName,
 			QueryVector: embedding,
 			TopK:        sr.topK,
@@ -539,11 +496,11 @@ func (sr *SemanticRecall) performSemanticSearch(ctx context.Context, query, thre
 	}
 
 	// Retrieve messages with context.
-	var includes []IncludeClause
+	var includes []MessageIncludeItem
 	for _, r := range filteredResults {
 		messageID, _ := r.Metadata["message_id"].(string)
 		rThreadID, _ := r.Metadata["thread_id"].(string)
-		includes = append(includes, IncludeClause{
+		includes = append(includes, MessageIncludeItem{
 			ID:                   messageID,
 			ThreadID:             rThreadID,
 			WithNextMessages:     sr.messageRange.After,
@@ -551,11 +508,10 @@ func (sr *SemanticRecall) performSemanticSearch(ctx context.Context, query, thre
 		})
 	}
 
-	result, err := sr.storage.ListMessages(ctx, ListMessagesInput{
+	result, err := sr.storage.ListMessages(ctx, storagememory.StorageListMessagesInput{
 		ThreadID:   threadID,
 		ResourceID: resourceID,
 		Include:    includes,
-		PerPage:    0,
 	})
 	if err != nil {
 		return nil, err
@@ -625,10 +581,10 @@ func (sr *SemanticRecall) ensureVectorIndex(indexName string, dimension int) err
 		}
 	}
 
-	if err := sr.vector.CreateIndex(VectorCreateIndexOptions{
+	if err := sr.vector.CreateIndex(context.Background(), vector.CreateIndexParams{
 		IndexName: indexName,
 		Dimension: dimension,
-		Metric:    "cosine",
+		Metric:    vector.DistanceMetricCosine,
 	}); err != nil {
 		return err
 	}

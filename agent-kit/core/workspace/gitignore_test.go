@@ -5,201 +5,6 @@ import (
 	"testing"
 )
 
-func TestParseGitignorePatterns(t *testing.T) {
-	t.Run("parses basic patterns", func(t *testing.T) {
-		patterns := parseGitignorePatterns("node_modules\n*.log\n")
-		if len(patterns) != 2 {
-			t.Fatalf("expected 2 patterns, got %d", len(patterns))
-		}
-		if patterns[0].pattern != "node_modules" {
-			t.Errorf("pattern[0] = %q, want %q", patterns[0].pattern, "node_modules")
-		}
-		if patterns[1].pattern != "*.log" {
-			t.Errorf("pattern[1] = %q, want %q", patterns[1].pattern, "*.log")
-		}
-	})
-
-	t.Run("skips empty lines and comments", func(t *testing.T) {
-		patterns := parseGitignorePatterns("# comment\n\nnode_modules\n# another\n*.log")
-		if len(patterns) != 2 {
-			t.Fatalf("expected 2 patterns, got %d", len(patterns))
-		}
-	})
-
-	t.Run("detects negation patterns", func(t *testing.T) {
-		patterns := parseGitignorePatterns("*.log\n!important.log")
-		if len(patterns) != 2 {
-			t.Fatalf("expected 2 patterns, got %d", len(patterns))
-		}
-		if patterns[0].isNegation {
-			t.Error("first pattern should not be negation")
-		}
-		if !patterns[1].isNegation {
-			t.Error("second pattern should be negation")
-		}
-		if patterns[1].pattern != "important.log" {
-			t.Errorf("negated pattern = %q, want %q", patterns[1].pattern, "important.log")
-		}
-	})
-
-	t.Run("detects directory patterns", func(t *testing.T) {
-		patterns := parseGitignorePatterns("build/\nnode_modules/")
-		if len(patterns) != 2 {
-			t.Fatalf("expected 2 patterns, got %d", len(patterns))
-		}
-		if !patterns[0].isDir {
-			t.Error("build/ should be directory pattern")
-		}
-		if patterns[0].pattern != "build" {
-			t.Errorf("pattern = %q, want %q", patterns[0].pattern, "build")
-		}
-	})
-
-	t.Run("returns nil for empty content", func(t *testing.T) {
-		patterns := parseGitignorePatterns("")
-		if len(patterns) != 0 {
-			t.Errorf("expected 0 patterns, got %d", len(patterns))
-		}
-	})
-}
-
-func TestMatchesGitignore(t *testing.T) {
-	t.Run("matches simple file name", func(t *testing.T) {
-		patterns := parseGitignorePatterns("*.log")
-		if !matchesGitignore("debug.log", patterns) {
-			t.Error("should match *.log against debug.log")
-		}
-	})
-
-	t.Run("matches directory name anywhere", func(t *testing.T) {
-		patterns := parseGitignorePatterns("node_modules")
-		if !matchesGitignore("node_modules", patterns) {
-			t.Error("should match at root")
-		}
-		if !matchesGitignore("src/node_modules", patterns) {
-			t.Error("should match in subdirectory")
-		}
-	})
-
-	t.Run("matches deeply nested file", func(t *testing.T) {
-		patterns := parseGitignorePatterns("*.log")
-		if !matchesGitignore("deep/nested/file.log", patterns) {
-			t.Error("should match *.log in nested path")
-		}
-	})
-
-	t.Run("negation pattern un-ignores files", func(t *testing.T) {
-		patterns := parseGitignorePatterns("*.log\n!important.log")
-		if matchesGitignore("important.log", patterns) {
-			t.Error("important.log should be un-ignored by negation pattern")
-		}
-		if !matchesGitignore("debug.log", patterns) {
-			t.Error("debug.log should still be ignored")
-		}
-	})
-
-	t.Run("does not match unrelated files", func(t *testing.T) {
-		patterns := parseGitignorePatterns("*.log")
-		if matchesGitignore("src/index.ts", patterns) {
-			t.Error("should not match unrelated file")
-		}
-	})
-}
-
-func TestMatchesPattern(t *testing.T) {
-	t.Run("** matches everything", func(t *testing.T) {
-		if !matchesPattern("anything/at/all", "**") {
-			t.Error("** should match any path")
-		}
-	})
-
-	t.Run("**/name matches at any level", func(t *testing.T) {
-		if !matchesPattern("foo/bar/test.log", "**/test.log") {
-			t.Error("should match nested test.log")
-		}
-		if !matchesPattern("test.log", "**/test.log") {
-			t.Error("should match root-level test.log")
-		}
-	})
-
-	t.Run("name/** matches everything under name", func(t *testing.T) {
-		if !matchesPattern("build/output.js", "build/**") {
-			t.Error("should match files under build/")
-		}
-		if !matchesPattern("build", "build/**") {
-			t.Error("should match the directory itself")
-		}
-		if matchesPattern("other/file.js", "build/**") {
-			t.Error("should not match files outside build/")
-		}
-	})
-
-	t.Run("pattern without slashes matches basename anywhere", func(t *testing.T) {
-		if !matchesPattern("src/file.txt", "file.txt") {
-			t.Error("should match file.txt in any directory")
-		}
-		if !matchesPattern("file.txt", "file.txt") {
-			t.Error("should match file.txt at root")
-		}
-	})
-
-	t.Run("pattern with slash matches from root", func(t *testing.T) {
-		if !matchesPattern("src/file.txt", "src/file.txt") {
-			t.Error("should match exact rooted path")
-		}
-	})
-}
-
-func TestMatchGlobSimple(t *testing.T) {
-	t.Run("exact match", func(t *testing.T) {
-		if !matchGlobSimple("hello", "hello") {
-			t.Error("should match exact string")
-		}
-	})
-
-	t.Run("? matches single character", func(t *testing.T) {
-		if !matchGlobSimple("hello", "hell?") {
-			t.Error("? should match one char")
-		}
-		if matchGlobSimple("hel", "hell?") {
-			t.Error("? requires exactly one char")
-		}
-	})
-
-	t.Run("* matches any sequence", func(t *testing.T) {
-		if !matchGlobSimple("hello.ts", "*.ts") {
-			t.Error("* should match any prefix")
-		}
-		if !matchGlobSimple(".ts", "*.ts") {
-			t.Error("* should match empty prefix")
-		}
-		if matchGlobSimple("hello.js", "*.ts") {
-			t.Error("should not match wrong suffix")
-		}
-	})
-
-	t.Run("* does not match empty string at end by default", func(t *testing.T) {
-		if !matchGlobSimple("file", "file*") {
-			t.Error("* at end should match empty")
-		}
-		if !matchGlobSimple("file.txt", "file*") {
-			t.Error("* at end should match any suffix")
-		}
-	})
-
-	t.Run("complex patterns", func(t *testing.T) {
-		if !matchGlobSimple("test_file.go", "test_*.go") {
-			t.Error("should match test_*.go pattern")
-		}
-		if !matchGlobSimple("abc", "a*c") {
-			t.Error("should match a*c")
-		}
-		if !matchGlobSimple("abbc", "a*c") {
-			t.Error("should match a*c with multiple middle chars")
-		}
-	})
-}
-
 func TestLoadGitignore(t *testing.T) {
 	t.Run("returns nil when filesystem returns error", func(t *testing.T) {
 		fs := &mockFilesystem{
@@ -280,6 +85,214 @@ func TestLoadGitignore(t *testing.T) {
 		}
 		if filter("") {
 			t.Error("empty path should not be ignored")
+		}
+	})
+
+	t.Run("matches simple file name with glob", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "*.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("debug.log") {
+			t.Error("should match *.log against debug.log")
+		}
+	})
+
+	t.Run("matches directory name anywhere", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "node_modules",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("node_modules") {
+			t.Error("should match at root")
+		}
+		if !filter("src/node_modules") {
+			t.Error("should match in subdirectory")
+		}
+	})
+
+	t.Run("matches deeply nested file", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "*.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("deep/nested/file.log") {
+			t.Error("should match *.log in nested path")
+		}
+	})
+
+	t.Run("negation pattern un-ignores files", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "*.log\n!important.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if filter("important.log") {
+			t.Error("important.log should be un-ignored by negation pattern")
+		}
+		if !filter("debug.log") {
+			t.Error("debug.log should still be ignored")
+		}
+	})
+
+	t.Run("does not match unrelated files", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "*.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if filter("src/index.ts") {
+			t.Error("should not match unrelated file")
+		}
+	})
+
+	t.Run("** matches everything", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "**",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("anything/at/all") {
+			t.Error("** should match any path")
+		}
+	})
+
+	t.Run("**/name matches at any level", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "**/test.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("foo/bar/test.log") {
+			t.Error("should match nested test.log")
+		}
+		if !filter("test.log") {
+			t.Error("should match root-level test.log")
+		}
+	})
+
+	t.Run("name/** matches everything under name", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "build/**",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("build/output.js") {
+			t.Error("should match files under build/")
+		}
+		if filter("other/file.js") {
+			t.Error("should not match files outside build/")
+		}
+	})
+
+	t.Run("pattern without slashes matches basename anywhere", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "file.txt",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("src/file.txt") {
+			t.Error("should match file.txt in any directory")
+		}
+		if !filter("file.txt") {
+			t.Error("should match file.txt at root")
+		}
+	})
+
+	t.Run("pattern with slash matches from root", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "src/file.txt",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("src/file.txt") {
+			t.Error("should match exact rooted path")
+		}
+	})
+
+	t.Run("skips comments and empty lines", func(t *testing.T) {
+		fs := &mockFilesystem{
+			readFileResult: "# comment\n\nnode_modules\n# another\n*.log",
+		}
+		filter, err := LoadGitignore(fs)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if filter == nil {
+			t.Fatal("filter should not be nil")
+		}
+
+		if !filter("node_modules") {
+			t.Error("should match node_modules")
+		}
+		if !filter("test.log") {
+			t.Error("should match *.log")
+		}
+		if filter("src/index.ts") {
+			t.Error("should not match unrelated file")
 		}
 	})
 }

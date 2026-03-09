@@ -8,6 +8,7 @@ import (
 
 	agentkit "github.com/brainlet/brainkit/agent-kit/core"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
+	"github.com/brainlet/brainkit/ttlcache"
 )
 
 const (
@@ -15,23 +16,13 @@ const (
 	defaultTTL        = 5 * time.Minute
 )
 
-// cacheEntry holds a value and its expiration time.
-type cacheEntry struct {
-	value     any
-	expiresAt time.Time
-}
-
 // InMemoryServerCache is a TTL-based in-memory cache with a max entry limit.
-// Ported from InMemoryServerCache which uses @isaacs/ttlcache with max=1000, ttl=5min.
+// Backed by ttlcache.TTLCache which handles TTL expiration and capacity eviction.
 type InMemoryServerCache struct {
 	*agentkit.MastraBase
 
-	mu      sync.Mutex
-	entries map[string]*cacheEntry
-	// order tracks insertion order for eviction (oldest first).
-	order []string
-	max   int
-	ttl   time.Duration
+	mu    sync.Mutex // protects read-modify-write sequences (e.g. ListPush)
+	cache *ttlcache.TTLCache[string, any]
 }
 
 // Compile-time check that InMemoryServerCache implements MastraServerCache.
@@ -39,102 +30,51 @@ var _ MastraServerCache = (*InMemoryServerCache)(nil)
 
 // NewInMemoryServerCache creates a new InMemoryServerCache with default settings.
 func NewInMemoryServerCache() *InMemoryServerCache {
+	max := defaultMaxEntries
+	ttl := defaultTTL
+	cache, err := ttlcache.New[string, any](ttlcache.TTLCacheOptions[string, any]{
+		Max:           &max,
+		TTL:           &ttl,
+		CheckAgeOnGet: true,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("inmemory: failed to create ttlcache: %v", err))
+	}
+
 	return &InMemoryServerCache{
 		MastraBase: agentkit.NewMastraBase(agentkit.MastraBaseOptions{
 			Component: logger.RegisteredLoggerServerCache,
 			Name:      "InMemoryServerCache",
 		}),
-		entries: make(map[string]*cacheEntry),
-		order:   make([]string, 0),
-		max:     defaultMaxEntries,
-		ttl:     defaultTTL,
+		cache: cache,
 	}
 }
 
 // Get retrieves a value by key. Returns nil if the key does not exist or has expired.
 func (c *InMemoryServerCache) Get(key string) (any, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entry, ok := c.entries[key]
+	value, ok := c.cache.Get(key)
 	if !ok {
 		return nil, nil
 	}
-	if time.Now().After(entry.expiresAt) {
-		c.deleteLocked(key)
-		return nil, nil
-	}
-	return entry.value, nil
+	return value, nil
 }
 
 // Set stores a value with the default TTL. If the cache is at max capacity,
 // the oldest entry is evicted.
 func (c *InMemoryServerCache) Set(key string, value any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.setLocked(key, value)
+	c.cache.Set(key, value)
 	return nil
-}
-
-// setLocked stores a value; caller must hold c.mu.
-func (c *InMemoryServerCache) setLocked(key string, value any) {
-	// If the key already exists, update in place (no order change needed for simplicity).
-	if _, exists := c.entries[key]; exists {
-		c.entries[key] = &cacheEntry{
-			value:     value,
-			expiresAt: time.Now().Add(c.ttl),
-		}
-		return
-	}
-
-	// Evict oldest if at capacity.
-	if len(c.entries) >= c.max {
-		c.evictOldest()
-	}
-
-	c.entries[key] = &cacheEntry{
-		value:     value,
-		expiresAt: time.Now().Add(c.ttl),
-	}
-	c.order = append(c.order, key)
-}
-
-// evictOldest removes the oldest entry from the cache; caller must hold c.mu.
-func (c *InMemoryServerCache) evictOldest() {
-	for len(c.order) > 0 {
-		oldest := c.order[0]
-		c.order = c.order[1:]
-		if _, exists := c.entries[oldest]; exists {
-			delete(c.entries, oldest)
-			return
-		}
-		// Key was already deleted; skip and try next.
-	}
 }
 
 // Delete removes a key from the cache.
 func (c *InMemoryServerCache) Delete(key string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.deleteLocked(key)
+	c.cache.Delete(key)
 	return nil
-}
-
-// deleteLocked removes a key; caller must hold c.mu.
-// The key is lazily removed from c.order during eviction.
-func (c *InMemoryServerCache) deleteLocked(key string) {
-	delete(c.entries, key)
 }
 
 // Clear removes all entries from the cache.
 func (c *InMemoryServerCache) Clear() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.entries = make(map[string]*cacheEntry)
-	c.order = make([]string, 0)
+	c.cache.Clear()
 	return nil
 }
 
@@ -144,37 +84,33 @@ func (c *InMemoryServerCache) ListPush(key string, value any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry, ok := c.entries[key]
-	if ok && !time.Now().After(entry.expiresAt) {
-		if list, isList := entry.value.([]any); isList {
-			entry.value = append(list, value)
-			// Refresh TTL on modification.
-			entry.expiresAt = time.Now().Add(c.ttl)
+	existing, ok := c.cache.Get(key)
+	if ok {
+		if list, isList := existing.([]any); isList {
+			// Copy into a new slice so the ttlcache sees a distinct value
+			// (it skips updates when old and new compare equal by pointer).
+			newList := make([]any, len(list)+1)
+			copy(newList, list)
+			newList[len(list)] = value
+			c.cache.Set(key, newList)
 			return nil
 		}
 	}
 
 	// Key doesn't exist, expired, or value is not a list: create new list.
-	c.setLocked(key, []any{value})
+	c.cache.Set(key, []any{value})
 	return nil
 }
 
 // ListLength returns the length of the list stored at key.
 // Returns an error if the key does not exist or the value is not a []any.
 func (c *InMemoryServerCache) ListLength(key string) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entry, ok := c.entries[key]
-	if !ok || time.Now().After(entry.expiresAt) {
-		if !ok {
-			return 0, fmt.Errorf("%s is not an array", key)
-		}
-		c.deleteLocked(key)
+	value, ok := c.cache.Get(key)
+	if !ok {
 		return 0, fmt.Errorf("%s is not an array", key)
 	}
 
-	list, isList := entry.value.([]any)
+	list, isList := value.([]any)
 	if !isList {
 		return 0, fmt.Errorf("%s is not an array", key)
 	}
@@ -186,18 +122,12 @@ func (c *InMemoryServerCache) ListLength(key string) (int, error) {
 // If to is -1, it means "to end of list".
 // Returns an empty slice if the key does not exist or the value is not a list.
 func (c *InMemoryServerCache) ListFromTo(key string, from int, to int) ([]any, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	entry, ok := c.entries[key]
-	if !ok || time.Now().After(entry.expiresAt) {
-		if ok {
-			c.deleteLocked(key)
-		}
+	value, ok := c.cache.Get(key)
+	if !ok {
 		return []any{}, nil
 	}
 
-	list, isList := entry.value.([]any)
+	list, isList := value.([]any)
 	if !isList {
 		return []any{}, nil
 	}

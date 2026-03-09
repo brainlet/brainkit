@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/agent-kit/core/agent/messagelist"
+	"github.com/brainlet/brainkit/agent-kit/core/interfaces"
 	"github.com/brainlet/brainkit/agent-kit/core/llm"
 	"github.com/brainlet/brainkit/agent-kit/core/llm/model"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
@@ -677,9 +678,12 @@ type AgentExecuteOnFinishOptions struct {
 // AgentMethodType
 // ---------------------------------------------------------------------------
 
-// AgentMethodType enumerates the method types for agent execution.
-type AgentMethodType string
+// AgentMethodType is the shared agent method type, defined in core/interfaces
+// to break the circular dependency between agent and llm/model packages.
+type AgentMethodType = interfaces.AgentMethodType
 
+// Re-export constants for backward compatibility. Consumers of agent.AgentMethodType*
+// continue to work unchanged.
 const (
 	AgentMethodTypeGenerate       AgentMethodType = "generate"
 	AgentMethodTypeStream         AgentMethodType = "stream"

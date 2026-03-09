@@ -88,7 +88,7 @@ func (f *ToolCallFilter) ProcessInput(args processors.ProcessInputArgs) ([]proce
 			}
 
 			// Filter out tool invocation parts.
-			var nonToolParts []processors.MessagePart
+			var nonToolParts []processors.MastraMessagePart
 			for _, part := range message.Content.Parts {
 				if part.Type != "tool-invocation" {
 					nonToolParts = append(nonToolParts, part)
@@ -114,9 +114,9 @@ func (f *ToolCallFilter) ProcessInput(args processors.ProcessInputArgs) ([]proce
 		excludedToolCallIDs := make(map[string]bool)
 		for _, message := range messages {
 			for _, part := range message.Content.Parts {
-				if part.Type == "tool-invocation" && part.ToolInvocationData != nil {
-					if f.isExcluded(part.ToolInvocationData.ToolName) {
-						excludedToolCallIDs[part.ToolInvocationData.ToolCallID] = true
+				if part.Type == "tool-invocation" && part.ToolInvocation != nil {
+					if f.isExcluded(part.ToolInvocation.ToolName) {
+						excludedToolCallIDs[part.ToolInvocation.ToolCallID] = true
 					}
 				}
 			}
@@ -130,19 +130,19 @@ func (f *ToolCallFilter) ProcessInput(args processors.ProcessInputArgs) ([]proce
 				continue
 			}
 
-			var filteredParts []processors.MessagePart
+			var filteredParts []processors.MastraMessagePart
 			for _, part := range message.Content.Parts {
 				if part.Type != "tool-invocation" {
 					filteredParts = append(filteredParts, part)
 					continue
 				}
 
-				if part.ToolInvocationData == nil {
+				if part.ToolInvocation == nil {
 					filteredParts = append(filteredParts, part)
 					continue
 				}
 
-				inv := part.ToolInvocationData
+				inv := part.ToolInvocation
 
 				// Exclude if it's a call for an excluded tool.
 				if inv.State == "call" && f.isExcluded(inv.ToolName) {

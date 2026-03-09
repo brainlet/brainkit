@@ -678,3 +678,191 @@ func containsString(slice []string, s string) bool {
 	}
 	return false
 }
+
+// ---------------------------------------------------------------------------
+// Storage conversion helpers
+// ---------------------------------------------------------------------------
+
+// WorkflowRunStateToMap converts a typed WorkflowRunState to a map[string]any
+// for use with the storage layer's untyped WorkflowRunState (= map[string]any).
+func WorkflowRunStateToMap(state WorkflowRunState) StorageWorkflowRunState {
+	m := StorageWorkflowRunState{
+		"runId":               state.RunID,
+		"status":              string(state.Status),
+		"value":               state.Value,
+		"context":             state.Context,
+		"activePaths":         state.ActivePaths,
+		"activeStepsPath":     state.ActiveStepsPath,
+		"serializedStepGraph": state.SerializedStepGraph,
+		"suspendedPaths":      state.SuspendedPaths,
+		"resumeLabels":        state.ResumeLabels,
+		"waitingPaths":        state.WaitingPaths,
+		"timestamp":           state.Timestamp,
+	}
+	if state.Result != nil {
+		m["result"] = state.Result
+	}
+	if state.Error != nil {
+		m["error"] = state.Error
+	}
+	if state.RequestContext != nil {
+		m["requestContext"] = state.RequestContext
+	}
+	if state.Tripwire != nil {
+		m["tripwire"] = state.Tripwire
+	}
+	if state.StepExecutionPath != nil {
+		m["stepExecutionPath"] = state.StepExecutionPath
+	}
+	return m
+}
+
+// SnapshotToWorkflowRunState converts a storage snapshot (any) to a typed
+// *WorkflowRunState. Returns nil if the snapshot is nil or not a map.
+func SnapshotToWorkflowRunState(snapshot any) *WorkflowRunState {
+	if snapshot == nil {
+		return nil
+	}
+	m, ok := snapshot.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	state := &WorkflowRunState{}
+
+	if v, ok := m["runId"].(string); ok {
+		state.RunID = v
+	}
+	if v, ok := m["status"].(string); ok {
+		state.Status = WorkflowRunStatus(v)
+	}
+	if v, ok := m["value"].(map[string]string); ok {
+		state.Value = v
+	} else if v, ok := m["value"].(map[string]any); ok {
+		sv := make(map[string]string, len(v))
+		for k, val := range v {
+			sv[k] = fmt.Sprintf("%v", val)
+		}
+		state.Value = sv
+	}
+	if v, ok := m["context"].(map[string]any); ok {
+		state.Context = v
+	}
+	if v, ok := m["activePaths"].([]int); ok {
+		state.ActivePaths = v
+	} else if v, ok := m["activePaths"].([]any); ok {
+		ints := make([]int, 0, len(v))
+		for _, item := range v {
+			switch n := item.(type) {
+			case int:
+				ints = append(ints, n)
+			case float64:
+				ints = append(ints, int(n))
+			}
+		}
+		state.ActivePaths = ints
+	}
+	if v, ok := m["activeStepsPath"].(map[string][]int); ok {
+		state.ActiveStepsPath = v
+	} else if v, ok := m["activeStepsPath"].(map[string]any); ok {
+		asp := make(map[string][]int, len(v))
+		for k, val := range v {
+			if arr, ok := val.([]int); ok {
+				asp[k] = arr
+			} else if arr, ok := val.([]any); ok {
+				ints := make([]int, 0, len(arr))
+				for _, item := range arr {
+					switch n := item.(type) {
+					case int:
+						ints = append(ints, n)
+					case float64:
+						ints = append(ints, int(n))
+					}
+				}
+				asp[k] = ints
+			}
+		}
+		state.ActiveStepsPath = asp
+	}
+	if v, ok := m["serializedStepGraph"].([]SerializedStepFlowEntry); ok {
+		state.SerializedStepGraph = v
+	}
+	if v, ok := m["suspendedPaths"].(map[string][]int); ok {
+		state.SuspendedPaths = v
+	} else if v, ok := m["suspendedPaths"].(map[string]any); ok {
+		sp := make(map[string][]int, len(v))
+		for k, val := range v {
+			if arr, ok := val.([]int); ok {
+				sp[k] = arr
+			} else if arr, ok := val.([]any); ok {
+				ints := make([]int, 0, len(arr))
+				for _, item := range arr {
+					switch n := item.(type) {
+					case int:
+						ints = append(ints, n)
+					case float64:
+						ints = append(ints, int(n))
+					}
+				}
+				sp[k] = ints
+			}
+		}
+		state.SuspendedPaths = sp
+	}
+	if v, ok := m["resumeLabels"].(map[string]ResumeLabel); ok {
+		state.ResumeLabels = v
+	} else if v, ok := m["resumeLabels"].(map[string]any); ok {
+		rl := make(map[string]ResumeLabel, len(v))
+		for k, val := range v {
+			if rlm, ok := val.(map[string]any); ok {
+				label := ResumeLabel{}
+				if sid, ok := rlm["stepId"].(string); ok {
+					label.StepID = sid
+				}
+				if fi, ok := rlm["foreachIndex"].(float64); ok {
+					idx := int(fi)
+					label.ForeachIndex = &idx
+				} else if fi, ok := rlm["foreachIndex"].(int); ok {
+					label.ForeachIndex = &fi
+				}
+				rl[k] = label
+			}
+		}
+		state.ResumeLabels = rl
+	}
+	if v, ok := m["waitingPaths"].(map[string][]int); ok {
+		state.WaitingPaths = v
+	} else if v, ok := m["waitingPaths"].(map[string]any); ok {
+		wp := make(map[string][]int, len(v))
+		for k, val := range v {
+			if arr, ok := val.([]int); ok {
+				wp[k] = arr
+			}
+		}
+		state.WaitingPaths = wp
+	}
+	if v, ok := m["timestamp"].(int64); ok {
+		state.Timestamp = v
+	} else if v, ok := m["timestamp"].(float64); ok {
+		state.Timestamp = int64(v)
+	}
+	if v, ok := m["result"].(map[string]any); ok {
+		state.Result = v
+	}
+	if v, ok := m["requestContext"].(map[string]any); ok {
+		state.RequestContext = v
+	}
+	if v, ok := m["stepExecutionPath"].([]string); ok {
+		state.StepExecutionPath = v
+	} else if v, ok := m["stepExecutionPath"].([]any); ok {
+		strs := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				strs = append(strs, s)
+			}
+		}
+		state.StepExecutionPath = strs
+	}
+
+	return state
+}

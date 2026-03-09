@@ -6,6 +6,10 @@ import (
 	"errors"
 
 	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
+	"github.com/brainlet/brainkit/agent-kit/core/storage"
+	storagedatasets "github.com/brainlet/brainkit/agent-kit/core/storage/domains/datasets"
+	"github.com/brainlet/brainkit/agent-kit/core/storage/domains"
+	storageexperiments "github.com/brainlet/brainkit/agent-kit/core/storage/domains/experiments"
 	"github.com/brainlet/brainkit/agent-kit/core/datasets/experiment/analytics"
 )
 
@@ -18,8 +22,8 @@ import (
 // Provides methods for dataset CRUD and cross-dataset experiment operations.
 // Typically accessed via mastra.Datasets (Phase 4).
 type DatasetsManager struct {
-	mastra          Mastra
-	datasetsStore   DatasetsStorage
+	mastra           Mastra
+	datasetsStore    DatasetsStorage
 	experimentsStore ExperimentsStorage
 }
 
@@ -39,8 +43,8 @@ func (m *DatasetsManager) getDatasetsStore(ctx context.Context) (DatasetsStorage
 		return m.datasetsStore, nil
 	}
 
-	storage := m.mastra.GetStorage()
-	if storage == nil {
+	st := m.mastra.GetStorage()
+	if st == nil {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASETS_STORAGE_NOT_CONFIGURED",
 			Text:     "Storage not configured. Configure storage in Mastra instance.",
@@ -49,7 +53,7 @@ func (m *DatasetsManager) getDatasetsStore(ctx context.Context) (DatasetsStorage
 		})
 	}
 
-	store := storage.GetStore("datasets")
+	store := st.GetStore(storage.DomainDatasets)
 	if store == nil {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASETS_STORE_NOT_AVAILABLE",
@@ -73,8 +77,8 @@ func (m *DatasetsManager) getExperimentsStore(ctx context.Context) (ExperimentsS
 		return m.experimentsStore, nil
 	}
 
-	storage := m.mastra.GetStorage()
-	if storage == nil {
+	st := m.mastra.GetStorage()
+	if st == nil {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASETS_STORAGE_NOT_CONFIGURED",
 			Text:     "Storage not configured. Configure storage in Mastra instance.",
@@ -83,7 +87,7 @@ func (m *DatasetsManager) getExperimentsStore(ctx context.Context) (ExperimentsS
 		})
 	}
 
-	store := storage.GetStore("experiments")
+	store := st.GetStore(storage.DomainExperiments)
 	if store == nil {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "EXPERIMENTS_STORE_NOT_AVAILABLE",
@@ -108,11 +112,11 @@ func (m *DatasetsManager) getExperimentsStore(ctx context.Context) (ExperimentsS
 
 // CreateInput holds the fields for creating a new dataset.
 type CreateInput struct {
-	Name             string         `json:"name"`
-	Description      string         `json:"description,omitempty"`
-	InputSchema      any            `json:"inputSchema,omitempty"`
-	GroundTruthSchema any           `json:"groundTruthSchema,omitempty"`
-	Metadata         map[string]any `json:"metadata,omitempty"`
+	Name              string         `json:"name"`
+	Description       string         `json:"description,omitempty"`
+	InputSchema       map[string]any `json:"inputSchema,omitempty"`
+	GroundTruthSchema map[string]any `json:"groundTruthSchema,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
 }
 
 // Create creates a new dataset.
@@ -122,29 +126,23 @@ func (m *DatasetsManager) Create(ctx context.Context, input CreateInput) (*Datas
 		return nil, err
 	}
 
-	args := map[string]any{
-		"name": input.Name,
-	}
+	var desc *string
 	if input.Description != "" {
-		args["description"] = input.Description
-	}
-	if input.InputSchema != nil {
-		args["inputSchema"] = input.InputSchema
-	}
-	if input.GroundTruthSchema != nil {
-		args["groundTruthSchema"] = input.GroundTruthSchema
-	}
-	if input.Metadata != nil {
-		args["metadata"] = input.Metadata
+		desc = &input.Description
 	}
 
-	result, err := store.UpdateDataset(ctx, args)
+	result, err := store.CreateDataset(ctx, storagedatasets.CreateDatasetInput{
+		Name:              input.Name,
+		Description:       desc,
+		InputSchema:       input.InputSchema,
+		GroundTruthSchema: input.GroundTruthSchema,
+		Metadata:          input.Metadata,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	id, _ := result["id"].(string)
-	return NewDataset(id, m.mastra), nil
+	return NewDataset(result.ID, m.mastra), nil
 }
 
 // Get gets an existing dataset by ID. Returns an error if the dataset does not exist.
@@ -158,7 +156,7 @@ func (m *DatasetsManager) Get(ctx context.Context, id string) (*Dataset, error) 
 	if err != nil {
 		return nil, err
 	}
-	if record == nil {
+	if record.ID == "" {
 		return nil, mastraerror.NewMastraError(mastraerror.ErrorDefinition{
 			ID:       "DATASET_NOT_FOUND",
 			Text:     "Dataset not found",
@@ -176,10 +174,10 @@ type ListArgs struct {
 }
 
 // List lists all datasets with pagination.
-func (m *DatasetsManager) List(ctx context.Context, args *ListArgs) (any, error) {
+func (m *DatasetsManager) List(ctx context.Context, args *ListArgs) (storagedatasets.ListDatasetsOutput, error) {
 	store, err := m.getDatasetsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storagedatasets.ListDatasetsOutput{}, err
 	}
 
 	page := 0
@@ -193,10 +191,10 @@ func (m *DatasetsManager) List(ctx context.Context, args *ListArgs) (any, error)
 		}
 	}
 
-	return store.ListItems(ctx, map[string]any{
-		"pagination": map[string]any{
-			"page":    page,
-			"perPage": perPage,
+	return store.ListDatasets(ctx, storagedatasets.ListDatasetsInput{
+		Pagination: domains.StoragePagination{
+			Page:    page,
+			PerPage: perPage,
 		},
 	})
 }
@@ -207,7 +205,7 @@ func (m *DatasetsManager) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return store.DeleteItem(ctx, map[string]any{"id": id})
+	return store.DeleteDataset(ctx, id)
 }
 
 // ---------------------------------------------------------------------------
@@ -215,10 +213,10 @@ func (m *DatasetsManager) Delete(ctx context.Context, id string) error {
 // ---------------------------------------------------------------------------
 
 // GetExperiment gets a specific experiment (run) by ID.
-func (m *DatasetsManager) GetExperiment(ctx context.Context, experimentID string) (any, error) {
+func (m *DatasetsManager) GetExperiment(ctx context.Context, experimentID string) (storageexperiments.Experiment, error) {
 	expStore, err := m.getExperimentsStore(ctx)
 	if err != nil {
-		return nil, err
+		return storageexperiments.Experiment{}, err
 	}
 	return expStore.GetExperimentByID(ctx, experimentID)
 }
@@ -239,8 +237,8 @@ type CompareExperimentsItem struct {
 
 // CompareExperimentResult holds one experiment's result for a single item.
 type CompareExperimentResult struct {
-	Output any                       `json:"output"`
-	Scores map[string]*float64       `json:"scores"`
+	Output any                 `json:"output"`
+	Scores map[string]*float64 `json:"scores"`
 }
 
 // CompareExperimentsOutput is the output of comparing experiments.
@@ -283,13 +281,13 @@ func (m *DatasetsManager) CompareExperiments(ctx context.Context, args CompareEx
 	}
 
 	// Get the storage interfaces needed by CompareExperiments
-	storage := m.mastra.GetStorage()
-	if storage == nil {
+	st := m.mastra.GetStorage()
+	if st == nil {
 		return nil, errors.New("storage not configured")
 	}
 
-	expStoreRaw := storage.GetStore("experiments")
-	scrStoreRaw := storage.GetStore("scores")
+	expStoreRaw := st.GetStore(storage.DomainExperiments)
+	scrStoreRaw := st.GetStore(storage.DomainScores)
 
 	expStore, ok := expStoreRaw.(analytics.ExperimentsStorageCompat)
 	if !ok {
@@ -314,24 +312,30 @@ func (m *DatasetsManager) CompareExperiments(ctx context.Context, args CompareEx
 		return nil, err
 	}
 
-	resultsARaw, err := expMgrStore.ListExperimentResults(ctx, map[string]any{
-		"experimentId": resolvedBaseline,
-		"pagination":   map[string]any{"page": 0, "perPage": false},
+	resultsA, err := expMgrStore.ListExperimentResults(ctx, storageexperiments.ListExperimentResultsInput{
+		ExperimentID: resolvedBaseline,
+		Pagination: domains.StoragePagination{
+			Page:    0,
+			PerPage: domains.PerPageDisabled,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	resultsBRaw, err := expMgrStore.ListExperimentResults(ctx, map[string]any{
-		"experimentId": otherExperimentID,
-		"pagination":   map[string]any{"page": 0, "perPage": false},
+	resultsB, err := expMgrStore.ListExperimentResults(ctx, storageexperiments.ListExperimentResultsInput{
+		ExperimentID: otherExperimentID,
+		Pagination: domains.StoragePagination{
+			Page:    0,
+			PerPage: domains.PerPageDisabled,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	// Build results maps by itemId
-	resultsMapA := buildResultsMap(resultsARaw)
-	resultsMapB := buildResultsMap(resultsBRaw)
+	resultsMapA := buildResultsMap(resultsA.Results)
+	resultsMapB := buildResultsMap(resultsB.Results)
 
 	// Transform internal items to MVP shape
 	var items []CompareExperimentsItem
@@ -342,23 +346,23 @@ func (m *DatasetsManager) CompareExperiments(ctx context.Context, args CompareEx
 		var input any
 		var groundTruth any
 		if resultA != nil {
-			input = resultA["input"]
-			groundTruth = resultA["groundTruth"]
+			input = resultA.Input
+			groundTruth = resultA.GroundTruth
 		} else if resultB != nil {
-			input = resultB["input"]
-			groundTruth = resultB["groundTruth"]
+			input = resultB.Input
+			groundTruth = resultB.GroundTruth
 		}
 
 		results := make(map[string]*CompareExperimentResult)
 		if resultA != nil {
 			results[resolvedBaseline] = &CompareExperimentResult{
-				Output: resultA["output"],
+				Output: resultA.Output,
 				Scores: item.ScoresA,
 			}
 		}
 		if resultB != nil {
 			results[otherExperimentID] = &CompareExperimentResult{
-				Output: resultB["output"],
+				Output: resultB.Output,
 				Scores: item.ScoresB,
 			}
 		}
@@ -377,37 +381,11 @@ func (m *DatasetsManager) CompareExperiments(ctx context.Context, args CompareEx
 	}, nil
 }
 
-// buildResultsMap builds a map from itemId to result record from raw results.
-// Handles both slice-of-maps and struct-with-Results-field patterns.
-func buildResultsMap(raw any) map[string]map[string]any {
-	result := make(map[string]map[string]any)
-
-	// Try to extract results from a struct-like map
-	if m, ok := raw.(map[string]any); ok {
-		if results, ok := m["results"]; ok {
-			raw = results
-		}
+// buildResultsMap builds a map from itemId to experiment result record.
+func buildResultsMap(results []storageexperiments.ExperimentResult) map[string]*storageexperiments.ExperimentResult {
+	m := make(map[string]*storageexperiments.ExperimentResult, len(results))
+	for i := range results {
+		m[results[i].ItemID] = &results[i]
 	}
-
-	// Handle slice of maps
-	if results, ok := raw.([]map[string]any); ok {
-		for _, r := range results {
-			if itemID, ok := r["itemId"].(string); ok {
-				result[itemID] = r
-			}
-		}
-	}
-
-	// Handle slice of any
-	if results, ok := raw.([]any); ok {
-		for _, r := range results {
-			if rm, ok := r.(map[string]any); ok {
-				if itemID, ok := rm["itemId"].(string); ok {
-					result[itemID] = rm
-				}
-			}
-		}
-	}
-
-	return result
+	return m
 }

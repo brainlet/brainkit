@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/agent-kit/core/processors"
+	storagememory "github.com/brainlet/brainkit/agent-kit/core/storage/domains/memory"
 )
 
 // ---------------------------------------------------------------------------
@@ -18,20 +19,21 @@ type mockStorageForMH struct {
 	messages           []processors.MastraDBMessage
 	listMessagesErr    error
 	saveMessagesCalls  [][]processors.MastraDBMessage
-	getThreadResult    *StorageThread
+	getThreadResult    StorageThreadType
 	getThreadErr       error
 	updateThreadCalls  []UpdateThreadInput
-	saveThreadCalls    []StorageThread
+	saveThreadCalls    []StorageThreadType
 }
 
-func (m *mockStorageForMH) ListMessages(_ context.Context, args ListMessagesInput) (ListMessagesOutput, error) {
+func (m *mockStorageForMH) ListMessages(_ context.Context, args storagememory.StorageListMessagesInput) (StorageListMessagesOutput, error) {
 	if m.listMessagesErr != nil {
-		return ListMessagesOutput{}, m.listMessagesErr
+		return StorageListMessagesOutput{}, m.listMessagesErr
 	}
 
+	threadID, _ := args.ThreadID.(string)
 	threadMessages := make([]processors.MastraDBMessage, 0)
 	for _, msg := range m.messages {
-		if msg.ThreadID == args.ThreadID || args.ThreadID == "" {
+		if msg.ThreadID == threadID || threadID == "" {
 			threadMessages = append(threadMessages, msg)
 		}
 	}
@@ -46,36 +48,36 @@ func (m *mockStorageForMH) ListMessages(_ context.Context, args ListMessagesInpu
 	}
 
 	// Apply perPage limit
-	if args.PerPage > 0 && len(threadMessages) > args.PerPage {
-		threadMessages = threadMessages[:args.PerPage]
+	if args.PerPage != nil && *args.PerPage > 0 && len(threadMessages) > *args.PerPage {
+		threadMessages = threadMessages[:*args.PerPage]
 	}
 
-	return ListMessagesOutput{Messages: threadMessages}, nil
+	return StorageListMessagesOutput{Messages: threadMessages}, nil
 }
 
-func (m *mockStorageForMH) GetThreadByID(_ context.Context, _ string) (*StorageThread, error) {
+func (m *mockStorageForMH) GetThreadByID(_ context.Context, _ string) (StorageThreadType, error) {
 	if m.getThreadErr != nil {
 		return nil, m.getThreadErr
 	}
 	return m.getThreadResult, nil
 }
 
-func (m *mockStorageForMH) SaveThread(_ context.Context, thread StorageThread) error {
+func (m *mockStorageForMH) SaveThread(_ context.Context, thread StorageThreadType) (StorageThreadType, error) {
 	m.saveThreadCalls = append(m.saveThreadCalls, thread)
-	return nil
+	return thread, nil
 }
 
-func (m *mockStorageForMH) UpdateThread(_ context.Context, input UpdateThreadInput) error {
+func (m *mockStorageForMH) UpdateThread(_ context.Context, input UpdateThreadInput) (StorageThreadType, error) {
 	m.updateThreadCalls = append(m.updateThreadCalls, input)
-	return nil
+	return StorageThreadType{"id": input.ID}, nil
 }
 
-func (m *mockStorageForMH) SaveMessages(_ context.Context, messages []processors.MastraDBMessage) error {
+func (m *mockStorageForMH) SaveMessages(_ context.Context, messages []processors.MastraDBMessage) ([]processors.MastraDBMessage, error) {
 	m.saveMessagesCalls = append(m.saveMessagesCalls, messages)
-	return nil
+	return messages, nil
 }
 
-func (m *mockStorageForMH) GetResourceByID(_ context.Context, _ string) (*StorageResource, error) {
+func (m *mockStorageForMH) GetResourceByID(_ context.Context, _ string) (StorageResourceType, error) {
 	return nil, nil
 }
 
@@ -89,25 +91,31 @@ func TestMessageHistory(t *testing.T) {
 			now := time.Now()
 			historicalMessages := []processors.MastraDBMessage{
 				{
-					ID:       "msg-1",
-					Role:     "user",
-					Content:  processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "Hello"}}},
-					ThreadID: "thread-1",
-					CreatedAt: now.Add(-3 * time.Second),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						ThreadID:  "thread-1",
+						CreatedAt: now.Add(-3 * time.Second),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "Hello"}}},
 				},
 				{
-					ID:       "msg-2",
-					Role:     "assistant",
-					Content:  processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "Hi there!"}}},
-					ThreadID: "thread-1",
-					CreatedAt: now.Add(-2 * time.Second),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-2",
+						Role:      "assistant",
+						ThreadID:  "thread-1",
+						CreatedAt: now.Add(-2 * time.Second),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "Hi there!"}}},
 				},
 				{
-					ID:       "msg-3",
-					Role:     "user",
-					Content:  processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "How are you?"}}},
-					ThreadID: "thread-1",
-					CreatedAt: now.Add(-1 * time.Second),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-3",
+						Role:      "user",
+						ThreadID:  "thread-1",
+						CreatedAt: now.Add(-1 * time.Second),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "How are you?"}}},
 				},
 			}
 
@@ -148,11 +156,13 @@ func TestMessageHistory(t *testing.T) {
 
 			newMessages := []processors.MastraDBMessage{
 				{
-					ID:        "msg-1",
-					Role:      "user",
-					Content:   processors.MastraMessageContentV2{Format: 2, Content: "New", Parts: []processors.MessagePart{{Type: "text", Text: "New"}}},
-					ThreadID:  "thread-1",
-					CreatedAt: time.Now(),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						ThreadID:  "thread-1",
+						CreatedAt: time.Now(),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Content: "New", Parts: []processors.MastraMessagePart{{Type: "text", Text: "New"}}},
 				},
 			}
 
@@ -188,11 +198,13 @@ func TestMessageHistory(t *testing.T) {
 
 			newMessages := []processors.MastraDBMessage{
 				{
-					ID:        "msg-1",
-					Role:      "user",
-					Content:   processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "New"}}},
-					ThreadID:  "thread-1",
-					CreatedAt: time.Now(),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						ThreadID:  "thread-1",
+						CreatedAt: time.Now(),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "New"}}},
 				},
 			}
 
@@ -226,11 +238,13 @@ func TestMessageHistory(t *testing.T) {
 
 			newMessages := []processors.MastraDBMessage{
 				{
-					ID:        "msg-1",
-					Role:      "user",
-					Content:   processors.MastraMessageContentV2{Format: 2, Content: "New", Parts: []processors.MessagePart{{Type: "text", Text: "New"}}},
-					ThreadID:  "thread-1",
-					CreatedAt: time.Now(),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						ThreadID:  "thread-1",
+						CreatedAt: time.Now(),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Content: "New", Parts: []processors.MastraMessagePart{{Type: "text", Text: "New"}}},
 				},
 			}
 
@@ -258,15 +272,19 @@ func TestMessageHistory(t *testing.T) {
 		t.Run("should handle assistant messages with tool calls", func(t *testing.T) {
 			historicalMessages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "assistant",
+						ThreadID:  "thread-1",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{Type: "text", Text: "Let me calculate that"},
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "call",
 									ToolCallID: "call-1",
 									ToolName:   "calculator",
@@ -275,8 +293,6 @@ func TestMessageHistory(t *testing.T) {
 							},
 						},
 					},
-					ThreadID:  "thread-1",
-					CreatedAt: time.Now(),
 				},
 			}
 
@@ -308,10 +324,10 @@ func TestMessageHistory(t *testing.T) {
 	t.Run("PersistMessages", func(t *testing.T) {
 		t.Run("should filter out partial tool calls", func(t *testing.T) {
 			mockStorage := &mockStorageForMH{
-				getThreadResult: &StorageThread{
-					ID:       "thread-1",
-					Title:    "Test",
-					Metadata: map[string]any{},
+				getThreadResult: StorageThreadType{
+					"id":       "thread-1",
+					"title":    "Test",
+					"metadata": map[string]any{},
 				},
 			}
 
@@ -321,15 +337,18 @@ func TestMessageHistory(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "assistant",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{Type: "text", Text: "Let me help"},
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "partial-call",
 									ToolCallID: "call-1",
 									ToolName:   "search",
@@ -337,7 +356,7 @@ func TestMessageHistory(t *testing.T) {
 							},
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "result",
 									ToolCallID: "call-2",
 									ToolName:   "calc",
@@ -346,7 +365,6 @@ func TestMessageHistory(t *testing.T) {
 							},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 			}
 
@@ -370,17 +388,17 @@ func TestMessageHistory(t *testing.T) {
 			if parts[0].Type != "text" {
 				t.Errorf("expected first part type='text', got %q", parts[0].Type)
 			}
-			if parts[1].ToolInvocationData.State != "result" {
-				t.Errorf("expected second part state='result', got %q", parts[1].ToolInvocationData.State)
+			if parts[1].ToolInvocation.State != "result" {
+				t.Errorf("expected second part state='result', got %q", parts[1].ToolInvocation.State)
 			}
 		})
 
 		t.Run("should filter out updateWorkingMemory tool invocations", func(t *testing.T) {
 			mockStorage := &mockStorageForMH{
-				getThreadResult: &StorageThread{
-					ID:       "thread-1",
-					Title:    "Test",
-					Metadata: map[string]any{},
+				getThreadResult: StorageThreadType{
+					"id":       "thread-1",
+					"title":    "Test",
+					"metadata": map[string]any{},
 				},
 			}
 
@@ -390,15 +408,18 @@ func TestMessageHistory(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "assistant",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{Type: "text", Text: "Noted"},
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "result",
 									ToolCallID: "call-1",
 									ToolName:   "updateWorkingMemory",
@@ -407,7 +428,6 @@ func TestMessageHistory(t *testing.T) {
 							},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 			}
 
@@ -443,10 +463,12 @@ func TestMessageHistory(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:        "msg-1",
-					Role:      "user",
-					Content:   processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "Hello"}}},
-					CreatedAt: time.Now(),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						CreatedAt: time.Now(),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "Hello"}}},
 				},
 			}
 
@@ -459,20 +481,20 @@ func TestMessageHistory(t *testing.T) {
 				t.Fatal("expected SaveThread to be called for auto-creation")
 			}
 			savedThread := mockStorage.saveThreadCalls[0]
-			if savedThread.ID != "thread-1" {
-				t.Errorf("expected thread ID='thread-1', got %q", savedThread.ID)
+			if savedThread["id"] != "thread-1" {
+				t.Errorf("expected thread ID='thread-1', got %q", savedThread["id"])
 			}
-			if savedThread.ResourceID != "resource-1" {
-				t.Errorf("expected resourceID='resource-1', got %q", savedThread.ResourceID)
+			if savedThread["resourceId"] != "resource-1" {
+				t.Errorf("expected resourceID='resource-1', got %q", savedThread["resourceId"])
 			}
 		})
 
 		t.Run("should update existing thread", func(t *testing.T) {
 			mockStorage := &mockStorageForMH{
-				getThreadResult: &StorageThread{
-					ID:       "thread-1",
-					Title:    "Existing Thread",
-					Metadata: map[string]any{"key": "value"},
+				getThreadResult: StorageThreadType{
+					"id":       "thread-1",
+					"title":    "Existing Thread",
+					"metadata": map[string]any{"key": "value"},
 				},
 			}
 
@@ -482,10 +504,12 @@ func TestMessageHistory(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:        "msg-1",
-					Role:      "user",
-					Content:   processors.MastraMessageContentV2{Format: 2, Parts: []processors.MessagePart{{Type: "text", Text: "Hello"}}},
-					CreatedAt: time.Now(),
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "user",
+						CreatedAt: time.Now(),
+					},
+					Content: processors.MastraMessageContentV2{Format: 2, Parts: []processors.MastraMessagePart{{Type: "text", Text: "Hello"}}},
 				},
 			}
 
@@ -532,16 +556,18 @@ func TestMessageHistory(t *testing.T) {
 		t.Run("should strip working memory tags from text content", func(t *testing.T) {
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-1",
+						Role:      "assistant",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format:  2,
 						Content: "Hello <working_memory>secret data</working_memory> world",
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{Type: "text", Text: "Hello <working_memory>secret data</working_memory> world"},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 			}
 

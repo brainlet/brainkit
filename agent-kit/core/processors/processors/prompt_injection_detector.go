@@ -266,7 +266,7 @@ func (pid *PromptInjectionDetector) handleDetectedInjection(
 // createRewrittenMessage creates a message with neutralized content.
 func (pid *PromptInjectionDetector) createRewrittenMessage(originalMessage processors.MastraDBMessage, rewrittenContent string) processors.MastraDBMessage {
 	msg := originalMessage
-	msg.Content.Parts = []processors.MessagePart{{Type: "text", Text: rewrittenContent}}
+	msg.Content.Parts = []processors.MastraMessagePart{{Type: "text", Text: rewrittenContent}}
 	msg.Content.Content = rewrittenContent
 	return msg
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/storage/domains/blobs"
 	storagetypes "github.com/brainlet/brainkit/agent-kit/core/storage"
+	graymatter "github.com/brainlet/brainkit/gray-matter"
 )
 
 // =============================================================================
@@ -223,7 +224,12 @@ func CollectSkillForPublish(source SkillSource, skillPath string) (*SkillPublish
 		return nil, fmt.Errorf("SKILL.md not found in %s", skillPath)
 	}
 
-	frontmatter, body := parseSimpleFrontmatter(string(skillMdContent))
+	parsed, err := graymatter.Parse(string(skillMdContent))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SKILL.md frontmatter: %w", err)
+	}
+	frontmatter := parsed.DataMap()
+	body := parsed.Content
 
 	// 4. Discover references/, scripts/, assets/ subdirectories
 	var allPaths []string
@@ -285,49 +291,6 @@ func PublishSkillFromSource(source SkillSource, skillPath string, blobStore blob
 	}
 
 	return result, nil
-}
-
-// =============================================================================
-// Simple Frontmatter Parser
-// =============================================================================
-
-// parseSimpleFrontmatter parses YAML-like frontmatter from a SKILL.md file.
-// This is a simplified parser -- for production use, a proper YAML parser should be used.
-func parseSimpleFrontmatter(content string) (map[string]interface{}, string) {
-	if !strings.HasPrefix(content, "---") {
-		return map[string]interface{}{}, content
-	}
-
-	end := strings.Index(content[3:], "---")
-	if end == -1 {
-		return map[string]interface{}{}, content
-	}
-
-	frontmatterStr := content[3 : 3+end]
-	body := content[3+end+3:]
-	body = strings.TrimLeft(body, "\n\r")
-
-	// Simple key: value parsing
-	result := make(map[string]interface{})
-	for _, line := range strings.Split(frontmatterStr, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		idx := strings.Index(line, ":")
-		if idx == -1 {
-			continue
-		}
-		key := strings.TrimSpace(line[:idx])
-		value := strings.TrimSpace(line[idx+1:])
-		// Remove surrounding quotes
-		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
-			value = value[1 : len(value)-1]
-		}
-		result[key] = value
-	}
-
-	return result, body
 }
 
 // getString safely gets a string value from a map.

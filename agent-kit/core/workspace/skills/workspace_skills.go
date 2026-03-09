@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	graymatter "github.com/brainlet/brainkit/gray-matter"
 )
 
 // =============================================================================
@@ -734,8 +736,12 @@ func (ws *WorkspaceSkillsImpl) parseSkillFile(filePath, dirName string, source C
 	}
 
 	content := string(rawContent)
-	frontmatter, body := parseSimpleFrontmatter(content)
-	body = strings.TrimSpace(body)
+	parsed, err := graymatter.Parse(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse frontmatter in %s: %w", filePath, err)
+	}
+	frontmatter := parsed.DataMap()
+	body := strings.TrimSpace(parsed.Content)
 
 	metadata := SkillMetadata{
 		Name:        getString(frontmatter, "name"),

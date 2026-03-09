@@ -11,14 +11,16 @@ import (
 
 func createTLTestMessage(text string, role string, id string) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   id,
-		Role: role,
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:        id,
+			Role:      role,
+			CreatedAt: time.Now(),
+		},
 		Content: processors.MastraMessageContentV2{
 			Format:  2,
-			Parts:   []processors.MessagePart{{Type: "text", Text: text}},
+			Parts:   []processors.MastraMessagePart{{Type: "text", Text: text}},
 			Content: text,
 		},
-		CreatedAt: time.Now(),
 	}
 }
 
@@ -541,14 +543,17 @@ func TestTokenLimiterProcessor(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "tool-call-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "tool-call-1",
+						Role:      "assistant",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "call",
 									ToolCallID: "call_1",
 									ToolName:   "calculator",
@@ -557,17 +562,19 @@ func TestTokenLimiterProcessor(t *testing.T) {
 							},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 				{
-					ID:   "tool-result-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "tool-result-1",
+						Role:      "assistant",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{
 								Type: "tool-invocation",
-								ToolInvocationData: &processors.ToolInvocation{
+								ToolInvocation: &processors.ToolInvocation{
 									State:      "result",
 									ToolCallID: "call_1",
 									ToolName:   "calculator",
@@ -577,7 +584,6 @@ func TestTokenLimiterProcessor(t *testing.T) {
 							},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 				createTLTestMessage("Calculate 2+2", "user", "user-1"),
 			}

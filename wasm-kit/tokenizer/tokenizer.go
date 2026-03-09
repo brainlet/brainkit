@@ -1290,6 +1290,12 @@ func (t *Tokenizer) Source() diagnostics.Source {
 	return t.source
 }
 
+// NextTokenPos returns the position of the peeked next token.
+// Only valid after a call to Peek.
+func (t *Tokenizer) NextTokenPos() int32 {
+	return t.nextTokenPos
+}
+
 // State represents a saved tokenizer state for mark/reset.
 type State struct {
 	Pos      int32

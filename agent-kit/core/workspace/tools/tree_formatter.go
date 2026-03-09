@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/brainlet/brainkit/picomatch"
 )
 
 // =============================================================================
@@ -53,42 +55,15 @@ type TreeStats struct {
 }
 
 // =============================================================================
-// Glob Matching (simple)
+// Glob Matching
 // =============================================================================
 
-// simpleGlobMatch performs basic glob matching against a path.
-// Supports: *, **, ?, {a,b,c}, and character classes [abc].
-func simpleGlobMatch(pattern, name string) bool {
-	matched, _ := filepath.Match(pattern, name)
-	if matched {
-		return true
-	}
-	// For ** patterns, try matching against the basename
-	if strings.Contains(pattern, "**") {
-		// Strip ** prefix and try matching the rest against the basename
-		rest := strings.TrimPrefix(pattern, "**/")
-		if rest != pattern {
-			base := filepath.Base(name)
-			matched, _ = filepath.Match(rest, base)
-			if matched {
-				return true
-			}
-			// Also try matching against the full path
-			matched, _ = filepath.Match(rest, name)
-			return matched
-		}
-	}
-	return false
-}
-
 // matchesAnyPattern checks if a name matches any of the given glob patterns.
+// Uses picomatch for full glob support including **, brace expansion,
+// character classes, and extended globs.
 func matchesAnyPattern(name string, patterns []string) bool {
-	for _, p := range patterns {
-		if simpleGlobMatch(p, name) {
-			return true
-		}
-	}
-	return false
+	matcher := picomatch.Compile(patterns, &picomatch.Options{Dot: true})
+	return matcher(name)
 }
 
 // =============================================================================

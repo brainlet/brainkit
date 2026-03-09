@@ -6,17 +6,17 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/mastra"
 	"github.com/brainlet/brainkit/agent-kit/core/storage"
+	"github.com/brainlet/brainkit/agent-kit/core/storage/domains"
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Local interface types
 // ---------------------------------------------------------------------------
 
-// MastraScorer is a stub for evals/base MastraScorer.
-// STUB REASON: The real evals.MastraScorer struct has different method signatures:
-// - Run(ctx context.Context, input *ScorerRun) vs Run(input any) here
-// - Judge() *ScorerJudgeConfig vs HasJudge() bool here
-// Replacing would require updating executor.go call sites and adding context params.
+// MastraScorer is a narrow interface for scorers used by experiment execution.
+// The real evals.MastraScorer has different method signatures
+// (Run takes context.Context + *ScorerRun, Judge returns *ScorerJudgeConfig).
+// This interface is intentionally simplified for the experiment use case.
 type MastraScorer interface {
 	// ID returns the scorer's unique identifier.
 	ID() string
@@ -31,16 +31,15 @@ type MastraScorer interface {
 }
 
 // ScorerRunResult is the result returned by MastraScorer.Run().
-// STUB REASON: The real evals.ScorerRunResult has many more fields (Extract/Analyze
-// step results, prompts). This is a simplified version for the experiment use case.
+// Simplified version for the experiment use case — the real evals.ScorerRunResult
+// has additional fields (Extract/Analyze step results, prompts).
 type ScorerRunResult struct {
 	Score  *float64 `json:"score"`
 	Reason *string  `json:"reason,omitempty"`
 }
 
 // Mastra is the narrow interface for the Mastra orchestrator used by experiments.
-// No circular dependency: mastra does not import datasets/experiment.
-// Ported from: packages/core/src/datasets/experiment — uses mastra instance
+// Ported from: packages/core/src/datasets/experiment — uses mastra instance.
 type Mastra interface {
 	GetStorage() *storage.MastraCompositeStore
 	GetScorerByID(id string) mastra.MastraScorer
@@ -53,43 +52,49 @@ type Mastra interface {
 // MastraCompositeStore is re-exported from the storage package.
 type MastraCompositeStore = storage.MastraCompositeStore
 
-// ScorerRunInputForAgent is a stub for evals/types ScorerRunInputForAgent.
-// STUB REASON: The real evals package doesn't export this type. Kept as any.
+// ScorerRunInputForAgent represents scorer input for agent targets.
+// STUB REASON: The real type is evals.ScorerRunInputForAgent (struct with
+// InputMessages, RememberedMessages, SystemMessages, TaggedSystemMessages fields).
+// However, executeAgent extracts this from rawResult["scoringData"].(map[string]any)["input"]
+// which yields any at runtime. A type assertion would be needed but the concrete
+// value is often map[string]any (from JSON deserialization), not the struct. Kept as
+// any to preserve runtime compatibility.
 type ScorerRunInputForAgent = any
 
-// ScorerRunOutputForAgent is a stub for evals/types ScorerRunOutputForAgent.
-// STUB REASON: Same as ScorerRunInputForAgent.
+// ScorerRunOutputForAgent represents scorer output for agent targets.
+// STUB REASON: The real type is evals.ScorerRunOutputForAgent (= []evals.MastraDBMessage).
+// Same runtime issue as ScorerRunInputForAgent — extracted from map[string]any at runtime.
+// Kept as any to preserve runtime compatibility.
 type ScorerRunOutputForAgent = any
 
-// ScoringData is a stub for llm/model/shared_types.ScoringData.
-// STUB REASON: The real model.ScoringData uses map[string]any for Input/Output fields,
-// while this stub uses any (via ScorerRunInputForAgent/ScorerRunOutputForAgent aliases).
-// Replacing would require updating all construction sites to use maps.
+// ScoringData holds input/output pairs for scorer evaluation.
+// The real model.ScoringData uses map[string]any for Input/Output fields;
+// this version uses any (via ScorerRunInputForAgent/ScorerRunOutputForAgent aliases).
 type ScoringData struct {
 	Input  ScorerRunInputForAgent  `json:"input,omitempty"`
 	Output ScorerRunOutputForAgent `json:"output,omitempty"`
 }
 
 // TargetType is the type of entity a dataset experiment targets.
-// Defined locally as a simple string enum. The storage/types package has its own version.
-type TargetType string
+// Re-exported from storage/domains — single source of truth.
+type TargetType = domains.TargetType
 
 const (
-	TargetTypeAgent     TargetType = "agent"
-	TargetTypeWorkflow  TargetType = "workflow"
-	TargetTypeScorer    TargetType = "scorer"
-	TargetTypeProcessor TargetType = "processor"
+	TargetTypeAgent     = domains.TargetTypeAgent
+	TargetTypeWorkflow  = domains.TargetTypeWorkflow
+	TargetTypeScorer    = domains.TargetTypeScorer
+	TargetTypeProcessor = domains.TargetTypeProcessor
 )
 
 // ExperimentStatus represents the status of an experiment.
-// Defined locally as a simple string enum. The storage/types package has its own version.
-type ExperimentStatus string
+// Re-exported from storage/domains — single source of truth.
+type ExperimentStatus = domains.ExperimentStatus
 
 const (
-	ExperimentStatusPending   ExperimentStatus = "pending"
-	ExperimentStatusRunning   ExperimentStatus = "running"
-	ExperimentStatusCompleted ExperimentStatus = "completed"
-	ExperimentStatusFailed    ExperimentStatus = "failed"
+	ExperimentStatusPending   = domains.ExperimentStatusPending
+	ExperimentStatusRunning   = domains.ExperimentStatusRunning
+	ExperimentStatusCompleted = domains.ExperimentStatusCompleted
+	ExperimentStatusFailed    = domains.ExperimentStatusFailed
 )
 
 // ============================================================================

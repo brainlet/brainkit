@@ -94,6 +94,12 @@ type TypeBuilderRef = uintptr
 // ExpressionRunnerFlags controls expression runner behavior.
 type ExpressionRunnerFlags = uint32
 
+// ExpressionRunnerFlagsDefault returns the default expression runner flags (0).
+func ExpressionRunnerFlagsDefault() ExpressionRunnerFlags { return 0 }
+
+// ExpressionRunnerFlagsPreserveSideeffects returns flags that preserve side effects (1).
+func ExpressionRunnerFlagsPreserveSideeffects() ExpressionRunnerFlags { return 1 }
+
 // SideEffects represents the side effects of an expression.
 type SideEffects = uint32
 

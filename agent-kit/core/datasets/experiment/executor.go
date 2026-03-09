@@ -8,32 +8,28 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Local interface types
 // ---------------------------------------------------------------------------
 
-// Agent is a stub for agent.Agent.
-// STUB REASON: The real agent.Agent.Generate has entirely different params
-// (uses agent-specific GenerateOptions, returns agent-specific results).
-// Replacing requires a significant refactor of executeAgentTask.
+// Agent is a narrow interface for agents used by dataset experiment execution.
+// The real agent.Agent.Generate has different params (agent-specific GenerateOptions)
+// and cannot be imported due to circular dependency (agent imports core).
 type Agent interface {
 	Generate(input any, opts map[string]any) (map[string]any, error)
 }
 
-// Workflow is a stub for workflows.Workflow.
-// STUB REASON: The real workflows.Workflow.CreateRun has different param/return types.
-// Replacing requires updating executeWorkflowTask to use real workflow types.
+// Workflow is a narrow interface for workflows used by dataset experiment execution.
+// The real workflows.Workflow.CreateRun has different param/return types.
 type Workflow interface {
 	CreateRun(opts map[string]any) (WorkflowRun, error)
 }
 
-// WorkflowRun is a stub for a workflow run.
-// STUB REASON: Same as Workflow — different Start signature in real type.
+// WorkflowRun is a narrow interface for workflow runs in dataset experiment execution.
 type WorkflowRun interface {
 	Start(input map[string]any) (WorkflowRunResult, error)
 }
 
-// WorkflowRunResult is a stub for workflow run result.
-// STUB REASON: Simplified version of the real workflow run result type.
+// WorkflowRunResult is a simplified workflow run result for dataset experiments.
 type WorkflowRunResult struct {
 	Status  string         `json:"status"`
 	Result  any            `json:"result,omitempty"`
@@ -42,13 +38,13 @@ type WorkflowRunResult struct {
 	Tripwire *TripwireInfo `json:"tripwire,omitempty"`
 }
 
-// WorkflowError is a stub for workflow error info.
+// WorkflowError holds workflow error information.
 type WorkflowError struct {
 	Message string `json:"message"`
 	Stack   string `json:"stack,omitempty"`
 }
 
-// TripwireInfo is a stub for tripwire info.
+// TripwireInfo holds tripwire trigger information.
 type TripwireInfo struct {
 	Reason string `json:"reason,omitempty"`
 }

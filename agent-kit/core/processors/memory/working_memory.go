@@ -151,9 +151,11 @@ func (wm *WorkingMemory) ProcessInput(args processors.ProcessInputArgs) (
 		if err != nil {
 			return nil, messageList, nil, err
 		}
-		if thread != nil && thread.Metadata != nil {
-			if wmStr, ok := thread.Metadata["workingMemory"].(string); ok {
-				workingMemoryData = wmStr
+		if thread != nil {
+			if metadata, ok := thread["metadata"].(map[string]any); ok {
+				if wmStr, ok := metadata["workingMemory"].(string); ok {
+					workingMemoryData = wmStr
+				}
 			}
 		}
 	} else if wm.scope == "resource" && resourceID != "" {
@@ -162,7 +164,9 @@ func (wm *WorkingMemory) ProcessInput(args processors.ProcessInputArgs) (
 			return nil, messageList, nil, err
 		}
 		if resource != nil {
-			workingMemoryData = resource.WorkingMemory
+			if wmStr, ok := resource["workingMemory"].(string); ok {
+				workingMemoryData = wmStr
+			}
 		}
 	}
 

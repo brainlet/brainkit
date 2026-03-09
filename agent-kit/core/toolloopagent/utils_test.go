@@ -120,15 +120,24 @@ func TestToolLoopAgentProcessor_GetAgentConfig(t *testing.T) {
 			t.Error("expected tools to include weather")
 		}
 
-		// Check model settings in default options
+		// Check model settings in default options (ModelSettings is map[string]any
+		// to match the real processors.ProcessInputStepResult type).
 		if config.DefaultOptions == nil {
 			t.Fatal("expected DefaultOptions to be set")
 		}
 		if config.DefaultOptions.ModelSettings == nil {
 			t.Fatal("expected ModelSettings to be set")
 		}
-		if config.DefaultOptions.ModelSettings.Temperature == nil || *config.DefaultOptions.ModelSettings.Temperature != 0.5 {
-			t.Errorf("expected Temperature=0.5, got %v", config.DefaultOptions.ModelSettings.Temperature)
+		ms, ok := config.DefaultOptions.ModelSettings.(map[string]any)
+		if !ok {
+			t.Fatalf("expected ModelSettings to be map[string]any, got %T", config.DefaultOptions.ModelSettings)
+		}
+		tempVal, ok := ms["temperature"]
+		if !ok {
+			t.Fatal("expected ModelSettings to contain temperature")
+		}
+		if tempVal != 0.5 {
+			t.Errorf("expected Temperature=0.5, got %v", tempVal)
 		}
 	})
 
@@ -279,8 +288,11 @@ func TestToolLoopAgentProcessor_ProcessInputStep(t *testing.T) {
 		if !prepareCallCalled {
 			t.Error("expected prepareCall to be called on step 0")
 		}
-		if result.ModelSettings == nil || result.ModelSettings.Temperature == nil || *result.ModelSettings.Temperature != 0.9 {
-			t.Error("expected temperature=0.9 from prepareCall result")
+		if result.ModelSettings == nil {
+			t.Fatal("expected ModelSettings to be set from prepareCall result")
+		}
+		if result.ModelSettings["temperature"] != 0.9 {
+			t.Errorf("expected temperature=0.9 from prepareCall result, got %v", result.ModelSettings["temperature"])
 		}
 	})
 

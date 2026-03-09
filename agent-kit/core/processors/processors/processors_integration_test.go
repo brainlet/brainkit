@@ -16,24 +16,28 @@ func TestProcessorsIntegration(t *testing.T) {
 		// Create messages with tool calls and text content.
 		messages := []processors.MastraDBMessage{
 			{
-				ID:   "msg-1",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-1",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "What is the weather in NYC?",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-2",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-2",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "The weather in NYC is sunny and 72\u00b0F. It is a beautiful day outside with clear skies.",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "call-1",
 								ToolName:   "weather",
@@ -42,7 +46,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "call-1",
 								ToolName:   "weather",
@@ -53,24 +57,28 @@ func TestProcessorsIntegration(t *testing.T) {
 				},
 			},
 			{
-				ID:   "msg-5",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-5",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "What about San Francisco?",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-6",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-6",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "San Francisco is foggy with a temperature of 58\u00b0F.",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "call-2",
 								ToolName:   "time",
@@ -79,7 +87,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "call-2",
 								ToolName:   "time",
@@ -174,24 +182,28 @@ func TestProcessorsIntegration(t *testing.T) {
 	t.Run("should apply multiple processors without duplicating messages", func(t *testing.T) {
 		messages := []processors.MastraDBMessage{
 			{
-				ID:   "msg-1",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-1",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Hello",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-2",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-2",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Weather is sunny",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "tc-1",
 								ToolName:   "weather",
@@ -200,7 +212,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "tc-1",
 								ToolName:   "weather",
@@ -211,24 +223,28 @@ func TestProcessorsIntegration(t *testing.T) {
 				},
 			},
 			{
-				ID:   "msg-3",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-3",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "What time is it?",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-4",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-4",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "It is 3:45 PM",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "tc-2",
 								ToolName:   "time",
@@ -236,7 +252,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "tc-2",
 								ToolName:   "time",
@@ -247,12 +263,14 @@ func TestProcessorsIntegration(t *testing.T) {
 				},
 			},
 			{
-				ID:   "msg-5",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-5",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Thanks",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 		}
@@ -309,24 +327,28 @@ func TestProcessorsIntegration(t *testing.T) {
 	t.Run("should integrate processors with ProcessorRunner", func(t *testing.T) {
 		messages := []processors.MastraDBMessage{
 			{
-				ID:   "msg-1",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-1",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "What is the weather in Seattle?",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-2",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-2",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "The weather in Seattle is sunny and 70 degrees.",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "call-weather-1",
 								ToolName:   "get_weather",
@@ -335,7 +357,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "call-weather-1",
 								ToolName:   "get_weather",
@@ -346,24 +368,28 @@ func TestProcessorsIntegration(t *testing.T) {
 				},
 			},
 			{
-				ID:   "msg-3",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-3",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Calculate 123 * 456",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-4",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-4",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "The result of 123 * 456 is 56088.",
-					Parts: []processors.MessagePart{
+					Parts: []processors.MastraMessagePart{
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "call",
 								ToolCallID: "call-calc-1",
 								ToolName:   "calculator",
@@ -372,7 +398,7 @@ func TestProcessorsIntegration(t *testing.T) {
 						},
 						{
 							Type: "tool-invocation",
-							ToolInvocationData: &processors.ToolInvocation{
+							ToolInvocation: &processors.ToolInvocation{
 								State:      "result",
 								ToolCallID: "call-calc-1",
 								ToolName:   "calculator",
@@ -383,21 +409,25 @@ func TestProcessorsIntegration(t *testing.T) {
 				},
 			},
 			{
-				ID:   "msg-5",
-				Role: "user",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-5",
+					Role: "user",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Tell me something interesting about space",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 			{
-				ID:   "msg-6",
-				Role: "assistant",
+				MastraMessageShared: processors.MastraMessageShared{
+					ID:   "msg-6",
+					Role: "assistant",
+				},
 				Content: processors.MastraMessageContentV2{
 					Format:  2,
 					Content: "Space is vast and contains billions of galaxies.",
-					Parts:   []processors.MessagePart{},
+					Parts:   []processors.MastraMessagePart{},
 				},
 			},
 		}

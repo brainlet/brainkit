@@ -9,6 +9,8 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/processors"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storagememory "github.com/brainlet/brainkit/agent-kit/core/storage/domains/memory"
+	"github.com/brainlet/brainkit/agent-kit/core/vector"
 )
 
 // ---------------------------------------------------------------------------
@@ -16,31 +18,34 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockVectorForSR struct {
-	queryCalls       []VectorQueryOptions
+	queryCalls       []vector.QueryVectorParams
 	queryResults     []VectorQueryResult
 	queryErr         error
-	createIndexCalls []VectorCreateIndexOptions
+	createIndexCalls []vector.CreateIndexParams
 	createIndexErr   error
-	upsertCalls      []VectorUpsertOptions
+	upsertCalls      []vector.UpsertVectorParams
 	upsertErr        error
 }
 
-func (m *mockVectorForSR) Query(opts VectorQueryOptions) ([]VectorQueryResult, error) {
-	m.queryCalls = append(m.queryCalls, opts)
+func (m *mockVectorForSR) Query(_ context.Context, params vector.QueryVectorParams) ([]VectorQueryResult, error) {
+	m.queryCalls = append(m.queryCalls, params)
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
 	return m.queryResults, nil
 }
 
-func (m *mockVectorForSR) CreateIndex(opts VectorCreateIndexOptions) error {
-	m.createIndexCalls = append(m.createIndexCalls, opts)
+func (m *mockVectorForSR) CreateIndex(_ context.Context, params vector.CreateIndexParams) error {
+	m.createIndexCalls = append(m.createIndexCalls, params)
 	return m.createIndexErr
 }
 
-func (m *mockVectorForSR) Upsert(opts VectorUpsertOptions) error {
-	m.upsertCalls = append(m.upsertCalls, opts)
-	return m.upsertErr
+func (m *mockVectorForSR) Upsert(_ context.Context, params vector.UpsertVectorParams) ([]string, error) {
+	m.upsertCalls = append(m.upsertCalls, params)
+	if m.upsertErr != nil {
+		return nil, m.upsertErr
+	}
+	return params.IDs, nil
 }
 
 type mockEmbedder struct {
@@ -63,43 +68,47 @@ func (m *mockEmbedder) ModelID() string {
 }
 
 type mockStorageForSR struct {
-	listMessagesCalls  []ListMessagesInput
-	listMessagesResult ListMessagesOutput
+	listMessagesCalls  []storagememory.StorageListMessagesInput
+	listMessagesResult StorageListMessagesOutput
 	listMessagesErr    error
 }
 
-func (m *mockStorageForSR) ListMessages(_ context.Context, args ListMessagesInput) (ListMessagesOutput, error) {
+func (m *mockStorageForSR) ListMessages(_ context.Context, args storagememory.StorageListMessagesInput) (StorageListMessagesOutput, error) {
 	m.listMessagesCalls = append(m.listMessagesCalls, args)
 	if m.listMessagesErr != nil {
-		return ListMessagesOutput{}, m.listMessagesErr
+		return StorageListMessagesOutput{}, m.listMessagesErr
 	}
 	return m.listMessagesResult, nil
 }
-func (m *mockStorageForSR) GetThreadByID(_ context.Context, _ string) (*StorageThread, error) {
+func (m *mockStorageForSR) GetThreadByID(_ context.Context, _ string) (StorageThreadType, error) {
 	return nil, nil
 }
-func (m *mockStorageForSR) SaveThread(_ context.Context, _ StorageThread) error { return nil }
-func (m *mockStorageForSR) UpdateThread(_ context.Context, _ UpdateThreadInput) error {
-	return nil
+func (m *mockStorageForSR) SaveThread(_ context.Context, t StorageThreadType) (StorageThreadType, error) {
+	return t, nil
 }
-func (m *mockStorageForSR) SaveMessages(_ context.Context, _ []processors.MastraDBMessage) error {
-	return nil
+func (m *mockStorageForSR) UpdateThread(_ context.Context, _ UpdateThreadInput) (StorageThreadType, error) {
+	return nil, nil
 }
-func (m *mockStorageForSR) GetResourceByID(_ context.Context, _ string) (*StorageResource, error) {
+func (m *mockStorageForSR) SaveMessages(_ context.Context, msgs []processors.MastraDBMessage) ([]processors.MastraDBMessage, error) {
+	return msgs, nil
+}
+func (m *mockStorageForSR) GetResourceByID(_ context.Context, _ string) (StorageResourceType, error) {
 	return nil, nil
 }
 
 // createTestMessage is a helper to create MastraDBMessage values.
 func createTestMessage(id, role, content string) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   id,
-		Role: role,
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:        id,
+			Role:      role,
+			CreatedAt: time.Now(),
+		},
 		Content: processors.MastraMessageContentV2{
 			Format:  2,
-			Parts:   []processors.MessagePart{{Type: "text", Text: content}},
+			Parts:   []processors.MastraMessagePart{{Type: "text", Text: content}},
 			Content: content,
 		},
-		CreatedAt: time.Now(),
 	}
 }
 
@@ -122,7 +131,7 @@ func TestSemanticRecall(t *testing.T) {
 			globalEmbeddingCache.Clear()
 
 			mockStorage := &mockStorageForSR{
-				listMessagesResult: ListMessagesOutput{
+				listMessagesResult: StorageListMessagesOutput{
 					Messages: []processors.MastraDBMessage{
 						createTestMessage("msg-1", "user", "Message 1"),
 						createTestMessage("msg-2", "assistant", "Message 2"),
@@ -184,7 +193,7 @@ func TestSemanticRecall(t *testing.T) {
 				},
 			}
 			mockStorage := &mockStorageForSR{
-				listMessagesResult: ListMessagesOutput{
+				listMessagesResult: StorageListMessagesOutput{
 					Messages: []processors.MastraDBMessage{
 						createTestMessage("msg-1", "user", "Message 1"),
 						createTestMessage("msg-3", "user", "Message 3"),
@@ -521,16 +530,18 @@ func TestSemanticRecall(t *testing.T) {
 
 			inputMessages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-new",
-					Role: "user",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:        "msg-new",
+						Role:      "user",
+						CreatedAt: time.Now(),
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts: []processors.MessagePart{
+						Parts: []processors.MastraMessagePart{
 							{Type: "text", Text: "Part 1"},
 							{Type: "text", Text: "Part 2"},
 						},
 					},
-					CreatedAt: time.Now(),
 				},
 			}
 
@@ -568,7 +579,7 @@ func TestSemanticRecall(t *testing.T) {
 				},
 			}
 			mockStorage := &mockStorageForSR{
-				listMessagesResult: ListMessagesOutput{
+				listMessagesResult: StorageListMessagesOutput{
 					Messages: []processors.MastraDBMessage{
 						createTestMessage("msg-1", "user", "Message 1"),
 					},
@@ -661,7 +672,7 @@ func TestSemanticRecall(t *testing.T) {
 			if call.Dimension != 3 {
 				t.Errorf("expected dimension=3, got %d", call.Dimension)
 			}
-			if call.Metric != "cosine" {
+			if call.Metric != vector.DistanceMetricCosine {
 				t.Errorf("expected metric='cosine', got %q", call.Metric)
 			}
 		})

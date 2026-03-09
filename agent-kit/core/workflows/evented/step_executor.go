@@ -8,21 +8,20 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storageworkflows "github.com/brainlet/brainkit/agent-kit/core/storage/domains/workflows"
 	wf "github.com/brainlet/brainkit/agent-kit/core/workflows"
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for unported dependencies
+// Interfaces bridging to real storage types
 // ---------------------------------------------------------------------------
 
 // Mastra is the narrow interface for the Mastra orchestrator.
-// Defined here to break circular dependency. core.Mastra satisfies this.
-//
-// NOTE: GetStorage() still uses a local Storage interface (see workflows.Mastra).
+// core.Mastra satisfies this.
 type Mastra interface {
 	GetLogger() logger.IMastraLogger
 	PubSub() PubSub
-	GetStorage() Storage
+	GetWorkflowsStore() WorkflowsStore
 }
 
 // PubSub is a stub for the PubSub interface.
@@ -33,74 +32,58 @@ type PubSub interface {
 	Unsubscribe(topic string, handler func(event any, ack func() error) error) error
 }
 
-// Storage is a stub for storage access.
-// TODO: Replace with actual Storage interface when ported.
-type Storage interface {
-	GetStore(name string) (WorkflowsStore, error)
-}
+// WorkflowsStore is the real workflows storage interface from
+// storage/domains/workflows. No cycle exists: evented → storage is safe.
+type WorkflowsStore = storageworkflows.WorkflowsStorage
 
-// WorkflowsStore is a stub for the workflows store.
-// TODO: Replace with actual WorkflowsStore interface when ported.
-type WorkflowsStore interface {
-	PersistWorkflowSnapshot(params PersistSnapshotParams) error
-	LoadWorkflowSnapshot(params LoadSnapshotParams) (*WorkflowRunState, error)
-	UpdateWorkflowResults(params UpdateResultsParams) (map[string]any, error)
-	UpdateWorkflowState(params UpdateStateParams) error
-	GetWorkflowRunByID(params GetRunParams) (*WorkflowRun, error)
-}
-
-// WorkflowRunState is a stub for the workflow run state.
-// TODO: Replace with actual type from types.go when available.
+// WorkflowRunState is a typed struct for the in-memory workflow run state
+// used by the evented engine. It has looser field types than wf.WorkflowRunState
+// (e.g. []any for ActivePaths instead of []int) because the evented engine
+// stores heterogeneous path data. Converted to map[string]any for storage via
+// WorkflowRunStateToMap.
 type WorkflowRunState struct {
-	ActivePaths      []any                      `json:"activePaths"`
-	SuspendedPaths   map[string][]int           `json:"suspendedPaths"`
-	ResumeLabels     map[string]any             `json:"resumeLabels"`
-	WaitingPaths     map[string][]int           `json:"waitingPaths"`
-	ActiveStepsPath  map[string]any             `json:"activeStepsPath"`
+	ActivePaths         []any                        `json:"activePaths"`
+	SuspendedPaths      map[string][]int             `json:"suspendedPaths"`
+	ResumeLabels        map[string]any               `json:"resumeLabels"`
+	WaitingPaths        map[string][]int             `json:"waitingPaths"`
+	ActiveStepsPath     map[string]any               `json:"activeStepsPath"`
 	SerializedStepGraph []wf.SerializedStepFlowEntry `json:"serializedStepGraph"`
-	Timestamp        int64                      `json:"timestamp"`
-	RunID            string                     `json:"runId"`
-	Context          map[string]any             `json:"context"`
-	Status           string                     `json:"status"`
-	Value            any                        `json:"value"`
-	RequestContext   map[string]any             `json:"requestContext"`
+	Timestamp           int64                        `json:"timestamp"`
+	RunID               string                       `json:"runId"`
+	Context             map[string]any               `json:"context"`
+	Status              string                       `json:"status"`
+	Value               any                          `json:"value"`
+	RequestContext      map[string]any               `json:"requestContext"`
 }
 
-// WorkflowRun is a stub for a workflow run record.
-type WorkflowRun struct {
-	ResourceID string `json:"resourceId"`
-}
+// WorkflowRun is the real workflow run record from storage/domains/workflows.
+type WorkflowRun = storageworkflows.WorkflowRun
 
-// Stub param types for storage operations.
-type PersistSnapshotParams struct {
-	WorkflowName string
-	RunID        string
-	ResourceID   string
-	Snapshot     WorkflowRunState
-}
+// Storage param type aliases pointing to real storage types.
+type PersistSnapshotParams = storageworkflows.PersistWorkflowSnapshotArgs
+type LoadSnapshotParams = storageworkflows.LoadWorkflowSnapshotArgs
+type UpdateResultsParams = storageworkflows.UpdateWorkflowResultsArgs
+type UpdateStateParams = storageworkflows.UpdateWorkflowStateArgs
+type GetRunParams = storageworkflows.GetWorkflowRunByIDArgs
 
-type LoadSnapshotParams struct {
-	WorkflowName string
-	RunID        string
-}
-
-type UpdateResultsParams struct {
-	WorkflowName   string
-	RunID          string
-	StepID         string
-	Result         any
-	RequestContext any
-}
-
-type UpdateStateParams struct {
-	WorkflowName string
-	RunID        string
-	Opts         map[string]any
-}
-
-type GetRunParams struct {
-	RunID        string
-	WorkflowName string
+// WorkflowRunStateToMap converts the typed evented WorkflowRunState into
+// the untyped map[string]any expected by storageworkflows.WorkflowRunState.
+func WorkflowRunStateToMap(state WorkflowRunState) storageworkflows.WorkflowRunState {
+	m := map[string]any{
+		"runId":               state.RunID,
+		"status":              state.Status,
+		"timestamp":           state.Timestamp,
+		"activePaths":         state.ActivePaths,
+		"suspendedPaths":      state.SuspendedPaths,
+		"resumeLabels":        state.ResumeLabels,
+		"waitingPaths":        state.WaitingPaths,
+		"activeStepsPath":     state.ActiveStepsPath,
+		"serializedStepGraph": state.SerializedStepGraph,
+		"context":             state.Context,
+		"value":               state.Value,
+		"requestContext":      state.RequestContext,
+	}
+	return m
 }
 
 // ---------------------------------------------------------------------------

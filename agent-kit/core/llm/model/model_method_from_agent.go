@@ -3,23 +3,24 @@ package model
 
 import (
 	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
+	"github.com/brainlet/brainkit/agent-kit/core/interfaces"
 )
 
 // ---------------------------------------------------------------------------
 // AgentMethodType
 // ---------------------------------------------------------------------------
 
-// AgentMethodType represents agent method types.
-// TS: import type { AgentMethodType } from '../../agent';
-// STUB REASON: Cannot import agent.AgentMethodType due to circular dependency:
-// agent imports llm/model. Both define identical string enum values.
-type AgentMethodType string
+// AgentMethodType is the shared agent method type, defined in core/interfaces
+// to break the circular dependency between agent and llm/model packages.
+type AgentMethodType = interfaces.AgentMethodType
 
+// Re-export constants for backward compatibility. Consumers of model.AgentMethod*
+// continue to work unchanged.
 const (
-	AgentMethodGenerate       AgentMethodType = "generate"
-	AgentMethodGenerateLegacy AgentMethodType = "generateLegacy"
-	AgentMethodStream         AgentMethodType = "stream"
-	AgentMethodStreamLegacy   AgentMethodType = "streamLegacy"
+	AgentMethodGenerate       = interfaces.AgentMethodGenerate
+	AgentMethodGenerateLegacy = interfaces.AgentMethodGenerateLegacy
+	AgentMethodStream         = interfaces.AgentMethodStream
+	AgentMethodStreamLegacy   = interfaces.AgentMethodStreamLegacy
 )
 
 // ---------------------------------------------------------------------------

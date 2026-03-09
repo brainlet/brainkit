@@ -239,7 +239,7 @@ func (tlp *TokenLimiterProcessor) ProcessOutputResult(args processors.ProcessOut
 			continue
 		}
 
-		var processedParts []processors.MessagePart
+		var processedParts []processors.MastraMessagePart
 		for _, part := range message.Content.Parts {
 			if part.Type == "text" {
 				textContent := part.Text
@@ -258,7 +258,7 @@ func (tlp *TokenLimiterProcessor) ProcessOutputResult(args processors.ProcessOut
 						remainingTokens := limit - cumulativeTokens
 						truncatedText := tlp.truncateToTokenLimit(textContent, remainingTokens)
 						cumulativeTokens += len(tlp.encoder.Encode(truncatedText))
-						processedParts = append(processedParts, processors.MessagePart{
+						processedParts = append(processedParts, processors.MastraMessagePart{
 							Type: "text",
 							Text: truncatedText,
 						})
@@ -325,20 +325,15 @@ func (tlp *TokenLimiterProcessor) countInputMessageTokens(message processors.Mas
 			case "text":
 				tokenString += part.Text
 			case "tool-invocation":
-				if part.ToolInvocationData != nil {
-					inv := part.ToolInvocationData
+				if part.ToolInvocation != nil {
+					inv := part.ToolInvocation
 					if inv.State == "call" || inv.State == "partial-call" {
 						tokenString += inv.ToolName
 						if inv.Args != nil {
-							switch a := inv.Args.(type) {
-							case string:
-								tokenString += a
-							default:
-								jsonBytes, err := json.Marshal(a)
-								if err == nil {
-									tokenString += string(jsonBytes)
-									overhead -= 12
-								}
+							jsonBytes, err := json.Marshal(inv.Args)
+							if err == nil {
+								tokenString += string(jsonBytes)
+								overhead -= 12
 							}
 						}
 					} else if inv.State == "result" {

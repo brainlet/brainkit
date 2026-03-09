@@ -367,7 +367,7 @@ func (sps *SystemPromptScrubber) extractTextFromMessage(message processors.Mastr
 // createScrubberRedactedMessage creates a redacted message with the given text.
 func (sps *SystemPromptScrubber) createScrubberRedactedMessage(originalMessage processors.MastraDBMessage, redactedText string) processors.MastraDBMessage {
 	msg := originalMessage
-	msg.Content.Parts = []processors.MessagePart{{Type: "text", Text: redactedText}}
+	msg.Content.Parts = []processors.MastraMessagePart{{Type: "text", Text: redactedText}}
 	msg.Content.Content = redactedText
 	return msg
 }

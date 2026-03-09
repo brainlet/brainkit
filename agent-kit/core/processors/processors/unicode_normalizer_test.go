@@ -12,10 +12,12 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-func makeMessage(role string, parts []processors.MessagePart) processors.MastraDBMessage {
+func makeMessage(role string, parts []processors.MastraMessagePart) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   "test-msg",
-		Role: role,
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:   "test-msg",
+			Role: role,
+		},
 		Content: processors.MastraMessageContentV2{
 			Format: 2,
 			Parts:  parts,
@@ -24,15 +26,17 @@ func makeMessage(role string, parts []processors.MessagePart) processors.MastraD
 }
 
 func makeTextMessage(role, text string) processors.MastraDBMessage {
-	return makeMessage(role, []processors.MessagePart{
+	return makeMessage(role, []processors.MastraMessagePart{
 		{Type: "text", Text: text},
 	})
 }
 
 func makeContentMessage(role, content string) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   "test-msg",
-		Role: role,
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:   "test-msg",
+			Role: role,
+		},
 		Content: processors.MastraMessageContentV2{
 			Format:  2,
 			Content: content,
@@ -325,9 +329,9 @@ func TestUnicodeNormalizer(t *testing.T) {
 
 		t.Run("should skip non-text parts", func(t *testing.T) {
 			messages := []processors.MastraDBMessage{
-				makeMessage("user", []processors.MessagePart{
+				makeMessage("user", []processors.MastraMessagePart{
 					{Type: "text", Text: "  hello  "},
-					{Type: "image", Image: "data:image/png;base64,abc"},
+					{Type: "image", Data: "data:image/png;base64,abc"},
 				}),
 			}
 			result, _, _, err := un.ProcessInput(defaultArgs(messages))

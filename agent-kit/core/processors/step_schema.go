@@ -1,6 +1,10 @@
 // Ported from: packages/core/src/processors/step-schema.ts
 package processors
 
+import (
+	"github.com/brainlet/brainkit/agent-kit/core/agent/messagelist/state"
+)
+
 // This file defines the step schema types used for processor workflows.
 // In TypeScript, these are Zod schemas; in Go, they are plain struct types
 // since Go does not have runtime schema validation built in.
@@ -30,13 +34,9 @@ type FilePart struct {
 }
 
 // ToolInvocation holds the details of a tool invocation.
-type ToolInvocation struct {
-	ToolCallID string `json:"toolCallId"`
-	ToolName   string `json:"toolName"`
-	Args       any    `json:"args,omitempty"`
-	State      string `json:"state"` // "partial-call" | "call" | "result"
-	Result     any    `json:"result,omitempty"`
-}
+// Previously a local definition; now imported from agent/messagelist/state since
+// that package does not import processors (the claimed circular dependency was false).
+type ToolInvocation = state.ToolInvocation
 
 // ToolInvocationPart represents a tool invocation part in a message.
 type ToolInvocationPart struct {

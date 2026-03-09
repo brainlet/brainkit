@@ -7,22 +7,35 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Agent — structurally compatible with agent.Agent
 // ---------------------------------------------------------------------------
-
-// Agent is a stub for ../agent.Agent.
-// STUB REASON: The real agent.Agent is a large struct with sync.Mutex, Mastra reference,
-// LLM, memory, processors, scorers, etc. This stub has only the subset of fields needed
-// by ToolLoopAgentToMastraAgent. Importing agent would require refactoring all struct
-// literal construction to use the real type's constructor pattern.
+//
+// The real agent.Agent embeds *agentkit.MastraBase, has private fields (sync.Mutex,
+// DynamicArgument for instructions/tools/etc.), and requires NewAgent(config)
+// constructor. We keep a local struct for backward compatibility since the
+// ToolLoopAgentToMastraAgent function constructs it via struct literal.
+// Fields match the real agent.Agent exported fields.
 type Agent struct {
-	ID              string                 `json:"id"`
-	Name            string                 `json:"name"`
-	Instructions    AgentInstructions      `json:"instructions,omitempty"`
-	Model           any                    `json:"model,omitempty"`
-	Tools           map[string]any         `json:"tools,omitempty"`
-	MaxRetries      *int                   `json:"maxRetries,omitempty"`
-	DefaultOptions  *AgentExecutionOptions `json:"defaultOptions,omitempty"`
+	// ID uniquely identifies the agent.
+	ID string `json:"id"`
+	// AgentName is the display name for the agent (field name matches real agent.Agent).
+	Name string `json:"name"`
+	// Source indicates whether the agent was created from code or storage.
+	Source string `json:"source,omitempty"`
+
+	// Model is the language model used by the agent.
+	Model any `json:"model"`
+	// MaxRetries for model calls in case of failure. Default: 0.
+	MaxRetries *int `json:"maxRetries,omitempty"`
+
+	// Instructions that guide the agent's behavior.
+	Instructions AgentInstructions `json:"instructions,omitempty"`
+	// Tools that the agent can access.
+	Tools map[string]any `json:"tools,omitempty"`
+	// DefaultOptions is the default options for stream()/generate().
+	DefaultOptions *AgentExecutionOptions `json:"defaultOptions,omitempty"`
+
+	// InputProcessors adapts ToolLoopAgent into the processor pipeline.
 	InputProcessors []*ToolLoopAgentProcessor `json:"-"`
 }
 

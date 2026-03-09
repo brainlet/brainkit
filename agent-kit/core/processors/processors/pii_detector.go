@@ -367,7 +367,7 @@ func (pd *PIIDetector) handleDetectedPII(
 // createRedactedMessage creates a redacted message.
 func (pd *PIIDetector) createRedactedMessage(originalMessage processors.MastraDBMessage, redactedContent string) processors.MastraDBMessage {
 	msg := originalMessage
-	msg.Content.Parts = []processors.MessagePart{{Type: "text", Text: redactedContent}}
+	msg.Content.Parts = []processors.MastraMessagePart{{Type: "text", Text: redactedContent}}
 	msg.Content.Content = redactedContent
 	return msg
 }

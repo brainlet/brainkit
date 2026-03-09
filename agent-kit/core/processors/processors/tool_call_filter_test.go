@@ -11,36 +11,36 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-func makeToolInvocationPart(toolName, toolCallID, state string) processors.MessagePart {
-	return processors.MessagePart{
+func makeToolInvocationPart(toolName, toolCallID, st string) processors.MastraMessagePart {
+	return processors.MastraMessagePart{
 		Type: "tool-invocation",
-		ToolInvocationData: &processors.ToolInvocation{
+		ToolInvocation: &processors.ToolInvocation{
 			ToolCallID: toolCallID,
 			ToolName:   toolName,
-			State:      state,
+			State:      st,
 		},
 	}
 }
 
-func makeToolInvocationPartWithArgs(toolName, toolCallID, state string, args any) processors.MessagePart {
-	return processors.MessagePart{
+func makeToolInvocationPartWithArgs(toolName, toolCallID, st string, args map[string]any) processors.MastraMessagePart {
+	return processors.MastraMessagePart{
 		Type: "tool-invocation",
-		ToolInvocationData: &processors.ToolInvocation{
+		ToolInvocation: &processors.ToolInvocation{
 			ToolCallID: toolCallID,
 			ToolName:   toolName,
-			State:      state,
+			State:      st,
 			Args:       args,
 		},
 	}
 }
 
-func makeToolInvocationPartWithResult(toolName, toolCallID, state string, result any) processors.MessagePart {
-	return processors.MessagePart{
+func makeToolInvocationPartWithResult(toolName, toolCallID, st string, result any) processors.MastraMessagePart {
+	return processors.MastraMessagePart{
 		Type: "tool-invocation",
-		ToolInvocationData: &processors.ToolInvocation{
+		ToolInvocation: &processors.ToolInvocation{
 			ToolCallID: toolCallID,
 			ToolName:   toolName,
-			State:      state,
+			State:      st,
 			Result:     result,
 		},
 	}
@@ -57,7 +57,7 @@ func TestToolCallFilter(t *testing.T) {
 			f := NewToolCallFilter(nil)
 			messages := []processors.MastraDBMessage{
 				makeTextMessage("user", "hello"),
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
 				makeTextMessage("assistant", "result"),
@@ -106,7 +106,7 @@ func TestToolCallFilter(t *testing.T) {
 		t.Run("should handle multiple tool calls in one message", func(t *testing.T) {
 			f := NewToolCallFilter(nil)
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 					makeToolInvocationPart("calculate", "call-2", "call"),
 				}),
@@ -124,7 +124,7 @@ func TestToolCallFilter(t *testing.T) {
 		t.Run("should keep text parts when tool invocations are filtered", func(t *testing.T) {
 			f := NewToolCallFilter(nil)
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					{Type: "text", Text: "I'll search for that"},
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
@@ -151,10 +151,10 @@ func TestToolCallFilter(t *testing.T) {
 				Exclude: []string{"search"},
 			})
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("calculate", "call-2", "call"),
 				}),
 			}
@@ -165,7 +165,7 @@ func TestToolCallFilter(t *testing.T) {
 			if len(result) != 1 {
 				t.Fatalf("expected 1 message (calculate only), got %d", len(result))
 			}
-			if result[0].Content.Parts[0].ToolInvocationData.ToolName != "calculate" {
+			if result[0].Content.Parts[0].ToolInvocation.ToolName != "calculate" {
 				t.Fatal("expected 'calculate' tool to remain")
 			}
 		})
@@ -175,13 +175,13 @@ func TestToolCallFilter(t *testing.T) {
 				Exclude: []string{"search", "calculate"},
 			})
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("calculate", "call-2", "call"),
 				}),
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("fetch", "call-3", "call"),
 				}),
 			}
@@ -192,7 +192,7 @@ func TestToolCallFilter(t *testing.T) {
 			if len(result) != 1 {
 				t.Fatalf("expected 1 message (fetch only), got %d", len(result))
 			}
-			if result[0].Content.Parts[0].ToolInvocationData.ToolName != "fetch" {
+			if result[0].Content.Parts[0].ToolInvocation.ToolName != "fetch" {
 				t.Fatal("expected 'fetch' tool to remain")
 			}
 		})
@@ -202,7 +202,7 @@ func TestToolCallFilter(t *testing.T) {
 				Exclude: []string{},
 			})
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
 			}
@@ -220,7 +220,7 @@ func TestToolCallFilter(t *testing.T) {
 				Exclude: []string{"nonexistent"},
 			})
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
 			}
@@ -238,10 +238,10 @@ func TestToolCallFilter(t *testing.T) {
 				Exclude: []string{"search"},
 			})
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPart("search", "call-1", "call"),
 				}),
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPartWithResult("search", "call-1", "result", "search result"),
 				}),
 			}
@@ -273,7 +273,7 @@ func TestToolCallFilter(t *testing.T) {
 		t.Run("should handle result-only messages with excludeAll", func(t *testing.T) {
 			f := NewToolCallFilter(nil)
 			messages := []processors.MastraDBMessage{
-				makeMessage("assistant", []processors.MessagePart{
+				makeMessage("assistant", []processors.MastraMessagePart{
 					makeToolInvocationPartWithResult("search", "call-1", "result", "search result"),
 				}),
 			}

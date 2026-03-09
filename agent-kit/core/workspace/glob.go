@@ -2,9 +2,10 @@
 package workspace
 
 import (
-	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/brainlet/brainkit/picomatch"
 )
 
 // =============================================================================
@@ -78,7 +79,7 @@ type GlobMatcherOptions struct {
 }
 
 // normalizeForMatch strips leading './' or '/' from a path for matching.
-// filepath.Match does not match paths with these prefixes, so both
+// Picomatch expects paths without leading separators, so both
 // patterns and test paths must be normalized before matching.
 //
 // This only affects matching — filesystem paths should keep their
@@ -99,11 +100,8 @@ func normalizeForMatch(input string) string {
 // Automatically normalizes leading './' and '/' from both patterns
 // and test paths.
 //
-// NOTE: The TypeScript version uses picomatch for full glob support
-// (brace expansion, character classes, negation, **). This Go
-// implementation uses filepath.Match for basic glob support and
-// handles ** patterns manually.
-// TODO: Replace with a full glob library (e.g., doublestar) for complete picomatch parity.
+// Uses picomatch for full glob support including brace expansion,
+// character classes, negation, extended globs, and globstar (**).
 //
 // Examples:
 //
@@ -121,25 +119,15 @@ func CreateGlobMatcher(patterns []string, options *GlobMatcherOptions) GlobMatch
 		normalizedPatterns[i] = normalizeForMatch(p)
 	}
 
+	// Compile all patterns into a single picomatch matcher.
+	opts := &picomatch.Options{
+		Dot: dot,
+	}
+	matcher := picomatch.Compile(normalizedPatterns, opts)
+
 	return func(path string) bool {
 		normalized := normalizeForMatch(path)
-
-		// Skip dotfiles unless dot option is set
-		if !dot {
-			parts := strings.Split(normalized, "/")
-			for _, part := range parts {
-				if strings.HasPrefix(part, ".") && part != "." && part != ".." {
-					return false
-				}
-			}
-		}
-
-		for _, pattern := range normalizedPatterns {
-			if matchDoublestar(normalized, pattern) {
-				return true
-			}
-		}
-		return false
+		return matcher(normalized)
 	}
 }
 
@@ -158,68 +146,6 @@ func CreateGlobMatcherSingle(pattern string, options *GlobMatcherOptions) GlobMa
 //	MatchGlob("src/index.ts", []string{"**/*.ts"}, nil)  // true
 func MatchGlob(path string, patterns []string, options *GlobMatcherOptions) bool {
 	return CreateGlobMatcher(patterns, options)(path)
-}
-
-// matchDoublestar matches a path against a pattern that may contain ** segments.
-func matchDoublestar(path, pattern string) bool {
-	// Handle ** at the start: **/rest
-	if strings.HasPrefix(pattern, "**/") {
-		rest := pattern[3:]
-		// Try matching rest against every suffix of path
-		parts := strings.Split(path, "/")
-		for i := 0; i <= len(parts); i++ {
-			sub := strings.Join(parts[i:], "/")
-			if matchDoublestar(sub, rest) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Handle ** at the end: prefix/**
-	if strings.HasSuffix(pattern, "/**") {
-		prefix := pattern[:len(pattern)-3]
-		normalizedPath := normalizeForMatch(path)
-		normalizedPrefix := normalizeForMatch(prefix)
-		return normalizedPath == normalizedPrefix || strings.HasPrefix(normalizedPath, normalizedPrefix+"/")
-	}
-
-	// Handle ** in the middle: left/**/right
-	// The ** matches zero or more directory segments between left and right.
-	if idx := strings.Index(pattern, "/**/"); idx >= 0 {
-		left := pattern[:idx]
-		right := pattern[idx+4:]
-		parts := strings.Split(path, "/")
-		// The left part must match the beginning of the path.
-		// Try each split point where left matches the prefix.
-		for i := 0; i <= len(parts); i++ {
-			leftPath := strings.Join(parts[:i], "/")
-			if !matchDoublestar(leftPath, left) {
-				continue
-			}
-			// The ** can consume zero or more segments after left.
-			// Try matching right against each remaining suffix.
-			for j := i; j <= len(parts); j++ {
-				rightPath := strings.Join(parts[j:], "/")
-				if matchDoublestar(rightPath, right) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	// Handle pattern that is just **
-	if pattern == "**" {
-		return true
-	}
-
-	// No ** — use filepath.Match for standard glob
-	matched, err := filepath.Match(pattern, path)
-	if err != nil {
-		return false
-	}
-	return matched
 }
 
 // =============================================================================

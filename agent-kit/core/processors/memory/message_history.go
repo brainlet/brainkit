@@ -8,92 +8,66 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/processors"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storagememory "github.com/brainlet/brainkit/agent-kit/core/storage/domains/memory"
 
 	wmutils "github.com/brainlet/brainkit/agent-kit/core/memory"
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for unported dependencies
+// Type aliases from storage/domains/memory
 // ---------------------------------------------------------------------------
 
-// MemoryStorage is the storage interface used by memory processors.
-// STUB REASON: The real storage/domains/memory.MemoryStorage interface has different
-// method signatures (different param/return types, more methods). Replacing would
-// require updating all call sites throughout message_history.go, semantic_recall.go,
-// and working_memory.go to use the real storage domain types.
+// Aliases for storage/domains/memory types that are used in method signatures.
+// These match the real MemoryStorage interface exactly.
+type (
+	StorageThreadType   = storagememory.StorageThreadType   // map[string]any
+	StorageResourceType = storagememory.StorageResourceType // map[string]any
+	UpdateThreadInput   = storagememory.UpdateThreadInput
+	StorageOrderBy      = storagememory.StorageOrderBy
+	MessageIncludeItem  = storagememory.MessageIncludeItem
+)
+
+// ---------------------------------------------------------------------------
+// MemoryStorage interface
+// ---------------------------------------------------------------------------
+
+// MemoryStorage is the subset of storage/domains/memory.MemoryStorage used by
+// memory processors. All signatures match the real interface.
+//
+// Note: The real interface uses storagememory.MastraDBMessage (= map[string]any)
+// for message parameters and return values. This local interface uses
+// processors.MastraDBMessage (a typed struct) because the processors package
+// works exclusively with typed messages. A real storage adapter passed to the
+// processors would need to bridge between the two representations.
 type MemoryStorage interface {
 	// ListMessages lists messages with optional filtering.
-	ListMessages(ctx context.Context, args ListMessagesInput) (ListMessagesOutput, error)
+	ListMessages(ctx context.Context, args storagememory.StorageListMessagesInput) (StorageListMessagesOutput, error)
 
 	// GetThreadByID retrieves a thread by its ID.
-	GetThreadByID(ctx context.Context, threadID string) (*StorageThread, error)
+	GetThreadByID(ctx context.Context, threadID string) (StorageThreadType, error)
 
 	// SaveThread creates or saves a thread.
-	SaveThread(ctx context.Context, thread StorageThread) error
+	SaveThread(ctx context.Context, thread StorageThreadType) (StorageThreadType, error)
 
 	// UpdateThread updates an existing thread.
-	UpdateThread(ctx context.Context, input UpdateThreadInput) error
+	UpdateThread(ctx context.Context, input UpdateThreadInput) (StorageThreadType, error)
 
 	// SaveMessages persists messages.
-	SaveMessages(ctx context.Context, messages []processors.MastraDBMessage) error
+	SaveMessages(ctx context.Context, messages []processors.MastraDBMessage) ([]processors.MastraDBMessage, error)
 
 	// GetResourceByID retrieves a resource by its ID.
-	GetResourceByID(ctx context.Context, resourceID string) (*StorageResource, error)
+	GetResourceByID(ctx context.Context, resourceID string) (StorageResourceType, error)
 }
 
-// ListMessagesInput holds parameters for listing messages.
-// STUB REASON: Part of the MemoryStorage stub interface contract.
-type ListMessagesInput struct {
-	ThreadID   string           `json:"threadId"`
-	ResourceID string           `json:"resourceId,omitempty"`
-	Page       int              `json:"page"`
-	PerPage    int              `json:"perPage,omitempty"`
-	OrderBy    *OrderByClause   `json:"orderBy,omitempty"`
-	Include    []IncludeClause  `json:"include,omitempty"`
-}
-
-// OrderByClause describes a sort order.
-type OrderByClause struct {
-	Field     string `json:"field"`
-	Direction string `json:"direction"` // "ASC" | "DESC"
-}
-
-// IncludeClause identifies a specific message to include plus context range.
-type IncludeClause struct {
-	ID                   string `json:"id"`
-	ThreadID             string `json:"threadId,omitempty"`
-	WithNextMessages     int    `json:"withNextMessages,omitempty"`
-	WithPreviousMessages int    `json:"withPreviousMessages,omitempty"`
-}
-
-// ListMessagesOutput is the result of listing messages.
-type ListMessagesOutput struct {
+// StorageListMessagesOutput is the output from ListMessages.
+// Mirrors storagememory.StorageListMessagesOutput but uses
+// processors.MastraDBMessage instead of map[string]any.
+type StorageListMessagesOutput struct {
 	Messages []processors.MastraDBMessage `json:"messages"`
-}
-
-// StorageThread represents a thread record.
-// STUB REASON: Part of the MemoryStorage stub interface contract.
-type StorageThread struct {
-	ID         string         `json:"id"`
-	ResourceID string         `json:"resourceId"`
-	Title      string         `json:"title"`
-	Metadata   map[string]any `json:"metadata"`
-	CreatedAt  time.Time      `json:"createdAt"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
-}
-
-// UpdateThreadInput holds the fields for updating a thread.
-type UpdateThreadInput struct {
-	ID       string         `json:"id"`
-	Title    string         `json:"title"`
-	Metadata map[string]any `json:"metadata"`
-}
-
-// StorageResource represents a resource record.
-// STUB REASON: Part of the MemoryStorage stub interface contract.
-type StorageResource struct {
-	ID            string  `json:"id"`
-	WorkingMemory string  `json:"workingMemory,omitempty"`
+	Total    int                          `json:"total"`
+	Page     int                          `json:"page"`
+	PerPage  int                          `json:"perPage"`
+	HasMore  bool                         `json:"hasMore"`
 }
 
 // ---------------------------------------------------------------------------
@@ -248,16 +222,17 @@ func (mh *MessageHistory) ProcessInput(args processors.ProcessInputArgs) (
 	resourceID := memCtx.ResourceID
 
 	// 1. Fetch historical messages from storage (as DB format)
-	perPage := 0
+	var perPage *int
 	if mh.lastMessages > 0 {
-		perPage = mh.lastMessages
+		pp := mh.lastMessages
+		perPage = &pp
 	}
-	result, err := mh.storage.ListMessages(ctx, ListMessagesInput{
+	result, err := mh.storage.ListMessages(ctx, storagememory.StorageListMessagesInput{
 		ThreadID:   threadID,
 		ResourceID: resourceID,
 		Page:       0,
 		PerPage:    perPage,
-		OrderBy:    &OrderByClause{Field: "createdAt", Direction: "DESC"},
+		OrderBy:    &StorageOrderBy{Field: "createdAt", Direction: "DESC"},
 	})
 	if err != nil {
 		return nil, messageList, nil, err
@@ -342,16 +317,16 @@ func (mh *MessageHistory) filterMessagesForPersistence(messages []processors.Mas
 		}
 
 		if len(newMsg.Content.Parts) > 0 {
-			var filteredParts []processors.MessagePart
+			var filteredParts []processors.MastraMessagePart
 			for _, p := range newMsg.Content.Parts {
 				// Filter out streaming tool calls (partial-call is intermediate).
-				if p.Type == "tool-invocation" && p.ToolInvocationData != nil &&
-					p.ToolInvocationData.State == "partial-call" {
+				if p.Type == "tool-invocation" && p.ToolInvocation != nil &&
+					p.ToolInvocation.State == "partial-call" {
 					continue
 				}
 				// Filter out updateWorkingMemory tool invocations.
-				if p.Type == "tool-invocation" && p.ToolInvocationData != nil &&
-					p.ToolInvocationData.ToolName == "updateWorkingMemory" {
+				if p.Type == "tool-invocation" && p.ToolInvocation != nil &&
+					p.ToolInvocation.ToolName == "updateWorkingMemory" {
 					continue
 				}
 				// Strip working memory tags from text parts.
@@ -457,10 +432,12 @@ func (mh *MessageHistory) PersistMessages(
 		return err
 	}
 	if thread != nil {
-		if err := mh.storage.UpdateThread(ctx, UpdateThreadInput{
+		title, _ := thread["title"].(string)
+		metadata, _ := thread["metadata"].(map[string]any)
+		if _, err := mh.storage.UpdateThread(ctx, UpdateThreadInput{
 			ID:       threadID,
-			Title:    thread.Title,
-			Metadata: thread.Metadata,
+			Title:    title,
+			Metadata: metadata,
 		}); err != nil {
 			return err
 		}
@@ -471,18 +448,19 @@ func (mh *MessageHistory) PersistMessages(
 			rid = threadID
 		}
 		now := time.Now()
-		if err := mh.storage.SaveThread(ctx, StorageThread{
-			ID:         threadID,
-			ResourceID: rid,
-			Title:      "",
-			Metadata:   map[string]any{},
-			CreatedAt:  now,
-			UpdatedAt:  now,
+		if _, err := mh.storage.SaveThread(ctx, StorageThreadType{
+			"id":         threadID,
+			"resourceId": rid,
+			"title":      "",
+			"metadata":   map[string]any{},
+			"createdAt":  now,
+			"updatedAt":  now,
 		}); err != nil {
 			return err
 		}
 	}
 
 	// Persist messages after thread is guaranteed to exist.
-	return mh.storage.SaveMessages(ctx, filtered)
+	_, err = mh.storage.SaveMessages(ctx, filtered)
+	return err
 }

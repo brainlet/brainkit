@@ -2,6 +2,7 @@
 package model
 
 import (
+	"github.com/brainlet/brainkit/agent-kit/core/agent/messagelist"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 )
 
@@ -36,10 +37,8 @@ type ToolSet = map[string]Tool
 // In Go, we just use any since we can't express recursive partial types.
 type DeepPartial = any
 
-// MessageList is a stub for the agent MessageList type.
-// STUB REASON: Cannot import agent due to circular dependency: agent imports llm/model.
-// The real agent.MessageList is a complex struct. Using `= any` as placeholder.
-type MessageList = any
+// MessageList is imported from the agent/messagelist package.
+type MessageList = *messagelist.MessageList
 
 // TracingProperties is re-exported from observability/types.
 type TracingProperties = obstypes.TracingProperties

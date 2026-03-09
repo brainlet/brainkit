@@ -1,6 +1,10 @@
 // Ported from: packages/core/src/llm/model/model.loop.types.ts
 package model
 
+import (
+	"github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+)
+
 // ---------------------------------------------------------------------------
 // ModelMethodType
 // ---------------------------------------------------------------------------
@@ -18,11 +22,8 @@ const (
 // Stub types for unported packages referenced by ModelLoopStreamArgs
 // ---------------------------------------------------------------------------
 
-// RequestContext is a stub for request-context.RequestContext.
-// STUB REASON: The real requestcontext.RequestContext is a struct with sync.RWMutex
-// and registry map[string]any. This stub uses `= any` because the field is passed
-// through opaquely without field access in llm/model code.
-type RequestContext = any
+// RequestContext is imported from the requestcontext package.
+type RequestContext = *requestcontext.RequestContext
 
 // LoopOptions is a stub for loop/types.LoopOptions.
 // STUB REASON: Cannot import loop due to circular dependency: loop imports llm/model.

@@ -1,0 +1,694 @@
+package program
+
+import (
+	"fmt"
+
+	"github.com/brainlet/brainkit/wasm-kit/ast"
+	"github.com/brainlet/brainkit/wasm-kit/common"
+	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
+	"github.com/brainlet/brainkit/wasm-kit/flow"
+	"github.com/brainlet/brainkit/wasm-kit/types"
+)
+
+// Program represents an AssemblyScript program.
+// It is a 1:1 port of the TypeScript Program class.
+type Program struct {
+	diagnostics.DiagnosticEmitter
+
+	// Configuration and infrastructure
+	Options           *Options
+	Module_           *Module
+	Parser_           *ParserRef
+	Resolver_         *Resolver
+	Sources           []*ast.Source
+	DiagnosticsOffset int32
+	NativeFile        *File
+	NextClassId       uint32
+	NextSignatureId   uint32
+	Initialized       bool
+
+	// Lookup maps
+	// Note: these fields use the "Map" suffix to avoid name clashes with
+	// the flow.FlowProgramRef interface methods ElementsByName() and
+	// InstancesByName(), which Program implements via flowProgramRef adapter.
+	ElementsByNameMap     map[string]Element
+	ElementsByDeclaration map[ast.Node]DeclaredElement
+	InstancesByNameMap    map[string]Element
+	WrapperClasses        map[*types.Type]*Class
+	ManagedClasses        map[int32]*Class
+	UniqueSignatures      map[string]*types.Signature
+	ModuleImports         map[string]map[string]Element
+
+	// Cached stdlib elements (lazy-initialized on first access)
+	cachedArrayBufferViewInstance  *Class
+	cachedArrayBufferInstance      *Class
+	cachedArrayPrototype           *ClassPrototype
+	cachedStaticArrayPrototype     *ClassPrototype
+	cachedSetPrototype             *ClassPrototype
+	cachedMapPrototype             *ClassPrototype
+	cachedFunctionPrototype        *ClassPrototype
+	cachedStringInstance           *Class
+	cachedRegexpInstance           *Class
+	cachedObjectPrototype          *ClassPrototype
+	cachedObjectInstance           *Class
+	cachedAbortInstance             *Function
+	cachedInt8ArrayPrototype       *ClassPrototype
+	cachedInt16ArrayPrototype      *ClassPrototype
+	cachedInt32ArrayPrototype      *ClassPrototype
+	cachedInt64ArrayPrototype      *ClassPrototype
+	cachedUint8ArrayPrototype      *ClassPrototype
+	cachedUint8ClampedArrayPrototype *ClassPrototype
+	cachedUint16ArrayPrototype     *ClassPrototype
+	cachedUint32ArrayPrototype     *ClassPrototype
+	cachedUint64ArrayPrototype     *ClassPrototype
+	cachedFloat32ArrayPrototype    *ClassPrototype
+	cachedFloat64ArrayPrototype    *ClassPrototype
+
+	// Cached native declarations used by MakeNative* helpers
+	nativeDummySignature *ast.FunctionTypeNode
+
+	// flowRef is the cached flow.FlowProgramRef adapter for this program.
+	flowRef *flowProgramRef
+}
+
+// Compile-time interface satisfaction check.
+var _ types.ProgramReference = (*Program)(nil)
+
+// NewProgram creates a new program.
+func NewProgram(options *Options, diags []*diagnostics.DiagnosticMessage) *Program {
+	p := &Program{
+		Options:               options,
+		ElementsByNameMap:     make(map[string]Element),
+		ElementsByDeclaration: make(map[ast.Node]DeclaredElement),
+		InstancesByNameMap:    make(map[string]Element),
+		WrapperClasses:        make(map[*types.Type]*Class),
+		ManagedClasses:        make(map[int32]*Class),
+		UniqueSignatures:      make(map[string]*types.Signature),
+		ModuleImports:         make(map[string]map[string]Element),
+	}
+	if diags != nil {
+		p.DiagnosticEmitter = diagnostics.NewDiagnosticEmitter(diags)
+	} else {
+		p.DiagnosticEmitter = diagnostics.NewDiagnosticEmitter(nil)
+	}
+
+	// Create module if factory is set
+	if ModuleCreate != nil {
+		p.Module_ = ModuleCreate(options.StackSize > 0, options.SizeTypeRef)
+	}
+
+	// Create resolver
+	p.Resolver_ = NewResolver(p)
+
+	// Create native file
+	nativeFile := NewFile(p, ast.NativeSource())
+	p.NativeFile = nativeFile
+	p.ElementsByNameMap[nativeFile.GetInternalName()] = nativeFile
+
+	return p
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic methods (shadow embedded DiagnosticEmitter with variadic args)
+// ---------------------------------------------------------------------------
+
+// Error emits an error diagnostic message. Accepts 0-3 format arguments.
+func (p *Program) Error(code diagnostics.DiagnosticCode, rng *diagnostics.Range, args ...string) {
+	arg0, arg1, arg2 := extractArgs(args)
+	p.DiagnosticEmitter.Error(code, rng, arg0, arg1, arg2)
+}
+
+// ErrorRelated emits an error diagnostic message with a related range.
+func (p *Program) ErrorRelated(code diagnostics.DiagnosticCode, rng *diagnostics.Range, relatedRange *diagnostics.Range, args ...string) {
+	arg0, arg1, arg2 := extractArgs(args)
+	p.DiagnosticEmitter.ErrorRelated(code, rng, relatedRange, arg0, arg1, arg2)
+}
+
+// Warning emits a warning diagnostic message. Accepts 0-3 format arguments.
+func (p *Program) Warning(code diagnostics.DiagnosticCode, rng *diagnostics.Range, args ...string) {
+	arg0, arg1, arg2 := extractArgs(args)
+	p.DiagnosticEmitter.Warning(code, rng, arg0, arg1, arg2)
+}
+
+// Info emits an informatory diagnostic message. Accepts 0-3 format arguments.
+func (p *Program) Info(code diagnostics.DiagnosticCode, rng *diagnostics.Range, args ...string) {
+	arg0, arg1, arg2 := extractArgs(args)
+	p.DiagnosticEmitter.Info(code, rng, arg0, arg1, arg2)
+}
+
+// Pedantic emits a pedantic diagnostic message. Accepts 0-3 format arguments.
+func (p *Program) Pedantic(code diagnostics.DiagnosticCode, rng *diagnostics.Range, args ...string) {
+	arg0, arg1, arg2 := extractArgs(args)
+	p.DiagnosticEmitter.Pedantic(code, rng, arg0, arg1, arg2)
+}
+
+// extractArgs pads variadic string args to exactly 3 values.
+func extractArgs(args []string) (string, string, string) {
+	var a0, a1, a2 string
+	if len(args) > 0 {
+		a0 = args[0]
+	}
+	if len(args) > 1 {
+		a1 = args[1]
+	}
+	if len(args) > 2 {
+		a2 = args[2]
+	}
+	return a0, a1, a2
+}
+
+// ---------------------------------------------------------------------------
+// flow.FlowProgramRef adapter
+// ---------------------------------------------------------------------------
+
+// flowProgramRef adapts Program to the flow.FlowProgramRef interface.
+// The flow package uses int32/interface{} types to break circular dependencies
+// between flow and diagnostics/program packages.
+type flowProgramRef struct {
+	program *Program
+}
+
+// Compile-time check.
+var _ flow.FlowProgramRef = (*flowProgramRef)(nil)
+
+// FlowProgramRef returns a flow.FlowProgramRef adapter for this program.
+// The adapter is cached so repeated calls return the same object.
+func (p *Program) FlowProgramRef() flow.FlowProgramRef {
+	if p.flowRef == nil {
+		p.flowRef = &flowProgramRef{program: p}
+	}
+	return p.flowRef
+}
+
+func (f *flowProgramRef) UncheckedBehaviorAlways() bool {
+	// Stub: will be implemented when Options is fully ported.
+	return false
+}
+
+func (f *flowProgramRef) Error(code int32, rng interface{}, args ...string) {
+	var r *diagnostics.Range
+	if rng != nil {
+		r, _ = rng.(*diagnostics.Range)
+	}
+	f.program.Error(diagnostics.DiagnosticCode(code), r, args...)
+}
+
+func (f *flowProgramRef) ErrorRelated(code int32, rng1 interface{}, rng2 interface{}, args ...string) {
+	var r1, r2 *diagnostics.Range
+	if rng1 != nil {
+		r1, _ = rng1.(*diagnostics.Range)
+	}
+	if rng2 != nil {
+		r2, _ = rng2.(*diagnostics.Range)
+	}
+	f.program.ErrorRelated(diagnostics.DiagnosticCode(code), r1, r2, args...)
+}
+
+func (f *flowProgramRef) ElementsByName() map[string]flow.FlowElementRef {
+	result := make(map[string]flow.FlowElementRef, len(f.program.ElementsByNameMap))
+	for k, v := range f.program.ElementsByNameMap {
+		result[k] = v
+	}
+	return result
+}
+
+func (f *flowProgramRef) InstancesByName() map[string]flow.FlowElementRef {
+	result := make(map[string]flow.FlowElementRef, len(f.program.InstancesByNameMap))
+	for k, v := range f.program.InstancesByNameMap {
+		result[k] = v
+	}
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// types.ProgramReference implementation
+// ---------------------------------------------------------------------------
+
+// GetUsizeType returns the target's usize type.
+func (p *Program) GetUsizeType() *types.Type {
+	return p.Options.UsizeType
+}
+
+// GetFunctionPrototype returns the Function class prototype, or nil.
+func (p *Program) GetFunctionPrototype() interface{} {
+	return p.FunctionPrototype()
+}
+
+// GetWrapperClasses returns the wrapper classes map.
+func (p *Program) GetWrapperClasses() map[*types.Type]types.ClassReference {
+	result := make(map[*types.Type]types.ClassReference, len(p.WrapperClasses))
+	for k, v := range p.WrapperClasses {
+		result[k] = v
+	}
+	return result
+}
+
+// GetUniqueSignatures returns the unique signatures map.
+func (p *Program) GetUniqueSignatures() map[string]*types.Signature {
+	return p.UniqueSignatures
+}
+
+// GetNextSignatureId returns the next available signature id.
+func (p *Program) GetNextSignatureId() uint32 {
+	return p.NextSignatureId
+}
+
+// SetNextSignatureId sets the next available signature id.
+func (p *Program) SetNextSignatureId(id uint32) {
+	p.NextSignatureId = id
+}
+
+// ResolveClass resolves a class prototype with the given type arguments.
+func (p *Program) ResolveClass(prototype interface{}, typeArguments []*types.Type) types.ClassReference {
+	// Stub: will be implemented when resolver is fully ported.
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Element lookup
+// ---------------------------------------------------------------------------
+
+// Lookup looks up a program-level element by its internal name.
+func (p *Program) Lookup(name string) Element {
+	if elem, ok := p.ElementsByNameMap[name]; ok {
+		return elem
+	}
+	return nil
+}
+
+// GetElementByDeclaration looks up an element by its declaration node.
+func (p *Program) GetElementByDeclaration(declaration ast.Node) DeclaredElement {
+	if elem, ok := p.ElementsByDeclaration[declaration]; ok {
+		return elem
+	}
+	return nil
+}
+
+// EnsureGlobal ensures that an element is registered as a global.
+// If a global with the same name already exists, merging is attempted.
+func (p *Program) EnsureGlobal(name string, element DeclaredElement) DeclaredElement {
+	if existing, ok := p.ElementsByNameMap[name]; ok {
+		if existing == element {
+			return element
+		}
+		merged := TryMerge(existing.(DeclaredElement), element)
+		if merged != nil {
+			p.ElementsByNameMap[name] = merged
+			return merged
+		}
+		// If merge fails, the newer element wins.
+		p.ElementsByNameMap[name] = element
+		return element
+	}
+	p.ElementsByNameMap[name] = element
+	return element
+}
+
+// SearchFunctionByRef searches for a function by its Binaryen function reference.
+func (p *Program) SearchFunctionByRef(ref FunctionRef) *Function {
+	if GetFunctionName == nil {
+		return nil
+	}
+	name := GetFunctionName(ref)
+	if elem, ok := p.InstancesByNameMap[name]; ok {
+		if fn, ok := elem.(*Function); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+// MarkModuleImport marks an element as a module import.
+func (p *Program) MarkModuleImport(moduleName, name string, element Element) {
+	moduleMap, ok := p.ModuleImports[moduleName]
+	if !ok {
+		moduleMap = make(map[string]Element)
+		p.ModuleImports[moduleName] = moduleMap
+	}
+	moduleMap[name] = element
+}
+
+// ---------------------------------------------------------------------------
+// Native declaration factory methods
+// ---------------------------------------------------------------------------
+
+// nativeRange returns a zero-width range in the native source.
+func nativeRange() diagnostics.Range {
+	src := ast.NativeSource()
+	return diagnostics.Range{
+		Start:  0,
+		End:    0,
+		Source: src,
+	}
+}
+
+// MakeNativeVariableDeclaration creates a native variable declaration.
+func (p *Program) MakeNativeVariableDeclaration(name string, flags common.CommonFlags) *ast.VariableDeclaration {
+	rng := nativeRange()
+	ident := ast.NewIdentifierExpression(name, rng, false)
+	return ast.NewVariableDeclaration(ident, nil, int32(flags), nil, nil, rng)
+}
+
+// MakeNativeFunctionDeclaration creates a native function declaration.
+func (p *Program) MakeNativeFunctionDeclaration(name string, flags common.CommonFlags) *ast.FunctionDeclaration {
+	rng := nativeRange()
+	ident := ast.NewIdentifierExpression(name, rng, false)
+	if p.nativeDummySignature == nil {
+		omittedType := ast.NewOmittedType(rng)
+		p.nativeDummySignature = ast.NewFunctionTypeNode(nil, omittedType, nil, false, rng)
+	}
+	return ast.NewFunctionDeclaration(
+		ident,
+		nil,
+		int32(flags|common.CommonFlagsAmbient),
+		nil,
+		p.nativeDummySignature,
+		nil,
+		ast.ArrowKindNone,
+		rng,
+	)
+}
+
+// MakeNativeNamespaceDeclaration creates a native namespace declaration.
+func (p *Program) MakeNativeNamespaceDeclaration(name string, flags common.CommonFlags) *ast.NamespaceDeclaration {
+	rng := nativeRange()
+	ident := ast.NewIdentifierExpression(name, rng, false)
+	return ast.NewNamespaceDeclaration(ident, nil, int32(flags|common.CommonFlagsAmbient), nil, rng)
+}
+
+// MakeNativeTypeDeclaration creates a native type declaration.
+func (p *Program) MakeNativeTypeDeclaration(name string, flags common.CommonFlags) *ast.TypeDeclaration {
+	rng := nativeRange()
+	ident := ast.NewIdentifierExpression(name, rng, false)
+	omittedType := ast.NewOmittedType(rng)
+	return ast.NewTypeDeclaration(ident, nil, int32(flags), nil, omittedType, rng)
+}
+
+// MakeNativeFunction creates a native (ambient) function element.
+func (p *Program) MakeNativeFunction(
+	name string,
+	signature *types.Signature,
+	parent Element,
+	flags common.CommonFlags,
+	decoratorFlags DecoratorFlags,
+) *Function {
+	declaration := p.MakeNativeFunctionDeclaration(name, flags)
+	prototype := NewFunctionPrototype(name, parent, declaration, decoratorFlags)
+	return NewFunction(name, prototype, nil, signature, nil)
+}
+
+// ---------------------------------------------------------------------------
+// Memory layout helpers (BLOCK / OBJECT overhead from ~lib/rt/common)
+// ---------------------------------------------------------------------------
+
+// BlockOverhead returns the size of a runtime BLOCK header.
+// In AssemblyScript this is typically 16 bytes (mmInfo + gcInfo + rtId + rtSize).
+func (p *Program) BlockOverhead() int32 {
+	return 16
+}
+
+// ObjectOverhead returns the size of a runtime OBJECT header beyond the block.
+// In AssemblyScript this is typically 4 bytes (gcInfo2) on wasm32, 8 on wasm64.
+func (p *Program) ObjectOverhead() int32 {
+	if p.Options.IsWasm64 {
+		return 8
+	}
+	return 4
+}
+
+// TotalOverhead returns BlockOverhead + ObjectOverhead.
+func (p *Program) TotalOverhead() int32 {
+	return p.BlockOverhead() + p.ObjectOverhead()
+}
+
+// ComputeBlockStart computes the aligned block start for a given current offset.
+func (p *Program) ComputeBlockStart(currentOffset int32) int32 {
+	return (currentOffset + AlMask) & ^int32(AlMask)
+}
+
+// ---------------------------------------------------------------------------
+// Cached stdlib element accessors (lazy)
+// ---------------------------------------------------------------------------
+
+// require looks up a program-level element by name and asserts its kind.
+func (p *Program) require(name string, kind ElementKind) Element {
+	elem := p.Lookup(name)
+	if elem == nil {
+		return nil
+	}
+	if elem.GetElementKind() != kind {
+		return nil
+	}
+	return elem
+}
+
+// requirePrototype looks up a class prototype by name.
+func (p *Program) requirePrototype(name string) *ClassPrototype {
+	elem := p.require(name, ElementKindClassPrototype)
+	if elem == nil {
+		return nil
+	}
+	return elem.(*ClassPrototype)
+}
+
+// RequireClass resolves a non-generic class prototype to its concrete instance.
+func (p *Program) RequireClass(name string) *Class {
+	proto := p.requirePrototype(name)
+	if proto == nil {
+		return nil
+	}
+	if proto.Instances == nil {
+		return nil
+	}
+	for _, inst := range proto.Instances {
+		return inst // first instance of a non-generic class
+	}
+	return nil
+}
+
+// RequireFunction resolves a function prototype with optional type arguments.
+func (p *Program) RequireFunction(name string, typeArguments []*types.Type) *Function {
+	elem := p.require(name, ElementKindFunctionPrototype)
+	if elem == nil {
+		return nil
+	}
+	proto := elem.(*FunctionPrototype)
+	if ResolveFunction != nil {
+		return ResolveFunction(p.Resolver_, proto, typeArguments)
+	}
+	// Fallback: look for a default instance
+	if proto.Instances != nil {
+		for _, inst := range proto.Instances {
+			return inst
+		}
+	}
+	return nil
+}
+
+// RequireGlobal looks up a global variable by name.
+func (p *Program) RequireGlobal(name string) *Global {
+	elem := p.require(name, ElementKindGlobal)
+	if elem == nil {
+		return nil
+	}
+	return elem.(*Global)
+}
+
+// ArrayBufferViewInstance returns the cached ArrayBufferView class instance.
+func (p *Program) ArrayBufferViewInstance() *Class {
+	if p.cachedArrayBufferViewInstance == nil {
+		p.cachedArrayBufferViewInstance = p.RequireClass(common.CommonNameArrayBufferView)
+	}
+	return p.cachedArrayBufferViewInstance
+}
+
+// ArrayBufferInstance returns the cached ArrayBuffer class instance.
+func (p *Program) ArrayBufferInstance() *Class {
+	if p.cachedArrayBufferInstance == nil {
+		p.cachedArrayBufferInstance = p.RequireClass(common.CommonNameArrayBuffer)
+	}
+	return p.cachedArrayBufferInstance
+}
+
+// ArrayPrototype returns the cached Array class prototype.
+func (p *Program) ArrayPrototype() *ClassPrototype {
+	if p.cachedArrayPrototype == nil {
+		p.cachedArrayPrototype = p.requirePrototype(common.CommonNameArray)
+	}
+	return p.cachedArrayPrototype
+}
+
+// StaticArrayPrototype returns the cached StaticArray class prototype.
+func (p *Program) StaticArrayPrototype() *ClassPrototype {
+	if p.cachedStaticArrayPrototype == nil {
+		p.cachedStaticArrayPrototype = p.requirePrototype(common.CommonNameStaticArray)
+	}
+	return p.cachedStaticArrayPrototype
+}
+
+// SetPrototype returns the cached Set class prototype.
+func (p *Program) SetPrototype() *ClassPrototype {
+	if p.cachedSetPrototype == nil {
+		p.cachedSetPrototype = p.requirePrototype(common.CommonNameSet)
+	}
+	return p.cachedSetPrototype
+}
+
+// MapPrototype returns the cached Map class prototype.
+func (p *Program) MapPrototype() *ClassPrototype {
+	if p.cachedMapPrototype == nil {
+		p.cachedMapPrototype = p.requirePrototype(common.CommonNameMap)
+	}
+	return p.cachedMapPrototype
+}
+
+// FunctionPrototype returns the cached Function class prototype.
+func (p *Program) FunctionPrototype() *ClassPrototype {
+	if p.cachedFunctionPrototype == nil {
+		p.cachedFunctionPrototype = p.requirePrototype(common.CommonNameFunction)
+	}
+	return p.cachedFunctionPrototype
+}
+
+// StringInstance returns the cached String class instance.
+func (p *Program) StringInstance() *Class {
+	if p.cachedStringInstance == nil {
+		p.cachedStringInstance = p.RequireClass(common.CommonNameCapString)
+	}
+	return p.cachedStringInstance
+}
+
+// RegexpInstance returns the cached RegExp class instance.
+func (p *Program) RegexpInstance() *Class {
+	if p.cachedRegexpInstance == nil {
+		p.cachedRegexpInstance = p.RequireClass(common.CommonNameRegExp)
+	}
+	return p.cachedRegexpInstance
+}
+
+// ObjectPrototype returns the cached Object class prototype.
+func (p *Program) ObjectPrototype() *ClassPrototype {
+	if p.cachedObjectPrototype == nil {
+		p.cachedObjectPrototype = p.requirePrototype(common.CommonNameObject)
+	}
+	return p.cachedObjectPrototype
+}
+
+// ObjectInstance returns the cached Object class instance.
+func (p *Program) ObjectInstance() *Class {
+	if p.cachedObjectInstance == nil {
+		p.cachedObjectInstance = p.RequireClass(common.CommonNameObject)
+	}
+	return p.cachedObjectInstance
+}
+
+// AbortInstance returns the cached abort function instance.
+func (p *Program) AbortInstance() *Function {
+	if p.cachedAbortInstance == nil {
+		p.cachedAbortInstance = p.RequireFunction(common.CommonNameAbort, nil)
+	}
+	return p.cachedAbortInstance
+}
+
+// Typed array prototype accessors
+
+// Int8ArrayPrototype returns the cached Int8Array class prototype.
+func (p *Program) Int8ArrayPrototype() *ClassPrototype {
+	if p.cachedInt8ArrayPrototype == nil {
+		p.cachedInt8ArrayPrototype = p.requirePrototype(common.CommonNameInt8Array)
+	}
+	return p.cachedInt8ArrayPrototype
+}
+
+// Int16ArrayPrototype returns the cached Int16Array class prototype.
+func (p *Program) Int16ArrayPrototype() *ClassPrototype {
+	if p.cachedInt16ArrayPrototype == nil {
+		p.cachedInt16ArrayPrototype = p.requirePrototype(common.CommonNameInt16Array)
+	}
+	return p.cachedInt16ArrayPrototype
+}
+
+// Int32ArrayPrototype returns the cached Int32Array class prototype.
+func (p *Program) Int32ArrayPrototype() *ClassPrototype {
+	if p.cachedInt32ArrayPrototype == nil {
+		p.cachedInt32ArrayPrototype = p.requirePrototype(common.CommonNameInt32Array)
+	}
+	return p.cachedInt32ArrayPrototype
+}
+
+// Int64ArrayPrototype returns the cached Int64Array class prototype.
+func (p *Program) Int64ArrayPrototype() *ClassPrototype {
+	if p.cachedInt64ArrayPrototype == nil {
+		p.cachedInt64ArrayPrototype = p.requirePrototype(common.CommonNameInt64Array)
+	}
+	return p.cachedInt64ArrayPrototype
+}
+
+// Uint8ArrayPrototype returns the cached Uint8Array class prototype.
+func (p *Program) Uint8ArrayPrototype() *ClassPrototype {
+	if p.cachedUint8ArrayPrototype == nil {
+		p.cachedUint8ArrayPrototype = p.requirePrototype(common.CommonNameUint8Array)
+	}
+	return p.cachedUint8ArrayPrototype
+}
+
+// Uint8ClampedArrayPrototype returns the cached Uint8ClampedArray class prototype.
+func (p *Program) Uint8ClampedArrayPrototype() *ClassPrototype {
+	if p.cachedUint8ClampedArrayPrototype == nil {
+		p.cachedUint8ClampedArrayPrototype = p.requirePrototype(common.CommonNameUint8ClampedArray)
+	}
+	return p.cachedUint8ClampedArrayPrototype
+}
+
+// Uint16ArrayPrototype returns the cached Uint16Array class prototype.
+func (p *Program) Uint16ArrayPrototype() *ClassPrototype {
+	if p.cachedUint16ArrayPrototype == nil {
+		p.cachedUint16ArrayPrototype = p.requirePrototype(common.CommonNameUint16Array)
+	}
+	return p.cachedUint16ArrayPrototype
+}
+
+// Uint32ArrayPrototype returns the cached Uint32Array class prototype.
+func (p *Program) Uint32ArrayPrototype() *ClassPrototype {
+	if p.cachedUint32ArrayPrototype == nil {
+		p.cachedUint32ArrayPrototype = p.requirePrototype(common.CommonNameUint32Array)
+	}
+	return p.cachedUint32ArrayPrototype
+}
+
+// Uint64ArrayPrototype returns the cached Uint64Array class prototype.
+func (p *Program) Uint64ArrayPrototype() *ClassPrototype {
+	if p.cachedUint64ArrayPrototype == nil {
+		p.cachedUint64ArrayPrototype = p.requirePrototype(common.CommonNameUint64Array)
+	}
+	return p.cachedUint64ArrayPrototype
+}
+
+// Float32ArrayPrototype returns the cached Float32Array class prototype.
+func (p *Program) Float32ArrayPrototype() *ClassPrototype {
+	if p.cachedFloat32ArrayPrototype == nil {
+		p.cachedFloat32ArrayPrototype = p.requirePrototype(common.CommonNameFloat32Array)
+	}
+	return p.cachedFloat32ArrayPrototype
+}
+
+// Float64ArrayPrototype returns the cached Float64Array class prototype.
+func (p *Program) Float64ArrayPrototype() *ClassPrototype {
+	if p.cachedFloat64ArrayPrototype == nil {
+		p.cachedFloat64ArrayPrototype = p.requirePrototype(common.CommonNameFloat64Array)
+	}
+	return p.cachedFloat64ArrayPrototype
+}
+
+// ---------------------------------------------------------------------------
+// String representation
+// ---------------------------------------------------------------------------
+
+// String returns a debug string for the program.
+func (p *Program) String() string {
+	return fmt.Sprintf("Program[files=%d, elements=%d, instances=%d]",
+		len(p.Sources),
+		len(p.ElementsByNameMap),
+		len(p.InstancesByNameMap),
+	)
+}

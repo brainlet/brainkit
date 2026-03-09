@@ -311,8 +311,10 @@ func findScorer(mastra *Mastra, entityID string, entityType string, scorerID str
 		if err == nil && wf != nil {
 			wfScorers := wf.ListScorers()
 			for _, entry := range wfScorers {
-				if entry != nil && entry.Scorer != nil && entry.Scorer.ID() == scorerID {
-					scorerToUse = &scorerEntry{Scorer: entry.Scorer}
+				// The real Workflow.ListScorers() returns map[string]any.
+				// Type-assert each entry to MastraScorer for ID comparison.
+				if scorer, ok := entry.(MastraScorer); ok && scorer != nil && scorer.ID() == scorerID {
+					scorerToUse = &scorerEntry{Scorer: scorer}
 					break
 				}
 			}

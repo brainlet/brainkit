@@ -2,12 +2,12 @@
 package analytics
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Local types
 // ---------------------------------------------------------------------------
 
-// ScoreRowData is a stub for evals/types ScoreRowData.
-// STUB REASON: The real evals package has ScoreRowData but with different field
-// types (e.g., EntityType as enum vs string). Kept as simplified local struct.
+// ScoreRowData holds score data used by analytics functions.
+// Simplified version — the real evals ScoreRowData has different field
+// types (e.g., EntityType as enum vs string).
 type ScoreRowData struct {
 	ID         string   `json:"id"`
 	ScorerID   string   `json:"scorerId"`

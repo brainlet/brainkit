@@ -14,6 +14,8 @@ import (
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storagedomains "github.com/brainlet/brainkit/agent-kit/core/storage/domains"
+	storageworkflows "github.com/brainlet/brainkit/agent-kit/core/storage/domains/workflows"
 	streamPkg "github.com/brainlet/brainkit/agent-kit/core/stream"
 	aktypes "github.com/brainlet/brainkit/agent-kit/core/types"
 )
@@ -462,6 +464,40 @@ func (w *Workflow) RegisterMastra(mastra Mastra) {
 	}
 	if w.executionEngine != nil {
 		w.executionEngine.RegisterMastra(mastra)
+	}
+}
+
+// SetLogger sets the workflow's logger.
+// This method exists so that the mastra orchestrator can update the logger
+// independently of RegisterMastra (e.g. when the global logger changes).
+func (w *Workflow) SetLogger(l logger.IMastraLogger) {
+	w.log = l
+}
+
+// IsCommitted reports whether the workflow has been committed.
+func (w *Workflow) IsCommitted() bool {
+	return w.Committed
+}
+
+// GetEngineType returns the workflow engine type string.
+func (w *Workflow) GetEngineType() string {
+	return w.EngineType
+}
+
+// Primitives holds primitives passed during workflow registration.
+// This mirrors the mastra-side WorkflowPrimitives struct and lets the
+// workflows package accept registration data without importing mastra.
+type Primitives struct {
+	Logger  logger.IMastraLogger
+	Storage any // *storage.MastraCompositeStore — kept as any to avoid circular import
+}
+
+// RegisterPrimitives applies registration primitives to the workflow.
+// Called by the mastra orchestrator after RegisterMastra to propagate
+// logger and storage references.
+func (w *Workflow) RegisterPrimitives(p Primitives) {
+	if p.Logger != nil {
+		w.log = p.Logger
 	}
 }
 
@@ -924,32 +960,28 @@ func (w *Workflow) CreateRun(opts *CreateRunOptions) (*Run, error) {
 		}
 
 		if !existsInStorage {
-			storage := w.mastra.GetStorage()
-			if storage != nil {
-				store, err := storage.GetStore("workflows")
-				if err == nil && store != nil {
-					// TS: await workflowsStore.persistWorkflowSnapshot({
-					//   workflowName: this.id, runId, resourceId, snapshot: { ... }
-					// })
-					_ = store.PersistWorkflowSnapshot(PersistWorkflowSnapshotParams{
-						WorkflowName: w.ID,
-						RunID:        runID,
-						ResourceID:   resourceID,
-						Snapshot: WorkflowRunState{
-							RunID:               runID,
-							Status:              WorkflowRunStatusPending,
-							Value:               map[string]string{},
-							Context:             map[string]any{},
-							ActivePaths:         []int{},
-							ActiveStepsPath:     map[string][]int{},
-							SerializedStepGraph: w.serializedStepFlow,
-							SuspendedPaths:      map[string][]int{},
-							ResumeLabels:        map[string]ResumeLabel{},
-							WaitingPaths:        map[string][]int{},
-							Timestamp:           time.Now().UnixMilli(),
-						},
-					})
-				}
+			if store := w.mastra.GetWorkflowsStore(); store != nil {
+				// TS: await workflowsStore.persistWorkflowSnapshot({
+				//   workflowName: this.id, runId, resourceId, snapshot: { ... }
+				// })
+				_ = store.PersistWorkflowSnapshot(context.Background(), storageworkflows.PersistWorkflowSnapshotArgs{
+					WorkflowName: w.ID,
+					RunID:        runID,
+					ResourceID:   resourceID,
+					Snapshot: WorkflowRunStateToMap(WorkflowRunState{
+						RunID:               runID,
+						Status:              WorkflowRunStatusPending,
+						Value:               map[string]string{},
+						Context:             map[string]any{},
+						ActivePaths:         []int{},
+						ActiveStepsPath:     map[string][]int{},
+						SerializedStepGraph: w.serializedStepFlow,
+						SuspendedPaths:      map[string][]int{},
+						ResumeLabels:        map[string]ResumeLabel{},
+						WaitingPaths:        map[string][]int{},
+						Timestamp:           time.Now().UnixMilli(),
+					}),
+				})
 			}
 		}
 	}
@@ -1298,18 +1330,14 @@ func (r *Run) Cancel() {
 	//       await workflowsStore?.updateWorkflowState({ workflowName, runId, opts: { status: 'canceled' } });
 	//     } catch { /* Storage errors should not prevent cancellation from succeeding */ }
 	if r.mastra != nil {
-		storage := r.mastra.GetStorage()
-		if storage != nil {
-			store, storeErr := storage.GetStore("workflows")
-			if storeErr == nil && store != nil {
-				// Ignore errors: storage failures should not prevent cancellation from succeeding.
-				// The abort signal and in-memory status are already updated.
-				_ = store.UpdateWorkflowState(UpdateWorkflowStateParams{
-					WorkflowName: r.WorkflowID,
-					RunID:        r.RunID,
-					Opts:         map[string]any{"status": "canceled"},
-				})
-			}
+		if store := r.mastra.GetWorkflowsStore(); store != nil {
+			// Ignore errors: storage failures should not prevent cancellation from succeeding.
+			// The abort signal and in-memory status are already updated.
+			_, _ = store.UpdateWorkflowState(context.Background(), storageworkflows.UpdateWorkflowStateArgs{
+				WorkflowName: r.WorkflowID,
+				RunID:        r.RunID,
+				Opts:         storagedomains.UpdateWorkflowStateOptions{Status: storagedomains.WorkflowRunStatus("canceled")},
+			})
 		}
 	}
 }
@@ -1363,28 +1391,20 @@ func (w *Workflow) ListWorkflowRuns(params *ListWorkflowRunsParams) (*WorkflowRu
 	if w.mastra == nil {
 		return &WorkflowRunList{Runs: []WorkflowRunRecord{}, Total: 0}, nil
 	}
-	storage := w.mastra.GetStorage()
-	if storage == nil {
+	store := w.mastra.GetWorkflowsStore()
+	if store == nil {
 		if w.log != nil {
 			w.log.Debug("Cannot get workflow runs. Mastra storage is not initialized")
 		}
 		return &WorkflowRunList{Runs: []WorkflowRunRecord{}, Total: 0}, nil
 	}
 
-	store, err := storage.GetStore("workflows")
-	if err != nil || store == nil {
-		if w.log != nil {
-			w.log.Debug("Cannot get workflow runs. Workflows storage domain is not available")
-		}
-		return &WorkflowRunList{Runs: []WorkflowRunRecord{}, Total: 0}, nil
-	}
-
-	p := ListWorkflowRunsParams{WorkflowName: w.ID}
+	p := &ListWorkflowRunsParams{WorkflowName: w.ID}
 	if params != nil {
 		p.Status = params.Status
 	}
 
-	return store.ListWorkflowRuns(p)
+	return store.ListWorkflowRuns(context.Background(), p)
 }
 
 // ListActiveWorkflowRuns lists all active (running + waiting) workflow runs.
@@ -1453,23 +1473,15 @@ func (w *Workflow) DeleteWorkflowRunByID(runID string) error {
 	if w.mastra == nil {
 		return nil
 	}
-	storage := w.mastra.GetStorage()
-	if storage == nil {
+	store := w.mastra.GetWorkflowsStore()
+	if store == nil {
 		if w.log != nil {
 			w.log.Debug("Cannot delete workflow run by ID. Mastra storage is not initialized")
 		}
 		return nil
 	}
 
-	store, err := storage.GetStore("workflows")
-	if err != nil || store == nil {
-		if w.log != nil {
-			w.log.Debug("Cannot delete workflow run. Workflows storage domain is not available")
-		}
-		return nil
-	}
-
-	err = store.DeleteWorkflowRunByID(DeleteWorkflowRunByIDParams{
+	err := store.DeleteWorkflowRunByID(context.Background(), DeleteWorkflowRunByIDParams{
 		RunID:        runID,
 		WorkflowName: w.ID,
 	})
@@ -1489,23 +1501,15 @@ func (w *Workflow) GetWorkflowRunSteps(runID, workflowID string) (map[string]Ste
 	if w.mastra == nil {
 		return map[string]StepResult{}, nil
 	}
-	storage := w.mastra.GetStorage()
-	if storage == nil {
+	store := w.mastra.GetWorkflowsStore()
+	if store == nil {
 		if w.log != nil {
 			w.log.Debug("Cannot get workflow run steps. Mastra storage is not initialized")
 		}
 		return map[string]StepResult{}, nil
 	}
 
-	store, err := storage.GetStore("workflows")
-	if err != nil || store == nil {
-		if w.log != nil {
-			w.log.Debug("Cannot get workflow run steps. Workflows storage domain is not available")
-		}
-		return map[string]StepResult{}, nil
-	}
-
-	run, err := store.GetWorkflowRunByID(GetWorkflowRunByIDParams{
+	run, err := store.GetWorkflowRunByID(context.Background(), GetWorkflowRunByIDParams{
 		RunID:        runID,
 		WorkflowName: workflowID,
 	})
@@ -1513,7 +1517,10 @@ func (w *Workflow) GetWorkflowRunSteps(runID, workflowID string) (map[string]Ste
 		return map[string]StepResult{}, nil
 	}
 
-	snapshot := run.Snapshot
+	snapshot := SnapshotToWorkflowRunState(run.Snapshot)
+	if snapshot == nil {
+		return map[string]StepResult{}, nil
+	}
 	stepContext := snapshot.Context
 	if stepContext == nil {
 		return map[string]StepResult{}, nil
@@ -1573,23 +1580,15 @@ func (w *Workflow) GetWorkflowRunByID(runID string, opts *GetWorkflowRunByIDOpti
 		return w.getInMemoryRunAsWorkflowState(runID), nil
 	}
 
-	storage := w.mastra.GetStorage()
-	if storage == nil {
+	store := w.mastra.GetWorkflowsStore()
+	if store == nil {
 		if w.log != nil {
 			w.log.Debug("Cannot get workflow run. Mastra storage is not initialized")
 		}
 		return w.getInMemoryRunAsWorkflowState(runID), nil
 	}
 
-	store, err := storage.GetStore("workflows")
-	if err != nil || store == nil {
-		if w.log != nil {
-			w.log.Debug("Cannot get workflow run. Workflows storage domain is not available")
-		}
-		return w.getInMemoryRunAsWorkflowState(runID), nil
-	}
-
-	run, err := store.GetWorkflowRunByID(GetWorkflowRunByIDParams{
+	run, err := store.GetWorkflowRunByID(context.Background(), GetWorkflowRunByIDParams{
 		RunID:        runID,
 		WorkflowName: w.ID,
 	})
@@ -1601,7 +1600,10 @@ func (w *Workflow) GetWorkflowRunByID(runID string, opts *GetWorkflowRunByIDOpti
 		return w.getInMemoryRunAsWorkflowState(runID), nil
 	}
 
-	snapshot := run.Snapshot
+	snapshot := SnapshotToWorkflowRunState(run.Snapshot)
+	if snapshot == nil {
+		return w.getInMemoryRunAsWorkflowState(runID), nil
+	}
 
 	// Get steps if needed
 	steps := make(map[string]WorkflowStateStep)
@@ -1890,17 +1892,13 @@ func (r *Run) internalResume(params ResumeParams) (*WorkflowResult, error) {
 	// Load snapshot from storage
 	var snapshot *WorkflowRunState
 	if r.mastra != nil {
-		storage := r.mastra.GetStorage()
-		if storage != nil {
-			store, err := storage.GetStore("workflows")
-			if err == nil && store != nil {
-				record, err := store.GetWorkflowRunByID(GetWorkflowRunByIDParams{
-					WorkflowName: r.WorkflowID,
-					RunID:        r.RunID,
-				})
-				if err == nil && record != nil {
-					snapshot = record.Snapshot
-				}
+		if store := r.mastra.GetWorkflowsStore(); store != nil {
+			record, err := store.GetWorkflowRunByID(context.Background(), GetWorkflowRunByIDParams{
+				WorkflowName: r.WorkflowID,
+				RunID:        r.RunID,
+			})
+			if err == nil && record != nil {
+				snapshot = SnapshotToWorkflowRunState(record.Snapshot)
 			}
 		}
 	}
@@ -2061,17 +2059,13 @@ func (r *Run) internalRestart(params RestartParams) (*WorkflowResult, error) {
 	// Load snapshot from storage
 	var snapshot *WorkflowRunState
 	if r.mastra != nil {
-		storage := r.mastra.GetStorage()
-		if storage != nil {
-			store, err := storage.GetStore("workflows")
-			if err == nil && store != nil {
-				record, err := store.GetWorkflowRunByID(GetWorkflowRunByIDParams{
-					WorkflowName: r.WorkflowID,
-					RunID:        r.RunID,
-				})
-				if err == nil && record != nil {
-					snapshot = record.Snapshot
-				}
+		if store := r.mastra.GetWorkflowsStore(); store != nil {
+			record, err := store.GetWorkflowRunByID(context.Background(), GetWorkflowRunByIDParams{
+				WorkflowName: r.WorkflowID,
+				RunID:        r.RunID,
+			})
+			if err == nil && record != nil {
+				snapshot = SnapshotToWorkflowRunState(record.Snapshot)
 			}
 		}
 	}
@@ -2175,17 +2169,13 @@ func (r *Run) internalTimeTravel(params TimeTravelParams) (*WorkflowResult, erro
 	// Load snapshot from storage for time travel
 	var snapshot *WorkflowRunState
 	if r.mastra != nil {
-		storage := r.mastra.GetStorage()
-		if storage != nil {
-			store, err := storage.GetStore("workflows")
-			if err == nil && store != nil {
-				record, err := store.GetWorkflowRunByID(GetWorkflowRunByIDParams{
-					WorkflowName: r.WorkflowID,
-					RunID:        r.RunID,
-				})
-				if err == nil && record != nil {
-					snapshot = record.Snapshot
-				}
+		if store := r.mastra.GetWorkflowsStore(); store != nil {
+			record, err := store.GetWorkflowRunByID(context.Background(), GetWorkflowRunByIDParams{
+				WorkflowName: r.WorkflowID,
+				RunID:        r.RunID,
+			})
+			if err == nil && record != nil {
+				snapshot = SnapshotToWorkflowRunState(record.Snapshot)
 			}
 		}
 	}

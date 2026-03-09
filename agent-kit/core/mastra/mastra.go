@@ -15,21 +15,28 @@ import (
 	mastraerror "github.com/brainlet/brainkit/agent-kit/core/error"
 	"github.com/brainlet/brainkit/agent-kit/core/events"
 	"github.com/brainlet/brainkit/agent-kit/core/hooks"
+	"github.com/brainlet/brainkit/agent-kit/core/interfaces"
 	"github.com/brainlet/brainkit/agent-kit/core/llm/model"
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	"github.com/brainlet/brainkit/agent-kit/core/observability"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 	"github.com/brainlet/brainkit/agent-kit/core/storage"
+	storageworkflows "github.com/brainlet/brainkit/agent-kit/core/storage/domains/workflows"
 	aktypes "github.com/brainlet/brainkit/agent-kit/core/types"
+	"github.com/brainlet/brainkit/agent-kit/core/workflows"
 )
 
 // ---------------------------------------------------------------------------
-// Stub interfaces for cross-package dependencies
+// Cross-package dependency interfaces
+//
+// Agent and MastraScorer are defined in core/interfaces to break circular
+// dependencies. Other stub interfaces remain here until their dependency
+// cycles are resolved.
 //
 // Method signatures are aligned with the real packages so that concrete
 // implementations satisfy these interfaces without adapters:
 //   - ID()  matches vector.MastraVector, processors.Processor, memory.MastraMemory,
-//           evals.MastraScorer, mcp.MCPServerBase, workspace.Workspace, etc.
+//           mcp.MCPServerBase, workspace.Workspace, etc.
 //   - SetLogger() comes from agentkit.MastraBase (embedded in most primitives).
 //
 // Import of the concrete packages is deferred until the dependency graph is
@@ -37,30 +44,10 @@ import (
 // the contract.
 // ---------------------------------------------------------------------------
 
-// Agent is a stub interface for the agent.Agent type.
-// STUB REASON: Cannot import agent due to circular dependency: agent imports core
-// (via RegisterMastra). Real type is agent.Agent struct (has .ID field, embeds MastraBase).
-// This interface captures the minimal contract needed by Mastra registry methods.
-type Agent interface {
-	// ID returns the agent's unique identifier.
-	// Real: agent.Agent.ID field (accessed directly, or via this method).
-	ID() string
-	// Name returns the agent's display name.
-	// Real: agent.Agent.AgentName field.
-	Name() string
-	SetLogger(l logger.IMastraLogger)
-	RegisterMastra(m any)
-	RegisterPrimitives(p AgentPrimitives)
-	HasOwnWorkspace() bool
-	GetWorkspace() Workspace
-	// Source returns the agent's source ("code" or "stored").
-	Source() string
-	SetSource(s string)
-	// ListScorers lists all scorers registered on this agent.
-	ListScorers() map[string]*ScorerEntry
-	// GetConfiguredProcessorWorkflows returns processor workflows configured on this agent.
-	GetConfiguredProcessorWorkflows() []AnyWorkflow
-}
+// Agent is the shared interface for agent instances.
+// Defined in core/interfaces to break the circular dependency between
+// mastra and agent packages. See interfaces.Agent for full documentation.
+type Agent = interfaces.Agent
 
 // AgentPrimitives holds the primitives passed to agent registration.
 type AgentPrimitives struct {
@@ -72,9 +59,8 @@ type AgentPrimitives struct {
 }
 
 // ScorerEntry pairs a scorer with metadata, used in agent/workflow scorer listings.
-type ScorerEntry struct {
-	Scorer MastraScorer
-}
+// Defined in core/interfaces to break circular dependencies.
+type ScorerEntry = interfaces.ScorerEntry
 
 // ToolLoopAgentLike is a stub interface for AI SDK v6 ToolLoopAgent instances.
 // STUB REASON: Cannot import toolloopagent due to circular dependency:
@@ -103,23 +89,10 @@ type MastraTTS interface {
 	SetLogger(l logger.IMastraLogger)
 }
 
-// MastraScorer is a stub interface for scorer instances.
-// STUB REASON: Cannot import evals due to circular dependency: core → evals (exists) →
-// evals cannot import core. Real evals.MastraScorer struct matches on ID(), Name(),
-// RegisterMastra(any). Source is a public field on real struct; here exposed via methods.
-type MastraScorer interface {
-	// ID returns the scorer's unique identifier.
-	// Matches evals.MastraScorer.ID().
-	ID() string
-	// Name returns the scorer's display name.
-	// Matches evals.MastraScorer.Name().
-	Name() string
-	// Source returns the scorer's source ("code" or "stored").
-	// Real: evals.MastraScorer.Source field.
-	Source() string
-	SetSource(s string)
-	RegisterMastra(m any)
-}
+// MastraScorer is the shared interface for scorer instances.
+// Defined in core/interfaces to break the circular dependency between
+// mastra and evals packages. See interfaces.MastraScorer for full documentation.
+type MastraScorer = interfaces.MastraScorer
 
 // ToolAction is a stub interface for tool instances.
 // STUB REASON: The real tools.ToolAction struct has public .ID field (accessed directly,
@@ -154,62 +127,34 @@ type MastraMemory interface {
 	SetLogger(l logger.IMastraLogger)
 }
 
-// AnyWorkflow is a stub interface for workflow instances.
-// STUB REASON: Cannot import workflows due to potential circular dependency chain through
-// storage/processorprovider. The real workflows.Workflow struct has many more methods and
-// fields. This stub captures the subset needed by Mastra registry and workflow management.
-type AnyWorkflow interface {
-	// ID returns the workflow's unique identifier.
-	ID() string
-	// Name returns the workflow's display name.
-	Name() string
-	// EngineType returns the workflow engine type.
-	EngineType() string
-	IsCommitted() bool
-	Commit()
-	RegisterMastra(m any)
-	RegisterPrimitives(p WorkflowPrimitives)
-	SetLogger(l logger.IMastraLogger)
-	// ListWorkflowRuns lists workflow runs by status.
-	ListWorkflowRuns(opts WorkflowRunListOpts) (*WorkflowRuns, error)
-	// CreateRun creates a new workflow run.
-	CreateRun(opts WorkflowCreateRunOpts) (WorkflowRun, error)
-	// ListScorers lists all scorers registered on this workflow.
-	ListScorers() map[string]*ScorerEntry
-}
+// AnyWorkflow is a type alias for the real workflows.Workflow pointer.
+// WIRED: Replaces the former stub interface. The workflows package does NOT
+// import mastra, so this import is cycle-free.
+type AnyWorkflow = *workflows.Workflow
 
-// WorkflowPrimitives holds primitives passed to workflow registration.
-type WorkflowPrimitives struct {
-	Logger  logger.IMastraLogger
-	Storage *storage.MastraCompositeStore
-}
+// WorkflowPrimitives is a type alias for workflows.Primitives.
+// WIRED: Replaces the former stub struct.
+type WorkflowPrimitives = workflows.Primitives
 
-// WorkflowRunListOpts holds options for listing workflow runs.
-type WorkflowRunListOpts struct {
-	Status string
-}
+// WorkflowRunListOpts is a type alias for workflows.ListWorkflowRunsParams.
+// WIRED: Replaces the former stub struct.
+type WorkflowRunListOpts = workflows.ListWorkflowRunsParams
 
-// WorkflowCreateRunOpts holds options for creating a workflow run.
-type WorkflowCreateRunOpts struct {
-	RunID string
-}
+// WorkflowCreateRunOpts is a type alias for workflows.CreateRunOptions.
+// WIRED: Replaces the former stub struct.
+type WorkflowCreateRunOpts = workflows.CreateRunOptions
 
-// WorkflowRuns holds a list of workflow run snapshots with a total count.
-type WorkflowRuns struct {
-	Runs  []WorkflowRunSnapshot
-	Total int
-}
+// WorkflowRuns is a type alias for storageworkflows.WorkflowRuns.
+// WIRED: Replaces the former stub struct.
+type WorkflowRuns = storageworkflows.WorkflowRuns
 
-// WorkflowRunSnapshot is a snapshot of a workflow run.
-type WorkflowRunSnapshot struct {
-	RunID        string
-	WorkflowName string
-}
+// WorkflowRunSnapshot is a type alias for storageworkflows.WorkflowRun.
+// WIRED: Replaces the former stub struct.
+type WorkflowRunSnapshot = storageworkflows.WorkflowRun
 
-// WorkflowRun represents an executable workflow run instance.
-type WorkflowRun interface {
-	Restart() error
-}
+// WorkflowRun is a type alias for the real workflows.Run pointer.
+// WIRED: Replaces the former stub interface.
+type WorkflowRun = *workflows.Run
 
 // Workspace is a stub interface for workspace instances.
 // STUB REASON: The real workspace.Workspace struct has many more fields and methods
@@ -1004,9 +949,9 @@ func (m *Mastra) AddAgent(agent Agent, key string, options *AddPrimitiveOptions)
 			}
 		}()
 		processorWorkflows := agent.GetConfiguredProcessorWorkflows()
-		for _, wf := range processorWorkflows {
-			if wf != nil {
-				m.AddWorkflow(wf, wf.ID())
+		for _, wfAny := range processorWorkflows {
+			if wf, ok := wfAny.(AnyWorkflow); ok && wf != nil {
+				m.AddWorkflow(wf, wf.GetID())
 			}
 		}
 	}()
@@ -1020,8 +965,8 @@ func (m *Mastra) AddAgent(agent Agent, key string, options *AddPrimitiveOptions)
 					m.logger.Debug(fmt.Sprintf("Failed to register workspace for agent %s: %v", agentKey, r))
 				}
 			}()
-			ws := agent.GetWorkspace()
-			if ws != nil {
+			wsAny := agent.GetWorkspace()
+			if ws, ok := wsAny.(Workspace); ok && ws != nil {
 				agentID := agent.ID()
 				if agentID == "" {
 					agentID = agentKey
@@ -1338,7 +1283,7 @@ func (m *Mastra) GetWorkflowByID(id string) (AnyWorkflow, error) {
 
 	// Search by internal ID
 	for _, wf := range m.workflows {
-		if wf.ID() == id {
+		if wf.GetID() == id {
 			return wf, nil
 		}
 	}
@@ -1372,7 +1317,7 @@ func (m *Mastra) RegisterInternalWorkflow(workflow AnyWorkflow) {
 		Logger: m.GetLogger(),
 	})
 	m.mu.Lock()
-	m.internalMastraWorkflows[workflow.ID()] = workflow
+	m.internalMastraWorkflows[workflow.GetID()] = workflow
 	m.mu.Unlock()
 }
 
@@ -1384,7 +1329,7 @@ func (m *Mastra) HasInternalWorkflow(id string) bool {
 	defer m.mu.RUnlock()
 
 	for _, wf := range m.internalMastraWorkflows {
-		if wf.ID() == id {
+		if wf.GetID() == id {
 			return true
 		}
 	}
@@ -1399,7 +1344,7 @@ func (m *Mastra) GetInternalWorkflow(id string) (AnyWorkflow, error) {
 	defer m.mu.RUnlock()
 
 	for _, wf := range m.internalMastraWorkflows {
-		if wf.ID() == id {
+		if wf.GetID() == id {
 			return wf, nil
 		}
 	}
@@ -1432,15 +1377,15 @@ func (m *Mastra) ListActiveWorkflowRuns() (*WorkflowRuns, error) {
 	var allTotal int
 
 	for _, wf := range m.workflows {
-		if wf.EngineType() != "default" {
+		if wf.GetEngineType() != "default" {
 			continue
 		}
 
-		runningRuns, err := wf.ListWorkflowRuns(WorkflowRunListOpts{Status: "running"})
+		runningRuns, err := wf.ListWorkflowRuns(&WorkflowRunListOpts{Status: "running"})
 		if err != nil {
 			return nil, err
 		}
-		waitingRuns, err := wf.ListWorkflowRuns(WorkflowRunListOpts{Status: "waiting"})
+		waitingRuns, err := wf.ListWorkflowRuns(&WorkflowRunListOpts{Status: "waiting"})
 		if err != nil {
 			return nil, err
 		}
@@ -1479,12 +1424,12 @@ func (m *Mastra) RestartAllActiveWorkflowRuns() error {
 			m.logger.Error(fmt.Sprintf("Failed to find workflow %s for restart: %v", snapshot.WorkflowName, wfErr))
 			continue
 		}
-		run, runErr := wf.CreateRun(WorkflowCreateRunOpts{RunID: snapshot.RunID})
+		run, runErr := wf.CreateRun(&WorkflowCreateRunOpts{RunID: snapshot.RunID})
 		if runErr != nil {
 			m.logger.Error(fmt.Sprintf("Failed to restart %s workflow run %s: %v", snapshot.WorkflowName, snapshot.RunID, runErr))
 			continue
 		}
-		if restartErr := run.Restart(); restartErr != nil {
+		if _, restartErr := run.Restart(workflows.RestartParams{}); restartErr != nil {
 			m.logger.Error(fmt.Sprintf("Failed to restart %s workflow run %s: %v", snapshot.WorkflowName, snapshot.RunID, restartErr))
 			continue
 		}
@@ -1511,7 +1456,7 @@ func (m *Mastra) AddWorkflow(workflow AnyWorkflow, key string) {
 	}
 	workflowKey := key
 	if workflowKey == "" {
-		workflowKey = workflow.ID()
+		workflowKey = workflow.GetID()
 	}
 
 	m.mu.Lock()
@@ -2097,6 +2042,19 @@ func (m *Mastra) SetStorage(stg *storage.MastraCompositeStore) {
 // Corresponds to TS: public getStorage()
 func (m *Mastra) GetStorage() *storage.MastraCompositeStore {
 	return m.storage
+}
+
+// GetWorkflowsStore returns the workflows storage domain from the composite store.
+// This satisfies the workflows.Mastra interface so that *Mastra can be passed
+// directly to Workflow.RegisterMastra without stub indirection.
+func (m *Mastra) GetWorkflowsStore() storageworkflows.WorkflowsStorage {
+	if m.storage == nil || m.storage.Stores == nil || m.storage.Stores.Workflows == nil {
+		return nil
+	}
+	if ws, ok := m.storage.Stores.Workflows.(storageworkflows.WorkflowsStorage); ok {
+		return ws
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

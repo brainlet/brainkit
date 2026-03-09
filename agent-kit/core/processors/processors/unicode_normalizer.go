@@ -128,7 +128,7 @@ func (u *UnicodeNormalizer) ProcessInput(args processors.ProcessInputArgs) ([]pr
 		msg := message
 		// Normalize parts.
 		if len(msg.Content.Parts) > 0 {
-			parts := make([]processors.MessagePart, len(msg.Content.Parts))
+			parts := make([]processors.MastraMessagePart, len(msg.Content.Parts))
 			for j, part := range msg.Content.Parts {
 				p := part
 				if p.Type == "text" && p.Text != "" {

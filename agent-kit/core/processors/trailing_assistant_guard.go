@@ -95,18 +95,20 @@ func (t *TrailingAssistantGuard) ProcessInputStep(args ProcessInputStepArgs) (*P
 
 	// Append a user message to prevent the error
 	guardMessage := MastraDBMessage{
-		ID:   uuid.New().String(),
-		Role: "user",
+		MastraMessageShared: MastraMessageShared{
+			ID:        uuid.New().String(),
+			Role:      "user",
+			CreatedAt: time.Now(),
+		},
 		Content: MastraMessageContentV2{
 			Format: 2,
-			Parts: []MessagePart{
+			Parts: []MastraMessagePart{
 				{
 					Type: "text",
 					Text: "Generate the structured response.",
 				},
 			},
 		},
-		CreatedAt: time.Now(),
 	}
 
 	messages := make([]MastraDBMessage, len(args.Messages)+1)

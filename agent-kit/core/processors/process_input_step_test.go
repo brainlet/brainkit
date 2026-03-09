@@ -41,14 +41,16 @@ func createTestMessage(content string, role string) MastraDBMessage {
 		role = "user"
 	}
 	return MastraDBMessage{
-		ID:   fmt.Sprintf("msg-%d", time.Now().UnixNano()),
-		Role: role,
+		MastraMessageShared: MastraMessageShared{
+			ID:        fmt.Sprintf("msg-%d", time.Now().UnixNano()),
+			Role:      role,
+			CreatedAt: time.Now(),
+			ThreadID:  "test-thread",
+		},
 		Content: MastraMessageContentV2{
 			Format: 2,
-			Parts:  []MessagePart{{Type: "text", Text: content}},
+			Parts:  []MastraMessagePart{{Type: "text", Text: content}},
 		},
-		CreatedAt: time.Now(),
-		ThreadID:  "test-thread",
 	}
 }
 

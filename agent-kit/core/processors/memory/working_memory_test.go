@@ -10,6 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/agent-kit/core/processors"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storagememory "github.com/brainlet/brainkit/agent-kit/core/storage/domains/memory"
 )
 
 // ---------------------------------------------------------------------------
@@ -17,33 +18,35 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockStorageForWM struct {
-	getThreadByIDResult *StorageThread
+	getThreadByIDResult StorageThreadType
 	getThreadByIDErr    error
 	getThreadByIDCalls  []string
 
-	getResourceByIDResult *StorageResource
+	getResourceByIDResult StorageResourceType
 	getResourceByIDErr    error
 	getResourceByIDCalls  []string
 }
 
-func (m *mockStorageForWM) ListMessages(_ context.Context, _ ListMessagesInput) (ListMessagesOutput, error) {
-	return ListMessagesOutput{}, nil
+func (m *mockStorageForWM) ListMessages(_ context.Context, _ storagememory.StorageListMessagesInput) (StorageListMessagesOutput, error) {
+	return StorageListMessagesOutput{}, nil
 }
-func (m *mockStorageForWM) GetThreadByID(_ context.Context, threadID string) (*StorageThread, error) {
+func (m *mockStorageForWM) GetThreadByID(_ context.Context, threadID string) (StorageThreadType, error) {
 	m.getThreadByIDCalls = append(m.getThreadByIDCalls, threadID)
 	if m.getThreadByIDErr != nil {
 		return nil, m.getThreadByIDErr
 	}
 	return m.getThreadByIDResult, nil
 }
-func (m *mockStorageForWM) SaveThread(_ context.Context, _ StorageThread) error { return nil }
-func (m *mockStorageForWM) UpdateThread(_ context.Context, _ UpdateThreadInput) error {
-	return nil
+func (m *mockStorageForWM) SaveThread(_ context.Context, thread StorageThreadType) (StorageThreadType, error) {
+	return thread, nil
 }
-func (m *mockStorageForWM) SaveMessages(_ context.Context, _ []processors.MastraDBMessage) error {
-	return nil
+func (m *mockStorageForWM) UpdateThread(_ context.Context, input UpdateThreadInput) (StorageThreadType, error) {
+	return StorageThreadType{"id": input.ID}, nil
 }
-func (m *mockStorageForWM) GetResourceByID(_ context.Context, resourceID string) (*StorageResource, error) {
+func (m *mockStorageForWM) SaveMessages(_ context.Context, messages []processors.MastraDBMessage) ([]processors.MastraDBMessage, error) {
+	return messages, nil
+}
+func (m *mockStorageForWM) GetResourceByID(_ context.Context, resourceID string) (StorageResourceType, error) {
 	m.getResourceByIDCalls = append(m.getResourceByIDCalls, resourceID)
 	if m.getResourceByIDErr != nil {
 		return nil, m.getResourceByIDErr
@@ -76,7 +79,7 @@ func setupWMRequestContextWithReadOnly(threadID, resourceID string) *requestcont
 			"createdAt":  time.Now().Format(time.RFC3339),
 			"updatedAt":  time.Now().Format(time.RFC3339),
 		},
-		"resourceId":  resourceID,
+		"resourceId":   resourceID,
 		"memoryConfig": map[string]any{"readOnly": true},
 	})
 	return rc
@@ -84,13 +87,15 @@ func setupWMRequestContextWithReadOnly(threadID, resourceID string) *requestcont
 
 func makeUserMessage(id, text string) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   id,
-		Role: "user",
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:        id,
+			Role:      "user",
+			CreatedAt: time.Now(),
+		},
 		Content: processors.MastraMessageContentV2{
 			Format: 2,
-			Parts:  []processors.MessagePart{{Type: "text", Text: text}},
+			Parts:  []processors.MastraMessagePart{{Type: "text", Text: text}},
 		},
-		CreatedAt: time.Now(),
 	}
 }
 
@@ -104,13 +109,13 @@ func TestWorkingMemory(t *testing.T) {
 			workingMemoryData := "# User Info\n- Name: John\n- Preference: Dark mode"
 
 			mockStorage := &mockStorageForWM{
-				getThreadByIDResult: &StorageThread{
-					ID:         "thread-123",
-					ResourceID: "resource-1",
-					Title:      "Test Thread",
-					Metadata:   map[string]any{"workingMemory": workingMemoryData},
-					CreatedAt:  time.Now(),
-					UpdatedAt:  time.Now(),
+				getThreadByIDResult: StorageThreadType{
+					"id":         "thread-123",
+					"resourceId": "resource-1",
+					"title":      "Test Thread",
+					"metadata":   map[string]any{"workingMemory": workingMemoryData},
+					"createdAt":  time.Now(),
+					"updatedAt":  time.Now(),
 				},
 			}
 
@@ -151,9 +156,9 @@ func TestWorkingMemory(t *testing.T) {
 			workingMemoryData := "# Project Context\n- Status: In Progress"
 
 			mockStorage := &mockStorageForWM{
-				getResourceByIDResult: &StorageResource{
-					ID:            "resource-456",
-					WorkingMemory: workingMemoryData,
+				getResourceByIDResult: StorageResourceType{
+					"id":            "resource-456",
+					"workingMemory": workingMemoryData,
 				},
 			}
 
@@ -228,9 +233,9 @@ func TestWorkingMemory(t *testing.T) {
 
 		t.Run("should default to resource scope when scope not specified", func(t *testing.T) {
 			mockStorage := &mockStorageForWM{
-				getResourceByIDResult: &StorageResource{
-					ID:            "resource-1",
-					WorkingMemory: "Test data",
+				getResourceByIDResult: StorageResourceType{
+					"id":            "resource-1",
+					"workingMemory": "Test data",
 				},
 			}
 

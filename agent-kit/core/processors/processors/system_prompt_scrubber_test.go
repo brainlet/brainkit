@@ -23,11 +23,13 @@ func TestSystemPromptScrubber(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:   "msg-1",
+						Role: "assistant",
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts:  []processors.MessagePart{{Type: "text", Text: "Hello, how can I help you?"}},
+						Parts:  []processors.MastraMessagePart{{Type: "text", Text: "Hello, how can I help you?"}},
 					},
 				},
 			}
@@ -80,11 +82,13 @@ func TestSystemPromptScrubber(t *testing.T) {
 
 			messages := []processors.MastraDBMessage{
 				{
-					ID:   "msg-1",
-					Role: "assistant",
+					MastraMessageShared: processors.MastraMessageShared{
+						ID:   "msg-1",
+						Role: "assistant",
+					},
 					Content: processors.MastraMessageContentV2{
 						Format: 2,
-						Parts:  []processors.MessagePart{},
+						Parts:  []processors.MastraMessagePart{},
 					},
 				},
 			}

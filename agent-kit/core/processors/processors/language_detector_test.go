@@ -125,11 +125,13 @@ func TestLanguageDetector(t *testing.T) {
 // Helper to create test messages for language detector tests.
 func createLDTestMessage(text string, role string) processors.MastraDBMessage {
 	return processors.MastraDBMessage{
-		ID:   "test-id",
-		Role: role,
+		MastraMessageShared: processors.MastraMessageShared{
+			ID:   "test-id",
+			Role: role,
+		},
 		Content: processors.MastraMessageContentV2{
 			Format: 2,
-			Parts:  []processors.MessagePart{{Type: "text", Text: text}},
+			Parts:  []processors.MastraMessagePart{{Type: "text", Text: text}},
 		},
 	}
 }

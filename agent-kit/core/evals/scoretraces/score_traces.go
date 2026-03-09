@@ -79,9 +79,10 @@ func ScoreTraces(ctx context.Context, scorerID string, targets []ScoreTracesTarg
 		return
 	}
 
-	// Type-assert mastracore.AnyWorkflow to the local InternalWorkflow interface,
+	// Type-assert the workflow to the local InternalWorkflow interface,
 	// which provides the CreateRun(ctx) signature needed by scoretraces.
-	workflow, ok := wf.(InternalWorkflow)
+	// Cast through any first because AnyWorkflow is now a concrete type alias.
+	workflow, ok := any(wf).(InternalWorkflow)
 	if !ok {
 		logger := mastra.GetLogger()
 		if logger != nil {

@@ -11,9 +11,8 @@ type ModelConfigFunc func(args ModelConfigFuncArgs) (MastraModelConfig, error)
 
 // ModelConfigFuncArgs holds the arguments passed to a ModelConfigFunc.
 type ModelConfigFuncArgs struct {
-	// RequestContext is a stub for requestcontext.RequestContext.
-	// TODO: use real RequestContext type once imports are stabilized.
-	RequestContext any
+	// RequestContext holds the request-scoped context.
+	RequestContext RequestContext
 	// Mastra is a stub for the Mastra instance.
 	Mastra MastraRef
 }
@@ -80,10 +79,12 @@ type ListGatewaysFunc interface {
 // The variadic requestContext accepts optional [requestContext, mastra] args.
 func ResolveModelConfig(modelConfig any, customGateways []MastraModelGateway, requestContext ...any) (any, error) {
 	// Extract optional args
-	var reqCtx any
+	var reqCtx RequestContext
 	var mastra MastraRef
 	if len(requestContext) > 0 {
-		reqCtx = requestContext[0]
+		if rc, ok := requestContext[0].(RequestContext); ok {
+			reqCtx = rc
+		}
 	}
 	if len(requestContext) > 1 {
 		if m, ok := requestContext[1].(MastraRef); ok {

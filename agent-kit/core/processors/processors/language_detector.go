@@ -393,7 +393,7 @@ func (ld *LanguageDetector) createTranslatedMessage(originalMessage processors.M
 	}
 
 	translatedMsg := originalMessage
-	translatedMsg.Content.Parts = []processors.MessagePart{{Type: "text", Text: *result.TranslatedText}}
+	translatedMsg.Content.Parts = []processors.MastraMessagePart{{Type: "text", Text: *result.TranslatedText}}
 	translatedMsg.Content.Content = *result.TranslatedText
 
 	return ld.addLanguageMetadata(translatedMsg, result, &originalMessage)

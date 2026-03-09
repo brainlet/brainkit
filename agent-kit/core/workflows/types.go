@@ -11,45 +11,54 @@ import (
 	"github.com/brainlet/brainkit/agent-kit/core/logger"
 	obstypes "github.com/brainlet/brainkit/agent-kit/core/observability/types"
 	requestcontext "github.com/brainlet/brainkit/agent-kit/core/requestcontext"
+	storageworkflows "github.com/brainlet/brainkit/agent-kit/core/storage/domains/workflows"
 	aktypes "github.com/brainlet/brainkit/agent-kit/core/types"
 )
 
 // ---------------------------------------------------------------------------
-// Stub types for packages not yet ported
+// Imported storage types (no circular dependency: workflows -> storage is safe)
 // ---------------------------------------------------------------------------
 
 // Mastra is the top-level orchestrator for the framework.
-// Defined here (not imported from core/mastra) to break circular dependency.
-// core.Mastra satisfies this interface.
-//
-// NOTE: GetStorage() still uses a local Storage interface because the real
-// *storage.MastraCompositeStore.GetStore takes DomainName (not string) and
-// returns domains.StorageDomain (not WorkflowsStore). This structural mismatch
-// requires a deeper refactor to resolve.
+// Defined here (not imported from core/mastra) to break circular dependency
+// between workflows and mastra packages.
 type Mastra interface {
 	GetLogger() logger.IMastraLogger
-	GetStorage() Storage
+	GetWorkflowsStore() WorkflowsStore
 	GenerateID(ctx *GenerateIDOpts) string
 	PubSub() events.PubSub
 }
 
-// Storage is the persistence layer interface.
-// TODO: import from storage package once ported.
-type Storage interface {
-	GetStore(name string) (WorkflowsStore, error)
-}
+// WorkflowsStore is the storage interface for the workflows domain.
+// Imported from storage/domains/workflows (no circular dependency).
+type WorkflowsStore = storageworkflows.WorkflowsStorage
 
-// WorkflowsStore handles workflow persistence.
-// TODO: import from storage package once ported.
-type WorkflowsStore interface {
-	PersistWorkflowSnapshot(params PersistWorkflowSnapshotParams) error
-	GetWorkflowRunByID(params GetWorkflowRunByIDParams) (*WorkflowRunRecord, error)
-	UpdateWorkflowState(params UpdateWorkflowStateParams) error
-	DeleteWorkflowRunByID(params DeleteWorkflowRunByIDParams) error
-	ListWorkflowRuns(params ListWorkflowRunsParams) (*WorkflowRunList, error)
-}
+// StorageWorkflowRunState is the storage representation of workflow run state.
+// In the storage layer this is an untyped map; the typed WorkflowRunState struct
+// in this package provides compile-time safety for workflow internals.
+type StorageWorkflowRunState = storageworkflows.WorkflowRunState
+
+// ---------------------------------------------------------------------------
+// Param/result aliases for storage types with matching structures
+// ---------------------------------------------------------------------------
+
+// GetWorkflowRunByIDParams holds parameters for getting a workflow run.
+type GetWorkflowRunByIDParams = storageworkflows.GetWorkflowRunByIDArgs
+
+// DeleteWorkflowRunByIDParams holds parameters for deleting a workflow run.
+type DeleteWorkflowRunByIDParams = storageworkflows.DeleteWorkflowRunByIDArgs
+
+// ---------------------------------------------------------------------------
+// Workflow-specific adapter types
+//
+// These types adapt the workflow package's typed representations to the
+// storage layer's untyped representations. They are NOT stubs — they provide
+// compile-time type safety for workflow internals while bridging to storage.
+// ---------------------------------------------------------------------------
 
 // PersistWorkflowSnapshotParams holds parameters for persisting a workflow snapshot.
+// Uses the typed WorkflowRunState; callers convert via WorkflowRunStateToMap
+// before passing to the storage layer.
 type PersistWorkflowSnapshotParams struct {
 	WorkflowName string
 	RunID        string
@@ -57,46 +66,17 @@ type PersistWorkflowSnapshotParams struct {
 	Snapshot     WorkflowRunState
 }
 
-// GetWorkflowRunByIDParams holds parameters for getting a workflow run.
-type GetWorkflowRunByIDParams struct {
-	RunID        string
-	WorkflowName string
-}
-
 // UpdateWorkflowStateParams holds parameters for updating workflow state.
-type UpdateWorkflowStateParams struct {
-	WorkflowName string
-	RunID        string
-	Opts         map[string]any
-}
-
-// DeleteWorkflowRunByIDParams holds parameters for deleting a workflow run.
-type DeleteWorkflowRunByIDParams struct {
-	RunID        string
-	WorkflowName string
-}
+type UpdateWorkflowStateParams = storageworkflows.UpdateWorkflowStateArgs
 
 // ListWorkflowRunsParams holds parameters for listing workflow runs.
-type ListWorkflowRunsParams struct {
-	WorkflowName string
-	Status       string
-}
+type ListWorkflowRunsParams = storageworkflows.ListWorkflowRunsInput
 
 // WorkflowRunRecord represents a persisted workflow run.
-type WorkflowRunRecord struct {
-	RunID        string
-	WorkflowName string
-	ResourceID   string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Snapshot     *WorkflowRunState
-}
+type WorkflowRunRecord = storageworkflows.WorkflowRun
 
 // WorkflowRunList represents a list of workflow runs.
-type WorkflowRunList struct {
-	Runs  []WorkflowRunRecord
-	Total int
-}
+type WorkflowRunList = storageworkflows.WorkflowRuns
 
 // GenerateIDOpts is an alias for types.IdGeneratorContext.
 // Ported from: packages/core/src/types/dynamic-argument.ts — IdGeneratorContext
@@ -117,8 +97,8 @@ type ParseResult struct {
 }
 
 // DynamicArgument can be a static value or a function that resolves at runtime.
-// TODO: import from types package once ported.
-type DynamicArgument[T any] interface{}
+// Imported from types package (no circular dependency: workflows -> types is safe).
+type DynamicArgument[T any] = aktypes.DynamicArgument[T]
 
 // MastraScorers is imported from the evals package.
 type MastraScorers = evals.MastraScorers
