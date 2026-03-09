@@ -3,6 +3,7 @@ package openai
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -681,6 +682,213 @@ func TestImageDoGenerate_TokenDetailsDistribution(t *testing.T) {
 		}
 		if img2["imageTokens"] != 5 {
 			t.Errorf("expected second image imageTokens 5, got %v", img2["imageTokens"])
+		}
+	})
+}
+
+func TestImageDoGenerate_EditWithSingleFile(t *testing.T) {
+	t.Run("should send edit request with single file to /images/edits", func(t *testing.T) {
+		server, capture := createFormDataTestServer(imageFixture(), nil)
+		defer server.Close()
+		model := createImageTestModel(server.URL)
+
+		prompt := "Make the sky purple"
+		result, err := model.DoGenerate(imagemodel.CallOptions{
+			Prompt: &prompt,
+			N:      1,
+			Files: []imagemodel.File{
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("fake-image-data")},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify image data returned
+		imgs, ok := result.Images.(imagemodel.ImageDataStrings)
+		if !ok {
+			t.Fatalf("expected ImageDataStrings, got %T", result.Images)
+		}
+		if len(imgs.Values) != 1 {
+			t.Fatalf("expected 1 image, got %d", len(imgs.Values))
+		}
+
+		// Verify the request went to /images/edits endpoint
+		bodyStr := string(capture.Body)
+		if len(bodyStr) == 0 {
+			t.Fatal("expected non-empty request body")
+		}
+		// The body should be multipart form data containing the model and prompt
+		if !strings.Contains(bodyStr, "dall-e-3") {
+			t.Error("expected request body to contain model 'dall-e-3'")
+		}
+		if !strings.Contains(bodyStr, "Make the sky purple") {
+			t.Error("expected request body to contain prompt")
+		}
+		if !strings.Contains(bodyStr, "fake-image-data") {
+			t.Error("expected request body to contain image data")
+		}
+	})
+}
+
+func TestImageDoGenerate_EditWithMultipleFiles(t *testing.T) {
+	t.Run("should send edit request with multiple files", func(t *testing.T) {
+		server, capture := createFormDataTestServer(imageFixture(), nil)
+		defer server.Close()
+		model := createImageTestModel(server.URL)
+
+		prompt := "Merge these images"
+		_, err := model.DoGenerate(imagemodel.CallOptions{
+			Prompt: &prompt,
+			N:      1,
+			Files: []imagemodel.File{
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("image-data-1")},
+				},
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("image-data-2")},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		bodyStr := string(capture.Body)
+		if !strings.Contains(bodyStr, "image-data-1") {
+			t.Error("expected request body to contain first image data")
+		}
+		if !strings.Contains(bodyStr, "image-data-2") {
+			t.Error("expected request body to contain second image data")
+		}
+	})
+}
+
+func TestImageDoGenerate_EditWithMask(t *testing.T) {
+	t.Run("should send edit request with mask", func(t *testing.T) {
+		server, capture := createFormDataTestServer(imageFixture(), nil)
+		defer server.Close()
+		model := createImageTestModel(server.URL)
+
+		prompt := "Fill in the masked area"
+		_, err := model.DoGenerate(imagemodel.CallOptions{
+			Prompt: &prompt,
+			N:      1,
+			Files: []imagemodel.File{
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("source-image")},
+				},
+			},
+			Mask: imagemodel.FileData{
+				MediaType: "image/png",
+				Data:      imagemodel.ImageFileDataBytes{Data: []byte("mask-image-data")},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		bodyStr := string(capture.Body)
+		if !strings.Contains(bodyStr, "source-image") {
+			t.Error("expected request body to contain source image data")
+		}
+		if !strings.Contains(bodyStr, "mask-image-data") {
+			t.Error("expected request body to contain mask data")
+		}
+	})
+}
+
+func TestImageDoGenerate_EditResponseMetadata(t *testing.T) {
+	t.Run("should include response metadata for edit requests", func(t *testing.T) {
+		testDate := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+		server, _ := createFormDataTestServer(imageFixture(), map[string]string{
+			"X-Request-Id": "edit-request-id",
+		})
+		defer server.Close()
+
+		model := NewOpenAIImageModel("dall-e-2", OpenAIImageModelConfig{
+			OpenAIConfig: OpenAIConfig{
+				Provider: "openai.image",
+				URL: func(options struct {
+					ModelID string
+					Path    string
+				}) string {
+					return server.URL + options.Path
+				},
+				Headers: func() map[string]string {
+					return map[string]string{
+						"Authorization": "Bearer test-api-key",
+					}
+				},
+			},
+			Internal: &OpenAIImageModelInternal{
+				CurrentDate: func() time.Time {
+					return testDate
+				},
+			},
+		})
+
+		prompt := "Edit this image"
+		result, err := model.DoGenerate(imagemodel.CallOptions{
+			Prompt: &prompt,
+			N:      1,
+			Files: []imagemodel.File{
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("test-image")},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Response.ModelID != "dall-e-2" {
+			t.Errorf("expected model ID 'dall-e-2', got %q", result.Response.ModelID)
+		}
+		if !result.Response.Timestamp.Equal(testDate) {
+			t.Errorf("expected timestamp %v, got %v", testDate, result.Response.Timestamp)
+		}
+	})
+}
+
+func TestImageDoGenerate_EditWithSize(t *testing.T) {
+	t.Run("should pass size parameter in edit request", func(t *testing.T) {
+		server, capture := createFormDataTestServer(imageFixture(), nil)
+		defer server.Close()
+		model := createImageTestModel(server.URL)
+
+		prompt := "Edit this"
+		size := "512x512"
+		_, err := model.DoGenerate(imagemodel.CallOptions{
+			Prompt: &prompt,
+			N:      1,
+			Size:   &size,
+			Files: []imagemodel.File{
+				imagemodel.FileData{
+					MediaType: "image/png",
+					Data:      imagemodel.ImageFileDataBytes{Data: []byte("test-img")},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		bodyStr := string(capture.Body)
+		if !strings.Contains(bodyStr, "512x512") {
+			t.Error("expected request body to contain size '512x512'")
 		}
 	})
 }

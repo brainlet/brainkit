@@ -389,6 +389,38 @@ func TestCompletionDoStream_TextStreaming(t *testing.T) {
 	})
 }
 
+func TestCompletionDoStream_PassModelAndPrompt(t *testing.T) {
+	t.Run("should pass model and prompt in stream request", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"Hi\",\"index\":0,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"\",\"index\":0,\"finish_reason\":\"stop\"}]}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, capture := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		collectStreamParts(result.Stream)
+
+		body := capture.BodyJSON()
+		if body["model"] != "gpt-3.5-turbo-instruct" {
+			t.Errorf("expected model 'gpt-3.5-turbo-instruct', got %v", body["model"])
+		}
+		if body["prompt"] == nil {
+			t.Error("expected prompt to be present in request body")
+		}
+	})
+}
+
 func TestCompletionDoStream_RequestBody(t *testing.T) {
 	t.Run("should include stream in request", func(t *testing.T) {
 		chunks := []string{
@@ -414,6 +446,223 @@ func TestCompletionDoStream_RequestBody(t *testing.T) {
 		body := capture.BodyJSON()
 		if body["stream"] != true {
 			t.Errorf("expected stream true, got %v", body["stream"])
+		}
+	})
+}
+
+func TestCompletionDoGenerate_UnknownFinishReason(t *testing.T) {
+	t.Run("should support unknown finish reason", func(t *testing.T) {
+		fixture := completionTextFixture()
+		choices := fixture["choices"].([]any)
+		choice := choices[0].(map[string]any)
+		choice["finish_reason"] = "eos"
+
+		server, _ := createJSONTestServer(fixture, nil)
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.FinishReason.Unified != "other" && result.FinishReason.Unified != "unknown" {
+			t.Errorf("expected unified finish reason 'other' or 'unknown', got %q", result.FinishReason.Unified)
+		}
+		raw := "eos"
+		if result.FinishReason.Raw == nil || *result.FinishReason.Raw != raw {
+			t.Errorf("expected raw finish reason 'eos', got %v", result.FinishReason.Raw)
+		}
+	})
+}
+
+func TestCompletionDoStream_ErrorHandling(t *testing.T) {
+	t.Run("should handle error stream parts", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"error\":{\"message\":\"The server had an error processing your request.\",\"type\":\"server_error\",\"param\":null,\"code\":null}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		// Verify we got an error part
+		var errorFound bool
+		for _, p := range parts {
+			if _, ok := p.(languagemodel.StreamPartError); ok {
+				errorFound = true
+			}
+		}
+		if !errorFound {
+			t.Error("expected an error stream part")
+		}
+
+		// Verify finish reason is error
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.FinishReason.Unified != "error" {
+					t.Errorf("expected unified finish reason 'error', got %q", f.FinishReason.Unified)
+				}
+			}
+		}
+	})
+}
+
+func TestCompletionDoGenerate_ResponseInfo(t *testing.T) {
+	t.Run("should send additional response information", func(t *testing.T) {
+		server, _ := createJSONTestServer(completionTextFixture(), map[string]string{
+			"x-request-id": "req-123",
+		})
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Response == nil {
+			t.Fatal("expected non-nil response")
+		}
+		if result.Response.ID == nil || *result.Response.ID != "cmpl-96cAM1v77r4jXa4qb2NSmRREV5oWB" {
+			t.Errorf("expected response ID 'cmpl-96cAM1v77r4jXa4qb2NSmRREV5oWB', got %v", result.Response.ID)
+		}
+		if result.Response.ModelID == nil || *result.Response.ModelID != "gpt-3.5-turbo-instruct" {
+			t.Errorf("expected model ID 'gpt-3.5-turbo-instruct', got %v", result.Response.ModelID)
+		}
+	})
+}
+
+func TestCompletionDoStream_ResponseHeaders(t *testing.T) {
+	t.Run("should extract response headers from stream", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"Hi\",\"index\":0,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"\",\"index\":0,\"finish_reason\":\"stop\"}]}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, map[string]string{
+			"x-custom-header": "custom-value",
+		})
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		collectStreamParts(result.Stream)
+
+		if result.Response == nil {
+			t.Fatal("expected non-nil response")
+		}
+		if result.Response.Headers == nil {
+			t.Fatal("expected non-nil response headers")
+		}
+		if result.Response.Headers["X-Custom-Header"] != "custom-value" {
+			t.Errorf("expected custom header value, got %q", result.Response.Headers["X-Custom-Header"])
+		}
+	})
+}
+
+func TestCompletionDoStream_Usage(t *testing.T) {
+	t.Run("should extract usage from stream", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"Hello\",\"index\":0,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"\",\"index\":0,\"finish_reason\":\"stop\"}]}\n\n",
+			"data: {\"id\":\"cmpl-123\",\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createCompletionModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		// Find the finish part and check usage
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.Usage.InputTokens.Total == nil || *f.Usage.InputTokens.Total != 4 {
+					t.Errorf("expected input tokens 4, got %v", f.Usage.InputTokens.Total)
+				}
+				if f.Usage.OutputTokens.Total == nil || *f.Usage.OutputTokens.Total != 6 {
+					t.Errorf("expected output tokens 6, got %v", f.Usage.OutputTokens.Total)
+				}
+			}
+		}
+	})
+}
+
+func TestCompletionDoStream_CustomHeaders(t *testing.T) {
+	t.Run("should pass custom headers in stream request", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"Hi\",\"index\":0,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"cmpl-123\",\"choices\":[{\"text\":\"\",\"index\":0,\"finish_reason\":\"stop\"}]}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, capture := createSSETestServer(chunks, nil)
+		defer server.Close()
+
+		model := NewOpenAICompletionLanguageModel("gpt-3.5-turbo-instruct", OpenAICompletionConfig{
+			Provider: "openai.completion",
+			URL: func(options struct {
+				ModelID string
+				Path    string
+			}) string {
+				return server.URL + options.Path
+			},
+			Headers: func() map[string]string {
+				return map[string]string{
+					"Authorization":  "Bearer test-api-key",
+					"Content-Type":   "application/json",
+					"X-Custom-Test":  "test-value",
+				}
+			},
+		})
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		collectStreamParts(result.Stream)
+
+		if capture.Headers.Get("X-Custom-Test") != "test-value" {
+			t.Errorf("expected custom header 'test-value', got %q", capture.Headers.Get("X-Custom-Test"))
 		}
 	})
 }

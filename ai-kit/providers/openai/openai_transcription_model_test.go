@@ -3,6 +3,7 @@ package openai
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -415,6 +416,120 @@ func TestTranscriptionDoGenerate_CustomHeaders(t *testing.T) {
 
 		if capture.Headers.Get("Custom-Request-Header") != "request-header-value" {
 			t.Errorf("expected Custom-Request-Header, got %q", capture.Headers.Get("Custom-Request-Header"))
+		}
+	})
+}
+
+func TestTranscriptionDoGenerate_TimestampGranularities(t *testing.T) {
+	t.Run("should pass timestamp_granularities when specified", func(t *testing.T) {
+		server, capture := createFormDataTestServer(transcriptionFixture(), nil)
+		defer server.Close()
+		model := createTranscriptionTestModel(server.URL)
+
+		_, err := model.DoGenerate(transcriptionmodel.CallOptions{
+			Audio:     transcriptionmodel.AudioDataBytes{Data: make([]byte, 100)},
+			MediaType: "audio/wav",
+			ProviderOptions: transcriptionmodel.ProviderOptions{
+				"openai": map[string]any{
+					"timestampGranularities": []any{"word"},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify the request body contains timestamp_granularities and response_format
+		bodyStr := string(capture.Body)
+		if len(bodyStr) == 0 {
+			t.Fatal("expected non-empty request body")
+		}
+		// The body is multipart form data, verify it contains the expected fields
+		if !strings.Contains(bodyStr, "timestamp_granularities") {
+			t.Error("expected request body to contain timestamp_granularities")
+		}
+		if !strings.Contains(bodyStr, "verbose_json") {
+			t.Error("expected request body to contain verbose_json response_format")
+		}
+	})
+
+	t.Run("should pass response_format as verbose_json for whisper-1", func(t *testing.T) {
+		server, capture := createFormDataTestServer(transcriptionFixture(), nil)
+		defer server.Close()
+		model := createTranscriptionTestModel(server.URL)
+
+		_, err := model.DoGenerate(transcriptionmodel.CallOptions{
+			Audio:     transcriptionmodel.AudioDataBytes{Data: make([]byte, 100)},
+			MediaType: "audio/wav",
+			ProviderOptions: transcriptionmodel.ProviderOptions{
+				"openai": map[string]any{
+					"timestampGranularities": []any{"segment"},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		bodyStr := string(capture.Body)
+		if !strings.Contains(bodyStr, "verbose_json") {
+			t.Error("expected verbose_json response_format for whisper-1")
+		}
+	})
+}
+
+func TestTranscriptionDoGenerate_GPT4oTranscribe(t *testing.T) {
+	t.Run("should use json response_format for gpt-4o-transcribe model", func(t *testing.T) {
+		server, capture := createFormDataTestServer(transcriptionFixture(), nil)
+		defer server.Close()
+
+		model := NewOpenAITranscriptionModel("gpt-4o-transcribe", OpenAITranscriptionModelConfig{
+			OpenAIConfig: OpenAIConfig{
+				Provider: "openai.transcription",
+				URL: func(options struct {
+					ModelID string
+					Path    string
+				}) string {
+					return server.URL + options.Path
+				},
+				Headers: func() map[string]string {
+					return map[string]string{
+						"Authorization": "Bearer test-api-key",
+						"Content-Type":  "application/json",
+					}
+				},
+			},
+			Internal: &OpenAITranscriptionModelInternal{
+				CurrentDate: func() time.Time {
+					return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+				},
+			},
+		})
+
+		_, err := model.DoGenerate(transcriptionmodel.CallOptions{
+			Audio:     transcriptionmodel.AudioDataBytes{Data: make([]byte, 100)},
+			MediaType: "audio/wav",
+			ProviderOptions: transcriptionmodel.ProviderOptions{
+				"openai": map[string]any{
+					"timestampGranularities": []any{"word"},
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		bodyStr := string(capture.Body)
+		// Should NOT contain verbose_json for gpt-4o-transcribe
+		if strings.Contains(bodyStr, "verbose_json") {
+			t.Error("should NOT use verbose_json response_format for gpt-4o-transcribe")
+		}
+		// Should contain just "json" as response_format
+		if !strings.Contains(bodyStr, "json") {
+			t.Error("expected json response_format for gpt-4o-transcribe")
 		}
 	})
 }

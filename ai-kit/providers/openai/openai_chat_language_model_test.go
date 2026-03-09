@@ -775,6 +775,28 @@ func TestChatDoGenerate_ResponseFormat(t *testing.T) {
 	})
 }
 
+func TestChatDoGenerate_ResponseFormatText(t *testing.T) {
+	t.Run("should not send response_format for text format", func(t *testing.T) {
+		server, capture := createJSONTestServer(chatTextFixture(), nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		_, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt:         testPrompt,
+			ResponseFormat: languagemodel.ResponseFormatText{},
+			Ctx:            context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		body := capture.BodyJSON()
+		if _, exists := body["response_format"]; exists {
+			t.Errorf("expected response_format to NOT be sent for text format, but it was: %v", body["response_format"])
+		}
+	})
+}
+
 func TestChatDoGenerate_ProviderOptions(t *testing.T) {
 	t.Run("should pass user", func(t *testing.T) {
 		server, capture := createJSONTestServer(chatTextFixture(), nil)
@@ -2270,6 +2292,581 @@ func TestChatDoStream_MetadataOption(t *testing.T) {
 		}
 		if metadata["custom"] != "value" {
 			t.Errorf("expected metadata custom='value', got %v", metadata["custom"])
+		}
+	})
+}
+
+// --- Additional streaming tests ported from TypeScript ---
+
+func TestChatDoStream_AnnotationsCitations(t *testing.T) {
+	t.Run("should stream annotations/citations", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":null,\"choices\":[{\"index\":1,\"delta\":{\"content\":\"Based on search results\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":null,\"choices\":[{\"index\":1,\"delta\":{\"annotations\":[{\"type\":\"url_citation\",\"url_citation\":{\"start_index\":24,\"end_index\":29,\"url\":\"https://example.com/doc1.pdf\",\"title\":\"Document 1\"}}]},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":227,\"total_tokens\":244}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		// Verify we got a source URL part
+		var sourceFound bool
+		for _, p := range parts {
+			if src, ok := p.(languagemodel.SourceURL); ok {
+				sourceFound = true
+				if src.URL != "https://example.com/doc1.pdf" {
+					t.Errorf("expected URL 'https://example.com/doc1.pdf', got %q", src.URL)
+				}
+				title := "Document 1"
+				if src.Title == nil || *src.Title != title {
+					t.Errorf("expected title 'Document 1', got %v", src.Title)
+				}
+			}
+		}
+		if !sourceFound {
+			t.Error("expected a SourceURL stream part from annotations")
+		}
+
+		// Verify text deltas were emitted
+		var textDeltas []string
+		for _, p := range parts {
+			if td, ok := p.(languagemodel.StreamPartTextDelta); ok {
+				textDeltas = append(textDeltas, td.Delta)
+			}
+		}
+		if len(textDeltas) < 1 {
+			t.Error("expected at least one text delta")
+		}
+	})
+}
+
+func TestChatDoStream_ToolCallMissingType(t *testing.T) {
+	t.Run("should stream tool call with missing type field (Azure AI Foundry / Mistral)", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-azure-001\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"mistral-large\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_abc123\",\"function\":{\"name\":\"test-tool\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-azure-001\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"mistral-large\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"value\\\"\"}}]},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-azure-001\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"mistral-large\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\":\\\"hello\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		var toolStart *languagemodel.StreamPartToolInputStart
+		var toolCall *languagemodel.ToolCall
+		for _, p := range parts {
+			if ts, ok := p.(languagemodel.StreamPartToolInputStart); ok {
+				toolStart = &ts
+			}
+			if tc, ok := p.(languagemodel.ToolCall); ok {
+				toolCall = &tc
+			}
+		}
+
+		if toolStart == nil {
+			t.Fatal("expected tool input start")
+		}
+		if toolStart.ID != "call_abc123" {
+			t.Errorf("expected tool call ID 'call_abc123', got %q", toolStart.ID)
+		}
+		if toolStart.ToolName != "test-tool" {
+			t.Errorf("expected tool name 'test-tool', got %q", toolStart.ToolName)
+		}
+
+		if toolCall == nil {
+			t.Fatal("expected tool call")
+		}
+		if toolCall.ToolCallID != "call_abc123" {
+			t.Errorf("expected tool call ID 'call_abc123', got %q", toolCall.ToolCallID)
+		}
+		if toolCall.ToolName != "test-tool" {
+			t.Errorf("expected tool name 'test-tool', got %q", toolCall.ToolName)
+		}
+		if toolCall.Input != `{"value":"hello"}` {
+			t.Errorf("expected input '{\"value\":\"hello\"}', got %q", toolCall.Input)
+		}
+	})
+}
+
+func TestChatDoStream_ToolCallInOneChunk(t *testing.T) {
+	t.Run("should stream tool call that is sent in one chunk", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_O17Uplv4lJvD6DVdIvFFeRMw\",\"type\":\"function\",\"function\":{\"name\":\"test-tool\",\"arguments\":\"{\\\"value\\\":\\\"Sparkle Day\\\"}\"}}]},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"tool_calls\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[],\"usage\":{\"prompt_tokens\":53,\"completion_tokens\":17,\"total_tokens\":70}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		var toolStart *languagemodel.StreamPartToolInputStart
+		var toolCall *languagemodel.ToolCall
+		var toolDeltas []string
+		for _, p := range parts {
+			if ts, ok := p.(languagemodel.StreamPartToolInputStart); ok {
+				toolStart = &ts
+			}
+			if tc, ok := p.(languagemodel.ToolCall); ok {
+				toolCall = &tc
+			}
+			if td, ok := p.(languagemodel.StreamPartToolInputDelta); ok {
+				toolDeltas = append(toolDeltas, td.Delta)
+			}
+		}
+
+		if toolStart == nil {
+			t.Fatal("expected tool input start")
+		}
+		if toolStart.ToolName != "test-tool" {
+			t.Errorf("expected tool name 'test-tool', got %q", toolStart.ToolName)
+		}
+
+		if toolCall == nil {
+			t.Fatal("expected tool call")
+		}
+		if toolCall.Input != `{"value":"Sparkle Day"}` {
+			t.Errorf("expected input '{\"value\":\"Sparkle Day\"}', got %q", toolCall.Input)
+		}
+
+		// All arguments should come in a single delta since the whole call is in one chunk
+		if len(toolDeltas) != 1 {
+			t.Errorf("expected 1 tool input delta, got %d", len(toolDeltas))
+		}
+	})
+}
+
+func TestChatDoStream_ToolCallArgsInFirstChunk(t *testing.T) {
+	t.Run("should stream tool call deltas when arguments are in the first chunk", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_O17\",\"type\":\"function\",\"function\":{\"name\":\"test-tool\",\"arguments\":\"{\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"value\"}}]},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\":\\\"test\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"tool_calls\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1711357598,\"model\":\"gpt-3.5-turbo-0125\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[],\"usage\":{\"prompt_tokens\":53,\"completion_tokens\":17,\"total_tokens\":70}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		var toolCall *languagemodel.ToolCall
+		var toolDeltas []string
+		for _, p := range parts {
+			if tc, ok := p.(languagemodel.ToolCall); ok {
+				toolCall = &tc
+			}
+			if td, ok := p.(languagemodel.StreamPartToolInputDelta); ok {
+				toolDeltas = append(toolDeltas, td.Delta)
+			}
+		}
+
+		if toolCall == nil {
+			t.Fatal("expected tool call")
+		}
+		if toolCall.Input != `{"value":"test"}` {
+			t.Errorf("expected input '{\"value\":\"test\"}', got %q", toolCall.Input)
+		}
+
+		// First delta should contain the initial arguments from the first chunk
+		if len(toolDeltas) < 2 {
+			t.Errorf("expected at least 2 tool input deltas, got %d", len(toolDeltas))
+		}
+	})
+}
+
+func TestChatDoStream_DuplicateToolCallPrevention(t *testing.T) {
+	t.Run("should not duplicate tool calls with empty chunk after completion", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":226,\"completion_tokens\":0}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"id\":\"tool-call-001\",\"type\":\"function\",\"index\":0,\"function\":{\"name\":\"searchGoogle\"}}]},\"logprobs\":null,\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":233,\"completion_tokens\":7}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"query\\\": \\\"\"}}]},\"logprobs\":null,\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":241,\"completion_tokens\":15}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"latest news on ai\\\"\"}}]},\"logprobs\":null,\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":245,\"completion_tokens\":19}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]},\"logprobs\":null,\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":245,\"completion_tokens\":19}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\"}}]},\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"stop_reason\":128008}],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":246,\"completion_tokens\":20}}\n\n",
+			"data: {\"id\":\"chat-001\",\"object\":\"chat.completion.chunk\",\"created\":1733162241,\"model\":\"meta/llama-3.1-8b-instruct:fp8\",\"choices\":[],\"usage\":{\"prompt_tokens\":226,\"total_tokens\":246,\"completion_tokens\":20}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		// Count tool calls - should only be one despite empty chunk
+		toolCallCount := 0
+		for _, p := range parts {
+			if _, ok := p.(languagemodel.ToolCall); ok {
+				toolCallCount++
+			}
+		}
+		if toolCallCount != 1 {
+			t.Errorf("expected exactly 1 tool call, got %d", toolCallCount)
+		}
+
+		// Verify the tool call has correct input
+		for _, p := range parts {
+			if tc, ok := p.(languagemodel.ToolCall); ok {
+				if tc.ToolName != "searchGoogle" {
+					t.Errorf("expected tool name 'searchGoogle', got %q", tc.ToolName)
+				}
+				if tc.Input != `{"query": "latest news on ai"}` {
+					t.Errorf("expected input '{\"query\": \"latest news on ai\"}', got %q", tc.Input)
+				}
+			}
+		}
+	})
+}
+
+func TestChatDoStream_ReasoningModelStreaming(t *testing.T) {
+	t.Run("should stream text delta for reasoning models", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":1,\"delta\":{\"content\":\"Hello, World!\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\",\"logprobs\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"total_tokens\":244,\"completion_tokens\":227}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		var textContent string
+		for _, p := range parts {
+			if td, ok := p.(languagemodel.StreamPartTextDelta); ok {
+				textContent += td.Delta
+			}
+		}
+		if textContent != "Hello, World!" {
+			t.Errorf("expected 'Hello, World!', got %q", textContent)
+		}
+
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.FinishReason.Unified != "stop" {
+					t.Errorf("expected finish reason 'stop', got %q", f.FinishReason.Unified)
+				}
+			}
+		}
+	})
+
+	t.Run("should send reasoning tokens in streaming", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":1,\"delta\":{\"content\":\"Hello, World!\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":null,\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\",\"logprobs\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"o4-mini\",\"system_fingerprint\":\"fp_3bc1b5746c\",\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":20,\"total_tokens\":35,\"completion_tokens_details\":{\"reasoning_tokens\":10}}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.Usage.OutputTokens.Reasoning == nil || *f.Usage.OutputTokens.Reasoning != 10 {
+					t.Errorf("expected reasoning tokens 10, got %v", f.Usage.OutputTokens.Reasoning)
+				}
+				if f.Usage.OutputTokens.Total == nil || *f.Usage.OutputTokens.Total != 20 {
+					t.Errorf("expected total output tokens 20, got %v", f.Usage.OutputTokens.Total)
+				}
+				if f.Usage.OutputTokens.Text == nil || *f.Usage.OutputTokens.Text != 10 {
+					t.Errorf("expected text tokens 10, got %v", f.Usage.OutputTokens.Text)
+				}
+			}
+		}
+	})
+}
+
+func TestChatDoStream_CachedTokens(t *testing.T) {
+	t.Run("should return cached tokens in streaming providerMetadata", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25,\"prompt_tokens_details\":{\"cached_tokens\":10}}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.Usage.InputTokens.CacheRead == nil || *f.Usage.InputTokens.CacheRead != 10 {
+					t.Errorf("expected cached tokens 10, got %v", f.Usage.InputTokens.CacheRead)
+				}
+				if f.Usage.InputTokens.Total == nil || *f.Usage.InputTokens.Total != 20 {
+					t.Errorf("expected total input tokens 20, got %v", f.Usage.InputTokens.Total)
+				}
+			}
+		}
+	})
+}
+
+func TestChatDoStream_PredictionTokens(t *testing.T) {
+	t.Run("should return prediction tokens in streaming providerMetadata", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-3.5-turbo\",\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":15,\"total_tokens\":35,\"completion_tokens_details\":{\"accepted_prediction_tokens\":5,\"rejected_prediction_tokens\":3}}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		for _, p := range parts {
+			if f, ok := p.(languagemodel.StreamPartFinish); ok {
+				if f.ProviderMetadata == nil {
+					t.Fatal("expected non-nil providerMetadata")
+				}
+				metaMap, ok := f.ProviderMetadata["openai"]
+				if !ok {
+					t.Fatal("expected openai key in providerMetadata")
+				}
+				// Check for accepted/rejected prediction tokens
+				if v, exists := metaMap["acceptedPredictionTokens"]; exists {
+					if fmt.Sprintf("%v", v) != "5" {
+						t.Errorf("expected acceptedPredictionTokens 5, got %v", v)
+					}
+				}
+				if v, exists := metaMap["rejectedPredictionTokens"]; exists {
+					if fmt.Sprintf("%v", v) != "3" {
+						t.Errorf("expected rejectedPredictionTokens 3, got %v", v)
+					}
+				}
+			}
+		}
+	})
+}
+
+func TestChatDoGenerate_UnknownFinishReason(t *testing.T) {
+	t.Run("should support unknown finish reason", func(t *testing.T) {
+		fixture := chatTextFixture()
+		choices := fixture["choices"].([]any)
+		choice := choices[0].(map[string]any)
+		choice["finish_reason"] = "custom_reason"
+
+		server, _ := createJSONTestServer(fixture, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.FinishReason.Unified != languagemodel.FinishReasonOther {
+			t.Errorf("expected unified finish reason 'other', got %q", result.FinishReason.Unified)
+		}
+		raw := "custom_reason"
+		if result.FinishReason.Raw == nil || *result.FinishReason.Raw != raw {
+			t.Errorf("expected raw finish reason 'custom_reason', got %v", result.FinishReason.Raw)
+		}
+	})
+}
+
+func TestChatDoGenerate_PartialUsage(t *testing.T) {
+	t.Run("should support partial usage", func(t *testing.T) {
+		fixture := map[string]any{
+			"id":      "chatcmpl-123",
+			"object":  "chat.completion",
+			"created": float64(1702657020),
+			"model":   "gpt-3.5-turbo-0613",
+			"choices": []any{
+				map[string]any{
+					"index":         float64(0),
+					"message":       map[string]any{"role": "assistant", "content": "Hello, World!"},
+					"finish_reason": "stop",
+				},
+			},
+			"usage": map[string]any{
+				"prompt_tokens":     float64(20),
+				"total_tokens":      float64(25),
+				"completion_tokens": float64(5),
+			},
+		}
+
+		server, _ := createJSONTestServer(fixture, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Usage.InputTokens.Total == nil || *result.Usage.InputTokens.Total != 20 {
+			t.Errorf("expected input tokens 20, got %v", result.Usage.InputTokens.Total)
+		}
+		if result.Usage.OutputTokens.Total == nil || *result.Usage.OutputTokens.Total != 5 {
+			t.Errorf("expected output tokens 5, got %v", result.Usage.OutputTokens.Total)
+		}
+	})
+}
+
+func TestChatDoGenerate_TextVerbosity(t *testing.T) {
+	t.Run("should pass textVerbosity setting from provider options", func(t *testing.T) {
+		server, capture := createJSONTestServer(chatTextFixture(), nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		_, err := model.DoGenerate(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			ProviderOptions: shared.ProviderOptions{
+				"openai": map[string]any{
+					"textVerbosity": "concise",
+				},
+			},
+			Ctx: context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		body := capture.BodyJSON()
+		if body["verbosity"] != "concise" {
+			t.Errorf("expected verbosity 'concise', got %v", body["verbosity"])
+		}
+	})
+}
+
+func TestChatDoStream_ModelRouterModelId(t *testing.T) {
+	t.Run("should set modelId for model-router request", func(t *testing.T) {
+		chunks := []string{
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-4o-2024-08-06\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-4o-2024-08-06\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+			"data: {\"id\":\"chatcmpl-123\",\"object\":\"chat.completion.chunk\",\"created\":1702657020,\"model\":\"gpt-4o-2024-08-06\",\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"total_tokens\":244,\"completion_tokens\":227}}\n\n",
+			"data: [DONE]\n\n",
+		}
+
+		server, _ := createSSETestServer(chunks, nil)
+		defer server.Close()
+		model := createChatModel(server.URL)
+
+		result, err := model.DoStream(languagemodel.CallOptions{
+			Prompt: testPrompt,
+			Ctx:    context.Background(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		parts := collectStreamParts(result.Stream)
+
+		for _, p := range parts {
+			if meta, ok := p.(languagemodel.StreamPartResponseMetadata); ok {
+				if meta.ModelID == nil || *meta.ModelID != "gpt-4o-2024-08-06" {
+					t.Errorf("expected modelId 'gpt-4o-2024-08-06', got %v", meta.ModelID)
+				}
+			}
 		}
 	})
 }

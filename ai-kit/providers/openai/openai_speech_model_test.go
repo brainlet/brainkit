@@ -275,3 +275,47 @@ func TestSpeechDoGenerate_DefaultVoice(t *testing.T) {
 		}
 	})
 }
+
+func TestSpeechDoGenerate_AudioFormats(t *testing.T) {
+	formats := []struct {
+		format      string
+		contentType string
+	}{
+		{"mp3", "audio/mp3"},
+		{"opus", "audio/opus"},
+		{"aac", "audio/aac"},
+		{"flac", "audio/flac"},
+		{"wav", "audio/wav"},
+		{"pcm", "audio/pcm"},
+	}
+
+	for _, f := range formats {
+		t.Run("should handle "+f.format+" audio format", func(t *testing.T) {
+			audioData := []byte("fake-audio-data-" + f.format)
+			server, capture := createBinaryTestServer(audioData, map[string]string{
+				"Content-Type": f.contentType,
+			})
+			defer server.Close()
+			model := createSpeechTestModel(server.URL)
+
+			outputFormat := f.format
+			result, err := model.DoGenerate(speechmodel.CallOptions{
+				Text:         "Hello from the AI SDK!",
+				OutputFormat: &outputFormat,
+				Ctx:          context.Background(),
+			})
+			if err != nil {
+				t.Fatalf("unexpected error for format %s: %v", f.format, err)
+			}
+
+			if result.Audio == nil {
+				t.Errorf("expected non-nil audio data for format %s", f.format)
+			}
+
+			body := capture.BodyJSON()
+			if body["response_format"] != f.format {
+				t.Errorf("expected response_format '%s', got %v", f.format, body["response_format"])
+			}
+		})
+	}
+}
