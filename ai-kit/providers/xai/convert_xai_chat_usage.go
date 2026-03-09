@@ -91,6 +91,32 @@ func mapToJSONObject(v interface{}) map[string]interface{} {
 			}
 			result["completion_tokens_details"] = details
 		}
+	case XaiResponsesUsage:
+		result["input_tokens"] = u.InputTokens
+		result["output_tokens"] = u.OutputTokens
+		if u.TotalTokens != nil {
+			result["total_tokens"] = *u.TotalTokens
+		}
+		if u.InputTokensDetails != nil {
+			details := make(map[string]interface{})
+			if u.InputTokensDetails.CachedTokens != nil {
+				details["cached_tokens"] = *u.InputTokensDetails.CachedTokens
+			}
+			result["input_tokens_details"] = details
+		}
+		if u.OutputTokensDetails != nil {
+			details := make(map[string]interface{})
+			if u.OutputTokensDetails.ReasoningTokens != nil {
+				details["reasoning_tokens"] = *u.OutputTokensDetails.ReasoningTokens
+			}
+			result["output_tokens_details"] = details
+		}
+		if u.NumSourcesUsed != nil {
+			result["num_sources_used"] = *u.NumSourcesUsed
+		}
+		if u.NumServerSideToolsUsed != nil {
+			result["num_server_side_tools_used"] = *u.NumServerSideToolsUsed
+		}
 	}
 	return result
 }

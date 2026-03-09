@@ -121,7 +121,22 @@ type xaiStreamError struct {
 }
 
 // xaiChatChunkSchema is the schema for streaming chunk validation.
-var xaiChatChunkSchema = &providerutils.Schema[xaiChatChunk]{}
+var xaiChatChunkSchema = &providerutils.Schema[xaiChatChunk]{
+	Validate: func(value interface{}) (*providerutils.ValidationResult[xaiChatChunk], error) {
+		b, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		var chunk xaiChatChunk
+		if err := json.Unmarshal(b, &chunk); err != nil {
+			return nil, err
+		}
+		return &providerutils.ValidationResult[xaiChatChunk]{
+			Success: true,
+			Value:   chunk,
+		}, nil
+	},
+}
 
 // xaiStreamErrorSchema is the schema for stream error validation.
 var xaiStreamErrorSchema = &providerutils.Schema[xaiStreamError]{}

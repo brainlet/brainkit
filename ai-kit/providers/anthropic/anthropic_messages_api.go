@@ -1,6 +1,12 @@
 // Ported from: packages/anthropic/src/anthropic-messages-api.ts
 package anthropic
 
+import (
+	"encoding/json"
+
+	"github.com/brainlet/brainkit/ai-kit/providerutils"
+)
+
 // AnthropicMessagesPrompt represents the prompt structure for the Anthropic Messages API.
 type AnthropicMessagesPrompt struct {
 	System   []AnthropicTextContent `json:"system,omitempty"`
@@ -285,6 +291,30 @@ type AnthropicMessagesChunk struct {
 
 	// For usage events
 	Usage *AnthropicMessagesUsage `json:"usage,omitempty"`
+}
+
+// anthropicMessagesChunkSchema is the schema for parsing streaming chunks.
+var anthropicMessagesChunkSchema = &providerutils.Schema[AnthropicMessagesChunk]{
+	Validate: func(value interface{}) (*providerutils.ValidationResult[AnthropicMessagesChunk], error) {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return &providerutils.ValidationResult[AnthropicMessagesChunk]{
+				Success: false,
+				Error:   err,
+			}, nil
+		}
+		var chunk AnthropicMessagesChunk
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			return &providerutils.ValidationResult[AnthropicMessagesChunk]{
+				Success: false,
+				Error:   err,
+			}, nil
+		}
+		return &providerutils.ValidationResult[AnthropicMessagesChunk]{
+			Success: true,
+			Value:   chunk,
+		}, nil
+	},
 }
 
 // AnthropicCitation represents a citation from the response.

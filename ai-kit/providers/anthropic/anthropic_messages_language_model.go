@@ -1179,7 +1179,7 @@ func (m *AnthropicMessagesLanguageModel) DoStream(options languagemodel.CallOpti
 		Headers: m.getHeaders(prepared.betas, options.Headers),
 		Body:    m.transformRequestBody(prepared.args, prepared.betas),
 		FailedResponseHandler:     wrapErrorResponseHandler(anthropicFailedResponseHandler),
-		SuccessfulResponseHandler: providerutils.CreateEventSourceResponseHandler(&providerutils.Schema[AnthropicMessagesChunk]{}),
+		SuccessfulResponseHandler: providerutils.CreateEventSourceResponseHandler(anthropicMessagesChunkSchema),
 		Ctx:   ctx,
 		Fetch: m.config.Fetch,
 	})

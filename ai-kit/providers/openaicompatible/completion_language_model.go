@@ -495,10 +495,12 @@ func newCompletionChunkSchema(errorSchema *providerutils.Schema[ErrorData]) *pro
 				}, nil
 			}
 
-			// First try parsing as error
+			// First try parsing as error — only match if the JSON actually
+			// contains an "error" key (the schema unmarshals any JSON
+			// successfully, so we need a structural check).
 			if errorSchema != nil {
 				errorResult, _ := errorSchema.Validate(value)
-				if errorResult != nil && errorResult.Success {
+				if errorResult != nil && errorResult.Success && errorResult.Value.Error.Message != "" {
 					errMsg := errorResult.Value.Error.Message
 					return &providerutils.ValidationResult[completionChunk]{
 						Success: true,

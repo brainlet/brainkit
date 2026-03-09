@@ -1,7 +1,11 @@
 // Ported from: packages/xai/src/responses/xai-responses-api.ts
 package xai
 
-import "github.com/brainlet/brainkit/ai-kit/providerutils"
+import (
+	"encoding/json"
+
+	"github.com/brainlet/brainkit/ai-kit/providerutils"
+)
 
 // --- Input types ---
 
@@ -204,7 +208,22 @@ type XaiResponsesChunk struct {
 }
 
 // xaiResponsesChunkSchema is the schema for streaming chunk validation.
-var xaiResponsesChunkSchema = &providerutils.Schema[XaiResponsesChunk]{}
+var xaiResponsesChunkSchema = &providerutils.Schema[XaiResponsesChunk]{
+	Validate: func(value interface{}) (*providerutils.ValidationResult[XaiResponsesChunk], error) {
+		b, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		var chunk XaiResponsesChunk
+		if err := json.Unmarshal(b, &chunk); err != nil {
+			return nil, err
+		}
+		return &providerutils.ValidationResult[XaiResponsesChunk]{
+			Success: true,
+			Value:   chunk,
+		}, nil
+	},
+}
 
 // XaiResponsesIncludeValue represents values for the include parameter.
 type XaiResponsesIncludeValue = string

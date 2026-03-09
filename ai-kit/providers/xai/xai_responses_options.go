@@ -26,7 +26,42 @@ type XaiLanguageModelResponsesOptions struct {
 }
 
 // xaiLanguageModelResponsesOptionsSchema is the schema for responses options.
-var xaiLanguageModelResponsesOptionsSchema = &providerutils.Schema[XaiLanguageModelResponsesOptions]{}
+var xaiLanguageModelResponsesOptionsSchema = &providerutils.Schema[XaiLanguageModelResponsesOptions]{
+	Validate: func(value interface{}) (*providerutils.ValidationResult[XaiLanguageModelResponsesOptions], error) {
+		m, ok := value.(map[string]interface{})
+		if !ok {
+			return &providerutils.ValidationResult[XaiLanguageModelResponsesOptions]{Success: false}, nil
+		}
+
+		var opts XaiLanguageModelResponsesOptions
+
+		if v, ok := m["reasoningEffort"].(string); ok {
+			opts.ReasoningEffort = &v
+		}
+		if v, ok := m["logprobs"].(bool); ok {
+			opts.Logprobs = &v
+		}
+		if v, ok := m["topLogprobs"]; ok {
+			if n, ok := toInt(v); ok {
+				opts.TopLogprobs = &n
+			}
+		}
+		if v, ok := m["store"].(bool); ok {
+			opts.Store = &v
+		}
+		if v, ok := m["previousResponseId"].(string); ok {
+			opts.PreviousResponseId = &v
+		}
+		if v, ok := m["include"]; ok {
+			opts.Include = toStringSlice(v)
+		}
+
+		return &providerutils.ValidationResult[XaiLanguageModelResponsesOptions]{
+			Success: true,
+			Value:   opts,
+		}, nil
+	},
+}
 
 // XaiResponsesIncludeOptions is the type for the include parameter.
 type XaiResponsesIncludeOptions = []string

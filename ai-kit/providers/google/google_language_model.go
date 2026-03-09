@@ -415,7 +415,7 @@ func (m *GoogleLanguageModel) DoStream(options languagemodel.CallOptions) (langu
 		Headers:                   mergedHeaders,
 		Body:                      callArgs.Args,
 		FailedResponseHandler:     GoogleFailedResponseHandler,
-		SuccessfulResponseHandler: providerutils.CreateEventSourceResponseHandler[googleChunkResponse](nil),
+		SuccessfulResponseHandler: providerutils.CreateEventSourceResponseHandler(googleChunkResponseSchema),
 		Ctx:                       options.Ctx,
 		Fetch:                     m.config.Fetch,
 	})
@@ -727,6 +727,29 @@ type googleChunkResponse struct {
 	Candidates     []googleCandidate `json:"candidates,omitempty"`
 	UsageMetadata  map[string]any    `json:"usageMetadata,omitempty"`
 	PromptFeedback map[string]any    `json:"promptFeedback,omitempty"`
+}
+
+var googleChunkResponseSchema = &providerutils.Schema[googleChunkResponse]{
+	Validate: func(value interface{}) (*providerutils.ValidationResult[googleChunkResponse], error) {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return &providerutils.ValidationResult[googleChunkResponse]{
+				Success: false,
+				Error:   err,
+			}, nil
+		}
+		var result googleChunkResponse
+		if err := json.Unmarshal(data, &result); err != nil {
+			return &providerutils.ValidationResult[googleChunkResponse]{
+				Success: false,
+				Error:   err,
+			}, nil
+		}
+		return &providerutils.ValidationResult[googleChunkResponse]{
+			Success: true,
+			Value:   result,
+		}, nil
+	},
 }
 
 // --- Helper functions ---

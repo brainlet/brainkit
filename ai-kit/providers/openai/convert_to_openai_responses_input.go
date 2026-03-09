@@ -341,6 +341,13 @@ func ConvertToOpenAIResponsesInput(opts ConvertToOpenAIResponsesInputOptions) (*
 								if reasoningOpts.EncryptedContent != nil {
 									existing.EncryptedContent = reasoningOpts.EncryptedContent
 								}
+								// Update the copy already in the input slice
+								for idx, item := range input {
+									if r, ok := item.(OpenAIResponsesReasoning); ok && r.ID == reasoningID {
+										input[idx] = *existing
+										break
+									}
+								}
 							}
 						}
 					} else {
