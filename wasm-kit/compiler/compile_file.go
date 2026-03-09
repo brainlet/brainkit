@@ -254,12 +254,7 @@ func (c *Compiler) CompileEnum(enum *program.Enum) bool {
 	return true
 }
 
-// CompileStatement compiles a single statement.
-// Ported from: assemblyscript/src/compiler.ts compileStatement (lines 2234-2334).
-func (c *Compiler) CompileStatement(statement ast.Node) module.ExpressionRef {
-	// TODO: Implement statement compilation.
-	return c.Module().Nop()
-}
+// CompileStatement is now in compile_statement.go
 
 // typesToRefs converts a slice of types to a slice of TypeRefs.
 func typesToRefs(typs []*types.Type) []module.TypeRef {

@@ -33,6 +33,8 @@ type Compiler struct {
 	MemorySegments []*module.MemorySegment
 	// Map of already compiled static string segments.
 	StringSegments map[string]*module.MemorySegment
+	// Map of string segment pointer offsets for cache retrieval.
+	StringSegmentOffsets map[string]int64
 	// Set of static GC object offsets. tostack is unnecessary for them.
 	StaticGcObjectOffsets map[int32]map[int32]struct{}
 	// Function table being compiled. First elem is blank.
@@ -105,6 +107,7 @@ func NewCompiler(prog *program.Program) *Compiler {
 		CurrentType:           types.TypeVoid,
 		MemorySegments:        make([]*module.MemorySegment, 0),
 		StringSegments:        make(map[string]*module.MemorySegment),
+		StringSegmentOffsets:  make(map[string]int64),
 		StaticGcObjectOffsets: make(map[int32]map[int32]struct{}),
 		FunctionTable:         make([]*program.Function, 0),
 		LazyFunctions:         make(map[*program.Function]struct{}),

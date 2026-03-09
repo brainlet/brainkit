@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/flow"
 	"github.com/brainlet/brainkit/wasm-kit/types"
+	"github.com/brainlet/brainkit/wasm-kit/util"
 )
 
 // ReportMode indicates whether errors are reported or swallowed.
@@ -653,6 +654,180 @@ func (r *Resolver) ResolveFunctionInclTypeArguments(
 	return r.ResolveFunction(prototype, resolvedTypeArguments, ctxTypes, reportMode)
 }
 
+// MaybeInferCall resolves a function prototype from a call expression, handling
+// explicit type arguments, type inference, and non-generic cases.
+// Ported from: assemblyscript/src/resolver.ts maybeInferCall (lines 573-624).
+func (r *Resolver) MaybeInferCall(
+	node *ast.CallExpression,
+	prototype *FunctionPrototype,
+	ctxFlow *flow.Flow,
+	reportMode ReportMode,
+) *Function {
+	typeArguments := node.TypeArguments
+
+	// resolve generic call if type arguments have been provided
+	if typeArguments != nil {
+		if !prototype.Is(common.CommonFlagsGeneric) {
+			if reportMode == ReportModeReport {
+				r.program.Error(
+					diagnostics.DiagnosticCodeType0IsNotGeneric,
+					node.Expression.GetRange(),
+					prototype.GetInternalName(), "", "",
+				)
+			}
+			return nil
+		}
+		return r.ResolveFunctionInclTypeArguments(
+			prototype,
+			typeArguments,
+			ctxFlow.SourceFunction().(Element),
+			util.CloneMap(ctxFlow.ContextualTypeArguments()),
+			node,
+			reportMode,
+		)
+	}
+
+	// infer generic call if type arguments have been omitted
+	if prototype.Is(common.CommonFlagsGeneric) {
+		resolvedTypeArguments := r.InferGenericTypeArguments(
+			node,
+			prototype,
+			prototype.TypeParameterNodes(),
+			ctxFlow,
+			reportMode,
+		)
+		if resolvedTypeArguments == nil {
+			return nil
+		}
+		return r.ResolveFunction(
+			prototype,
+			resolvedTypeArguments,
+			util.CloneMap(ctxFlow.ContextualTypeArguments()),
+			reportMode,
+		)
+	}
+
+	// otherwise resolve the non-generic call as usual
+	return r.ResolveFunction(prototype, nil, make(map[string]*types.Type), reportMode)
+}
+
+// InferGenericTypeArguments attempts to infer generic type arguments from a call expression.
+// Ported from: assemblyscript/src/resolver.ts inferGenericTypeArguments (lines 626-780).
+func (r *Resolver) InferGenericTypeArguments(
+	node ast.Node,
+	prototype *FunctionPrototype,
+	typeParameterNodes []*ast.TypeParameterNode,
+	ctxFlow *flow.Flow,
+	reportMode ReportMode,
+) []*types.Type {
+	if typeParameterNodes == nil {
+		return nil
+	}
+
+	contextualTypeArguments := util.CloneMap(ctxFlow.ContextualTypeArguments())
+
+	// fill up contextual types with auto for each generic component
+	numTypeParameters := len(typeParameterNodes)
+	for i := 0; i < numTypeParameters; i++ {
+		name := typeParameterNodes[i].Name.Text
+		contextualTypeArguments[name] = types.TypeAuto
+	}
+
+	parameterNodes := prototype.FunctionTypeNode().Parameters
+	numParameters := len(parameterNodes)
+
+	// Get argument expressions from the call
+	var argumentNodes []ast.Node
+	if callExpr, ok := node.(*ast.CallExpression); ok {
+		argumentNodes = callExpr.Args
+	}
+	numArguments := len(argumentNodes)
+
+	// For each parameter, try to resolve its type with the contextual type arguments
+	// and if it resolves to Auto, try to infer from the argument
+	for i := 0; i < numParameters; i++ {
+		if i >= numArguments {
+			break
+		}
+		paramType := r.ResolveType(
+			parameterNodes[i].Type,
+			ctxFlow,
+			prototype,
+			contextualTypeArguments,
+			ReportModeSwallow,
+		)
+		if paramType != nil && paramType != types.TypeAuto {
+			continue
+		}
+		// Try to infer from the argument expression
+		argType := r.ResolveExpression(
+			argumentNodes[i],
+			ctxFlow,
+			types.TypeAuto,
+			ReportModeSwallow,
+		)
+		if argType == nil {
+			continue
+		}
+		// Match the inferred type against type parameter names
+		paramTypeNode := parameterNodes[i].Type
+		r.matchTypeArguments(paramTypeNode, argType, contextualTypeArguments)
+	}
+
+	// Collect resolved type arguments
+	result := make([]*types.Type, numTypeParameters)
+	for i := 0; i < numTypeParameters; i++ {
+		name := typeParameterNodes[i].Name.Text
+		resolved := contextualTypeArguments[name]
+		if resolved == nil || resolved == types.TypeAuto {
+			// Check for default type parameter
+			defaultType := typeParameterNodes[i].DefaultType
+			if defaultType != nil {
+				resolved = r.ResolveType(
+					defaultType,
+					ctxFlow,
+					prototype,
+					contextualTypeArguments,
+					reportMode,
+				)
+			}
+			if resolved == nil || resolved == types.TypeAuto {
+				if reportMode == ReportModeReport {
+					r.program.Error(
+						diagnostics.DiagnosticCodeTypeArgumentExpected,
+						node.GetRange(),
+						"", "", "",
+					)
+				}
+				return nil
+			}
+		}
+		result[i] = resolved
+	}
+	return result
+}
+
+// matchTypeArguments matches inferred argument types against type parameter names
+// to fill in contextual type arguments.
+func (r *Resolver) matchTypeArguments(
+	typeNode ast.Node,
+	argType *types.Type,
+	contextualTypeArguments map[string]*types.Type,
+) {
+	if typeNode == nil || argType == nil {
+		return
+	}
+	// If this is a named type that matches a type parameter, set it
+	if typeNode.GetKind() == ast.NodeKindNamedType {
+		namedType := typeNode.(*ast.NamedTypeNode)
+		name := namedType.Name.Identifier.Text
+		if existing, ok := contextualTypeArguments[name]; ok && existing == types.TypeAuto {
+			contextualTypeArguments[name] = argType
+		}
+	}
+	// TODO: Handle more complex type node structures (arrays, generics, etc.)
+}
+
 // =========================================================================
 // Class resolution
 // =========================================================================
@@ -944,25 +1119,511 @@ func (r *Resolver) ResolveProperty(
 // =========================================================================
 
 // LookupExpression looks up the program element an expression refers to.
+// Ported from: assemblyscript/src/resolver.ts lookupExpression (lines 1950-2150).
 func (r *Resolver) LookupExpression(
 	node ast.Node,
 	ctxFlow *flow.Flow,
 	ctxType *types.Type,
 	reportMode ReportMode,
 ) Element {
-	// Stub: will be implemented in Phase 4 (compiler)
+	if node == nil {
+		return nil
+	}
+	r.CurrentThisExpression = nil
+	r.CurrentElementExpression = nil
+
+	switch node.GetKind() {
+	case ast.NodeKindIdentifier:
+		return r.lookupIdentifierExpression(node.(*ast.IdentifierExpression), ctxFlow, reportMode)
+
+	case ast.NodeKindPropertyAccess:
+		return r.lookupPropertyAccessExpression(node.(*ast.PropertyAccessExpression), ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindElementAccess:
+		return r.lookupElementAccessExpression(node.(*ast.ElementAccessExpression), ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindParenthesized:
+		return r.LookupExpression(node.(*ast.ParenthesizedExpression).Expression, ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindCall:
+		// For call expressions, we need to resolve the callee
+		callExpr := node.(*ast.CallExpression)
+		return r.LookupExpression(callExpr.Expression, ctxFlow, ctxType, reportMode)
+	}
+
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeExpressionDoesNotCompileToAValueAtRuntime,
+			node.GetRange(),
+			"", "", "",
+		)
+	}
+	return nil
+}
+
+// lookupIdentifierExpression resolves an identifier to its program element.
+func (r *Resolver) lookupIdentifierExpression(
+	node *ast.IdentifierExpression,
+	ctxFlow *flow.Flow,
+	reportMode ReportMode,
+) Element {
+	name := node.Text
+
+	// Check special identifiers
+	switch node.GetKind() {
+	case ast.NodeKindThis:
+		// "this" refers to the class context
+		if ctxFlow != nil {
+			sourceFunc := ctxFlow.SourceFunction()
+			parent := sourceFunc.(Element).GetParent()
+			if parent != nil && parent.GetElementKind() == ElementKindClass {
+				return parent
+			}
+		}
+		if reportMode == ReportModeReport {
+			r.program.Error(
+				diagnostics.DiagnosticCode0KeywordCannotBeUsedHere,
+				node.GetRange(),
+				"this", "", "",
+			)
+		}
+		return nil
+	case ast.NodeKindSuper:
+		// "super" refers to the base class
+		if ctxFlow != nil {
+			sourceFunc := ctxFlow.SourceFunction()
+			parent := sourceFunc.(Element).GetParent()
+			if parent != nil && parent.GetElementKind() == ElementKindClass {
+				classInstance := parent.(*Class)
+				if classInstance.Base != nil {
+					return classInstance.Base
+				}
+			}
+		}
+		if reportMode == ReportModeReport {
+			r.program.Error(
+				diagnostics.DiagnosticCodeSuperCanOnlyBeReferencedInADerivedClass,
+				node.GetRange(),
+				"", "", "",
+			)
+		}
+		return nil
+	}
+
+	// Normal identifier: look up through flow scope chain
+	if ctxFlow != nil {
+		// First check scoped locals — these don't return as Elements (they're FlowLocalRef).
+		// The compiler handles locals directly; LookupExpression returns program Elements.
+		// So skip locals and look up in program scope.
+		elemRef := ctxFlow.TargetFunction.FlowLookup(name)
+		if elemRef != nil {
+			if elem, ok := elemRef.(Element); ok {
+				return elem
+			}
+		}
+	}
+
+	// Fall back to global program lookup
+	elem := r.program.Lookup(name)
+	if elem != nil {
+		return elem
+	}
+
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeCannotFindName0,
+			node.GetRange(),
+			name, "", "",
+		)
+	}
+	return nil
+}
+
+// lookupPropertyAccessExpression resolves a property access expression.
+func (r *Resolver) lookupPropertyAccessExpression(
+	node *ast.PropertyAccessExpression,
+	ctxFlow *flow.Flow,
+	ctxType *types.Type,
+	reportMode ReportMode,
+) Element {
+	propertyName := node.Property.Text
+	r.CurrentThisExpression = node.Expression
+
+	// For local variable property access (e.g., x.foo where x is a local),
+	// we need to resolve the TYPE of the expression, not just the element.
+	// First, try resolving as an element.
+	target := r.LookupExpression(node.Expression, ctxFlow, ctxType, ReportModeSwallow)
+
+	// If target is nil (e.g., local variable), resolve the expression type
+	// and look up the property on the type's class.
+	if target == nil {
+		exprType := r.ResolveExpression(node.Expression, ctxFlow, ctxType, reportMode)
+		if exprType != nil {
+			classRef := exprType.GetClassOrWrapper(r.program)
+			if classRef != nil {
+				if classInstance, ok := classRef.(*Class); ok {
+					if classInstance.Prototype.InstanceMembers != nil {
+						if member, mOk := classInstance.Prototype.InstanceMembers[propertyName]; mOk {
+							return member
+						}
+					}
+					// Also check static members
+					member := classInstance.Prototype.GetMember(propertyName)
+					if member != nil {
+						return member
+					}
+				}
+			}
+		}
+		if reportMode == ReportModeReport {
+			r.program.Error(
+				diagnostics.DiagnosticCodeProperty0DoesNotExistOnType1,
+				node.Property.GetRange(),
+				propertyName, "", "",
+			)
+		}
+		return nil
+	}
+
+	// Depending on the target kind, look up the property
+	switch target.GetElementKind() {
+	case ElementKindClass:
+		classInstance := target.(*Class)
+		// Look up in instance members first
+		if classInstance.Prototype.InstanceMembers != nil {
+			if member, ok := classInstance.Prototype.InstanceMembers[propertyName]; ok {
+				return member
+			}
+		}
+		// Look up in members (static members on the prototype)
+		member := classInstance.Prototype.Lookup(propertyName, false)
+		if member != nil {
+			return member
+		}
+
+	case ElementKindClassPrototype:
+		classPrototype := target.(*ClassPrototype)
+		// Static member access — look in the prototype's own members
+		member := classPrototype.GetMember(propertyName)
+		if member != nil {
+			return member
+		}
+		// Also check instance members
+		if classPrototype.InstanceMembers != nil {
+			if m, ok := classPrototype.InstanceMembers[propertyName]; ok {
+				return m
+			}
+		}
+
+	case ElementKindGlobal:
+		// Global might resolve to a class type, check its type
+		global := target.(*Global)
+		globalType := global.GetResolvedType()
+		if globalType != nil {
+			classRef := globalType.GetClassOrWrapper(r.program)
+			if classRef != nil {
+				if classInstance, ok := classRef.(*Class); ok {
+					if classInstance.Prototype.InstanceMembers != nil {
+						if member, mOk := classInstance.Prototype.InstanceMembers[propertyName]; mOk {
+							return member
+						}
+					}
+				}
+			}
+		}
+
+	case ElementKindNamespace:
+		ns := target.(*Namespace)
+		member := ns.Lookup(propertyName, false)
+		if member != nil {
+			return member
+		}
+
+	case ElementKindEnum:
+		enum := target.(*Enum)
+		member := enum.Lookup(propertyName, false)
+		if member != nil {
+			return member
+		}
+
+	case ElementKindPropertyPrototype:
+		// Resolved to a property prototype, try resolving and looking up on its type
+		pp := target.(*PropertyPrototype)
+		prop := r.ResolveProperty(pp, reportMode)
+		if prop != nil && prop.GetterInstance != nil {
+			returnType := prop.GetterInstance.Signature.ReturnType
+			if returnType != nil {
+				classRef := returnType.GetClassOrWrapper(r.program)
+				if classRef != nil {
+					if classInstance, ok := classRef.(*Class); ok {
+						if classInstance.Prototype.InstanceMembers != nil {
+							if member, mOk := classInstance.Prototype.InstanceMembers[propertyName]; mOk {
+								return member
+							}
+						}
+					}
+				}
+			}
+		}
+
+	case ElementKindProperty:
+		// Resolved property — look up on its return type
+		prop := target.(*Property)
+		if prop.GetterInstance != nil {
+			returnType := prop.GetterInstance.Signature.ReturnType
+			if returnType != nil {
+				classRef := returnType.GetClassOrWrapper(r.program)
+				if classRef != nil {
+					if classInstance, ok := classRef.(*Class); ok {
+						if classInstance.Prototype.InstanceMembers != nil {
+							if member, mOk := classInstance.Prototype.InstanceMembers[propertyName]; mOk {
+								return member
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeProperty0DoesNotExistOnType1,
+			node.Property.GetRange(),
+			propertyName, target.GetInternalName(), "",
+		)
+	}
+	return nil
+}
+
+// lookupElementAccessExpression resolves an element access expression.
+func (r *Resolver) lookupElementAccessExpression(
+	node *ast.ElementAccessExpression,
+	ctxFlow *flow.Flow,
+	ctxType *types.Type,
+	reportMode ReportMode,
+) Element {
+	r.CurrentThisExpression = node.Expression
+	r.CurrentElementExpression = node.ElementExpression
+
+	// Try resolving target as an element first
+	target := r.LookupExpression(node.Expression, ctxFlow, ctxType, ReportModeSwallow)
+
+	// If target is nil (e.g., local variable), resolve the type and find the class
+	if target == nil {
+		exprType := r.ResolveExpression(node.Expression, ctxFlow, ctxType, reportMode)
+		if exprType != nil {
+			classRef := exprType.GetClassOrWrapper(r.program)
+			if classRef != nil {
+				if classInstance, ok := classRef.(*Class); ok {
+					return classInstance
+				}
+			}
+		}
+		return nil
+	}
+
+	// For element access, we need to resolve to the class that has [] operator
+	switch target.GetElementKind() {
+	case ElementKindClass:
+		// The class itself — return it so the compiler can look up indexed operators
+		return target
+
+	case ElementKindGlobal:
+		// Check if the global's type is a class with [] operator
+		global := target.(*Global)
+		globalType := global.GetResolvedType()
+		if globalType != nil {
+			classRef := globalType.GetClassOrWrapper(r.program)
+			if classRef != nil {
+				if classInstance, ok := classRef.(*Class); ok {
+					return classInstance
+				}
+			}
+		}
+	}
+
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeNotImplemented0,
+			node.GetRange(),
+			"Element access on type", "", "",
+		)
+	}
 	return nil
 }
 
 // ResolveExpression resolves the type of an expression.
+// Ported from: assemblyscript/src/resolver.ts resolveExpression (lines 2270-2560).
 func (r *Resolver) ResolveExpression(
 	node ast.Node,
 	ctxFlow *flow.Flow,
 	ctxType *types.Type,
 	reportMode ReportMode,
 ) *types.Type {
-	// Stub: will be implemented in Phase 4 (compiler)
+	if node == nil {
+		return nil
+	}
+	switch node.GetKind() {
+	case ast.NodeKindIdentifier:
+		ident := node.(*ast.IdentifierExpression)
+		switch ident.GetKind() {
+		case ast.NodeKindTrue, ast.NodeKindFalse:
+			return types.TypeBool
+		case ast.NodeKindNull:
+			return ctxType
+		case ast.NodeKindThis:
+			if ctxFlow != nil {
+				sig := ctxFlow.TargetFunction.FlowSignature()
+				if sig.ThisType != nil {
+					return sig.ThisType
+				}
+			}
+			return nil
+		}
+		// Check scoped locals first (they have types but aren't program Elements)
+		if ctxFlow != nil {
+			local := ctxFlow.LookupLocal(ident.Text)
+			if local != nil {
+				return local.GetType()
+			}
+		}
+		// Regular identifier — look up and get type
+		element := r.lookupIdentifierExpression(ident, ctxFlow, reportMode)
+		if element != nil {
+			return r.GetTypeOfElement(element)
+		}
+		return nil
+
+	case ast.NodeKindPropertyAccess:
+		element := r.lookupPropertyAccessExpression(
+			node.(*ast.PropertyAccessExpression), ctxFlow, ctxType, reportMode,
+		)
+		if element != nil {
+			return r.GetTypeOfElement(element)
+		}
+		return nil
+
+	case ast.NodeKindElementAccess:
+		element := r.lookupElementAccessExpression(
+			node.(*ast.ElementAccessExpression), ctxFlow, ctxType, reportMode,
+		)
+		if element != nil {
+			return r.GetTypeOfElement(element)
+		}
+		return nil
+
+	case ast.NodeKindCall:
+		callExpr := node.(*ast.CallExpression)
+		element := r.LookupExpression(callExpr.Expression, ctxFlow, ctxType, reportMode)
+		if element != nil {
+			switch element.GetElementKind() {
+			case ElementKindFunction:
+				fn := element.(*Function)
+				return fn.Signature.ReturnType
+			case ElementKindFunctionPrototype:
+				fp := element.(*FunctionPrototype)
+				fn := r.ResolveFunction(fp, nil, nil, reportMode)
+				if fn != nil {
+					return fn.Signature.ReturnType
+				}
+			}
+		}
+		return nil
+
+	case ast.NodeKindLiteral:
+		return r.resolveLiteralType(node, ctxType)
+
+	case ast.NodeKindParenthesized:
+		return r.ResolveExpression(
+			node.(*ast.ParenthesizedExpression).Expression, ctxFlow, ctxType, reportMode,
+		)
+
+	case ast.NodeKindBinary:
+		binExpr := node.(*ast.BinaryExpression)
+		// Resolve based on left operand type (binary ops typically preserve left type)
+		return r.ResolveExpression(binExpr.Left, ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindUnaryPrefix:
+		unary := node.(*ast.UnaryPrefixExpression)
+		return r.ResolveExpression(unary.Operand, ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindUnaryPostfix:
+		return r.ResolveExpression(
+			node.(*ast.UnaryPostfixExpression).Operand, ctxFlow, ctxType, reportMode,
+		)
+
+	case ast.NodeKindTernary:
+		ternary := node.(*ast.TernaryExpression)
+		return r.ResolveExpression(ternary.IfThen, ctxFlow, ctxType, reportMode)
+
+	case ast.NodeKindNew:
+		newExpr := node.(*ast.NewExpression)
+		element := r.ResolveTypeName(newExpr.TypeName, ctxFlow, ctxFlow.TargetFunction.(Element), reportMode)
+		if element != nil && element.GetElementKind() == ElementKindClassPrototype {
+			classPrototype := element.(*ClassPrototype)
+			classInstance := r.ResolveClassInclTypeArguments(
+				classPrototype, newExpr.TypeArguments, ctxFlow,
+				ctxFlow.TargetFunction.(Element), nil, newExpr, reportMode,
+			)
+			if classInstance != nil {
+				return classInstance.GetResolvedType()
+			}
+		}
+		return nil
+
+	case ast.NodeKindAssertion:
+		assertion := node.(*ast.AssertionExpression)
+		if assertion.ToType != nil {
+			return r.ResolveType(
+				assertion.ToType, ctxFlow, ctxFlow.TargetFunction.(Element), nil, reportMode,
+			)
+		}
+		return r.ResolveExpression(assertion.Expression, ctxFlow, ctxType, reportMode)
+	}
+
+	// Default: try to resolve by context
+	if ctxType != nil && ctxType != types.TypeVoid {
+		return ctxType
+	}
 	return nil
+}
+
+// resolveLiteralType resolves the type of a literal expression.
+func (r *Resolver) resolveLiteralType(node ast.Node, ctxType *types.Type) *types.Type {
+	switch lit := node.(type) {
+	case *ast.IntegerLiteralExpression:
+		_ = lit
+		if ctxType != nil {
+			switch ctxType {
+			case types.TypeI32, types.TypeU8, types.TypeI8, types.TypeU16, types.TypeI16, types.TypeU32, types.TypeBool:
+				return types.TypeI32
+			case types.TypeI64, types.TypeU64:
+				return types.TypeI64
+			case types.TypeF32:
+				return types.TypeF32
+			case types.TypeF64:
+				return types.TypeF64
+			}
+		}
+		return types.TypeI32
+	case *ast.FloatLiteralExpression:
+		if ctxType == types.TypeF32 {
+			return types.TypeF32
+		}
+		return types.TypeF64
+	case *ast.StringLiteralExpression:
+		stringInstance := r.program.StringInstance()
+		if stringInstance != nil {
+			return stringInstance.GetResolvedType()
+		}
+		return nil
+	case *ast.ArrayLiteralExpression:
+		return ctxType
+	case *ast.ObjectLiteralExpression:
+		return ctxType
+	}
+	return ctxType
 }
 
 // GetTypeOfElement gets the concrete type of an element.

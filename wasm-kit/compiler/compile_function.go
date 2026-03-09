@@ -497,50 +497,221 @@ func lowerRequiresExportRuntime(typ *types.Type) bool {
 
 // --- Stub methods for compilation phases not yet ported ---
 
-// CompileStatements compiles a list of statements, appending to the given slice.
-// Ported from: assemblyscript/src/compiler.ts compileStatements (lines 2234-2260).
-func (c *Compiler) CompileStatements(statements []ast.Node, stmts []module.ExpressionRef) []module.ExpressionRef {
-	for _, stmt := range statements {
-		expr := c.CompileStatement(stmt)
-		if module.GetExpressionId(expr) != module.ExpressionIdNop {
-			stmts = append(stmts, expr)
-		}
-	}
-	return stmts
-}
-
-// CompileExpression compiles an expression.
-// Ported from: assemblyscript/src/compiler.ts compileExpression (lines 3431-3459).
-func (c *Compiler) CompileExpression(expression ast.Node, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
-	// TODO: Implement expression compilation.
-	return c.Module().Unreachable()
-}
+// CompileStatements is now in compile_statement.go
+// CompileExpression is now in compile_expression.go
 
 // makeBuiltinFieldGetter makes a built-in getter for a field property.
+// Creates a function that loads the field value from the object at the field's memory offset.
 // Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldGetter (lines 1874-1920).
 func (c *Compiler) makeBuiltinFieldGetter(property *program.Property) module.FunctionRef {
-	// TODO: Implement built-in field getter.
-	return 0
+	mod := c.Module()
+	getterInstance := property.GetterInstance
+	if getterInstance == nil {
+		return 0
+	}
+
+	fieldType := property.GetType()
+	if fieldType == nil {
+		return 0
+	}
+	fieldTypeRef := fieldType.ToRef()
+
+	// The getter takes `this` (i32/i64 pointer) and returns the field value.
+	// body: load(this + offset)
+	thisTypeRef := module.TypeRefI32
+	if c.Options().IsWasm64() {
+		thisTypeRef = module.TypeRefI64
+	}
+	offset := uint32(property.MemoryOffset)
+
+	memName := common.CommonNameDefaultMemory
+	var loadExpr module.ExpressionRef
+	switch fieldTypeRef {
+	case module.TypeRefI32:
+		loadExpr = mod.Load(4, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 4, memName)
+	case module.TypeRefI64:
+		loadExpr = mod.Load(8, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 8, memName)
+	case module.TypeRefF32:
+		loadExpr = mod.Load(4, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 4, memName)
+	case module.TypeRefF64:
+		loadExpr = mod.Load(8, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 8, memName)
+	default:
+		// For reference types, load as pointer
+		loadExpr = mod.Load(4, false, mod.LocalGet(0, thisTypeRef), thisTypeRef, offset, 4, memName)
+	}
+
+	return mod.AddFunction(
+		getterInstance.GetInternalName(),
+		getterInstance.Signature.ParamRefs(),
+		getterInstance.Signature.ResultRefs(),
+		nil,
+		loadExpr,
+	)
 }
 
 // makeBuiltinFieldSetter makes a built-in setter for a field property.
+// Creates a function that stores a value to the field at the field's memory offset.
 // Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldSetter (lines 1922-1960).
 func (c *Compiler) makeBuiltinFieldSetter(property *program.Property) module.FunctionRef {
-	// TODO: Implement built-in field setter.
-	return 0
+	mod := c.Module()
+	setterInstance := property.SetterInstance
+	if setterInstance == nil {
+		return 0
+	}
+
+	fieldType := property.GetType()
+	if fieldType == nil {
+		return 0
+	}
+	fieldTypeRef := fieldType.ToRef()
+
+	// The setter takes `this` (i32/i64 pointer) and the value, returns void.
+	// body: store(this + offset, value)
+	thisTypeRef := module.TypeRefI32
+	if c.Options().IsWasm64() {
+		thisTypeRef = module.TypeRefI64
+	}
+	offset := uint32(property.MemoryOffset)
+
+	memName := common.CommonNameDefaultMemory
+	var storeExpr module.ExpressionRef
+	switch fieldTypeRef {
+	case module.TypeRefI32:
+		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 4, memName)
+	case module.TypeRefI64:
+		storeExpr = mod.Store(8, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 8, memName)
+	case module.TypeRefF32:
+		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 4, memName)
+	case module.TypeRefF64:
+		storeExpr = mod.Store(8, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 8, memName)
+	default:
+		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), thisTypeRef, offset, 4, memName)
+	}
+
+	return mod.AddFunction(
+		setterInstance.GetInternalName(),
+		setterInstance.Signature.ParamRefs(),
+		setterInstance.Signature.ResultRefs(),
+		nil,
+		storeExpr,
+	)
 }
 
 // makeConditionalAllocation creates a conditional this allocation for constructors.
+// If `this` is null (not yet allocated by a super call), allocate the object.
 // Ported from: assemblyscript/src/compiler.ts makeConditionalAllocation (lines 9847-9882).
 func (c *Compiler) makeConditionalAllocation(classInstance *program.Class, thisLocalIndex int32) module.ExpressionRef {
-	// TODO: Implement conditional allocation.
-	return c.Module().Nop()
+	mod := c.Module()
+	thisTypeRef := module.TypeRefI32
+	if c.Options().IsWasm64() {
+		thisTypeRef = module.TypeRefI64
+	}
+
+	// if (!this) this = __new(size, id);
+	// The __new builtin allocates an object. For now, emit a call to __new.
+	size := int32(classInstance.NextMemoryOffset)
+	classId := int32(classInstance.Id())
+	allocExpr := mod.Call(
+		"~lib/rt/__new",
+		[]module.ExpressionRef{
+			mod.I32(size),
+			mod.I32(classId),
+		},
+		thisTypeRef,
+	)
+
+	return mod.If(
+		mod.Unary(module.UnaryOpEqzI32,
+			mod.LocalGet(thisLocalIndex, thisTypeRef),
+		),
+		mod.LocalSet(thisLocalIndex, allocExpr, false),
+		0,
+	)
 }
 
 // makeFieldInitializationInConstructor initializes fields in a constructor.
+// Compiles default field initializers and assigns them to `this`.
 // Ported from: assemblyscript/src/compiler.ts makeFieldInitializationInConstructor (lines 9884-9961).
 func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.Class, stmts *[]module.ExpressionRef) {
-	// TODO: Implement field initialization in constructor.
+	mod := c.Module()
+	thisTypeRef := module.TypeRefI32
+	if c.Options().IsWasm64() {
+		thisTypeRef = module.TypeRefI64
+	}
+	memName := common.CommonNameDefaultMemory
+
+	// Iterate instance members and initialize fields
+	members := classInstance.GetMembers()
+	if members == nil {
+		return
+	}
+
+	for _, member := range members {
+		if member.GetElementKind() != program.ElementKindPropertyPrototype {
+			continue
+		}
+		propProto := member.(*program.PropertyPrototype)
+		if !propProto.IsField() {
+			continue
+		}
+		propInstance := propProto.PropertyInstance
+		if propInstance == nil {
+			continue
+		}
+		if propInstance.Is(common.CommonFlagsStatic) {
+			continue
+		}
+
+		fieldType := propInstance.GetType()
+		if fieldType == nil {
+			continue
+		}
+		offset := uint32(propInstance.MemoryOffset)
+
+		// Check for initializer
+		initNode := propInstance.InitializerNode()
+		var initExpr module.ExpressionRef
+		if initNode != nil {
+			initExpr = c.CompileExpression(initNode, fieldType, ConstraintsConvImplicit)
+		} else {
+			initExpr = c.makeZeroOfType(fieldType)
+		}
+
+		// Store the value: store(this, value, offset)
+		fieldTypeRef := fieldType.ToRef()
+		var bytes uint32
+		switch fieldTypeRef {
+		case module.TypeRefI64, module.TypeRefF64:
+			bytes = 8
+		default:
+			bytes = 4
+		}
+		thisExpr := mod.LocalGet(0, thisTypeRef)
+		*stmts = append(*stmts,
+			mod.Store(bytes, thisExpr, initExpr, fieldTypeRef, offset, bytes, memName),
+		)
+	}
+}
+
+// ensureConstructor ensures a class has a constructor compiled, creating a default one if needed.
+// Ported from: assemblyscript/src/compiler.ts ensureConstructor (lines 10060-10080).
+func (c *Compiler) ensureConstructor(classInstance *program.Class, reportNode ast.Node) *program.Function {
+	ctorInstance := classInstance.ConstructorInstance
+	if ctorInstance != nil {
+		c.CompileFunction(ctorInstance)
+		return ctorInstance
+	}
+	// If no explicit constructor, try to resolve the default constructor
+	if classInstance.Prototype.ConstructorPrototype != nil {
+		resolver := c.Resolver()
+		ctorInstance = resolver.ResolveFunction(classInstance.Prototype.ConstructorPrototype, nil, nil, program.ReportModeReport)
+		if ctorInstance != nil {
+			classInstance.ConstructorInstance = ctorInstance
+			c.CompileFunction(ctorInstance)
+			return ctorInstance
+		}
+	}
+	return nil
 }
 
 // intToString converts an int to its string representation.
