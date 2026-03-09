@@ -312,9 +312,32 @@ func (f *Function) Finalize(module *Module, ref FunctionRef) {
 }
 
 // AddDebugInfo adds debug info to the compiled function.
+// Sets debug locations from DebugLocations map and local variable names
+// from LocalsByIndex when the respective compiler options are enabled.
 func (f *Function) AddDebugInfo(module *Module, ref FunctionRef) {
-	// Deferred until module package is ported.
-	// Uses ModuleSetDebugLocation and ModuleSetLocalName function vars.
+	opts := f.program.Options
+	if opts.SourceMap {
+		for exprRef, r := range f.DebugLocations {
+			source, ok := r.Source.(*ast.Source)
+			if !ok {
+				continue
+			}
+			line := source.LineAt(r.Start)
+			col := source.ColumnAt() - 1 // source maps are 0-based
+			ModuleSetDebugLocation(module, ref, exprRef, source.DebugInfoIndex, line, col)
+		}
+	}
+	if opts.DebugInfo {
+		localNameSet := make(map[string]struct{})
+		for i, local := range f.LocalsByIndex {
+			name := local.GetName()
+			if _, exists := localNameSet[name]; exists {
+				name = fmt.Sprintf("%s|%d", name, i)
+			}
+			localNameSet[name] = struct{}{}
+			ModuleSetLocalName(module, ref, int32(i), name)
+		}
+	}
 }
 
 // --- FlowFunctionRef implementation for flow package ---

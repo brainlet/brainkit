@@ -12,7 +12,7 @@ import (
 // --- helpers ---
 
 func newTestProgram() *Program {
-	return NewProgram(&Options{UsizeType: types.TypeI32}, nil)
+	return NewProgram(NewOptions(), nil)
 }
 
 // --- ElementKind tests ---
@@ -539,7 +539,9 @@ func TestProgramOverhead(t *testing.T) {
 	}
 
 	// wasm64
-	prog64 := NewProgram(&Options{UsizeType: types.TypeI64, IsWasm64: true}, nil)
+	opts64 := NewOptions()
+	opts64.Target = common.TargetWasm64
+	prog64 := NewProgram(opts64, nil)
 	if prog64.ObjectOverhead() != 8 {
 		t.Errorf("ObjectOverhead (wasm64) = %d, want 8", prog64.ObjectOverhead())
 	}

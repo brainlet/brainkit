@@ -27,6 +27,9 @@ type Program struct {
 	NextSignatureId   uint32
 	Initialized       bool
 
+	// File lookup by normalized path.
+	FilesByName map[string]*File
+
 	// Lookup maps
 	// Note: these fields use the "Map" suffix to avoid name clashes with
 	// the flow.FlowProgramRef interface methods ElementsByName() and
@@ -78,6 +81,7 @@ var _ types.ProgramReference = (*Program)(nil)
 func NewProgram(options *Options, diags []*diagnostics.DiagnosticMessage) *Program {
 	p := &Program{
 		Options:               options,
+		FilesByName:           make(map[string]*File),
 		ElementsByNameMap:     make(map[string]Element),
 		ElementsByDeclaration: make(map[ast.Node]DeclaredElement),
 		InstancesByNameMap:    make(map[string]Element),
@@ -94,7 +98,7 @@ func NewProgram(options *Options, diags []*diagnostics.DiagnosticMessage) *Progr
 
 	// Create module if factory is set
 	if ModuleCreate != nil {
-		p.Module_ = ModuleCreate(options.StackSize > 0, options.SizeTypeRef)
+		p.Module_ = ModuleCreate(options.StackSize > 0, options.SizeTypeRef())
 	}
 
 	// Create resolver
@@ -157,6 +161,27 @@ func extractArgs(args []string) (string, string, string) {
 	return a0, a1, a2
 }
 
+// CheckTypeSupported checks if a type is supported, reporting an error if not.
+// Ported from: assemblyscript/src/program.ts Program.checkTypeSupported.
+func (p *Program) CheckTypeSupported(typ *types.Type, reportNode ast.Node) bool {
+	// TODO: Full implementation checks for unsupported Wasm types (e.g. v128 without SIMD,
+	// stringref without Stringref feature, etc.)
+	// For now, all types are considered supported.
+	return true
+}
+
+// Initialize initializes the program: sets up lookup maps, built-in types, etc.
+// Ported from: assemblyscript/src/program.ts Program.initialize().
+func (p *Program) Initialize() {
+	if p.Initialized {
+		return
+	}
+	p.Initialized = true
+	// TODO: Full initialization will be ported. This includes registering
+	// built-in types, setting up element lookups, processing global aliases,
+	// and initializing cached stdlib elements.
+}
+
 // ---------------------------------------------------------------------------
 // flow.FlowProgramRef adapter
 // ---------------------------------------------------------------------------
@@ -181,8 +206,7 @@ func (p *Program) FlowProgramRef() flow.FlowProgramRef {
 }
 
 func (f *flowProgramRef) UncheckedBehaviorAlways() bool {
-	// Stub: will be implemented when Options is fully ported.
-	return false
+	return f.program.Options.UncheckedBehavior == 2 // UncheckedBehaviorAlways
 }
 
 func (f *flowProgramRef) Error(code int32, rng interface{}, args ...string) {
@@ -226,7 +250,7 @@ func (f *flowProgramRef) InstancesByName() map[string]flow.FlowElementRef {
 
 // GetUsizeType returns the target's usize type.
 func (p *Program) GetUsizeType() *types.Type {
-	return p.Options.UsizeType
+	return p.Options.UsizeType()
 }
 
 // GetFunctionPrototype returns the Function class prototype, or nil.
@@ -410,7 +434,7 @@ func (p *Program) BlockOverhead() int32 {
 // ObjectOverhead returns the size of a runtime OBJECT header beyond the block.
 // In AssemblyScript this is typically 4 bytes (gcInfo2) on wasm32, 8 on wasm64.
 func (p *Program) ObjectOverhead() int32 {
-	if p.Options.IsWasm64 {
+	if p.Options.IsWasm64() {
 		return 8
 	}
 	return 4

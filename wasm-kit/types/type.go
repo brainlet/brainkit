@@ -39,6 +39,15 @@ var DecoratorFlagUnmanaged uint32
 // Set by the program package at init to avoid circular dependency.
 var LeastUpperBoundFunc func(a, b ClassReference) ClassReference
 
+// TypeToRefFunc converts a Type to a Binaryen TypeRef (uintptr).
+// Set by the program package at init to avoid circular dependency with module.
+// Ported from: assemblyscript/src/types.ts Type.toRef() method.
+var TypeToRefFunc func(t *Type) uintptr
+
+// CreateTypeFunc creates a Binaryen tuple type from multiple TypeRefs.
+// Set by the program package at init to avoid circular dependency with module.
+var CreateTypeFunc func(refs []uintptr) uintptr
+
 // Type represents a resolved type.
 type Type struct {
 	Kind               TypeKind
@@ -664,6 +673,15 @@ var (
 	// It is a distinct instance (TypeAuto != TypeI32).
 	TypeAuto = NewType(TypeKindI32, TypeFlagSigned|TypeFlagInteger|TypeFlagValue, 32)
 )
+
+// ToRef converts this type to a Binaryen TypeRef.
+// Ported from: assemblyscript/src/types.ts Type.toRef().
+func (t *Type) ToRef() uintptr {
+	if TypeToRefFunc == nil {
+		panic("types: TypeToRefFunc not wired")
+	}
+	return TypeToRefFunc(t)
+}
 
 // TypesToString converts an array of types to a combined string representation.
 func TypesToString(types []*Type) string {

@@ -182,7 +182,7 @@ func NewClass(nameInclTypeParameters string, prototype *ClassPrototype, typeArgu
 	c.TypeArguments = typeArguments
 
 	prog := c.program
-	usizeType := prog.Options.UsizeType
+	usizeType := prog.Options.UsizeType()
 	typ := types.NewType(usizeType.Kind, usizeType.Flags&^types.TypeFlagValue|types.TypeFlagReference, usizeType.Size)
 	typ.ClassRef = c
 	c.SetType(typ)

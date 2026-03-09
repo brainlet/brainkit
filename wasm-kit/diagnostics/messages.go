@@ -57,6 +57,7 @@ const (
 	DiagnosticCodeInitializerDefinitiveAssignmentOrNullableTypeExpected DiagnosticCode = 238
 	DiagnosticCodeDefinitiveAssignmentHasNoEffectOnLocalVariables DiagnosticCode = 239
 	DiagnosticCodeAmbiguousOperatorOverload0ConflictingOverloads1And2 DiagnosticCode = 240
+	DiagnosticCodeDecoratorInlineMustHaveAnInitializer DiagnosticCode = 241
 	DiagnosticCodeImportingTheTableDisablesSomeIndirectCallOptimizations DiagnosticCode = 901
 	DiagnosticCodeExportingTheTableDisablesSomeIndirectCallOptimizations DiagnosticCode = 902
 	DiagnosticCodeExpressionCompilesToADynamicCheckAtRuntime DiagnosticCode = 903

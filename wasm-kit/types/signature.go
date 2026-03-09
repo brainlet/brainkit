@@ -78,6 +78,34 @@ func CreateSignature(
 	return sig
 }
 
+// ParamRefs returns the Binaryen TypeRef for this signature's parameter types,
+// including `this` if present. Creates a tuple type from all parameter refs.
+// Ported from: assemblyscript/src/types.ts Signature.paramRefs.
+func (s *Signature) ParamRefs() uintptr {
+	if CreateTypeFunc == nil {
+		panic("types: CreateTypeFunc not wired")
+	}
+	params := s.ParameterTypes
+	offset := 0
+	if s.ThisType != nil {
+		offset = 1
+	}
+	refs := make([]uintptr, len(params)+offset)
+	if s.ThisType != nil {
+		refs[0] = s.ThisType.ToRef()
+	}
+	for i, p := range params {
+		refs[offset+i] = p.ToRef()
+	}
+	return CreateTypeFunc(refs)
+}
+
+// ResultRefs returns the Binaryen TypeRef for this signature's return type.
+// Ported from: assemblyscript/src/types.ts Signature.resultRefs.
+func (s *Signature) ResultRefs() uintptr {
+	return s.ReturnType.ToRef()
+}
+
 // Equals tests if this signature equals the specified.
 func (s *Signature) Equals(other *Signature) bool {
 	// check `this` type
