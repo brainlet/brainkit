@@ -33,8 +33,6 @@ type Compiler struct {
 	MemorySegments []*module.MemorySegment
 	// Map of already compiled static string segments.
 	StringSegments map[string]*module.MemorySegment
-	// Map of string segment pointer offsets for cache retrieval.
-	StringSegmentOffsets map[string]int64
 	// Set of static GC object offsets. tostack is unnecessary for them.
 	StaticGcObjectOffsets map[int32]map[int32]struct{}
 	// Function table being compiled. First elem is blank.
@@ -59,6 +57,11 @@ type Compiler struct {
 	HasCustomFunctionExports bool
 	// Whether the module would use the exported runtime to lift/lower.
 	DesiresExportRuntime bool
+
+	// Cached Mathf.mod instance for f32 remainder operations.
+	f32ModInstance *program.Function
+	// Cached Math.mod instance for f64 remainder operations.
+	f64ModInstance *program.Function
 
 	// ShadowStack is the shadow stack pass. Stub interface until passes are ported.
 	ShadowStack ShadowStackPass
@@ -108,7 +111,6 @@ func NewCompiler(prog *program.Program) *Compiler {
 		CurrentType:           types.TypeVoid,
 		MemorySegments:        make([]*module.MemorySegment, 0),
 		StringSegments:        make(map[string]*module.MemorySegment),
-		StringSegmentOffsets:  make(map[string]int64),
 		StaticGcObjectOffsets: make(map[int32]map[int32]struct{}),
 		FunctionTable:         make([]*program.Function, 0),
 		LazyFunctions:         make(map[*program.Function]struct{}),
@@ -190,7 +192,7 @@ func NewCompiler(prog *program.Program) *Compiler {
 		common.BuiltinNameStart,
 		startSig,
 		nil, // parent: top-level
-		common.CommonFlagsAmbient,
+		common.CommonFlagsNone,
 		0, // no decorator flags
 	)
 	startFunctionInstance.SetInternalName(common.BuiltinNameStart)

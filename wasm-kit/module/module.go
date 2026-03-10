@@ -30,8 +30,9 @@ type BinaryModule struct {
 
 // MemorySegment represents a data segment to be placed into linear memory.
 type MemorySegment struct {
-	Buffer []byte
-	Offset ExpressionRef
+	Buffer    []byte
+	Offset    ExpressionRef
+	RawOffset int64 // raw numeric offset matching TS MemorySegment.offset (i64)
 }
 
 // Target selects between wasm32 and wasm64 compilation.
@@ -1118,6 +1119,9 @@ func (m *Module) AddFunctionTable(name string, initial, maximum uint32, funcs []
 	tableRef := m.bmod.GetTable(name)
 	if tableRef == 0 {
 		m.bmod.AddTable(name, initial, maximum, binaryen.TypeFuncref())
+	} else {
+		binaryen.TableSetInitial(tableRef, initial)
+		binaryen.TableSetMax(tableRef, maximum)
 	}
 	m.bmod.AddActiveElementSegment(name, name, funcs, offset)
 }

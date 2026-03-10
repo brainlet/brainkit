@@ -30,7 +30,7 @@ func NewLocal(name string, index int32, typ *types.Type, parent *Function, decla
 	if declaration == nil {
 		declaration = parent.GetProgram().MakeNativeVariableDeclaration(name, 0)
 	}
-	InitVariableLikeBase(&l.VariableLikeBase, ElementKindLocal, name, parent, declaration)
+	InitVariableLikeBase(&l.VariableLikeBase, ElementKindLocal, name, parent, declaration, l)
 	l.OriginalName = name
 	l.Index = index
 	if typ == types.TypeVoid {
@@ -59,7 +59,7 @@ func NewFunctionPrototype(name string, parent Element, declaration *ast.Function
 	fp := &FunctionPrototype{}
 	isInstance := (declaration.Flags & int32(common.CommonFlagsInstance)) != 0
 	internalName := MangleInternalName(name, parent, isInstance, false)
-	InitDeclaredElementBase(&fp.DeclaredElementBase, ElementKindFunctionPrototype, name, internalName, parent.GetProgram(), parent, declaration)
+	InitDeclaredElementBase(&fp.DeclaredElementBase, ElementKindFunctionPrototype, name, internalName, parent.GetProgram(), parent, declaration, fp)
 	fp.decoratorFlags = decoratorFlags
 	return fp
 }
@@ -164,7 +164,7 @@ func NewFunction(
 	}
 	isInstance := prototype.Is(common.CommonFlagsInstance)
 	internalName := MangleInternalName(nameInclTypeParameters, prototype.GetParent(), isInstance, false)
-	InitTypedElementBase(&f.TypedElementBase, ElementKindFunction, nameInclTypeParameters, internalName, prototype.GetProgram(), prototype.GetParent(), prototype.GetDeclaration())
+	InitTypedElementBase(&f.TypedElementBase, ElementKindFunction, nameInclTypeParameters, internalName, prototype.GetProgram(), prototype.GetParent(), prototype.GetDeclaration(), f)
 	f.Prototype = prototype
 	f.TypeArguments = typeArguments
 	f.Signature = signature

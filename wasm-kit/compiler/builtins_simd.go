@@ -3,6 +3,9 @@
 package compiler
 
 import (
+	"encoding/binary"
+	"math"
+
 	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
@@ -348,6 +351,24 @@ func registerSIMDBuiltins() {
 	builtinFunctions[common.BuiltinNameI16x8RelaxedQ15mulrS] = builtinI16x8RelaxedQ15mulrS
 	builtinFunctions[common.BuiltinNameI16x8RelaxedDotI8x16I7x16S] = builtinI16x8RelaxedDotI8x16I7x16S
 	builtinFunctions[common.BuiltinNameI32x4RelaxedDotI8x16I7x16AddS] = builtinI32x4RelaxedDotI8x16I7x16AddS
+
+	// Generic operator builtins (TS builtins.ts:2601-2927)
+	builtinFunctions[common.BuiltinNameAdd] = builtinAdd
+	builtinFunctions[common.BuiltinNameSub] = builtinSub
+	builtinFunctions[common.BuiltinNameMul] = builtinMul
+	builtinFunctions[common.BuiltinNameDiv] = builtinDiv
+	builtinFunctions[common.BuiltinNameRem] = builtinRem
+	builtinFunctions[common.BuiltinNameEq] = builtinEq
+	builtinFunctions[common.BuiltinNameNe] = builtinNe
+
+	// v128 constructor builtins (TS builtins.ts:4031-4335)
+	builtinFunctions[common.BuiltinNameV128] = builtinV128Ctor
+	builtinFunctions[common.BuiltinNameI8x16] = builtinI8x16Ctor
+	builtinFunctions[common.BuiltinNameI16x8] = builtinI16x8Ctor
+	builtinFunctions[common.BuiltinNameI32x4] = builtinI32x4Ctor
+	builtinFunctions[common.BuiltinNameI64x2] = builtinI64x2Ctor
+	builtinFunctions[common.BuiltinNameF32x4] = builtinF32x4Ctor
+	builtinFunctions[common.BuiltinNameF64x2] = builtinF64x2Ctor
 }
 
 func reportBuiltinOperationTypeError(ctx *BuiltinFunctionContext, op string, typ *types.Type) module.ExpressionRef {
@@ -574,7 +595,7 @@ func builtinV128BitwiseUnaryOp(ctx *BuiltinFunctionContext, op module.Op) module
 func builtinRem(ctx *BuiltinFunctionContext) module.ExpressionRef {
 	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
 	if ok && typ.IsIntegerValue() {
-		return ctx.Compiler.makeBinaryRem(arg0, arg1, typ)
+		return ctx.Compiler.makeBinaryRem(arg0, arg1, typ, ctx.ReportNode)
 	}
 	return reportBuiltinOperationTypeError(ctx, "rem", typ)
 }
@@ -615,7 +636,7 @@ func builtinEq(ctx *BuiltinFunctionContext) module.ExpressionRef {
 	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
 	if ok && typ.IsNumericValue() {
 		ctx.Compiler.CurrentType = types.TypeI32
-		return ctx.Compiler.makeBinaryEq(arg0, arg1, typ)
+		return ctx.Compiler.makeBinaryEq(arg0, arg1, typ, ctx.ReportNode)
 	}
 	return reportBuiltinOperationTypeError(ctx, "eq", typ)
 }
@@ -624,7 +645,7 @@ func builtinNe(ctx *BuiltinFunctionContext) module.ExpressionRef {
 	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
 	if ok && typ.IsNumericValue() {
 		ctx.Compiler.CurrentType = types.TypeI32
-		return ctx.Compiler.makeBinaryNe(arg0, arg1, typ)
+		return ctx.Compiler.makeBinaryNe(arg0, arg1, typ, ctx.ReportNode)
 	}
 	return reportBuiltinOperationTypeError(ctx, "ne", typ)
 }
@@ -4051,3 +4072,312 @@ func builtinI32x4RelaxedDotI8x16I7x16AddS(ctx *BuiltinFunctionContext) module.Ex
 	ctx.ContextualType = types.TypeV128
 	return builtinV128RelaxedDotAdd(ctx)
 }
+
+// === v128 constructor builtins ===
+// Ported from: builtins.ts:4031-4335
+
+// v128(...values: i8[16]) -> v128
+// TS line 4031: builtin_v128 = builtin_i8x16
+func builtinV128Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	return builtinI8x16Ctor(ctx)
+}
+
+// i8x16(...values: i8[16]) -> v128
+// Ported from: builtins.ts:4036-4082
+func builtinI8x16Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 16)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 16)
+	numVars := 0
+
+	for i := 0; i < 16; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeI8, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			bytes[i] = byte(module.GetConstValueI32(precomp))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 16
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatI8x16, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 16; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI8x16, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// i16x8(...values: i16[8]) -> v128
+// Ported from: builtins.ts:4086-4132
+func builtinI16x8Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 8)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 8)
+	numVars := 0
+
+	for i := 0; i < 8; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeI16, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			binary.LittleEndian.PutUint16(bytes[i<<1:], uint16(module.GetConstValueI32(precomp)))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 8
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatI16x8, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 8; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI16x8, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// i32x4(...values: i32[4]) -> v128
+// Ported from: builtins.ts:4136-4182
+func builtinI32x4Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 4)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 4)
+	numVars := 0
+
+	for i := 0; i < 4; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeI32, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			binary.LittleEndian.PutUint32(bytes[i<<2:], uint32(module.GetConstValueI32(precomp)))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 4
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatI32x4, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 4; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI32x4, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// i64x2(...values: i64[2]) -> v128
+// Ported from: builtins.ts:4186-4234
+func builtinI64x2Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 2)
+	numVars := 0
+
+	for i := 0; i < 2; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeI64, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			off := i << 3
+			binary.LittleEndian.PutUint32(bytes[off:], uint32(module.GetConstValueI64Low(precomp)))
+			binary.LittleEndian.PutUint32(bytes[off+4:], uint32(module.GetConstValueI64High(precomp)))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 2
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatI64x2, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 2; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI64x2, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// f32x4(...values: f32[4]) -> v128
+// Ported from: builtins.ts:4238-4284
+func builtinF32x4Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 4)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 4)
+	numVars := 0
+
+	for i := 0; i < 4; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeF32, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			binary.LittleEndian.PutUint32(bytes[i<<2:], math.Float32bits(module.GetConstValueF32(precomp)))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 4
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatF32x4, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 4; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneF32x4, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// f64x2(...values: f64[2]) -> v128
+// Ported from: builtins.ts:4288-4334
+func builtinF64x2Ctor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	var bytes [16]byte
+	vars := make([]module.ExpressionRef, 2)
+	numVars := 0
+
+	for i := 0; i < 2; i++ {
+		expr := compiler.CompileExpression(operands[i], types.TypeF64, ConstraintsConvImplicit)
+		precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+		if precomp != 0 {
+			binary.LittleEndian.PutUint64(bytes[i<<3:], math.Float64bits(module.GetConstValueF64(precomp)))
+		} else {
+			vars[i] = expr
+			numVars++
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	if numVars == 0 {
+		return mod.V128(bytes)
+	}
+	var vec module.ExpressionRef
+	fullVars := numVars == 2
+	if fullVars {
+		vec = mod.Unary(module.UnaryOpSplatF64x2, vars[0])
+	} else {
+		vec = mod.V128(bytes)
+	}
+	startIdx := 0
+	if fullVars {
+		startIdx = 1
+	}
+	for i := startIdx; i < 2; i++ {
+		if vars[i] != 0 {
+			vec = mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneF64x2, vec, uint8(i), vars[i])
+		}
+	}
+	return vec
+}
+
+// Ensure imports are used
+var _ = binary.LittleEndian
+var _ = math.Float32bits

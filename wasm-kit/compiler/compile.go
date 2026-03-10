@@ -35,7 +35,6 @@ func (c *Compiler) CompileProgram() *module.Module {
 	// obtain the main start function
 	startFunctionRef := c.CurrentFlow.TargetFunction
 	startFunctionInstance := startFunctionRef.(*program.Function)
-	startFunctionBody := c.CurrentBody
 
 	// compile entry file(s) while traversing reachable elements
 	for _, file := range prog.FilesByName {
@@ -197,7 +196,7 @@ func (c *Compiler) CompileProgram() *module.Module {
 	// NOTE: no more element compiles from here. may go to the start function!
 
 	// compile the start function if not empty or if explicitly requested
-	startIsEmpty := len(startFunctionBody) == 0
+	startIsEmpty := len(c.CurrentBody) == 0
 	exportStart := options.ExportStart
 	hasExportStart := options.ExportStartSet
 	if !startIsEmpty || hasExportStart {
@@ -205,21 +204,21 @@ func (c *Compiler) CompileProgram() *module.Module {
 		if !startIsEmpty && hasExportStart {
 			mod.AddGlobal(common.BuiltinNameStarted, module.TypeRefI32, true, mod.I32(0))
 			// prepend: if (__started) return;
-			startFunctionBody = append([]module.ExpressionRef{
+			c.CurrentBody = append([]module.ExpressionRef{
 				mod.If(
 					mod.GlobalGet(common.BuiltinNameStarted, module.TypeRefI32),
 					mod.Return(0),
 					0,
 				),
 				mod.GlobalSet(common.BuiltinNameStarted, mod.I32(1)),
-			}, startFunctionBody...)
+			}, c.CurrentBody...)
 		}
 		funcRef := mod.AddFunction(
 			startFunctionInstance.GetInternalName(),
 			signature.ParamRefs(),
 			signature.ResultRefs(),
 			typesToRefs(startFunctionInstance.GetNonParameterLocalTypes()),
-			mod.Flatten(startFunctionBody, module.TypeRefNone),
+			mod.Flatten(c.CurrentBody, module.TypeRefNone),
 		)
 		startFunctionInstance.Finalize(mod, funcRef)
 		if !hasExportStart {
@@ -1258,7 +1257,7 @@ func (c *Compiler) makeCallInline(
 		if !previousFlow.CanOverflow(paramExpr, paramType) {
 			fl.SetLocalFlag(argumentLocal.FlowIndex(), flow.LocalFlagWrapped)
 		}
-		if previousFlow.IsNonnull(paramExpr, paramType) {
+		if fl.IsNonnull(paramExpr, paramType) {
 			fl.SetLocalFlag(argumentLocal.FlowIndex(), flow.LocalFlagNonNull)
 		}
 		body = append(body,
@@ -1949,21 +1948,84 @@ func compileVisitMembers(c *Compiler) {
 }
 
 // compileCallExpressionBuiltin compiles a call to a builtin function.
-// Ported from: assemblyscript/src/compiler.ts compileCallExpressionBuiltin (lines 6215-6252).
-// TODO: Port builtins.ts (11,394 lines) for full implementation.
+// Ported from: assemblyscript/src/compiler.ts compileCallExpressionBuiltin (lines 6215-6268).
 func (c *Compiler) compileCallExpressionBuiltin(
 	prototype *program.FunctionPrototype,
 	expression *ast.CallExpression,
 	contextualType *types.Type,
 ) module.ExpressionRef {
-	// TODO: Implement builtin function compilation.
-	// This requires porting builtins.ts which handles all built-in types and functions.
-	c.Error(
-		diagnostics.DiagnosticCodeNotImplemented0,
-		expression.GetRange(),
-		"Builtin function calls", "", "",
-	)
-	return c.Module().Unreachable()
+	// Check @unsafe decorator
+	if prototype.HasDecorator(program.DecoratorFlagsUnsafe) {
+		c.checkUnsafe(expression, expression)
+	}
+
+	var typeArguments []*types.Type
+
+	// Builtins handle omitted type arguments on their own. If present,
+	// resolve them here and pass them to the builtin, even if it's still
+	// up to the builtin how to handle them.
+	typeParameterNodes := prototype.TypeParameterNodes()
+	typeArgumentNodes := expression.TypeArguments
+	if typeArgumentNodes != nil {
+		if !prototype.Is(common.CommonFlagsGeneric) {
+			c.Error(
+				diagnostics.DiagnosticCodeType0IsNotGeneric,
+				expression.GetRange(),
+				prototype.GetInternalName(), "", "",
+			)
+		}
+		if typeParameterNodes != nil {
+			ctxTypeArgs := util.CloneMap(c.CurrentFlow.ContextualTypeArguments())
+			parent, _ := c.CurrentFlow.SourceFunction().FlowParent().(program.Element)
+			typeArguments = c.Resolver().ResolveTypeArguments(
+				typeParameterNodes,
+				typeArgumentNodes,
+				c.CurrentFlow,
+				parent,
+				ctxTypeArgs,
+				expression,
+				program.ReportModeReport,
+			)
+		}
+	}
+
+	// Build context
+	callee := expression.Expression
+	var thisOperand ast.Node
+	if callee.GetKind() == ast.NodeKindPropertyAccess {
+		thisOperand = callee.(*ast.PropertyAccessExpression).Expression
+	}
+	ctx := &BuiltinFunctionContext{
+		Compiler:       c,
+		Prototype:      prototype,
+		TypeArguments:  typeArguments,
+		Operands:       expression.Args,
+		ThisOperand:    thisOperand,
+		ContextualType: contextualType,
+		ReportNode:     expression,
+		ContextIsExact: false,
+	}
+
+	// Compute internal name for dispatch
+	var internalName string
+	if prototype.Is(common.CommonFlagsInstance) {
+		// Omit generic name components, e.g. in Function<...>#call
+		parent := prototype.GetBoundClassOrInterface()
+		if parent != nil {
+			internalName = parent.Prototype.GetInternalName() + "#" + prototype.GetName()
+		} else {
+			internalName = prototype.GetInternalName()
+		}
+	} else {
+		internalName = prototype.GetInternalName()
+	}
+
+	// Dispatch to handler
+	fn := GetBuiltinHandler(internalName)
+	if fn == nil {
+		panic(fmt.Sprintf("missing builtin handler for: %s", internalName))
+	}
+	return fn(ctx)
 }
 
 // checkFieldInitialization checks that fields are properly initialized.
@@ -2156,7 +2218,7 @@ func (c *Compiler) makeRuntimeDowncastCheck(expr module.ExpressionRef, fromType,
 		reportNode,
 	)
 
-	classRef := toType.GetClassOrWrapper(c.Program)
+	classRef := toType.GetClass()
 	classInstance, ok := classRef.(*program.Class)
 	if !ok || classInstance == nil {
 		return mod.Unreachable()
@@ -2227,11 +2289,31 @@ func (c *Compiler) addAlignedMemorySegment(buffer []byte, alignment int32) *modu
 	}
 
 	segment := &module.MemorySegment{
+		Buffer:    buffer,
+		Offset:    offsetExpr,
+		RawOffset: alignedOffset,
+	}
+	c.MemorySegments = append(c.MemorySegments, segment)
+	c.MemoryOffset = alignedOffset + int64(len(buffer))
+	return segment
+}
+
+// addRuntimeMemorySegment adds a static memory segment representing a runtime object.
+// Ported from: assemblyscript/src/compiler.ts addRuntimeMemorySegment (lines 1953-1959).
+func (c *Compiler) addRuntimeMemorySegment(buffer []byte) *module.MemorySegment {
+	memoryOffset := c.Program.ComputeBlockStart64(c.MemoryOffset)
+	var offsetExpr module.ExpressionRef
+	if c.Options().IsWasm64() {
+		offsetExpr = c.Module().I64(memoryOffset)
+	} else {
+		offsetExpr = c.Module().I32(int32(memoryOffset))
+	}
+	segment := &module.MemorySegment{
 		Buffer: buffer,
 		Offset: offsetExpr,
 	}
 	c.MemorySegments = append(c.MemorySegments, segment)
-	c.MemoryOffset = alignedOffset + int64(len(buffer))
+	c.MemoryOffset = memoryOffset + int64(len(buffer))
 	return segment
 }
 

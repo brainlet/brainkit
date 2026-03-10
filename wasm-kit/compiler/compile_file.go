@@ -43,17 +43,23 @@ func (c *Compiler) CompileFile(file *program.File) {
 	startFunction := file.StartFunction
 	startSignature := startFunction.Signature
 	previousBody := c.CurrentBody
-	startFunctionBody := make([]module.ExpressionRef, 0)
-	c.CurrentBody = startFunctionBody
+	c.CurrentBody = make([]module.ExpressionRef, 0)
 
 	// Compile top-level statements
+	// Pass &c.CurrentBody so both CompileTopLevelStatement (which appends through body pointer)
+	// and CompileGlobal/CompileEnum (which append through c.CurrentBody directly) always write
+	// to the same slice. In JS/TS both variables reference the same array object; in Go we must
+	// ensure the pointer and field stay in sync.
 	previousFlow := c.CurrentFlow
 	flow := startFunction.Flow
 	c.CurrentFlow = flow
 	for _, stmt := range file.Source.Statements {
-		c.CompileTopLevelStatement(stmt, &startFunctionBody)
+		c.CompileTopLevelStatement(stmt, &c.CurrentBody)
 	}
 	c.CurrentFlow = previousFlow
+
+	// Capture the file's body AFTER compilation (c.CurrentBody reflects all appends)
+	startFunctionBody := c.CurrentBody
 	c.CurrentBody = previousBody
 
 	// If top-level statements are present, make the per-file start function and call it in start
@@ -67,8 +73,7 @@ func (c *Compiler) CompileFile(file *program.File) {
 			mod.Flatten(startFunctionBody, module.TypeRefNone),
 		)
 		startFunction.Finalize(mod, funcRef)
-		previousBody = append(previousBody, mod.Call(startFunction.FlowInternalName(), nil, module.TypeRefNone))
-		c.CurrentBody = previousBody
+		c.CurrentBody = append(c.CurrentBody, mod.Call(startFunction.FlowInternalName(), nil, module.TypeRefNone))
 	}
 }
 
@@ -173,9 +178,13 @@ func (c *Compiler) CompileEnum(element *program.Enum) bool {
 
 	members := element.GetMembers()
 	if members != nil {
-		// TODO: for (let member of element.members.values()) {
-		for _, member := range members {
-			if member.GetElementKind() != program.ElementKindEnumValue {
+		// Iterate in declaration order (TS Map preserves insertion order, Go map does not).
+		// Use the enum declaration's Values slice which is ordered.
+		enumDecl := element.GetDeclaration().(*ast.EnumDeclaration)
+		for _, valueDecl := range enumDecl.Values {
+			memberName := valueDecl.Name.Text
+			member := members[memberName]
+			if member == nil || member.GetElementKind() != program.ElementKindEnumValue {
 				continue // happens if an enum is also a namespace
 			}
 			initInStart := false

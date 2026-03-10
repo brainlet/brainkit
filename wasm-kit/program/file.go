@@ -19,7 +19,7 @@ type File struct {
 // NewFile creates a new file element.
 func NewFile(prog *Program, source *ast.Source) *File {
 	f := &File{}
-	InitElementBase(&f.ElementBase, ElementKindFile, source.NormalizedPath, source.InternalPath, prog, nil)
+	InitElementBase(&f.ElementBase, ElementKindFile, source.NormalizedPath, source.InternalPath, prog, nil, f)
 	f.Source = source
 	f.parent = f // File is its own parent (special case)
 	prog.FilesByName[f.internalName] = f

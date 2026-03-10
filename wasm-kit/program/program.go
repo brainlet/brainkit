@@ -54,11 +54,16 @@ type Program struct {
 	cachedRegexpInstance             *Class
 	cachedObjectPrototype            *ClassPrototype
 	cachedObjectInstance             *Class
-	cachedAbortInstance              *Function
 	cachedAllocInstance              *Function
+	cachedReallocInstance            *Function
+	cachedFreeInstance               *Function
 	cachedNewInstance                *Function
+	cachedRenewInstance              *Function
 	cachedVisitInstance              *Function
 	cachedLinkInstance               *Function
+	cachedCollectInstance            *Function
+	cachedNewBufferInstance          *Function
+	cachedNewArrayInstance           *Function
 	cachedInt8ArrayPrototype         *ClassPrototype
 	cachedInt16ArrayPrototype        *ClassPrototype
 	cachedInt32ArrayPrototype        *ClassPrototype
@@ -822,19 +827,30 @@ func (p *Program) GetElementByDeclaration(declaration ast.Node) DeclaredElement 
 
 // EnsureGlobal ensures that an element is registered as a global.
 // If a global with the same name already exists, merging is attempted.
+// Ported from: program.ts:1812-1844
 func (p *Program) EnsureGlobal(name string, element DeclaredElement) DeclaredElement {
 	if existing, ok := p.ElementsByNameMap[name]; ok {
-		if existing == element {
-			return element
+		if existing != element {
+			merged := TryMerge(existing.(DeclaredElement), element)
+			if merged == nil {
+				if IsDeclaredElement(existing.GetElementKind()) {
+					p.ErrorRelated(
+						diagnostics.DiagnosticCodeDuplicateIdentifier0,
+						element.IdentifierNode().GetRange(),
+						existing.(DeclaredElement).IdentifierNode().GetRange(),
+						name,
+					)
+				} else {
+					p.Error(
+						diagnostics.DiagnosticCodeDuplicateIdentifier0,
+						element.IdentifierNode().GetRange(),
+						name,
+					)
+				}
+				return element
+			}
+			element = merged
 		}
-		merged := TryMerge(existing.(DeclaredElement), element)
-		if merged != nil {
-			p.ElementsByNameMap[name] = merged
-			return merged
-		}
-		// If merge fails, the newer element wins.
-		p.ElementsByNameMap[name] = element
-		return element
 	}
 	p.ElementsByNameMap[name] = element
 	return element
@@ -856,6 +872,7 @@ func (p *Program) SearchFunctionByRef(ref FunctionRef) *Function {
 
 // MarkModuleImport marks an element as a module import.
 func (p *Program) MarkModuleImport(moduleName, name string, element Element) {
+	element.Set(common.CommonFlagsModuleImport)
 	moduleMap, ok := p.ModuleImports[moduleName]
 	if !ok {
 		moduleMap = make(map[string]Element)
@@ -956,7 +973,7 @@ func (p *Program) MakeNativeFunctionDeclaration(name string, flags common.Common
 	return ast.NewFunctionDeclaration(
 		ident,
 		nil,
-		int32(flags|common.CommonFlagsAmbient),
+		int32(flags),
 		nil,
 		p.nativeDummySignature,
 		nil,
@@ -1030,6 +1047,13 @@ func (p *Program) TotalOverhead() int32 {
 func (p *Program) ComputeBlockStart(currentOffset int32) int32 {
 	blockOverhead := p.BlockOverhead()
 	return ((currentOffset + blockOverhead + AlMask) & ^int32(AlMask)) - blockOverhead
+}
+
+// ComputeBlockStart64 computes the next properly aligned offset of a memory manager block (i64).
+// Ported from: assemblyscript/src/program.ts computeBlockStart64 (lines 830-833).
+func (p *Program) ComputeBlockStart64(currentOffset int64) int64 {
+	blockOverhead := int64(p.BlockOverhead())
+	return ((currentOffset + blockOverhead + int64(AlMask)) & ^int64(AlMask)) - blockOverhead
 }
 
 // ---------------------------------------------------------------------------
@@ -1187,12 +1211,17 @@ func (p *Program) ObjectInstance() *Class {
 	return p.cachedObjectInstance
 }
 
-// AbortInstance returns the cached abort function instance.
+// AbortInstance returns the abort function instance, if not explicitly disabled.
+// Intentionally not cached — matches TS program.ts:672-676.
 func (p *Program) AbortInstance() *Function {
-	if p.cachedAbortInstance == nil {
-		p.cachedAbortInstance = p.RequireFunction(common.CommonNameAbort, nil)
+	prototype := p.Lookup(common.CommonNameAbort)
+	if prototype == nil || prototype.GetElementKind() != ElementKindFunctionPrototype {
+		return nil
 	}
-	return p.cachedAbortInstance
+	if ResolveFunction != nil {
+		return ResolveFunction(p.Resolver_, prototype.(*FunctionPrototype), nil)
+	}
+	return nil
 }
 
 // AllocInstance returns the cached __alloc runtime function instance.
@@ -1223,12 +1252,91 @@ func (p *Program) VisitInstance() *Function {
 	return p.cachedVisitInstance
 }
 
+// ReallocInstance returns the cached __realloc runtime function instance.
+// Ported from: program.ts:689-694
+func (p *Program) ReallocInstance() *Function {
+	if p.cachedReallocInstance == nil {
+		p.cachedReallocInstance = p.RequireFunction(common.CommonNameRealloc, nil)
+	}
+	return p.cachedReallocInstance
+}
+
+// FreeInstance returns the cached __free runtime function instance.
+// Ported from: program.ts:697-702
+func (p *Program) FreeInstance() *Function {
+	if p.cachedFreeInstance == nil {
+		p.cachedFreeInstance = p.RequireFunction(common.CommonNameFree, nil)
+	}
+	return p.cachedFreeInstance
+}
+
+// RenewInstance returns the cached __renew runtime function instance.
+// Ported from: program.ts:712-718
+func (p *Program) RenewInstance() *Function {
+	if p.cachedRenewInstance == nil {
+		p.cachedRenewInstance = p.RequireFunction(common.CommonNameRenew, nil)
+	}
+	return p.cachedRenewInstance
+}
+
 // LinkInstance returns the cached __link runtime function instance.
 func (p *Program) LinkInstance() *Function {
 	if p.cachedLinkInstance == nil {
 		p.cachedLinkInstance = p.RequireFunction(common.CommonNameLink, nil)
 	}
 	return p.cachedLinkInstance
+}
+
+// CollectInstance returns the cached __collect runtime function instance.
+// Ported from: program.ts:728-734
+func (p *Program) CollectInstance() *Function {
+	if p.cachedCollectInstance == nil {
+		p.cachedCollectInstance = p.RequireFunction(common.CommonNameCollect, nil)
+	}
+	return p.cachedCollectInstance
+}
+
+// NewBufferInstance returns the cached __newBuffer runtime function instance.
+// Ported from: program.ts:744-750
+func (p *Program) NewBufferInstance() *Function {
+	if p.cachedNewBufferInstance == nil {
+		p.cachedNewBufferInstance = p.RequireFunction(common.CommonNameNewBuffer, nil)
+	}
+	return p.cachedNewBufferInstance
+}
+
+// NewArrayInstance returns the cached __newArray runtime function instance.
+// Ported from: program.ts:752-758
+func (p *Program) NewArrayInstance() *Function {
+	if p.cachedNewArrayInstance == nil {
+		p.cachedNewArrayInstance = p.RequireFunction(common.CommonNameNewArray, nil)
+	}
+	return p.cachedNewArrayInstance
+}
+
+// ComputeBlockSize computes the size of a memory manager block, excl. block overhead.
+// Ported from: program.ts:836-853
+func (p *Program) ComputeBlockSize(payloadSize int32, isManaged bool) int32 {
+	// see: std/rt/tlsf.ts, computeSize; becomes mmInfo
+	if isManaged {
+		payloadSize += p.ObjectOverhead()
+	}
+	// we know that payload must be aligned, and that block sizes must be chosen
+	// so that blocks are adjacent with the next payload aligned. hence, block
+	// size is payloadSize rounded up to where the next block would start:
+	blockSize := p.ComputeBlockStart(payloadSize)
+	// make sure that block size is valid according to TLSF requirements
+	blockOverhead := p.BlockOverhead()
+	blockMinsize := ((3*int32(p.Options.UsizeType().ByteSize()) + blockOverhead + AlMask) & ^int32(AlMask)) - blockOverhead
+	if blockSize < blockMinsize {
+		blockSize = blockMinsize
+	}
+	const blockMaxsize = 1 << 30 // 1 << (FL_BITS + SB_BITS - 1), exclusive
+	const tagsMask = 3
+	if blockSize >= blockMaxsize || (blockSize&tagsMask) != 0 {
+		panic("invalid block size")
+	}
+	return blockSize
 }
 
 // Typed array prototype accessors

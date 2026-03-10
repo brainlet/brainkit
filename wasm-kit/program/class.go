@@ -34,7 +34,7 @@ func NewClassPrototype(name string, parent Element, declaration *ast.ClassDeclar
 	}
 	isInstance := (declaration.Flags & int32(common.CommonFlagsInstance)) != 0
 	internalName := MangleInternalName(name, parent, isInstance, false)
-	InitDeclaredElementBase(&cp.DeclaredElementBase, kind, name, internalName, parent.GetProgram(), parent, declaration)
+	InitDeclaredElementBase(&cp.DeclaredElementBase, kind, name, internalName, parent.GetProgram(), parent, declaration, cp)
 	cp.decoratorFlags = decoratorFlags
 	return cp
 }
@@ -181,7 +181,7 @@ func NewClass(nameInclTypeParameters string, prototype *ClassPrototype, typeArgu
 	}
 	isInstance := prototype.Is(common.CommonFlagsInstance)
 	internalName := MangleInternalName(nameInclTypeParameters, prototype.GetParent(), isInstance, false)
-	InitTypedElementBase(&c.TypedElementBase, kind, nameInclTypeParameters, internalName, prototype.GetProgram(), prototype.GetParent(), prototype.GetDeclaration())
+	InitTypedElementBase(&c.TypedElementBase, kind, nameInclTypeParameters, internalName, prototype.GetProgram(), prototype.GetParent(), prototype.GetDeclaration(), c)
 	c.Prototype = prototype
 	c.flags = prototype.flags
 	c.decoratorFlags = prototype.decoratorFlags
@@ -697,6 +697,7 @@ type InterfacePrototype struct {
 func NewInterfacePrototype(name string, parent Element, declaration *ast.ClassDeclaration, decoratorFlags DecoratorFlags) *InterfacePrototype {
 	ip := &InterfacePrototype{}
 	ip.ClassPrototype = *NewClassPrototype(name, parent, declaration, decoratorFlags, true)
+	ip.self = ip // update self to point to the InterfacePrototype wrapper
 	return ip
 }
 
@@ -710,6 +711,7 @@ func NewInterface(nameInclTypeParameters string, prototype *InterfacePrototype, 
 	iface := &Interface{}
 	iface.Class = *NewClass(nameInclTypeParameters, &prototype.ClassPrototype, typeArguments, true)
 	iface.Class.interfaceRef = iface
+	iface.self = iface // update self to point to the Interface wrapper
 	return iface
 }
 
@@ -722,7 +724,7 @@ type IndexSignature struct {
 func NewIndexSignature(parent *Class) *IndexSignature {
 	is := &IndexSignature{}
 	declaration := parent.GetProgram().MakeNativeVariableDeclaration("[]", 0)
-	InitTypedElementBase(&is.TypedElementBase, ElementKindIndexSignature, "[]", parent.GetInternalName()+"[]", parent.GetProgram(), parent, declaration)
+	InitTypedElementBase(&is.TypedElementBase, ElementKindIndexSignature, "[]", parent.GetInternalName()+"[]", parent.GetProgram(), parent, declaration, is)
 	return is
 }
 

@@ -14,7 +14,7 @@ type Namespace struct {
 func NewNamespace(name string, parent Element, declaration *ast.NamespaceDeclaration, decoratorFlags DecoratorFlags) *Namespace {
 	ns := &Namespace{}
 	internalName := MangleInternalName(name, parent, false, false)
-	InitDeclaredElementBase(&ns.DeclaredElementBase, ElementKindNamespace, name, internalName, parent.GetProgram(), parent, declaration)
+	InitDeclaredElementBase(&ns.DeclaredElementBase, ElementKindNamespace, name, internalName, parent.GetProgram(), parent, declaration, ns)
 	ns.decoratorFlags = decoratorFlags
 	return ns
 }
@@ -37,7 +37,7 @@ type Enum struct {
 func NewEnum(name string, parent Element, declaration *ast.EnumDeclaration, decoratorFlags DecoratorFlags) *Enum {
 	e := &Enum{}
 	internalName := MangleInternalName(name, parent, false, false)
-	InitTypedElementBase(&e.TypedElementBase, ElementKindEnum, name, internalName, parent.GetProgram(), parent, declaration)
+	InitTypedElementBase(&e.TypedElementBase, ElementKindEnum, name, internalName, parent.GetProgram(), parent, declaration, e)
 	e.decoratorFlags = decoratorFlags
 	e.SetType(types.TypeI32)
 	return e
@@ -60,7 +60,7 @@ type EnumValue struct {
 // NewEnumValue creates a new enum value.
 func NewEnumValue(name string, parent *Enum, declaration *ast.EnumValueDeclaration, decoratorFlags DecoratorFlags) *EnumValue {
 	ev := &EnumValue{}
-	InitVariableLikeBase(&ev.VariableLikeBase, ElementKindEnumValue, name, parent, declaration)
+	InitVariableLikeBase(&ev.VariableLikeBase, ElementKindEnumValue, name, parent, declaration, ev)
 	ev.decoratorFlags = decoratorFlags
 	ev.SetType(types.TypeI32)
 	return ev
@@ -85,7 +85,7 @@ func NewGlobal(name string, parent Element, decoratorFlags DecoratorFlags, decla
 	if declaration == nil {
 		declaration = parent.GetProgram().MakeNativeVariableDeclaration(name, 0)
 	}
-	InitVariableLikeBase(&g.VariableLikeBase, ElementKindGlobal, name, parent, declaration)
+	InitVariableLikeBase(&g.VariableLikeBase, ElementKindGlobal, name, parent, declaration, g)
 	g.decoratorFlags = decoratorFlags
 	return g
 }
@@ -99,7 +99,7 @@ type TypeDefinition struct {
 func NewTypeDefinition(name string, parent Element, declaration *ast.TypeDeclaration, decoratorFlags DecoratorFlags) *TypeDefinition {
 	td := &TypeDefinition{}
 	internalName := MangleInternalName(name, parent, false, false)
-	InitTypedElementBase(&td.TypedElementBase, ElementKindTypeDefinition, name, internalName, parent.GetProgram(), parent, declaration)
+	InitTypedElementBase(&td.TypedElementBase, ElementKindTypeDefinition, name, internalName, parent.GetProgram(), parent, declaration, td)
 	td.decoratorFlags = decoratorFlags
 	return td
 }

@@ -209,7 +209,10 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 		// Handle special case of initializing from imported immutable global
 		if initializeInStart && module.GetExpressionId(initExpr) == module.ExpressionIdGlobalGet {
 			fromName := module.GetGlobalGetName(initExpr)
-			if fromName != "" {
+			if fromName == "" {
+				panic("compileGlobal: GlobalGet expression has empty name")
+			}
+			{
 				globalRef := mod.GetGlobal(fromName)
 				if globalRef != 0 && !module.IsGlobalMutable(globalRef) {
 					elementsByName := c.Program.ElementsByNameMap
@@ -473,19 +476,132 @@ func (c *Compiler) compileInlineConstant(element program.VariableLikeElement, co
 	}
 }
 
-// ensureRuntimeFunction ensures a function is in the function table and returns its table index.
-// Ported from: assemblyscript/src/compiler.ts ensureRuntimeFunction (lines 10202-10230).
-func (c *Compiler) ensureRuntimeFunction(instance *program.Function) int32 {
-	// Check if already in the function table
-	for i, fn := range c.FunctionTable {
-		if fn == instance {
-			return int32(i)
+// ensureRuntimeFunction ensures that a runtime counterpart of the specified function exists
+// and returns its memory address (i64).
+// Ported from: assemblyscript/src/compiler.ts ensureRuntimeFunction (lines 2124-2145).
+func (c *Compiler) ensureRuntimeFunction(instance *program.Function) int64 {
+	if !instance.Is(common.CommonFlagsCompiled) || instance.Is(common.CommonFlagsStub) {
+		panic("ensureRuntimeFunction: instance must be compiled and not a stub")
+	}
+
+	prog := c.Program
+	memorySegment := instance.MemorySegment
+	if memorySegment == nil {
+		// Add to the function table
+		functionTable := c.FunctionTable
+		tableBase := c.Options().TableBase
+		if tableBase == 0 {
+			tableBase = 1 // leave first elem blank
+		}
+		index := int32(tableBase) + int32(len(functionTable))
+		c.FunctionTable = append(c.FunctionTable, instance)
+
+		// Create runtime Function class instance buffer
+		// Ported from: compiler.ts:2138-2142
+		// TODO: Full port requires Class.CreateBuffer() and Class.WriteField() infrastructure.
+		// TS does:
+		//   let rtInstance = assert(this.resolver.resolveClass(program.functionPrototype, [instance.type]));
+		//   let buf = rtInstance.createBuffer();
+		//   assert(rtInstance.writeField("_index", index, buf));
+		//   assert(rtInstance.writeField("_env", 0, buf));
+		//   instance.memorySegment = memorySegment = this.addRuntimeMemorySegment(buf);
+		//
+		// createBuffer (program.ts:4683-4695) allocates a byte buffer with:
+		//   - blockOverhead + computeBlockSize(nextMemoryOffset) bytes
+		//   - Writes OBJECT header fields: mmInfo, gcInfo, gcInfo2, rtId, rtSize
+		// writeField (program.ts:4698-4740) writes a value into the buffer at:
+		//   - property.memoryOffset + totalOverhead offset
+		//   - Using the property's type to determine byte width
+
+		// Resolve the runtime Function<T> class
+		funcType := instance.GetResolvedType()
+		rtInstance := c.Resolver().ResolveClass(
+			prog.FunctionPrototype(),
+			[]*types.Type{funcType},
+			nil,
+			program.ReportModeReport,
+		)
+		if rtInstance == nil {
+			panic("ensureRuntimeFunction: failed to resolve Function class")
+		}
+
+		// Allocate buffer: blockOverhead + enough space for the Function instance
+		totalOverhead := prog.TotalOverhead()
+		blockOverhead := prog.BlockOverhead()
+		payloadSize := int32(rtInstance.NextMemoryOffset)
+		blockSize := prog.ComputeBlockSize(payloadSize, true)
+		buf := make([]byte, blockOverhead+blockSize)
+
+		// Write OBJECT header fields
+		objectInstance := prog.ObjectInstance()
+		writeRuntimeField(objectInstance, "mmInfo", int64(blockSize), buf, 0)
+		writeRuntimeField(objectInstance, "gcInfo", 0, buf, 0)
+		writeRuntimeField(objectInstance, "gcInfo2", 0, buf, 0)
+		writeRuntimeField(objectInstance, "rtId", int64(rtInstance.Id()), buf, 0)
+		writeRuntimeField(objectInstance, "rtSize", int64(payloadSize), buf, 0)
+
+		// Write Function instance fields
+		writeRuntimeField(rtInstance, "_index", int64(index), buf, totalOverhead)
+		writeRuntimeField(rtInstance, "_env", 0, buf, totalOverhead)
+
+		memorySegment = c.addRuntimeMemorySegment(buf)
+		instance.MemorySegment = memorySegment
+	}
+
+	// Return memory address: segment offset + totalOverhead
+	// The segment Offset is an ExpressionRef (i32.const or i64.const), we need the raw value.
+	segmentOffset := module.GetConstValueI64(memorySegment.Offset)
+	return segmentOffset + int64(prog.TotalOverhead())
+}
+
+// writeRuntimeField writes a field value into a byte buffer at the field's memory offset.
+// Simplified port of Class.writeField from program.ts:4698-4767.
+// Only handles i32 and usize fields, which covers OBJECT header and Function fields.
+func writeRuntimeField(clazz *program.Class, fieldName string, value int64, buf []byte, baseOffset int32) {
+	member := clazz.GetMember(fieldName)
+	if member == nil {
+		return
+	}
+	propProto, ok := member.(*program.PropertyPrototype)
+	if !ok {
+		return
+	}
+	prop := propProto.PropertyInstance
+	if prop == nil || !prop.IsField() || prop.MemoryOffset < 0 {
+		return
+	}
+	offset := int(baseOffset) + int(prop.MemoryOffset)
+	typeKind := prop.GetType().Kind
+	switch typeKind {
+	case types.TypeKindI32, types.TypeKindU32:
+		if offset+4 <= len(buf) {
+			buf[offset] = byte(value)
+			buf[offset+1] = byte(value >> 8)
+			buf[offset+2] = byte(value >> 16)
+			buf[offset+3] = byte(value >> 24)
+		}
+	case types.TypeKindIsize, types.TypeKindUsize:
+		// For wasm32, write 4 bytes; for wasm64, write 8 bytes.
+		// Since we only handle static buffers during compilation,
+		// and the target is determined at compile time, we write 4 bytes (wasm32 default).
+		if offset+4 <= len(buf) {
+			buf[offset] = byte(value)
+			buf[offset+1] = byte(value >> 8)
+			buf[offset+2] = byte(value >> 16)
+			buf[offset+3] = byte(value >> 24)
+		}
+	case types.TypeKindI64, types.TypeKindU64:
+		if offset+8 <= len(buf) {
+			buf[offset] = byte(value)
+			buf[offset+1] = byte(value >> 8)
+			buf[offset+2] = byte(value >> 16)
+			buf[offset+3] = byte(value >> 24)
+			buf[offset+4] = byte(value >> 32)
+			buf[offset+5] = byte(value >> 40)
+			buf[offset+6] = byte(value >> 48)
+			buf[offset+7] = byte(value >> 56)
 		}
 	}
-	// Add to function table
-	index := int32(len(c.FunctionTable))
-	c.FunctionTable = append(c.FunctionTable, instance)
-	return index
 }
 
 // evaluateCondition tries to determine whether a condition expression is

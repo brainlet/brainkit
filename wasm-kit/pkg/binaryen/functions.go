@@ -277,6 +277,16 @@ func TableGetMax(t TableRef) Index {
 	return Index(C.BinaryenTableGetMax((C.BinaryenTableRef)(unsafe.Pointer(t))))
 }
 
+// TableSetInitial sets the initial size of the table.
+func TableSetInitial(t TableRef, initial Index) {
+	C.BinaryenTableSetInitial((C.BinaryenTableRef)(unsafe.Pointer(t)), C.BinaryenIndex(initial))
+}
+
+// TableSetMax sets the maximum size of the table.
+func TableSetMax(t TableRef, maximum Index) {
+	C.BinaryenTableSetMax((C.BinaryenTableRef)(unsafe.Pointer(t)), C.BinaryenIndex(maximum))
+}
+
 // TableGetType returns the element type of the table.
 func TableGetType(t TableRef) Type {
 	return Type(C.BinaryenTableGetType((C.BinaryenTableRef)(unsafe.Pointer(t))))

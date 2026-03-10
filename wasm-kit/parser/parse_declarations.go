@@ -10,7 +10,7 @@ import (
 // parseDecorator parses a decorator: '@' Identifier ('.' Identifier)* ('(' Arguments ')')?
 func (p *Parser) parseDecorator(tn *tokenizer.Tokenizer) *ast.DecoratorNode {
 	startPos := tn.TokenPos
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		name := tn.ReadIdentifier()
 		var expression ast.Node = ast.NewIdentifierExpression(name, *tn.MakeRange(startPos, tn.Pos), false)
 		for tn.Skip(tokenizer.TokenDot, tokenizer.IdentifierHandlingDefault) {
@@ -75,7 +75,7 @@ func (p *Parser) parseVariableDeclaration(
 	parentDecorators []*ast.DecoratorNode,
 	isFor bool,
 ) *ast.VariableDeclaration {
-	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 		return nil
 	}
@@ -184,7 +184,7 @@ func (p *Parser) parseEnum(
 
 // parseEnumValue parses an enum value: Identifier ('=' Expression)?
 func (p *Parser) parseEnumValue(tn *tokenizer.Tokenizer, parentFlags int32) *ast.EnumValueDeclaration {
-	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 		return nil
 	}
@@ -324,7 +324,7 @@ func (p *Parser) parseParameter(tn *tokenizer.Tokenizer, isConstructor bool) *as
 		isRest = true
 	}
 
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		if !isRest {
 			r := tn.MakeRange(-1, -1)
 			startRange = r
@@ -391,7 +391,7 @@ func (p *Parser) parseFunction(
 	decorators []*ast.DecoratorNode,
 	startPos int32,
 ) *ast.FunctionDeclaration {
-	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(tn.Pos, -1))
 		return nil
 	}
@@ -495,7 +495,7 @@ func (p *Parser) parseFunctionExpression(tn *tokenizer.Tokenizer) *ast.FunctionE
 	arrowKind := ast.ArrowKindNone
 
 	if tn.Token == tokenizer.TokenFunction {
-		if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+		if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 			name = ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 		} else {
 			name = ast.NewEmptyIdentifierExpression(*tn.MakeRange(tn.Pos, -1))
@@ -594,7 +594,7 @@ func (p *Parser) parseClassOrInterface(
 ) *ast.ClassDeclaration {
 	isInterface := tn.Token == tokenizer.TokenInterface
 
-	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 		return nil
 	}
@@ -701,7 +701,7 @@ func (p *Parser) parseClassExpression(tn *tokenizer.Tokenizer) *ast.ClassExpress
 	startPos := tn.TokenPos
 	var name *ast.IdentifierExpression
 
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		name = ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 	} else {
 		name = ast.NewEmptyIdentifierExpression(*tn.MakeRange(tn.Pos, -1))
@@ -1199,7 +1199,7 @@ func (p *Parser) parseIndexSignature(
 	}
 
 	start := tn.TokenPos
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		id := tn.ReadIdentifier()
 		if id == "key" {
 			if tn.Skip(tokenizer.TokenColon, tokenizer.IdentifierHandlingDefault) {
@@ -1246,7 +1246,7 @@ func (p *Parser) parseNamespace(
 	decorators []*ast.DecoratorNode,
 	startPos int32,
 ) *ast.NamespaceDeclaration {
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		identifier := ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 		if tn.Skip(tokenizer.TokenOpenBrace, tokenizer.IdentifierHandlingDefault) {
 			var members []ast.Node
@@ -1432,7 +1432,7 @@ func (p *Parser) parseImport(tn *tokenizer.Tokenizer) *ast.ImportStatement {
 	} else if tn.Skip(tokenizer.TokenAsterisk, tokenizer.IdentifierHandlingDefault) {
 		// import * as Name from "file"
 		if tn.Skip(tokenizer.TokenAs, tokenizer.IdentifierHandlingDefault) {
-			if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+			if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 				namespaceName = ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 			} else {
 				p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
@@ -1492,7 +1492,7 @@ func (p *Parser) parseImportDeclaration(tn *tokenizer.Tokenizer) *ast.ImportDecl
 		identifier := ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 		var asIdentifier *ast.IdentifierExpression
 		if tn.Skip(tokenizer.TokenAs, tokenizer.IdentifierHandlingDefault) {
-			if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+			if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 				asIdentifier = ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 			} else {
 				p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
@@ -1513,10 +1513,10 @@ func (p *Parser) parseImportDeclaration(tn *tokenizer.Tokenizer) *ast.ImportDecl
 
 // parseExportImport parses: 'export' 'import' Identifier '=' Identifier ';'?
 func (p *Parser) parseExportImport(tn *tokenizer.Tokenizer, startPos int32) *ast.ExportImportStatement {
-	if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		asIdentifier := ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 		if tn.Skip(tokenizer.TokenEquals, tokenizer.IdentifierHandlingDefault) {
-			if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+			if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 				identifier := ast.NewIdentifierExpression(tn.ReadIdentifier(), *tn.MakeRange(-1, -1), false)
 				ret := ast.NewExportImportStatement(identifier, asIdentifier, *tn.MakeRange(startPos, tn.Pos))
 				tn.Skip(tokenizer.TokenSemicolon, tokenizer.IdentifierHandlingDefault)

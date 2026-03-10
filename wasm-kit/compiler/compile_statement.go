@@ -57,6 +57,10 @@ func (c *Compiler) CompileStatement(statement ast.Node) module.ExpressionRef {
 		stmt = c.compileVoidStatement(statement.(*ast.VoidStatement))
 	case ast.NodeKindWhile:
 		stmt = c.compileWhileStatement(statement.(*ast.WhileStatement))
+	case ast.NodeKindTypeDeclaration:
+		stmt = c.compileTypeDeclaration(statement.(*ast.TypeDeclaration))
+	case ast.NodeKindModule:
+		stmt = mod.Nop()
 	default:
 		stmt = mod.Unreachable()
 	}
@@ -228,7 +232,7 @@ func (c *Compiler) doCompileDoStatement(statement *ast.DoStatement) module.Expre
 
 	// Otherwise compile and evaluate the condition (from here on always executes)
 	} else {
-		condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit)
+		condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsNone)
 		condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, statement.Condition)
 		condKind := c.evaluateCondition(condExprTrueish)
 
@@ -307,7 +311,7 @@ func (c *Compiler) doCompileForStatement(statement *ast.ForStatement) module.Exp
 	var condKind flow.ConditionKind
 	condition := statement.Condition
 	if condition != nil {
-		condExpr = c.CompileExpression(condition, types.TypeBool, ConstraintsConvImplicit)
+		condExpr = c.CompileExpression(condition, types.TypeBool, ConstraintsNone)
 		condExprTrueish = c.makeIsTrueish(condExpr, c.CurrentType, condition)
 		condKind = c.evaluateCondition(condExprTrueish)
 
@@ -424,7 +428,7 @@ func (c *Compiler) compileIfStatement(statement *ast.IfStatement) module.Express
 	ifFalse := statement.IfFalse
 
 	// Precompute the condition (always executes)
-	condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit)
+	condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsNone)
 	condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, statement.Condition)
 	condKind := c.evaluateCondition(condExprTrueish)
 
@@ -921,7 +925,7 @@ func (c *Compiler) doCompileWhileStatement(statement *ast.WhileStatement) module
 	numLocalsBefore := len(outerFlow.TargetFunction.FlowLocalsByIndex())
 
 	// Compile and evaluate the condition (always executes)
-	condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit)
+	condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsNone)
 	condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, statement.Condition)
 	condKind := c.evaluateCondition(condExprTrueish)
 
@@ -1063,8 +1067,15 @@ func (c *Compiler) makeIsTrueish(expr module.ExpressionRef, typ *types.Type, rep
 		types.TypeKindStringviewWTF8, types.TypeKindStringviewWTF16,
 		types.TypeKindStringviewIter:
 		return mod.Unary(module.UnaryOpEqzI32, mod.RefIsNull(expr))
+	case types.TypeKindVoid:
+		fallthrough
 	default:
-		return expr
+		c.Error(
+			diagnostics.DiagnosticCodeAnExpressionOfType0CannotBeTestedForTruthiness,
+			reportNode.GetRange(),
+			typ.String(), "", "",
+		)
+		return mod.I32(0)
 	}
 }
 
@@ -1075,6 +1086,28 @@ func (c *Compiler) addDebugLocation(expr module.ExpressionRef, rng *diagnostics.
 	}
 	// Debug location support requires mapping source ranges to file indices.
 	// Stub: needs source file index tracking.
+}
+
+// compileTypeDeclaration compiles a type alias declaration.
+// Ported from: assemblyscript/src/compiler.ts compileTypeDeclaration (lines 2368-2384).
+func (c *Compiler) compileTypeDeclaration(statement *ast.TypeDeclaration) module.ExpressionRef {
+	mod := c.Module()
+	fl := c.CurrentFlow
+	name := statement.Name.Text
+	existedTypeAlias := fl.LookupScopedTypeAlias(name)
+	if existedTypeAlias != nil {
+		existingTD := existedTypeAlias.(*program.TypeDefinition)
+		c.ErrorRelated(
+			diagnostics.DiagnosticCodeDuplicateIdentifier0,
+			statement.GetRange(),
+			existingTD.GetDeclaration().GetRange(),
+			name, "", "",
+		)
+		return mod.Unreachable()
+	}
+	element := program.NewTypeDefinition(name, fl.SourceFunction().(program.Element), statement, program.DecoratorFlagsNone)
+	fl.AddScopedTypeAlias(name, element)
+	return mod.Nop()
 }
 
 // GetAutoreleaseLocal on Flow — check if it exists, otherwise use addScopedLocal.

@@ -256,7 +256,7 @@ func (p *Parser) tryParseFunctionType(tn *tokenizer.Tokenizer) *ast.FunctionType
 					p.tryParseSignatureIsSignature = false
 					return nil
 				}
-			} else if tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+			} else if tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 				if paramStart < 0 {
 					paramStart = tn.TokenPos
 				}

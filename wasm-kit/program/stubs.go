@@ -376,6 +376,13 @@ func init() {
 	// Wire flow package's UnaryOp constants.
 	flow.UnaryOpEqzI32 = int32(module.UnaryOpEqzI32)
 	flow.UnaryOpEqzI64 = int32(module.UnaryOpEqzI64)
+
+	// Wire flow package's TypeRef constants.
+	flow.TypeRefI32 = int32(module.TypeRefI32)
+	flow.TypeRefI64 = int32(module.TypeRefI64)
+	flow.TypeRefF32 = int32(module.TypeRefF32)
+	flow.TypeRefF64 = int32(module.TypeRefF64)
+	flow.TypeRefV128 = int32(module.TypeRefV128)
 }
 
 // --- parser package stubs ---

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/brainlet/brainkit/wasm-kit/ast"
@@ -9,6 +10,17 @@ import (
 	"github.com/brainlet/brainkit/wasm-kit/tokenizer"
 	"github.com/brainlet/brainkit/wasm-kit/util"
 )
+
+// isNilNode checks if an ast.Node interface contains a nil pointer (typed nil).
+// This guards against the Go nil interface trap where a nil *ConcreteType
+// stored in an ast.Node interface is != nil but still invalid to call methods on.
+func isNilNode(n ast.Node) bool {
+	if n == nil {
+		return true
+	}
+	v := reflect.ValueOf(n)
+	return v.Kind() == reflect.Ptr && v.IsNil()
+}
 
 // CommentHandler is a callback invoked when comments are encountered.
 type CommentHandler func(kind tokenizer.CommentKind, text string, rng *diagnostics.Range)
@@ -103,7 +115,7 @@ func (p *Parser) ParseFile(
 
 	for tn.Peek(tokenizer.IdentifierHandlingDefault, MaxInt32) != tokenizer.TokenEndOfFile {
 		statement := p.parseTopLevelStatement(tn, nil)
-		if statement != nil {
+		if !isNilNode(statement) {
 			source.Statements = append(source.Statements, statement)
 		} else {
 			p.skipStatement(tn)

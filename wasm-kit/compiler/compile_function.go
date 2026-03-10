@@ -350,6 +350,9 @@ func (c *Compiler) checkSignatureSupported(signature *types.Signature, reportNod
 	supported := true
 	explicitThisType := reportNode.ExplicitThisType
 	if explicitThisType != nil {
+		if signature.ThisType == nil {
+			panic("checkSignatureSupported: signature.ThisType is nil but explicitThisType is present")
+		}
 		if !c.Program.CheckTypeSupported(signature.ThisType, explicitThisType) {
 			supported = false
 		}
@@ -444,30 +447,96 @@ func mangleImportName(element program.Element, declaration ast.Node) (string, st
 }
 
 // liftRequiresExportRuntime tests if lifting a type requires the exported runtime.
-// Ported from: assemblyscript/src/bindings/js.ts liftRequiresExportRuntime.
+// Ported from: assemblyscript/src/bindings/js.ts liftRequiresExportRuntime (lines 1525-1554).
 func liftRequiresExportRuntime(typ *types.Type) bool {
 	if !typ.IsInternalReference() {
 		return false
 	}
-	// Internal references (managed objects, functions) generally require the runtime.
-	// A full implementation would check specific class hierarchies (ArrayBuffer, String, etc.)
-	// for exceptions. For now, conservatively return true for all internal references.
+	classRef := typ.GetClass()
+	if classRef == nil {
+		// functions lift as internref using __pin
+		if typ.GetSignature() != nil {
+			return true
+		}
+		return false
+	}
+	clazz, ok := classRef.(*program.Class)
+	if !ok {
+		return true
+	}
+	prog := clazz.GetProgram()
+	// flat collections lift via memory copy
+	if clazz.ExtendsPrototype(prog.ArrayBufferInstance().Prototype) ||
+		clazz.ExtendsPrototype(prog.StringInstance().Prototype) ||
+		clazz.ExtendsPrototype(prog.ArrayBufferViewInstance().Prototype) {
+		return false
+	}
+	// nested collections lift depending on element type
+	if clazz.ExtendsPrototype(prog.ArrayPrototype()) ||
+		clazz.ExtendsPrototype(prog.StaticArrayPrototype()) {
+		return liftRequiresExportRuntime(clazz.GetArrayValueType())
+	}
+	// complex objects lift as internref using __pin. plain objects may or may not
+	// involve the runtime: assume that they do to avoid potentially costly checks
 	return true
 }
 
 // lowerRequiresExportRuntime tests if lowering a type requires the exported runtime.
-// Ported from: assemblyscript/src/bindings/js.ts lowerRequiresExportRuntime.
+// Ported from: assemblyscript/src/bindings/js.ts lowerRequiresExportRuntime (lines 1556-1580).
 func lowerRequiresExportRuntime(typ *types.Type) bool {
 	if !typ.IsInternalReference() {
 		return false
 	}
-	clazz := typ.ClassRef
-	if clazz == nil {
-		// Function signatures lower by reference, no runtime needed.
+	classRef := typ.GetClass()
+	if classRef == nil {
+		// lowers by reference
+		if typ.GetSignature() != nil {
+			return false
+		}
 		return false
 	}
-	// A full implementation would check specific class hierarchies.
-	// For now, conservatively return true for class references.
+	clazz, ok := classRef.(*program.Class)
+	if !ok {
+		return false
+	}
+	prog := clazz.GetProgram()
+	// lowers using __new
+	if clazz.ExtendsPrototype(prog.ArrayBufferInstance().Prototype) ||
+		clazz.ExtendsPrototype(prog.StringInstance().Prototype) ||
+		clazz.ExtendsPrototype(prog.ArrayBufferViewInstance().Prototype) ||
+		clazz.ExtendsPrototype(prog.ArrayPrototype()) ||
+		clazz.ExtendsPrototype(prog.StaticArrayPrototype()) {
+		return true
+	}
+	// complex objects lower via internref by reference,
+	// while plain objects lower using __new
+	return isPlainObject(clazz)
+}
+
+// isPlainObject tests if a class is a plain object (no inheritance, no constructor, no private props).
+// Ported from: assemblyscript/src/bindings/js.ts isPlainObject (lines 1490-1505).
+func isPlainObject(clazz *program.Class) bool {
+	// A plain object does not inherit and does not have a constructor or private properties
+	if clazz.Base != nil && !clazz.Prototype.ImplicitlyExtendsObject {
+		return false
+	}
+	members := clazz.GetMembers()
+	if members != nil {
+		for _, member := range members {
+			if member.IsAny(common.CommonFlagsPrivate | common.CommonFlagsProtected) {
+				return false
+			}
+			if member.Is(common.CommonFlagsConstructor) {
+				decl := member.GetDeclaration()
+				if decl != nil && decl.GetRange() != nil {
+					nativeRange := ast.NativeSource().GetRange()
+					if nativeRange != nil && decl.GetRange() != nativeRange {
+						return false
+					}
+				}
+			}
+		}
+	}
 	return true
 }
 

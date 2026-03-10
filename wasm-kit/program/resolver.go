@@ -680,6 +680,9 @@ func (r *Resolver) ResolveTypeArguments(
 	}
 
 	// Save old contextual types
+	if ctxTypes == nil {
+		ctxTypes = make(map[string]*types.Type)
+	}
 	oldCtxTypes := make(map[string]*types.Type, len(ctxTypes))
 	for k, v := range ctxTypes {
 		oldCtxTypes[k] = v
@@ -1304,22 +1307,12 @@ func (r *Resolver) propagateInferredGenericTypes(
 }
 
 func (r *Resolver) findConstructorPrototype(prototype *ClassPrototype) *FunctionPrototype {
-	for current := prototype; current != nil; current = current.BasePrototype {
-		if current.ConstructorPrototype != nil {
-			return current.ConstructorPrototype
-		}
-		if current.InstanceMembers != nil {
-			if ctor, ok := current.InstanceMembers[common.CommonNameConstructor].(*FunctionPrototype); ok {
-				return ctor
-			}
-		}
-		if members := current.GetMembers(); members != nil {
-			if ctor, ok := members[common.CommonNameConstructor].(*FunctionPrototype); ok && ctor.Is(common.CommonFlagsInstance) {
-				return ctor
-			}
-		}
+	// Ported from: resolver.ts:3591-3594
+	var constructorPrototype *FunctionPrototype
+	for p := prototype; p != nil && constructorPrototype == nil; p = p.BasePrototype {
+		constructorPrototype = p.ConstructorPrototype
 	}
-	return nil
+	return constructorPrototype
 }
 
 // =========================================================================
@@ -3003,89 +2996,25 @@ func (r *Resolver) lookupLiteralExpression(
 }
 
 // resolveLiteralExpression resolves a literal expression to its static type.
+// Ported from: resolver.ts:2377-2399
 func (r *Resolver) resolveLiteralExpression(
 	node ast.Node,
 	ctxFlow *flow.Flow,
 	ctxType *types.Type,
 	reportMode ReportMode,
 ) *types.Type {
-	switch n := node.(type) {
-	case *ast.IntegerLiteralExpression:
-		return r.determineIntegerLiteralType(n, false, ctxType)
-
-	case *ast.FloatLiteralExpression:
-		if ctxType == types.TypeF32 {
-			return types.TypeF32
-		}
-		return types.TypeF64
-
-	case *ast.StringLiteralExpression, *ast.TemplateLiteralExpression:
-		stringInstance := r.program.StringInstance()
-		if stringInstance != nil {
-			return stringInstance.GetResolvedType()
-		}
+	element := r.lookupLiteralExpression(node, ctxFlow, ctxType, reportMode)
+	if element == nil {
 		return nil
-
-	case *ast.RegexpLiteralExpression:
-		regexpInstance := r.program.RegexpInstance()
-		if regexpInstance != nil {
-			return regexpInstance.GetResolvedType()
-		}
-		return nil
-
-	case *ast.ArrayLiteralExpression:
-		if ctxType != nil {
-			if classRef := ctxType.GetClass(); classRef != nil {
-				if classInstance, ok := classRef.(*Class); ok && classInstance.Prototype == r.program.ArrayPrototype() {
-					return ctxType
-				}
-			}
-		}
-
-		element := r.lookupLiteralExpression(node, ctxFlow, ctxType, reportMode)
-		if element == nil {
-			return nil
-		}
-		typ := r.GetTypeOfElement(element)
-		if typ == nil && reportMode == ReportModeReport {
-			r.program.Error(
-				diagnostics.DiagnosticCodeExpressionCannotBeRepresentedByAType,
-				node.GetRange(),
-			)
-		}
-		return typ
-
-	case *ast.ObjectLiteralExpression:
-		if ctxType != nil && ctxType.IsClass() {
-			return ctxType
-		}
+	}
+	typ := r.GetTypeOfElement(element)
+	if typ == nil {
 		if reportMode == ReportModeReport {
 			r.program.Error(
 				diagnostics.DiagnosticCodeExpressionCannotBeRepresentedByAType,
 				node.GetRange(),
 			)
 		}
-		return nil
-
-	case *ast.IdentifierExpression:
-		switch n.GetKind() {
-		case ast.NodeKindTrue, ast.NodeKindFalse:
-			return types.TypeBool
-		case ast.NodeKindNull:
-			return ctxType
-		}
-	}
-
-	element := r.lookupLiteralExpression(node, ctxFlow, ctxType, reportMode)
-	if element == nil {
-		return nil
-	}
-	typ := r.GetTypeOfElement(element)
-	if typ == nil && reportMode == ReportModeReport {
-		r.program.Error(
-			diagnostics.DiagnosticCodeExpressionCannotBeRepresentedByAType,
-			node.GetRange(),
-		)
 	}
 	return typ
 }
@@ -3443,23 +3372,10 @@ func (r *Resolver) doResolveExpression(
 
 // GetElementOfType gets the element corresponding to a type, if any.
 func (r *Resolver) GetElementOfType(typ *types.Type) Element {
-	if typ == nil {
-		return nil
-	}
-	if classRef := typ.GetClass(); classRef != nil {
-		if element, ok := classRef.(Element); ok {
-			return element
-		}
-	}
-	if signature := typ.GetSignature(); signature != nil {
-		if functionPrototype := r.program.FunctionPrototype(); functionPrototype != nil {
-			if functionClass := r.ResolveClass(functionPrototype, []*types.Type{signature.Type}, make(map[string]*types.Type), ReportModeSwallow); functionClass != nil {
-				return functionClass
-			}
-		}
-	}
-	if wrapper, ok := r.program.WrapperClasses[typ]; ok {
-		return wrapper
+	// Ported from: resolver.ts:886-890
+	classReference := typ.GetClassOrWrapper(r.program)
+	if classReference != nil {
+		return classReference.(*Class)
 	}
 	return nil
 }

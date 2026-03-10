@@ -20,18 +20,44 @@ import (
 )
 
 // CompileExpression compiles an expression and optionally converts to the contextual type.
-// Ported from: assemblyscript/src/compiler.ts compileExpression (lines 3431-3459).
+// Ported from: assemblyscript/src/compiler.ts compileExpression (lines 3431-3542).
 func (c *Compiler) CompileExpression(expression ast.Node, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
+	// Skip parenthesized wrappers (TS lines 3436-3438)
+	for expression.GetKind() == ast.NodeKindParenthesized {
+		expression = expression.(*ast.ParenthesizedExpression).Expression
+	}
+
+	// Set currentType default (TS line 3439)
+	c.CurrentType = contextualType
+
+	// Auto-add WillDrop for void context (TS line 3440)
+	if contextualType == types.TypeVoid {
+		constraints |= ConstraintsWillDrop
+	}
+
 	// Compile the inner expression based on its kind
 	expr := c.compileExpressionInner(expression, contextualType, constraints)
 
-	// Perform type conversion if needed
-	ct := c.CurrentType
-	if ct != contextualType && contextualType != types.TypeVoid {
-		if constraints&(ConstraintsConvImplicit|ConstraintsConvExplicit) != 0 {
-			expr = c.convertExpression(expr, ct, contextualType, constraints&ConstraintsConvExplicit != 0, expression)
-			c.CurrentType = contextualType
+	// Ensure conversion and wrapping (TS lines 3526-3537)
+	currentType := c.CurrentType
+	wrap := constraints&ConstraintsMustWrap != 0
+
+	// Allow assigning non-nullable to nullable (TS line 3528)
+	if currentType != contextualType.NonNullableType() {
+		if constraints&ConstraintsConvExplicit != 0 {
+			expr = c.convertExpression(expr, currentType, contextualType, true, expression)
+			currentType = contextualType
+			c.CurrentType = currentType
+		} else if constraints&ConstraintsConvImplicit != 0 {
+			expr = c.convertExpression(expr, currentType, contextualType, false, expression)
+			currentType = contextualType
+			c.CurrentType = currentType
 		}
+	}
+
+	// Ensure small integer wrapping (TS line 3537)
+	if wrap {
+		expr = c.ensureSmallIntegerWrap(expr, currentType)
 	}
 
 	return expr
@@ -396,7 +422,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 			rightExpr = c.convertExpression(rightExpr, rightType, commonType, false, right)
 			rightType = commonType
 		}
-		expr = c.makeBinaryRem(leftExpr, rightExpr, commonType)
+		expr = c.makeBinaryRem(leftExpr, rightExpr, commonType, expression)
 
 	case tokenizer.TokenLessThanLessThanEquals:
 		compound = true
@@ -758,9 +784,9 @@ func (c *Compiler) compileCommutativeCompareBinaryExpressionFromParts(
 	c.CurrentType = types.TypeBool
 	switch operator {
 	case tokenizer.TokenEqualsEquals, tokenizer.TokenEqualsEqualsEquals:
-		return c.makeBinaryEq(leftExpr, rightExpr, commonType)
+		return c.makeBinaryEq(leftExpr, rightExpr, commonType, reportNode)
 	case tokenizer.TokenExclamationEquals, tokenizer.TokenExclamationEqualsEquals:
-		return c.makeBinaryNe(leftExpr, rightExpr, commonType)
+		return c.makeBinaryNe(leftExpr, rightExpr, commonType, reportNode)
 	default:
 		return mod.Unreachable()
 	}
@@ -1632,7 +1658,7 @@ func (c *Compiler) compileFunctionExpression(expression *ast.FunctionExpression,
 	offset := c.ensureRuntimeFunction(instance)
 	var expr module.ExpressionRef
 	if c.Options().IsWasm64() {
-		expr = mod.I64(int64(offset))
+		expr = mod.I64(offset)
 	} else {
 		expr = mod.I32(int32(offset))
 	}
@@ -1953,7 +1979,7 @@ func (c *Compiler) compileIdentifierExpression(expression *ast.IdentifierExpress
 		offset := c.ensureRuntimeFunction(functionInstance)
 		c.CurrentType = functionInstance.Signature.Type
 		if c.Options().IsWasm64() {
-			return mod.I64(int64(offset))
+			return mod.I64(offset)
 		}
 		return mod.I32(int32(offset))
 	}
@@ -2343,10 +2369,10 @@ func (c *Compiler) EnsureStaticString(value string) module.ExpressionRef {
 	totalOverhead := c.Program.TotalOverhead()
 
 	// Check if already cached
-	if _, ok := c.StringSegments[value]; ok {
-		// The segment already exists. Recalculate the pointer offset.
-		// We store the base offset in StringSegmentOffsets for retrieval.
-		ptrOffset := c.StringSegmentOffsets[value]
+	if seg, ok := c.StringSegments[value]; ok {
+		// The segment already exists. Compute the pointer offset from the segment's raw offset.
+		// Ported from: compiler.ts:1986 — i64_add(stringSegment.offset, i64_new(totalOverhead))
+		ptrOffset := seg.RawOffset + int64(totalOverhead)
 		if isWasm64 {
 			return mod.I64(ptrOffset)
 		}
@@ -2396,16 +2422,17 @@ func (c *Compiler) EnsureStaticString(value string) module.ExpressionRef {
 	}
 
 	segment := &module.MemorySegment{
-		Buffer: buf,
-		Offset: offsetExpr,
+		Buffer:    buf,
+		Offset:    offsetExpr,
+		RawOffset: alignedOffset,
 	}
 	c.MemorySegments = append(c.MemorySegments, segment)
 	c.StringSegments[value] = segment
 	c.MemoryOffset = alignedOffset + int64(totalBytes)
 
 	// Return pointer to the string data (after the header)
+	// Ported from: compiler.ts:1986 — i64_add(stringSegment.offset, i64_new(totalOverhead))
 	ptrOffset := alignedOffset + int64(totalOverhead)
-	c.StringSegmentOffsets[value] = ptrOffset
 	if isWasm64 {
 		return mod.I64(ptrOffset)
 	}
@@ -3719,7 +3746,8 @@ func (c *Compiler) makeBinaryDiv(left, right module.ExpressionRef, typ *types.Ty
 	}
 }
 
-func (c *Compiler) makeBinaryRem(left, right module.ExpressionRef, typ *types.Type) module.ExpressionRef {
+func (c *Compiler) makeBinaryRem(left, right module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
+	// Ported from: assemblyscript/src/compiler.ts makeRem (lines 5353-5433)
 	mod := c.Module()
 	c.CurrentType = typ
 	switch typ.Kind {
@@ -3749,6 +3777,52 @@ func (c *Compiler) makeBinaryRem(left, right module.ExpressionRef, typ *types.Ty
 			return mod.Binary(module.BinaryOpRemU64, left, right)
 		}
 		return mod.Binary(module.BinaryOpRemU32, left, right)
+	case types.TypeKindF32:
+		instance := c.f32ModInstance
+		if instance == nil {
+			namespace := c.Program.Lookup(common.CommonNameMathf)
+			if namespace == nil {
+				c.Error(diagnostics.DiagnosticCodeCannotFindName0,
+					reportNode.GetRange(), "Mathf", "", "")
+				return mod.Unreachable()
+			}
+			prototype := namespace.GetMember(common.CommonNameMod)
+			if prototype == nil {
+				c.Error(diagnostics.DiagnosticCodeCannotFindName0,
+					reportNode.GetRange(), "Mathf.mod", "", "")
+				return mod.Unreachable()
+			}
+			funcProto := prototype.(*program.FunctionPrototype)
+			instance = c.Resolver().ResolveFunction(funcProto, nil, nil, program.ReportModeReport)
+			c.f32ModInstance = instance
+		}
+		if instance == nil || !c.CompileFunction(instance) {
+			return mod.Unreachable()
+		}
+		return c.makeCallDirect(instance, []module.ExpressionRef{left, right}, reportNode, false)
+	case types.TypeKindF64:
+		instance := c.f64ModInstance
+		if instance == nil {
+			namespace := c.Program.Lookup(common.CommonNameMath)
+			if namespace == nil {
+				c.Error(diagnostics.DiagnosticCodeCannotFindName0,
+					reportNode.GetRange(), "Math", "", "")
+				return mod.Unreachable()
+			}
+			prototype := namespace.GetMember(common.CommonNameMod)
+			if prototype == nil {
+				c.Error(diagnostics.DiagnosticCodeCannotFindName0,
+					reportNode.GetRange(), "Math.mod", "", "")
+				return mod.Unreachable()
+			}
+			funcProto := prototype.(*program.FunctionPrototype)
+			instance = c.Resolver().ResolveFunction(funcProto, nil, nil, program.ReportModeReport)
+			c.f64ModInstance = instance
+		}
+		if instance == nil || !c.CompileFunction(instance) {
+			return mod.Unreachable()
+		}
+		return c.makeCallDirect(instance, []module.ExpressionRef{left, right}, reportNode, false)
 	default:
 		return mod.Unreachable()
 	}
@@ -3892,7 +3966,8 @@ func (c *Compiler) makeBinaryXor(left, right module.ExpressionRef, typ *types.Ty
 	}
 }
 
-func (c *Compiler) makeBinaryEq(left, right module.ExpressionRef, typ *types.Type) module.ExpressionRef {
+func (c *Compiler) makeBinaryEq(left, right module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
+	// Ported from: assemblyscript/src/compiler.ts makeEq (lines 4913-4961)
 	mod := c.Module()
 	switch typ.Kind {
 	case types.TypeKindBool, types.TypeKindI8, types.TypeKindI16, types.TypeKindU8, types.TypeKindU16:
@@ -3912,12 +3987,29 @@ func (c *Compiler) makeBinaryEq(left, right module.ExpressionRef, typ *types.Typ
 		return mod.Binary(module.BinaryOpEqF32, left, right)
 	case types.TypeKindF64:
 		return mod.Binary(module.BinaryOpEqF64, left, right)
+	case types.TypeKindV128:
+		return mod.Unary(module.UnaryOpAllTrueI8x16,
+			mod.Binary(module.BinaryOpEqI8x16, left, right))
+	case types.TypeKindEq, types.TypeKindStruct, types.TypeKindArray, types.TypeKindI31:
+		return mod.RefEq(left, right)
+	case types.TypeKindString:
+		return mod.StringEq(left, right)
+	case types.TypeKindStringviewWTF8, types.TypeKindStringviewWTF16,
+		types.TypeKindStringviewIter, types.TypeKindFunc,
+		types.TypeKindExtern, types.TypeKindAny:
+		c.Error(
+			diagnostics.DiagnosticCodeOperation0CannotBeAppliedToType1,
+			reportNode.GetRange(),
+			"ref.eq", typ.ToString(false), "",
+		)
+		return mod.Unreachable()
 	default:
 		return mod.Unreachable()
 	}
 }
 
-func (c *Compiler) makeBinaryNe(left, right module.ExpressionRef, typ *types.Type) module.ExpressionRef {
+func (c *Compiler) makeBinaryNe(left, right module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
+	// Ported from: assemblyscript/src/compiler.ts makeNe (lines 4963-5019)
 	mod := c.Module()
 	switch typ.Kind {
 	case types.TypeKindBool, types.TypeKindI8, types.TypeKindI16, types.TypeKindU8, types.TypeKindU16:
@@ -3937,6 +4029,24 @@ func (c *Compiler) makeBinaryNe(left, right module.ExpressionRef, typ *types.Typ
 		return mod.Binary(module.BinaryOpNeF32, left, right)
 	case types.TypeKindF64:
 		return mod.Binary(module.BinaryOpNeF64, left, right)
+	case types.TypeKindV128:
+		return mod.Unary(module.UnaryOpAnyTrueV128,
+			mod.Binary(module.BinaryOpNeI8x16, left, right))
+	case types.TypeKindEq, types.TypeKindStruct, types.TypeKindArray, types.TypeKindI31:
+		return mod.Unary(module.UnaryOpEqzI32,
+			mod.RefEq(left, right))
+	case types.TypeKindString:
+		return mod.Unary(module.UnaryOpEqzI32,
+			mod.StringEq(left, right))
+	case types.TypeKindStringviewWTF8, types.TypeKindStringviewWTF16,
+		types.TypeKindStringviewIter, types.TypeKindFunc,
+		types.TypeKindExtern, types.TypeKindAny:
+		c.Error(
+			diagnostics.DiagnosticCodeOperation0CannotBeAppliedToType1,
+			reportNode.GetRange(),
+			"ref.eq", typ.ToString(false), "",
+		)
+		return mod.Unreachable()
 	default:
 		return mod.Unreachable()
 	}

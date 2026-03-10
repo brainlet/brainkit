@@ -92,6 +92,7 @@ type ElementBase struct {
 	internalName   string
 	program        *Program
 	parent         Element
+	self           Element // back-reference to the embedding Element (needed for Add's parent identity check)
 	flags          common.CommonFlags
 	decoratorFlags DecoratorFlags
 	members        map[string]DeclaredElement
@@ -146,7 +147,7 @@ func (e *ElementBase) Add(name string, element DeclaredElement, localIdentifierI
 	if e.members == nil {
 		e.members = make(map[string]DeclaredElement)
 	} else if existing, ok := e.members[name]; ok {
-		if existing.GetParent() == e.parent {
+		if existing.GetParent() == e.self {
 			merged := TryMerge(existing, element)
 			if merged != nil {
 				element = merged
@@ -259,11 +260,13 @@ func (e *ElementBase) String() string {
 }
 
 // InitElementBase initializes the common fields of an ElementBase.
-func InitElementBase(e *ElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element) {
+// self is the outer Element that embeds this ElementBase (needed for Add's parent identity check).
+func InitElementBase(e *ElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element, self Element) {
 	e.kind = kind
 	e.name = name
 	e.internalName = internalName
 	e.program = prog
+	e.self = self
 	if parent != nil {
 		e.parent = parent
 	}
@@ -357,8 +360,8 @@ func (d *DeclaredElementBase) DecoratorNodes() []*ast.DecoratorNode {
 }
 
 // InitDeclaredElementBase initializes a DeclaredElementBase.
-func InitDeclaredElementBase(d *DeclaredElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element, declaration ast.Node) {
-	InitElementBase(&d.ElementBase, kind, name, internalName, prog, parent)
+func InitDeclaredElementBase(d *DeclaredElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element, declaration ast.Node, self Element) {
+	InitElementBase(&d.ElementBase, kind, name, internalName, prog, parent, self)
 	d.declaration = declaration
 	RegisterDeclaredElementKind(kind)
 	// Inherit flags from declaration
@@ -402,8 +405,8 @@ func (t *TypedElementBase) SetType(typ *types.Type) {
 }
 
 // InitTypedElementBase initializes a TypedElementBase.
-func InitTypedElementBase(t *TypedElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element, declaration ast.Node) {
-	InitDeclaredElementBase(&t.DeclaredElementBase, kind, name, internalName, prog, parent, declaration)
+func InitTypedElementBase(t *TypedElementBase, kind ElementKind, name, internalName string, prog *Program, parent Element, declaration ast.Node, self Element) {
+	InitDeclaredElementBase(&t.DeclaredElementBase, kind, name, internalName, prog, parent, declaration, self)
 	RegisterTypedElementKind(kind)
 	t.resolvedType = types.TypeVoid
 }
@@ -457,7 +460,7 @@ func (v *VariableLikeBase) InitializerNode() ast.Node {
 }
 
 // InitVariableLikeBase initializes a VariableLikeBase.
-func InitVariableLikeBase(v *VariableLikeBase, kind ElementKind, name string, parent Element, declaration ast.Node) {
+func InitVariableLikeBase(v *VariableLikeBase, kind ElementKind, name string, parent Element, declaration ast.Node, self Element) {
 	isInstance := false
 	if declaration != nil {
 		if decl, ok := declaration.(*ast.VariableDeclaration); ok {
@@ -465,7 +468,7 @@ func InitVariableLikeBase(v *VariableLikeBase, kind ElementKind, name string, pa
 		}
 	}
 	internalName := MangleInternalName(name, parent, isInstance, false)
-	InitTypedElementBase(&v.TypedElementBase, kind, name, internalName, parent.GetProgram(), parent, declaration)
+	InitTypedElementBase(&v.TypedElementBase, kind, name, internalName, parent.GetProgram(), parent, declaration, self)
 	if declaration != nil {
 		if decl, ok := declaration.(*ast.VariableDeclaration); ok {
 			v.flags = common.CommonFlags(decl.Flags)

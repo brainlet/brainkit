@@ -54,7 +54,7 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 
 	// NewExpression
 	case tokenizer.TokenNew:
-		if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+		if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 			p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 			return nil
 		}
@@ -99,7 +99,7 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 		// determine whether this is a function expression
 		if tn.Skip(tokenizer.TokenCloseParen, tokenizer.IdentifierHandlingDefault) {
 			// must be a function expression (fast route)
-			return p.parseFunctionExpressionCommon(
+			fe := p.parseFunctionExpressionCommon(
 				tn,
 				ast.NewEmptyIdentifierExpression(*tn.MakeRange(startPos, -1)),
 				nil,
@@ -108,6 +108,10 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 				-1,
 				-1,
 			)
+			if fe == nil {
+				return nil
+			}
+			return fe
 		}
 		state := tn.Mark()
 		again := true
@@ -117,7 +121,11 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 			// function expression
 			case tokenizer.TokenDotDotDot:
 				tn.Reset(state)
-				return p.parseFunctionExpression(tn)
+				fe := p.parseFunctionExpression(tn)
+				if fe == nil {
+					return nil
+				}
+				return fe
 
 			// can be both
 			case tokenizer.TokenIdentifier:
@@ -140,12 +148,20 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 					}
 					// fall-through to Colon case
 					tn.Reset(state)
-					return p.parseFunctionExpression(tn)
+					fe := p.parseFunctionExpression(tn)
+					if fe == nil {
+						return nil
+					}
+					return fe
 
 				// function expression
 				case tokenizer.TokenColon:
 					tn.Reset(state)
-					return p.parseFunctionExpression(tn)
+					fe := p.parseFunctionExpression(tn)
+					if fe == nil {
+						return nil
+					}
+					return fe
 
 				// optional parameter or parenthesized
 				case tokenizer.TokenQuestion:
@@ -153,7 +169,11 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 						tn.Skip(tokenizer.TokenComma, tokenizer.IdentifierHandlingDefault) ||
 						tn.Skip(tokenizer.TokenCloseParen, tokenizer.IdentifierHandlingDefault) {
 						tn.Reset(state)
-						return p.parseFunctionExpression(tn)
+						fe := p.parseFunctionExpression(tn)
+						if fe == nil {
+							return nil
+						}
+						return fe
 					}
 					again = false // parenthesized
 
@@ -216,7 +236,7 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 		var values []ast.Node
 		for !tn.Skip(tokenizer.TokenCloseBrace, tokenizer.IdentifierHandlingDefault) {
 			var name *ast.IdentifierExpression
-			if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+			if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 				if !tn.Skip(tokenizer.TokenStringLiteral, tokenizer.IdentifierHandlingDefault) {
 					p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 					return nil
@@ -252,7 +272,7 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 
 	// AssertionExpression (unary prefix)
 	case tokenizer.TokenLessThan:
-		toType := p.parseType(tn, false, false)
+		toType := p.parseType(tn, true, false)
 		if toType == nil {
 			return nil
 		}
@@ -281,7 +301,7 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 			return p.parseTemplateLiteral(tn, identifier)
 		}
 		if tn.Peek(tokenizer.IdentifierHandlingDefault, MaxInt32) == tokenizer.TokenEqualsGreaterThan && !tn.PeekOnNewLine() {
-			return p.parseFunctionExpressionCommon(
+			fe := p.parseFunctionExpressionCommon(
 				tn,
 				ast.NewEmptyIdentifierExpression(*tn.MakeRange(startPos, -1)),
 				[]*ast.ParameterNode{
@@ -298,6 +318,10 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 				startPos,
 				-1,
 			)
+			if fe == nil {
+				return nil
+			}
+			return fe
 		}
 		return p.maybeParseCallExpression(tn, identifier, true)
 
@@ -349,7 +373,11 @@ func (p *Parser) parseExpressionStart(tn *tokenizer.Tokenizer) ast.Node {
 		return p.maybeParseCallExpression(tn, expr, false)
 
 	case tokenizer.TokenClass:
-		return p.parseClassExpression(tn)
+		ce := p.parseClassExpression(tn)
+		if ce == nil {
+			return nil
+		}
+		return ce
 
 	default:
 		if token == tokenizer.TokenEndOfFile {
@@ -456,7 +484,7 @@ func (p *Parser) parseExpression(tn *tokenizer.Tokenizer, precedence Precedence)
 					*tn.MakeRange(startPos, tn.Pos),
 				)
 			} else {
-				toType := p.parseType(tn, false, false)
+				toType := p.parseType(tn, true, false)
 				if toType == nil {
 					return nil
 				}
@@ -479,7 +507,7 @@ func (p *Parser) parseExpression(tn *tokenizer.Tokenizer, precedence Precedence)
 
 		// InstanceOfExpression
 		case tokenizer.TokenInstanceOf:
-			isType := p.parseType(tn, false, false)
+			isType := p.parseType(tn, true, false)
 			if isType == nil {
 				return nil
 			}

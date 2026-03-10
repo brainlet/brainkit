@@ -117,7 +117,7 @@ func GetConstValueInteger(expr ExpressionRef, isWasm64 bool) int64 {
 		hi := int64(GetConstValueI64High(expr))
 		return (hi << 32) | lo
 	}
-	return int64(GetConstValueI32(expr))
+	return int64(uint32(GetConstValueI32(expr)))
 }
 
 // GetConstValueF32 returns the f32 value of a const expression.

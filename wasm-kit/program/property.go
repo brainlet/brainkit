@@ -23,7 +23,7 @@ func NewPropertyPrototype(name string, parent Element, firstDeclaration *ast.Fun
 	pp := &PropertyPrototype{}
 	isInstance := (firstDeclaration.Flags & int32(common.CommonFlagsInstance)) != 0
 	internalName := MangleInternalName(name, parent, isInstance, false)
-	InitDeclaredElementBase(&pp.DeclaredElementBase, ElementKindPropertyPrototype, name, internalName, parent.GetProgram(), parent, firstDeclaration)
+	InitDeclaredElementBase(&pp.DeclaredElementBase, ElementKindPropertyPrototype, name, internalName, parent.GetProgram(), parent, firstDeclaration, pp)
 	// Clear Get/Set from flags since the prototype represents the property, not a specific accessor
 	pp.flags &= ^(common.CommonFlagsGet | common.CommonFlagsSet)
 	return pp
@@ -209,7 +209,7 @@ func NewProperty(prototype *PropertyPrototype, parent Element) *Property {
 			declaration = parent.GetProgram().MakeNativeVariableDeclaration(prototype.GetName(), 0)
 		}
 	}
-	InitVariableLikeBase(&p.VariableLikeBase, ElementKindProperty, prototype.GetName(), parent, declaration)
+	InitVariableLikeBase(&p.VariableLikeBase, ElementKindProperty, prototype.GetName(), parent, declaration, p)
 	p.Prototype = prototype
 	p.flags = prototype.flags
 	p.decoratorFlags = prototype.decoratorFlags

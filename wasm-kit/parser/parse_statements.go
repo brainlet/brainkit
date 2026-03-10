@@ -56,8 +56,9 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 		}
 		if namespace != nil && namespace.Is(cf(common.CommonFlagsAmbient)) {
 			p.error(diagnostics.DiagnosticCodeADeclareModifierCannotBeUsedInAnAlreadyAmbientContext, tn.MakeRange(-1, -1))
+		} else {
+			flags |= cf(common.CommonFlagsDeclare | common.CommonFlagsAmbient)
 		}
-		flags |= cf(common.CommonFlagsDeclare | common.CommonFlagsAmbient)
 		declareStart = tn.TokenPos
 		declareEnd = tn.Pos
 	} else if namespace != nil {
@@ -69,7 +70,7 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 	// parse the actual statement
 	token := tn.Peek(tokenizer.IdentifierHandlingPrefer, MaxInt32)
 	if startPos < 0 {
-		startPos = tn.TokenPos + 1
+		startPos = tn.NextTokenPos()
 	}
 
 	switch token {
@@ -221,7 +222,7 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 	}
 
 	// check if this is an `export default` declaration
-	if defaultEnd != 0 && statement != nil {
+	if defaultEnd != 0 && !isNilNode(statement) {
 		switch statement.GetKind() {
 		case ast.NodeKindEnumDeclaration, ast.NodeKindFunctionDeclaration,
 			ast.NodeKindClassDeclaration, ast.NodeKindInterfaceDeclaration,
@@ -231,6 +232,9 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 			p.error(diagnostics.DiagnosticCode0ModifierCannotBeUsedHere,
 				tn.MakeRange(defaultStart, defaultEnd), "default")
 		}
+	}
+	if isNilNode(statement) {
+		return nil
 	}
 	return statement
 }
@@ -288,12 +292,12 @@ func (p *Parser) parseStatement(tn *tokenizer.Tokenizer, topLevel bool) ast.Node
 		statement = p.parseExpressionStatement(tn)
 	}
 
-	if statement == nil {
+	if isNilNode(statement) {
 		tn.Reset(state)
 		p.skipStatement(tn)
-	} else {
-		tn.Discard(state)
+		return nil
 	}
+	tn.Discard(state)
 	return statement
 }
 
@@ -304,7 +308,7 @@ func (p *Parser) parseBlockStatement(tn *tokenizer.Tokenizer, topLevel bool) *as
 	for !tn.Skip(tokenizer.TokenCloseBrace, tokenizer.IdentifierHandlingDefault) {
 		state := tn.Mark()
 		statement := p.parseStatement(tn, topLevel)
-		if statement == nil {
+		if isNilNode(statement) {
 			if tn.Token == tokenizer.TokenEndOfFile {
 				return nil
 			}
@@ -415,7 +419,11 @@ func (p *Parser) parseForStatement(tn *tokenizer.Tokenizer) ast.Node {
 					p.error(diagnostics.DiagnosticCodeIdentifierExpected, initializer.GetRange())
 					return nil
 				}
-				return p.parseForOfStatement(tn, startPos, initializer)
+				fof := p.parseForOfStatement(tn, startPos, initializer)
+				if fof == nil {
+					return nil
+				}
+				return fof
 			}
 			if initializer.GetKind() == ast.NodeKindVariable {
 				vs := initializer.(*ast.VariableStatement)
@@ -427,7 +435,11 @@ func (p *Parser) parseForStatement(tn *tokenizer.Tokenizer) ast.Node {
 						)
 					}
 				}
-				return p.parseForOfStatement(tn, startPos, initializer)
+				fof := p.parseForOfStatement(tn, startPos, initializer)
+				if fof == nil {
+					return nil
+				}
+				return fof
 			}
 			p.error(diagnostics.DiagnosticCodeIdentifierExpected, initializer.GetRange())
 			return nil
@@ -645,7 +657,7 @@ func (p *Parser) parseTryStatement(tn *tokenizer.Tokenizer) *ast.TryStatement {
 			p.error(diagnostics.DiagnosticCode0Expected, tn.MakeRange(-1, -1), "(")
 			return nil
 		}
-		if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+		if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 			p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 			return nil
 		}
@@ -748,7 +760,7 @@ func (p *Parser) parseWhileStatement(tn *tokenizer.Tokenizer) *ast.WhileStatemen
 
 // parseTypeDeclaration parses a type declaration: 'type' Identifier ('=' Type)? ';'?
 func (p *Parser) parseTypeDeclaration(tn *tokenizer.Tokenizer, flags int32, decorators []*ast.DecoratorNode, startPos int32) *ast.TypeDeclaration {
-	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingDefault) {
+	if !tn.SkipIdentifier(tokenizer.IdentifierHandlingPrefer) {
 		p.error(diagnostics.DiagnosticCodeIdentifierExpected, tn.MakeRange(-1, -1))
 		return nil
 	}
