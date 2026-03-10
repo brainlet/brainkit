@@ -68,6 +68,9 @@ func CreateSignature(
 
 	// check if it exists, and return it
 	if existing, ok := signatureTypes[uniqueKey]; ok {
+		if !sig.Equals(existing) {
+			panic("signature cache collision: key matches but signatures differ")
+		}
 		return existing
 	}
 
@@ -85,19 +88,24 @@ func (s *Signature) ParamRefs() uintptr {
 	if CreateTypeFunc == nil {
 		panic("types: CreateTypeFunc not wired")
 	}
+	thisType := s.ThisType
 	params := s.ParameterTypes
-	offset := 0
-	if s.ThisType != nil {
-		offset = 1
+	numParams := len(params)
+	if numParams == 0 {
+		if thisType != nil {
+			return thisType.ToRef()
+		}
+		return 0 // TypeRef.None
 	}
-	refs := make([]uintptr, len(params)+offset)
-	if s.ThisType != nil {
-		refs[0] = s.ThisType.ToRef()
+	if thisType != nil {
+		refs := make([]uintptr, 1+numParams)
+		refs[0] = thisType.ToRef()
+		for i := 0; i < numParams; i++ {
+			refs[i+1] = params[i].ToRef()
+		}
+		return CreateTypeFunc(refs)
 	}
-	for i, p := range params {
-		refs[offset+i] = p.ToRef()
-	}
-	return CreateTypeFunc(refs)
+	return CreateTypeFunc(TypesToRefs(params))
 }
 
 // ResultRefs returns the Binaryen TypeRef for this signature's return type.

@@ -24,6 +24,9 @@ const (
 	BuiltinNameAbort     = "~lib/builtins/abort"
 	BuiltinNameTrace     = "~lib/builtins/trace"
 	BuiltinNameSeed      = "~lib/builtins/seed"
+
+	// Standard library class names.
+	BuiltinNameObject = "~lib/object/Object"
 	BuiltinNameStringEq  = "~lib/string/String.__eq"
 	BuiltinNameStringNe  = "~lib/string/String.__ne"
 	BuiltinNameStringNot = "~lib/string/String.__not"

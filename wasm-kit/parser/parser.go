@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"strings"
+
 	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
@@ -64,15 +66,33 @@ func (p *Parser) ParseFile(
 	isEntry bool,
 ) {
 	normalizedPath := util.NormalizePath(path)
-	if _, ok := p.donelog[normalizedPath]; ok {
+	internalPath := ast.MangleInternalPath(normalizedPath)
+
+	// check if already processed
+	if _, ok := p.donelog[internalPath]; ok {
 		return
 	}
-	p.donelog[normalizedPath] = true
-	p.seenlog[normalizedPath] = true
+	p.donelog[internalPath] = true  // do not parse again
+	p.seenlog[internalPath] = true // do not request again
 
-	source := ast.NewSource(ast.SourceKindUser, normalizedPath, text)
-	p.currentSource = source
+	// determine source kind
+	var sourceKind ast.SourceKind
+	if isEntry {
+		sourceKind = ast.SourceKindUserEntry
+	} else if strings.HasPrefix(path, common.LIBRARY_PREFIX) {
+		if strings.IndexByte(path[len(common.LIBRARY_PREFIX):], '/') < 0 {
+			sourceKind = ast.SourceKindLibraryEntry
+		} else {
+			sourceKind = ast.SourceKindLibrary
+		}
+	} else {
+		sourceKind = ast.SourceKindUser
+	}
+
+	source := ast.NewSource(sourceKind, normalizedPath, text)
 	p.sources = append(p.sources, source)
+	p.currentSource = source
+	p.currentModuleName = ""
 
 	tn := tokenizer.NewTokenizer(source, p.DiagnosticEmitter.Diagnostics)
 	if p.OnComment != nil {

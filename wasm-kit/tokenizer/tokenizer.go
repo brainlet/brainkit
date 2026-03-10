@@ -1121,10 +1121,10 @@ func (t *Tokenizer) readDecimalFloat() float64 {
 			t.Pos++
 			if t.Pos < end {
 				c = text[t.Pos]
-				if c == '-' || c == '+' {
-					if t.Pos+1 < end && util.IsDecimal(int32(text[t.Pos+1])) {
-						t.Pos++
-					}
+				// TS precedence: (c == Minus) || (c == Plus && isDecimal(next))
+				// Minus accepts unconditionally; Plus requires a following digit
+				if c == '-' || (c == '+' && t.Pos+1 < end && util.IsDecimal(int32(text[t.Pos+1]))) {
+					t.Pos++
 				}
 			}
 			sepCount += t.readDecimalFloatPartial(true)

@@ -122,11 +122,14 @@ func TestResolveTypeUnsupported(t *testing.T) {
 	resolver := NewResolver(prog)
 
 	// Use a node type that isn't NamedTypeNode or FunctionTypeNode
+	// TS uses assert(false) which panics, so Go should panic too
 	node := &ast.NodeBase{}
-	result := resolver.ResolveType(node, nil, prog.NativeFile, nil, ReportModeSwallow)
-	if result != nil {
-		t.Error("ResolveType should return nil for unsupported node type")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("ResolveType should panic for unsupported node type")
+		}
+	}()
+	resolver.ResolveType(node, nil, prog.NativeFile, nil, ReportModeSwallow)
 }
 
 func TestResolveTypeRecursiveNamed(t *testing.T) {

@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/flow"
@@ -11,13 +12,23 @@ import (
 	"github.com/brainlet/brainkit/wasm-kit/types"
 )
 
-// CompileGlobalLazy compiles a lazily-compiled global. Ensures it is compiled exactly once.
+// CompileGlobalLazy compiles a lazily-compiled global. If the global is not @lazy,
+// not @builtin, and not ambient, it means it is used before its declaration, which is an error.
 // Ported from: assemblyscript/src/compiler.ts compileGlobalLazy (lines 1143-1154).
-func (c *Compiler) CompileGlobalLazy(global *program.Global) bool {
+func (c *Compiler) CompileGlobalLazy(global *program.Global, reportNode ast.Node) bool {
 	if global.Is(common.CommonFlagsCompiled) {
 		return !global.Is(common.CommonFlagsErrored)
 	}
-	return c.CompileGlobal(global)
+	if global.HasAnyDecorator(program.DecoratorFlagsLazy|program.DecoratorFlagsBuiltin) || global.Is(common.CommonFlagsAmbient) {
+		return c.CompileGlobal(global) // compile now
+	}
+	// Otherwise the global is used before its initializer executes
+	c.ErrorRelated(
+		diagnostics.DiagnosticCodeVariable0UsedBeforeItsDeclaration,
+		reportNode.GetRange(), global.IdentifierNode().GetRange(),
+		global.GetInternalName(), "", "",
+	)
+	return false
 }
 
 // CompileGlobal compiles a global variable. Returns true if successful.
@@ -28,174 +39,250 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 	}
 	global.Set(common.CommonFlagsCompiled)
 
+	pendingElements := c.PendingElements
+	pendingElements[global] = struct{}{}
+
 	mod := c.Module()
-	options := c.Options()
-	resolver := c.Resolver()
-	isWasm64 := options.IsWasm64()
-
-	// Check for pending (circular) compilation
-	if _, pending := c.PendingElements[global]; pending {
-		c.Error(
-			diagnostics.DiagnosticCodeNotImplemented0,
-			global.IdentifierNode().GetRange(),
-			"Circular global initializer", "", "",
-		)
-		global.Set(common.CommonFlagsErrored)
-		return false
-	}
-	c.PendingElements[global] = struct{}{}
-	defer delete(c.PendingElements, global)
-
-	// Resolve the type
+	var initExpr module.ExpressionRef
 	typeNode := global.TypeNode()
 	initializerNode := global.InitializerNode()
-	var resolvedType *types.Type
 
-	if typeNode != nil {
-		resolvedType = resolver.ResolveType(
-			typeNode,
-			c.CurrentFlow,
-			global.GetParent(),
-			nil, // no contextual types
-			program.ReportModeReport,
-		)
-		if resolvedType == nil {
-			global.Set(common.CommonFlagsErrored)
-			return false
-		}
-	} else if initializerNode != nil {
-		resolvedType = resolver.ResolveExpression(
-			initializerNode,
-			c.CurrentFlow,
-			types.TypeVoid,
-			program.ReportModeReport,
-		)
-		if resolvedType == nil {
-			global.Set(common.CommonFlagsErrored)
-			return false
-		}
-	} else {
-		// No type, no initializer → error
-		c.Error(
-			diagnostics.DiagnosticCodeTypeExpected,
-			global.IdentifierNode().GetRange(),
-			"", "", "",
-		)
-		global.Set(common.CommonFlagsErrored)
-		return false
-	}
+	if !global.Is(common.CommonFlagsResolved) {
 
-	// Check type support
-	if !c.Program.CheckTypeSupported(resolvedType, global.GetDeclaration()) {
-		global.Set(common.CommonFlagsErrored)
-		return false
-	}
+		// Resolve type if annotated
+		if typeNode != nil {
+			resolver := c.Resolver()
+			resolvedType := resolver.ResolveType(
+				typeNode,
+				nil, // null flow, matching TS: this.resolver.resolveType(typeNode, null, global.parent)
+				global.GetParent(),
+				nil, // no contextual types
+				program.ReportModeReport,
+			)
+			if resolvedType == nil {
+				global.Set(common.CommonFlagsErrored)
+				delete(pendingElements, global)
+				return false
+			}
+			if resolvedType == types.TypeVoid {
+				c.Error(
+					diagnostics.DiagnosticCodeTypeExpected,
+					typeNode.GetRange(),
+					"", "", "",
+				)
+				global.Set(common.CommonFlagsErrored)
+				delete(pendingElements, global)
+				return false
+			}
+			global.SetType(resolvedType)
+			c.Program.CheckTypeSupported(resolvedType, typeNode)
 
-	global.SetType(resolvedType)
-	typeRef := resolvedType.ToRef()
-	isDeclaredConst := global.Is(common.CommonFlagsConst)
-	isDeclaredInline := global.HasDecorator(program.DecoratorFlagsInline)
-	isAmbient := global.Is(common.CommonFlagsAmbient)
+		// Otherwise infer type from initializer
+		} else if initializerNode != nil {
+			previousFlow := c.CurrentFlow
+			if global.HasDecorator(program.DecoratorFlagsLazy) {
+				c.CurrentFlow = global.File().StartFunction.Flow
+			}
+			initExpr = c.CompileExpression(initializerNode, types.TypeAuto, // reports
+				ConstraintsMustWrap|ConstraintsPreferStatic,
+			)
+			c.CurrentFlow = previousFlow
+			if c.CurrentType == types.TypeVoid {
+				c.Error(
+					diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+					initializerNode.GetRange(),
+					c.CurrentType.String(), "<auto>", "",
+				)
+				global.Set(common.CommonFlagsErrored)
+				delete(pendingElements, global)
+				return false
+			}
+			global.SetType(c.CurrentType)
 
-	// Handle builtin globals (onAccess callbacks)
-	internalName := global.GetInternalName()
-	if program.BuiltinVariablesOnAccess != nil {
-		if _, ok := program.BuiltinVariablesOnAccess[internalName]; ok {
-			// Builtins with on-access handlers are compiled on-demand, not here.
-			return true
-		}
-	}
-
-	// Handle ambient (imported) globals
-	if isAmbient {
-		if isDeclaredInline && initializerNode == nil {
+		// Error if there's neither a type nor an initializer
+		} else {
 			c.Error(
-				diagnostics.DiagnosticCodeDecoratorInlineMustHaveAnInitializer,
-				global.IdentifierNode().GetRange(),
+				diagnostics.DiagnosticCodeTypeExpected,
+				global.IdentifierNode().GetRange().AtEnd(),
 				"", "", "",
 			)
 			global.Set(common.CommonFlagsErrored)
+			delete(pendingElements, global)
 			return false
 		}
+	}
 
-		// Evaluate constant initializer for ambient globals
-		if initializerNode != nil {
-			previousFlow := c.CurrentFlow
-			c.CurrentFlow = global.File().StartFunction.Flow
-			initExpr := c.CompileExpression(initializerNode, resolvedType, ConstraintsConvImplicit)
-			c.CurrentFlow = previousFlow
-
-			// Try to precompute to a constant
-			precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsDefault, 8, 1)
-			if precomp != 0 {
-				initExpr = precomp
-			}
-
-			if mod.IsConstExpression(initExpr) {
-				// Extract constant value and inline
-				c.extractConstantValue(global, initExpr, resolvedType, isWasm64)
-				if isDeclaredInline || isDeclaredConst {
-					return true // fully inlined, no wasm global needed
-				}
-			}
-
-			// Create a non-mutable global with the constant init
-			if mod.IsConstExpression(initExpr) {
-				mod.AddGlobal(internalName, typeRef, false, initExpr)
-				return true
+	// Handle builtins like '__heap_base' that need to be resolved but are added explicitly
+	if global.HasDecorator(program.DecoratorFlagsBuiltin) {
+		internalName := global.GetInternalName()
+		if program.BuiltinVariablesOnCompile != nil {
+			if fn, ok := program.BuiltinVariablesOnCompile[internalName]; ok {
+				fn(c, global)
 			}
 		}
-
-		// Imported ambient global: add import declaration
-		moduleName, elementName := mangleImportName(global, global.GetDeclaration())
-		isMutable := !isDeclaredConst
-
-		// Workaround: nullable externref imports need to be initialized with ref.null
-		if resolvedType.IsExternalReference() && resolvedType.IsNullableReference() {
-			mod.AddGlobal(internalName, typeRef, true, mod.RefNull(typeRef))
-		} else {
-			mod.AddGlobalImport(internalName, moduleName, elementName, typeRef, isMutable)
-		}
+		delete(pendingElements, global)
 		return true
 	}
 
-	// Non-ambient global: compile initializer
-	if initializerNode != nil {
-		previousFlow := c.CurrentFlow
-		c.CurrentFlow = global.File().StartFunction.Flow
-		initExpr := c.CompileExpression(initializerNode, resolvedType, ConstraintsConvImplicit)
-		c.CurrentFlow = previousFlow
+	typ := global.GetResolvedType()
 
-		// Try to precompute constant
-		precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsDefault, 8, 1)
-		if precomp != 0 {
-			initExpr = precomp
-		}
-
-		if mod.IsConstExpression(initExpr) {
-			// Extract constant value for inlining
-			c.extractConstantValue(global, initExpr, resolvedType, isWasm64)
-
-			if isDeclaredInline {
-				// Fully inlined, no wasm global needed
-				return true
-			}
-
-			// Create immutable global with constant init
-			mod.AddGlobal(internalName, typeRef, false, initExpr)
-		} else {
-			// Non-constant: create mutable global initialized to zero,
-			// set the actual value in the start function.
-			mod.AddGlobal(internalName, typeRef, true, c.makeZeroOfType(resolvedType))
-			c.CurrentBody = append(c.CurrentBody,
-				mod.GlobalSet(internalName, initExpr),
-			)
-		}
-	} else {
-		// No initializer: create mutable global initialized to zero
-		mod.AddGlobal(internalName, typeRef, true, c.makeZeroOfType(resolvedType))
+	// Enforce either an initializer, a definitive assignment or a nullable type
+	// to guarantee soundness when globals are accessed.
+	if initializerNode == nil && !global.Is(common.CommonFlagsDefinitelyAssigned) &&
+		typ.IsReference() && !typ.IsNullableReference() {
+		c.Error(
+			diagnostics.DiagnosticCodeInitializerDefinitiveAssignmentOrNullableTypeExpected,
+			global.IdentifierNode().GetRange(),
+			"", "", "",
+		)
 	}
 
+	typeRef := typ.ToRef()
+	isDeclaredConstant := global.Is(common.CommonFlagsConst) ||
+		global.Is(common.CommonFlagsStatic|common.CommonFlagsReadonly)
+	isDeclaredInline := global.HasDecorator(program.DecoratorFlagsInline)
+
+	// Handle imports
+	if global.Is(common.CommonFlagsAmbient) {
+		options := c.Options()
+		// Constant global or mutable globals enabled
+		if isDeclaredConstant || options.HasFeature(common.FeatureMutableGlobals) {
+			moduleName, elementName := mangleImportName(global, global.GetDeclaration())
+			c.Program.MarkModuleImport(moduleName, elementName, global)
+			mod.AddGlobalImport(
+				global.GetInternalName(),
+				moduleName,
+				elementName,
+				typeRef,
+				!isDeclaredConstant,
+			)
+			delete(pendingElements, global)
+			if !c.DesiresExportRuntime && lowerRequiresExportRuntime(typ) {
+				c.DesiresExportRuntime = true
+			}
+			return true
+		}
+
+		// Importing mutable globals is not supported in the MVP
+		c.Error(
+			diagnostics.DiagnosticCodeFeature0IsNotEnabled,
+			global.GetDeclaration().GetRange(),
+			"mutable-globals", "", "",
+		)
+		global.Set(common.CommonFlagsErrored)
+		delete(pendingElements, global)
+		return false
+	}
+
+	// The MVP does not yet support initializer expressions other than constants and gets of
+	// imported immutable globals, hence such initializations must be performed in the start.
+	initializeInStart := false
+
+	// Evaluate initializer if present
+	if initializerNode != nil {
+		if initExpr == 0 {
+			previousFlow := c.CurrentFlow
+			if global.HasDecorator(program.DecoratorFlagsLazy) {
+				c.CurrentFlow = global.File().StartFunction.Flow
+			}
+			initExpr = c.CompileExpression(initializerNode, typ,
+				ConstraintsConvImplicit|ConstraintsMustWrap|ConstraintsPreferStatic,
+			)
+			c.CurrentFlow = previousFlow
+		}
+
+		// If not a constant expression, attempt to precompute
+		if !mod.IsConstExpression(initExpr) {
+			if isDeclaredConstant {
+				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 0, 0)
+				if precomp != 0 {
+					initExpr = precomp
+				} else {
+					initializeInStart = true
+				}
+			} else {
+				initializeInStart = true
+			}
+		}
+
+		// Handle special case of initializing from imported immutable global
+		if initializeInStart && module.GetExpressionId(initExpr) == module.ExpressionIdGlobalGet {
+			fromName := module.GetGlobalGetName(initExpr)
+			if fromName != "" {
+				globalRef := mod.GetGlobal(fromName)
+				if globalRef != 0 && !module.IsGlobalMutable(globalRef) {
+					elementsByName := c.Program.ElementsByNameMap
+					if elem, ok := elementsByName[fromName]; ok {
+						if elem.Is(common.CommonFlagsAmbient) {
+							initializeInStart = false
+						}
+					}
+				}
+			}
+		}
+
+		// Explicitly inline if annotated
+		if isDeclaredInline {
+			if initializeInStart {
+				c.Warning(
+					diagnostics.DiagnosticCodeMutableValueCannotBeInlined,
+					initializerNode.GetRange(),
+					"", "", "",
+				)
+			} else {
+				exprType := module.GetExpressionType(initExpr)
+				switch exprType {
+				case module.TypeRefI32:
+					global.SetConstantIntegerValue(int64(module.GetConstValueI32(initExpr)), typ)
+				case module.TypeRefI64:
+					global.SetConstantIntegerValue(module.GetConstValueI64(initExpr), typ)
+				case module.TypeRefF32:
+					global.SetConstantFloatValue(float64(module.GetConstValueF32(initExpr)), typ)
+				case module.TypeRefF64:
+					global.SetConstantFloatValue(module.GetConstValueF64(initExpr), typ)
+				default:
+					global.Set(common.CommonFlagsErrored)
+					delete(pendingElements, global)
+					return false
+				}
+				global.Set(common.CommonFlagsInlined) // inline the value from now on
+			}
+		}
+
+	// Initialize to zero if there's no initializer
+	} else {
+		if global.Is(common.CommonFlagsInlined) {
+			initExpr = c.compileInlineConstant(global, typ, ConstraintsPreferStatic)
+		} else {
+			initExpr = c.makeZeroOfType(typ)
+		}
+	}
+
+	internalName := global.GetInternalName()
+
+	if initializeInStart { // initialize to mutable zero and set the actual value in start
+		if isDeclaredInline {
+			c.Error(
+				diagnostics.DiagnosticCodeDecorator0IsNotValidHere,
+				ast.FindDecorator(ast.DecoratorKindInline, global.DecoratorNodes()).GetRange(),
+				"inline", "", "",
+			)
+		}
+		internalType := typ
+		if typ.IsExternalReference() && !typ.Is(types.TypeFlagNullable) {
+			// There is no default value for non-nullable external references, so
+			// make the global nullable internally and use `null`.
+			global.Set(common.CommonFlagsInternallyNullable)
+			internalType = typ.AsNullable()
+		}
+		mod.AddGlobal(internalName, internalType.ToRef(), true, c.makeZeroOfType(internalType))
+		c.CurrentBody = append(c.CurrentBody,
+			mod.GlobalSet(internalName, initExpr),
+		)
+	} else if !isDeclaredInline { // compile normally
+		mod.AddGlobal(internalName, typeRef, !isDeclaredConstant, initExpr)
+	}
+	delete(pendingElements, global)
 	return true
 }
 
@@ -309,99 +396,76 @@ func (c *Compiler) makeNegOneOfType(typ *types.Type) module.ExpressionRef {
 }
 
 // compileInlineConstant compiles an inlined constant value.
-// Ported from: assemblyscript/src/compiler.ts compileInlineConstant (lines 4794-4876).
-func (c *Compiler) compileInlineConstant(element program.Element, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
+// Ported from: assemblyscript/src/compiler.ts compileInlineConstant (lines 3350-3429).
+func (c *Compiler) compileInlineConstant(element program.VariableLikeElement, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
+	typ := element.GetResolvedType()
+	c.CurrentType = typ
 
-	switch el := element.(type) {
-	case *program.Global:
-		globalType := el.GetResolvedType()
-		switch el.GetConstantValueKind() {
-		case program.ConstantValueKindInteger:
-			intValue := el.GetConstantIntegerValue()
-			switch contextualType.ToRef() {
-			case module.TypeRefI32:
-				c.CurrentType = contextualType
-				return mod.I32(int32(intValue))
-			case module.TypeRefI64:
-				c.CurrentType = contextualType
-				return mod.I64(intValue)
-			case module.TypeRefF32:
-				c.CurrentType = types.TypeF32
-				return mod.F32(float32(intValue))
-			case module.TypeRefF64:
-				c.CurrentType = types.TypeF64
-				return mod.F64(float64(intValue))
-			default:
-				switch globalType.ToRef() {
-				case module.TypeRefI32:
-					c.CurrentType = globalType
-					return mod.I32(int32(intValue))
-				case module.TypeRefI64:
-					c.CurrentType = globalType
-					return mod.I64(intValue)
-				default:
-					c.CurrentType = types.TypeI32
-					return mod.I32(int32(intValue))
-				}
+	switch typ.Kind {
+	case types.TypeKindBool:
+		if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+			val := int32(0)
+			if element.GetConstantIntegerValue() != 0 {
+				val = 1
 			}
+			return mod.I32(val)
+		}
+		return mod.I32(0)
 
-		case program.ConstantValueKindFloat:
-			floatValue := el.GetConstantFloatValue()
-			switch contextualType.ToRef() {
-			case module.TypeRefF32:
-				c.CurrentType = types.TypeF32
-				return mod.F32(float32(floatValue))
-			case module.TypeRefF64:
-				c.CurrentType = types.TypeF64
-				return mod.F64(floatValue)
-			case module.TypeRefI32:
-				c.CurrentType = types.TypeI32
-				return mod.I32(int32(floatValue))
-			case module.TypeRefI64:
-				c.CurrentType = types.TypeI64
-				return mod.I64(int64(floatValue))
-			default:
-				switch globalType.ToRef() {
-				case module.TypeRefF32:
-					c.CurrentType = globalType
-					return mod.F32(float32(floatValue))
-				case module.TypeRefF64:
-					c.CurrentType = globalType
-					return mod.F64(floatValue)
-				default:
-					c.CurrentType = types.TypeF64
-					return mod.F64(floatValue)
-				}
+	case types.TypeKindI8, types.TypeKindI16:
+		// Signed small integers: sign-extend via shift
+		shift := typ.ComputeSmallIntegerShift(types.TypeI32)
+		if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+			return mod.I32(int32(element.GetConstantIntegerValue()) << shift >> shift)
+		}
+		return mod.I32(0) // recognized by canOverflow
+
+	case types.TypeKindU8, types.TypeKindU16:
+		// Unsigned small integers: mask
+		mask := typ.ComputeSmallIntegerMask(types.TypeI32)
+		if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+			return mod.I32(int32(element.GetConstantIntegerValue()) & mask)
+		}
+		return mod.I32(0) // recognized by canOverflow
+
+	case types.TypeKindI32, types.TypeKindU32:
+		if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+			return mod.I32(int32(element.GetConstantIntegerValue()))
+		}
+		return mod.I32(0)
+
+	case types.TypeKindIsize, types.TypeKindUsize:
+		if !c.Options().IsWasm64() {
+			if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+				return mod.I32(int32(element.GetConstantIntegerValue()))
 			}
+			return mod.I32(0)
 		}
-		// Not inlined, fall through to global.get
-		c.CurrentType = globalType
-		return mod.GlobalGet(el.GetInternalName(), globalType.ToRef())
+		// fall-through to I64/U64
+		fallthrough
 
-	case *program.EnumValue:
-		intValue := el.GetConstantIntegerValue()
-		switch contextualType.ToRef() {
-		case module.TypeRefI32:
-			c.CurrentType = types.TypeI32
-			return mod.I32(int32(intValue))
-		case module.TypeRefI64:
-			c.CurrentType = types.TypeI64
-			return mod.I64(intValue)
-		case module.TypeRefF32:
-			c.CurrentType = types.TypeF32
-			return mod.F32(float32(intValue))
-		case module.TypeRefF64:
-			c.CurrentType = types.TypeF64
-			return mod.F64(float64(intValue))
-		default:
-			c.CurrentType = types.TypeI32
-			return mod.I32(int32(intValue))
+	case types.TypeKindI64, types.TypeKindU64:
+		if element.GetConstantValueKind() == program.ConstantValueKindInteger {
+			return mod.I64(element.GetConstantIntegerValue())
 		}
+		return mod.I64(0)
+
+	case types.TypeKindF64:
+		// monkey-patch for converting built-in floats to f32 implicitly
+		if !(element.HasDecorator(program.DecoratorFlagsBuiltin) && contextualType == types.TypeF32) {
+			return mod.F64(element.GetConstantFloatValue())
+		}
+		// otherwise fall-through: basically precomputes f32.demote/f64 of NaN / Infinity
+		c.CurrentType = types.TypeF32
+		fallthrough
+
+	case types.TypeKindF32:
+		return mod.F32(float32(element.GetConstantFloatValue()))
+
+	default:
+		return mod.Unreachable()
 	}
-
-	c.CurrentType = contextualType
-	return mod.Unreachable()
 }
 
 // ensureRuntimeFunction ensures a function is in the function table and returns its table index.

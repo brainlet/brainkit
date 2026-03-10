@@ -76,7 +76,11 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 	case tokenizer.TokenConst:
 		tn.Next(tokenizer.IdentifierHandlingDefault)
 		flags |= cf(common.CommonFlagsConst)
-		statement = p.parseVariable(tn, flags, decorators, startPos, false)
+		if tn.Skip(tokenizer.TokenEnum, tokenizer.IdentifierHandlingDefault) {
+			statement = p.parseEnum(tn, flags, decorators, startPos)
+		} else {
+			statement = p.parseVariable(tn, flags, decorators, startPos, false)
+		}
 		decorators = nil
 
 	case tokenizer.TokenLet:

@@ -68,6 +68,7 @@ type Compiler struct {
 // Stub until passes/shadowstack is ported.
 type ShadowStackPass interface {
 	WalkModule()
+	NoteExport(name string, managedOperandIndices []int32)
 }
 
 // RtracePass is the interface for the rtrace memory pass.

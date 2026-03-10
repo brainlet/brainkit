@@ -384,9 +384,9 @@ func (m *Module) TableGrow(name string, value, delta ExpressionRef) ExpressionRe
 // Local variable operations
 // =========================================================================
 
-// tostack wraps a value through the shadow stack runtime function.
+// Tostack wraps a value through the shadow stack runtime function.
 // If the shadow stack is not in use, returns the value as-is.
-func (m *Module) tostack(value ExpressionRef) ExpressionRef {
+func (m *Module) Tostack(value ExpressionRef) ExpressionRef {
 	if m.UseShadowStack {
 		typ := binaryen.ExpressionGetType(value)
 		return m.bmod.Call("~tostack", []ExpressionRef{value}, typ)
@@ -403,7 +403,7 @@ func (m *Module) LocalGet(index int32, typ TypeRef) ExpressionRef {
 // stack is enabled, the value is wrapped through the tostack runtime.
 func (m *Module) LocalSet(index int32, value ExpressionRef, isManaged bool) ExpressionRef {
 	if isManaged && m.UseShadowStack {
-		value = m.tostack(value)
+		value = m.Tostack(value)
 	}
 	return m.bmod.LocalSet(uint32(index), value)
 }
@@ -412,7 +412,7 @@ func (m *Module) LocalSet(index int32, value ExpressionRef, isManaged bool) Expr
 // stack is enabled, the value is wrapped through the tostack runtime.
 func (m *Module) LocalTee(index int32, value ExpressionRef, isManaged bool, typ TypeRef) ExpressionRef {
 	if isManaged && m.UseShadowStack {
-		value = m.tostack(value)
+		value = m.Tostack(value)
 	}
 	return m.bmod.LocalTee(uint32(index), value, typ)
 }
@@ -561,9 +561,7 @@ func (m *Module) MaybeDrop(expression ExpressionRef) ExpressionRef {
 func (m *Module) MaybeDropCondition(condition, result ExpressionRef) ExpressionRef {
 	effects := binaryen.GetSideEffects(condition, m.bmod)
 	// Mask out ReadsLocal and ReadsGlobal — these are harmless
-	const readsLocal uint32 = 0x2
-	const readsGlobal uint32 = 0x80
-	if (effects & ^(readsLocal | readsGlobal)) != 0 {
+	if (effects & ^(SideEffectReadsLocal | SideEffectReadsGlobal)) != 0 {
 		resultType := binaryen.ExpressionGetType(result)
 		return m.Block("", []ExpressionRef{
 			m.Drop(condition),
@@ -1188,57 +1186,48 @@ func (m *Module) SetFastMath(on bool) {
 
 // SetClosedWorld enables closed-world assumptions for optimization.
 func (m *Module) SetClosedWorld(on bool) {
-	// Delegates to BinaryenSetClosedWorld -- binding must expose this.
-	_ = on
+	binaryen.SetClosedWorld(on)
 }
 
 // SetGenerateStackIR enables or disables stack IR generation.
 func (m *Module) SetGenerateStackIR(on bool) {
-	// Delegates to BinaryenSetGenerateStackIR -- binding must expose this.
-	_ = on
+	binaryen.SetGenerateStackIR(on)
 }
 
 // SetOptimizeStackIR enables or disables stack IR optimization.
 func (m *Module) SetOptimizeStackIR(on bool) {
-	// Delegates to BinaryenSetOptimizeStackIR -- binding must expose this.
-	_ = on
+	binaryen.SetOptimizeStackIR(on)
 }
 
 // SetPassArgument sets a pass argument key-value pair.
 func (m *Module) SetPassArgument(key, value string) {
-	// Delegates to BinaryenSetPassArgument -- binding must expose this.
-	_ = key
-	_ = value
+	binaryen.SetPassArgument(key, value)
 }
 
 // ClearPassArguments clears all pass arguments.
 func (m *Module) ClearPassArguments() {
-	// Delegates to BinaryenClearPassArguments -- binding must expose this.
+	binaryen.ClearPassArguments()
 }
 
 // SetAlwaysInlineMaxSize sets the maximum function size for always-inlining.
 func (m *Module) SetAlwaysInlineMaxSize(size uint32) {
-	// Delegates to BinaryenSetAlwaysInlineMaxSize -- binding must expose this.
-	_ = size
+	binaryen.SetAlwaysInlineMaxSize(size)
 }
 
 // SetFlexibleInlineMaxSize sets the maximum function size for flexible inlining.
 func (m *Module) SetFlexibleInlineMaxSize(size uint32) {
-	// Delegates to BinaryenSetFlexibleInlineMaxSize -- binding must expose this.
-	_ = size
+	binaryen.SetFlexibleInlineMaxSize(size)
 }
 
 // SetOneCallerInlineMaxSize sets the maximum function size for one-caller inlining.
 func (m *Module) SetOneCallerInlineMaxSize(size uint32) {
-	// Delegates to BinaryenSetOneCallerInlineMaxSize -- binding must expose this.
-	_ = size
+	binaryen.SetOneCallerInlineMaxSize(size)
 }
 
 // SetAllowInliningFunctionsWithLoops enables or disables inlining of functions
 // containing loops.
 func (m *Module) SetAllowInliningFunctionsWithLoops(enabled bool) {
-	// Delegates to BinaryenSetAllowInliningFunctionsWithLoops -- binding must expose this.
-	_ = enabled
+	binaryen.SetAllowInliningFunctionsWithLoops(enabled)
 }
 
 // =========================================================================
@@ -1251,12 +1240,10 @@ func (m *Module) GetFeatures() binaryen.Features {
 }
 
 // SetFeatures sets the enabled Wasm features. Automatically enables
-// BulkMemoryOpt when BulkMemory is set.
+// BulkMemoryOpt when BulkMemory is set (ported from TS: module.ts:2576-2579).
 func (m *Module) SetFeatures(features binaryen.Features) {
 	if features&binaryen.FeatureBulkMemory() != 0 {
-		// BulkMemoryOpt is implicitly included with BulkMemory
-		// in the TS source. The Go binding handles this internally
-		// or it's the same flag.
+		features |= binaryen.FeatureBulkMemoryOpt()
 	}
 	m.bmod.SetFeatures(features)
 }
@@ -1271,11 +1258,9 @@ func (m *Module) RunPasses(passes []string) {
 }
 
 // RunPassesOnFunction runs the named optimization passes on a single function.
-// Note: requires FunctionRunPasses binding in binaryen.
+// Ported from TS: module.ts:2581-2595 (the func != 0 branch of runPasses).
 func (m *Module) RunPassesOnFunction(fn FunctionRef, passes []string) {
-	// The binaryen binding should expose BinaryenFunctionRunPasses.
-	// For now, use module-level passes as a fallback.
-	m.bmod.RunPasses(passes)
+	binaryen.FunctionRunPasses(fn, m.bmod, passes)
 }
 
 // =========================================================================

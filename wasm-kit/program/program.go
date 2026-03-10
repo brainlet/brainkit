@@ -55,7 +55,10 @@ type Program struct {
 	cachedObjectPrototype            *ClassPrototype
 	cachedObjectInstance             *Class
 	cachedAbortInstance              *Function
+	cachedAllocInstance              *Function
+	cachedNewInstance                *Function
 	cachedVisitInstance              *Function
+	cachedLinkInstance               *Function
 	cachedInt8ArrayPrototype         *ClassPrototype
 	cachedInt16ArrayPrototype        *ClassPrototype
 	cachedInt32ArrayPrototype        *ClassPrototype
@@ -289,6 +292,153 @@ func (p *Program) Initialize() {
 	p.registerConstantInteger(common.CommonNameASCFeatureExtendedConst, types.TypeBool, boolToI64(options.HasFeature(common.FeatureExtendedConst)))
 	p.registerConstantInteger(common.CommonNameASCFeatureStringref, types.TypeBool, boolToI64(options.HasFeature(common.FeatureStringref)))
 
+	// remember deferred elements
+	queuedImports := make([]*QueuedImport, 0)
+	queuedExports := make(map[*File]map[string]*QueuedExport)
+	queuedExportsStar := make(map[*File][]*QueuedExportStar)
+	queuedExtends := make([]*ClassPrototype, 0)
+	queuedImplements := make([]*ClassPrototype, 0)
+
+	// initialize relevant declaration-like statements of the entire program
+	for _, source := range p.Sources {
+		file := NewFile(p, source)
+		p.FilesByName[file.GetInternalName()] = file
+		statements := source.Statements
+		for _, statement := range statements {
+			switch statement.GetKind() {
+			case ast.NodeKindExport:
+				p.initializeExports(statement.(*ast.ExportStatement), file, queuedExports, queuedExportsStar)
+			case ast.NodeKindExportDefault:
+				p.initializeExportDefault(statement.(*ast.ExportDefaultStatement), file, &queuedExtends, &queuedImplements)
+			case ast.NodeKindImport:
+				p.initializeImports(statement.(*ast.ImportStatement), file, &queuedImports, queuedExports)
+			case ast.NodeKindVariable:
+				p.initializeVariables(statement.(*ast.VariableStatement), file)
+			case ast.NodeKindClassDeclaration:
+				p.initializeClass(statement.(*ast.ClassDeclaration), file, &queuedExtends, &queuedImplements)
+			case ast.NodeKindEnumDeclaration:
+				p.initializeEnum(statement.(*ast.EnumDeclaration), file)
+			case ast.NodeKindFunctionDeclaration:
+				p.initializeFunction(statement.(*ast.FunctionDeclaration), file)
+			case ast.NodeKindInterfaceDeclaration:
+				p.initializeInterface(statement.(*ast.ClassDeclaration), file, &queuedExtends)
+			case ast.NodeKindNamespaceDeclaration:
+				p.initializeNamespace(statement.(*ast.NamespaceDeclaration), file, &queuedExtends, &queuedImplements)
+			case ast.NodeKindTypeDeclaration:
+				p.initializeTypeDefinition(statement.(*ast.TypeDeclaration), file)
+			}
+		}
+	}
+
+	// queued exports * should be linkable now that all files have been processed
+	for file, starExports := range queuedExportsStar {
+		for _, exportStar := range starExports {
+			foreignFile := p.lookupForeignFile(exportStar.ForeignPath, exportStar.ForeignPathAlt)
+			if foreignFile == nil {
+				p.Error(
+					diagnostics.DiagnosticCodeFile0NotFound,
+					exportStar.PathLiteral.GetRange(),
+					exportStar.PathLiteral.Value,
+				)
+				continue
+			}
+			file.EnsureExportStar(foreignFile)
+		}
+	}
+
+	// queued imports should be resolvable now through traversing exports and queued exports.
+	// note that imports may depend upon imports, so repeat until there's no more progress.
+	for {
+		i := 0
+		madeProgress := false
+		for i < len(queuedImports) {
+			queuedImport := queuedImports[i]
+			localIdentifier := queuedImport.LocalIdentifier
+			foreignIdentifier := queuedImport.ForeignIdentifier
+			// File must be found here, as it would otherwise already have been reported by the parser
+			foreignFile := p.lookupForeignFile(queuedImport.ForeignPath, queuedImport.ForeignPathAlt)
+			if foreignFile == nil {
+				i++
+				continue
+			}
+			if foreignIdentifier != nil { // i.e. import { foo [as bar] } from "./baz"
+				element := p.lookupForeign(foreignIdentifier.Text, foreignFile, queuedExports)
+				if element != nil {
+					queuedImport.LocalFile.Add(localIdentifier.Text, element, localIdentifier)
+					queuedImports = append(queuedImports[:i], queuedImports[i+1:]...)
+					madeProgress = true
+				} else {
+					i++
+				}
+			} else { // i.e. import * as bar from "./bar"
+				localFile := queuedImport.LocalFile
+				localName := localIdentifier.Text
+				localFile.Add(
+					localName,
+					foreignFile.AsAliasNamespace(localName, localFile, localIdentifier),
+					localIdentifier,
+				)
+				queuedImports = append(queuedImports[:i], queuedImports[i+1:]...)
+				madeProgress = true
+			}
+		}
+		if !madeProgress {
+			// report queued imports we were unable to resolve
+			for _, queuedImport := range queuedImports {
+				foreignIdentifier := queuedImport.ForeignIdentifier
+				if foreignIdentifier != nil {
+					p.Error(
+						diagnostics.DiagnosticCodeModule0HasNoExportedMember1,
+						foreignIdentifier.GetRange(),
+						queuedImport.ForeignPath, foreignIdentifier.Text,
+					)
+				}
+			}
+			break
+		}
+	}
+
+	// queued exports should be resolvable now that imports are finalized
+	for file, exports := range queuedExports {
+		for exportName, queuedExport := range exports {
+			localName := queuedExport.LocalIdentifier.Text
+			foreignPath := queuedExport.ForeignPath
+			if foreignPath != "" { // i.e. export { foo [as bar] } from "./baz"
+				foreignFile := p.lookupForeignFile(foreignPath, queuedExport.ForeignPathAlt)
+				if foreignFile == nil {
+					continue
+				}
+				element := p.lookupForeign(localName, foreignFile, queuedExports)
+				if element != nil {
+					file.EnsureExport(exportName, element)
+				} else {
+					p.Error(
+						diagnostics.DiagnosticCodeModule0HasNoExportedMember1,
+						queuedExport.LocalIdentifier.GetRange(),
+						foreignPath, localName,
+					)
+				}
+			} else { // i.e. export { foo [as bar] }
+				element := file.GetMember(localName)
+				if element != nil {
+					file.EnsureExport(exportName, element)
+				} else {
+					globalElement := p.Lookup(localName)
+					if globalElement != nil && IsDeclaredElement(globalElement.GetElementKind()) {
+						file.EnsureExport(exportName, globalElement.(DeclaredElement))
+					} else {
+						p.Error(
+							diagnostics.DiagnosticCodeModule0HasNoExportedMember1,
+							queuedExport.ForeignIdentifier.GetRange(),
+							file.GetInternalName(), queuedExport.ForeignIdentifier.Text,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	// register classes backing basic types
 	p.registerWrapperClass(types.TypeI8, common.CommonNameCapI8)
 	p.registerWrapperClass(types.TypeI16, common.CommonNameCapI16)
 	p.registerWrapperClass(types.TypeI32, common.CommonNameCapI32)
@@ -317,6 +467,201 @@ func (p *Program) Initialize() {
 		}
 		if options.HasFeature(common.FeatureStringref) {
 			p.registerWrapperClass(types.TypeStringRef, common.CommonNameCapRefString)
+		}
+	}
+
+	// resolve prototypes of extended classes or interfaces
+	resolver := p.Resolver_
+	for _, thisPrototype := range queuedExtends {
+		extendsNode := thisPrototype.ExtendsNode()
+		if extendsNode == nil {
+			continue
+		}
+		baseElement := resolver.ResolveTypeName(extendsNode.Name, nil, thisPrototype.GetParent(), ReportModeReport)
+		if baseElement == nil {
+			continue
+		}
+		if thisPrototype.GetElementKind() == ElementKindClassPrototype {
+			if baseElement.GetElementKind() == ElementKindClassPrototype {
+				basePrototype := baseElement.(*ClassPrototype)
+				if basePrototype.HasDecorator(DecoratorFlagsFinal) {
+					p.Error(
+						diagnostics.DiagnosticCodeClass0IsFinalAndCannotBeExtended,
+						extendsNode.GetRange(),
+						basePrototype.IdentifierNode().Text,
+					)
+				}
+				if basePrototype.HasDecorator(DecoratorFlagsUnmanaged) != thisPrototype.HasDecorator(DecoratorFlagsUnmanaged) {
+					p.Error(
+						diagnostics.DiagnosticCodeUnmanagedClassesCannotExtendManagedClassesAndViceVersa,
+						diagnostics.JoinRanges(thisPrototype.IdentifierNode().GetRange(), extendsNode.GetRange()),
+					)
+				}
+				if !thisPrototype.Extends(basePrototype) {
+					thisPrototype.BasePrototype = basePrototype
+				} else {
+					p.Error(
+						diagnostics.DiagnosticCode0IsReferencedDirectlyOrIndirectlyInItsOwnBaseExpression,
+						basePrototype.IdentifierNode().GetRange(),
+						basePrototype.IdentifierNode().Text,
+					)
+				}
+			} else {
+				p.Error(
+					diagnostics.DiagnosticCodeAClassMayOnlyExtendAnotherClass,
+					extendsNode.GetRange(),
+				)
+			}
+		} else if thisPrototype.GetElementKind() == ElementKindInterfacePrototype {
+			if baseElement.GetElementKind() == ElementKindInterfacePrototype {
+				basePrototype := baseElement.(*InterfacePrototype)
+				if !thisPrototype.Extends(&basePrototype.ClassPrototype) {
+					thisPrototype.BasePrototype = &basePrototype.ClassPrototype
+				} else {
+					p.Error(
+						diagnostics.DiagnosticCode0IsReferencedDirectlyOrIndirectlyInItsOwnBaseExpression,
+						basePrototype.IdentifierNode().GetRange(),
+						basePrototype.IdentifierNode().Text,
+					)
+				}
+			} else {
+				p.Error(
+					diagnostics.DiagnosticCodeAnInterfaceCanOnlyExtendAnInterface,
+					extendsNode.GetRange(),
+				)
+			}
+		}
+	}
+
+	// check override
+	for _, prototype := range queuedExtends {
+		instanceMembers := prototype.InstanceMembers
+		if instanceMembers != nil {
+			for _, member := range instanceMembers {
+				declaration := member.GetDeclaration()
+				if declaration != nil && (common.CommonFlags(getNodeFlags(declaration)) & common.CommonFlagsOverride) != 0 {
+					basePrototype := prototype.BasePrototype
+					hasOverride := false
+					for basePrototype != nil {
+						if basePrototype.InstanceMembers != nil {
+							if _, ok := basePrototype.InstanceMembers[member.GetName()]; ok {
+								hasOverride = true
+								break
+							}
+						}
+						basePrototype = basePrototype.BasePrototype
+					}
+					if !hasOverride {
+						bp := prototype.BasePrototype
+						if bp != nil {
+							p.Error(
+								diagnostics.DiagnosticCodeThisMemberCannotHaveAnOverrideModifierBecauseItIsNotDeclaredInTheBaseClass0,
+								member.IdentifierNode().GetRange(),
+								bp.GetName(),
+							)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// resolve prototypes of implemented interfaces
+	for _, thisPrototype := range queuedImplements {
+		implementsNodes := thisPrototype.ImplementsNodes()
+		if implementsNodes == nil {
+			continue
+		}
+		for _, implementsNode := range implementsNodes {
+			interfaceElement := resolver.ResolveTypeName(implementsNode.Name, nil, thisPrototype.GetParent(), ReportModeReport)
+			if interfaceElement == nil {
+				continue
+			}
+			if interfaceElement.GetElementKind() == ElementKindInterfacePrototype {
+				interfacePrototype := interfaceElement.(*InterfacePrototype)
+				if thisPrototype.InterfacePrototypes == nil {
+					thisPrototype.InterfacePrototypes = make([]*InterfacePrototype, 0)
+				}
+				thisPrototype.InterfacePrototypes = append(thisPrototype.InterfacePrototypes, interfacePrototype)
+			} else {
+				p.Error(
+					diagnostics.DiagnosticCodeAClassCanOnlyImplementAnInterface,
+					implementsNode.GetRange(),
+				)
+			}
+		}
+	}
+
+	// process overrides in extended classes and implemented interfaces
+	for _, thisPrototype := range queuedExtends {
+		basePrototype := thisPrototype.BasePrototype
+		if basePrototype != nil {
+			p.processOverrides(thisPrototype, basePrototype)
+		}
+	}
+	for _, thisPrototype := range queuedImplements {
+		basePrototype := thisPrototype.BasePrototype
+		interfacePrototypes := thisPrototype.InterfacePrototypes
+		if basePrototype != nil {
+			p.processOverrides(thisPrototype, basePrototype)
+		}
+		if interfacePrototypes != nil {
+			for _, ifaceProto := range interfacePrototypes {
+				p.processOverrides(thisPrototype, &ifaceProto.ClassPrototype)
+			}
+		}
+	}
+
+	// set up global aliases
+	globalAliases := options.GlobalAliases
+	if globalAliases == nil {
+		globalAliases = make(map[string]string)
+	}
+	if _, ok := globalAliases[common.CommonNameAbort]; !ok {
+		globalAliases[common.CommonNameAbort] = common.BuiltinNameAbort
+	}
+	if _, ok := globalAliases[common.CommonNameTrace]; !ok {
+		globalAliases[common.CommonNameTrace] = common.BuiltinNameTrace
+	}
+	if _, ok := globalAliases[common.CommonNameSeed]; !ok {
+		globalAliases[common.CommonNameSeed] = common.BuiltinNameSeed
+	}
+	if _, ok := globalAliases[common.CommonNameMath]; !ok {
+		globalAliases[common.CommonNameMath] = common.CommonNameNativeMath
+	}
+	if _, ok := globalAliases[common.CommonNameMathf]; !ok {
+		globalAliases[common.CommonNameMathf] = common.CommonNameNativeMathf
+	}
+	for alias, name := range globalAliases {
+		if len(name) == 0 {
+			delete(p.ElementsByNameMap, alias)
+			continue
+		}
+		firstChar := name[0]
+		if firstChar >= '0' && firstChar <= '9' {
+			// Parse as integer
+			val := int64(0)
+			for _, ch := range name {
+				if ch >= '0' && ch <= '9' {
+					val = val*10 + int64(ch-'0')
+				} else {
+					break
+				}
+			}
+			p.registerConstantInteger(alias, types.TypeI32, val)
+		} else {
+			if existing, ok := p.ElementsByNameMap[name]; ok {
+				p.ElementsByNameMap[alias] = existing
+			} else {
+				p.Error(diagnostics.DiagnosticCodeElement0NotFound, nil, name)
+			}
+		}
+	}
+
+	// mark module exports
+	for _, file := range p.FilesByName {
+		if file.Source.SourceKind == ast.SourceKindUserEntry {
+			p.markModuleExports(file)
 		}
 	}
 }
@@ -850,6 +1195,22 @@ func (p *Program) AbortInstance() *Function {
 	return p.cachedAbortInstance
 }
 
+// AllocInstance returns the cached __alloc runtime function instance.
+func (p *Program) AllocInstance() *Function {
+	if p.cachedAllocInstance == nil {
+		p.cachedAllocInstance = p.RequireFunction(common.CommonNameAlloc, nil)
+	}
+	return p.cachedAllocInstance
+}
+
+// NewInstance returns the cached __new runtime function instance.
+func (p *Program) NewInstance() *Function {
+	if p.cachedNewInstance == nil {
+		p.cachedNewInstance = p.RequireFunction(common.CommonNameNew, nil)
+	}
+	return p.cachedNewInstance
+}
+
 // VisitInstance returns the cached __visit runtime function instance.
 func (p *Program) VisitInstance() *Function {
 	if p.cachedVisitInstance == nil {
@@ -860,6 +1221,14 @@ func (p *Program) VisitInstance() *Function {
 		}
 	}
 	return p.cachedVisitInstance
+}
+
+// LinkInstance returns the cached __link runtime function instance.
+func (p *Program) LinkInstance() *Function {
+	if p.cachedLinkInstance == nil {
+		p.cachedLinkInstance = p.RequireFunction(common.CommonNameLink, nil)
+	}
+	return p.cachedLinkInstance
 }
 
 // Typed array prototype accessors

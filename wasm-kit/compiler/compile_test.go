@@ -29,7 +29,12 @@ func compilerTestProgram() (*program.Program, *Compiler) {
 	opts := program.NewOptions()
 	prog := program.NewProgram(opts, nil)
 	prog.Initialize()
-	return prog, NewCompiler(prog)
+	// Clear any diagnostics emitted during initialization so tests
+	// can check only their own diagnostic output.
+	prog.DiagnosticEmitter.Diagnostics = prog.DiagnosticEmitter.Diagnostics[:0]
+	c := NewCompiler(prog)
+	c.DiagnosticEmitter.Diagnostics = c.DiagnosticEmitter.Diagnostics[:0]
+	return prog, c
 }
 
 func compilerTestClass(prog *program.Program, src *ast.Source, name string) (*program.ClassPrototype, *program.Class) {

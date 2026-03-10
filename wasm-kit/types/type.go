@@ -16,6 +16,7 @@ type ClassReference interface {
 	InternalName() string
 	GetType() *Type
 	LookupOverload(kind int32) FunctionReference
+	SetWrappedType(t *Type)
 }
 
 // FunctionReference is an opaque interface for a Function from the program package.
@@ -249,6 +250,10 @@ func (t *Type) GetClassOrWrapper(program ProgramReference) ClassReference {
 	if sigRef != nil {
 		sigType := sigRef.Type
 		wrapper := program.ResolveClass(program.GetFunctionPrototype(), []*Type{sigType})
+		if wrapper == nil {
+			panic("expected wrapper class from ResolveClass")
+		}
+		wrapper.SetWrappedType(sigType)
 		return wrapper
 	}
 	wrapperClasses := program.GetWrapperClasses()
@@ -685,6 +690,17 @@ func (t *Type) ToRef() uintptr {
 		panic("types: TypeToRefFunc not wired")
 	}
 	return TypeToRefFunc(t)
+}
+
+// TypesToRefs converts an array of types to an array of type references.
+// Ported from: assemblyscript/src/types.ts typesToRefs()
+func TypesToRefs(types []*Type) []uintptr {
+	numTypes := len(types)
+	ret := make([]uintptr, numTypes)
+	for i := 0; i < numTypes; i++ {
+		ret[i] = types[i].ToRef()
+	}
+	return ret
 }
 
 // TypesToString converts an array of types to a combined string representation.

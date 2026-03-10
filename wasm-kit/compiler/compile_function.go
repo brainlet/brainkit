@@ -82,9 +82,13 @@ func (c *Compiler) compileFunctionImpl(instance *program.Function, forceStdAlter
 	_ = kind // validated by program
 
 	// Check signature types are supported
+	// TS: this.checkSignatureSupported(instance.signature, (<FunctionDeclaration>declarationNode).signature)
+	// Called unconditionally in TS — declarationNode is always FunctionDeclaration or MethodDeclaration
 	if fnTypeNode != nil {
 		c.checkSignatureSupported(signature, fnTypeNode)
 	}
+	// Note: fnTypeNode nil guard retained since Go's FunctionTypeNode() may return nil
+	// for compiler-generated functions that lack declaration AST nodes
 
 	var funcRef module.FunctionRef
 
@@ -502,99 +506,129 @@ func lowerRequiresExportRuntime(typ *types.Type) bool {
 
 // makeBuiltinFieldGetter makes a built-in getter for a field property.
 // Creates a function that loads the field value from the object at the field's memory offset.
-// Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldGetter (lines 1874-1920).
+// Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldGetter (lines 1874-1899).
 func (c *Compiler) makeBuiltinFieldGetter(property *program.Property) module.FunctionRef {
-	mod := c.Module()
 	getterInstance := property.GetterInstance
 	if getterInstance == nil {
 		return 0
 	}
-
-	fieldType := property.GetType()
-	if fieldType == nil {
+	mod := c.Module()
+	valueType := property.GetType()
+	if valueType == nil {
 		return 0
 	}
-	fieldTypeRef := fieldType.ToRef()
-
-	// The getter takes `this` (i32/i64 pointer) and returns the field value.
-	// body: load(this + offset)
-	thisTypeRef := module.TypeRefI32
-	if c.Options().IsWasm64() {
-		thisTypeRef = module.TypeRefI64
+	valueTypeRef := valueType.ToRef()
+	thisTypeRef := c.Options().SizeTypeRef()
+	getterInstance.Set(common.CommonFlagsCompiled)
+	byteSize := uint32(valueType.ByteSize())
+	body := mod.Load(
+		byteSize, valueType.IsSignedIntegerValue(),
+		mod.LocalGet(0, thisTypeRef),
+		valueTypeRef, uint32(property.MemoryOffset), byteSize,
+		module.DefaultMemory,
+	)
+	flowBefore := c.CurrentFlow
+	fl := getterInstance.Flow
+	c.CurrentFlow = fl
+	if property.Is(common.CommonFlagsDefinitelyAssigned) && valueType.IsReference() && !valueType.IsNullableReference() {
+		body = c.makeRuntimeNonNullCheck(body, valueType, getterInstance.IdentifierNode())
 	}
-	offset := uint32(property.MemoryOffset)
-
-	memName := common.CommonNameDefaultMemory
-	var loadExpr module.ExpressionRef
-	switch fieldTypeRef {
-	case module.TypeRefI32:
-		loadExpr = mod.Load(4, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 4, memName)
-	case module.TypeRefI64:
-		loadExpr = mod.Load(8, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 8, memName)
-	case module.TypeRefF32:
-		loadExpr = mod.Load(4, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 4, memName)
-	case module.TypeRefF64:
-		loadExpr = mod.Load(8, true, mod.LocalGet(0, thisTypeRef), fieldTypeRef, offset, 8, memName)
-	default:
-		// For reference types, load as pointer
-		loadExpr = mod.Load(4, false, mod.LocalGet(0, thisTypeRef), thisTypeRef, offset, 4, memName)
-	}
-
+	c.CurrentFlow = flowBefore
 	return mod.AddFunction(
 		getterInstance.GetInternalName(),
-		getterInstance.Signature.ParamRefs(),
-		getterInstance.Signature.ResultRefs(),
-		nil,
-		loadExpr,
+		thisTypeRef,
+		valueTypeRef,
+		typesToRefs(getterInstance.GetNonParameterLocalTypes()),
+		body,
 	)
 }
 
 // makeBuiltinFieldSetter makes a built-in setter for a field property.
 // Creates a function that stores a value to the field at the field's memory offset.
-// Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldSetter (lines 1922-1960).
+// Ported from: assemblyscript/src/compiler.ts makeBuiltinFieldSetter (lines 1902-1938).
 func (c *Compiler) makeBuiltinFieldSetter(property *program.Property) module.FunctionRef {
-	mod := c.Module()
 	setterInstance := property.SetterInstance
 	if setterInstance == nil {
 		return 0
 	}
-
-	fieldType := property.GetType()
-	if fieldType == nil {
+	mod := c.Module()
+	valueType := property.GetType()
+	if valueType == nil {
 		return 0
 	}
-	fieldTypeRef := fieldType.ToRef()
-
-	// The setter takes `this` (i32/i64 pointer) and the value, returns void.
-	// body: store(this + offset, value)
-	thisTypeRef := module.TypeRefI32
-	if c.Options().IsWasm64() {
-		thisTypeRef = module.TypeRefI64
+	thisTypeRef := c.Options().SizeTypeRef()
+	valueTypeRef := valueType.ToRef()
+	// void(this.field = value)
+	byteSize := uint32(valueType.ByteSize())
+	bodyExpr := mod.Store(
+		byteSize,
+		mod.LocalGet(0, thisTypeRef),
+		mod.LocalGet(1, valueTypeRef),
+		valueTypeRef, uint32(property.MemoryOffset), byteSize,
+		module.DefaultMemory,
+	)
+	if valueType.IsManaged() {
+		parent := setterInstance.GetParent()
+		if parent.GetElementKind() == program.ElementKindClass {
+			parentClass := parent.(*program.Class)
+			if parentClass.GetType().IsManaged() {
+				linkInstance := c.Program.LinkInstance()
+				c.CompileFunction(linkInstance)
+				bodyExpr = mod.Block("", []module.ExpressionRef{
+					bodyExpr,
+					mod.Call(linkInstance.GetInternalName(), []module.ExpressionRef{
+						mod.LocalGet(0, thisTypeRef),
+						mod.LocalGet(1, valueTypeRef),
+						mod.I32(0),
+					}, module.TypeRefNone),
+				}, module.TypeRefNone)
+			}
+		}
 	}
-	offset := uint32(property.MemoryOffset)
-
-	memName := common.CommonNameDefaultMemory
-	var storeExpr module.ExpressionRef
-	switch fieldTypeRef {
-	case module.TypeRefI32:
-		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 4, memName)
-	case module.TypeRefI64:
-		storeExpr = mod.Store(8, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 8, memName)
-	case module.TypeRefF32:
-		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 4, memName)
-	case module.TypeRefF64:
-		storeExpr = mod.Store(8, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), fieldTypeRef, offset, 8, memName)
-	default:
-		storeExpr = mod.Store(4, mod.LocalGet(0, thisTypeRef), mod.LocalGet(1, fieldTypeRef), thisTypeRef, offset, 4, memName)
-	}
-
+	setterInstance.Set(common.CommonFlagsCompiled)
 	return mod.AddFunction(
 		setterInstance.GetInternalName(),
-		setterInstance.Signature.ParamRefs(),
-		setterInstance.Signature.ResultRefs(),
+		module.CreateType([]module.TypeRef{thisTypeRef, valueTypeRef}),
+		module.TypeRefNone,
 		nil,
-		storeExpr,
+		bodyExpr,
 	)
+}
+
+// makeAllocation makes an allocation suitable to hold the data of an instance of the given class.
+// For @unmanaged classes, calls __alloc(size). For managed classes, calls __new(size, classId).
+// Ported from: assemblyscript/src/compiler.ts makeAllocation (lines 10351-10377).
+func (c *Compiler) makeAllocation(classInstance *program.Class) module.ExpressionRef {
+	prog := c.Program
+	mod := c.Module()
+	options := c.Options()
+	c.CurrentType = classInstance.GetType()
+	if classInstance.HasDecorator(program.DecoratorFlagsUnmanaged) {
+		allocInstance := prog.AllocInstance()
+		c.CompileFunction(allocInstance)
+		sizeArg := module.ExpressionRef(0)
+		if options.IsWasm64() {
+			sizeArg = mod.I64(int64(classInstance.NextMemoryOffset))
+		} else {
+			sizeArg = mod.I32(int32(classInstance.NextMemoryOffset))
+		}
+		return mod.Call(allocInstance.GetInternalName(), []module.ExpressionRef{
+			sizeArg,
+		}, options.SizeTypeRef())
+	} else {
+		newInstance := prog.NewInstance()
+		c.CompileFunction(newInstance)
+		sizeArg := module.ExpressionRef(0)
+		if options.IsWasm64() {
+			sizeArg = mod.I64(int64(classInstance.NextMemoryOffset))
+		} else {
+			sizeArg = mod.I32(int32(classInstance.NextMemoryOffset))
+		}
+		return mod.Call(newInstance.GetInternalName(), []module.ExpressionRef{
+			sizeArg,
+			mod.I32(int32(classInstance.Id())),
+		}, options.SizeTypeRef())
+	}
 }
 
 // makeConditionalAllocation creates a conditional this allocation for constructors.
@@ -602,29 +636,22 @@ func (c *Compiler) makeBuiltinFieldSetter(property *program.Property) module.Fun
 // Ported from: assemblyscript/src/compiler.ts makeConditionalAllocation (lines 9847-9882).
 func (c *Compiler) makeConditionalAllocation(classInstance *program.Class, thisLocalIndex int32) module.ExpressionRef {
 	mod := c.Module()
-	thisTypeRef := module.TypeRefI32
-	if c.Options().IsWasm64() {
-		thisTypeRef = module.TypeRefI64
+	classType := classInstance.GetType()
+	classTypeRef := classType.ToRef()
+
+	eqzOp := module.UnaryOpEqzI32
+	if classTypeRef == module.TypeRefI64 {
+		eqzOp = module.UnaryOpEqzI64
 	}
 
-	// if (!this) this = __new(size, id);
-	// The __new builtin allocates an object. For now, emit a call to __new.
-	size := int32(classInstance.NextMemoryOffset)
-	classId := int32(classInstance.Id())
-	allocExpr := mod.Call(
-		"~lib/rt/__new",
-		[]module.ExpressionRef{
-			mod.I32(size),
-			mod.I32(classId),
-		},
-		thisTypeRef,
-	)
-
 	return mod.If(
-		mod.Unary(module.UnaryOpEqzI32,
-			mod.LocalGet(thisLocalIndex, thisTypeRef),
+		mod.Unary(eqzOp,
+			mod.LocalGet(thisLocalIndex, classTypeRef),
 		),
-		mod.LocalSet(thisLocalIndex, allocExpr, false),
+		mod.LocalSet(thisLocalIndex,
+			c.makeAllocation(classInstance),
+			classInstance.GetType().IsManaged(),
+		),
 		0,
 	)
 }
@@ -695,7 +722,7 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
 			mod.LocalGet(thisLocalIndex, sizeTypeRef),
 			mod.LocalGet(parameterLocalIndex, fieldType.ToRef()),
-		}, reportNode)
+		}, reportNode, true)
 		if c.CurrentType != types.TypeVoid {
 			expr = mod.Drop(expr)
 		}
@@ -727,7 +754,7 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
 			mod.LocalGet(thisLocalIndex, sizeTypeRef),
 			fieldValue,
-		}, reportNode)
+		}, reportNode, true)
 		if c.CurrentType != types.TypeVoid {
 			expr = mod.Drop(expr)
 		}
@@ -738,24 +765,158 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 }
 
 // ensureConstructor ensures a class has a constructor compiled, creating a default one if needed.
-// Ported from: assemblyscript/src/compiler.ts ensureConstructor (lines 10060-10080).
+// Ported from: assemblyscript/src/compiler.ts ensureConstructor (lines 8868-8995).
 func (c *Compiler) ensureConstructor(classInstance *program.Class, reportNode ast.Node) *program.Function {
-	ctorInstance := classInstance.ConstructorInstance
-	if ctorInstance != nil {
-		c.CompileFunction(ctorInstance)
-		return ctorInstance
-	}
-	// If no explicit constructor, try to resolve the default constructor
-	if classInstance.Prototype.ConstructorPrototype != nil {
-		resolver := c.Resolver()
-		ctorInstance = resolver.ResolveFunction(classInstance.Prototype.ConstructorPrototype, nil, nil, program.ReportModeReport)
-		if ctorInstance != nil {
-			classInstance.ConstructorInstance = ctorInstance
-			c.CompileFunction(ctorInstance)
-			return ctorInstance
+	instance := classInstance.ConstructorInstance
+	if instance != nil {
+		// shortcut if already compiled
+		if instance.Is(common.CommonFlagsCompiled) {
+			return instance
 		}
+		// do not attempt to compile if inlined anyway
+		if !instance.HasDecorator(program.DecoratorFlagsInline) {
+			c.CompileFunction(instance)
+		}
+	} else {
+		// clone base constructor if a derived class. note that we cannot just
+		// call the base ctor since the derived class may have additional fields.
+		baseClass := classInstance.Base
+		contextualTypeArguments := cloneTypeArgMap(classInstance.ContextualTypeArguments)
+		if baseClass != nil {
+			baseCtor := c.ensureConstructor(baseClass, reportNode)
+			c.checkFieldInitialization(baseClass, reportNode)
+			baseCtorDecl := baseCtor.GetDeclaration().(*ast.FunctionDeclaration).Clone()
+			instance = program.NewFunction(
+				common.CommonNameConstructor,
+				program.NewFunctionPrototype(
+					common.CommonNameConstructor,
+					classInstance,
+					// declaration is important, i.e. to access optional parameter initializers
+					baseCtorDecl,
+					program.DecoratorFlagsNone,
+				),
+				nil, // typeArguments
+				types.CreateSignature(
+					classInstance.GetProgram(),
+					baseCtor.Signature.ParameterTypes,
+					classInstance.GetType(),
+					classInstance.GetType(),
+					baseCtor.Signature.RequiredParameters,
+					baseCtor.Signature.HasRest,
+				),
+				contextualTypeArguments,
+			)
+
+		// otherwise make a default constructor
+		} else {
+			instance = program.NewFunction(
+				common.CommonNameConstructor,
+				program.NewFunctionPrototype(
+					common.CommonNameConstructor,
+					classInstance, // bound
+					c.Program.MakeNativeFunctionDeclaration(common.CommonNameConstructor,
+						common.CommonFlagsInstance|common.CommonFlagsConstructor,
+					),
+					program.DecoratorFlagsNone,
+				),
+				nil, // typeArguments
+				types.CreateSignature(classInstance.GetProgram(), nil, classInstance.GetType(), classInstance.GetType(), -1, false),
+				contextualTypeArguments,
+			)
+		}
+
+		instance.Set(common.CommonFlagsCompiled)
+		instance.Prototype.SetResolvedInstance("", instance)
+		if classInstance.Is(common.CommonFlagsModuleExport) {
+			instance.Set(common.CommonFlagsModuleExport)
+		}
+		classInstance.ConstructorInstance = instance
+		members := classInstance.GetMembers()
+		if members == nil {
+			members = make(map[string]program.DeclaredElement)
+			classInstance.SetMembers(members)
+		}
+		members[common.CommonNameConstructor] = instance.Prototype
+
+		previousFlow := c.CurrentFlow
+		fl := instance.Flow
+		c.CurrentFlow = fl
+
+		// generate body
+		signature := instance.Signature
+		mod := c.Module()
+		sizeTypeRef := module.TypeRef(c.Options().SizeTypeRef())
+		stmts := make([]module.ExpressionRef, 0)
+
+		// {
+		//   this = <COND_ALLOC>
+		//   IF_DERIVED: this = super(this, ...args)
+		//   this.a = X
+		//   this.b = Y
+		//   return this
+		// }
+		stmts = append(stmts,
+			c.makeConditionalAllocation(classInstance, 0),
+		)
+		if baseClass != nil {
+			parameterTypes := signature.ParameterTypes
+			numParameters := len(parameterTypes)
+			operands := make([]module.ExpressionRef, 1+numParameters)
+			operands[0] = mod.LocalGet(0, sizeTypeRef)
+			for i := 1; i <= numParameters; i++ {
+				operands[i] = mod.LocalGet(int32(i), parameterTypes[i-1].ToRef())
+			}
+			baseCtorInstance := baseClass.ConstructorInstance
+			if baseCtorInstance == nil {
+				panic("ensureConstructor: baseClass.ConstructorInstance is nil after ensureConstructor")
+			}
+			stmts = append(stmts,
+				mod.LocalSet(0,
+					c.makeCallDirect(baseCtorInstance, operands, reportNode, false),
+					baseClass.GetType().IsManaged(),
+				),
+			)
+		}
+		c.makeFieldInitializationInConstructor(classInstance, &stmts)
+		stmts = append(stmts,
+			mod.LocalGet(0, sizeTypeRef),
+		)
+		c.CurrentFlow = previousFlow
+
+		// make the function
+		locals := instance.LocalsByIndex
+		varTypes := make([]module.TypeRef, 0) // of temp. vars added while compiling initializers
+		numOperands := 1 + len(signature.ParameterTypes)
+		numLocals := len(locals)
+		if numLocals > numOperands {
+			for i := numOperands; i < numLocals; i++ {
+				varTypes = append(varTypes, locals[i].GetType().ToRef())
+			}
+		}
+		funcRef := mod.AddFunction(
+			instance.GetInternalName(),
+			signature.ParamRefs(),
+			signature.ResultRefs(),
+			varTypes,
+			mod.Flatten(stmts, sizeTypeRef),
+		)
+		instance.Finalize(c.Module(), funcRef)
 	}
-	return nil
+
+	return instance
+}
+
+// cloneTypeArgMap shallow-clones a map of contextual type arguments.
+// Ported from: assemblyscript/src/util/collections.ts cloneMap.
+func cloneTypeArgMap(src map[string]*types.Type) map[string]*types.Type {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]*types.Type, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 // intToString converts an int to its string representation.

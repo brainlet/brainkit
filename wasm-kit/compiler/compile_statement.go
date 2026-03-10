@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit/wasm-kit/flow"
 	"github.com/brainlet/brainkit/wasm-kit/module"
 	"github.com/brainlet/brainkit/wasm-kit/program"
+	"github.com/brainlet/brainkit/wasm-kit/tokenizer"
 	"github.com/brainlet/brainkit/wasm-kit/types"
 )
 
@@ -65,15 +66,27 @@ func (c *Compiler) CompileStatement(statement ast.Node) module.ExpressionRef {
 }
 
 // CompileStatements compiles a sequence of statements, appending to the given slice.
-// Ported from: assemblyscript/src/compiler.ts compileStatements (lines 2337-3349).
+// Ported from: assemblyscript/src/compiler.ts compileStatements (lines 2336-2352).
 func (c *Compiler) CompileStatements(statements []ast.Node, stmts []module.ExpressionRef) []module.ExpressionRef {
+	fl := c.CurrentFlow
 	for _, statement := range statements {
-		compiled := c.CompileStatement(statement)
-		if module.GetExpressionId(compiled) != module.ExpressionIdNop {
-			stmts = append(stmts, compiled)
+		stmt := c.CompileStatement(statement)
+		switch module.GetExpressionId(stmt) {
+		case module.ExpressionIdBlock:
+			if module.GetBlockName(stmt) == "" {
+				// Flatten unnamed blocks into parent
+				for j := module.Index(0); j < module.GetBlockChildCount(stmt); j++ {
+					stmts = append(stmts, module.GetBlockChildAt(stmt, j))
+				}
+			} else {
+				stmts = append(stmts, stmt)
+			}
+		case module.ExpressionIdNop:
+			// skip nops
+		default:
+			stmts = append(stmts, stmt)
 		}
-		// If flow becomes unreachable, stop compiling further statements
-		if c.CurrentFlow.Is(flow.FlowFlagTerminates | flow.FlowFlagBreaks | flow.FlowFlagContinues) {
+		if fl.IsAny(flow.FlowFlagTerminates | flow.FlowFlagBreaks) {
 			break
 		}
 	}
@@ -81,42 +94,34 @@ func (c *Compiler) CompileStatements(statements []ast.Node, stmts []module.Expre
 }
 
 // compileBlockStatement compiles a block statement.
-// Ported from: assemblyscript/src/compiler.ts compileBlockStatement (lines 2355-2369).
+// Ported from: assemblyscript/src/compiler.ts compileBlockStatement (lines 2354-2366).
 func (c *Compiler) compileBlockStatement(statement *ast.BlockStatement) module.ExpressionRef {
+	outerFlow := c.CurrentFlow
+	innerFlow := outerFlow.Fork(false, false)
+	c.CurrentFlow = innerFlow
+
 	stmts := make([]module.ExpressionRef, 0, len(statement.Statements))
 	stmts = c.CompileStatements(statement.Statements, stmts)
 
-	mod := c.Module()
-	switch len(stmts) {
-	case 0:
-		return mod.Nop()
-	case 1:
-		return stmts[0]
-	default:
-		return mod.Block("", stmts, module.TypeRefNone)
-	}
+	outerFlow.Inherit(innerFlow)
+	c.CurrentFlow = outerFlow
+	return c.Module().Flatten(stmts, module.TypeRefNone)
 }
 
 // compileBreakStatement compiles a break statement.
-// Ported from: assemblyscript/src/compiler.ts compileBreakStatement (lines 2371-2405).
+// Ported from: assemblyscript/src/compiler.ts compileBreakStatement (lines 2386-2410).
 func (c *Compiler) compileBreakStatement(statement *ast.BreakStatement) module.ExpressionRef {
 	mod := c.Module()
-	fl := c.CurrentFlow
-
-	if statement.Label != nil {
-		// Labeled break
-		label := statement.Label.Text
-		breakLabel := fl.BreakLabel
-		if breakLabel == "" || breakLabel != label {
-			c.Error(
-				diagnostics.DiagnosticCodeNotImplemented0,
-				statement.Label.GetRange(),
-				"Labeled break", "", "",
-			)
-			return mod.Unreachable()
-		}
+	labelNode := statement.Label
+	if labelNode != nil {
+		c.Error(
+			diagnostics.DiagnosticCodeNotImplemented0,
+			labelNode.GetRange(),
+			"Break label", "", "",
+		)
+		return mod.Unreachable()
 	}
-
+	fl := c.CurrentFlow
 	breakLabel := fl.BreakLabel
 	if breakLabel == "" {
 		c.Error(
@@ -126,31 +131,25 @@ func (c *Compiler) compileBreakStatement(statement *ast.BreakStatement) module.E
 		)
 		return mod.Unreachable()
 	}
-
 	fl.SetFlag(flow.FlowFlagBreaks)
 	return mod.Br(breakLabel, 0, 0)
 }
 
 // compileContinueStatement compiles a continue statement.
-// Ported from: assemblyscript/src/compiler.ts compileContinueStatement (lines 2407-2437).
+// Ported from: assemblyscript/src/compiler.ts compileContinueStatement (lines 2412-2437).
 func (c *Compiler) compileContinueStatement(statement *ast.ContinueStatement) module.ExpressionRef {
 	mod := c.Module()
-	fl := c.CurrentFlow
-
-	if statement.Label != nil {
-		// Labeled continue
-		label := statement.Label.Text
-		continueLabel := fl.ContinueLabel
-		if continueLabel == "" || continueLabel != label {
-			c.Error(
-				diagnostics.DiagnosticCodeNotImplemented0,
-				statement.Label.GetRange(),
-				"Labeled continue", "", "",
-			)
-			return mod.Unreachable()
-		}
+	label := statement.Label
+	if label != nil {
+		c.Error(
+			diagnostics.DiagnosticCodeNotImplemented0,
+			label.GetRange(),
+			"Continue label", "", "",
+		)
+		return mod.Unreachable()
 	}
-
+	// Check if 'continue' is allowed here
+	fl := c.CurrentFlow
 	continueLabel := fl.ContinueLabel
 	if continueLabel == "" {
 		c.Error(
@@ -160,150 +159,245 @@ func (c *Compiler) compileContinueStatement(statement *ast.ContinueStatement) mo
 		)
 		return mod.Unreachable()
 	}
-
-	fl.SetFlag(flow.FlowFlagContinues)
+	fl.SetFlag(flow.FlowFlagContinues | flow.FlowFlagTerminates)
 	return mod.Br(continueLabel, 0, 0)
 }
 
 // compileDoStatement compiles a do-while statement.
-// Ported from: assemblyscript/src/compiler.ts compileDoStatement (lines 2439-2518).
+// Ported from: assemblyscript/src/compiler.ts compileDoStatement (lines 2439-2549).
 func (c *Compiler) compileDoStatement(statement *ast.DoStatement) module.ExpressionRef {
-	mod := c.Module()
-	fl := c.CurrentFlow
-
-	// Create break/continue labels
-	label := fl.PushControlFlowLabel()
-	breakLabel := "break|" + fmt.Sprintf("%d", label)
-	continueLabel := "continue|" + fmt.Sprintf("%d", label)
-
-	// Fork flow for the loop body
-	bodyFlow := fl.Fork(true, true)
-	bodyFlow.BreakLabel = breakLabel
-	bodyFlow.ContinueLabel = continueLabel
-	c.CurrentFlow = bodyFlow
-
-	// Compile body
-	bodyStmt := c.CompileStatement(statement.Body)
-
-	// Compile condition
-	condExpr := c.makeIsTrueish(
-		c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit),
-		c.CurrentType,
-		statement.Condition,
-	)
-
-	// Restore flow
-	c.CurrentFlow = fl
-	fl.PopControlFlowLabel(label)
-
-	// Build: block $break { loop $continue { body; br_if $continue condition } }
-	inner := mod.Block(continueLabel, []module.ExpressionRef{
-		bodyStmt,
-		mod.Br(continueLabel, condExpr, 0),
-	}, module.TypeRefNone)
-	loopExpr := mod.Loop(continueLabel, inner)
-
-	// Merge flow effects
-	if !bodyFlow.Is(flow.FlowFlagTerminates) {
-		fl.MergeBranch(bodyFlow)
-	}
-	if bodyFlow.Is(flow.FlowFlagBreaks) {
-		// break exits the loop
-	}
-
-	return mod.Block(breakLabel, []module.ExpressionRef{loopExpr}, module.TypeRefNone)
+	return c.doCompileDoStatement(statement)
 }
 
-// compileExpressionStatement compiles an expression statement.
-// Ported from: assemblyscript/src/compiler.ts compileExpressionStatement (lines 2520-2531).
-func (c *Compiler) compileExpressionStatement(statement *ast.ExpressionStatement) module.ExpressionRef {
+// doCompileDoStatement is the inner implementation of compileDoStatement,
+// called recursively when loop convergence requires recompilation.
+// Ported from: assemblyscript/src/compiler.ts doCompileDoStatement (lines 2446-2549).
+func (c *Compiler) doCompileDoStatement(statement *ast.DoStatement) module.ExpressionRef {
 	mod := c.Module()
-	expr := c.CompileExpression(statement.Expression, types.TypeVoid, ConstraintsWillDrop)
-	ct := c.CurrentType
+	outerFlow := c.CurrentFlow
+	numLocalsBefore := len(outerFlow.TargetFunction.FlowLocalsByIndex())
 
-	// Drop non-void values
-	if ct != types.TypeVoid {
-		expr = mod.Drop(expr)
-		c.CurrentType = types.TypeVoid
+	// (block $break
+	//  (loop $loop
+	//   (?block $continue
+	//    (body)
+	//   )
+	//   (br_if $loop (condition))
+	//  )
+	// )
+
+	// Cases of interest:
+	// * If the body never falls through or continues, the condition never executes
+	// * If the condition is always true and body never breaks, overall flow terminates
+	// * If the body terminates with a continue, condition is still reached
+
+	// Compile the body (always executes)
+	fl := outerFlow.Fork(true, true)
+	label := fl.PushControlFlowLabel()
+	breakLabel := fmt.Sprintf("do-break|%d", label)
+	fl.BreakLabel = breakLabel
+	continueLabel := fmt.Sprintf("do-continue|%d", label)
+	fl.ContinueLabel = continueLabel
+	loopLabel := fmt.Sprintf("do-loop|%d", label)
+	c.CurrentFlow = fl
+	bodyStmts := make([]module.ExpressionRef, 0)
+	body := statement.Body
+	if body.GetKind() == ast.NodeKindBlock {
+		bodyStmts = c.CompileStatements(body.(*ast.BlockStatement).Statements, bodyStmts)
+	} else {
+		bodyStmts = append(bodyStmts, c.CompileStatement(body))
+	}
+	fl.PopControlFlowLabel(label)
+
+	possiblyContinues := fl.IsAny(flow.FlowFlagContinues | flow.FlowFlagConditionallyContinues)
+	possiblyBreaks := fl.IsAny(flow.FlowFlagBreaks | flow.FlowFlagConditionallyBreaks)
+	possiblyFallsThrough := !fl.IsAny(flow.FlowFlagTerminates | flow.FlowFlagBreaks)
+
+	// Shortcut if the condition is never reached
+	if !possiblyFallsThrough && !possiblyContinues {
+		bodyStmts = append(bodyStmts, mod.Unreachable())
+		outerFlow.Inherit(fl)
+
+		// If the body also never breaks, the overall flow terminates
+		if !possiblyBreaks {
+			outerFlow.SetFlag(flow.FlowFlagTerminates)
+		}
+
+	// Otherwise compile and evaluate the condition (from here on always executes)
+	} else {
+		condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit)
+		condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, statement.Condition)
+		condKind := c.evaluateCondition(condExprTrueish)
+
+		// Detect if local flags are incompatible before and after looping, and
+		// if so recompile by unifying local flags between iterations. Note that
+		// this may be necessary multiple times where locals depend on each other.
+		possiblyLoops := condKind != flow.ConditionKindFalse && (possiblyContinues || possiblyFallsThrough)
+		if possiblyLoops && outerFlow.ResetIfNeedsRecompile(fl.ForkThen(condExpr, false, false), numLocalsBefore) {
+			c.CurrentFlow = outerFlow
+			return c.doCompileDoStatement(statement)
+		}
+
+		if possiblyContinues {
+			bodyStmts[0] = mod.Block(continueLabel, bodyStmts, module.TypeRefNone)
+			bodyStmts = bodyStmts[:1]
+			fl.UnsetFlag(flow.FlowFlagTerminates) // Continue breaks to condition
+		}
+		bodyStmts = append(bodyStmts,
+			mod.Br(loopLabel, condExprTrueish, 0),
+		)
+		outerFlow.Inherit(fl)
+
+		// Terminate if the condition is always true and body never breaks
+		if condKind == flow.ConditionKindTrue && !possiblyBreaks {
+			outerFlow.SetFlag(flow.FlowFlagTerminates)
+		}
+	}
+
+	// Finalize and leave everything else to the optimizer
+	c.CurrentFlow = outerFlow
+	expr := mod.Loop(loopLabel,
+		mod.Flatten(bodyStmts, module.TypeRefNone),
+	)
+	if possiblyBreaks {
+		expr = mod.Block(breakLabel, []module.ExpressionRef{expr}, module.TypeRefNone)
+	}
+	if outerFlow.Is(flow.FlowFlagTerminates) {
+		expr = mod.Block("", []module.ExpressionRef{expr, mod.Unreachable()}, module.TypeRefNone)
 	}
 	return expr
 }
 
+// compileExpressionStatement compiles an expression statement.
+// Ported from: assemblyscript/src/compiler.ts compileExpressionStatement (lines 2557-2561).
+func (c *Compiler) compileExpressionStatement(statement *ast.ExpressionStatement) module.ExpressionRef {
+	return c.CompileExpression(statement.Expression, types.TypeVoid, ConstraintsConvImplicit)
+}
+
 // compileForStatement compiles a for statement.
-// Ported from: assemblyscript/src/compiler.ts compileForStatement (lines 2533-2630).
+// Ported from: assemblyscript/src/compiler.ts compileForStatement (lines 2563-2711).
 func (c *Compiler) compileForStatement(statement *ast.ForStatement) module.ExpressionRef {
+	return c.doCompileForStatement(statement)
+}
+
+// doCompileForStatement is the inner implementation of compileForStatement,
+// called recursively when loop convergence requires recompilation.
+// Ported from: assemblyscript/src/compiler.ts doCompileForStatement (lines 2570-2711).
+func (c *Compiler) doCompileForStatement(statement *ast.ForStatement) module.ExpressionRef {
 	mod := c.Module()
-	fl := c.CurrentFlow
+	outerFlow := c.CurrentFlow
+	numLocalsBefore := len(outerFlow.TargetFunction.FlowLocalsByIndex())
 
-	// Compile initializer
-	var initExpr module.ExpressionRef
-	if statement.Initializer != nil {
-		initExpr = c.CompileStatement(statement.Initializer)
-	}
-
-	// Create break/continue labels
-	label := fl.PushControlFlowLabel()
-	breakLabel := "break|" + fmt.Sprintf("%d", label)
-	continueLabel := "continue|" + fmt.Sprintf("%d", label)
-
-	// Fork flow for the loop
-	bodyFlow := fl.Fork(true, true)
-	bodyFlow.BreakLabel = breakLabel
-	bodyFlow.ContinueLabel = continueLabel
-	c.CurrentFlow = bodyFlow
-
-	// Compile body
-	bodyStmt := c.CompileStatement(statement.Body)
-
-	// Compile incrementor
-	var incrExpr module.ExpressionRef
-	if statement.Incrementor != nil {
-		incrExpr = c.CompileExpression(statement.Incrementor, types.TypeVoid, ConstraintsWillDrop)
-		if c.CurrentType != types.TypeVoid {
-			incrExpr = mod.Drop(incrExpr)
-		}
-	}
-
-	// Compile condition
-	var condExpr module.ExpressionRef
-	if statement.Condition != nil {
-		condExpr = c.makeIsTrueish(
-			c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit),
-			c.CurrentType,
-			statement.Condition,
-		)
-		// Negate: break if NOT condition
-		condExpr = mod.If(condExpr, mod.Nop(), mod.Br(breakLabel, 0, 0))
-	}
-
-	// Restore flow
+	// Compile initializer if present. The initializer might introduce scoped
+	// locals bound to the for statement, so create a new flow early.
+	fl := outerFlow.Fork(false, false)
 	c.CurrentFlow = fl
-	fl.PopControlFlowLabel(label)
-
-	// Build loop body parts
-	loopParts := make([]module.ExpressionRef, 0, 4)
-	if condExpr != 0 {
-		loopParts = append(loopParts, condExpr)
+	stmts := make([]module.ExpressionRef, 0)
+	initializer := statement.Initializer
+	if initializer != nil {
+		stmts = append(stmts, c.CompileStatement(initializer))
 	}
-	loopParts = append(loopParts, bodyStmt)
-	if incrExpr != 0 {
-		loopParts = append(loopParts, incrExpr)
+
+	// Precompute the condition if present, or default to `true`
+	var condExpr module.ExpressionRef
+	var condExprTrueish module.ExpressionRef
+	var condKind flow.ConditionKind
+	condition := statement.Condition
+	if condition != nil {
+		condExpr = c.CompileExpression(condition, types.TypeBool, ConstraintsConvImplicit)
+		condExprTrueish = c.makeIsTrueish(condExpr, c.CurrentType, condition)
+		condKind = c.evaluateCondition(condExprTrueish)
+
+		// Shortcut if condition is always false (body never executes)
+		if condKind == flow.ConditionKindFalse {
+			stmts = append(stmts, mod.Drop(condExprTrueish))
+			outerFlow.Inherit(fl)
+			c.CurrentFlow = outerFlow
+			return mod.Flatten(stmts, module.TypeRefNone)
+		}
+	} else {
+		condExpr = mod.I32(1)
+		condExprTrueish = condExpr
+		condKind = flow.ConditionKindTrue
 	}
-	loopParts = append(loopParts, mod.Br(continueLabel, 0, 0))
+	// From here on condition is either true or unknown
 
-	loopBody := mod.Block("", loopParts, module.TypeRefNone)
-	loopExpr := mod.Loop(continueLabel, loopBody)
+	// Compile the body assuming the condition turned out true
+	bodyFlow := fl.ForkThen(condExpr, true, true)
+	label := bodyFlow.PushControlFlowLabel()
+	breakLabel := fmt.Sprintf("for-break%d", label)
+	bodyFlow.BreakLabel = breakLabel
+	continueLabel := fmt.Sprintf("for-continue|%d", label)
+	bodyFlow.ContinueLabel = continueLabel
+	loopLabel := fmt.Sprintf("for-loop|%d", label)
+	c.CurrentFlow = bodyFlow
+	bodyStmts := make([]module.ExpressionRef, 0)
+	body := statement.Body
+	if body.GetKind() == ast.NodeKindBlock {
+		bodyStmts = c.CompileStatements(body.(*ast.BlockStatement).Statements, bodyStmts)
+	} else {
+		bodyStmts = append(bodyStmts, c.CompileStatement(body))
+	}
+	bodyFlow.PopControlFlowLabel(label)
+	bodyFlow.BreakLabel = ""
+	bodyFlow.ContinueLabel = ""
 
-	// Merge flow
-	if !bodyFlow.Is(flow.FlowFlagTerminates) {
+	possiblyFallsThrough := !bodyFlow.IsAny(flow.FlowFlagTerminates | flow.FlowFlagBreaks)
+	possiblyContinues := bodyFlow.IsAny(flow.FlowFlagContinues | flow.FlowFlagConditionallyContinues)
+	possiblyBreaks := bodyFlow.IsAny(flow.FlowFlagBreaks | flow.FlowFlagConditionallyBreaks)
+
+	if possiblyContinues {
+		bodyStmts[0] = mod.Block(continueLabel, bodyStmts, module.TypeRefNone)
+		bodyStmts = bodyStmts[:1]
+	}
+
+	if condKind == flow.ConditionKindTrue {
+		// Body executes at least once
+		fl.Inherit(bodyFlow)
+	} else {
+		// Otherwise executes conditionally
 		fl.MergeBranch(bodyFlow)
 	}
 
-	result := mod.Block(breakLabel, []module.ExpressionRef{loopExpr}, module.TypeRefNone)
-	if initExpr != 0 {
-		return mod.Block("", []module.ExpressionRef{initExpr, result}, module.TypeRefNone)
+	// Compile the incrementor if it possibly executes
+	possiblyLoops := possiblyContinues || possiblyFallsThrough
+	if possiblyLoops {
+		incrementor := statement.Incrementor
+		if incrementor != nil {
+			c.CurrentFlow = fl
+			bodyStmts = append(bodyStmts,
+				c.CompileExpression(incrementor, types.TypeVoid, ConstraintsConvImplicit|ConstraintsWillDrop),
+			)
+		}
+		bodyStmts = append(bodyStmts, mod.Br(loopLabel, 0, 0))
+
+		// Detect if local flags are incompatible before and after looping, and if
+		// so recompile by unifying local flags between iterations. Note that this
+		// may be necessary multiple times where locals depend on each other.
+		if outerFlow.ResetIfNeedsRecompile(bodyFlow.ForkThen(condExpr, false, false), numLocalsBefore) {
+			c.CurrentFlow = outerFlow
+			return c.doCompileForStatement(statement)
+		}
 	}
-	return result
+
+	// Finalize
+	outerFlow.Inherit(fl)
+	c.CurrentFlow = outerFlow
+	expr := mod.If(condExprTrueish,
+		mod.Flatten(bodyStmts, module.TypeRefNone),
+		0,
+	)
+	if possiblyLoops {
+		expr = mod.Loop(loopLabel, expr)
+	}
+	if possiblyBreaks {
+		expr = mod.Block(breakLabel, []module.ExpressionRef{expr}, module.TypeRefNone)
+	}
+	stmts = append(stmts, expr)
+	if outerFlow.Is(flow.FlowFlagTerminates) {
+		stmts = append(stmts, mod.Unreachable())
+	}
+	return mod.Flatten(stmts, module.TypeRefNone)
 }
 
 // compileForOfStatement compiles a for-of statement.
@@ -381,322 +475,449 @@ func (c *Compiler) compileIfStatement(statement *ast.IfStatement) module.Express
 }
 
 // compileReturnStatement compiles a return statement.
-// Ported from: assemblyscript/src/compiler.ts compileReturnStatement (lines 2791-2862).
+// Ported from: assemblyscript/src/compiler.ts compileReturnStatement (lines 2815-2862).
 func (c *Compiler) compileReturnStatement(statement *ast.ReturnStatement) module.ExpressionRef {
 	mod := c.Module()
+	var expr module.ExpressionRef
 	fl := c.CurrentFlow
 	returnType := fl.ReturnType()
 
-	fl.SetFlag(flow.FlowFlagTerminates | flow.FlowFlagReturns)
-
-	if statement.Value != nil {
-		if returnType == types.TypeVoid {
-			// Returning a value from a void function
-			c.Error(
-				diagnostics.DiagnosticCodeNotImplemented0,
-				statement.GetRange(),
-				"Return value in void function", "", "",
-			)
-			// Still compile the expression for side effects
-			expr := c.CompileExpression(statement.Value, returnType, ConstraintsConvImplicit)
-			return mod.Block("", []module.ExpressionRef{mod.Drop(expr), mod.Return(0)}, module.TypeRefNone)
+	valueExpression := statement.Value
+	if valueExpression != nil {
+		constraints := ConstraintsConvImplicit
+		if fl.SourceFunction().Is(uint32(common.CommonFlagsModuleExport)) {
+			constraints |= ConstraintsMustWrap
 		}
-		expr := c.CompileExpression(statement.Value, returnType, ConstraintsConvImplicit)
-		return mod.Return(expr)
+
+		expr = c.CompileExpression(valueExpression, returnType, constraints)
+		if !fl.CanOverflow(expr, returnType) {
+			fl.SetFlag(flow.FlowFlagReturnsWrapped)
+		}
+		if fl.IsNonnull(expr, returnType) {
+			fl.SetFlag(flow.FlowFlagReturnsNonNull)
+		}
+		if fl.SourceFunction().Is(uint32(common.CommonFlagsConstructor)) && valueExpression.GetKind() != ast.NodeKindThis {
+			fl.SetFlag(flow.FlowFlagMayReturnNonThis)
+		}
+	} else if returnType != types.TypeVoid {
+		c.Error(
+			diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+			statement.GetRange(),
+			"void", returnType.String(), "",
+		)
+		c.CurrentType = returnType
+		return mod.Unreachable()
 	}
 
-	// No return value
-	if returnType != types.TypeVoid {
-		c.Error(
-			diagnostics.DiagnosticCodeAFunctionWhoseDeclaredTypeIsNotVoidMustReturnAValue,
-			statement.GetRange(),
-			"", "", "",
-		)
+	// Remember that this flow returns
+	fl.SetFlag(flow.FlowFlagReturns | flow.FlowFlagTerminates)
+
+	// Handle inline return
+	if fl.IsInline() {
+		inlineReturnLabel := fl.InlineReturnLabel
+		if expr != 0 {
+			if c.CurrentType == types.TypeVoid {
+				return mod.Block("", []module.ExpressionRef{expr, mod.Br(inlineReturnLabel, 0, 0)}, module.TypeRefNone)
+			}
+			return mod.Br(inlineReturnLabel, 0, expr)
+		}
+		return mod.Br(inlineReturnLabel, 0, 0)
+	}
+
+	// Otherwise emit a normal return
+	if expr != 0 {
+		if c.CurrentType == types.TypeVoid {
+			return mod.Block("", []module.ExpressionRef{expr, mod.Return(0)}, module.TypeRefNone)
+		}
+		return mod.Return(expr)
 	}
 	return mod.Return(0)
 }
 
 // compileSwitchStatement compiles a switch statement.
-// Ported from: assemblyscript/src/compiler.ts compileSwitchStatement (lines 2864-3013).
+// Ported from: assemblyscript/src/compiler.ts compileSwitchStatement (lines 2864-2986).
 func (c *Compiler) compileSwitchStatement(statement *ast.SwitchStatement) module.ExpressionRef {
 	mod := c.Module()
-	fl := c.CurrentFlow
+	outerFlow := c.CurrentFlow
 	cases := statement.Cases
+	numCases := len(cases)
 
-	if len(cases) == 0 {
-		return mod.Nop()
-	}
-
-	// Create break label
-	label := fl.PushControlFlowLabel()
-	breakLabel := "break|" + fmt.Sprintf("%d", label)
-
-	// Compile the switch condition
-	condExpr := c.CompileExpression(statement.Condition, types.TypeI32, ConstraintsConvImplicit)
+	// Compile the condition (always executes)
+	condExpr := c.CompileExpression(statement.Condition, types.TypeAuto, ConstraintsNone)
 	condType := c.CurrentType
 
-	// Find default case index
+	// Shortcut if there are no cases
+	if numCases == 0 {
+		return mod.Drop(condExpr)
+	}
+
+	// Assign the condition to a temporary local as we compare it multiple times
+	tempLocal := outerFlow.GetTempLocal(condType)
+	tempIndex := tempLocal.FlowIndex()
+	breaks := make([]module.ExpressionRef, 0, 1+numCases+1)
+	breaks = append(breaks, mod.LocalSet(tempIndex, condExpr, condType.IsManaged()))
+
+	// Make one br_if per labeled case
 	defaultIndex := -1
+	label := outerFlow.PushControlFlowLabel()
 	for i, sc := range cases {
 		if sc.IsDefault() {
 			defaultIndex = i
-			break
-		}
-	}
-
-	// Generate case labels
-	caseLabels := make([]string, len(cases))
-	for i := range cases {
-		caseLabels[i] = fmt.Sprintf("case%d|%d", i, label)
-	}
-	defaultLabel := breakLabel
-	if defaultIndex >= 0 {
-		defaultLabel = caseLabels[defaultIndex]
-	}
-
-	// Build nested br_if chain from inside out, comparing condition against each case label
-	// Each non-default case: br_if $caseN (i32.eq condition caseValue)
-	stmts := make([]module.ExpressionRef, 0, len(cases)+2)
-
-	// Use a temp local to avoid re-evaluating condition
-	tempLocal := fl.GetTempLocal(condType)
-	tempIndex := tempLocal.FlowIndex()
-	stmts = append(stmts, mod.LocalSet(tempIndex, condExpr, false))
-
-	for i, sc := range cases {
-		if sc.IsDefault() {
 			continue
 		}
-		caseCondExpr := c.CompileExpression(sc.Label, condType, ConstraintsConvImplicit)
-		eqExpr := c.makeBinaryEq(
-			mod.LocalGet(tempIndex, condType.ToRef()),
-			caseCondExpr,
+		leftExpr := mod.LocalGet(tempIndex, condType.ToRef())
+		rightExpr := c.CompileExpression(sc.Label, condType, ConstraintsConvImplicit)
+		rightType := c.CurrentType
+		eqExpr := c.compileCommutativeCompareBinaryExpressionFromParts(
+			tokenizer.TokenEqualsEquals,
+			statement.Condition, leftExpr, condType,
+			sc.Label, rightExpr, rightType,
 			condType,
+			statement,
 		)
-		stmts = append(stmts, mod.Br(caseLabels[i], eqExpr, 0))
+		breaks = append(breaks, mod.Br(fmt.Sprintf("case%d|%d", i, label), eqExpr, 0))
 	}
-	// Fall through to default
-	stmts = append(stmts, mod.Br(defaultLabel, 0, 0))
 
-	// Build case bodies (nested blocks from inside-out)
-	allTerminate := true
+	// If there is a default case, break to it, otherwise break out of the switch
+	breakLabel := fmt.Sprintf("break|%d", label)
+	if defaultIndex >= 0 {
+		breaks = append(breaks, mod.Br(fmt.Sprintf("case%d|%d", defaultIndex, label), 0, 0))
+	} else {
+		breaks = append(breaks, mod.Br(breakLabel, 0, 0))
+	}
+
+	// Nest the case blocks in order, to be targeted by the br_if sequence
+	currentBlock := mod.Block(fmt.Sprintf("case0|%d", label), breaks, module.TypeRefNone)
+	var fallThroughFlow *flow.Flow
+	var breakingFlowAlternatives *flow.Flow
+
 	for i, sc := range cases {
-		bodyFlow := fl.Fork(true, false)
-		bodyFlow.BreakLabel = breakLabel
-		c.CurrentFlow = bodyFlow
-		caseStmts := c.CompileStatements(sc.Statements, nil)
-		if !bodyFlow.Is(flow.FlowFlagTerminates | flow.FlowFlagBreaks) {
-			allTerminate = false
+		// Can get here by matching the case or possibly by fall-through
+		innerFlow := outerFlow.Fork(true, false)
+		if fallThroughFlow != nil {
+			innerFlow.MergeBranch(fallThroughFlow)
 		}
-		fl.MergeSideEffects(bodyFlow)
+		c.CurrentFlow = innerFlow
+		innerFlow.BreakLabel = breakLabel
 
-		stmts = append(caseStmts) // case body stmts
-		_ = i
-		_ = caseLabels
+		isLast := i == numCases-1
+		var nextLabel string
+		if isLast {
+			nextLabel = breakLabel
+		} else {
+			nextLabel = fmt.Sprintf("case%d|%d", i+1, label)
+		}
+
+		stmts := make([]module.ExpressionRef, 0, 1+len(sc.Statements))
+		stmts = append(stmts, currentBlock)
+
+		possiblyFallsThrough := true
+		for _, statement := range sc.Statements {
+			stmt := c.CompileStatement(statement)
+			if module.GetExpressionId(stmt) != module.ExpressionIdNop {
+				stmts = append(stmts, stmt)
+			}
+			if innerFlow.IsAny(flow.FlowFlagTerminates | flow.FlowFlagBreaks) {
+				possiblyFallsThrough = false
+				break
+			}
+		}
+
+		if possiblyFallsThrough {
+			fallThroughFlow = innerFlow
+		} else {
+			fallThroughFlow = nil
+		}
+		possiblyBreaks := innerFlow.IsAny(flow.FlowFlagBreaks | flow.FlowFlagConditionallyBreaks)
+		innerFlow.UnsetFlag(flow.FlowFlagBreaks | flow.FlowFlagConditionallyBreaks)
+
+		// Combine all alternatives that merge again with outer flow
+		if possiblyBreaks || (isLast && possiblyFallsThrough) {
+			if breakingFlowAlternatives != nil {
+				breakingFlowAlternatives.InheritAlternatives(breakingFlowAlternatives, innerFlow)
+			} else {
+				breakingFlowAlternatives = innerFlow
+			}
+		} else if !possiblyFallsThrough {
+			outerFlow.MergeSideEffects(innerFlow)
+		}
+
+		c.CurrentFlow = outerFlow
+		currentBlock = mod.Block(nextLabel, stmts, module.TypeRefNone)
+	}
+	outerFlow.PopControlFlowLabel(label)
+
+	// If the switch has a default, we only get past through any breaking flow
+	if defaultIndex >= 0 {
+		if breakingFlowAlternatives != nil {
+			outerFlow.Inherit(breakingFlowAlternatives)
+		} else {
+			outerFlow.SetFlag(flow.FlowFlagTerminates)
+		}
+	} else if breakingFlowAlternatives != nil {
+		outerFlow.MergeBranch(breakingFlowAlternatives)
 	}
 
-	c.CurrentFlow = fl
-	fl.PopControlFlowLabel(label)
-
-	if allTerminate && defaultIndex >= 0 {
-		fl.SetFlag(flow.FlowFlagTerminates)
-	}
-
-	// Build nested blocks: block $break { block $case0 { block $case1 { ... switch_body } case0_stmts } case1_stmts }
-	// This is complex — for now build a simpler flat version
-	// The real implementation nests blocks. We'll use the switch instruction.
-	return mod.Block(breakLabel, stmts, module.TypeRefNone)
+	c.CurrentFlow = outerFlow
+	return currentBlock
 }
 
 // compileThrowStatement compiles a throw statement.
-// Ported from: assemblyscript/src/compiler.ts compileThrowStatement (lines 3015-3055).
+// Ported from: assemblyscript/src/compiler.ts compileThrowStatement (lines 2988-3008).
 func (c *Compiler) compileThrowStatement(statement *ast.ThrowStatement) module.ExpressionRef {
-	mod := c.Module()
+	// TODO: requires exception-handling spec.
 	fl := c.CurrentFlow
 
-	fl.SetFlag(flow.FlowFlagTerminates)
+	// Remember that this branch throws
+	fl.SetFlag(flow.FlowFlagThrows | flow.FlowFlagTerminates)
 
-	// Compile the throw expression
-	expr := c.CompileExpression(statement.Value, types.TypeVoid, ConstraintsNone)
-
-	// If exception handling is enabled, use wasm throw
-	if c.Options().HasFeature(common.FeatureExceptionHandling) {
-		return mod.Throw("", []module.ExpressionRef{expr})
+	stmts := make([]module.ExpressionRef, 0, 1)
+	value := statement.Value
+	var message ast.Node
+	if value.GetKind() == ast.NodeKindNew {
+		newExpr := value.(*ast.NewExpression)
+		newArgs := newExpr.Args
+		if len(newArgs) > 0 {
+			message = newArgs[0] // FIXME: naively assumes type string
+		}
 	}
-
-	// Otherwise, call abort (unreachable)
-	return mod.Block("", []module.ExpressionRef{
-		mod.Drop(expr),
-		mod.Unreachable(),
-	}, module.TypeRefNone)
+	stmts = append(stmts, c.makeAbort(message, statement))
+	return c.Module().Flatten(stmts, module.TypeRefNone)
 }
 
 // compileTryStatement compiles a try statement.
-// Ported from: assemblyscript/src/compiler.ts compileTryStatement (lines 3057-3180).
+// Ported from: assemblyscript/src/compiler.ts compileTryStatement (lines 3010-3021).
 func (c *Compiler) compileTryStatement(statement *ast.TryStatement) module.ExpressionRef {
-	mod := c.Module()
-	fl := c.CurrentFlow
-
-	if !c.Options().HasFeature(common.FeatureExceptionHandling) {
-		c.Error(
-			diagnostics.DiagnosticCodeNotImplemented0,
-			statement.GetRange(),
-			"Try/catch requires exception-handling feature", "", "",
-		)
-		return mod.Unreachable()
-	}
-
-	// Compile try body
-	bodyFlow := fl.Fork(false, false)
-	c.CurrentFlow = bodyFlow
-	bodyStmts := c.CompileStatements(statement.BodyStatements, nil)
-	bodyExpr := mod.Flatten(bodyStmts, module.TypeRefNone)
-
-	// Compile catch body
-	var catchBodies []module.ExpressionRef
-	var catchTags []string
-	if statement.CatchStatements != nil {
-		catchFlow := fl.Fork(false, false)
-		c.CurrentFlow = catchFlow
-		catchStmts := c.CompileStatements(statement.CatchStatements, nil)
-		catchExpr := mod.Flatten(catchStmts, module.TypeRefNone)
-		catchBodies = append(catchBodies, catchExpr)
-		catchTags = append(catchTags, "") // catch-all
-		fl.MergeBranch(catchFlow)
-	}
-
-	// Compile finally body
-	if statement.FinallyStatements != nil {
-		// finally is appended after the try block
-		finallyFlow := fl.Fork(false, false)
-		c.CurrentFlow = finallyFlow
-		finallyStmts := c.CompileStatements(statement.FinallyStatements, nil)
-		finallyExpr := mod.Flatten(finallyStmts, module.TypeRefNone)
-
-		c.CurrentFlow = fl
-		fl.MergeBranch(bodyFlow)
-
-		tryExpr := mod.Try("", bodyExpr, catchTags, catchBodies, "")
-		return mod.Block("", []module.ExpressionRef{tryExpr, finallyExpr}, module.TypeRefNone)
-	}
-
-	c.CurrentFlow = fl
-	fl.MergeBranch(bodyFlow)
-
-	return mod.Try("", bodyExpr, catchTags, catchBodies, "")
+	// TODO: can't yet support something like: try { return ... } finally { ... }
+	// worthwhile to investigate lowering returns to block results (here)?
+	c.Error(
+		diagnostics.DiagnosticCodeNotImplemented0,
+		statement.GetRange(),
+		"Exceptions", "", "",
+	)
+	return c.Module().Unreachable()
 }
 
 // compileVariableStatement compiles a variable statement.
-// Ported from: assemblyscript/src/compiler.ts compileVariableStatement (lines 3182-3349).
+// Ported from: assemblyscript/src/compiler.ts compileVariableStatement (lines 3024-3227).
 func (c *Compiler) compileVariableStatement(statement *ast.VariableStatement) module.ExpressionRef {
-	mod := c.Module()
-	stmts := make([]module.ExpressionRef, 0, len(statement.Declarations))
-
-	for _, decl := range statement.Declarations {
-		c.compileVariableDeclaration(decl, &stmts)
-	}
-
-	switch len(stmts) {
-	case 0:
-		return mod.Nop()
-	case 1:
-		return stmts[0]
-	default:
-		return mod.Block("", stmts, module.TypeRefNone)
-	}
-}
-
-// compileVariableDeclaration compiles a single variable declaration.
-// Ported from: assemblyscript/src/compiler.ts (within compileVariableStatement).
-func (c *Compiler) compileVariableDeclaration(decl *ast.VariableDeclaration, stmts *[]module.ExpressionRef) {
 	mod := c.Module()
 	fl := c.CurrentFlow
 	resolver := c.Resolver()
+	initializers := make([]module.ExpressionRef, 0, len(statement.Declarations))
 
-	name := decl.Name.Text
-	isConst := (decl.Flags & int32(common.CommonFlagsConst)) != 0
+	for _, declaration := range statement.Declarations {
+		name := declaration.Name.Text
+		var resolvedType *types.Type
+		var initExpr module.ExpressionRef
+		var initType *types.Type
 
-	// Resolve type
-	var resolvedType *types.Type
-	if decl.Type != nil {
-		resolvedType = resolver.ResolveType(
-			decl.Type,
-			fl,
-			fl.TargetFunction.(program.Element),
-			nil,
-			program.ReportModeReport,
-		)
-		if resolvedType == nil {
-			return
+		if declaration.Is(int32(common.CommonFlagsDefinitelyAssigned)) {
+			c.Warning(
+				diagnostics.DiagnosticCodeDefinitiveAssignmentHasNoEffectOnLocalVariables,
+				declaration.Name.GetRange(),
+				"", "", "",
+			)
 		}
-	} else if decl.Initializer != nil {
-		resolvedType = resolver.ResolveExpression(
-			decl.Initializer,
-			fl,
-			types.TypeVoid,
-			program.ReportModeReport,
-		)
-		if resolvedType == nil {
-			return
+
+		// Resolve type if annotated
+		typeNode := declaration.Type
+		initializerNode := declaration.Initializer
+		if typeNode != nil {
+			resolvedType = resolver.ResolveType(
+				typeNode, fl,
+				fl.SourceFunction().(program.Element),
+				fl.ContextualTypeArguments(),
+				program.ReportModeReport,
+			)
+			if resolvedType == nil {
+				continue
+			}
+			c.Program.CheckTypeSupported(resolvedType, typeNode)
+
+			if initializerNode != nil {
+				dummy := fl.AddScopedDummyLocal(name, resolvedType, declaration)
+				c.PendingElements[dummy.(program.Element)] = struct{}{}
+				initExpr = c.CompileExpression(initializerNode, resolvedType, ConstraintsConvImplicit)
+				initType = c.CurrentType
+				delete(c.PendingElements, dummy.(program.Element))
+				fl.FreeScopedDummyLocal(name)
+			}
+
+		// Otherwise infer type from initializer
+		} else if initializerNode != nil {
+			temp := fl.AddScopedDummyLocal(name, types.TypeAuto, declaration)
+			c.PendingElements[temp.(program.Element)] = struct{}{}
+			initExpr = c.CompileExpression(initializerNode, types.TypeAuto, ConstraintsNone)
+			initType = c.CurrentType
+			delete(c.PendingElements, temp.(program.Element))
+			fl.FreeScopedDummyLocal(name)
+
+			if c.CurrentType == types.TypeVoid {
+				c.Error(
+					diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+					declaration.GetRange(),
+					c.CurrentType.ToString(false), "<auto>", "",
+				)
+				continue
+			}
+			resolvedType = initType
+
+		// Error if there's neither a type nor an initializer
+		} else {
+			c.Error(
+				diagnostics.DiagnosticCodeTypeExpected,
+				declaration.Name.GetRange().AtEnd(),
+				"", "", "",
+			)
+			continue
 		}
-	} else {
-		c.Error(
-			diagnostics.DiagnosticCodeTypeExpected,
-			decl.Name.GetRange(),
-			"", "", "",
-		)
-		return
-	}
 
-	// Allocate a local
-	local := fl.AddScopedLocal(name, resolvedType)
-	if local == nil {
-		// Duplicate variable — error already reported
-		return
-	}
-	localIdx := local.FlowIndex()
-
-	// Compile initializer
-	if decl.Initializer != nil {
-		initExpr := c.CompileExpression(decl.Initializer, resolvedType, ConstraintsConvImplicit)
-		*stmts = append(*stmts, mod.LocalSet(localIdx, initExpr, false))
-
-		// Mark local as non-null if appropriate
-		if resolvedType.IsReference() && !resolvedType.IsNullableReference() {
-			fl.SetLocalFlag(localIdx, flow.LocalFlagNonNull)
+		// Handle constants, and try to inline if value is static
+		isConst := declaration.Is(int32(common.CommonFlagsConst))
+		isStatic := false
+		if isConst {
+			if initExpr != 0 {
+				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 8, 1)
+				if precomp != 0 {
+					initExpr = precomp // always use precomputed initExpr
+					var inlinedLocal *program.Local
+					exprTypeRef := module.GetExpressionType(initExpr)
+					switch exprTypeRef {
+					case module.TypeRefI32:
+						inlinedLocal = program.NewLocal(name, -1, resolvedType, fl.TargetFunction.(*program.Function), declaration)
+						inlinedLocal.SetConstantIntegerValue(int64(module.GetConstValueI32(initExpr)), resolvedType)
+					case module.TypeRefI64:
+						inlinedLocal = program.NewLocal(name, -1, resolvedType, fl.TargetFunction.(*program.Function), declaration)
+						lo := int64(uint32(module.GetConstValueI64Low(initExpr)))
+						hi := int64(module.GetConstValueI64High(initExpr)) << 32
+						inlinedLocal.SetConstantIntegerValue(lo|hi, resolvedType)
+					case module.TypeRefF32:
+						inlinedLocal = program.NewLocal(name, -1, resolvedType, fl.TargetFunction.(*program.Function), declaration)
+						inlinedLocal.SetConstantFloatValue(float64(module.GetConstValueF32(initExpr)), resolvedType)
+					case module.TypeRefF64:
+						inlinedLocal = program.NewLocal(name, -1, resolvedType, fl.TargetFunction.(*program.Function), declaration)
+						inlinedLocal.SetConstantFloatValue(module.GetConstValueF64(initExpr), resolvedType)
+					}
+					if inlinedLocal != nil {
+						// Add as a dummy local that doesn't actually exist in WebAssembly
+						scopedLocals := fl.ScopedLocals
+						if scopedLocals == nil {
+							scopedLocals = make(map[string]flow.FlowLocalRef)
+							fl.ScopedLocals = scopedLocals
+						} else if existing, exists := scopedLocals[name]; exists {
+							c.ErrorRelated(
+								diagnostics.DiagnosticCodeDuplicateIdentifier0,
+								declaration.Name.GetRange(),
+								existing.DeclarationNameRange().(*diagnostics.Range),
+								name, "", "",
+							)
+							return mod.Unreachable()
+						}
+						scopedLocals[name] = inlinedLocal
+						isStatic = true
+					}
+				}
+			} else {
+				c.Error(
+					diagnostics.DiagnosticCodeConstDeclarationsMustBeInitialized,
+					declaration.GetRange(),
+					"", "", "",
+				)
+			}
 		}
-	} else if !isConst {
-		// Initialize to zero if no initializer
-		*stmts = append(*stmts, mod.LocalSet(localIdx, c.makeZeroOfType(resolvedType), false))
-	}
 
-	// For const locals, check wrapping
-	if isConst {
-		fl.SetLocalFlag(localIdx, flow.LocalFlagConstant)
+		// Otherwise compile as mutable
+		if !isStatic {
+			var local flow.FlowLocalRef
+			if declaration.IsAny(int32(common.CommonFlagsLet|common.CommonFlagsConst)) ||
+				fl.IsInline() {
+				// here: not top-level
+				existingLocal := fl.GetScopedLocal(name)
+				if existingLocal != nil {
+					if !existingLocal.DeclarationIsNative() {
+						c.ErrorRelated(
+							diagnostics.DiagnosticCodeDuplicateIdentifier0,
+							declaration.Name.GetRange(),
+							existingLocal.DeclarationNameRange().(*diagnostics.Range),
+							name, "", "",
+						)
+					} else {
+						// scoped locals are shared temps that don't track declarations
+						c.Error(
+							diagnostics.DiagnosticCodeDuplicateIdentifier0,
+							declaration.Name.GetRange(),
+							name, "", "",
+						)
+					}
+					local = existingLocal
+				} else {
+					local = fl.AddScopedLocal(name, resolvedType)
+				}
+				if isConst {
+					fl.SetLocalFlag(local.FlowIndex(), flow.LocalFlagConstant)
+				}
+			} else {
+				existing := fl.LookupLocal(name)
+				if existing != nil {
+					c.ErrorRelated(
+						diagnostics.DiagnosticCodeDuplicateIdentifier0,
+						declaration.Name.GetRange(),
+						existing.DeclarationNameRange().(*diagnostics.Range),
+						name, "", "",
+					)
+					continue
+				}
+				addedLocal := fl.TargetFunction.(*program.Function).AddLocal(resolvedType, name, declaration)
+				local = addedLocal
+				fl.UnsetLocalFlag(addedLocal.Index, ^flow.LocalFlags(0))
+				if isConst {
+					fl.SetLocalFlag(addedLocal.Index, flow.LocalFlagConstant)
+				}
+			}
+			if initExpr != 0 {
+				if initType == nil {
+					initType = resolvedType
+				}
+				initializers = append(initializers,
+					c.makeLocalAssignment(local.(*program.Local), initExpr, initType, false),
+				)
+			} else {
+				// no need to assign zero
+				if local.GetType().IsShortIntegerValue() {
+					fl.SetLocalFlag(local.FlowIndex(), flow.LocalFlagWrapped)
+				}
+			}
+		}
 	}
-
-	_ = name
+	c.CurrentType = types.TypeVoid
+	if len(initializers) == 0 {
+		return mod.Nop()
+	}
+	return mod.Flatten(initializers, module.TypeRefNone)
 }
 
 // compileVoidStatement compiles a void statement.
-// Ported from: assemblyscript/src/compiler.ts compileVoidStatement (lines 3351-3359).
+// Ported from: assemblyscript/src/compiler.ts compileVoidStatement (lines 3229-3235).
 func (c *Compiler) compileVoidStatement(statement *ast.VoidStatement) module.ExpressionRef {
-	mod := c.Module()
-	expr := c.CompileExpression(statement.Expression, types.TypeVoid, ConstraintsWillDrop)
-	if c.CurrentType != types.TypeVoid {
-		return mod.Drop(expr)
-	}
-	return expr
+	return c.CompileExpression(statement.Expression, types.TypeVoid, ConstraintsConvExplicit|ConstraintsWillDrop)
 }
 
 // compileWhileStatement compiles a while statement.
-// Ported from: assemblyscript/src/compiler.ts compileWhileStatement (lines 3361-3429).
+// Ported from: assemblyscript/src/compiler.ts compileWhileStatement (lines 3237-3242).
 func (c *Compiler) compileWhileStatement(statement *ast.WhileStatement) module.ExpressionRef {
+	return c.doCompileWhileStatement(statement)
+}
+
+// doCompileWhileStatement is the inner implementation of compileWhileStatement,
+// called recursively when loop convergence requires recompilation.
+// Ported from: assemblyscript/src/compiler.ts doCompileWhileStatement (lines 3244-3345).
+func (c *Compiler) doCompileWhileStatement(statement *ast.WhileStatement) module.ExpressionRef {
 	mod := c.Module()
 	outerFlow := c.CurrentFlow
+	numLocalsBefore := len(outerFlow.TargetFunction.FlowLocalsByIndex())
 
 	// Compile and evaluate the condition (always executes)
-	// Ported from: assemblyscript/src/compiler.ts doCompileWhileStatement (lines 3244-3345).
 	condExpr := c.CompileExpression(statement.Condition, types.TypeBool, ConstraintsConvImplicit)
 	condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, statement.Condition)
 	condKind := c.evaluateCondition(condExprTrueish)
@@ -714,13 +935,27 @@ func (c *Compiler) compileWhileStatement(statement *ast.WhileStatement) module.E
 	thenFlow.BreakLabel = breakLabel
 	thenFlow.ContinueLabel = continueLabel
 	c.CurrentFlow = thenFlow
-	bodyStmt := c.CompileStatement(statement.Body)
+	bodyStmts := make([]module.ExpressionRef, 0)
+	body := statement.Body
+	if body.GetKind() == ast.NodeKindBlock {
+		bodyStmts = c.CompileStatements(body.(*ast.BlockStatement).Statements, bodyStmts)
+	} else {
+		bodyStmts = append(bodyStmts, c.CompileStatement(body))
+	}
+	bodyStmts = append(bodyStmts, mod.Br(continueLabel, 0, 0))
 	thenFlow.PopControlFlowLabel(label)
 
+	possiblyContinues := thenFlow.IsAny(flow.FlowFlagContinues | flow.FlowFlagConditionallyContinues)
 	possiblyBreaks := thenFlow.IsAny(flow.FlowFlagBreaks | flow.FlowFlagConditionallyBreaks)
 	possiblyFallsThrough := !thenFlow.IsAny(flow.FlowFlagTerminates | flow.FlowFlagBreaks)
 
-	// TODO: recompilation logic (resetIfNeedsRecompile)
+	// Detect if local flags are incompatible before and after looping, and
+	// if so recompile by unifying local flags between iterations.
+	possiblyLoops := possiblyContinues || possiblyFallsThrough
+	if possiblyLoops && outerFlow.ResetIfNeedsRecompile(thenFlow, numLocalsBefore) {
+		c.CurrentFlow = outerFlow
+		return c.doCompileWhileStatement(statement)
+	}
 
 	// If the condition is always true, the body's effects always happen
 	alwaysTerminates := false
@@ -744,12 +979,12 @@ func (c *Compiler) compileWhileStatement(statement *ast.WhileStatement) module.E
 		}
 	}
 
-	// Finalize
+	// Finalize and leave everything else to the optimizer
 	c.CurrentFlow = outerFlow
 	stmts := []module.ExpressionRef{
 		mod.Loop(continueLabel,
 			mod.If(condExprTrueish,
-				mod.Block("", []module.ExpressionRef{bodyStmt, mod.Br(continueLabel, 0, 0)}, module.TypeRefNone),
+				mod.Flatten(bodyStmts, module.TypeRefNone),
 				0,
 			),
 		),

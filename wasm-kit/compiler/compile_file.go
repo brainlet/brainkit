@@ -155,103 +155,183 @@ func (c *Compiler) CompileTopLevelStatement(statement ast.Node, body *[]module.E
 
 // CompileEnum compiles an enum declaration.
 // Ported from: assemblyscript/src/compiler.ts compileEnum (lines 1419-1523).
-func (c *Compiler) CompileEnum(enum *program.Enum) bool {
-	if enum.Is(common.CommonFlagsCompiled) {
-		return !enum.Is(common.CommonFlagsErrored)
+func (c *Compiler) CompileEnum(element *program.Enum) bool {
+	if element.Is(common.CommonFlagsCompiled) {
+		return !element.Is(common.CommonFlagsErrored)
 	}
-	enum.Set(common.CommonFlagsCompiled)
+	element.Set(common.CommonFlagsCompiled)
+
+	pendingElements := c.PendingElements
+	pendingElements[element] = struct{}{}
 
 	mod := c.Module()
-	members := enum.GetMembers()
-	if members == nil {
-		return true
+	previousParent := c.CurrentParent
+	c.CurrentParent = element
+	var previousValue *program.EnumValue
+	previousValueIsMut := false
+	isInline := element.Is(common.CommonFlagsConst) || element.HasDecorator(program.DecoratorFlagsInline)
+
+	members := element.GetMembers()
+	if members != nil {
+		// TODO: for (let member of element.members.values()) {
+		for _, member := range members {
+			if member.GetElementKind() != program.ElementKindEnumValue {
+				continue // happens if an enum is also a namespace
+			}
+			initInStart := false
+			enumValue := member.(*program.EnumValue)
+			valueNode := enumValue.ValueNode()
+			enumValue.Set(common.CommonFlagsCompiled)
+			previousFlow := c.CurrentFlow
+			if element.HasDecorator(program.DecoratorFlagsLazy) {
+				c.CurrentFlow = element.File().StartFunction.Flow
+			}
+			var initExpr module.ExpressionRef
+			if valueNode != nil {
+				initExpr = c.CompileExpression(valueNode, types.TypeI32, ConstraintsConvImplicit)
+				if module.GetExpressionId(initExpr) != module.ExpressionIdConst {
+					precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+					if precomp != 0 {
+						initExpr = precomp
+					} else {
+						if element.Is(common.CommonFlagsConst) {
+							c.Error(
+								diagnostics.DiagnosticCodeInConstEnumDeclarationsMemberInitializerMustBeConstantExpression,
+								valueNode.GetRange(),
+								"", "", "",
+							)
+						}
+						initInStart = true
+					}
+				}
+			} else if previousValue == nil {
+				initExpr = mod.I32(0)
+			} else {
+				if previousValueIsMut {
+					c.Error(
+						diagnostics.DiagnosticCodeEnumMemberMustHaveInitializer,
+						enumValue.IdentifierNode().GetRange().AtEnd(),
+						"", "", "",
+					)
+				}
+				if isInline {
+					value := previousValue.GetConstantIntegerValue() + 1
+					initExpr = mod.I32(int32(value))
+				} else {
+					initExpr = mod.Binary(module.BinaryOpAddI32,
+						mod.GlobalGet(previousValue.GetInternalName(), module.TypeRefI32),
+						mod.I32(1),
+					)
+					precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
+					if precomp != 0 {
+						initExpr = precomp
+					} else {
+						if element.Is(common.CommonFlagsConst) {
+							c.Error(
+								diagnostics.DiagnosticCodeInConstEnumDeclarationsMemberInitializerMustBeConstantExpression,
+								member.GetDeclaration().GetRange(),
+								"", "", "",
+							)
+						}
+						initInStart = true
+					}
+				}
+			}
+			c.CurrentFlow = previousFlow
+			if initInStart {
+				mod.AddGlobal(enumValue.GetInternalName(), module.TypeRefI32, true, mod.I32(0))
+				// Inline makeGlobalAssignment(enumValue, initExpr, Type.i32, tee=false):
+				// For i32 with tee=false, this is just a global_set (ensureSmallIntegerWrap is no-op for i32).
+				c.CurrentBody = append(c.CurrentBody,
+					mod.GlobalSet(enumValue.GetInternalName(), initExpr),
+				)
+				previousValueIsMut = true
+			} else {
+				if isInline {
+					enumValue.SetConstantIntegerValue(int64(module.GetConstValueI32(initExpr)), types.TypeI32)
+					if enumValue.Is(common.CommonFlagsModuleExport) {
+						mod.AddGlobal(enumValue.GetInternalName(), module.TypeRefI32, false, initExpr)
+					}
+				} else {
+					mod.AddGlobal(enumValue.GetInternalName(), module.TypeRefI32, false, initExpr)
+				}
+				enumValue.IsImmutable = true
+				previousValueIsMut = false
+			}
+			previousValue = enumValue
+		}
+	}
+	c.CurrentParent = previousParent
+	delete(pendingElements, element)
+	return true
+}
+
+// ensureEnumToString ensures a toString function exists for the given enum.
+// Generates a function with an if-chain comparing enum values and returning string literals.
+// When values are the same, returns the last enum value name (iterates in reverse).
+// Ported from: assemblyscript/src/compiler.ts ensureEnumToString (lines 1525-1566).
+func (c *Compiler) ensureEnumToString(enumElement *program.Enum, reportNode ast.Node) string {
+	if enumElement.ToStringFunctionName != "" {
+		return enumElement.ToStringFunctionName
 	}
 
-	isConst := enum.Is(common.CommonFlagsConst)
-	isDeclaredInline := enum.HasDecorator(program.DecoratorFlagsInline)
-	previousValue := int32(-1) // auto-increment starts at 0
-	previousValueIsConst := true
+	if !c.CompileEnum(enumElement) {
+		return ""
+	}
+	if enumElement.Is(common.CommonFlagsConst) {
+		c.ErrorRelated(
+			diagnostics.DiagnosticCodeAConstEnumMemberCanOnlyBeAccessedUsingAStringLiteral,
+			reportNode.GetRange(), enumElement.IdentifierNode().GetRange(),
+			"", "", "",
+		)
+		return ""
+	}
 
-	// Iterate members in declaration order
-	enumDecl := enum.GetDeclaration().(*ast.EnumDeclaration)
-	for _, valueDecl := range enumDecl.Values {
-		name := valueDecl.Name.Text
-		member, ok := members[name]
+	members := enumElement.GetMembers()
+	if members == nil {
+		return ""
+	}
+
+	mod := c.Module()
+	isInline := enumElement.HasDecorator(program.DecoratorFlagsInline)
+
+	functionName := enumElement.GetInternalName() + "#" + common.CommonNameEnumToString
+	enumElement.ToStringFunctionName = functionName
+
+	exprs := make([]module.ExpressionRef, 0)
+	// When the values are the same, TS returns the last enum value name that appears,
+	// so iterate in reverse declaration order.
+	enumDecl := enumElement.GetDeclaration().(*ast.EnumDeclaration)
+	values := enumDecl.Values
+	for i := len(values) - 1; i >= 0; i-- {
+		valueDecl := values[i]
+		enumValueName := valueDecl.Name.Text
+		member, ok := members[enumValueName]
 		if !ok {
+			continue
+		}
+		if member.GetElementKind() != program.ElementKindEnumValue {
 			continue
 		}
 		enumValue := member.(*program.EnumValue)
 
-		if enumValue.Is(common.CommonFlagsCompiled) {
-			continue
-		}
-		enumValue.Set(common.CommonFlagsCompiled)
-
-		internalName := enumValue.GetInternalName()
-		initializerNode := enumValue.ValueNode()
-
-		var initExpr module.ExpressionRef
-		if initializerNode != nil {
-			// Compile the initializer expression
-			previousFlow := c.CurrentFlow
-			c.CurrentFlow = enum.File().StartFunction.Flow
-			previousParent := c.CurrentParent
-			c.CurrentParent = enum
-			initExpr = c.CompileExpression(initializerNode, types.TypeI32, ConstraintsConvImplicit)
-			c.CurrentParent = previousParent
-			c.CurrentFlow = previousFlow
-
-			// Try to precompute to a constant
-			precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsDefault, 8, 1)
-			if precomp != 0 {
-				initExpr = precomp
-				previousValue = module.GetConstValueI32(precomp)
-				previousValueIsConst = true
-			} else {
-				previousValueIsConst = false
-			}
+		var enumValueExpr module.ExpressionRef
+		if isInline {
+			enumValueExpr = mod.I32(int32(enumValue.GetConstantIntegerValue()))
 		} else {
-			// Auto-increment from previous value
-			if previousValueIsConst {
-				previousValue++
-				initExpr = mod.I32(previousValue)
-			} else {
-				// Previous value was not const, can't auto-increment at compile time.
-				// Need to compute at runtime: previousGlobal + 1
-				c.Error(
-					diagnostics.DiagnosticCodeEnumMemberMustHaveInitializer,
-					enumValue.IdentifierNode().GetRange(),
-					"", "", "",
-				)
-				enumValue.Set(common.CommonFlagsErrored)
-				continue
-			}
+			enumValueExpr = mod.GlobalGet(enumValue.GetInternalName(), module.TypeRefI32)
 		}
-
-		if mod.IsConstExpression(initExpr) {
-			val := module.GetConstValueI32(initExpr)
-			enumValue.SetConstantIntegerValue(int64(val), types.TypeI32)
-
-			if isConst || isDeclaredInline {
-				// Fully inlined const enum value, no wasm global needed
-				enumValue.IsImmutable = true
-				continue
-			}
-
-			// Non-const enum: immutable global
-			mod.AddGlobal(internalName, module.TypeRefI32, false, initExpr)
-			enumValue.IsImmutable = true
-		} else {
-			// Non-constant: create mutable global, initialize in start function
-			mod.AddGlobal(internalName, module.TypeRefI32, true, mod.I32(0))
-			c.CurrentBody = append(c.CurrentBody,
-				mod.GlobalSet(internalName, initExpr),
-			)
-			enumValue.IsImmutable = false
-		}
+		expr := mod.If(
+			mod.Binary(module.BinaryOpEqI32, enumValueExpr, mod.LocalGet(0, module.TypeRefI32)),
+			mod.Return(c.ensureStaticString(enumValueName)),
+			0,
+		)
+		exprs = append(exprs, expr)
 	}
+	exprs = append(exprs, mod.Unreachable())
+	mod.AddFunction(functionName, module.TypeRefI32, module.TypeRefI32, nil, mod.Block("", exprs, module.TypeRefI32))
 
-	return true
+	return functionName
 }
 
 // CompileStatement is now in compile_statement.go

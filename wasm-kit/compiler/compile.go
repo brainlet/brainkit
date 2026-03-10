@@ -423,176 +423,166 @@ func (c *Compiler) initDefaultTable() {
 // --- Stub methods for compilation phases not yet ported ---
 
 // CompileModuleExports compiles module-level exports for a file.
-// Ported from: assemblyscript/src/compiler.ts compileModuleExports (lines 916-1076).
+// Ported from: assemblyscript/src/compiler.ts compileModuleExports (lines 916-935).
 func (c *Compiler) CompileModuleExports(file *program.File) {
-	mod := c.Module()
 	exports := file.Exports
-	if exports == nil {
-		return
-	}
-
-	for exportName, element := range exports {
-		// Skip already-exported elements
-		if mod.HasExport(exportName) {
-			continue
+	if exports != nil {
+		for exportName, element := range exports {
+			c.compileModuleExport(exportName, element, "")
 		}
-		c.compileModuleExport(exportName, element)
 	}
-
 	// Handle re-exports (export * from)
-	for _, reexportedFile := range file.ExportsStar {
-		c.CompileModuleExports(reexportedFile)
+	exportsStar := file.ExportsStar
+	if exportsStar != nil {
+		for _, reexportedFile := range exportsStar {
+			c.CompileModuleExports(reexportedFile)
+		}
 	}
 }
 
-// compileModuleExport compiles a single module export.
-func (c *Compiler) compileModuleExport(name string, element program.Element) {
+// compileModuleExport compiles the respective module export(s) for the specified element.
+// Ported from: assemblyscript/src/compiler.ts compileModuleExport (lines 938-1073).
+func (c *Compiler) compileModuleExport(name string, element program.DeclaredElement, prefix string) {
 	mod := c.Module()
 
 	switch element.GetElementKind() {
 	case program.ElementKindFunctionPrototype:
-		// Resolve the function prototype to its default instance and compile it
-		prototype := element.(*program.FunctionPrototype)
-		instances := prototype.Instances
-		if instances != nil {
-			for _, instance := range instances {
-				if c.CompileFunction(instance) {
-					internalName := instance.GetInternalName()
-					if !mod.HasExport(name) {
-						mod.AddFunctionExport(internalName, name)
-					}
-				}
-				break // Export the first (default) instance
+		// obtain the default instance
+		functionPrototype := element.(*program.FunctionPrototype)
+		if !functionPrototype.Is(common.CommonFlagsGeneric) {
+			functionInstance := c.Resolver().ResolveFunction(functionPrototype, nil, nil, program.ReportModeReport)
+			if functionInstance != nil {
+				c.compileModuleExport(name, functionInstance, prefix)
 			}
-		} else {
-			// Try to resolve the default (no type args) instance
-			resolver := c.Resolver()
-			instance := resolver.ResolveFunction(prototype, nil, nil, program.ReportModeReport)
-			if instance != nil && c.CompileFunction(instance) {
-				internalName := instance.GetInternalName()
-				if !mod.HasExport(name) {
-					mod.AddFunctionExport(internalName, name)
-				}
-			}
+			return
 		}
 
 	case program.ElementKindFunction:
-		instance := element.(*program.Function)
-		if c.CompileFunction(instance) {
-			internalName := instance.GetInternalName()
-			if !mod.HasExport(name) {
-				mod.AddFunctionExport(internalName, name)
+		functionInstance := element.(*program.Function)
+		if !functionInstance.HasDecorator(program.DecoratorFlagsBuiltin) {
+			signature := functionInstance.Signature
+			if signature.RequiredParameters < int32(len(signature.ParameterTypes)) {
+				// utilize varargs stub to fill in omitted arguments
+				functionInstance = c.EnsureVarargsStub(functionInstance)
+				c.RuntimeFeatures |= RuntimeFeaturesSetArgumentsLength
+			}
+			c.CompileFunction(functionInstance)
+			if functionInstance.Is(common.CommonFlagsCompiled) {
+				exportName := prefix + name
+				if !mod.HasExport(exportName) {
+					mod.AddFunctionExport(functionInstance.GetInternalName(), exportName)
+					c.HasCustomFunctionExports = true
+					hasManagedOperands := signature.HasManagedOperands()
+					if hasManagedOperands {
+						if c.ShadowStack != nil {
+							c.ShadowStack.NoteExport(exportName, signature.GetManagedOperandIndices())
+						}
+					}
+					if !c.DesiresExportRuntime {
+						thisType := signature.ThisType
+						if (thisType != nil && lowerRequiresExportRuntime(thisType)) ||
+							liftRequiresExportRuntime(signature.ReturnType) {
+							c.DesiresExportRuntime = true
+						} else {
+							parameterTypes := signature.ParameterTypes
+							for _, pt := range parameterTypes {
+								if lowerRequiresExportRuntime(pt) {
+									c.DesiresExportRuntime = true
+									break
+								}
+							}
+						}
+					}
+					if functionInstance.Signature.ReturnType.Kind == types.TypeKindFunc {
+						mod.SetClosedWorld(false)
+					}
+				}
+				return
 			}
 		}
 
 	case program.ElementKindGlobal:
 		global := element.(*program.Global)
-		if c.CompileGlobal(global) {
-			internalName := global.GetInternalName()
-			if !mod.HasExport(name) {
-				mod.AddGlobalExport(internalName, name)
+		isConst := global.Is(common.CommonFlagsConst) || global.Is(common.CommonFlagsStatic|common.CommonFlagsReadonly)
+		if !isConst && !c.Options().HasFeature(common.FeatureMutableGlobals) {
+			c.Warning(
+				diagnostics.DiagnosticCodeFeature0IsNotEnabled,
+				global.IdentifierNode().GetRange(),
+				"mutable-globals", "", "",
+			)
+			return
+		}
+		c.CompileGlobal(global)
+		if global.Is(common.CommonFlagsCompiled) {
+			exportName := prefix + name
+			if !mod.HasExport(exportName) {
+				mod.AddGlobalExport(element.GetInternalName(), exportName)
+				if !c.DesiresExportRuntime {
+					globalType := global.GetResolvedType()
+					if liftRequiresExportRuntime(globalType) ||
+						(!global.Is(common.CommonFlagsConst) && lowerRequiresExportRuntime(globalType)) {
+						c.DesiresExportRuntime = true
+					}
+				}
+				if global.GetResolvedType().Kind == types.TypeKindFunc {
+					mod.SetClosedWorld(false)
+				}
 			}
+			if global.GetResolvedType() == types.TypeV128 {
+				typeNode := global.TypeNode()
+				var rng *diagnostics.Range
+				if typeNode != nil {
+					rng = typeNode.GetRange()
+				} else {
+					rng = global.IdentifierNode().GetRange()
+				}
+				c.Warning(
+					diagnostics.DiagnosticCodeExchangeOf0ValuesIsNotSupportedByAllEmbeddings,
+					rng,
+					"v128", "", "",
+				)
+			}
+			return
 		}
 
 	case program.ElementKindEnum:
-		enum := element.(*program.Enum)
-		c.CompileEnum(enum)
-		// Export enum values as individual globals
-		members := enum.GetMembers()
+		c.CompileEnum(element.(*program.Enum))
+		members := element.GetMembers()
 		if members != nil {
+			subPrefix := prefix + name + common.STATIC_DELIMITER
 			for memberName, member := range members {
-				if member.GetElementKind() == program.ElementKindEnumValue {
-					enumValue := member.(*program.EnumValue)
-					if !enumValue.IsImmutable || !enumValue.Is(common.CommonFlagsConst) {
-						memberExportName := name + "." + memberName
-						memberInternalName := enumValue.GetInternalName()
-						if !mod.HasExport(memberExportName) {
-							mod.AddGlobalExport(memberInternalName, memberExportName)
-						}
-					}
+				if !member.Is(common.CommonFlagsPrivate) {
+					c.compileModuleExport(memberName, member, subPrefix)
 				}
 			}
 		}
-
-	case program.ElementKindClassPrototype:
-		// Classes export their constructors and static members
-		prototype := element.(*program.ClassPrototype)
-		resolver := c.Resolver()
-		instance := resolver.ResolveClass(prototype, nil, nil, program.ReportModeReport)
-		if instance != nil {
-			c.compileClassExports(name, instance)
-		}
-
-	case program.ElementKindClass:
-		instance := element.(*program.Class)
-		c.compileClassExports(name, instance)
-
-	case program.ElementKindNamespace:
-		// Export namespace members
-		ns := element.(*program.Namespace)
-		members := ns.GetMembers()
-		if members != nil {
-			for memberName, member := range members {
-				if member.Is(common.CommonFlagsExport) || member.Is(common.CommonFlagsModuleExport) {
-					exportName := name + "." + memberName
-					if !mod.HasExport(exportName) {
-						c.compileModuleExport(exportName, member)
-					}
-				}
-			}
-		}
-	}
-}
-
-// compileClassExports compiles exports for a class instance (constructor + static members).
-func (c *Compiler) compileClassExports(name string, instance *program.Class) {
-	mod := c.Module()
-
-	// Export the constructor if present
-	ctorInstance := instance.ConstructorInstance
-	if ctorInstance != nil && c.CompileFunction(ctorInstance) {
-		ctorExportName := name + "#constructor"
-		if !mod.HasExport(ctorExportName) {
-			mod.AddFunctionExport(ctorInstance.GetInternalName(), ctorExportName)
-		}
-	}
-
-	// Export static members
-	members := instance.GetMembers()
-	if members == nil {
 		return
-	}
-	for memberName, member := range members {
-		if !member.Is(common.CommonFlagsStatic) {
-			continue
+
+	case program.ElementKindEnumValue:
+		enumValue := element.(*program.EnumValue)
+		if !enumValue.IsImmutable && !c.Options().HasFeature(common.FeatureMutableGlobals) {
+			c.Error(
+				diagnostics.DiagnosticCodeFeature0IsNotEnabled,
+				enumValue.IdentifierNode().GetRange(),
+				"mutable-globals", "", "",
+			)
+			return
 		}
-		memberExportName := name + "." + memberName
-		switch member.GetElementKind() {
-		case program.ElementKindFunctionPrototype:
-			prototype := member.(*program.FunctionPrototype)
-			resolver := c.Resolver()
-			fnInstance := resolver.ResolveFunction(prototype, nil, nil, program.ReportModeReport)
-			if fnInstance != nil && c.CompileFunction(fnInstance) {
-				if !mod.HasExport(memberExportName) {
-					mod.AddFunctionExport(fnInstance.GetInternalName(), memberExportName)
-				}
+		if enumValue.Is(common.CommonFlagsCompiled) {
+			exportName := prefix + name
+			if !mod.HasExport(exportName) {
+				mod.AddGlobalExport(element.GetInternalName(), exportName)
 			}
-		case program.ElementKindFunction:
-			fnInstance := member.(*program.Function)
-			if c.CompileFunction(fnInstance) {
-				if !mod.HasExport(memberExportName) {
-					mod.AddFunctionExport(fnInstance.GetInternalName(), memberExportName)
-				}
-			}
-		case program.ElementKindGlobal:
-			global := member.(*program.Global)
-			if c.CompileGlobal(global) {
-				if !mod.HasExport(memberExportName) {
-					mod.AddGlobalExport(global.GetInternalName(), memberExportName)
-				}
-			}
+			return
 		}
 	}
+
+	// Fallthrough: element kind not handled or not compiled
+	c.Warning(
+		diagnostics.DiagnosticCodeOnlyVariablesFunctionsAndEnumsBecomeWebassemblyModuleExports,
+		element.IdentifierNode().GetRange(),
+		"", "", "",
+	)
 }
 
 // CompileGlobal is now in compile_global.go
@@ -622,10 +612,12 @@ func (c *Compiler) EnsureOverrideStub(original *program.Function) *program.Funct
 }
 
 // EnsureVarargsStub creates a varargs stub for the given function.
-// A varargs stub is called with omitted arguments being zeroed, reading the
-// __argumentsLength global to decide which initializers to inject before
-// calling the original function.
-// Ported from: assemblyscript/src/compiler.ts ensureVarargsStub (lines 6528-6630).
+// A varargs stub is a function called with omitted arguments being zeroed,
+// reading the `argumentsLength` helper global to decide which initializers
+// to inject before calling the original function. It is typically attempted
+// to circumvent the varargs stub where possible, for example where omitted
+// arguments are constants and can be inlined into the original call.
+// Ported from: assemblyscript/src/compiler.ts ensureVarargsStub (lines 6538-6668).
 func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Function {
 	stub := original.VarargsStub
 	if stub != nil {
@@ -634,6 +626,7 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 
 	originalSignature := original.Signature
 	originalParameterTypes := originalSignature.ParameterTypes
+	originalParameterDeclarations := original.Prototype.FunctionTypeNode().Parameters
 	returnType := originalSignature.ReturnType
 	isInstance := original.Is(common.CommonFlagsInstance)
 
@@ -648,7 +641,7 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 	}
 	numOptional := maxOperands - minOperands
 	if numOptional <= 0 {
-		return original
+		panic("ensureVarargsStub: numOptional must be > 0")
 	}
 
 	forwardedOperands := make([]module.ExpressionRef, minOperands)
@@ -669,25 +662,22 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 		forwardedOperands[operandIndex] = mod.LocalGet(operandIndex, paramType.ToRef())
 		operandIndex++
 	}
+	if operandIndex != minOperands {
+		panic("ensureVarargsStub: operandIndex != minOperands")
+	}
 
-	// create the varargs stub function
+	// create the varargs stub
 	stub = original.NewStub("varargs", maxArguments)
 	original.VarargsStub = stub
 
-	// compile initializers of omitted arguments in the scope of the stub
+	// compile initializers of omitted arguments in the scope of the stub,
+	// accounting for additional locals and a proper `this` context.
 	previousFlow := c.CurrentFlow
 	fl := stub.Flow
 	if original.Is(common.CommonFlagsConstructor) {
 		fl.SetFlag(flow.FlowFlagCtorParamContext)
 	}
 	c.CurrentFlow = fl
-
-	// Get parameter declarations for default initializers
-	var parameterDeclarations []*ast.ParameterNode
-	funcTypeNode := original.Prototype.FunctionTypeNode()
-	if funcTypeNode != nil {
-		parameterDeclarations = funcTypeNode.Parameters
-	}
 
 	// create a br_table switching over the number of optional parameters provided
 	numNames := numOptional + 1 // incl. outer block
@@ -698,7 +688,7 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 	}
 	argumentsLength := c.EnsureArgumentsLength()
 
-	// condition is number of provided optional arguments
+	// condition is number of provided optional arguments, so subtract required arguments
 	var switchCondition module.ExpressionRef
 	if minArguments != 0 {
 		switchCondition = mod.Binary(module.BinaryOpSubI32,
@@ -717,35 +707,29 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 	}, module.TypeRefNone)
 
 	for i := int32(0); i < numOptional; i++ {
-		paramIdx := minArguments + i
-		paramType := originalParameterTypes[paramIdx]
+		paramType := originalParameterTypes[minArguments+i]
+		declaration := originalParameterDeclarations[minArguments+i]
 		var initExpr module.ExpressionRef
 
-		if parameterDeclarations != nil && int(paramIdx) < len(parameterDeclarations) {
-			declaration := parameterDeclarations[paramIdx]
-			if declaration.ParameterKind == ast.ParameterKindRest {
-				// Rest parameters get an empty array literal
-				arrExpr := ast.NewArrayLiteralExpression(nil, *declaration.GetRange())
-				initExpr = c.compileArrayLiteral(arrExpr, paramType, ConstraintsConvExplicit)
-				initExpr = mod.LocalSet(operandIndex, initExpr, paramType.IsManaged())
-			} else if declaration.Initializer != nil {
-				initExpr = c.CompileExpression(
-					declaration.Initializer,
-					paramType,
-					ConstraintsConvImplicit,
-				)
-				initExpr = mod.LocalSet(operandIndex, initExpr, paramType.IsManaged())
-			} else {
-				c.Error(
-					diagnostics.DiagnosticCodeOptionalParameterMustHaveAnInitializer,
-					declaration.GetRange(),
-					"", "", "",
-				)
-				initExpr = mod.Unreachable()
-			}
+		if declaration.ParameterKind == ast.ParameterKindRest {
+			// Rest parameters get an empty array literal
+			arrExpr := ast.NewArrayLiteralExpression(nil, *declaration.GetRange().AtEnd())
+			initExpr = c.compileArrayLiteral(arrExpr, paramType, ConstraintsConvExplicit)
+			initExpr = mod.LocalSet(operandIndex, initExpr, paramType.IsManaged())
+		} else if declaration.Initializer != nil {
+			initExpr = c.CompileExpression(
+				declaration.Initializer,
+				paramType,
+				ConstraintsConvImplicit,
+			)
+			initExpr = mod.LocalSet(operandIndex, initExpr, paramType.IsManaged())
 		} else {
-			// No declaration available, use zero value
-			initExpr = mod.LocalSet(operandIndex, c.makeZeroOfType(paramType), paramType.IsManaged())
+			c.Error(
+				diagnostics.DiagnosticCodeOptionalParameterMustHaveAnInitializer,
+				declaration.GetRange(),
+				"", "", "",
+			)
+			initExpr = mod.Unreachable()
 		}
 
 		table = mod.Block(names[i+1], []module.ExpressionRef{
@@ -753,13 +737,16 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 			initExpr,
 		}, module.TypeRefNone)
 
-		// Extend forwardedOperands
 		forwardedOperands = append(forwardedOperands, mod.LocalGet(operandIndex, paramType.ToRef()))
 		operandIndex++
 	}
+	if operandIndex != maxOperands {
+		panic("ensureVarargsStub: operandIndex != maxOperands")
+	}
 
 	stmts = append(stmts, table)
-	stmts = append(stmts, c.makeCallDirect(original, forwardedOperands, original.GetDeclaration()))
+	// assume this will always succeed (can just use name as the reportNode)
+	stmts = append(stmts, c.makeCallDirect(original, forwardedOperands, original.GetDeclaration(), false))
 
 	c.CurrentFlow = previousFlow
 
@@ -775,37 +762,559 @@ func (c *Compiler) EnsureVarargsStub(original *program.Function) *program.Functi
 	return stub
 }
 
-// makeCallDirect compiles a direct call to a function, ensuring it is compiled first.
-// Ported from: assemblyscript/src/compiler.ts makeCallDirect (lines 6632-6768).
-func (c *Compiler) makeCallDirect(instance *program.Function, operands []module.ExpressionRef, reportNode ast.Node) module.ExpressionRef {
+// needToStack checks whether a managed operand expression needs to go through
+// the shadow stack's ~tostack runtime call. Returns false for zero constants
+// and known static GC object offsets (they don't need stack protection).
+// Ported from: assemblyscript/src/compiler.ts needToStack (lines 6834-6847).
+func (c *Compiler) needToStack(expr module.ExpressionRef) bool {
 	mod := c.Module()
-	// Ensure the function is compiled
-	c.CompileFunction(instance)
-	// Just do a direct call for now. The full implementation handles
-	// varargs forwarding, arguments length setting, and return type matching.
-	returnType := instance.Signature.ReturnType
-	numParams := int32(len(instance.Signature.ParameterTypes))
-	if instance.Signature.ThisType != nil {
-		numParams++
+	precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsDefault, 8, 1)
+	// cannot precompute, so must go to stack
+	if precomp == 0 {
+		return true
 	}
-	// If the target has optional params and we're calling with fewer operands,
-	// route through the varargs stub instead
-	if int32(len(operands)) < numParams {
-		stub := c.EnsureVarargsStub(instance)
-		if stub != instance {
-			c.RuntimeFeatures |= RuntimeFeaturesSetArgumentsLength
-			argumentsLength := c.EnsureArgumentsLength()
-			expr := mod.Block("", []module.ExpressionRef{
-				mod.GlobalSet(argumentsLength, mod.I32(int32(len(operands)))),
-				mod.Call(stub.GetInternalName(), operands, returnType.ToRef()),
-			}, returnType.ToRef())
-			c.CurrentType = returnType
+	value := module.GetConstValueInteger(precomp, c.Options().IsWasm64())
+	// zero constant doesn't need to go to stack
+	if value == 0 {
+		return false
+	}
+	// static GC objects don't need to go to stack
+	hi := int32(value >> 32)
+	lo := int32(value)
+	if inner, ok := c.StaticGcObjectOffsets[hi]; ok {
+		if _, ok2 := inner[lo]; ok2 {
+			return false
+		}
+	}
+	return true
+}
+
+// operandsTostack marks managed call operands for the shadow stack.
+// For each operand whose type is managed and that needs stacking,
+// wraps it through the ~tostack runtime call.
+// Ported from: assemblyscript/src/compiler.ts operandsTostack (lines 6850-6878).
+func (c *Compiler) operandsTostack(signature *types.Signature, operands []module.ExpressionRef) {
+	if c.Options().StackSize <= 0 {
+		return
+	}
+	mod := c.Module()
+	operandIndex := 0
+	thisType := signature.ThisType
+	if thisType != nil {
+		if thisType.IsManaged() {
+			operand := operands[0]
+			if c.needToStack(operand) {
+				operands[operandIndex] = mod.Tostack(operand)
+			}
+		}
+		operandIndex++
+	}
+	parameterIndex := 0
+	parameterTypes := signature.ParameterTypes
+	for operandIndex < len(operands) {
+		paramType := parameterTypes[parameterIndex]
+		if paramType.IsManaged() {
+			operand := operands[operandIndex]
+			if c.needToStack(operand) {
+				operands[operandIndex] = mod.Tostack(operand)
+			}
+		}
+		operandIndex++
+		parameterIndex++
+	}
+}
+
+// checkUnsafe checks if an unsafe operation is allowed. If noUnsafe is enabled
+// and the source is not a library file, reports an error.
+// Ported from: assemblyscript/src/compiler.ts checkUnsafe (lines 6319-6334).
+func (c *Compiler) checkUnsafe(reportNode ast.Node, relatedReportNode ast.Node) {
+	if c.Options().NoUnsafe {
+		rng := reportNode.GetRange()
+		if rng != nil && rng.Source != nil {
+			if src, ok := rng.Source.(*ast.Source); ok && src.IsLibrary() {
+				return // Library files may always use unsafe features
+			}
+		}
+		if relatedReportNode != nil {
+			c.ErrorRelated(
+				diagnostics.DiagnosticCodeOperationIsUnsafe,
+				reportNode.GetRange(),
+				relatedReportNode.GetRange(),
+				"", "", "",
+			)
+		} else {
+			c.Error(
+				diagnostics.DiagnosticCodeOperationIsUnsafe,
+				reportNode.GetRange(),
+				"", "", "",
+			)
+		}
+	}
+}
+
+// adjustArgumentsForRestParams adjusts argument expressions for rest parameters.
+// If the signature has rest params and more args than params, the trailing args
+// are collected into an ArrayLiteralExpression at the rest position.
+// Ported from: assemblyscript/src/compiler.ts adjustArgumentsForRestParams (lines 6336-6365).
+func (c *Compiler) adjustArgumentsForRestParams(
+	argumentExpressions []ast.Node,
+	signature *types.Signature,
+	reportNode ast.Node,
+) []ast.Node {
+	// if no rest args, return the original args
+	if !signature.HasRest {
+		return argumentExpressions
+	}
+
+	// if there are fewer args than params, then the rest args were not provided
+	// so return the original args
+	numArguments := len(argumentExpressions)
+	numParams := len(signature.ParameterTypes)
+	if numArguments < numParams {
+		return argumentExpressions
+	}
+
+	// make an array literal expression from the rest args
+	elements := make([]ast.Node, numArguments-numParams+1)
+	copy(elements, argumentExpressions[numParams-1:])
+	startRange := elements[0].GetRange()
+	endRange := elements[len(elements)-1].GetRange()
+	rng := diagnostics.Range{
+		Start:  startRange.Start,
+		End:    endRange.End,
+		Source: reportNode.GetRange().Source,
+	}
+	arrExpr := ast.NewArrayLiteralExpression(elements, rng)
+
+	// return the original args, but replace the rest args with the array
+	exprs := make([]ast.Node, numParams)
+	copy(exprs, argumentExpressions[:numParams-1])
+	exprs[numParams-1] = arrExpr
+	return exprs
+}
+
+// makeToString converts an expression to a string representation by looking up
+// the toString() method on the expression's class or wrapper type.
+// Ported from: assemblyscript/src/compiler.ts makeToString (lines 10287-10348).
+func (c *Compiler) makeToString(expr module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
+	mod := c.Module()
+	stringInstance := c.Program.StringInstance()
+	stringType := stringInstance.GetResolvedType()
+
+	// If already a string, return as-is
+	if typ == stringType {
+		return expr
+	}
+
+	// Look up toString() on the class or wrapper type
+	classType := typ.GetClassOrWrapper(c.Program)
+	if classType != nil {
+		classInstance := classType.(*program.Class)
+		toStringInstance := classInstance.GetMethod("toString", nil)
+		if toStringInstance != nil {
+			toStringSignature := toStringInstance.Signature
+
+			// Validate call signature (0 args, has this)
+			if !c.checkCallSignature(toStringSignature, 0, true, reportNode) {
+				c.CurrentType = stringType
+				return mod.Unreachable()
+			}
+
+			// Check this-type compatibility
+			thisType := toStringSignature.ThisType
+			if !typ.IsStrictlyAssignableTo(thisType, false) {
+				if !typ.Is(types.TypeFlagNullable) {
+					toStringRange := toStringInstance.IdentifierAndSignatureRange()
+					c.ErrorRelated(
+						diagnostics.DiagnosticCodeTheThisTypesOfEachSignatureAreIncompatible,
+						reportNode.GetRange(),
+						&toStringRange,
+						"", "", "",
+					)
+					c.CurrentType = stringType
+					return mod.Unreachable()
+				}
+
+				// Attempt to retry on the non-nullable form of the type, wrapped in a ternary:
+				// `expr ? expr.toString() : "null"`
+				tempLocal := c.CurrentFlow.GetTempLocal(typ)
+				return mod.If(
+					mod.LocalTee(tempLocal.FlowIndex(), expr, typ.IsManaged(), typ.ToRef()),
+					c.makeToString(
+						mod.LocalGet(tempLocal.FlowIndex(), typ.ToRef()),
+						typ.NonNullableType(),
+						reportNode,
+					),
+					c.ensureStaticString("null"),
+				)
+			}
+
+			// Check return type compatibility
+			toStringReturnType := toStringSignature.ReturnType
+			if !toStringReturnType.IsStrictlyAssignableTo(stringType, false) {
+				toStringRange := toStringInstance.IdentifierAndSignatureRange()
+				c.ErrorRelated(
+					diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+					reportNode.GetRange(),
+					&toStringRange,
+					toStringReturnType.String(), stringType.String(), "",
+				)
+				c.CurrentType = stringType
+				return mod.Unreachable()
+			}
+
+			return c.makeCallDirect(toStringInstance, []module.ExpressionRef{expr}, reportNode, false)
+		}
+	}
+
+	// No toString available
+	c.Error(
+		diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+		reportNode.GetRange(),
+		typ.String(), stringType.String(), "",
+	)
+	c.CurrentType = stringType
+	return mod.Unreachable()
+}
+
+// makeCallDirect creates a direct call to the specified function.
+// Handles inline expansion, default parameter filling, varargs stubs,
+// override stub dispatch, and managed operand stacking.
+// Ported from: assemblyscript/src/compiler.ts makeCallDirect (lines 6881-7004).
+func (c *Compiler) makeCallDirect(instance *program.Function, operands []module.ExpressionRef, reportNode ast.Node, immediatelyDropped bool) module.ExpressionRef {
+	// Try to inline if decorated with @inline
+	if instance.HasDecorator(program.DecoratorFlagsInline) {
+		if !instance.Is(common.CommonFlagsOverridden) {
+			if instance.Is(common.CommonFlagsStub) {
+				panic("@inline on stub doesn't make sense")
+			}
+			inlineStack := c.InlineStack
+			if inlineStackContains(inlineStack, instance) {
+				c.Warning(
+					diagnostics.DiagnosticCodeFunction0CannotBeInlinedIntoItself,
+					reportNode.GetRange(),
+					instance.GetInternalName(), "", "",
+				)
+			} else {
+				inlineStack = append(inlineStack, instance)
+				c.InlineStack = inlineStack
+				var expr module.ExpressionRef
+				if instance.Is(common.CommonFlagsInstance) {
+					theOperands := operands
+					if len(theOperands) == 0 {
+						panic("instance method inline requires operands with this")
+					}
+					expr = c.makeCallInline(instance, theOperands[1:], theOperands[0], immediatelyDropped)
+				} else {
+					expr = c.makeCallInline(instance, operands, 0, immediatelyDropped)
+				}
+				c.InlineStack = c.InlineStack[:len(c.InlineStack)-1]
+				return expr
+			}
+		} else {
+			c.Warning(
+				diagnostics.DiagnosticCodeFunction0IsVirtualAndWillNotBeInlined,
+				reportNode.GetRange(),
+				instance.GetInternalName(), "", "",
+			)
+		}
+	}
+
+	mod := c.Module()
+	numOperands := len(operands)
+	numArguments := numOperands
+	minArguments := int(instance.Signature.RequiredParameters)
+	minOperands := minArguments
+	parameterTypes := instance.Signature.ParameterTypes
+	maxArguments := len(parameterTypes)
+	maxOperands := maxArguments
+	if instance.Is(common.CommonFlagsInstance) {
+		minOperands++
+		maxOperands++
+		numArguments--
+	}
+	if numOperands < minOperands {
+		panic(fmt.Sprintf("makeCallDirect: numOperands %d < minOperands %d", numOperands, minOperands))
+	}
+
+	if !c.CompileFunction(instance) {
+		return mod.Unreachable()
+	}
+	returnType := instance.Signature.ReturnType
+
+	// fill up omitted arguments with their initializers, if constant, otherwise with zeroes.
+	if numOperands < maxOperands {
+		if operands == nil {
+			operands = make([]module.ExpressionRef, 0, maxOperands)
+		}
+		parameterNodes := instance.Prototype.FunctionTypeNode().Parameters
+		if len(parameterNodes) != len(parameterTypes) {
+			panic("parameterNodes.length != parameterTypes.length")
+		}
+		allOptionalsAreConstant := true
+		for i := numArguments; i < maxArguments; i++ {
+			initializer := parameterNodes[i].Initializer
+			if initializer != nil {
+				if ast.CompilesToConst(initializer) {
+					operands = append(operands, c.CompileExpression(
+						initializer,
+						parameterTypes[i],
+						ConstraintsConvImplicit,
+					))
+					continue
+				}
+				resolved := c.Resolver().LookupExpression(initializer, instance.Flow, parameterTypes[i], program.ReportModeSwallow)
+				if resolved != nil && resolved.GetElementKind() == program.ElementKindGlobal {
+					global := resolved.(*program.Global)
+					if c.CompileGlobalLazy(global, initializer) && global.Is(common.CommonFlagsInlined) {
+						operands = append(operands, c.compileInlineConstant(global, parameterTypes[i], ConstraintsConvImplicit))
+						continue
+					}
+				}
+			}
+			operands = append(operands, c.makeZeroOfType(parameterTypes[i]))
+			allOptionalsAreConstant = false
+		}
+		if !allOptionalsAreConstant && !instance.Is(common.CommonFlagsModuleImport) {
+			original := instance
+			instance = c.EnsureVarargsStub(instance)
+			if !c.CompileFunction(instance) {
+				return mod.Unreachable()
+			}
+			instance.Flow.Flags = original.Flow.Flags
+			returnTypeRef := returnType.ToRef()
+			// We know the last operand is optional and omitted, so inject setting
+			// ~argumentsLength into that operand, which is always safe.
+			lastOperand := operands[maxOperands-1]
+			if module.GetSideEffects(lastOperand, mod.BinaryenModule())&module.SideEffectWritesGlobal != 0 {
+				panic("last operand writes global unexpectedly")
+			}
+			lastOperandType := parameterTypes[maxArguments-1]
+			operands[maxOperands-1] = mod.Block("", []module.ExpressionRef{
+				mod.GlobalSet(c.EnsureArgumentsLength(), mod.I32(int32(numArguments))),
+				lastOperand,
+			}, lastOperandType.ToRef())
+			c.operandsTostack(instance.Signature, operands)
+			expr := mod.Call(instance.GetInternalName(), operands, returnTypeRef)
+			if returnType != types.TypeVoid && immediatelyDropped {
+				expr = mod.Drop(expr)
+				c.CurrentType = types.TypeVoid
+			} else {
+				c.CurrentType = returnType
+			}
 			return expr
 		}
+	}
+
+	// Call the override stub if the function has overloads
+	if instance.Is(common.CommonFlagsOverridden) && !ast.IsAccessOnSuper(reportNode) {
+		instance = c.EnsureOverrideStub(instance)
+	}
+
+	if operands != nil {
+		c.operandsTostack(instance.Signature, operands)
 	}
 	expr := mod.Call(instance.GetInternalName(), operands, returnType.ToRef())
 	c.CurrentType = returnType
 	return expr
+}
+
+// makeCallIndirect creates an indirect call to a first-class function.
+// Handles zero-filling omitted arguments, injecting argumentsLength global set,
+// side-effect handling for functionArg, shadow stack, and call_indirect emission.
+// Ported from: assemblyscript/src/compiler.ts makeCallIndirect (lines 7047-7112).
+func (c *Compiler) makeCallIndirect(
+	signature *types.Signature,
+	functionArg module.ExpressionRef,
+	reportNode ast.Node,
+	operands []module.ExpressionRef,
+	immediatelyDropped bool,
+) module.ExpressionRef {
+	mod := c.Module()
+	numOperands := len(operands)
+	numArguments := numOperands
+	minArguments := int(signature.RequiredParameters)
+	minOperands := minArguments
+	parameterTypes := signature.ParameterTypes
+	returnType := signature.ReturnType
+	maxArguments := len(parameterTypes)
+	maxOperands := maxArguments
+	if signature.ThisType != nil {
+		minOperands++
+		maxOperands++
+		numArguments--
+	}
+	if numOperands < minOperands {
+		panic(fmt.Sprintf("makeCallIndirect: numOperands %d < minOperands %d", numOperands, minOperands))
+	}
+
+	// fill up omitted arguments with zeroes
+	if numOperands < maxOperands {
+		if operands == nil {
+			operands = make([]module.ExpressionRef, 0, maxOperands)
+		}
+		for i := numArguments; i < maxArguments; i++ {
+			operands = append(operands, c.makeZeroOfType(parameterTypes[i]))
+		}
+	}
+
+	// We might be calling a varargs stub here, even if all operands have been
+	// provided, so we must set `argumentsLength` in any case. Inject setting it
+	// into the index argument, which becomes executed last after any operands.
+	argumentsLength := c.EnsureArgumentsLength()
+	sizeTypeRef := module.TypeRef(c.Options().SizeTypeRef())
+	if module.GetSideEffects(functionArg, mod.BinaryenModule())&module.SideEffectWritesGlobal != 0 {
+		fl := c.CurrentFlow
+		temp := fl.GetTempLocal(c.Options().UsizeType())
+		tempIndex := temp.FlowIndex()
+		functionArg = mod.Block("", []module.ExpressionRef{
+			mod.LocalSet(tempIndex, functionArg, true), // Function
+			mod.GlobalSet(argumentsLength, mod.I32(int32(numArguments))),
+			mod.LocalGet(tempIndex, sizeTypeRef),
+		}, sizeTypeRef)
+	} else { // simplify
+		functionArg = mod.Block("", []module.ExpressionRef{
+			mod.GlobalSet(argumentsLength, mod.I32(int32(numArguments))),
+			functionArg,
+		}, sizeTypeRef)
+	}
+	if operands != nil {
+		c.operandsTostack(signature, operands)
+	}
+	expr := mod.CallIndirect(
+		"", // TODO: handle multiple tables
+		mod.Load(4, false, functionArg, module.TypeRefI32, 0, 4, module.DefaultMemory), // ._index
+		operands,
+		signature.ParamRefs(),
+		signature.ResultRefs(),
+	)
+	c.CurrentType = returnType
+	return expr
+}
+
+// inlineStackContains checks if a function is already in the inline stack.
+func inlineStackContains(stack []*program.Function, instance *program.Function) bool {
+	for _, f := range stack {
+		if f == instance {
+			return true
+		}
+	}
+	return false
+}
+
+// makeCallInline compiles an inlined call to the given function.
+// Creates an inline flow, binds parameters as scoped locals, compiles the function
+// body inline, and manages the return label for inline returns.
+// Ported from: assemblyscript/src/compiler.ts makeCallInline (lines 6444-6525).
+func (c *Compiler) makeCallInline(
+	instance *program.Function,
+	operands []module.ExpressionRef,
+	thisArg module.ExpressionRef,
+	immediatelyDropped bool,
+) module.ExpressionRef {
+	mod := c.Module()
+	numArguments := len(operands)
+	signature := instance.Signature
+	parameterTypes := signature.ParameterTypes
+	numParameters := len(parameterTypes)
+
+	// Create a new inline flow and use it to compile the function as a block
+	previousFlow := c.CurrentFlow
+	fl := flow.CreateInline(previousFlow.TargetFunction, instance)
+	body := make([]module.ExpressionRef, 0)
+
+	if thisArg != 0 {
+		parent := instance.GetParent()
+		if parent == nil {
+			panic("makeCallInline: parent must not be nil")
+		}
+		if parent.GetElementKind() != program.ElementKindClass {
+			panic("makeCallInline: parent must be a class")
+		}
+		classInstance := parent.(*program.Class)
+		thisType := instance.Signature.ThisType
+		if thisType == nil {
+			panic("makeCallInline: thisType must not be nil")
+		}
+		thisLocal := fl.AddScopedLocal(common.CommonNameThis, thisType)
+		body = append(body,
+			mod.LocalSet(thisLocal.FlowIndex(), thisArg, thisType.IsManaged()),
+		)
+		fl.SetLocalFlag(thisLocal.FlowIndex(), flow.LocalFlagInitialized)
+		base := classInstance.Base
+		if base != nil {
+			fl.AddScopedAlias(common.CommonNameSuper, base.GetType(), thisLocal.FlowIndex(), nil)
+		}
+	} else {
+		if instance.Signature.ThisType != nil {
+			panic("makeCallInline: thisType must be nil for non-this calls")
+		}
+	}
+	for i := 0; i < numArguments; i++ {
+		paramExpr := operands[i]
+		paramType := parameterTypes[i]
+		argumentLocal := fl.AddScopedLocal(instance.GetParameterName(int32(i)), paramType)
+		// inlining is aware of wrap/nonnull states:
+		if !previousFlow.CanOverflow(paramExpr, paramType) {
+			fl.SetLocalFlag(argumentLocal.FlowIndex(), flow.LocalFlagWrapped)
+		}
+		if previousFlow.IsNonnull(paramExpr, paramType) {
+			fl.SetLocalFlag(argumentLocal.FlowIndex(), flow.LocalFlagNonNull)
+		}
+		body = append(body,
+			mod.LocalSet(argumentLocal.FlowIndex(), paramExpr, paramType.IsManaged()),
+		)
+		fl.SetLocalFlag(argumentLocal.FlowIndex(), flow.LocalFlagInitialized)
+	}
+
+	// Compile omitted arguments with final argument locals blocked. Doesn't need to take care of
+	// side-effects within earlier expressions because these already happened on set.
+	c.CurrentFlow = fl
+	isConstructor := instance.Is(common.CommonFlagsConstructor)
+	if isConstructor {
+		fl.SetFlag(flow.FlowFlagCtorParamContext)
+	}
+	for i := numArguments; i < numParameters; i++ {
+		initType := parameterTypes[i]
+		funcTypeNode := instance.Prototype.FunctionTypeNode()
+		if funcTypeNode == nil {
+			panic("makeCallInline: function type node must not be nil")
+		}
+		paramNode := funcTypeNode.Parameters[i]
+		if paramNode.Initializer == nil {
+			panic("makeCallInline: parameter initializer must not be nil")
+		}
+		initExpr := c.CompileExpression(
+			paramNode.Initializer,
+			initType,
+			ConstraintsConvImplicit,
+		)
+		argumentLocal := fl.AddScopedLocal(instance.GetParameterName(int32(i)), initType)
+		body = append(body,
+			c.makeLocalAssignment(argumentLocal.(*program.Local), initExpr, initType, false),
+		)
+	}
+	fl.UnsetFlag(flow.FlowFlagCtorParamContext)
+
+	// Compile the called function's body in the scope of the inlined flow
+	c.compileFunctionBody(instance, &body)
+
+	// If a constructor, perform field init checks on its flow directly
+	if isConstructor {
+		parent := instance.GetParent()
+		if parent == nil || parent.GetElementKind() != program.ElementKindClass {
+			panic("makeCallInline: inline constructor parent must be a class")
+		}
+		c.checkFieldInitializationInFlow(parent.(*program.Class), fl, nil)
+	}
+
+	// Free any new scoped locals and reset to the original flow
+	returnType := fl.ReturnType()
+	c.CurrentFlow = previousFlow
+
+	// Create an outer block that we can break to when returning a value out of order
+	c.CurrentType = returnType
+	return mod.Block(fl.InlineReturnLabel, body, returnType.ToRef())
 }
 
 // FinalizeOverrideStub finalizes an override stub by building a switch over
@@ -1131,14 +1640,52 @@ func (c *Compiler) EnsureArgumentsLength() string {
 }
 
 // prepareInstanceOf ensures an instanceof helper exists for the given class and returns its name.
+// Ported from: assemblyscript/src/compiler.ts prepareInstanceOf (lines 7789-7799).
 func (c *Compiler) prepareInstanceOf(classInstance *program.Class) string {
-	name := classInstance.GetInternalName() + "~instanceof"
-	c.PendingInstanceOf[classInstance] = name
-	if !c.Module().HasFunction(name) {
-		sizeTypeRef := c.Options().UsizeType().ToRef()
-		c.Module().AddFunction(name, sizeTypeRef, module.TypeRefI32, nil, c.Module().Unreachable())
+	name := "~instanceof|" + classInstance.GetInternalName()
+	if existing, ok := c.PendingInstanceOf[classInstance]; ok {
+		return existing
 	}
+	c.PendingInstanceOf[classInstance] = name
+	mod := c.Module()
+	sizeTypeRef := c.Options().UsizeType().ToRef()
+	mod.AddFunction(name, sizeTypeRef, module.TypeRefI32, nil, mod.Unreachable())
 	return name
+}
+
+// prepareAnyInstanceOf ensures an instanceof helper exists for the given class prototype and returns its name.
+// Ported from: assemblyscript/src/compiler.ts prepareAnyInstanceOf (lines 7932-7941).
+func (c *Compiler) prepareAnyInstanceOf(prototype *program.ClassPrototype) string {
+	name := "~anyinstanceof|" + prototype.GetInternalName()
+	if existing, ok := c.PendingInstanceOf[prototype]; ok {
+		return existing
+	}
+	c.PendingInstanceOf[prototype] = name
+	mod := c.Module()
+	sizeTypeRef := c.Options().UsizeType().ToRef()
+	mod.AddFunction(name, sizeTypeRef, module.TypeRefI32, nil, mod.Unreachable())
+	return name
+}
+
+// makeAbort makes a call to abort, if present, otherwise creates a trap.
+// Compiles the message expression (if any) and delegates to makeStaticAbort.
+// Ported from: assemblyscript/src/compiler.ts makeAbort (lines 10481-10500).
+func (c *Compiler) makeAbort(message ast.Node, codeLocation ast.Node) module.ExpressionRef {
+	prog := c.Program
+	abortInstance := prog.AbortInstance()
+	if abortInstance == nil || !c.CompileFunction(abortInstance) {
+		return c.Module().Unreachable()
+	}
+
+	stringInstance := prog.StringInstance()
+	var messageArg module.ExpressionRef
+	if message != nil {
+		messageArg = c.CompileExpression(message, stringInstance.GetType(), ConstraintsConvImplicit)
+	} else {
+		messageArg = c.makeZeroOfType(stringInstance.GetType())
+	}
+
+	return c.makeStaticAbort(messageArg, codeLocation)
 }
 
 // makeStaticAbort makes a call to abort, if present, otherwise creates a trap.

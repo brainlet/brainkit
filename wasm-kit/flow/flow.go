@@ -182,14 +182,67 @@ var (
 var (
 	BinaryOpEqI32  int32
 	BinaryOpEqI64  int32
+	BinaryOpEqF32  int32
+	BinaryOpEqF64  int32
 	BinaryOpNeI32  int32
 	BinaryOpNeI64  int32
+	BinaryOpNeF32  int32
+	BinaryOpNeF64  int32
+	BinaryOpLtI32  int32
+	BinaryOpLtU32  int32
+	BinaryOpLtI64  int32
+	BinaryOpLtU64  int32
+	BinaryOpLtF32  int32
+	BinaryOpLtF64  int32
+	BinaryOpLeI32  int32
+	BinaryOpLeU32  int32
+	BinaryOpLeI64  int32
+	BinaryOpLeU64  int32
+	BinaryOpLeF32  int32
+	BinaryOpLeF64  int32
+	BinaryOpGtI32  int32
+	BinaryOpGtU32  int32
+	BinaryOpGtI64  int32
+	BinaryOpGtU64  int32
+	BinaryOpGtF32  int32
+	BinaryOpGtF64  int32
+	BinaryOpGeI32  int32
+	BinaryOpGeU32  int32
+	BinaryOpGeI64  int32
+	BinaryOpGeU64  int32
+	BinaryOpGeF32  int32
+	BinaryOpGeF64  int32
+	BinaryOpMulI32 int32
+	BinaryOpAndI32 int32
+	BinaryOpShlI32 int32
+	BinaryOpShrI32 int32
+	BinaryOpShrU32 int32
+	BinaryOpDivU32 int32
+	BinaryOpRemI32 int32
+	BinaryOpRemU32 int32
 )
 
 // Binaryen UnaryOp constants. Set by module package at init.
 var (
-	UnaryOpEqzI32 int32
-	UnaryOpEqzI64 int32
+	UnaryOpEqzI32      int32
+	UnaryOpEqzI64      int32
+	UnaryOpClzI32      int32
+	UnaryOpCtzI32      int32
+	UnaryOpPopcntI32   int32
+	UnaryOpExtend8I32  int32
+	UnaryOpExtend8I64  int32
+	UnaryOpExtend16I32 int32
+	UnaryOpExtend16I64 int32
+	UnaryOpExtend32I64 int32
+)
+
+// Binaryen TypeRef constants for getExpressionType. Set by module package at init.
+var (
+	TypeRefI32  int32
+	TypeRefI64  int32
+	TypeRefF32  int32
+	TypeRefF64  int32
+	TypeRefV128 int32
 )
 
 // BuiltinNames string constants. Set by builtins package at init.
@@ -471,6 +524,8 @@ func (f *Flow) AddScopedLocal(name string, typ *types.Type) FlowLocalRef {
 	}
 	if f.ScopedLocals == nil {
 		f.ScopedLocals = make(map[string]FlowLocalRef)
+	} else if _, exists := f.ScopedLocals[name]; exists {
+		panic(fmt.Sprintf("flow: AddScopedLocal: scoped local '%s' already exists", name))
 	}
 	scopedLocal.Set(CommonFlagsScoped)
 	f.ScopedLocals[name] = scopedLocal
@@ -518,6 +573,10 @@ func (f *Flow) AddScopedAlias(name string, typ *types.Type, index int32, reportN
 		}
 		return existing
 	}
+	localsByIndex := f.TargetFunction.FlowLocalsByIndex()
+	if int(index) >= len(localsByIndex) {
+		panic(fmt.Sprintf("flow: AddScopedAlias: index %d >= localsByIndex length %d", index, len(localsByIndex)))
+	}
 	if NewLocalFunc == nil {
 		panic("flow: NewLocalFunc not set")
 	}
@@ -529,7 +588,13 @@ func (f *Flow) AddScopedAlias(name string, typ *types.Type, index int32, reportN
 
 // FreeScopedDummyLocal frees a single scoped local by its name.
 func (f *Flow) FreeScopedDummyLocal(name string) {
-	local := f.ScopedLocals[name]
+	if f.ScopedLocals == nil {
+		panic(fmt.Sprintf("flow: FreeScopedDummyLocal: scopedLocals is nil (name '%s')", name))
+	}
+	local, ok := f.ScopedLocals[name]
+	if !ok {
+		panic(fmt.Sprintf("flow: FreeScopedDummyLocal: scoped local '%s' not found", name))
+	}
 	if local.FlowIndex() != -1 {
 		panic("flow: FreeScopedDummyLocal called on non-dummy")
 	}
@@ -661,10 +726,17 @@ func (f *Flow) IsThisFieldFlag(field FlowPropertyRef, flag FieldFlags) bool {
 // SetThisFieldFlag sets flag(s) on the given this field.
 func (f *Flow) SetThisFieldFlag(field FlowPropertyRef, flag FieldFlags) {
 	if f.ThisFieldFlags != nil {
+		if !f.SourceFunction().Is(CommonFlagsConstructor) {
+			panic("flow: SetThisFieldFlag: sourceFunction is not a constructor but fieldFlags is set")
+		}
 		if flags, ok := f.ThisFieldFlags[field]; ok {
 			f.ThisFieldFlags[field] = flags | flag
 		} else {
 			f.ThisFieldFlags[field] = flag
+		}
+	} else {
+		if f.SourceFunction().Is(CommonFlagsConstructor) {
+			panic("flow: SetThisFieldFlag: sourceFunction is a constructor but fieldFlags is nil")
 		}
 	}
 }
@@ -690,6 +762,9 @@ func (f *Flow) PopControlFlowLabel(expectedLabel int32) {
 
 // Inherit inherits flags of another flow into this one (finished inner block).
 func (f *Flow) Inherit(other *Flow) {
+	if other.TargetFunction != f.TargetFunction {
+		panic("flow: Inherit: targetFunction mismatch")
+	}
 	otherFlags := other.Flags
 
 	if f.BreakLabel != other.BreakLabel {
@@ -709,6 +784,9 @@ func (f *Flow) Inherit(other *Flow) {
 
 // MergeSideEffects merges only the side effects of a branch (not taken path).
 func (f *Flow) MergeSideEffects(other *Flow) {
+	if other.TargetFunction != f.TargetFunction {
+		panic("flow: MergeSideEffects: targetFunction mismatch")
+	}
 	thisFlags := f.Flags
 	otherFlags := other.Flags
 	newFlags := FlowFlagNone
@@ -806,6 +884,12 @@ func (f *Flow) MergeBranch(other *Flow) {
 
 // InheritAlternatives inherits two alternate branches (if/else).
 func (f *Flow) InheritAlternatives(left, right *Flow) {
+	if left.TargetFunction != right.TargetFunction {
+		panic("flow: InheritAlternatives: left and right targetFunction mismatch")
+	}
+	if left.TargetFunction != f.TargetFunction {
+		panic("flow: InheritAlternatives: targetFunction mismatch with this flow")
+	}
 	leftFlags := left.Flags
 	rightFlags := right.Flags
 	newFlags := FlowFlagNone
@@ -951,9 +1035,15 @@ func (f *Flow) InheritAlternatives(left, right *Flow) {
 
 // ResetIfNeedsRecompile tests if loop recompilation is needed and resets if so.
 func (f *Flow) ResetIfNeedsRecompile(other *Flow, numLocalsBefore int) bool {
+	if f.TargetFunction != other.TargetFunction {
+		panic("flow: ResetIfNeedsRecompile: targetFunction mismatch")
+	}
 	numThisFlags := len(f.LocalFlags)
 	numOtherFlags := len(other.LocalFlags)
-	localsByIndex := f.TargetFunction.FlowLocalsByIndex()
+	targetFunction := f.TargetFunction
+	localsByIndex := targetFunction.FlowLocalsByIndex()
+	// TS: assert(localsByIndex == other.targetFunction.localsByIndex)
+	// Redundant given targetFunction equality, but kept for faithfulness
 	needsRecompile := false
 	minFlags := numThisFlags
 	if numOtherFlags < minFlags {
@@ -976,7 +1066,10 @@ func (f *Flow) ResetIfNeedsRecompile(other *Flow, numLocalsBefore int) bool {
 		}
 	}
 	if needsRecompile {
-		f.TargetFunction.FlowTruncateLocals(numLocalsBefore)
+		if len(localsByIndex) < numLocalsBefore {
+			panic(fmt.Sprintf("flow: ResetIfNeedsRecompile: localsByIndex length %d < numLocalsBefore %d", len(localsByIndex), numLocalsBefore))
+		}
+		targetFunction.FlowTruncateLocals(numLocalsBefore)
 		if len(f.LocalFlags) > numLocalsBefore {
 			f.LocalFlags = f.LocalFlags[:numLocalsBefore]
 		}
@@ -1149,18 +1242,293 @@ func (f *Flow) InheritNonnullIfFalse(expr ExpressionRef, iff *Flow) {
 }
 
 // CanOverflow tests if an expression can possibly overflow for small integer types.
-// Full implementation requires module package accessor functions.
+// Inspects Binaryen IR to determine if wrapping is needed.
 // Returns true (conservative) when module accessors are not available.
 func (f *Flow) CanOverflow(expr ExpressionRef, typ *types.Type) bool {
+	// types other than i8, u8, i16, u16 and bool do not overflow
 	if !typ.IsShortIntegerValue() {
 		return false
 	}
 	if GetExpressionId == nil {
 		return true // conservative default
 	}
-	// Full implementation deferred until module package is ported.
-	// The canOverflow method deeply inspects Binaryen IR using ~25 accessor
-	// functions and requires BinaryOp/UnaryOp/TypeRef enum constants from module.
+
+	var operand ExpressionRef
+	exprId := GetExpressionId(expr)
+
+	switch {
+	// overflows if the local isn't wrapped or the conversion does
+	case exprId == ExpressionIdLocalGet:
+		local := f.TargetFunction.FlowLocalsByIndex()[GetLocalGetIndex(expr)]
+		return !f.IsLocalFlag(local.FlowIndex(), LocalFlagWrapped) ||
+			CanConversionOverflow(local.GetType(), typ)
+
+	// overflows if the value does (local.tee)
+	case exprId == ExpressionIdLocalSet:
+		return f.CanOverflow(GetLocalSetValue(expr), typ)
+
+	// overflows if the conversion does (globals are wrapped on set)
+	case exprId == ExpressionIdGlobalGet:
+		name := GetGlobalGetName(expr)
+		elemsByName := f.Program().ElementsByName()
+		global, ok := elemsByName[name]
+		if !ok {
+			return true
+		}
+		typedElem, ok := global.(FlowTypedElementRef)
+		if !ok {
+			return true
+		}
+		return CanConversionOverflow(typedElem.GetType(), typ)
+
+	case exprId == ExpressionIdBinary:
+		op := GetBinaryOp(expr)
+
+		// comparisons do not overflow (result is 0 or 1)
+		if op == BinaryOpEqI32 || op == BinaryOpEqI64 ||
+			op == BinaryOpEqF32 || op == BinaryOpEqF64 ||
+			op == BinaryOpNeI32 || op == BinaryOpNeI64 ||
+			op == BinaryOpNeF32 || op == BinaryOpNeF64 ||
+			op == BinaryOpLtI32 || op == BinaryOpLtU32 ||
+			op == BinaryOpLtI64 || op == BinaryOpLtU64 ||
+			op == BinaryOpLtF32 || op == BinaryOpLtF64 ||
+			op == BinaryOpLeI32 || op == BinaryOpLeU32 ||
+			op == BinaryOpLeI64 || op == BinaryOpLeU64 ||
+			op == BinaryOpLeF32 || op == BinaryOpLeF64 ||
+			op == BinaryOpGtI32 || op == BinaryOpGtU32 ||
+			op == BinaryOpGtI64 || op == BinaryOpGtU64 ||
+			op == BinaryOpGtF32 || op == BinaryOpGtF64 ||
+			op == BinaryOpGeI32 || op == BinaryOpGeU32 ||
+			op == BinaryOpGeI64 || op == BinaryOpGeU64 ||
+			op == BinaryOpGeF32 || op == BinaryOpGeF64 {
+			return false
+		}
+
+		// result won't overflow if one side is 0 or if one side is 1 and the other wrapped
+		if op == BinaryOpMulI32 {
+			operand = GetBinaryLeft(expr)
+			if GetExpressionId(operand) == ExpressionIdConst &&
+				(GetConstValueI32(operand) == 0 ||
+					(GetConstValueI32(operand) == 1 &&
+						!f.CanOverflow(GetBinaryRight(expr), typ))) {
+				return false
+			}
+			operand = GetBinaryRight(expr)
+			if GetExpressionId(operand) == ExpressionIdConst &&
+				(GetConstValueI32(operand) == 0 ||
+					(GetConstValueI32(operand) == 1 &&
+						!f.CanOverflow(GetBinaryLeft(expr), typ))) {
+				return false
+			}
+			return true
+		}
+
+		// result won't overflow if one side is a constant less than this type's mask
+		// or one side is wrapped
+		if op == BinaryOpAndI32 {
+			mask := typ.ComputeSmallIntegerMask(types.TypeI32)
+			operand = GetBinaryLeft(expr)
+			leftOk := (GetExpressionId(operand) == ExpressionIdConst &&
+				GetConstValueI32(operand) <= mask) ||
+				!f.CanOverflow(operand, typ)
+			if leftOk {
+				return false
+			}
+			operand = GetBinaryRight(expr)
+			rightOk := (GetExpressionId(operand) == ExpressionIdConst &&
+				GetConstValueI32(operand) <= mask) ||
+				!f.CanOverflow(operand, typ)
+			if rightOk {
+				return false
+			}
+			return true
+		}
+
+		// overflows if the shift doesn't clear potential garbage bits
+		if op == BinaryOpShlI32 {
+			shift := 32 - typ.Size
+			operand = GetBinaryRight(expr)
+			return GetExpressionId(operand) != ExpressionIdConst ||
+				GetConstValueI32(operand) < shift
+		}
+
+		// overflows if the value does and the shift doesn't clear potential garbage bits
+		if op == BinaryOpShrI32 {
+			shift := 32 - typ.Size
+			operand = GetBinaryRight(expr)
+			return f.CanOverflow(GetBinaryLeft(expr), typ) &&
+				(GetExpressionId(operand) != ExpressionIdConst ||
+					GetConstValueI32(operand) < shift)
+		}
+
+		// overflows if the shift does not clear potential garbage bits.
+		// if an unsigned value is wrapped, it can't overflow.
+		if op == BinaryOpShrU32 {
+			shift := 32 - typ.Size
+			if typ.IsSignedIntegerValue() {
+				operand = GetBinaryRight(expr)
+				return !(GetExpressionId(operand) == ExpressionIdConst &&
+					GetConstValueI32(operand) > shift) // must clear MSB
+			}
+			if !f.CanOverflow(GetBinaryLeft(expr), typ) {
+				return false
+			}
+			operand = GetBinaryRight(expr)
+			return !(GetExpressionId(operand) == ExpressionIdConst &&
+				GetConstValueI32(operand) >= shift) // can leave MSB
+		}
+
+		// overflows if any side does
+		if op == BinaryOpDivU32 || op == BinaryOpRemI32 || op == BinaryOpRemU32 {
+			return f.CanOverflow(GetBinaryLeft(expr), typ) ||
+				f.CanOverflow(GetBinaryRight(expr), typ)
+		}
+
+	case exprId == ExpressionIdUnary:
+		op := GetUnaryOp(expr)
+
+		// comparisons do not overflow (result is 0 or 1)
+		if op == UnaryOpEqzI32 || op == UnaryOpEqzI64 {
+			return false
+		}
+
+		// overflow if the maximum result (32) cannot be represented in the target type
+		if op == UnaryOpClzI32 || op == UnaryOpCtzI32 || op == UnaryOpPopcntI32 {
+			return typ.Size < 7
+		}
+
+		// sign extensions overflow if result can have high garbage bits in the target type
+		if op == UnaryOpExtend8I32 {
+			if typ.IsUnsignedIntegerValue() {
+				return typ.Size < 32
+			}
+			return typ.Size < 8
+		}
+		if op == UnaryOpExtend8I64 {
+			if typ.IsUnsignedIntegerValue() {
+				return typ.Size < 64
+			}
+			return typ.Size < 8
+		}
+		if op == UnaryOpExtend16I32 {
+			if typ.IsUnsignedIntegerValue() {
+				return typ.Size < 32
+			}
+			return typ.Size < 16
+		}
+		if op == UnaryOpExtend16I64 {
+			if typ.IsUnsignedIntegerValue() {
+				return typ.Size < 64
+			}
+			return typ.Size < 16
+		}
+		if op == UnaryOpExtend32I64 {
+			if typ.IsUnsignedIntegerValue() {
+				return typ.Size < 64
+			}
+			return typ.Size < 32
+		}
+
+	// overflows if the value cannot be represented in the target type
+	case exprId == ExpressionIdConst:
+		var value int32
+		exprType := GetExpressionType(expr)
+		switch {
+		case exprType == TypeRefI32:
+			value = GetConstValueI32(expr)
+		case exprType == TypeRefI64:
+			value = GetConstValueI64Low(expr) // discards upper bits
+		case exprType == TypeRefF32:
+			value = int32(GetConstValueF32(expr))
+		case exprType == TypeRefF64:
+			value = int32(GetConstValueF64(expr))
+		case exprType == TypeRefV128:
+			return false
+		default:
+			panic("flow: unexpected expression type in canOverflow/Const")
+		}
+		switch typ.Kind {
+		case types.TypeKindBool:
+			return (value & ^int32(1)) != 0
+		case types.TypeKindI8:
+			return value < -128 || value > 127
+		case types.TypeKindI16:
+			return value < -32768 || value > 32767
+		case types.TypeKindU8:
+			return value < 0 || value > 255
+		case types.TypeKindU16:
+			return value < 0 || value > 65535
+		}
+
+	// overflows if the conversion does
+	case exprId == ExpressionIdLoad:
+		var fromType *types.Type
+		signed := IsLoadSigned(expr)
+		switch GetLoadBytes(expr) {
+		case 1:
+			if signed {
+				fromType = types.TypeI8
+			} else {
+				fromType = types.TypeU8
+			}
+		case 2:
+			if signed {
+				fromType = types.TypeI16
+			} else {
+				fromType = types.TypeU16
+			}
+		default:
+			if signed {
+				fromType = types.TypeI32
+			} else {
+				fromType = types.TypeU32
+			}
+		}
+		return CanConversionOverflow(fromType, typ)
+
+	// overflows if the result does (last expression of unnamed block)
+	case exprId == ExpressionIdBlock:
+		name := GetBlockName(expr)
+		if name == "" {
+			size := GetBlockChildCount(expr)
+			if size == 0 {
+				return true
+			}
+			last := GetBlockChildAt(expr, size-1)
+			return f.CanOverflow(last, typ)
+		}
+
+	// overflows if either side does
+	case exprId == ExpressionIdIf:
+		return f.CanOverflow(GetIfTrue(expr), typ) ||
+			f.CanOverflow(GetIfFalse(expr), typ)
+
+	// overflows if either side does
+	case exprId == ExpressionIdSelect:
+		return f.CanOverflow(GetSelectThen(expr), typ) ||
+			f.CanOverflow(GetSelectElse(expr), typ)
+
+	// overflows if the call does not return a wrapped value or the conversion does
+	case exprId == ExpressionIdCall:
+		instancesByName := f.Program().InstancesByName()
+		instanceName := GetCallTarget(expr)
+		if instance, ok := instancesByName[instanceName]; ok {
+			funcRef, ok := instance.(FlowFunctionRef)
+			if !ok {
+				return true
+			}
+			returnType := funcRef.FlowSignature().ReturnType
+			funcFlow := funcRef.GetFlow()
+			return !funcFlow.Is(FlowFlagReturnsWrapped) ||
+				CanConversionOverflow(returnType, typ)
+		}
+		return false // assume no overflow for builtins
+
+	// doesn't technically overflow
+	case exprId == ExpressionIdUnreachable:
+		return false
+	}
+
 	return true
 }
 

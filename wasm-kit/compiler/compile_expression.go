@@ -15,6 +15,7 @@ import (
 	"github.com/brainlet/brainkit/wasm-kit/program"
 	"github.com/brainlet/brainkit/wasm-kit/tokenizer"
 	"github.com/brainlet/brainkit/wasm-kit/types"
+	"github.com/brainlet/brainkit/wasm-kit/util"
 )
 
 // CompileExpression compiles an expression and optionally converts to the contextual type.
@@ -87,42 +88,52 @@ func (c *Compiler) compileExpressionInner(expression ast.Node, contextualType *t
 }
 
 // compileAssertionExpression compiles an assertion expression (as, prefix cast, non-null).
-// Ported from: assemblyscript/src/compiler.ts compileAssertionExpression (lines 3512-3640).
+// Ported from: assemblyscript/src/compiler.ts compileAssertionExpression (lines 3795-3851).
 func (c *Compiler) compileAssertionExpression(expression *ast.AssertionExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
+	inheritedConstraints := constraints &^ (ConstraintsConvImplicit | ConstraintsConvExplicit)
 	switch expression.AssertionKind {
-	case ast.AssertionKindNonNull:
-		// Non-null assertion: compile the expression, strip nullable
-		expr := c.CompileExpression(expression.Expression, contextualType, constraints)
-		ct := c.CurrentType
-		if ct.IsNullableReference() {
-			c.CurrentType = ct.NonNullableType()
-		}
-		return expr
-	case ast.AssertionKindAs, ast.AssertionKindPrefix:
-		// Type assertion: compile, then convert
-		resolver := c.Resolver()
-		toType := resolver.ResolveType(
+	case ast.AssertionKindPrefix, ast.AssertionKindAs:
+		// Type assertion: resolve target type, compile with explicit conversion constraint
+		fl := c.CurrentFlow
+		toType := c.Resolver().ResolveType(
 			expression.ToType,
-			c.CurrentFlow,
-			c.CurrentFlow.TargetFunction.(program.Element),
-			nil,
+			fl,
+			fl.TargetFunction.(program.Element),
+			util.CloneMap(fl.ContextualTypeArguments()),
 			program.ReportModeReport,
 		)
 		if toType == nil {
-			c.CurrentType = contextualType
 			return c.Module().Unreachable()
 		}
-		expr := c.CompileExpression(expression.Expression, toType, ConstraintsNone)
-		fromType := c.CurrentType
-		expr = c.convertExpression(expr, fromType, toType, true, expression)
-		c.CurrentType = toType
+		return c.CompileExpression(expression.Expression, toType, inheritedConstraints|ConstraintsConvExplicit)
+
+	case ast.AssertionKindNonNull:
+		// Non-null assertion: compile expression, optionally insert runtime check
+		expr := c.CompileExpression(expression.Expression, contextualType.ExceptVoid(), inheritedConstraints)
+		typ := c.CurrentType
+		if c.CurrentFlow.IsNonnull(expr, typ) {
+			c.Info(
+				diagnostics.DiagnosticCodeExpressionIsNeverNull,
+				expression.Expression.GetRange(),
+				"", "", "",
+			)
+		} else if !c.Options().NoAssert {
+			expr = c.makeRuntimeNonNullCheck(expr, typ, expression)
+		}
+		c.CurrentType = typ.NonNullableType()
 		return expr
+
 	case ast.AssertionKindConst:
-		// Const assertion: just compile the expression
-		return c.CompileExpression(expression.Expression, contextualType, constraints)
-	default:
-		c.CurrentType = contextualType
+		// TODO: decide on the layout of ReadonlyArray first
+		c.Error(
+			diagnostics.DiagnosticCodeNotImplemented0,
+			expression.GetRange(),
+			"Const assertion", "", "",
+		)
 		return c.Module().Unreachable()
+
+	default:
+		panic("unexpected assertion kind")
 	}
 }
 
@@ -562,9 +573,9 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 
 	// logical (no overloading)
 	case tokenizer.TokenAmpersandAmpersand:
-		return c.compileLogicalAnd(left, right, contextualType)
+		return c.compileLogicalAnd(left, right, expression, contextualType, constraints)
 	case tokenizer.TokenBarBar:
-		return c.compileLogicalOr(left, right, contextualType)
+		return c.compileLogicalOr(left, right, expression, contextualType, constraints)
 
 	case tokenizer.TokenIn:
 		c.Error(diagnostics.DiagnosticCodeNotImplemented0,
@@ -763,7 +774,7 @@ func (c *Compiler) compileUnaryOverload(
 	value ast.Node, valueExpr module.ExpressionRef,
 	reportNode ast.Node,
 ) module.ExpressionRef {
-	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{valueExpr}, reportNode)
+	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{valueExpr}, reportNode, false)
 }
 
 func (c *Compiler) compileBinaryOverload(
@@ -783,7 +794,7 @@ func (c *Compiler) compileBinaryOverload(
 		rightType = parameterTypes[1]
 	}
 	rightExpr := c.CompileExpression(right, rightType, ConstraintsConvImplicit)
-	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{leftExpr, rightExpr}, reportNode)
+	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{leftExpr, rightExpr}, reportNode, false)
 }
 
 // compileCommutativeBinaryOverload compiles a commutative binary operator overload (== != === !==).
@@ -803,7 +814,7 @@ func (c *Compiler) compileCommutativeBinaryOverload(
 		firstExpr = c.convertExpression(firstExpr, firstType, parameterTypes[0], false, first)
 		secondExpr = c.convertExpression(secondExpr, secondType, parameterTypes[1], false, second)
 	}
-	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{firstExpr, secondExpr}, reportNode)
+	return c.makeCallDirect(operatorInstance, []module.ExpressionRef{firstExpr, secondExpr}, reportNode, false)
 }
 
 // makeAssignment stores a compiled value to a resolved target element.
@@ -904,7 +915,7 @@ func (c *Compiler) makeAssignment(
 			thisType := setterInstance.Signature.ThisType
 			thisExpr := c.CompileExpression(thisExpression, thisType, ConstraintsConvImplicit|ConstraintsIsThis)
 			if !tee {
-				return c.makeCallDirect(setterInstance, []module.ExpressionRef{thisExpr, valueExpr}, valueExpression)
+				return c.makeCallDirect(setterInstance, []module.ExpressionRef{thisExpr, valueExpr}, valueExpression, false)
 			}
 			tempLocal := fl.GetTempLocal(valueType)
 			tempIndex := tempLocal.FlowIndex()
@@ -913,14 +924,14 @@ func (c *Compiler) makeAssignment(
 				c.makeCallDirect(setterInstance, []module.ExpressionRef{
 					thisExpr,
 					mod.LocalTee(tempIndex, valueExpr, valueType.IsManaged(), valueTypeRef),
-				}, valueExpression),
+				}, valueExpression, false),
 				mod.LocalGet(tempIndex, valueTypeRef),
 			}, valueTypeRef)
 			c.CurrentType = valueType
 			return ret
 		} else {
 			if !tee {
-				return c.makeCallDirect(setterInstance, []module.ExpressionRef{valueExpr}, valueExpression)
+				return c.makeCallDirect(setterInstance, []module.ExpressionRef{valueExpr}, valueExpression, false)
 			}
 			tempLocal := fl.GetTempLocal(valueType)
 			tempIndex := tempLocal.FlowIndex()
@@ -928,7 +939,7 @@ func (c *Compiler) makeAssignment(
 			ret := mod.Block("", []module.ExpressionRef{
 				c.makeCallDirect(setterInstance, []module.ExpressionRef{
 					mod.LocalTee(tempIndex, valueExpr, valueType.IsManaged(), valueTypeRef),
-				}, valueExpression),
+				}, valueExpression, false),
 				mod.LocalGet(tempIndex, valueTypeRef),
 			}, valueTypeRef)
 			c.CurrentType = valueType
@@ -994,11 +1005,11 @@ func (c *Compiler) makeAssignment(
 					mod.LocalTee(tempTarget.FlowIndex(), thisExpr, thisType.IsManaged(), thisType.ToRef()),
 					mod.LocalTee(tempElement.FlowIndex(), elementExpr, elementType.IsManaged(), elementType.ToRef()),
 					valueExpr,
-				}, valueExpression),
+				}, valueExpression, false),
 				c.makeCallDirect(getterInstance, []module.ExpressionRef{
 					mod.LocalGet(tempTarget.FlowIndex(), thisType.ToRef()),
 					mod.LocalGet(tempElement.FlowIndex(), elementType.ToRef()),
-				}, valueExpression),
+				}, valueExpression, false),
 			}, returnType.ToRef())
 			return ret
 		}
@@ -1006,7 +1017,7 @@ func (c *Compiler) makeAssignment(
 			thisExpr,
 			elementExpr,
 			valueExpr,
-		}, valueExpression)
+		}, valueExpression, false)
 
 	default:
 		c.Error(diagnostics.DiagnosticCodeNotImplemented0, valueExpression.GetRange(), "Assignment target kind", "", "")
@@ -1183,8 +1194,59 @@ func (c *Compiler) compileCallExpression(expression *ast.CallExpression, context
 	return mod.Unreachable()
 }
 
+// checkCallSignature checks the number of arguments against a call signature.
+// Returns true if the signature is compatible, otherwise reports a diagnostic and returns false.
+// Ported from: assemblyscript/src/compiler.ts checkCallSignature (lines 6274-6316).
+func (c *Compiler) checkCallSignature(
+	signature *types.Signature,
+	numArguments int32,
+	hasThis bool,
+	reportNode ast.Node,
+) bool {
+	// cannot call an instance method without a `this` argument (TODO: .call?)
+	thisType := signature.ThisType
+	if hasThis != (thisType != nil) {
+		c.Error(
+			diagnostics.DiagnosticCodeTheThisTypesOfEachSignatureAreIncompatible,
+			reportNode.GetRange(),
+			"", "", "",
+		)
+		return false
+	}
+
+	hasRest := signature.HasRest
+	minimum := signature.RequiredParameters
+	maximum := int32(len(signature.ParameterTypes))
+
+	// must at least be called with required arguments
+	if numArguments < minimum {
+		code := diagnostics.DiagnosticCodeExpected0ArgumentsButGot1
+		if minimum < maximum {
+			code = diagnostics.DiagnosticCodeExpectedAtLeast0ArgumentsButGot1
+		}
+		c.Error(
+			code,
+			reportNode.GetRange(),
+			strconv.Itoa(int(minimum)), strconv.Itoa(int(numArguments)), "",
+		)
+		return false
+	}
+
+	// must not be called with more than the maximum arguments
+	if numArguments > maximum && !hasRest {
+		c.Error(
+			diagnostics.DiagnosticCodeExpected0ArgumentsButGot1,
+			reportNode.GetRange(),
+			strconv.Itoa(int(maximum)), strconv.Itoa(int(numArguments)), "",
+		)
+		return false
+	}
+
+	return true
+}
+
 // compileCallDirect compiles a direct function call.
-// Ported from: assemblyscript/src/compiler.ts compileCallDirect (lines 6252-6350).
+// Ported from: assemblyscript/src/compiler.ts compileCallDirect (lines 6368-6442).
 func (c *Compiler) compileCallDirect(
 	instance *program.Function,
 	argumentExpressions []ast.Node,
@@ -1194,10 +1256,65 @@ func (c *Compiler) compileCallDirect(
 ) module.ExpressionRef {
 	numArguments := len(argumentExpressions)
 	signature := instance.Signature
-	parameterTypes := signature.ParameterTypes
-	returnType := signature.ReturnType
 
-	// Compile arguments
+	if !c.checkCallSignature(
+		signature,
+		int32(numArguments),
+		thisArg != 0,
+		reportNode,
+	) {
+		c.CurrentType = signature.ReturnType
+		return c.Module().Unreachable()
+	}
+	if instance.HasDecorator(program.DecoratorFlagsUnsafe) {
+		c.checkUnsafe(reportNode, nil)
+	}
+
+	argumentExpressions = c.adjustArgumentsForRestParams(argumentExpressions, signature, reportNode)
+	numArguments = len(argumentExpressions)
+
+	// handle call on `this` in constructors
+	sourceFunction := c.CurrentFlow.SourceFunction()
+	if sourceFunction.Is(common.CommonFlagsConstructor) && ast.IsAccessOnThis(reportNode) {
+		parentRef := sourceFunction.FlowParent()
+		if parentRef != nil && parentRef.GetElementKind() == program.ElementKindClass {
+			c.checkFieldInitialization(parentRef.(*program.Class), reportNode)
+		}
+	}
+
+	// Inline if explicitly requested
+	inlineRequested := instance.HasDecorator(program.DecoratorFlagsInline) || c.CurrentFlow.Is(flow.FlowFlagInlineContext)
+	if inlineRequested && (!instance.Is(common.CommonFlagsOverridden) || ast.IsAccessOnSuper(reportNode)) {
+		if instance.Is(common.CommonFlagsStub) {
+			panic("@inline on stub doesn't make sense")
+		}
+		inlineStack := c.InlineStack
+		if inlineStackContains(inlineStack, instance) {
+			c.Warning(
+				diagnostics.DiagnosticCodeFunction0CannotBeInlinedIntoItself,
+				reportNode.GetRange(),
+				instance.GetInternalName(), "", "",
+			)
+		} else {
+			parameterTypes := signature.ParameterTypes
+			if numArguments > len(parameterTypes) {
+				panic("numArguments > parameterTypes.length for inline")
+			}
+			// compile argument expressions *before* pushing to the inline stack
+			// otherwise, the arguments may not be inlined, e.g. `abc(abc(123))`
+			args := make([]module.ExpressionRef, numArguments)
+			for i := 0; i < numArguments; i++ {
+				args[i] = c.CompileExpression(argumentExpressions[i], parameterTypes[i], ConstraintsConvImplicit)
+			}
+			// make the inlined call
+			c.InlineStack = append(inlineStack, instance)
+			expr := c.makeCallInline(instance, args, thisArg, (constraints&ConstraintsWillDrop) != 0)
+			c.InlineStack = c.InlineStack[:len(c.InlineStack)-1]
+			return expr
+		}
+	}
+
+	// Otherwise compile to just a call
 	numArgumentsInclThis := numArguments
 	if thisArg != 0 {
 		numArgumentsInclThis++
@@ -1208,19 +1325,23 @@ func (c *Compiler) compileCallDirect(
 		operands[0] = thisArg
 		index = 1
 	}
-	for i := 0; i < numArguments && i < len(parameterTypes); i++ {
+	parameterTypes := signature.ParameterTypes
+	for i := 0; i < numArguments; i++ {
 		paramType := parameterTypes[i]
 		paramExpr := c.CompileExpression(argumentExpressions[i], paramType, ConstraintsConvImplicit)
 		operands[index] = paramExpr
 		index++
 	}
-
-	c.CurrentType = returnType
-	return c.makeCallDirect(instance, operands, reportNode)
+	if index != numArgumentsInclThis {
+		panic("index != numArgumentsInclThis")
+	}
+	return c.makeCallDirect(instance, operands, reportNode, (constraints&ConstraintsWillDrop) != 0)
 }
 
-// compileCallIndirect compiles an indirect function call through a function reference.
-// Ported from: assemblyscript/src/compiler.ts compileCallIndirect (lines 6878-6970).
+// compileCallIndirect compiles an indirect call to a first-class function.
+// Checks the call signature, adjusts for rest params, compiles argument
+// expressions to operands, then delegates to makeCallIndirect.
+// Ported from: assemblyscript/src/compiler.ts compileCallIndirect (lines 7007-7044).
 func (c *Compiler) compileCallIndirect(
 	signature *types.Signature,
 	functionArg module.ExpressionRef,
@@ -1229,60 +1350,55 @@ func (c *Compiler) compileCallIndirect(
 	thisArg module.ExpressionRef,
 	immediatelyDropped bool,
 ) module.ExpressionRef {
-	mod := c.Module()
-	parameterTypes := signature.ParameterTypes
 	numArguments := len(argumentExpressions)
-	returnType := signature.ReturnType
 
-	numOperands := numArguments
-	if thisArg != 0 {
-		numOperands++
+	if !c.checkCallSignature( // reports
+		signature,
+		int32(numArguments),
+		thisArg != 0,
+		reportNode,
+	) {
+		return c.Module().Unreachable()
 	}
-	operands := make([]module.ExpressionRef, numOperands)
+
+	argumentExpressions = c.adjustArgumentsForRestParams(argumentExpressions, signature, reportNode)
+	numArguments = len(argumentExpressions)
+
+	numArgumentsInclThis := numArguments
+	if thisArg != 0 {
+		numArgumentsInclThis++
+	}
+	operands := make([]module.ExpressionRef, numArgumentsInclThis)
 	index := 0
 	if thisArg != 0 {
 		operands[0] = thisArg
 		index = 1
 	}
-	for i := 0; i < numArguments && i < len(parameterTypes); i++ {
+	parameterTypes := signature.ParameterTypes
+	for i := 0; i < numArguments; i++ {
 		operands[index] = c.CompileExpression(argumentExpressions[i], parameterTypes[i], ConstraintsConvImplicit)
 		index++
 	}
-
-	c.CurrentType = returnType
-	return mod.CallIndirect(
-		common.CommonNameDefaultTable,
-		functionArg,
-		operands,
-		signature.ParamRefs(),
-		signature.ResultRefs(),
-	)
+	if index != numArgumentsInclThis {
+		panic("compileCallIndirect: index != numArgumentsInclThis")
+	}
+	return c.makeCallIndirect(signature, functionArg, reportNode, operands, immediatelyDropped)
 }
 
 // compileCommaExpression compiles a comma expression.
-// Ported from: assemblyscript/src/compiler.ts compileCommaExpression (lines 4342-4365).
+// Ported from: assemblyscript/src/compiler.ts compileCommaExpression (lines 7114-7129).
 func (c *Compiler) compileCommaExpression(expression *ast.CommaExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
-	mod := c.Module()
 	exprs := expression.Expressions
-	n := len(exprs)
-	if n == 0 {
-		c.CurrentType = types.TypeVoid
-		return mod.Nop()
+	numExpressions := len(exprs)
+	compiledExprs := make([]module.ExpressionRef, numExpressions)
+	numExpressions--
+	for i := 0; i < numExpressions; i++ {
+		compiledExprs[i] = c.CompileExpression(exprs[i], types.TypeVoid, // drop all except last
+			ConstraintsConvImplicit|ConstraintsWillDrop,
+		)
 	}
-
-	stmts := make([]module.ExpressionRef, 0, n)
-	for i := 0; i < n-1; i++ {
-		expr := c.CompileExpression(exprs[i], types.TypeVoid, ConstraintsWillDrop)
-		if c.CurrentType != types.TypeVoid {
-			expr = mod.Drop(expr)
-		}
-		stmts = append(stmts, expr)
-	}
-	// Last expression determines the result
-	lastExpr := c.CompileExpression(exprs[n-1], contextualType, constraints)
-	stmts = append(stmts, lastExpr)
-
-	return mod.Block("", stmts, c.CurrentType.ToRef())
+	compiledExprs[numExpressions] = c.CompileExpression(exprs[numExpressions], contextualType, constraints)
+	return c.Module().Flatten(compiledExprs, c.CurrentType.ToRef())
 }
 
 // compileElementAccessExpression compiles an element access expression (array indexing).
@@ -1418,32 +1534,121 @@ func (c *Compiler) compileIdentifierExpression(expression *ast.IdentifierExpress
 		c.CurrentType = types.TypeBool
 		return mod.I32(0)
 	case ast.NodeKindNull:
+		options := c.Options()
 		if contextualType.IsReference() {
-			c.CurrentType = contextualType
-		} else {
-			c.CurrentType = c.Options().UsizeType()
+			classRef := contextualType.GetClass()
+			if classRef != nil {
+				c.CurrentType = classRef.GetType().AsNullable()
+				if options.IsWasm64() {
+					return mod.I64(0)
+				}
+				return mod.I32(0)
+			}
+			sigRef := contextualType.GetSignature()
+			if sigRef != nil {
+				c.CurrentType = sigRef.Type.AsNullable()
+				if options.IsWasm64() {
+					return mod.I64(0)
+				}
+				return mod.I32(0)
+			}
+			return c.makeZeroOfType(contextualType)
 		}
-		return c.makeZeroOfType(c.CurrentType)
+		c.CurrentType = options.UsizeType()
+		c.Warning(
+			diagnostics.DiagnosticCodeExpressionResolvesToUnusualType0,
+			expression.GetRange(),
+			c.CurrentType.String(), "", "",
+		)
+		if options.IsWasm64() {
+			return mod.I64(0)
+		}
+		return mod.I32(0)
 	case ast.NodeKindThis:
-		thisType := fl.TargetFunction.FlowSignature().ThisType
-		if thisType != nil {
-			c.CurrentType = thisType
-			return mod.LocalGet(0, thisType.ToRef())
+		sourceFunction := fl.SourceFunction()
+		thisType := sourceFunction.FlowSignature().ThisType
+		if thisType == nil {
+			c.Error(
+				diagnostics.DiagnosticCodeThisCannotBeReferencedInCurrentLocation,
+				expression.GetRange(),
+				"", "", "",
+			)
+			c.CurrentType = c.Options().UsizeType()
+			return mod.Unreachable()
+		}
+		if sourceFunction.Is(uint32(common.CommonFlagsConstructor)) {
+			if fl.Is(flow.FlowFlagCtorParamContext) {
+				c.Error(
+					diagnostics.DiagnosticCodeThisCannotBeReferencedInConstructorArguments,
+					expression.GetRange(),
+					"", "", "",
+				)
+			}
+			if constraints&ConstraintsIsThis == 0 {
+				parent := sourceFunction.(program.Element).GetParent()
+				if parent != nil && parent.GetElementKind() == program.ElementKindClass {
+					c.checkFieldInitialization(parent.(*program.Class), expression)
+				}
+			}
+		}
+		thisLocal := fl.LookupLocal("this")
+		fl.SetFlag(flow.FlowFlagAccessesThis)
+		c.CurrentType = thisType
+		if thisLocal != nil {
+			return mod.LocalGet(thisLocal.FlowIndex(), thisType.ToRef())
+		}
+		return mod.LocalGet(0, thisType.ToRef())
+	case ast.NodeKindSuper:
+		sourceFunction := fl.SourceFunction()
+		if sourceFunction.Is(uint32(common.CommonFlagsConstructor)) {
+			if fl.Is(flow.FlowFlagCtorParamContext) {
+				c.Error(
+					diagnostics.DiagnosticCodeSuperCannotBeReferencedInConstructorArguments,
+					expression.GetRange(),
+					"", "", "",
+				)
+			} else if !fl.Is(flow.FlowFlagCallsSuper) {
+				c.Error(
+					diagnostics.DiagnosticCodeSuperMustBeCalledBeforeAccessingAPropertyOfSuperInTheConstructorOfADerivedClass,
+					expression.GetRange(),
+					"", "", "",
+				)
+			}
+		}
+		if fl.IsInline() {
+			scopedThis := fl.LookupLocal("this")
+			if scopedThis != nil {
+				scopedThisClassRef := scopedThis.GetType().GetClass()
+				if scopedThisClassRef != nil {
+					if scopedThisClass, ok := scopedThisClassRef.(*program.Class); ok {
+						base := scopedThisClass.Base
+						if base != nil {
+							superType := base.GetResolvedType()
+							c.CurrentType = superType
+							return mod.LocalGet(scopedThis.FlowIndex(), superType.ToRef())
+						}
+					}
+				}
+			}
+		}
+		if sourceFunction.Is(uint32(common.CommonFlagsInstance)) {
+			parent := sourceFunction.(program.Element).GetParent()
+			if parent != nil && parent.GetElementKind() == program.ElementKindClass {
+				classInstance := parent.(*program.Class)
+				baseClassInstance := classInstance.Base
+				if baseClassInstance != nil {
+					superType := baseClassInstance.GetResolvedType()
+					c.CurrentType = superType
+					return mod.LocalGet(0, superType.ToRef())
+				}
+			}
 		}
 		c.Error(
-			diagnostics.DiagnosticCode0KeywordCannotBeUsedHere,
+			diagnostics.DiagnosticCodeSuperCanOnlyBeReferencedInADerivedClass,
 			expression.GetRange(),
-			"this", "", "",
+			"", "", "",
 		)
-		c.CurrentType = contextualType
-		return mod.Unreachable()
-	case ast.NodeKindSuper:
-		c.Error(
-			diagnostics.DiagnosticCode0KeywordCannotBeUsedHere,
-			expression.GetRange(),
-			"super", "", "",
-		)
-		c.CurrentType = contextualType
+		c.CurrentType = c.Options().UsizeType()
 		return mod.Unreachable()
 	}
 
@@ -1586,73 +1791,221 @@ func (c *Compiler) compileElementAccess(element program.Element, reportNode ast.
 }
 
 // compileInstanceOfExpression compiles an instanceof expression.
-// Ported from: assemblyscript/src/compiler.ts compileInstanceOfExpression (lines 4867-4970).
+// Ported from: assemblyscript/src/compiler.ts compileInstanceOfExpression (lines 7650-7683).
 func (c *Compiler) compileInstanceOfExpression(expression *ast.InstanceOfExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
-	mod := c.Module()
 	fl := c.CurrentFlow
-	resolver := c.Resolver()
+	isTypeNode := expression.IsType
 
-	// Compile the expression being tested
-	expr := c.CompileExpression(expression.Expression, c.Options().UsizeType(), ConstraintsNone)
-	exprType := c.CurrentType
-	c.CurrentType = types.TypeBool
+	// Mimic `instanceof CLASS` (generic prototype)
+	if namedType, ok := isTypeNode.(*ast.NamedTypeNode); ok {
+		if !namedType.IsNullable && !namedType.HasTypeArguments() {
+			element := c.Resolver().ResolveTypeName(
+				namedType.Name,
+				fl,
+				fl.SourceFunction().(program.Element),
+				program.ReportModeSwallow,
+			)
+			if element != nil && element.GetElementKind() == program.ElementKindClassPrototype {
+				prototype := element.(*program.ClassPrototype)
+				if prototype.Is(common.CommonFlagsGeneric) {
+					return c.makeInstanceofClass(expression, prototype)
+				}
+			}
+		}
+	}
 
-	// Resolve the target type
-	isType := resolver.ResolveType(
+	// Fall back to `instanceof TYPE`
+	ctxTypes := cloneTypeArgMap(fl.ContextualTypeArguments())
+	expectedType := c.Resolver().ResolveType(
 		expression.IsType,
 		fl,
-		fl.TargetFunction.(program.Element),
-		nil,
+		fl.SourceFunction().(program.Element),
+		ctxTypes,
 		program.ReportModeReport,
 	)
-	if isType == nil {
-		return mod.Unreachable()
+	if expectedType == nil {
+		c.CurrentType = types.TypeBool
+		return c.Module().Unreachable()
 	}
+	return c.makeInstanceofType(expression, expectedType)
+}
 
-	// Trivial cases: value type checks
-	if !exprType.IsReference() {
-		// Value types: instanceof is a compile-time check
-		if exprType == isType {
-			// Always true, but still evaluate expr for side effects
-			return mod.Block("", []module.ExpressionRef{
-				mod.Drop(expr),
-				mod.I32(1),
-			}, module.TypeRefI32)
+// makeInstanceofType compiles an instanceof check against a resolved type.
+// Ported from: assemblyscript/src/compiler.ts makeInstanceofType (lines 7685-7786).
+func (c *Compiler) makeInstanceofType(expression *ast.InstanceOfExpression, expectedType *types.Type) module.ExpressionRef {
+	mod := c.Module()
+	fl := c.CurrentFlow
+	expr := c.CompileExpression(expression.Expression, expectedType, ConstraintsNone)
+	actualType := c.CurrentType
+	c.CurrentType = types.TypeBool
+
+	// instanceof <value> - must be exact
+	if expectedType.IsValue() {
+		if actualType == expectedType {
+			return mod.MaybeDropCondition(expr, mod.I32(1))
 		}
-		return mod.Block("", []module.ExpressionRef{
-			mod.Drop(expr),
-			mod.I32(0),
-		}, module.TypeRefI32)
+		return mod.MaybeDropCondition(expr, mod.I32(0))
 	}
 
-	if !isType.IsReference() {
-		// Reference instanceof value type is always false
-		return mod.Block("", []module.ExpressionRef{
-			mod.Drop(expr),
-			mod.I32(0),
-		}, module.TypeRefI32)
+	// <value> instanceof <nonValue> - always false
+	if actualType.IsValue() {
+		return mod.MaybeDropCondition(expr, mod.I32(0))
 	}
 
-	// Both are reference types: need runtime check
-	// Get the class being tested against
-	classRef := isType.GetClassOrWrapper(c.Program)
-	if classRef == nil {
-		return mod.Block("", []module.ExpressionRef{
-			mod.Drop(expr),
-			mod.I32(0),
-		}, module.TypeRefI32)
+	// both LHS and RHS are references now
+	sizeTypeRef := actualType.ToRef()
+
+	// <nullable> instanceof <nonNullable> - LHS must be != 0
+	if actualType.IsNullableReference() && !expectedType.IsNullableReference() {
+
+		// same or upcast - check statically
+		if actualType.NonNullableType().IsAssignableTo(expectedType, false) {
+			var neOp module.Op
+			if sizeTypeRef == module.TypeRefI64 {
+				neOp = module.BinaryOpNeI64
+			} else {
+				neOp = module.BinaryOpNeI32
+			}
+			return mod.Binary(neOp, expr, c.makeZeroOfType(actualType))
+		}
+
+		// potential downcast - check dynamically
+		if actualType.NonNullableType().HasSubtypeAssignableTo(expectedType) {
+			if !actualType.IsUnmanaged() && !expectedType.IsUnmanaged() {
+				if c.Options().Pedantic {
+					c.Pedantic(
+						diagnostics.DiagnosticCodeExpressionCompilesToADynamicCheckAtRuntime,
+						expression.GetRange(),
+						"", "", "",
+					)
+				}
+				temp := fl.GetTempLocal(actualType)
+				tempIndex := temp.FlowIndex()
+				var eqzOp module.Op
+				if sizeTypeRef == module.TypeRefI64 {
+					eqzOp = module.UnaryOpEqzI64
+				} else {
+					eqzOp = module.UnaryOpEqzI32
+				}
+				classRef := expectedType.ClassRef.(*program.Class)
+				return mod.If(
+					mod.Unary(eqzOp,
+						mod.LocalTee(tempIndex, expr, actualType.IsManaged(), sizeTypeRef),
+					),
+					mod.I32(0),
+					mod.Call(c.prepareInstanceOf(classRef), []module.ExpressionRef{
+						mod.LocalGet(tempIndex, sizeTypeRef),
+					}, module.TypeRefI32),
+				)
+			} else {
+				c.Error(
+					diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
+					expression.GetRange(),
+					"instanceof", actualType.String(), expectedType.String(),
+				)
+			}
+		}
+
+	// either none or both nullable
+	} else {
+
+		// same or upcast - check statically
+		if actualType.IsAssignableTo(expectedType, false) {
+			return mod.MaybeDropCondition(expr, mod.I32(1))
+		}
+
+		// potential downcast - check dynamically
+		if actualType.HasSubtypeAssignableTo(expectedType) {
+			if !actualType.IsUnmanaged() && !expectedType.IsUnmanaged() {
+				temp := fl.GetTempLocal(actualType)
+				tempIndex := temp.FlowIndex()
+				var eqzOp module.Op
+				if sizeTypeRef == module.TypeRefI64 {
+					eqzOp = module.UnaryOpEqzI64
+				} else {
+					eqzOp = module.UnaryOpEqzI32
+				}
+				classRef := expectedType.ClassRef.(*program.Class)
+				return mod.If(
+					mod.Unary(eqzOp,
+						mod.LocalTee(tempIndex, expr, actualType.IsManaged(), sizeTypeRef),
+					),
+					mod.I32(0),
+					mod.Call(c.prepareInstanceOf(classRef), []module.ExpressionRef{
+						mod.LocalGet(tempIndex, sizeTypeRef),
+					}, module.TypeRefI32),
+				)
+			} else {
+				c.Error(
+					diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
+					expression.GetRange(),
+					"instanceof", actualType.String(), expectedType.String(),
+				)
+			}
+		}
 	}
 
-	classInstance, ok := classRef.(*program.Class)
-	if !ok {
-		return mod.Block("", []module.ExpressionRef{
-			mod.Drop(expr),
-			mod.I32(0),
-		}, module.TypeRefI32)
+	// false
+	return mod.MaybeDropCondition(expr, mod.I32(0))
+}
+
+// makeInstanceofClass compiles an instanceof check against a generic class prototype.
+// Ported from: assemblyscript/src/compiler.ts makeInstanceofClass (lines 7876-7929).
+func (c *Compiler) makeInstanceofClass(expression *ast.InstanceOfExpression, prototype *program.ClassPrototype) module.ExpressionRef {
+	mod := c.Module()
+	expr := c.CompileExpression(expression.Expression, types.TypeAuto, ConstraintsNone)
+	actualType := c.CurrentType
+	sizeTypeRef := actualType.ToRef()
+
+	c.CurrentType = types.TypeBool
+
+	// exclusively interested in class references here
+	classRef := actualType.GetClass()
+	if classRef != nil {
+		classInstance, ok := classRef.(*program.Class)
+		if ok {
+			// static check
+			if classInstance.ExtendsPrototype(prototype) {
+				// <nullable> instanceof <PROTOTYPE> - LHS must be != 0
+				if actualType.IsNullableReference() {
+					var neOp module.Op
+					if sizeTypeRef == module.TypeRefI64 {
+						neOp = module.BinaryOpNeI64
+					} else {
+						neOp = module.BinaryOpNeI32
+					}
+					return mod.Binary(neOp, expr, c.makeZeroOfType(actualType))
+				}
+				// <nonNullable> is just `true`
+				return mod.MaybeDropCondition(expr, mod.I32(1))
+
+			// dynamic check against all possible concrete ids
+			} else if prototype.Extends(classInstance.Prototype) {
+				fl := c.CurrentFlow
+				temp := fl.GetTempLocal(actualType)
+				tempIndex := temp.FlowIndex()
+				var eqzOp module.Op
+				if sizeTypeRef == module.TypeRefI64 {
+					eqzOp = module.UnaryOpEqzI64
+				} else {
+					eqzOp = module.UnaryOpEqzI32
+				}
+				// !(t = expr) ? 0 : anyinstanceof(t)
+				return mod.If(
+					mod.Unary(eqzOp,
+						mod.LocalTee(tempIndex, expr, actualType.IsManaged(), sizeTypeRef),
+					),
+					mod.I32(0),
+					mod.Call(c.prepareAnyInstanceOf(prototype), []module.ExpressionRef{
+						mod.LocalGet(tempIndex, sizeTypeRef),
+					}, module.TypeRefI32),
+				)
+			}
+		}
 	}
 
-	instanceofName := c.prepareInstanceOf(classInstance)
-	return mod.Call(instanceofName, []module.ExpressionRef{expr}, module.TypeRefI32)
+	// false
+	return mod.MaybeDropCondition(expr, mod.I32(0))
 }
 
 // compileLiteralExpression compiles a literal expression (number, string, array, etc.).
@@ -1705,6 +2058,15 @@ func (c *Compiler) compileIntegerLiteral(expression *ast.IntegerLiteralExpressio
 	if contextualType == types.TypeI64 || contextualType == types.TypeU64 {
 		c.CurrentType = contextualType
 		return mod.I64(value)
+	}
+
+	// isize/usize: depends on wasm32 vs wasm64
+	if contextualType.Kind == types.TypeKindIsize || contextualType.Kind == types.TypeKindUsize {
+		c.CurrentType = contextualType
+		if c.Options().IsWasm64() {
+			return mod.I64(value)
+		}
+		return mod.I32(int32(value))
 	}
 
 	// Otherwise, produce i32
@@ -2095,7 +2457,7 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 				valueExpr := c.CompileExpression(values[i], setterInstance.Signature.ParameterTypes[0], ConstraintsConvImplicit)
 				stmts = append(stmts, c.makeCallDirect(setterInstance,
 					[]module.ExpressionRef{mod.LocalGet(tempIdx, sizeTypeRef), valueExpr},
-					expression,
+					expression, false,
 				))
 			}
 		}
@@ -2313,22 +2675,23 @@ func (c *Compiler) compileTernaryExpression(expression *ast.TernaryExpression, c
 	ifThen := expression.IfThen
 	ifElse := expression.IfElse
 
-	condExpr := c.CompileExpression(expression.Condition, types.TypeBool, ConstraintsConvImplicit)
+	condExpr := c.CompileExpression(expression.Condition, types.TypeBool, ConstraintsNone)
 	condExprTrueish := c.makeIsTrueish(condExpr, c.CurrentType, expression.Condition)
 
 	// Try to eliminate unnecessary branches if the condition is constant
+	// FIXME: skips common denominator, inconsistently picking branch type
 	condKind := c.evaluateCondition(condExprTrueish)
 	if condKind == flow.ConditionKindTrue {
-		return mod.MaybeDropCondition(condExprTrueish, c.CompileExpression(ifThen, contextualType, constraints))
+		return mod.MaybeDropCondition(condExprTrueish, c.CompileExpression(ifThen, contextualType, ConstraintsNone))
 	}
 	if condKind == flow.ConditionKindFalse {
-		return mod.MaybeDropCondition(condExprTrueish, c.CompileExpression(ifElse, contextualType, constraints))
+		return mod.MaybeDropCondition(condExprTrueish, c.CompileExpression(ifElse, contextualType, ConstraintsNone))
 	}
 
 	outerFlow := c.CurrentFlow
 	ifThenFlow := outerFlow.ForkThen(condExpr, false, false)
 	c.CurrentFlow = ifThenFlow
-	ifThenExpr := c.CompileExpression(ifThen, contextualType, constraints)
+	ifThenExpr := c.CompileExpression(ifThen, contextualType, ConstraintsNone)
 	ifThenType := c.CurrentType
 
 	ifElseCtx := contextualType
@@ -2337,7 +2700,7 @@ func (c *Compiler) compileTernaryExpression(expression *ast.TernaryExpression, c
 	}
 	ifElseFlow := outerFlow.ForkElse(condExpr)
 	c.CurrentFlow = ifElseFlow
-	ifElseExpr := c.CompileExpression(ifElse, ifElseCtx, constraints)
+	ifElseExpr := c.CompileExpression(ifElse, ifElseCtx, ConstraintsNone)
 	ifElseType := c.CurrentType
 
 	if contextualType == types.TypeVoid {
@@ -2765,35 +3128,8 @@ func (c *Compiler) compileUnaryPrefixExpression(expression *ast.UnaryPrefixExpre
 		}
 
 	case tokenizer.TokenTypeOf:
-		// typeof in AS compiles to a compile-time string constant.
-		// Ported from: assemblyscript/src/compiler.ts compileUnaryPrefixExpression typeof case (lines 5731-5779).
-		expr := c.CompileExpression(expression.Operand, types.TypeAuto, ConstraintsNone)
-		_ = expr // Operand is evaluated for side effects but typeof result is determined by type
-		operandType := c.CurrentType
-		var typeofStr string
-		if operandType.IsReference() {
-			if operandType.IsFunction() {
-				typeofStr = "function"
-			} else {
-				typeofStr = "object"
-			}
-		} else {
-			switch operandType.ToRef() {
-			case module.TypeRefI32:
-				if operandType == types.TypeBool {
-					typeofStr = "boolean"
-				} else {
-					typeofStr = "number"
-				}
-			case module.TypeRefI64:
-				typeofStr = "number"
-			case module.TypeRefF32, module.TypeRefF64:
-				typeofStr = "number"
-			default:
-				typeofStr = "undefined"
-			}
-		}
-		return c.compileStaticString(typeofStr)
+		// Ported from: assemblyscript/src/compiler.ts compileTypeof (lines 9877-9959).
+		return c.compileTypeof(expression, contextualType, constraints)
 
 	case tokenizer.TokenDotDotDot:
 		c.Error(diagnostics.DiagnosticCodeNotImplemented0, expression.GetRange(), "Spread operator", "", "")
@@ -2822,6 +3158,99 @@ func (c *Compiler) compileUnaryPrefixExpression(expression *ast.UnaryPrefixExpre
 		resolver.CurrentElementExpression,
 		contextualType != types.TypeVoid,
 	)
+}
+
+// compileTypeof compiles a typeof expression. Returns a string constant for value types,
+// and resolves reference types to their typeof string.
+// Ported from: assemblyscript/src/compiler.ts compileTypeof (lines 9877-9959).
+func (c *Compiler) compileTypeof(
+	expression *ast.UnaryPrefixExpression,
+	contextualType *types.Type,
+	constraints Constraints,
+) module.ExpressionRef {
+	mod := c.Module()
+	operand := expression.Operand
+	var expr module.ExpressionRef
+	stringInstance := c.Program.StringInstance()
+	var typeString string
+
+	if operand.GetKind() == ast.NodeKindNull {
+		// special since `null` without type context is usize
+		typeString = "object"
+	} else {
+		resolver := c.Resolver()
+		element := resolver.LookupExpression(operand, c.CurrentFlow, types.TypeAuto, program.ReportModeSwallow)
+		if element == nil {
+			switch operand.GetKind() {
+			case ast.NodeKindIdentifier:
+				// ignore error: typeof doesntExist -> undefined
+			case ast.NodeKindPropertyAccess, ast.NodeKindElementAccess:
+				var targetOperand ast.Node
+				if operand.GetKind() == ast.NodeKindPropertyAccess {
+					targetOperand = operand.(*ast.PropertyAccessExpression).Expression
+				} else {
+					targetOperand = operand.(*ast.ElementAccessExpression).Expression
+				}
+				targetType := resolver.ResolveExpression(targetOperand, c.CurrentFlow, types.TypeAuto, program.ReportModeReport)
+				if targetType == nil {
+					// access on non-object
+					c.CurrentType = stringInstance.GetResolvedType()
+					return mod.Unreachable()
+				}
+				// fall-through to default
+				fallthrough
+			default:
+				expr = c.CompileExpression(operand, types.TypeAuto, ConstraintsNone) // may trigger an error
+				expr = c.convertExpression(expr, c.CurrentType, types.TypeVoid, true, operand)
+			}
+			typeString = "undefined"
+		} else {
+			switch element.GetElementKind() {
+			case program.ElementKindClassPrototype,
+				program.ElementKindNamespace,
+				program.ElementKindEnum:
+				typeString = "object"
+
+			case program.ElementKindFunctionPrototype:
+				typeString = "function"
+
+			default:
+				expr = c.CompileExpression(operand, types.TypeAuto, ConstraintsNone)
+				typ := c.CurrentType
+				expr = c.convertExpression(expr, typ, types.TypeVoid, true, operand)
+				if typ.IsReference() {
+					signatureReference := typ.GetSignature()
+					if signatureReference != nil {
+						typeString = "function"
+					} else {
+						classReference := typ.GetClass()
+						if classReference != nil {
+							classInst, ok := classReference.(*program.Class)
+							if ok && classInst.Prototype == stringInstance.Prototype {
+								typeString = "string"
+							} else {
+								typeString = "object"
+							}
+						} else {
+							typeString = "externref" // TODO?
+						}
+					}
+				} else if typ == types.TypeBool {
+					typeString = "boolean"
+				} else if typ.IsNumericValue() {
+					typeString = "number"
+				} else {
+					typeString = "undefined" // failed to compile?
+				}
+			}
+		}
+	}
+
+	c.CurrentType = stringInstance.GetResolvedType()
+	if expr != 0 {
+		return mod.Block("", []module.ExpressionRef{expr, c.ensureStaticString(typeString)}, c.Options().SizeTypeRef())
+	}
+	return c.ensureStaticString(typeString)
 }
 
 // compilePropertyGet compiles reading a property value, either via a getter call or direct memory load.
@@ -2885,7 +3314,7 @@ func (c *Compiler) compilePropertySet(propertyInstance *program.Property, thisEx
 		}
 		operands = append(operands, valueExpr)
 		c.CurrentType = valueType
-		return c.makeCallDirect(setterInstance, operands, reportNode)
+		return c.makeCallDirect(setterInstance, operands, reportNode, false)
 	}
 
 	// Direct field access — store to memory
@@ -3589,7 +4018,7 @@ func (c *Compiler) compileStore(target ast.Node, valueExpr module.ExpressionRef,
 			c.CurrentType = valueType
 			return c.makeCallDirect(indexedSet, []module.ExpressionRef{
 				thisArg, indexExpr, valueExpr,
-			}, target)
+			}, target, false)
 		}
 
 		c.Error(diagnostics.DiagnosticCodeNotImplemented0, target.GetRange(), "Element assignment target", "", "")
@@ -3605,49 +4034,215 @@ func (c *Compiler) compileStore(target ast.Node, valueExpr module.ExpressionRef,
 
 // --- Logical operators (short-circuit) ---
 
-func (c *Compiler) compileLogicalAnd(left, right ast.Node, contextualType *types.Type) module.ExpressionRef {
+// compileLogicalAnd compiles a logical AND expression.
+// Ported from: assemblyscript/src/compiler.ts case Token.Ampersand_Ampersand (lines 4569-4658).
+func (c *Compiler) compileLogicalAnd(left, right ast.Node, expression *ast.BinaryExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
 	fl := c.CurrentFlow
+	inheritedConstraints := constraints & ConstraintsMustWrap
 
-	leftExpr := c.CompileExpression(left, contextualType, ConstraintsNone)
+	leftExpr := c.CompileExpression(left, contextualType.ExceptVoid(), inheritedConstraints)
 	leftType := c.CurrentType
 
-	// Short-circuit: if left is falsy, return left; otherwise return right
-	thenFlow := fl.ForkThen(leftExpr, false, false)
-	c.CurrentFlow = thenFlow
-	rightExpr := c.CompileExpression(right, leftType, ConstraintsConvImplicit)
-	rightType := c.CurrentType
+	rightFlow := fl.ForkThen(leftExpr, false, false)
+	c.CurrentFlow = rightFlow
 
-	c.CurrentFlow = fl
-	fl.MergeBranch(thenFlow)
+	var expr module.ExpressionRef
 
-	c.CurrentType = rightType
+	// simplify if only interested in true or false
+	if contextualType == types.TypeBool || contextualType == types.TypeVoid {
+		leftExpr = c.makeIsTrueish(leftExpr, leftType, left)
 
-	// For i32: if (left) right else left — using select or if
-	truthyExpr := c.makeIsTrueish(leftExpr, leftType, left)
-	return mod.If(truthyExpr, rightExpr, leftExpr)
+		// shortcut if lhs is always false
+		condKind := c.evaluateCondition(leftExpr)
+		if condKind == flow.ConditionKindFalse {
+			expr = leftExpr
+			// RHS is not compiled
+		} else {
+			rightExpr := c.CompileExpression(right, leftType, inheritedConstraints)
+			rightType := c.CurrentType
+			rightExpr = c.makeIsTrueish(rightExpr, rightType, right)
+
+			// simplify if lhs is always true
+			if condKind == flow.ConditionKindTrue {
+				expr = rightExpr
+				fl.Inherit(rightFlow) // true && RHS -> RHS always executes
+			} else {
+				expr = mod.If(leftExpr, rightExpr, mod.I32(0))
+				fl.MergeBranch(rightFlow) // LHS && RHS -> RHS conditionally executes
+				fl.NoteThen(expr, rightFlow) // LHS && RHS == true -> RHS always executes
+			}
+		}
+		c.CurrentFlow = fl
+		c.CurrentType = types.TypeBool
+
+	} else {
+		rightExpr := c.CompileExpression(right, leftType, inheritedConstraints)
+		rightType := c.CurrentType
+		commonType := types.CommonType(leftType, rightType, contextualType, false)
+		if commonType == nil {
+			c.Error(
+				diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
+				expression.GetRange(),
+				"&&", leftType.ToString(false), rightType.ToString(false),
+			)
+			c.CurrentType = contextualType
+			return mod.Unreachable()
+		}
+		leftExpr = c.convertExpression(leftExpr, leftType, commonType, false, left)
+		leftType = commonType
+
+		// This is sometimes needed to make the left trivial
+		leftPrecompExpr := mod.RunExpression(leftExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 8, 1)
+		if leftPrecompExpr != 0 {
+			leftExpr = leftPrecompExpr
+		}
+
+		rightExpr = c.convertExpression(rightExpr, rightType, commonType, false, right)
+
+		condExpr := c.makeIsTrueish(leftExpr, commonType, left)
+		condKind := c.evaluateCondition(condExpr)
+
+		if condKind != flow.ConditionKindUnknown {
+			// simplify if left is a constant
+			if condKind == flow.ConditionKindTrue {
+				expr = rightExpr
+			} else {
+				expr = leftExpr
+			}
+		} else if trivialCopy := mod.TryCopyTrivialExpression(leftExpr); trivialCopy != 0 {
+			// simplify if copying left is trivial
+			expr = mod.If(condExpr, rightExpr, trivialCopy)
+		} else {
+			// if not possible, tee left to a temp
+			tempLocal := fl.GetTempLocal(leftType)
+			tempIndex := tempLocal.FlowIndex()
+			if !fl.CanOverflow(leftExpr, leftType) {
+				fl.SetLocalFlag(tempIndex, flow.LocalFlagWrapped)
+			}
+			if fl.IsNonnull(leftExpr, leftType) {
+				fl.SetLocalFlag(tempIndex, flow.LocalFlagNonNull)
+			}
+			expr = mod.If(
+				c.makeIsTrueish(mod.LocalTee(tempIndex, leftExpr, leftType.IsManaged(), leftType.ToRef()), leftType, left),
+				rightExpr,
+				mod.LocalGet(tempIndex, leftType.ToRef()),
+			)
+		}
+		fl.MergeBranch(rightFlow)     // LHS && RHS -> RHS conditionally executes
+		fl.NoteThen(expr, rightFlow)  // LHS && RHS == true -> RHS always executes
+		c.CurrentFlow = fl
+		c.CurrentType = commonType
+	}
+	return expr
 }
 
-func (c *Compiler) compileLogicalOr(left, right ast.Node, contextualType *types.Type) module.ExpressionRef {
+// compileLogicalOr compiles a logical OR expression.
+// Ported from: assemblyscript/src/compiler.ts case Token.Bar_Bar (lines 4660-4754).
+func (c *Compiler) compileLogicalOr(left, right ast.Node, expression *ast.BinaryExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
 	fl := c.CurrentFlow
+	inheritedConstraints := constraints & ConstraintsMustWrap
 
-	leftExpr := c.CompileExpression(left, contextualType, ConstraintsNone)
+	leftExpr := c.CompileExpression(left, contextualType.ExceptVoid(), inheritedConstraints)
 	leftType := c.CurrentType
 
-	// Short-circuit: if left is truthy, return left; otherwise return right
-	elseFlow := fl.ForkElse(leftExpr)
-	c.CurrentFlow = elseFlow
-	rightExpr := c.CompileExpression(right, leftType, ConstraintsConvImplicit)
-	rightType := c.CurrentType
+	rightFlow := fl.ForkElse(leftExpr)
+	c.CurrentFlow = rightFlow
 
-	c.CurrentFlow = fl
-	fl.MergeBranch(elseFlow)
+	var expr module.ExpressionRef
 
-	c.CurrentType = rightType
+	// simplify if only interested in true or false
+	if contextualType == types.TypeBool || contextualType == types.TypeVoid {
+		leftExpr = c.makeIsTrueish(leftExpr, leftType, left)
 
-	truthyExpr := c.makeIsTrueish(leftExpr, leftType, left)
-	return mod.If(truthyExpr, leftExpr, rightExpr)
+		// shortcut if lhs is always true
+		condKind := c.evaluateCondition(leftExpr)
+		if condKind == flow.ConditionKindTrue {
+			expr = leftExpr
+			// RHS is not compiled
+		} else {
+			rightExpr := c.CompileExpression(right, leftType, inheritedConstraints)
+			rightType := c.CurrentType
+			rightExpr = c.makeIsTrueish(rightExpr, rightType, right)
+
+			// simplify if lhs is always false
+			if condKind == flow.ConditionKindFalse {
+				expr = rightExpr
+				fl.Inherit(rightFlow) // false || RHS -> RHS always executes
+			} else {
+				expr = mod.If(leftExpr, mod.I32(1), rightExpr)
+				fl.MergeBranch(rightFlow) // LHS || RHS -> RHS conditionally executes
+				fl.NoteElse(expr, rightFlow) // LHS || RHS == false -> RHS always executes
+			}
+		}
+		c.CurrentFlow = fl
+		c.CurrentType = types.TypeBool
+
+	} else {
+		rightExpr := c.CompileExpression(right, leftType, inheritedConstraints)
+		rightType := c.CurrentType
+		commonType := types.CommonType(leftType, rightType, contextualType, false)
+		if commonType == nil {
+			c.Error(
+				diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
+				expression.GetRange(),
+				"||", leftType.ToString(false), rightType.ToString(false),
+			)
+			c.CurrentType = contextualType
+			return mod.Unreachable()
+		}
+		possiblyNull := leftType.Is(types.TypeFlagNullable) && rightType.Is(types.TypeFlagNullable)
+		leftExpr = c.convertExpression(leftExpr, leftType, commonType, false, left)
+		leftType = commonType
+
+		// This is sometimes needed to make the left trivial
+		leftPrecompExpr := mod.RunExpression(leftExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 8, 1)
+		if leftPrecompExpr != 0 {
+			leftExpr = leftPrecompExpr
+		}
+
+		rightExpr = c.convertExpression(rightExpr, rightType, commonType, false, right)
+
+		condExpr := c.makeIsTrueish(leftExpr, commonType, left)
+		condKind := c.evaluateCondition(condExpr)
+
+		if condKind != flow.ConditionKindUnknown {
+			// simplify if left is a constant
+			if condKind == flow.ConditionKindTrue {
+				expr = leftExpr
+			} else {
+				expr = rightExpr
+			}
+		} else if trivialCopy := mod.TryCopyTrivialExpression(leftExpr); trivialCopy != 0 {
+			// otherwise, simplify if copying left is trivial
+			expr = mod.If(condExpr, trivialCopy, rightExpr)
+		} else {
+			// if not possible, tee left to a temp. local
+			temp := fl.GetTempLocal(leftType)
+			tempIndex := temp.FlowIndex()
+			if !fl.CanOverflow(leftExpr, leftType) {
+				fl.SetLocalFlag(tempIndex, flow.LocalFlagWrapped)
+			}
+			if fl.IsNonnull(leftExpr, leftType) {
+				fl.SetLocalFlag(tempIndex, flow.LocalFlagNonNull)
+			}
+			expr = mod.If(
+				c.makeIsTrueish(mod.LocalTee(tempIndex, leftExpr, leftType.IsManaged(), leftType.ToRef()), leftType, left),
+				mod.LocalGet(tempIndex, leftType.ToRef()),
+				rightExpr,
+			)
+		}
+		fl.MergeBranch(rightFlow)     // LHS || RHS -> RHS conditionally executes
+		fl.NoteElse(expr, rightFlow)  // LHS || RHS == false -> RHS always executes
+		c.CurrentFlow = fl
+		if possiblyNull {
+			c.CurrentType = commonType
+		} else {
+			c.CurrentType = commonType.NonNullableType()
+		}
+	}
+	return expr
 }
 
 // --- Type conversion ---
@@ -3880,8 +4475,18 @@ func (c *Compiler) convertExpression(expr module.ExpressionRef, fromType, toType
 		} else {
 			// i32 to i32
 			if fromType.IsShortIntegerValue() {
+				// small i32 to larger i32
 				if fromType.Size < toType.Size {
 					expr = c.ensureSmallIntegerWrap(expr, fromType)
+				}
+			} else {
+				// same size
+				if !explicit && !c.Options().IsWasm64() && fromType.IsVaryingIntegerValue() && !toType.IsVaryingIntegerValue() {
+					c.Warning(
+						diagnostics.DiagnosticCodeConversionFromType0To1WillRequireAnExplicitCastWhenSwitchingBetween3264Bit,
+						reportNode.GetRange(),
+						fromType.String(), toType.String(), "",
+					)
 				}
 			}
 		}

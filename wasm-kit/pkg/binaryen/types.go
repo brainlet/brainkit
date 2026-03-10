@@ -281,4 +281,9 @@ func FeatureRelaxedSIMD() Features       { return Features(C.BinaryenFeatureRela
 func FeatureExtendedConst() Features     { return Features(C.BinaryenFeatureExtendedConst()) }
 func FeatureStrings() Features           { return Features(C.BinaryenFeatureStrings()) }
 func FeatureMultiMemory() Features       { return Features(C.BinaryenFeatureMultiMemory()) }
+func FeatureStackSwitching() Features    { return Features(C.BinaryenFeatureStackSwitching()) }
+func FeatureSharedEverything() Features  { return Features(C.BinaryenFeatureSharedEverything()) }
+func FeatureFP16() Features              { return Features(C.BinaryenFeatureFP16()) }
+func FeatureBulkMemoryOpt() Features     { return Features(C.BinaryenFeatureBulkMemoryOpt()) }
+func FeatureCallIndirectOverlong() Features { return Features(C.BinaryenFeatureCallIndirectOverlong()) }
 func FeatureAll() Features               { return Features(C.BinaryenFeatureAll()) }

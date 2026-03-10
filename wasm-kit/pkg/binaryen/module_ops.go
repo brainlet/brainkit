@@ -371,18 +371,43 @@ func (m *Module) Interpret() {
 
 // SetClosedWorld marks the module as closed-world for optimizations.
 func SetClosedWorld(on bool) {
-	// BinaryenSetClosedWorld is not available in all Binaryen versions.
-	// Stub: no-op until confirmed available.
+	C.BinaryenSetClosedWorld(cBool(on))
 }
 
 // SetGenerateStackIR controls StackIR generation during optimization.
 func SetGenerateStackIR(on bool) {
-	// Stub: not all Binaryen versions expose this.
+	C.BinaryenSetGenerateStackIR(cBool(on))
 }
 
 // SetOptimizeStackIR controls StackIR optimization.
 func SetOptimizeStackIR(on bool) {
-	// Stub: not all Binaryen versions expose this.
+	C.BinaryenSetOptimizeStackIR(cBool(on))
+}
+
+// SetAllowInliningFunctionsWithLoops enables or disables inlining of functions
+// containing loops.
+func SetAllowInliningFunctionsWithLoops(enabled bool) {
+	C.BinaryenSetAllowInliningFunctionsWithLoops(cBool(enabled))
+}
+
+// FunctionRunPasses runs specific named optimization passes on a single function.
+func FunctionRunPasses(fn FunctionRef, mod *Module, passes []string) {
+	if len(passes) == 0 {
+		return
+	}
+	cPasses := make([]*C.char, len(passes))
+	for i, p := range passes {
+		cPasses[i] = C.CString(p)
+	}
+	C.BinaryenFunctionRunPasses(
+		(C.BinaryenFunctionRef)(unsafe.Pointer(fn)),
+		mod.ref,
+		&cPasses[0],
+		C.BinaryenIndex(len(passes)),
+	)
+	for _, cp := range cPasses {
+		C.free(unsafe.Pointer(cp))
+	}
 }
 
 // ---------------------------------------------------------------------------

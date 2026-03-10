@@ -488,6 +488,11 @@ func (c *Class) FindOverload(kind OperatorKind, unchecked bool) *Function {
 	return nil
 }
 
+// SetWrappedType satisfies types.ClassReference interface.
+func (c *Class) SetWrappedType(t *types.Type) {
+	c.WrappedType = t
+}
+
 // LookupOverload satisfies types.ClassReference interface.
 func (c *Class) LookupOverload(kind int32) types.FunctionReference {
 	result := c.FindOverload(kind, false)
