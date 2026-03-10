@@ -133,22 +133,22 @@ func (fp *FunctionPrototype) SetResolvedInstance(instanceKey string, instance *F
 // Function represents a resolved concrete function.
 type Function struct {
 	TypedElementBase
-	Prototype              *FunctionPrototype
-	Signature              *types.Signature
-	LocalsByIndex          []*Local
-	TypeArguments          []*types.Type
+	Prototype               *FunctionPrototype
+	Signature               *types.Signature
+	LocalsByIndex           []*Local
+	TypeArguments           []*types.Type
 	ContextualTypeArguments map[string]*types.Type
-	Flow                   *flow.Flow
-	DebugLocations         map[ExpressionRef]*diagnostics.Range
-	Ref                    FunctionRef
-	VarargsStub            *Function
-	OverrideStub           *Function
-	MemorySegment          *MemorySegment
-	Original               *Function
-	NextInlineId           int32
-	NextAnonymousId        int32
-	NextBreakId            int32
-	BreakStack             []int32
+	Flow                    *flow.Flow
+	DebugLocations          map[ExpressionRef]*diagnostics.Range
+	Ref                     FunctionRef
+	VarargsStub             *Function
+	OverrideStub            *Function
+	MemorySegment           *MemorySegment
+	Original                *Function
+	NextInlineId            int32
+	NextAnonymousId         int32
+	NextBreakId             int32
+	BreakStack              []int32
 }
 
 // NewFunction creates a new resolved function.
@@ -256,7 +256,7 @@ func (f *Function) NewStub(postfix string, requiredParameters int32) *Function {
 		f.Original.name+common.STUB_DELIMITER+postfix,
 		f.Prototype,
 		f.TypeArguments,
-		f.Signature.Clone(requiredParameters, false),
+		f.Signature.Clone(requiredParameters, f.Signature.HasRest),
 		f.ContextualTypeArguments,
 	)
 	stub.Original = f.Original
@@ -418,9 +418,9 @@ func (f *Function) GetFlow() *flow.Flow {
 // ElementBase provides: GetElementKind() int32, GetName() string,
 // SetInternalName(string), Set(uint32) — all satisfied via type aliases.
 
-func (l *Local) FlowIndex() int32        { return l.Index }
-func (l *Local) GetType() *types.Type     { return l.resolvedType }
-func (l *Local) SetName(name string)      { l.name = name }
+func (l *Local) FlowIndex() int32     { return l.Index }
+func (l *Local) GetType() *types.Type { return l.resolvedType }
+func (l *Local) SetName(name string)  { l.name = name }
 func (l *Local) FlowGetParent() flow.FlowElementRef {
 	parent := l.GetParent()
 	if parent == nil {
@@ -442,5 +442,15 @@ func (l *Local) DeclarationNameRange() interface{} {
 	return l.declaration.GetRange()
 }
 func (l *Local) DeclarationIsNative() bool {
-	return false // Will be implemented properly later
+	if l.declaration == nil {
+		return false
+	}
+	rng := l.declaration.GetRange()
+	if rng == nil || rng.Source == nil {
+		return false
+	}
+	if src, ok := rng.Source.(*ast.Source); ok {
+		return src.IsNative()
+	}
+	return false
 }

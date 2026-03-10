@@ -5,6 +5,8 @@ import (
 
 	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
+	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
+	"github.com/brainlet/brainkit/wasm-kit/flow"
 	"github.com/brainlet/brainkit/wasm-kit/tokenizer"
 	"github.com/brainlet/brainkit/wasm-kit/types"
 )
@@ -648,6 +650,12 @@ func TestProgramMakeNativeFunctionDeclaration(t *testing.T) {
 	if decl.Signature == nil {
 		t.Error("Signature should not be nil")
 	}
+	if ast.IsTypeOmitted(decl.Signature.ReturnType) {
+		t.Error("native function declaration should use explicit void, not omitted return type")
+	}
+	if returnType, ok := decl.Signature.ReturnType.(*ast.NamedTypeNode); !ok || returnType.Name.Identifier.Text != common.CommonNameVoid {
+		t.Error("native function declaration should return void")
+	}
 }
 
 func TestProgramMakeNativeNamespaceDeclaration(t *testing.T) {
@@ -811,6 +819,28 @@ func TestFunctionGetParameterName(t *testing.T) {
 	}
 }
 
+func TestFunctionNewStubPreservesRestParameter(t *testing.T) {
+	prog := newTestProgram()
+	decl := prog.MakeNativeFunctionDeclaration("resty", 0)
+	proto := NewFunctionPrototype("resty", prog.NativeFile, decl, DecoratorFlagsNone)
+	sig := types.CreateSignature(prog, []*types.Type{types.TypeI32}, types.TypeVoid, nil, 0, true)
+	fn := NewFunction("resty", proto, nil, sig, nil)
+
+	stub := fn.NewStub("omitted", 0)
+	if !stub.Signature.HasRest {
+		t.Fatal("stub should preserve rest parameter flag")
+	}
+	if stub.Signature.RequiredParameters != 0 {
+		t.Fatalf("stub required parameters = %d, want 0", stub.Signature.RequiredParameters)
+	}
+	if stub.Original != fn.Original {
+		t.Fatal("stub should retain original function reference")
+	}
+	if !stub.Is(common.CommonFlagsStub) {
+		t.Fatal("stub should be marked as a stub")
+	}
+}
+
 func TestFunctionFlowBridge(t *testing.T) {
 	prog := newTestProgram()
 	file := prog.NativeFile
@@ -873,6 +903,56 @@ func TestFunctionFlowBridge(t *testing.T) {
 	// FlowProgram
 	if fn.FlowProgram() == nil {
 		t.Error("FlowProgram should not be nil")
+	}
+}
+
+func TestFlowScopedLocalFactoriesAreWired(t *testing.T) {
+	prog := newTestProgram()
+	decl := prog.MakeNativeFunctionDeclaration("scopeFn", common.CommonFlagsAmbient)
+	proto := NewFunctionPrototype("scopeFn", prog.NativeFile, decl, DecoratorFlagsNone)
+	sig := types.CreateSignature(prog, nil, types.TypeVoid, nil, 0, false)
+	fn := NewFunction("scopeFn", proto, nil, sig, nil)
+
+	scoped := fn.Flow.AddScopedLocal("tmp", types.TypeI32)
+	local, ok := scoped.(*Local)
+	if !ok {
+		t.Fatalf("AddScopedLocal returned %T, want *Local", scoped)
+	}
+	if local.GetName() != "tmp" {
+		t.Fatalf("scoped local name = %q, want tmp", local.GetName())
+	}
+	if local.GetInternalName() != MangleInternalName("tmp", fn, false, false) {
+		t.Fatalf("scoped local internal name = %q, want %q", local.GetInternalName(), MangleInternalName("tmp", fn, false, false))
+	}
+	if !local.Is(common.CommonFlagsScoped) {
+		t.Fatal("scoped local should be marked scoped")
+	}
+
+	dummy := fn.Flow.AddScopedDummyLocal("dummy", types.TypeI32, nil)
+	dummyLocal, ok := dummy.(*Local)
+	if !ok {
+		t.Fatalf("AddScopedDummyLocal returned %T, want *Local", dummy)
+	}
+	if dummyLocal.FlowIndex() != -1 {
+		t.Fatalf("dummy local index = %d, want -1", dummyLocal.FlowIndex())
+	}
+	if !dummyLocal.Is(common.CommonFlagsScoped) {
+		t.Fatal("dummy local should be marked scoped")
+	}
+}
+
+func TestFlowBuiltinNamesAreWired(t *testing.T) {
+	if flow.BuiltinNameStringEq != common.BuiltinNameStringEq {
+		t.Fatalf("BuiltinNameStringEq = %q, want %q", flow.BuiltinNameStringEq, common.BuiltinNameStringEq)
+	}
+	if flow.BuiltinNameStringNe != common.BuiltinNameStringNe {
+		t.Fatalf("BuiltinNameStringNe = %q, want %q", flow.BuiltinNameStringNe, common.BuiltinNameStringNe)
+	}
+	if flow.BuiltinNameStringNot != common.BuiltinNameStringNot {
+		t.Fatalf("BuiltinNameStringNot = %q, want %q", flow.BuiltinNameStringNot, common.BuiltinNameStringNot)
+	}
+	if flow.BuiltinNameTostack != common.BuiltinNameTostack {
+		t.Fatalf("BuiltinNameTostack = %q, want %q", flow.BuiltinNameTostack, common.BuiltinNameTostack)
 	}
 }
 
@@ -964,12 +1044,21 @@ func TestLocalFlowBridge(t *testing.T) {
 		t.Errorf("after SetName: %q", local.GetName())
 	}
 
-	if local.DeclarationIsNative() {
-		t.Error("DeclarationIsNative should return false")
+	if !local.DeclarationIsNative() {
+		t.Error("native local declaration should report as native")
 	}
 	// DeclarationRange and DeclarationNameRange should not panic
 	_ = local.DeclarationRange()
 	_ = local.DeclarationNameRange()
+
+	userSource := ast.NewSource(ast.SourceKindUser, "user.ts", "let x = 1;")
+	userFile := NewFile(prog, userSource)
+	userDecl := ast.NewVariableDeclaration(newTestIdent("userLocal"), nil, 0, nil, nil, *userSource.GetRange())
+	userLocal := NewLocal("userLocal", 6, types.TypeI32, fn, userDecl)
+	if userLocal.DeclarationIsNative() {
+		t.Error("user local declaration should not report as native")
+	}
+	_ = userFile
 }
 
 // --- Memory alignment tests ---
@@ -980,6 +1069,192 @@ func TestAlSizeConstants(t *testing.T) {
 	}
 	if AlMask != 15 {
 		t.Errorf("AlMask = %d, want 15", AlMask)
+	}
+}
+
+func TestProgramMemoryHelpersUseRuntimeClassesWhenPresent(t *testing.T) {
+	prog := newTestProgram()
+
+	blockDecl := newTestClassDecl(common.CommonNameBlock, int32(common.CommonFlagsExport))
+	blockProto := NewClassPrototype(common.CommonNameBlock, prog.NativeFile, blockDecl, 0, false)
+	prog.NativeFile.Add(common.CommonNameBlock, blockProto, nil)
+	blockInstance := prog.RequireClass(common.CommonNameBlock)
+	if blockInstance == nil {
+		t.Fatal("RequireClass returned nil for BLOCK")
+	}
+	blockInstance.NextMemoryOffset = 24
+
+	objectDecl := newTestClassDecl(common.CommonNameObject_, int32(common.CommonFlagsExport))
+	objectProto := NewClassPrototype(common.CommonNameObject_, prog.NativeFile, objectDecl, 0, false)
+	prog.NativeFile.Add(common.CommonNameObject_, objectProto, nil)
+	objectInstance := prog.RequireClass(common.CommonNameObject_)
+	if objectInstance == nil {
+		t.Fatal("RequireClass returned nil for OBJECT")
+	}
+	objectInstance.NextMemoryOffset = 28
+
+	if got := prog.BlockOverhead(); got != 24 {
+		t.Errorf("BlockOverhead() = %d, want 24", got)
+	}
+	if got := prog.ObjectOverhead(); got != 16 {
+		t.Errorf("ObjectOverhead() = %d, want 16", got)
+	}
+	if got := prog.TotalOverhead(); got != 40 {
+		t.Errorf("TotalOverhead() = %d, want 40", got)
+	}
+	if got := prog.ComputeBlockStart(1); got != 8 {
+		t.Errorf("ComputeBlockStart(1) = %d, want 8", got)
+	}
+}
+
+func TestClassGetArrayValueType(t *testing.T) {
+	prog := newTestProgram()
+
+	typeParam := ast.NewTypeParameterNode(newTestIdent("T"), nil, nil, nativeRange())
+	arrayDecl := newTestClassDecl(common.CommonNameArray, int32(common.CommonFlagsExport))
+	arrayDecl.TypeParameters = []*ast.TypeParameterNode{typeParam}
+	arrayProto := NewClassPrototype(common.CommonNameArray, prog.NativeFile, arrayDecl, 0, false)
+	arrayProto.Set(common.CommonFlagsGeneric)
+	prog.NativeFile.Add(common.CommonNameArray, arrayProto, nil)
+
+	arrayInstance := prog.Resolver_.ResolveClass(arrayProto, []*types.Type{types.TypeI32}, nil, ReportModeReport)
+	if arrayInstance == nil {
+		t.Fatal("ResolveClass returned nil for Array<i32>")
+	}
+	if got := arrayInstance.GetArrayValueType(); got != types.TypeI32 {
+		t.Fatalf("Array<i32>.GetArrayValueType() = %v, want i32", got)
+	}
+
+	abvDecl := newTestClassDecl(common.CommonNameArrayBufferView, int32(common.CommonFlagsExport))
+	abvProto := NewClassPrototype(common.CommonNameArrayBufferView, prog.NativeFile, abvDecl, 0, false)
+	prog.NativeFile.Add(common.CommonNameArrayBufferView, abvProto, nil)
+
+	float32Decl := newTestClassDecl(common.CommonNameFloat32Array, int32(common.CommonFlagsExport))
+	float32Proto := NewClassPrototype(common.CommonNameFloat32Array, prog.NativeFile, float32Decl, 0, false)
+	float32Proto.BasePrototype = abvProto
+	prog.NativeFile.Add(common.CommonNameFloat32Array, float32Proto, nil)
+
+	float32Instance := prog.Resolver_.ResolveClass(float32Proto, nil, nil, ReportModeReport)
+	if float32Instance == nil {
+		t.Fatal("ResolveClass returned nil for Float32Array")
+	}
+	if got := float32Instance.GetArrayValueType(); got != types.TypeF32 {
+		t.Fatalf("Float32Array.GetArrayValueType() = %v, want f32", got)
+	}
+}
+
+func TestClassIsPointerfree(t *testing.T) {
+	prog := newTestProgram()
+	prog.NativeFile.Add("void", newVoidTypeDefinition(prog), nil)
+
+	emptyDecl := newTestClassDecl("Empty", 0)
+	emptyProto := NewClassPrototype("Empty", prog.NativeFile, emptyDecl, 0, false)
+	prog.NativeFile.Add("Empty", emptyProto, nil)
+	emptyInstance := prog.Resolver_.ResolveClass(emptyProto, nil, nil, ReportModeReport)
+	if emptyInstance == nil {
+		t.Fatal("ResolveClass returned nil for Empty")
+	}
+	if !emptyInstance.IsPointerfree() {
+		t.Fatal("empty class should be pointerfree")
+	}
+
+	refDecl := newTestClassDecl("Ref", 0)
+	refProto := NewClassPrototype("Ref", prog.NativeFile, refDecl, 0, false)
+	prog.NativeFile.Add("Ref", refProto, nil)
+
+	holderDecl := newTestClassDecl("Holder", 0)
+	holderProto := NewClassPrototype("Holder", prog.NativeFile, holderDecl, 0, false)
+	holderField := PropertyPrototypeForField(
+		"ref",
+		holderProto,
+		ast.NewFieldDeclaration(newTestIdent("ref"), nil, int32(common.CommonFlagsInstance), newTestNamedTypeNode("Ref"), nil, nativeRange()),
+		0,
+	)
+	holderProto.AddInstance("ref", holderField)
+	prog.NativeFile.Add("Holder", holderProto, nil)
+
+	holderInstance := prog.Resolver_.ResolveClass(holderProto, nil, nil, ReportModeReport)
+	if holderInstance == nil {
+		t.Fatal("ResolveClass returned nil for Holder")
+	}
+	if holderInstance.IsPointerfree() {
+		t.Fatal("managed reference field should make class non-pointerfree")
+	}
+
+	typeParam := ast.NewTypeParameterNode(newTestIdent("T"), nil, nil, nativeRange())
+	arrayDecl := newTestClassDecl(common.CommonNameArray, int32(common.CommonFlagsExport))
+	arrayDecl.TypeParameters = []*ast.TypeParameterNode{typeParam}
+	arrayProto := NewClassPrototype(common.CommonNameArray, prog.NativeFile, arrayDecl, 0, false)
+	arrayProto.Set(common.CommonFlagsGeneric)
+	visitSig := newTestSig(newTestNamedTypeNode("void"))
+	visitDecl := newTestFuncDecl(common.CommonNameVisit, int32(common.CommonFlagsInstance), visitSig)
+	visitProto := NewFunctionPrototype(common.CommonNameVisit, arrayProto, visitDecl, 0)
+	arrayProto.AddInstance(common.CommonNameVisit, visitProto)
+	prog.NativeFile.Add(common.CommonNameArray, arrayProto, nil)
+
+	arrayOfI32 := prog.Resolver_.ResolveClass(arrayProto, []*types.Type{types.TypeI32}, nil, ReportModeReport)
+	if arrayOfI32 == nil {
+		t.Fatal("ResolveClass returned nil for Array<i32>")
+	}
+	if !arrayOfI32.IsPointerfree() {
+		t.Fatal("Array<i32> with builtin __visit should be pointerfree")
+	}
+
+	refInstance := prog.Resolver_.ResolveClass(refProto, nil, nil, ReportModeReport)
+	if refInstance == nil {
+		t.Fatal("ResolveClass returned nil for Ref")
+	}
+	arrayOfRef := prog.Resolver_.ResolveClass(arrayProto, []*types.Type{refInstance.GetResolvedType()}, nil, ReportModeReport)
+	if arrayOfRef == nil {
+		t.Fatal("ResolveClass returned nil for Array<Ref>")
+	}
+	if arrayOfRef.IsPointerfree() {
+		t.Fatal("Array<Ref> should not be pointerfree")
+	}
+
+	customDecl := newTestClassDecl("CustomVisit", 0)
+	customProto := NewClassPrototype("CustomVisit", prog.NativeFile, customDecl, 0, false)
+	customVisitProto := NewFunctionPrototype(common.CommonNameVisit, customProto, visitDecl, 0)
+	customProto.AddInstance(common.CommonNameVisit, customVisitProto)
+	prog.NativeFile.Add("CustomVisit", customProto, nil)
+	customInstance := prog.Resolver_.ResolveClass(customProto, nil, nil, ReportModeReport)
+	if customInstance == nil {
+		t.Fatal("ResolveClass returned nil for CustomVisit")
+	}
+	if customInstance.IsPointerfree() {
+		t.Fatal("custom __visit should make class non-pointerfree")
+	}
+}
+
+func TestTypesCommonTypeUsesClassLeastUpperBound(t *testing.T) {
+	prog := newTestProgram()
+
+	baseDecl := newTestClassDecl("Base", 0)
+	baseProto := NewClassPrototype("Base", prog.NativeFile, baseDecl, 0, false)
+
+	leftDecl := newTestClassDecl("Left", 0)
+	leftProto := NewClassPrototype("Left", prog.NativeFile, leftDecl, 0, false)
+	leftProto.BasePrototype = baseProto
+
+	rightDecl := newTestClassDecl("Right", 0)
+	rightProto := NewClassPrototype("Right", prog.NativeFile, rightDecl, 0, false)
+	rightProto.BasePrototype = baseProto
+
+	baseInstance := prog.Resolver_.ResolveClass(baseProto, nil, nil, ReportModeReport)
+	leftInstance := prog.Resolver_.ResolveClass(leftProto, nil, nil, ReportModeReport)
+	rightInstance := prog.Resolver_.ResolveClass(rightProto, nil, nil, ReportModeReport)
+	if baseInstance == nil || leftInstance == nil || rightInstance == nil {
+		t.Fatal("failed to resolve class hierarchy")
+	}
+
+	got := types.CommonType(leftInstance.GetResolvedType(), rightInstance.GetResolvedType(), nil, false)
+	if got != baseInstance.GetResolvedType() {
+		t.Fatalf("CommonType(Left, Right) = %v, want %v", got, baseInstance.GetResolvedType())
+	}
+
+	gotNullable := types.CommonType(leftInstance.GetResolvedType().AsNullable(), rightInstance.GetResolvedType(), nil, false)
+	if gotNullable != baseInstance.GetResolvedType().AsNullable() {
+		t.Fatalf("CommonType(Left?, Right) = %v, want %v", gotNullable, baseInstance.GetResolvedType().AsNullable())
 	}
 }
 
@@ -998,6 +1273,18 @@ func TestNewFile(t *testing.T) {
 	}
 	if file.Source != src {
 		t.Error("wrong source")
+	}
+	if prog.FilesByName[file.GetInternalName()] != file {
+		t.Error("file should register itself in FilesByName")
+	}
+	if file.StartFunction == nil {
+		t.Fatal("file should create a start function")
+	}
+	if file.StartFunction.GetName() != "start:"+file.GetInternalName() {
+		t.Errorf("unexpected start function name %q", file.StartFunction.GetName())
+	}
+	if file.StartFunction.GetInternalName() != file.StartFunction.GetName() {
+		t.Error("start function internal name should match its name")
 	}
 }
 
@@ -1019,6 +1306,96 @@ func TestDeclaredElementBaseIdentifierNode(t *testing.T) {
 	}
 }
 
+func TestDeclaredElementBaseLibraryAndSignatureRange(t *testing.T) {
+	prog := newTestProgram()
+
+	nativeDecl := prog.MakeNativeFunctionDeclaration("nativeFn", 0)
+	nativeProto := NewFunctionPrototype("nativeFn", prog.NativeFile, nativeDecl, DecoratorFlagsNone)
+	if !nativeProto.IsDeclaredInLibrary() {
+		t.Fatal("native declaration should be treated as declared in library")
+	}
+
+	userSource := ast.NewSource(ast.SourceKindUser, "user.ts", "function userFn(a): void {}")
+	userFile := NewFile(prog, userSource)
+	identRange := diagnostics.Range{Start: 9, End: 15, Source: userSource}
+	signatureRange := diagnostics.Range{Start: 15, End: 24, Source: userSource}
+	declRange := diagnostics.Range{Start: 0, End: 27, Source: userSource}
+	userDecl := ast.NewFunctionDeclaration(
+		ast.NewIdentifierExpression("userFn", identRange, false),
+		nil,
+		0,
+		nil,
+		ast.NewFunctionTypeNode(
+			nil,
+			ast.NewOmittedType(signatureRange),
+			nil,
+			false,
+			signatureRange,
+		),
+		nil,
+		ast.ArrowKindNone,
+		declRange,
+	)
+	userProto := NewFunctionPrototype("userFn", userFile, userDecl, DecoratorFlagsNone)
+	if userProto.IsDeclaredInLibrary() {
+		t.Fatal("user declaration should not be treated as declared in library")
+	}
+
+	got := userProto.IdentifierAndSignatureRange()
+	if got.Start != identRange.Start || got.End != signatureRange.End || got.Source != userSource {
+		t.Fatalf("IdentifierAndSignatureRange() = {%d,%d}, want {%d,%d}", got.Start, got.End, identRange.Start, signatureRange.End)
+	}
+}
+
+func TestPropertyPrototypeForFieldUsesFieldTypeInImplicitAccessors(t *testing.T) {
+	prog := newTestProgram()
+	classDecl := newTestClassDecl("Foo", 0)
+	classProto := NewClassPrototype("Foo", prog.NativeFile, classDecl, 0, false)
+
+	fieldType := newTestNamedTypeNode("i32")
+	fieldDecl := ast.NewFieldDeclaration(
+		newTestIdent("value"),
+		nil,
+		0,
+		fieldType,
+		nil,
+		nativeRange(),
+	)
+
+	pp := PropertyPrototypeForField("value", classProto, fieldDecl, DecoratorFlagsNone)
+	if pp == nil {
+		t.Fatal("PropertyPrototypeForField returned nil")
+	}
+	if pp.GetterPrototype == nil || pp.SetterPrototype == nil {
+		t.Fatal("field property should synthesize getter and setter prototypes")
+	}
+
+	getterSig := pp.GetterPrototype.FunctionTypeNode()
+	if getterSig == nil || getterSig.ReturnType != fieldType {
+		t.Fatal("getter should use the field type as return type")
+	}
+	if pp.GetterPrototype.GetDeclaration().GetKind() != ast.NodeKindMethodDeclaration {
+		t.Error("getter should be synthesized as a method declaration")
+	}
+
+	setterSig := pp.SetterPrototype.FunctionTypeNode()
+	if setterSig == nil {
+		t.Fatal("setter signature should not be nil")
+	}
+	if len(setterSig.Parameters) != 1 {
+		t.Fatalf("setter should have exactly one parameter, got %d", len(setterSig.Parameters))
+	}
+	if setterSig.Parameters[0].Type != fieldType {
+		t.Error("setter parameter should use the field type")
+	}
+	if !ast.IsTypeOmitted(setterSig.ReturnType) {
+		t.Error("setter return type should be omitted")
+	}
+	if pp.SetterPrototype.GetDeclaration().GetKind() != ast.NodeKindMethodDeclaration {
+		t.Error("setter should be synthesized as a method declaration")
+	}
+}
+
 // --- extractArgs tests ---
 
 func TestExtractArgs(t *testing.T) {
@@ -1035,5 +1412,131 @@ func TestExtractArgs(t *testing.T) {
 	a0, a1, a2 = extractArgs([]string{"a", "b", "c", "d"})
 	if a0 != "a" || a1 != "b" || a2 != "c" {
 		t.Error("extra args should be ignored")
+	}
+}
+
+func TestProgramResolveClassUsesResolver(t *testing.T) {
+	prog := newTestProgram()
+
+	decl := newTestClassDecl("Foo", int32(common.CommonFlagsExport))
+	proto := NewClassPrototype("Foo", prog.NativeFile, decl, 0, false)
+	prog.NativeFile.Add("Foo", proto, nil)
+
+	resolved := prog.ResolveClass(proto, nil)
+	if resolved == nil {
+		t.Fatal("Program.ResolveClass returned nil")
+	}
+
+	classInstance, ok := resolved.(*Class)
+	if !ok {
+		t.Fatalf("Program.ResolveClass returned %T, want *Class", resolved)
+	}
+	if classInstance.Prototype != proto {
+		t.Error("resolved class should point at original prototype")
+	}
+
+	required := prog.RequireClass("Foo")
+	if required == nil {
+		t.Fatal("RequireClass returned nil for exported class")
+	}
+	if required != classInstance {
+		t.Error("RequireClass should reuse resolver result")
+	}
+}
+
+func TestProgramCheckTypeSupportedHonorsFeatures(t *testing.T) {
+	prog := newTestProgram()
+	prog.Options.Features = common.FeatureNone
+
+	reportNode := ast.NewTrueExpression(nativeRange())
+	if prog.CheckTypeSupported(types.TypeV128, reportNode) {
+		t.Fatal("CheckTypeSupported should reject v128 when SIMD is disabled")
+	}
+	if len(prog.Diagnostics) == 0 {
+		t.Fatal("expected a diagnostic when feature-gated type is rejected")
+	}
+
+	prog.Diagnostics = nil
+	prog.Options.Features = common.FeatureSimd
+	if !prog.CheckTypeSupported(types.TypeV128, reportNode) {
+		t.Fatal("CheckTypeSupported should accept v128 when SIMD is enabled")
+	}
+	if len(prog.Diagnostics) != 0 {
+		t.Fatal("unexpected diagnostics when feature is enabled")
+	}
+}
+
+func TestProgramInitializeRegistersNativeTypesAndHints(t *testing.T) {
+	prog := newTestProgram()
+	prog.Initialize()
+
+	i32Elem := prog.Lookup(common.CommonNameI32)
+	if i32Elem == nil {
+		t.Fatal("Initialize should register i32")
+	}
+	i32TypeDef, ok := i32Elem.(*TypeDefinition)
+	if !ok {
+		t.Fatalf("i32 registered as %T, want *TypeDefinition", i32Elem)
+	}
+	if i32TypeDef.GetResolvedType() != types.TypeI32 {
+		t.Error("i32 type definition should resolve to TypeI32")
+	}
+
+	nativeElem := prog.Lookup(common.CommonNameNative)
+	if nativeElem == nil {
+		t.Fatal("Initialize should register native helper type")
+	}
+	nativeTypeDef, ok := nativeElem.(*TypeDefinition)
+	if !ok {
+		t.Fatalf("native helper registered as %T, want *TypeDefinition", nativeElem)
+	}
+	if !nativeTypeDef.Is(common.CommonFlagsGeneric) {
+		t.Error("native helper type should be marked generic")
+	}
+	if !nativeTypeDef.HasDecorator(DecoratorFlagsBuiltin) {
+		t.Error("native helper type should be builtin")
+	}
+
+	targetGlobal := prog.RequireGlobal(common.CommonNameASCTarget)
+	if targetGlobal == nil {
+		t.Fatal("Initialize should register ASC_TARGET")
+	}
+	if targetGlobal.GetConstantValueKind() != ConstantValueKindInteger {
+		t.Error("ASC_TARGET should be a constant integer")
+	}
+	if targetGlobal.GetResolvedType() != types.TypeI32 {
+		t.Error("ASC_TARGET should have i32 type")
+	}
+	if targetGlobal.GetConstantIntegerValue() != int64(common.TargetWasm32) {
+		t.Errorf("ASC_TARGET = %d, want %d", targetGlobal.GetConstantIntegerValue(), common.TargetWasm32)
+	}
+
+	featureGlobal := prog.RequireGlobal(common.CommonNameASCFeatureBulkMemory)
+	if featureGlobal == nil {
+		t.Fatal("Initialize should register ASC_FEATURE_BULK_MEMORY")
+	}
+	if featureGlobal.GetConstantIntegerValue() != 1 {
+		t.Error("ASC_FEATURE_BULK_MEMORY should default to enabled")
+	}
+}
+
+func TestProgramInitializeRegistersWrapperClassesWhenPresent(t *testing.T) {
+	prog := newTestProgram()
+
+	i32WrapperDecl := newTestClassDecl(common.CommonNameCapI32, int32(common.CommonFlagsExport))
+	i32WrapperProto := NewClassPrototype(common.CommonNameCapI32, prog.NativeFile, i32WrapperDecl, 0, false)
+	prog.NativeFile.Add(common.CommonNameCapI32, i32WrapperProto, nil)
+
+	prog.Initialize()
+
+	wrapper, ok := prog.WrapperClasses[types.TypeI32]
+	if !ok {
+		t.Fatal("Initialize should register I32 wrapper class when prototype exists")
+	}
+	if wrapper.Prototype != i32WrapperProto {
+		t.Error("wrapper class should resolve from the registered prototype")
+	}
+	if wrapper.WrappedType != types.TypeI32 {
+		t.Error("wrapper class should remember the wrapped type")
 	}
 }

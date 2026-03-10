@@ -1651,19 +1651,7 @@ func (c *Compiler) compileInstanceOfExpression(expression *ast.InstanceOfExpress
 		}, module.TypeRefI32)
 	}
 
-	// Create or reuse an instanceof helper function
-	instanceofName := classInstance.GetInternalName() + "~instanceof"
-
-	// Register in pending instanceof for finalization
-	c.PendingInstanceOf[classInstance] = instanceofName
-
-	// Create a placeholder function if it doesn't exist
-	if !mod.HasFunction(instanceofName) {
-		sizeTypeRef := c.Options().UsizeType().ToRef()
-		mod.AddFunction(instanceofName, sizeTypeRef, module.TypeRefI32, nil, mod.Unreachable())
-	}
-
-	// Call the instanceof helper
+	instanceofName := c.prepareInstanceOf(classInstance)
 	return mod.Call(instanceofName, []module.ExpressionRef{expr}, module.TypeRefI32)
 }
 
@@ -1803,10 +1791,10 @@ func (c *Compiler) ensureStaticString(value string) module.ExpressionRef {
 
 	// Write BLOCK header
 	blockContentSize := int32(byteLen) + c.Program.ObjectOverhead()
-	writeI32(buf, 0, blockContentSize)              // mmInfo
-	writeI32(buf, 4, 0)                             // gcInfo
-	writeI32(buf, 8, int32(stringInstance.Id()))     // rtId
-	writeI32(buf, 12, int32(byteLen))               // rtSize
+	writeI32(buf, 0, blockContentSize)           // mmInfo
+	writeI32(buf, 4, 0)                          // gcInfo
+	writeI32(buf, 8, int32(stringInstance.Id())) // rtId
+	writeI32(buf, 12, int32(byteLen))            // rtSize
 
 	// Write OBJECT overhead (gcInfo2 = 0)
 	writeI32(buf, 16, 0)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
+	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/types"
 )
 
@@ -71,9 +72,20 @@ func newI32TypeDefinition(prog *Program) *TypeDefinition {
 	return td
 }
 
+func newI8TypeDefinition(prog *Program) *TypeDefinition {
+	typeDecl := prog.MakeNativeTypeDeclaration("i8", 0)
+	td := NewTypeDefinition("i8", prog.NativeFile, typeDecl, 0)
+	td.SetType(types.TypeI8)
+	return td
+}
+
 // registerType registers a type definition in the program for name resolution.
 func registerType(prog *Program, name string, td *TypeDefinition) {
 	prog.EnsureGlobal(name, td)
+}
+
+func registerElement(prog *Program, name string, element DeclaredElement) {
+	prog.NativeFile.Add(name, element, nil)
 }
 
 // --- tests ---
@@ -394,6 +406,42 @@ func TestResolvePropertyCached(t *testing.T) {
 	}
 }
 
+func TestResolvePropertySetsTypeFromAccessors(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	classDecl := newTestClassDecl("Holder", 0)
+	classProto := NewClassPrototype("Holder", prog.NativeFile, classDecl, 0, false)
+	classInstance := resolver.ResolveClass(classProto, nil, nil, ReportModeReport)
+	if classInstance == nil {
+		t.Fatal("ResolveClass returned nil")
+	}
+
+	getterSig := newTestSig(newTestNamedTypeNode("i32"))
+	getterDecl := newTestFuncDecl("value", int32(common.CommonFlagsInstance|common.CommonFlagsGet), getterSig)
+	setterSig := newTestSigWithParams(
+		[]*ast.ParameterNode{newTestParam("value", newTestNamedTypeNode("i32"))},
+		ast.NewOmittedType(nativeRange()),
+	)
+	setterDecl := newTestFuncDecl("value", int32(common.CommonFlagsInstance|common.CommonFlagsSet), setterSig)
+
+	pp := NewPropertyPrototype("value", classInstance, getterDecl)
+	pp.GetterPrototype = NewFunctionPrototype(common.GETTER_PREFIX+"value", classInstance, getterDecl, 0)
+	pp.SetterPrototype = NewFunctionPrototype(common.SETTER_PREFIX+"value", classInstance, setterDecl, 0)
+
+	property := resolver.ResolveProperty(pp, ReportModeReport)
+	if property == nil {
+		t.Fatal("ResolveProperty returned nil")
+	}
+	if property.GetResolvedType() != types.TypeI32 {
+		t.Fatalf("property type = %v, want i32", property.GetResolvedType())
+	}
+	if property.GetterInstance == nil || property.SetterInstance == nil {
+		t.Fatal("property accessors should both resolve")
+	}
+}
+
 func TestResolveTypeArguments(t *testing.T) {
 	prog := newTestProgram()
 	resolver := NewResolver(prog)
@@ -533,23 +581,224 @@ func TestGetTypeOfElement(t *testing.T) {
 	}
 }
 
-func TestLookupExpressionStub(t *testing.T) {
+func TestGetTypeOfElementResolvesLazyGlobalInitializer(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+
+	decl := ast.NewVariableDeclaration(
+		newTestIdent("lazyFlag"),
+		nil,
+		0,
+		nil,
+		ast.NewTrueExpression(nativeRange()),
+		nativeRange(),
+	)
+	global := NewGlobal("lazyFlag", prog.NativeFile, 0, decl)
+
+	typ := resolver.GetTypeOfElement(global)
+	if typ != types.TypeBool {
+		t.Fatalf("lazy global type = %v, want bool", typ)
+	}
+	if !global.Is(common.CommonFlagsResolved) {
+		t.Fatal("lazy global should be marked resolved after type lookup")
+	}
+}
+
+func TestGetTypeOfElementUnwrapsWrapperClasses(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+
+	wrapperDecl := newTestClassDecl("I32Box", 0)
+	wrapperProto := NewClassPrototype("I32Box", prog.NativeFile, wrapperDecl, 0, false)
+	wrapper := resolver.ResolveClass(wrapperProto, nil, nil, ReportModeReport)
+	if wrapper == nil {
+		t.Fatal("ResolveClass returned nil")
+	}
+	wrapper.WrappedType = types.TypeI32
+
+	typ := resolver.GetTypeOfElement(wrapper)
+	if typ != types.TypeI32 {
+		t.Fatalf("wrapper class should unwrap to i32, got %v", typ)
+	}
+}
+
+func TestLookupExpressionNil(t *testing.T) {
 	prog := newTestProgram()
 	resolver := NewResolver(prog)
 
 	result := resolver.LookupExpression(nil, nil, nil, ReportModeSwallow)
 	if result != nil {
-		t.Error("LookupExpression stub should return nil")
+		t.Error("LookupExpression(nil) should return nil")
 	}
 }
 
-func TestResolveExpressionStub(t *testing.T) {
+func TestResolveExpressionNil(t *testing.T) {
 	prog := newTestProgram()
 	resolver := NewResolver(prog)
 
 	result := resolver.ResolveExpression(nil, nil, nil, ReportModeSwallow)
 	if result != nil {
-		t.Error("ResolveExpression stub should return nil")
+		t.Error("ResolveExpression(nil) should return nil")
+	}
+}
+
+func TestResolveExpressionLiteralKeywords(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+
+	if got := resolver.ResolveExpression(ast.NewTrueExpression(nativeRange()), nil, nil, ReportModeReport); got != types.TypeBool {
+		t.Errorf("true should resolve to bool, got %v", got)
+	}
+	if got := resolver.ResolveExpression(ast.NewFalseExpression(nativeRange()), nil, nil, ReportModeReport); got != types.TypeBool {
+		t.Errorf("false should resolve to bool, got %v", got)
+	}
+
+	nullableExtern := types.TypeExtern.AsNullable()
+	if got := resolver.ResolveExpression(ast.NewNullExpression(nativeRange()), nil, nullableExtern, ReportModeReport); got != nullableExtern {
+		t.Errorf("null should resolve to contextual type, got %v", got)
+	}
+}
+
+func TestResolveExpressionThisAndSuper(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	baseDecl := newTestClassDecl("Base", 0)
+	baseProto := NewClassPrototype("Base", prog.NativeFile, baseDecl, 0, false)
+	registerElement(prog, "Base", baseProto)
+
+	derivedDecl := newTestClassDecl("Derived", 0)
+	derivedProto := NewClassPrototype("Derived", prog.NativeFile, derivedDecl, 0, false)
+	derivedProto.BasePrototype = baseProto
+	registerElement(prog, "Derived", derivedProto)
+
+	derivedInstance := resolver.ResolveClass(derivedProto, nil, nil, ReportModeReport)
+	if derivedInstance == nil {
+		t.Fatal("ResolveClass returned nil for derived class")
+	}
+
+	methodSig := newTestSig(newTestNamedTypeNode("i32"))
+	methodDecl := newTestFuncDecl("run", int32(common.CommonFlagsInstance), methodSig)
+	methodProto := NewFunctionPrototype("run", derivedProto, methodDecl, 0)
+	method := resolver.ResolveFunction(methodProto.ToBound(derivedInstance), nil, nil, ReportModeReport)
+	if method == nil {
+		t.Fatal("ResolveFunction returned nil for bound method")
+	}
+
+	if got := resolver.ResolveExpression(ast.NewThisExpression(nativeRange()), method.Flow, nil, ReportModeReport); got != derivedInstance.GetResolvedType() {
+		t.Errorf("this should resolve to derived class type, got %v", got)
+	}
+	if got := resolver.ResolveExpression(ast.NewSuperExpression(nativeRange()), method.Flow, nil, ReportModeReport); got != derivedInstance.Base.GetResolvedType() {
+		t.Errorf("super should resolve to base class type, got %v", got)
+	}
+}
+
+func TestResolveExpressionCallReturnsFunctionReturnType(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	calleeSig := newTestSig(newTestNamedTypeNode("i32"))
+	calleeDecl := newTestFuncDecl("callee", 0, calleeSig)
+	calleeProto := NewFunctionPrototype("callee", prog.NativeFile, calleeDecl, 0)
+	registerElement(prog, "callee", calleeProto)
+
+	callerSig := newTestSig(newTestNamedTypeNode("i32"))
+	callerDecl := newTestFuncDecl("caller", 0, callerSig)
+	callerProto := NewFunctionPrototype("caller", prog.NativeFile, callerDecl, 0)
+	caller := resolver.ResolveFunction(callerProto, nil, nil, ReportModeReport)
+	if caller == nil {
+		t.Fatal("ResolveFunction returned nil for caller")
+	}
+
+	call := ast.NewCallExpression(newTestIdent("callee"), nil, nil, nativeRange())
+	if got := resolver.ResolveExpression(call, caller.Flow, types.TypeVoid, ReportModeReport); got != types.TypeI32 {
+		t.Errorf("call should resolve to i32, got %v", got)
+	}
+}
+
+func TestLookupExpressionCallReturnsResolvedClass(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+
+	fooDecl := newTestClassDecl("Foo", 0)
+	fooProto := NewClassPrototype("Foo", prog.NativeFile, fooDecl, 0, false)
+	registerElement(prog, "Foo", fooProto)
+	fooInstance := resolver.ResolveClass(fooProto, nil, nil, ReportModeReport)
+	if fooInstance == nil {
+		t.Fatal("ResolveClass returned nil for Foo")
+	}
+
+	calleeSig := newTestSig(newTestNamedTypeNode("Foo"))
+	calleeDecl := newTestFuncDecl("makeFoo", 0, calleeSig)
+	calleeProto := NewFunctionPrototype("makeFoo", prog.NativeFile, calleeDecl, 0)
+	registerElement(prog, "makeFoo", calleeProto)
+
+	callerSig := newTestSig(newTestNamedTypeNode("Foo"))
+	callerDecl := newTestFuncDecl("caller", 0, callerSig)
+	callerProto := NewFunctionPrototype("caller", prog.NativeFile, callerDecl, 0)
+	caller := resolver.ResolveFunction(callerProto, nil, nil, ReportModeReport)
+	if caller == nil {
+		t.Fatal("ResolveFunction returned nil for caller")
+	}
+
+	call := ast.NewCallExpression(newTestIdent("makeFoo"), nil, nil, nativeRange())
+	if got := resolver.LookupExpression(call, caller.Flow, types.TypeVoid, ReportModeReport); got != fooInstance {
+		t.Errorf("lookup call should resolve to Foo instance, got %v", got)
+	}
+}
+
+func TestResolveExpressionCommaInstanceOfTernaryAndNew(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+
+	comma := ast.NewCommaExpression([]ast.Node{
+		ast.NewIntegerLiteralExpression(1, nativeRange()),
+		ast.NewTrueExpression(nativeRange()),
+	}, nativeRange())
+	if got := resolver.ResolveExpression(comma, nil, nil, ReportModeReport); got != types.TypeBool {
+		t.Errorf("comma expression should resolve to bool, got %v", got)
+	}
+
+	instanceOf := ast.NewInstanceOfExpression(
+		ast.NewTrueExpression(nativeRange()),
+		newTestNamedTypeNode("bool"),
+		nativeRange(),
+	)
+	if got := resolver.ResolveExpression(instanceOf, nil, nil, ReportModeReport); got != types.TypeBool {
+		t.Errorf("instanceof expression should resolve to bool, got %v", got)
+	}
+
+	ternary := ast.NewTernaryExpression(
+		ast.NewTrueExpression(nativeRange()),
+		ast.NewTrueExpression(nativeRange()),
+		ast.NewFalseExpression(nativeRange()),
+		nativeRange(),
+	)
+	if got := resolver.ResolveExpression(ternary, nil, nil, ReportModeReport); got != types.TypeBool {
+		t.Errorf("ternary expression should resolve to bool, got %v", got)
+	}
+
+	fooDecl := newTestClassDecl("Foo", 0)
+	fooProto := NewClassPrototype("Foo", prog.NativeFile, fooDecl, 0, false)
+	registerElement(prog, "Foo", fooProto)
+	fooInstance := resolver.ResolveClass(fooProto, nil, nil, ReportModeReport)
+	if fooInstance == nil {
+		t.Fatal("ResolveClass returned nil for Foo")
+	}
+
+	callerSig := newTestSig(newTestNamedTypeNode("Foo"))
+	callerDecl := newTestFuncDecl("caller", 0, callerSig)
+	callerProto := NewFunctionPrototype("caller", prog.NativeFile, callerDecl, 0)
+	caller := resolver.ResolveFunction(callerProto, nil, nil, ReportModeReport)
+	if caller == nil {
+		t.Fatal("ResolveFunction returned nil for caller")
+	}
+
+	newExpr := ast.NewNewExpression(newTestTypeName("Foo"), nil, nil, nativeRange())
+	if got := resolver.ResolveExpression(newExpr, caller.Flow, nil, ReportModeReport); got != fooInstance.GetResolvedType() {
+		t.Errorf("new expression should resolve to Foo type, got %v", got)
 	}
 }
 
@@ -653,4 +902,178 @@ func TestResolveClassMemberFunction(t *testing.T) {
 		t.Fatal("ResolveClass returned nil")
 	}
 	// finishResolveClass should have resolved the method
+}
+
+func TestResolveClassLaysOutBoundFieldPrototypes(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i8", newI8TypeDefinition(prog))
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	baseDecl := newTestClassDecl("Base", 0)
+	baseProto := NewClassPrototype("Base", prog.NativeFile, baseDecl, 0, false)
+	baseField := PropertyPrototypeForField(
+		"a",
+		baseProto,
+		ast.NewFieldDeclaration(newTestIdent("a"), nil, int32(common.CommonFlagsInstance), newTestNamedTypeNode("i32"), nil, nativeRange()),
+		0,
+	)
+	baseProto.AddInstance("a", baseField)
+
+	derivedDecl := newTestClassDecl("Derived", 0)
+	derivedProto := NewClassPrototype("Derived", prog.NativeFile, derivedDecl, 0, false)
+	derivedProto.BasePrototype = baseProto
+	derivedProto.AddInstance("b", PropertyPrototypeForField(
+		"b",
+		derivedProto,
+		ast.NewFieldDeclaration(newTestIdent("b"), nil, int32(common.CommonFlagsInstance), newTestNamedTypeNode("i8"), nil, nativeRange()),
+		0,
+	))
+	derivedProto.AddInstance("c", PropertyPrototypeForField(
+		"c",
+		derivedProto,
+		ast.NewFieldDeclaration(newTestIdent("c"), nil, int32(common.CommonFlagsInstance), newTestNamedTypeNode("i32"), nil, nativeRange()),
+		0,
+	))
+
+	derivedInstance := resolver.ResolveClass(derivedProto, nil, nil, ReportModeReport)
+	if derivedInstance == nil {
+		t.Fatal("ResolveClass returned nil")
+	}
+
+	memberB, ok := derivedInstance.GetMember("b").(*PropertyPrototype)
+	if !ok || memberB.PropertyInstance == nil {
+		t.Fatal("derived field b should resolve to a bound property prototype")
+	}
+	if memberB.GetParent() != derivedInstance {
+		t.Fatal("derived field b should be bound to the derived instance")
+	}
+	if memberB.PropertyInstance.MemoryOffset != 4 {
+		t.Fatalf("field b offset = %d, want 4", memberB.PropertyInstance.MemoryOffset)
+	}
+	if memberB.PropertyInstance.GetResolvedType() != types.TypeI8 {
+		t.Fatalf("field b type = %v, want i8", memberB.PropertyInstance.GetResolvedType())
+	}
+
+	memberC, ok := derivedInstance.GetMember("c").(*PropertyPrototype)
+	if !ok || memberC.PropertyInstance == nil {
+		t.Fatal("derived field c should resolve to a bound property prototype")
+	}
+	if memberC.PropertyInstance.MemoryOffset != 8 {
+		t.Fatalf("field c offset = %d, want 8", memberC.PropertyInstance.MemoryOffset)
+	}
+	if derivedInstance.NextMemoryOffset != 12 {
+		t.Fatalf("derived nextMemoryOffset = %d, want 12", derivedInstance.NextMemoryOffset)
+	}
+}
+
+func TestResolveClassInterfacesMustBeResolvedBeforeFinish(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "void", newVoidTypeDefinition(prog))
+
+	ifaceDecl := newTestClassDecl("HasRun", 0)
+	ifaceProto := NewInterfacePrototype("HasRun", prog.NativeFile, ifaceDecl, 0)
+	ifaceMethodSig := newTestSig(newTestNamedTypeNode("void"))
+	ifaceMethodDecl := newTestFuncDecl("run", int32(common.CommonFlagsInstance), ifaceMethodSig)
+	ifaceMethod := NewFunctionPrototype("run", &ifaceProto.ClassPrototype, ifaceMethodDecl, 0)
+	ifaceProto.AddInstance("run", ifaceMethod)
+
+	classDecl := newTestClassDecl("Worker", 0)
+	classProto := NewClassPrototype("Worker", prog.NativeFile, classDecl, 0, false)
+	classProto.InterfacePrototypes = []*InterfacePrototype{ifaceProto}
+
+	classInstance := resolver.ResolveClass(classProto, nil, nil, ReportModeReport)
+	if classInstance == nil {
+		t.Fatal("ResolveClass returned nil")
+	}
+	if classInstance.GetMember("run") == nil {
+		t.Fatal("class should see required interface members during finalization")
+	}
+
+	found := false
+	for _, diag := range prog.Diagnostics {
+		if diag.Code == int32(diagnostics.DiagnosticCodeNonAbstractClass0DoesNotImplementInheritedAbstractMember1From2) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("missing diagnostic for unimplemented interface member")
+	}
+}
+
+func TestResolveClassBuildsIndexSignatureFromOperatorOverload(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	classDecl := newTestClassDecl("Vector", 0)
+	classProto := NewClassPrototype("Vector", prog.NativeFile, classDecl, 0, false)
+	overloadSig := newTestSigWithParams(
+		[]*ast.ParameterNode{newTestParam("index", newTestNamedTypeNode("i32"))},
+		newTestNamedTypeNode("i32"),
+	)
+	overloadDecl := newTestFuncDecl("[]", int32(common.CommonFlagsInstance), overloadSig)
+	overloadProto := NewFunctionPrototype("[]", classProto, overloadDecl, 0)
+	classProto.OperatorOverloadPrototypes[OperatorKindIndexedGet] = overloadProto
+
+	classInstance := resolver.ResolveClass(classProto, nil, nil, ReportModeReport)
+	if classInstance == nil {
+		t.Fatal("ResolveClass returned nil")
+	}
+	if classInstance.IndexSignature_ == nil {
+		t.Fatal("indexed getter overload should materialize an index signature")
+	}
+	if classInstance.IndexSignature_.GetResolvedType() != types.TypeI32 {
+		t.Fatalf("index signature type = %v, want i32", classInstance.IndexSignature_.GetResolvedType())
+	}
+	if classInstance.OperatorOverloads[OperatorKindIndexedGet] == nil {
+		t.Fatal("indexed getter overload should be registered on the class instance")
+	}
+}
+
+func TestResolveNewExpressionInfersGenericClassTypeArguments(t *testing.T) {
+	prog := newTestProgram()
+	resolver := NewResolver(prog)
+	registerType(prog, "i32", newI32TypeDefinition(prog))
+
+	typeParam := ast.NewTypeParameterNode(newTestIdent("T"), nil, nil, nativeRange())
+	classDecl := newTestClassDecl("Box", 0)
+	classDecl.TypeParameters = []*ast.TypeParameterNode{typeParam}
+	classProto := NewClassPrototype("Box", prog.NativeFile, classDecl, 0, false)
+	classProto.Set(common.CommonFlagsGeneric)
+
+	ctorSig := newTestSigWithParams(
+		[]*ast.ParameterNode{newTestParam("value", newTestNamedTypeNode("T"))},
+		ast.NewOmittedType(nativeRange()),
+	)
+	ctorDecl := newTestFuncDecl("constructor", int32(common.CommonFlagsInstance|common.CommonFlagsConstructor), ctorSig)
+	ctorProto := NewFunctionPrototype("constructor", classProto, ctorDecl, 0)
+	classProto.AddInstance("constructor", ctorProto)
+
+	registerElement(prog, "Box", classProto)
+
+	callerSig := newTestSig(newTestNamedTypeNode("i32"))
+	callerDecl := newTestFuncDecl("caller", 0, callerSig)
+	callerProto := NewFunctionPrototype("caller", prog.NativeFile, callerDecl, 0)
+	caller := resolver.ResolveFunction(callerProto, nil, nil, ReportModeReport)
+	if caller == nil {
+		t.Fatal("ResolveFunction returned nil for caller")
+	}
+
+	newExpr := ast.NewNewExpression(
+		newTestTypeName("Box"),
+		nil,
+		[]ast.Node{ast.NewIntegerLiteralExpression(1, nativeRange())},
+		nativeRange(),
+	)
+	element := resolver.LookupExpression(newExpr, caller.Flow, types.TypeVoid, ReportModeReport)
+	classInstance, ok := element.(*Class)
+	if !ok || classInstance == nil {
+		t.Fatalf("LookupExpression(new Box(...)) = %T, want *Class", element)
+	}
+	if len(classInstance.TypeArguments) != 1 || classInstance.TypeArguments[0] != types.TypeI32 {
+		t.Fatalf("inferred Box type arguments = %v, want [i32]", classInstance.TypeArguments)
+	}
 }

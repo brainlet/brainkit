@@ -34,28 +34,38 @@ func NewPropertyPrototype(name string, parent Element, firstDeclaration *ast.Fun
 // prototypes are created so that fields and explicit accessors are interchangeable.
 func PropertyPrototypeForField(name string, parent *ClassPrototype, fieldDeclaration *ast.FieldDeclaration, decoratorFlags DecoratorFlags) *PropertyPrototype {
 	nativeRange := ast.NativeSource().GetRange()
+	typeNode := fieldDeclaration.Type
+	if typeNode == nil {
+		typeNode = ast.NewOmittedType(*fieldDeclaration.Name.GetRange().AtEnd())
+	}
 
 	// Create getter declaration: get name(): type
-	getterDeclaration := ast.NewFunctionDeclaration(
+	getterDeclaration := ast.NewMethodDeclaration(
 		fieldDeclaration.Name,
 		fieldDeclaration.Decorators,
 		fieldDeclaration.Flags|int32(common.CommonFlagsInstance|common.CommonFlagsGet),
 		nil,
-		ast.NewFunctionTypeNode(nil, ast.NewOmittedType(*nativeRange), nil, false, *nativeRange),
+		ast.NewFunctionTypeNode(nil, typeNode, nil, false, *nativeRange),
 		nil,
-		ast.ArrowKindNone,
 		*nativeRange,
 	)
 
 	// Create setter declaration: set name(name: type)
-	setterDeclaration := ast.NewFunctionDeclaration(
+	setterDeclaration := ast.NewMethodDeclaration(
 		fieldDeclaration.Name,
 		fieldDeclaration.Decorators,
 		fieldDeclaration.Flags|int32(common.CommonFlagsInstance|common.CommonFlagsSet),
 		nil,
-		ast.NewFunctionTypeNode(nil, ast.NewOmittedType(*nativeRange), nil, false, *nativeRange),
+		ast.NewFunctionTypeNode(
+			[]*ast.ParameterNode{
+				ast.NewParameterNode(ast.ParameterKindDefault, fieldDeclaration.Name, typeNode, nil, *nativeRange),
+			},
+			ast.NewOmittedType(*nativeRange),
+			nil,
+			false,
+			*nativeRange,
+		),
 		nil,
-		ast.ArrowKindNone,
 		*nativeRange,
 	)
 

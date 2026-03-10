@@ -633,64 +633,108 @@ func (c *Compiler) makeConditionalAllocation(classInstance *program.Class, thisL
 // Compiles default field initializers and assigns them to `this`.
 // Ported from: assemblyscript/src/compiler.ts makeFieldInitializationInConstructor (lines 9884-9961).
 func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.Class, stmts *[]module.ExpressionRef) {
-	mod := c.Module()
-	thisTypeRef := module.TypeRefI32
-	if c.Options().IsWasm64() {
-		thisTypeRef = module.TypeRefI64
-	}
-	memName := common.CommonNameDefaultMemory
-
-	// Iterate instance members and initialize fields
-	members := classInstance.GetMembers()
-	if members == nil {
+	members := classInstance.OrderedOwnMembers()
+	if len(members) == 0 {
 		return
 	}
 
+	mod := c.Module()
+	fl := c.CurrentFlow
+	isInline := fl != nil && fl.IsInline()
+	thisLocalIndex := int32(0)
+	if isInline {
+		if thisLocal := fl.LookupLocal(common.CommonNameThis); thisLocal != nil {
+			thisLocalIndex = thisLocal.FlowIndex()
+		}
+	}
+	sizeTypeRef := c.Options().SizeTypeRef()
+	nonParameterFields := make([]*program.Property, 0)
+
 	for _, member := range members {
-		if member.GetElementKind() != program.ElementKindPropertyPrototype {
-			continue
-		}
-		propProto := member.(*program.PropertyPrototype)
-		if !propProto.IsField() {
-			continue
-		}
-		propInstance := propProto.PropertyInstance
-		if propInstance == nil {
-			continue
-		}
-		if propInstance.Is(common.CommonFlagsStatic) {
+		propertyPrototype, ok := member.(*program.PropertyPrototype)
+		if !ok {
 			continue
 		}
 
-		fieldType := propInstance.GetType()
+		property := propertyPrototype.PropertyInstance
+		if property == nil || !property.IsField() || property.GetBoundClassOrInterface() != classInstance {
+			continue
+		}
+		if property.IsAny(common.CommonFlagsConst) {
+			panic("const fields must not be initialized in the constructor")
+		}
+
+		parameterIndex := propertyPrototype.ParameterIndex()
+		if parameterIndex < 0 {
+			nonParameterFields = append(nonParameterFields, property)
+			continue
+		}
+
+		setterInstance := property.SetterInstance
+		if setterInstance == nil {
+			continue
+		}
+
+		fieldType := property.GetResolvedType()
 		if fieldType == nil {
 			continue
 		}
-		offset := uint32(propInstance.MemoryOffset)
 
-		// Check for initializer
-		initNode := propInstance.InitializerNode()
-		var initExpr module.ExpressionRef
-		if initNode != nil {
-			initExpr = c.CompileExpression(initNode, fieldType, ConstraintsConvImplicit)
-		} else {
-			initExpr = c.makeZeroOfType(fieldType)
+		parameterLocalIndex := int32(1 + parameterIndex)
+		if isInline {
+			if parameterLocal := fl.LookupLocal(property.GetName()); parameterLocal != nil {
+				parameterLocalIndex = parameterLocal.FlowIndex()
+			}
 		}
 
-		// Store the value: store(this, value, offset)
-		fieldTypeRef := fieldType.ToRef()
-		var bytes uint32
-		switch fieldTypeRef {
-		case module.TypeRefI64, module.TypeRefF64:
-			bytes = 8
-		default:
-			bytes = 4
+		var reportNode ast.Node = property.IdentifierNode()
+		if reportNode == nil {
+			reportNode = property.GetDeclaration()
 		}
-		thisExpr := mod.LocalGet(0, thisTypeRef)
-		*stmts = append(*stmts,
-			mod.Store(bytes, thisExpr, initExpr, fieldTypeRef, offset, bytes, memName),
-		)
+
+		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
+			mod.LocalGet(thisLocalIndex, sizeTypeRef),
+			mod.LocalGet(parameterLocalIndex, fieldType.ToRef()),
+		}, reportNode)
+		if c.CurrentType != types.TypeVoid {
+			expr = mod.Drop(expr)
+		}
+		*stmts = append(*stmts, expr)
 	}
+
+	for _, field := range nonParameterFields {
+		fieldType := field.GetResolvedType()
+		if fieldType == nil {
+			continue
+		}
+
+		setterInstance := field.SetterInstance
+		if setterInstance == nil {
+			continue
+		}
+
+		initializerNode := field.Prototype.PropertyInitializerNode()
+		fieldValue := c.makeZeroOfType(fieldType)
+		if initializerNode != nil {
+			fieldValue = c.CompileExpression(initializerNode, fieldType, ConstraintsConvImplicit)
+		}
+
+		var reportNode ast.Node = field.IdentifierNode()
+		if reportNode == nil {
+			reportNode = field.GetDeclaration()
+		}
+
+		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
+			mod.LocalGet(thisLocalIndex, sizeTypeRef),
+			fieldValue,
+		}, reportNode)
+		if c.CurrentType != types.TypeVoid {
+			expr = mod.Drop(expr)
+		}
+		*stmts = append(*stmts, expr)
+	}
+
+	c.CurrentType = types.TypeVoid
 }
 
 // ensureConstructor ensures a class has a constructor compiled, creating a default one if needed.

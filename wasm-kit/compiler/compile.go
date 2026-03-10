@@ -783,6 +783,7 @@ func (c *Compiler) makeCallDirect(instance *program.Function, operands []module.
 	c.CompileFunction(instance)
 	// Just do a direct call for now. The full implementation handles
 	// varargs forwarding, arguments length setting, and return type matching.
+	returnType := instance.Signature.ReturnType
 	numParams := int32(len(instance.Signature.ParameterTypes))
 	if instance.Signature.ThisType != nil {
 		numParams++
@@ -794,13 +795,17 @@ func (c *Compiler) makeCallDirect(instance *program.Function, operands []module.
 		if stub != instance {
 			c.RuntimeFeatures |= RuntimeFeaturesSetArgumentsLength
 			argumentsLength := c.EnsureArgumentsLength()
-			return mod.Block("", []module.ExpressionRef{
+			expr := mod.Block("", []module.ExpressionRef{
 				mod.GlobalSet(argumentsLength, mod.I32(int32(len(operands)))),
-				mod.Call(stub.GetInternalName(), operands, instance.Signature.ReturnType.ToRef()),
-			}, instance.Signature.ReturnType.ToRef())
+				mod.Call(stub.GetInternalName(), operands, returnType.ToRef()),
+			}, returnType.ToRef())
+			c.CurrentType = returnType
+			return expr
 		}
 	}
-	return mod.Call(instance.GetInternalName(), operands, instance.Signature.ReturnType.ToRef())
+	expr := mod.Call(instance.GetInternalName(), operands, returnType.ToRef())
+	c.CurrentType = returnType
+	return expr
 }
 
 // FinalizeOverrideStub finalizes an override stub by building a switch over
@@ -1125,19 +1130,279 @@ func (c *Compiler) EnsureArgumentsLength() string {
 	return name
 }
 
+// prepareInstanceOf ensures an instanceof helper exists for the given class and returns its name.
+func (c *Compiler) prepareInstanceOf(classInstance *program.Class) string {
+	name := classInstance.GetInternalName() + "~instanceof"
+	c.PendingInstanceOf[classInstance] = name
+	if !c.Module().HasFunction(name) {
+		sizeTypeRef := c.Options().UsizeType().ToRef()
+		c.Module().AddFunction(name, sizeTypeRef, module.TypeRefI32, nil, c.Module().Unreachable())
+	}
+	return name
+}
+
+// makeStaticAbort makes a call to abort, if present, otherwise creates a trap.
+// Ported from: assemblyscript/src/compiler.ts makeStaticAbort.
+func (c *Compiler) makeStaticAbort(messageExpr module.ExpressionRef, codeLocation ast.Node) module.ExpressionRef {
+	mod := c.Module()
+	abortInstance := c.Program.AbortInstance()
+	if abortInstance == nil || !c.CompileFunction(abortInstance) {
+		return mod.Unreachable()
+	}
+
+	rng := codeLocation.GetRange()
+	if rng == nil || rng.Source == nil {
+		return mod.Block("", []module.ExpressionRef{
+			mod.Call(abortInstance.GetInternalName(), []module.ExpressionRef{
+				messageExpr,
+				c.ensureStaticString(""),
+				mod.I32(0),
+				mod.I32(0),
+			}, module.TypeRefNone),
+			mod.Unreachable(),
+		}, module.TypeRefUnreachable)
+	}
+
+	filenameExpr := c.ensureStaticString(rng.Source.SourceNormalizedPath())
+	line := rng.Source.LineAt(rng.Start)
+	col := rng.Source.ColumnAt()
+	return mod.Block("", []module.ExpressionRef{
+		mod.Call(abortInstance.GetInternalName(), []module.ExpressionRef{
+			messageExpr,
+			filenameExpr,
+			mod.I32(line),
+			mod.I32(col),
+		}, module.TypeRefNone),
+		mod.Unreachable(),
+	}, module.TypeRefUnreachable)
+}
+
 // compileRTTI compiles runtime type information.
 func compileRTTI(c *Compiler) {
-	// TODO: Implement RTTI compilation.
+	prog := c.Program
+	mod := c.Module()
+	managedClasses := prog.ManagedClasses
+	count := len(managedClasses)
+	data := make([]byte, 4+4*count) // count | TypeInfo*
+	util.WriteI32(int32(count), data, 0)
+
+	abvInstance := prog.ArrayBufferViewInstance()
+	var abvPrototype *program.ClassPrototype
+	if abvInstance != nil {
+		abvPrototype = abvInstance.Prototype
+	}
+	arrayPrototype := prog.ArrayPrototype()
+	setPrototype := prog.SetPrototype()
+	mapPrototype := prog.MapPrototype()
+	staticArrayPrototype := prog.StaticArrayPrototype()
+
+	off := 4
+	for instanceID := int32(0); instanceID < int32(count); instanceID++ {
+		instance, ok := managedClasses[instanceID]
+		if !ok || instance == nil {
+			panic("missing managed class for runtime id")
+		}
+
+		var flags common.TypeinfoFlags
+		if instance.IsPointerfree() {
+			flags |= common.TypeinfoFlagsPOINTERFREE
+		}
+
+		switch {
+		case abvPrototype != nil && instance != abvInstance && instance.ExtendsPrototype(abvPrototype):
+			valueType := instance.GetArrayValueType()
+			flags |= common.TypeinfoFlagsARRAYBUFFERVIEW
+			flags |= common.TypeinfoFlagsVALUE_ALIGN_0 * typeToRuntimeFlags(valueType)
+
+		case arrayPrototype != nil && instance.ExtendsPrototype(arrayPrototype):
+			valueType := instance.GetArrayValueType()
+			flags |= common.TypeinfoFlagsARRAY
+			flags |= common.TypeinfoFlagsVALUE_ALIGN_0 * typeToRuntimeFlags(valueType)
+
+		case setPrototype != nil && instance.ExtendsPrototype(setPrototype):
+			typeArguments := instance.GetTypeArgumentsTo(setPrototype)
+			if len(typeArguments) == 1 {
+				flags |= common.TypeinfoFlagsSET
+				flags |= common.TypeinfoFlagsVALUE_ALIGN_0 * typeToRuntimeFlags(typeArguments[0])
+			}
+
+		case mapPrototype != nil && instance.ExtendsPrototype(mapPrototype):
+			typeArguments := instance.GetTypeArgumentsTo(mapPrototype)
+			if len(typeArguments) == 2 {
+				flags |= common.TypeinfoFlagsMAP
+				flags |= common.TypeinfoFlagsKEY_ALIGN_0 * typeToRuntimeFlags(typeArguments[0])
+				flags |= common.TypeinfoFlagsVALUE_ALIGN_0 * typeToRuntimeFlags(typeArguments[1])
+			}
+
+		case staticArrayPrototype != nil && instance.ExtendsPrototype(staticArrayPrototype):
+			valueType := instance.GetArrayValueType()
+			flags |= common.TypeinfoFlagsSTATICARRAY
+			flags |= common.TypeinfoFlagsVALUE_ALIGN_0 * typeToRuntimeFlags(valueType)
+		}
+
+		util.WriteI32(int32(flags), data, off)
+		off += 4
+		instance.RttiFlags = uint32(flags)
+	}
+
+	segment := c.addAlignedMemorySegment(data, 16)
+	offset := module.GetConstValueInteger(segment.Offset, c.Options().IsWasm64())
+	if c.Options().IsWasm64() {
+		mod.AddGlobal(common.BuiltinNameRttiBase, module.TypeRefI64, false, mod.I64(offset))
+	} else {
+		mod.AddGlobal(common.BuiltinNameRttiBase, module.TypeRefI32, false, mod.I32(int32(offset)))
+	}
 }
 
 // compileVisitGlobals compiles the __visit_globals function.
 func compileVisitGlobals(c *Compiler) {
-	// TODO: Implement visitGlobals compilation.
+	mod := c.Module()
+	sizeTypeRef := c.Options().SizeTypeRef()
+	visitInstance := c.Program.VisitInstance()
+	if visitInstance == nil {
+		panic("missing __visit runtime function")
+	}
+
+	c.CompileFunctionForced(visitInstance)
+
+	exprs := make([]module.ExpressionRef, 0)
+	for _, element := range c.Program.ElementsByNameMap {
+		global, ok := element.(*program.Global)
+		if !ok {
+			continue
+		}
+
+		globalType := global.GetResolvedType()
+		if globalType == nil {
+			continue
+		}
+		classReference := globalType.GetClass()
+		if classReference == nil ||
+			classReference.HasDecorator(uint32(program.DecoratorFlagsUnmanaged)) ||
+			!global.Is(common.CommonFlagsCompiled) {
+			continue
+		}
+
+		if global.Is(common.CommonFlagsInlined) {
+			value := global.GetConstantIntegerValue()
+			if value == 0 {
+				continue
+			}
+			valueExpr := mod.I32(int32(value))
+			if c.Options().IsWasm64() {
+				valueExpr = mod.I64(value)
+			}
+			exprs = append(exprs, mod.Call(visitInstance.GetInternalName(), []module.ExpressionRef{
+				valueExpr,
+				mod.LocalGet(0, module.TypeRefI32),
+			}, module.TypeRefNone))
+			continue
+		}
+
+		exprs = append(exprs, mod.If(
+			mod.LocalTee(1, mod.GlobalGet(global.GetInternalName(), sizeTypeRef), false, sizeTypeRef),
+			mod.Call(visitInstance.GetInternalName(), []module.ExpressionRef{
+				mod.LocalGet(1, sizeTypeRef),
+				mod.LocalGet(0, module.TypeRefI32),
+			}, module.TypeRefNone),
+			0,
+		))
+	}
+
+	body := mod.Nop()
+	if len(exprs) != 0 {
+		body = mod.Block("", exprs, module.TypeRefNone)
+	}
+	mod.AddFunction(
+		common.BuiltinNameVisitGlobals,
+		module.TypeRefI32,
+		module.TypeRefNone,
+		[]module.TypeRef{sizeTypeRef},
+		body,
+	)
 }
 
 // compileVisitMembers compiles the __visit_members function.
 func compileVisitMembers(c *Compiler) {
-	// TODO: Implement visitMembers compilation.
+	prog := c.Program
+	mod := c.Module()
+	usizeType := c.Options().UsizeType()
+	sizeTypeRef := usizeType.ToRef()
+	visitInstance := prog.VisitInstance()
+	if visitInstance == nil {
+		panic("missing __visit runtime function")
+	}
+	c.CompileFunctionForced(visitInstance)
+
+	count := len(prog.ManagedClasses)
+	params := module.CreateType([]module.TypeRef{sizeTypeRef, module.TypeRefI32})
+	if count == 0 {
+		mod.AddFunction(common.BuiltinNameVisitMembers, params, module.TypeRefNone, nil, mod.Unreachable())
+		return
+	}
+
+	names := make([]string, count)
+	cases := make([]module.ExpressionRef, count)
+	for i := 0; i < count; i++ {
+		instance := prog.ManagedClasses[int32(i)]
+		if instance == nil {
+			panic("missing managed class for runtime id")
+		}
+		names[i] = instance.GetInternalName()
+		if instance.IsPointerfree() {
+			cases[i] = mod.Return(0)
+			continue
+		}
+		cases[i] = mod.Block("", []module.ExpressionRef{
+			mod.Call(instance.GetInternalName()+"~visit", []module.ExpressionRef{
+				mod.LocalGet(0, sizeTypeRef),
+				mod.LocalGet(1, module.TypeRefI32),
+			}, module.TypeRefNone),
+			mod.Return(0),
+		}, module.TypeRefNone)
+		ensureVisitMembersOf(c, instance)
+	}
+
+	subExpr := mod.Binary(module.BinaryOpSubI32,
+		mod.LocalGet(0, sizeTypeRef),
+		mod.I32(8),
+	)
+	if sizeTypeRef == module.TypeRefI64 {
+		subExpr = mod.Binary(module.BinaryOpSubI64,
+			mod.LocalGet(0, sizeTypeRef),
+			mod.I64(8),
+		)
+	}
+
+	current := mod.Block(names[0], []module.ExpressionRef{
+		mod.Switch(
+			names,
+			"invalid",
+			mod.Load(4, false, subExpr, module.TypeRefI32, 0, 4, common.CommonNameDefaultMemory),
+			0,
+		),
+	}, module.TypeRefNone)
+	for i := 0; i < count-1; i++ {
+		current = mod.Block(names[i+1], []module.ExpressionRef{
+			current,
+			cases[i],
+		}, module.TypeRefNone)
+	}
+	current = mod.Block("invalid", []module.ExpressionRef{
+		current,
+		cases[count-1],
+	}, module.TypeRefNone)
+
+	mod.AddFunction(
+		common.BuiltinNameVisitMembers,
+		params,
+		module.TypeRefNone,
+		nil,
+		mod.Flatten([]module.ExpressionRef{
+			current,
+			mod.Unreachable(),
+		}, module.TypeRefNone),
+	)
 }
 
 // compileCallExpressionBuiltin compiles a call to a builtin function.
@@ -1161,8 +1426,92 @@ func (c *Compiler) compileCallExpressionBuiltin(
 // checkFieldInitialization checks that fields are properly initialized.
 // Ported from: assemblyscript/src/compiler.ts checkFieldInitialization (lines 6932-6985).
 func (c *Compiler) checkFieldInitialization(classInstance *program.Class, reportNode ast.Node) {
-	// TODO: Port field initialization check.
-	// This checks that all fields in the class are initialized by the constructor.
+	if classInstance == nil || classInstance.DidCheckFieldInitialization {
+		return
+	}
+	classInstance.DidCheckFieldInitialization = true
+
+	ctor := classInstance.ConstructorInstance
+	if ctor == nil {
+		ctor = c.ensureConstructor(classInstance, reportNode)
+	}
+	if ctor == nil || ctor.Flow == nil {
+		return
+	}
+
+	c.checkFieldInitializationInFlow(classInstance, ctor.Flow, reportNode)
+}
+
+// checkFieldInitializationInFlow checks that all own class fields are initialized in the specified flow.
+// Ported from: assemblyscript/src/compiler.ts checkFieldInitializationInFlow (lines 9006-9044).
+func (c *Compiler) checkFieldInitializationInFlow(classInstance *program.Class, fl *flow.Flow, relatedNode ast.Node) {
+	if classInstance == nil || fl == nil {
+		return
+	}
+
+	members := classInstance.OrderedOwnMembers()
+	if len(members) == 0 {
+		return
+	}
+
+	for _, member := range members {
+		propertyPrototype, ok := member.(*program.PropertyPrototype)
+		if !ok {
+			continue
+		}
+
+		property := propertyPrototype.PropertyInstance
+		if property == nil || !property.IsField() {
+			continue
+		}
+
+		propertyRange := property.GetDeclaration().GetRange()
+		if ident := property.IdentifierNode(); ident != nil {
+			propertyRange = ident.GetRange()
+		}
+
+		if property.InitializerNode() == nil && !fl.IsThisFieldFlag(property, flow.FieldFlagInitialized) {
+			if !property.Is(common.CommonFlagsDefinitelyAssigned) {
+				if relatedNode != nil {
+					c.ErrorRelated(
+						diagnostics.DiagnosticCodeProperty0HasNoInitializerAndIsNotAssignedInTheConstructorBeforeThisIsUsedOrReturned,
+						propertyRange,
+						relatedNode.GetRange(),
+						property.GetInternalName(),
+						"",
+						"",
+					)
+				} else {
+					c.Error(
+						diagnostics.DiagnosticCodeProperty0HasNoInitializerAndIsNotAssignedInTheConstructorBeforeThisIsUsedOrReturned,
+						propertyRange,
+						property.GetInternalName(),
+						"",
+						"",
+					)
+				}
+			}
+		} else if property.Is(common.CommonFlagsDefinitelyAssigned) {
+			propertyType := property.GetResolvedType()
+			if propertyType != nil && propertyType.IsReference() {
+				c.Warning(
+					diagnostics.DiagnosticCodeProperty0IsAlwaysAssignedBeforeBeingUsed,
+					propertyRange,
+					property.GetInternalName(),
+					"",
+					"",
+				)
+			} else {
+				c.Pedantic(
+					diagnostics.DiagnosticCodeUnnecessaryDefiniteAssignment,
+					propertyRange,
+					"",
+					"",
+					"",
+				)
+			}
+		}
+	}
 }
 
 // ensureSmallIntegerWrap ensures a small integer value is properly wrapped/sign-extended.
@@ -1211,17 +1560,88 @@ func (c *Compiler) ensureSmallIntegerWrap(expr module.ExpressionRef, typ *types.
 
 // makeRuntimeNonNullCheck inserts a runtime non-null assertion check.
 // Ported from: assemblyscript/src/compiler.ts makeRuntimeNonNullCheck.
-// TODO: Full implementation needs __visit_globals / __rtti infrastructure.
 func (c *Compiler) makeRuntimeNonNullCheck(expr module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
-	// Stub: return expr as-is. Runtime assertions not yet implemented.
+	mod := c.Module()
+	fl := c.CurrentFlow
+	temp := fl.GetTempLocal(typ)
+	tempIndex := temp.FlowIndex()
+	if !fl.CanOverflow(expr, typ) {
+		fl.SetLocalFlag(tempIndex, flow.LocalFlagWrapped)
+	}
+	fl.SetLocalFlag(tempIndex, flow.LocalFlagNonNull)
+
+	staticAbortCallExpr := c.makeStaticAbort(
+		c.ensureStaticString("Unexpected 'null' (not assigned or failed cast)"),
+		reportNode,
+	)
+
+	if typ.IsExternalReference() {
+		nonNullExpr := mod.LocalGet(tempIndex, typ.ToRef())
+		if c.Options().HasFeature(common.FeatureGC) {
+			nonNullExpr = mod.RefAsNonNull(nonNullExpr)
+		}
+		expr = mod.If(
+			mod.RefIsNull(mod.LocalTee(tempIndex, expr, false, typ.ToRef())),
+			staticAbortCallExpr,
+			nonNullExpr,
+		)
+	} else {
+		expr = mod.If(
+			mod.LocalTee(tempIndex, expr, typ.IsManaged(), typ.ToRef()),
+			mod.LocalGet(tempIndex, typ.ToRef()),
+			staticAbortCallExpr,
+		)
+	}
+	c.CurrentType = typ.NonNullableType()
 	return expr
 }
 
 // makeRuntimeDowncastCheck inserts a runtime downcast type check.
 // Ported from: assemblyscript/src/compiler.ts makeRuntimeDowncastCheck.
-// TODO: Full implementation needs RTTI infrastructure.
 func (c *Compiler) makeRuntimeDowncastCheck(expr module.ExpressionRef, fromType, toType *types.Type, reportNode ast.Node) module.ExpressionRef {
-	// Stub: return expr as-is. Runtime type checks not yet implemented.
+	if !toType.IsReference() || !toType.NonNullableType().IsAssignableTo(fromType, false) {
+		panic("invalid runtime downcast")
+	}
+
+	mod := c.Module()
+	fl := c.CurrentFlow
+	temp := fl.GetTempLocal(fromType)
+	tempIndex := temp.FlowIndex()
+
+	staticAbortCallExpr := c.makeStaticAbort(
+		c.ensureStaticString("invalid downcast"),
+		reportNode,
+	)
+
+	classRef := toType.GetClassOrWrapper(c.Program)
+	classInstance, ok := classRef.(*program.Class)
+	if !ok || classInstance == nil {
+		return mod.Unreachable()
+	}
+	instanceofName := c.prepareInstanceOf(classInstance)
+
+	if !toType.IsNullableReference() || fl.IsNonnull(expr, fromType) {
+		expr = mod.If(
+			mod.Call(instanceofName, []module.ExpressionRef{
+				mod.LocalTee(tempIndex, expr, fromType.IsManaged(), fromType.ToRef()),
+			}, module.TypeRefI32),
+			mod.LocalGet(tempIndex, fromType.ToRef()),
+			staticAbortCallExpr,
+		)
+	} else {
+		expr = mod.If(
+			mod.Unary(module.UnaryOpEqzI32, mod.LocalTee(tempIndex, expr, fromType.IsManaged(), fromType.ToRef())),
+			c.makeZeroOfType(toType),
+			mod.If(
+				mod.Call(instanceofName, []module.ExpressionRef{
+					mod.LocalGet(tempIndex, fromType.ToRef()),
+				}, module.TypeRefI32),
+				mod.LocalGet(tempIndex, fromType.ToRef()),
+				staticAbortCallExpr,
+			),
+		)
+	}
+	c.CurrentType = toType
 	return expr
 }
 
@@ -1231,4 +1651,136 @@ func (c *Compiler) makeRuntimeDowncastCheck(expr module.ExpressionRef, fromType,
 func i64Align(value, alignment int64) int64 {
 	mask := alignment - 1
 	return (value + mask) & ^mask
+}
+
+func typeToRuntimeFlags(typ *types.Type) common.TypeinfoFlags {
+	flags := common.TypeinfoFlagsVALUE_ALIGN_0 * common.TypeinfoFlags(1<<typ.AlignLog2())
+	if typ.Is(types.TypeFlagSigned) {
+		flags |= common.TypeinfoFlagsVALUE_SIGNED
+	}
+	if typ.Is(types.TypeFlagFloat) {
+		flags |= common.TypeinfoFlagsVALUE_FLOAT
+	}
+	if typ.Is(types.TypeFlagNullable) {
+		flags |= common.TypeinfoFlagsVALUE_NULLABLE
+	}
+	if typ.IsManaged() {
+		flags |= common.TypeinfoFlagsVALUE_MANAGED
+	}
+	return flags / common.TypeinfoFlagsVALUE_ALIGN_0
+}
+
+func (c *Compiler) addAlignedMemorySegment(buffer []byte, alignment int32) *module.MemorySegment {
+	if !util.IsPowerOf2(alignment) {
+		panic("alignment must be a power of two")
+	}
+
+	alignedOffset := i64Align(c.MemoryOffset, int64(alignment))
+	var offsetExpr module.ExpressionRef
+	if c.Options().IsWasm64() {
+		offsetExpr = c.Module().I64(alignedOffset)
+	} else {
+		offsetExpr = c.Module().I32(int32(alignedOffset))
+	}
+
+	segment := &module.MemorySegment{
+		Buffer: buffer,
+		Offset: offsetExpr,
+	}
+	c.MemorySegments = append(c.MemorySegments, segment)
+	c.MemoryOffset = alignedOffset + int64(len(buffer))
+	return segment
+}
+
+func ensureVisitMembersOf(c *Compiler, instance *program.Class) {
+	if !instance.GetResolvedType().IsManaged() {
+		panic("visitor requested for unmanaged class")
+	}
+	if instance.VisitRef != 0 {
+		return
+	}
+
+	prog := c.Program
+	mod := c.Module()
+	usizeType := c.Options().UsizeType()
+	sizeTypeRef := usizeType.ToRef()
+	sizeTypeSize := uint32(usizeType.ByteSize())
+	visitInstance := prog.VisitInstance()
+	if visitInstance == nil {
+		panic("missing __visit runtime function")
+	}
+
+	body := make([]module.ExpressionRef, 0)
+	base := instance.Base
+	if base != nil {
+		body = append(body, mod.Call(base.GetInternalName()+"~visit", []module.ExpressionRef{
+			mod.LocalGet(0, sizeTypeRef),
+			mod.LocalGet(1, module.TypeRefI32),
+		}, module.TypeRefNone))
+	}
+
+	hasVisitImpl := false
+	if instance.IsDeclaredInLibrary() {
+		if visitPrototype, ok := instance.GetMember(common.CommonNameVisit).(*program.FunctionPrototype); ok {
+			visitMethod := c.Resolver().ResolveFunction(visitPrototype, nil, nil, program.ReportModeReport)
+			if visitMethod == nil || !c.CompileFunction(visitMethod) {
+				body = append(body, mod.Unreachable())
+			} else {
+				body = append(body, mod.Call(visitMethod.GetInternalName(), []module.ExpressionRef{
+					mod.LocalGet(0, sizeTypeRef),
+					mod.LocalGet(1, module.TypeRefI32),
+				}, module.TypeRefNone))
+			}
+			hasVisitImpl = true
+		}
+	}
+
+	needsTempValue := false
+	if !hasVisitImpl {
+		for _, member := range instance.OrderedOwnMembers() {
+			propertyPrototype, ok := member.(*program.PropertyPrototype)
+			if !ok {
+				continue
+			}
+			property := propertyPrototype.PropertyInstance
+			if property == nil || !property.IsField() || property.GetBoundClassOrInterface() != instance {
+				continue
+			}
+			fieldType := property.GetResolvedType()
+			if fieldType == nil || !fieldType.IsManaged() {
+				continue
+			}
+			fieldOffset := property.MemoryOffset
+			if fieldOffset < 0 {
+				panic("managed field without offset")
+			}
+			needsTempValue = true
+			body = append(body, mod.Call(visitInstance.GetInternalName(), []module.ExpressionRef{
+				mod.Load(sizeTypeSize, false,
+					mod.LocalGet(0, sizeTypeRef),
+					sizeTypeRef,
+					uint32(fieldOffset),
+					sizeTypeSize,
+					common.CommonNameDefaultMemory,
+				),
+				mod.LocalGet(1, module.TypeRefI32),
+			}, module.TypeRefNone))
+		}
+	}
+
+	varTypes := []module.TypeRef(nil)
+	if needsTempValue {
+		varTypes = []module.TypeRef{sizeTypeRef}
+	}
+	instance.VisitRef = mod.AddFunction(
+		instance.GetInternalName()+"~visit",
+		module.CreateType([]module.TypeRef{sizeTypeRef, module.TypeRefI32}),
+		module.TypeRefNone,
+		varTypes,
+		mod.Flatten(body, module.TypeRefNone),
+	)
+
+	if base != nil && base.GetResolvedType().IsManaged() {
+		ensureVisitMembersOf(c, base)
+	}
 }

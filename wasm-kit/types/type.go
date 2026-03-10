@@ -14,6 +14,7 @@ type ClassReference interface {
 	IsAssignableTo(target ClassReference) bool
 	HasSubclassAssignableTo(target ClassReference) bool
 	InternalName() string
+	GetType() *Type
 	LookupOverload(kind int32) FunctionReference
 }
 
@@ -513,11 +514,14 @@ func CommonType(left, right, contextualType *Type, signednessIsRelevant bool) *T
 		if leftClass != nil && rightClass != nil && LeastUpperBoundFunc != nil {
 			lubClass := LeastUpperBoundFunc(leftClass, rightClass)
 			if lubClass != nil {
-				// Get the type from the LUB class
-				// Note: This requires the class to expose its Type.
-				// For now we return contextualType as a reasonable approximation.
-				// The full implementation requires Class.type which is in the program package.
-				return contextualType
+				ret := lubClass.GetType()
+				if ret == nil {
+					return nil
+				}
+				if left.Is(TypeFlagNullable) || right.Is(TypeFlagNullable) {
+					return ret.AsNullable()
+				}
+				return ret
 			}
 		}
 	} else if right.IsInternalReference() {
@@ -655,17 +659,17 @@ var (
 
 	TypeV128 = NewType(TypeKindV128, TypeFlagVector|TypeFlagValue, 128)
 
-	TypeFunc             = NewType(TypeKindFunc, TypeFlagExternal|TypeFlagReference, 0)
-	TypeExtern           = NewType(TypeKindExtern, TypeFlagExternal|TypeFlagReference, 0)
-	TypeAnyRef           = NewType(TypeKindAny, TypeFlagExternal|TypeFlagReference, 0)
-	TypeEq               = NewType(TypeKindEq, TypeFlagExternal|TypeFlagReference, 0)
-	TypeStructRef        = NewType(TypeKindStruct, TypeFlagExternal|TypeFlagReference, 0)
-	TypeArrayRef         = NewType(TypeKindArray, TypeFlagExternal|TypeFlagReference, 0)
-	TypeI31              = NewType(TypeKindI31, TypeFlagExternal|TypeFlagReference, 0)
-	TypeStringRef        = NewType(TypeKindString, TypeFlagExternal|TypeFlagReference, 0)
-	TypeStringviewWTF8   = NewType(TypeKindStringviewWTF8, TypeFlagExternal|TypeFlagReference, 0)
-	TypeStringviewWTF16  = NewType(TypeKindStringviewWTF16, TypeFlagExternal|TypeFlagReference, 0)
-	TypeStringviewIter   = NewType(TypeKindStringviewIter, TypeFlagExternal|TypeFlagReference, 0)
+	TypeFunc            = NewType(TypeKindFunc, TypeFlagExternal|TypeFlagReference, 0)
+	TypeExtern          = NewType(TypeKindExtern, TypeFlagExternal|TypeFlagReference, 0)
+	TypeAnyRef          = NewType(TypeKindAny, TypeFlagExternal|TypeFlagReference, 0)
+	TypeEq              = NewType(TypeKindEq, TypeFlagExternal|TypeFlagReference, 0)
+	TypeStructRef       = NewType(TypeKindStruct, TypeFlagExternal|TypeFlagReference, 0)
+	TypeArrayRef        = NewType(TypeKindArray, TypeFlagExternal|TypeFlagReference, 0)
+	TypeI31             = NewType(TypeKindI31, TypeFlagExternal|TypeFlagReference, 0)
+	TypeStringRef       = NewType(TypeKindString, TypeFlagExternal|TypeFlagReference, 0)
+	TypeStringviewWTF8  = NewType(TypeKindStringviewWTF8, TypeFlagExternal|TypeFlagReference, 0)
+	TypeStringviewWTF16 = NewType(TypeKindStringviewWTF16, TypeFlagExternal|TypeFlagReference, 0)
+	TypeStringviewIter  = NewType(TypeKindStringviewIter, TypeFlagExternal|TypeFlagReference, 0)
 
 	TypeVoid = NewType(TypeKindVoid, TypeFlagNone, 0)
 

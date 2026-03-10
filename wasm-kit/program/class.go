@@ -12,6 +12,7 @@ import (
 type ClassPrototype struct {
 	DeclaredElementBase
 	InstanceMembers            map[string]DeclaredElement
+	InstanceMemberOrder        []string
 	BasePrototype              *ClassPrototype
 	InterfacePrototypes        []*InterfacePrototype
 	ConstructorPrototype       *FunctionPrototype
@@ -95,9 +96,11 @@ func (cp *ClassPrototype) Extends(basePrototype *ClassPrototype) bool {
 // AddInstance adds an element as an instance member.
 func (cp *ClassPrototype) AddInstance(name string, element DeclaredElement) bool {
 	originalDeclaration := element.GetDeclaration()
+	hadExisting := false
 	if cp.InstanceMembers == nil {
 		cp.InstanceMembers = make(map[string]DeclaredElement)
 	} else if existing, ok := cp.InstanceMembers[name]; ok {
+		hadExisting = true
 		merged := TryMerge(existing, element)
 		if merged == nil {
 			if IsDeclaredElement(existing.GetElementKind()) {
@@ -119,6 +122,9 @@ func (cp *ClassPrototype) AddInstance(name string, element DeclaredElement) bool
 		element = merged
 	}
 	cp.InstanceMembers[name] = element
+	if !hadExisting {
+		cp.InstanceMemberOrder = append(cp.InstanceMemberOrder, name)
+	}
 	if element.Is(common.CommonFlagsExport) && cp.Is(common.CommonFlagsModuleExport) {
 		element.Set(common.CommonFlagsModuleExport)
 	}
@@ -147,23 +153,23 @@ func (cp *ClassPrototype) SetResolvedInstance(instanceKey string, instance *Clas
 // Class represents a resolved concrete class.
 type Class struct {
 	TypedElementBase
-	Prototype                *ClassPrototype
-	TypeArguments            []*types.Type
-	Base                     *Class
-	Interfaces               map[*Interface]struct{}
-	ContextualTypeArguments  map[string]*types.Type
-	NextMemoryOffset         uint32
-	ConstructorInstance      *Function
-	OperatorOverloads        map[OperatorKind]*Function
-	IndexSignature_          *IndexSignature
-	id                       uint32
-	RttiFlags                uint32
-	WrappedType              *types.Type
-	Extenders                map[*Class]struct{}
-	Implementers             map[*Class]struct{}
+	Prototype                   *ClassPrototype
+	TypeArguments               []*types.Type
+	Base                        *Class
+	Interfaces                  map[*Interface]struct{}
+	ContextualTypeArguments     map[string]*types.Type
+	NextMemoryOffset            uint32
+	ConstructorInstance         *Function
+	OperatorOverloads           map[OperatorKind]*Function
+	IndexSignature_             *IndexSignature
+	id                          uint32
+	RttiFlags                   uint32
+	WrappedType                 *types.Type
+	Extenders                   map[*Class]struct{}
+	Implementers                map[*Class]struct{}
 	DidCheckFieldInitialization bool
-	VisitRef                 FunctionRef
-	interfaceRef             *Interface // set if this Class is embedded in an Interface
+	VisitRef                    FunctionRef
+	interfaceRef                *Interface // set if this Class is embedded in an Interface
 }
 
 // NewClass creates a new resolved class.
@@ -265,6 +271,42 @@ func (c *Class) IsArrayLike() bool {
 	}
 	return c.FindOverload(OperatorKindIndexedGet, false) != nil ||
 		c.FindOverload(OperatorKindUncheckedIndexedGet, false) != nil
+}
+
+// OrderedOwnMembers returns this class's own members in declaration order.
+// This mirrors AssemblyScript's ordered Map traversal for concrete class members.
+func (c *Class) OrderedOwnMembers() []DeclaredElement {
+	members := c.GetMembers()
+	if members == nil {
+		return nil
+	}
+
+	order := c.Prototype.InstanceMemberOrder
+	if len(order) == 0 {
+		result := make([]DeclaredElement, 0, len(members))
+		for _, member := range members {
+			if member.GetParent() == c {
+				result = append(result, member)
+			}
+		}
+		if len(result) == 0 {
+			return nil
+		}
+		return result
+	}
+
+	result := make([]DeclaredElement, 0, len(order))
+	for _, name := range order {
+		member, ok := members[name]
+		if !ok || member.GetParent() != c {
+			continue
+		}
+		result = append(result, member)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // LeastUpperBound computes the least upper bound of two class types.
@@ -383,6 +425,11 @@ func (c *Class) InternalName() string {
 	return c.GetInternalName()
 }
 
+// GetType satisfies types.ClassReference interface.
+func (c *Class) GetType() *types.Type {
+	return c.GetResolvedType()
+}
+
 // IsAssignableTo tests if this class is assignable to a target.
 // Satisfies types.ClassReference interface.
 func (c *Class) IsAssignableTo(target types.ClassReference) bool {
@@ -490,6 +537,101 @@ func (c *Class) GetTypeArgumentsTo(extendedPrototype *ClassPrototype) []*types.T
 		current = current.Base
 	}
 	return nil
+}
+
+// GetArrayValueType gets the value type of an array. Must be an array.
+func (c *Class) GetArrayValueType() *types.Type {
+	current := c
+	prog := c.program
+
+	arrayPrototype := prog.ArrayPrototype()
+	if c.ExtendsPrototype(arrayPrototype) {
+		typeArguments := c.GetTypeArgumentsTo(arrayPrototype)
+		if len(typeArguments) > 0 {
+			return typeArguments[0]
+		}
+	}
+
+	staticArrayPrototype := prog.StaticArrayPrototype()
+	if c.ExtendsPrototype(staticArrayPrototype) {
+		typeArguments := c.GetTypeArgumentsTo(staticArrayPrototype)
+		if len(typeArguments) > 0 {
+			return typeArguments[0]
+		}
+	}
+
+	abvInstance := prog.ArrayBufferViewInstance()
+	for current.Base != abvInstance {
+		if current.Base == nil {
+			panic("array buffer view base not found")
+		}
+		current = current.Base
+	}
+
+	prototype := current.Prototype
+	switch {
+	case prototype == prog.Float32ArrayPrototype():
+		return types.TypeF32
+	case prototype == prog.Float64ArrayPrototype():
+		return types.TypeF64
+	case prototype == prog.Int8ArrayPrototype():
+		return types.TypeI8
+	case prototype == prog.Int16ArrayPrototype():
+		return types.TypeI16
+	case prototype == prog.Int32ArrayPrototype():
+		return types.TypeI32
+	case prototype == prog.Int64ArrayPrototype():
+		return types.TypeI64
+	case prototype == prog.Uint8ArrayPrototype():
+		return types.TypeU8
+	case prototype == prog.Uint8ClampedArrayPrototype():
+		return types.TypeU8
+	case prototype == prog.Uint16ArrayPrototype():
+		return types.TypeU16
+	case prototype == prog.Uint32ArrayPrototype():
+		return types.TypeU32
+	case prototype == prog.Uint64ArrayPrototype():
+		return types.TypeU64
+	default:
+		panic("unknown array value type")
+	}
+}
+
+// IsPointerfree tests if this class is pointerfree. Useful for the GC.
+func (c *Class) IsPointerfree() bool {
+	prog := c.program
+	instanceMembers := c.GetMembers()
+	if instanceMembers != nil {
+		for _, member := range instanceMembers {
+			if prototype, ok := member.(*PropertyPrototype); ok {
+				property := prototype.PropertyInstance
+				if property == nil {
+					continue
+				}
+				if property.IsField() && property.GetResolvedType().IsManaged() {
+					return false
+				}
+			}
+		}
+
+		if _, ok := instanceMembers[common.CommonNameVisit]; ok {
+			prototype := c.Prototype
+			if prototype == prog.ArrayPrototype() ||
+				prototype == prog.StaticArrayPrototype() ||
+				prototype == prog.SetPrototype() ||
+				prototype == prog.MapPrototype() {
+				typeArguments := c.GetTypeArgumentsTo(prototype)
+				for _, typeArgument := range typeArguments {
+					if typeArgument.IsManaged() {
+						return false
+					}
+				}
+				return true
+			}
+			return false
+		}
+	}
+	return true
 }
 
 // ExtendsClass tests if this class extends another class.

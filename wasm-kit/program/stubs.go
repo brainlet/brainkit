@@ -207,6 +207,16 @@ var ModuleSetLocalName func(m *Module, funcRef FunctionRef, index int32, name st
 var ResolveFunction func(r *Resolver, prototype *FunctionPrototype, typeArguments []*types.Type) *Function
 
 func init() {
+	types.DecoratorFlagUnmanaged = uint32(DecoratorFlagsUnmanaged)
+	types.LeastUpperBoundFunc = func(a, b types.ClassReference) types.ClassReference {
+		left, lok := a.(*Class)
+		right, rok := b.(*Class)
+		if !lok || !rok {
+			return nil
+		}
+		return LeastUpperBound(left, right)
+	}
+
 	// Wire types.ToRef() to map TypeKind → module.TypeRef.
 	// Ported from: assemblyscript/src/types.ts Type.toRef().
 	types.TypeToRefFunc = func(t *types.Type) uintptr {
@@ -275,6 +285,36 @@ func init() {
 	ModuleSetLocalName = func(m *Module, funcRef FunctionRef, index int32, name string) {
 		m.SetLocalName(funcRef, uint32(index), name)
 	}
+
+	flow.NewLocalFunc = func(name string, index int32, typ *types.Type, parent flow.FlowFunctionRef) flow.FlowLocalRef {
+		fn, ok := parent.(*Function)
+		if !ok {
+			return nil
+		}
+		return NewLocal(name, index, typ, fn, nil)
+	}
+	flow.MangleInternalNameFunc = func(name string, parent flow.FlowElementRef, asGlobal bool) string {
+		if parent == nil {
+			return name
+		}
+		if element, ok := parent.(Element); ok {
+			return MangleInternalName(name, element, false, asGlobal)
+		}
+		return name
+	}
+	flow.ElementKindFunction = int32(ElementKindFunction)
+	flow.ElementKindClass = int32(ElementKindClass)
+	flow.ElementKindPropertyPrototype = int32(ElementKindPropertyPrototype)
+	flow.ElementKindGlobal = int32(ElementKindGlobal)
+	flow.ElementKindEnumValue = int32(ElementKindEnumValue)
+	flow.CommonFlagsConstructor = uint32(common.CommonFlagsConstructor)
+	flow.CommonFlagsScoped = uint32(common.CommonFlagsScoped)
+	flow.DiagnosticCodeCannotRedeclare = int32(diagnostics.DiagnosticCodeCannotRedeclareBlockScopedVariable0)
+	flow.DiagnosticCodeDuplicateIdentifier = int32(diagnostics.DiagnosticCodeDuplicateIdentifier0)
+	flow.BuiltinNameStringEq = common.BuiltinNameStringEq
+	flow.BuiltinNameStringNe = common.BuiltinNameStringNe
+	flow.BuiltinNameStringNot = common.BuiltinNameStringNot
+	flow.BuiltinNameTostack = common.BuiltinNameTostack
 
 	// Wire flow package's Binaryen IR inspection functions to real module package.
 	flow.GetExpressionId = func(expr module.ExpressionRef) int32 { return int32(module.GetExpressionId(expr)) }

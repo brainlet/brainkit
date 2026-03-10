@@ -87,39 +87,43 @@ type VariableLikeElement interface {
 
 // ElementBase provides the common fields and methods for all elements.
 type ElementBase struct {
-	kind          ElementKind
-	name          string
-	internalName  string
-	program       *Program
-	parent        Element
-	flags         common.CommonFlags
+	kind           ElementKind
+	name           string
+	internalName   string
+	program        *Program
+	parent         Element
+	flags          common.CommonFlags
 	decoratorFlags DecoratorFlags
-	members       map[string]DeclaredElement
-	shadowType    *TypeDefinition
+	members        map[string]DeclaredElement
+	shadowType     *TypeDefinition
 }
 
-func (e *ElementBase) GetElementKind() ElementKind          { return e.kind }
-func (e *ElementBase) GetName() string                      { return e.name }
-func (e *ElementBase) GetInternalName() string              { return e.internalName }
-func (e *ElementBase) SetInternalName(name string)          { e.internalName = name }
-func (e *ElementBase) GetProgram() *Program                 { return e.program }
-func (e *ElementBase) GetParent() Element                   { return e.parent }
-func (e *ElementBase) SetParent(parent Element)             { e.parent = parent }
-func (e *ElementBase) GetFlags() common.CommonFlags         { return e.flags }
-func (e *ElementBase) SetFlags(flags common.CommonFlags)    { e.flags = flags }
-func (e *ElementBase) GetDecoratorFlags() DecoratorFlags    { return e.decoratorFlags }
-func (e *ElementBase) SetDecoratorFlags(flags DecoratorFlags) { e.decoratorFlags = flags }
-func (e *ElementBase) GetMembers() map[string]DeclaredElement { return e.members }
+func (e *ElementBase) GetElementKind() ElementKind                   { return e.kind }
+func (e *ElementBase) GetName() string                               { return e.name }
+func (e *ElementBase) GetInternalName() string                       { return e.internalName }
+func (e *ElementBase) SetInternalName(name string)                   { e.internalName = name }
+func (e *ElementBase) GetProgram() *Program                          { return e.program }
+func (e *ElementBase) GetParent() Element                            { return e.parent }
+func (e *ElementBase) SetParent(parent Element)                      { e.parent = parent }
+func (e *ElementBase) GetFlags() common.CommonFlags                  { return e.flags }
+func (e *ElementBase) SetFlags(flags common.CommonFlags)             { e.flags = flags }
+func (e *ElementBase) GetDecoratorFlags() DecoratorFlags             { return e.decoratorFlags }
+func (e *ElementBase) SetDecoratorFlags(flags DecoratorFlags)        { e.decoratorFlags = flags }
+func (e *ElementBase) GetMembers() map[string]DeclaredElement        { return e.members }
 func (e *ElementBase) SetMembers(members map[string]DeclaredElement) { e.members = members }
-func (e *ElementBase) GetShadowType() *TypeDefinition       { return e.shadowType }
-func (e *ElementBase) SetShadowType(td *TypeDefinition)     { e.shadowType = td }
+func (e *ElementBase) GetShadowType() *TypeDefinition                { return e.shadowType }
+func (e *ElementBase) SetShadowType(td *TypeDefinition)              { e.shadowType = td }
 
-func (e *ElementBase) Is(flag common.CommonFlags) bool    { return (e.flags & flag) == flag }
+func (e *ElementBase) Is(flag common.CommonFlags) bool     { return (e.flags & flag) == flag }
 func (e *ElementBase) IsAny(flags common.CommonFlags) bool { return (e.flags & flags) != 0 }
 func (e *ElementBase) Set(flag common.CommonFlags)         { e.flags |= flag }
 func (e *ElementBase) Unset(flag common.CommonFlags)       { e.flags &= ^flag }
-func (e *ElementBase) HasDecorator(flag DecoratorFlags) bool { return (e.decoratorFlags & flag) == flag }
-func (e *ElementBase) HasAnyDecorator(flags DecoratorFlags) bool { return (e.decoratorFlags & flags) != 0 }
+func (e *ElementBase) HasDecorator(flag DecoratorFlags) bool {
+	return (e.decoratorFlags & flag) == flag
+}
+func (e *ElementBase) HasAnyDecorator(flags DecoratorFlags) bool {
+	return (e.decoratorFlags & flags) != 0
+}
 
 // GetMember returns the member with the given name, or nil.
 func (e *ElementBase) GetMember(name string) DeclaredElement {
@@ -274,7 +278,7 @@ type DeclaredElementBase struct {
 	declaration ast.Node // DeclarationStatement (any declaration node)
 }
 
-func (d *DeclaredElementBase) GetDeclaration() ast.Node    { return d.declaration }
+func (d *DeclaredElementBase) GetDeclaration() ast.Node     { return d.declaration }
 func (d *DeclaredElementBase) SetDeclaration(decl ast.Node) { d.declaration = decl }
 
 // IsDeclaredInLibrary tests if this element is declared in a library source.
@@ -283,8 +287,9 @@ func (d *DeclaredElementBase) IsDeclaredInLibrary() bool {
 	if r == nil {
 		return false
 	}
-	// Source's IsLibrary — would need access to source via range
-	// Deferred: need range.Source.IsLibrary
+	if source, ok := r.Source.(interface{ IsLibrary() bool }); ok {
+		return source.IsLibrary()
+	}
 	return false
 }
 
@@ -294,6 +299,8 @@ func (d *DeclaredElementBase) IdentifierNode() *ast.IdentifierExpression {
 	case *ast.ClassDeclaration:
 		return decl.Name
 	case *ast.FunctionDeclaration:
+		return decl.Name
+	case *ast.FieldDeclaration:
 		return decl.Name
 	case *ast.EnumDeclaration:
 		return decl.Name
@@ -316,6 +323,15 @@ func (d *DeclaredElementBase) IdentifierAndSignatureRange() diagnostics.Range {
 	if ident == nil {
 		return *d.declaration.GetRange()
 	}
+	if fn, ok := d.declaration.(*ast.FunctionDeclaration); ok && fn.Signature != nil {
+		identRange := ident.GetRange()
+		signatureRange := fn.Signature.GetRange()
+		if identRange != nil && signatureRange != nil && identRange.Source == signatureRange.Source {
+			if joined := diagnostics.JoinRanges(identRange, signatureRange); joined != nil {
+				return *joined
+			}
+		}
+	}
 	return *ident.GetRange()
 }
 
@@ -325,6 +341,8 @@ func (d *DeclaredElementBase) DecoratorNodes() []*ast.DecoratorNode {
 	case *ast.ClassDeclaration:
 		return decl.Decorators
 	case *ast.FunctionDeclaration:
+		return decl.Decorators
+	case *ast.FieldDeclaration:
 		return decl.Decorators
 	case *ast.EnumDeclaration:
 		return decl.Decorators
@@ -348,6 +366,8 @@ func InitDeclaredElementBase(d *DeclaredElementBase, kind ElementKind, name, int
 		d.flags = common.CommonFlags(decl.Flags)
 	} else if decl, ok := declaration.(*ast.FunctionDeclaration); ok {
 		d.flags = common.CommonFlags(decl.Flags)
+	} else if decl, ok := declaration.(*ast.FieldDeclaration); ok {
+		d.flags = common.CommonFlags(decl.Flags)
 	} else if decl, ok := declaration.(*ast.EnumDeclaration); ok {
 		d.flags = common.CommonFlags(decl.Flags)
 	} else if decl, ok := declaration.(*ast.NamespaceDeclaration); ok {
@@ -369,7 +389,7 @@ type TypedElementBase struct {
 	resolvedType *types.Type
 }
 
-func (t *TypedElementBase) GetResolvedType() *types.Type { return t.resolvedType }
+func (t *TypedElementBase) GetResolvedType() *types.Type    { return t.resolvedType }
 func (t *TypedElementBase) SetResolvedType(typ *types.Type) { t.resolvedType = typ }
 
 // SetType sets the resolved type. Panics if already resolved.

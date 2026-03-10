@@ -3,6 +3,7 @@ package program
 import (
 	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
+	"github.com/brainlet/brainkit/wasm-kit/types"
 )
 
 // File represents a source file in the program.
@@ -21,6 +22,18 @@ func NewFile(prog *Program, source *ast.Source) *File {
 	InitElementBase(&f.ElementBase, ElementKindFile, source.NormalizedPath, source.InternalPath, prog, nil)
 	f.Source = source
 	f.parent = f // File is its own parent (special case)
+	prog.FilesByName[f.internalName] = f
+
+	startFunction := prog.MakeNativeFunction(
+		"start:"+f.internalName,
+		types.CreateSignature(prog, nil, types.TypeVoid, nil, 0, false),
+		f,
+		0,
+		DecoratorFlagsNone,
+	)
+	startFunction.SetInternalName(startFunction.GetName())
+	f.StartFunction = startFunction
+
 	return f
 }
 

@@ -43,29 +43,30 @@ type Program struct {
 	ModuleImports         map[string]map[string]Element
 
 	// Cached stdlib elements (lazy-initialized on first access)
-	cachedArrayBufferViewInstance  *Class
-	cachedArrayBufferInstance      *Class
-	cachedArrayPrototype           *ClassPrototype
-	cachedStaticArrayPrototype     *ClassPrototype
-	cachedSetPrototype             *ClassPrototype
-	cachedMapPrototype             *ClassPrototype
-	cachedFunctionPrototype        *ClassPrototype
-	cachedStringInstance           *Class
-	cachedRegexpInstance           *Class
-	cachedObjectPrototype          *ClassPrototype
-	cachedObjectInstance           *Class
-	cachedAbortInstance             *Function
-	cachedInt8ArrayPrototype       *ClassPrototype
-	cachedInt16ArrayPrototype      *ClassPrototype
-	cachedInt32ArrayPrototype      *ClassPrototype
-	cachedInt64ArrayPrototype      *ClassPrototype
-	cachedUint8ArrayPrototype      *ClassPrototype
+	cachedArrayBufferViewInstance    *Class
+	cachedArrayBufferInstance        *Class
+	cachedArrayPrototype             *ClassPrototype
+	cachedStaticArrayPrototype       *ClassPrototype
+	cachedSetPrototype               *ClassPrototype
+	cachedMapPrototype               *ClassPrototype
+	cachedFunctionPrototype          *ClassPrototype
+	cachedStringInstance             *Class
+	cachedRegexpInstance             *Class
+	cachedObjectPrototype            *ClassPrototype
+	cachedObjectInstance             *Class
+	cachedAbortInstance              *Function
+	cachedVisitInstance              *Function
+	cachedInt8ArrayPrototype         *ClassPrototype
+	cachedInt16ArrayPrototype        *ClassPrototype
+	cachedInt32ArrayPrototype        *ClassPrototype
+	cachedInt64ArrayPrototype        *ClassPrototype
+	cachedUint8ArrayPrototype        *ClassPrototype
 	cachedUint8ClampedArrayPrototype *ClassPrototype
-	cachedUint16ArrayPrototype     *ClassPrototype
-	cachedUint32ArrayPrototype     *ClassPrototype
-	cachedUint64ArrayPrototype     *ClassPrototype
-	cachedFloat32ArrayPrototype    *ClassPrototype
-	cachedFloat64ArrayPrototype    *ClassPrototype
+	cachedUint16ArrayPrototype       *ClassPrototype
+	cachedUint32ArrayPrototype       *ClassPrototype
+	cachedUint64ArrayPrototype       *ClassPrototype
+	cachedFloat32ArrayPrototype      *ClassPrototype
+	cachedFloat64ArrayPrototype      *ClassPrototype
 
 	// Cached native declarations used by MakeNative* helpers
 	nativeDummySignature *ast.FunctionTypeNode
@@ -107,6 +108,7 @@ func NewProgram(options *Options, diags []*diagnostics.DiagnosticMessage) *Progr
 	// Create native file
 	nativeFile := NewFile(p, ast.NativeSource())
 	p.NativeFile = nativeFile
+	p.FilesByName[nativeFile.GetInternalName()] = nativeFile
 	p.ElementsByNameMap[nativeFile.GetInternalName()] = nativeFile
 
 	return p
@@ -164,9 +166,47 @@ func extractArgs(args []string) (string, string, string) {
 // CheckTypeSupported checks if a type is supported, reporting an error if not.
 // Ported from: assemblyscript/src/program.ts Program.checkTypeSupported.
 func (p *Program) CheckTypeSupported(typ *types.Type, reportNode ast.Node) bool {
-	// TODO: Full implementation checks for unsupported Wasm types (e.g. v128 without SIMD,
-	// stringref without Stringref feature, etc.)
-	// For now, all types are considered supported.
+	switch typ.Kind {
+	case types.TypeKindV128:
+		return p.checkFeatureEnabled(common.FeatureSimd, reportNode)
+	case types.TypeKindFunc, types.TypeKindExtern:
+		if !typ.Is(types.TypeFlagNullable) {
+			return p.checkFeatureEnabled(common.FeatureGC, reportNode)
+		}
+		return p.checkFeatureEnabled(common.FeatureReferenceTypes, reportNode)
+	case types.TypeKindAny, types.TypeKindEq, types.TypeKindStruct, types.TypeKindArray, types.TypeKindI31:
+		return p.checkFeatureEnabled(common.FeatureReferenceTypes, reportNode) &&
+			p.checkFeatureEnabled(common.FeatureGC, reportNode)
+	case types.TypeKindString, types.TypeKindStringviewWTF8, types.TypeKindStringviewWTF16, types.TypeKindStringviewIter:
+		return p.checkFeatureEnabled(common.FeatureReferenceTypes, reportNode) &&
+			p.checkFeatureEnabled(common.FeatureStringref, reportNode)
+	}
+
+	if classReference := typ.GetClass(); classReference != nil {
+		if classInstance, ok := classReference.(*Class); ok {
+			for current := classInstance; current != nil; current = current.Base {
+				for _, typeArgument := range current.TypeArguments {
+					if !p.CheckTypeSupported(typeArgument, reportNode) {
+						return false
+					}
+				}
+			}
+		}
+	} else if signatureReference := typ.GetSignature(); signatureReference != nil {
+		if thisType := signatureReference.ThisType; thisType != nil {
+			if !p.CheckTypeSupported(thisType, reportNode) {
+				return false
+			}
+		}
+		for _, parameterType := range signatureReference.ParameterTypes {
+			if !p.CheckTypeSupported(parameterType, reportNode) {
+				return false
+			}
+		}
+		if !p.CheckTypeSupported(signatureReference.ReturnType, reportNode) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -177,9 +217,127 @@ func (p *Program) Initialize() {
 		return
 	}
 	p.Initialized = true
-	// TODO: Full initialization will be ported. This includes registering
-	// built-in types, setting up element lookups, processing global aliases,
-	// and initializing cached stdlib elements.
+
+	options := p.Options
+
+	p.registerNativeType(common.CommonNameI8, types.TypeI8)
+	p.registerNativeType(common.CommonNameI16, types.TypeI16)
+	p.registerNativeType(common.CommonNameI32, types.TypeI32)
+	p.registerNativeType(common.CommonNameI64, types.TypeI64)
+	p.registerNativeType(common.CommonNameIsize, options.IsizeType())
+	p.registerNativeType(common.CommonNameU8, types.TypeU8)
+	p.registerNativeType(common.CommonNameU16, types.TypeU16)
+	p.registerNativeType(common.CommonNameU32, types.TypeU32)
+	p.registerNativeType(common.CommonNameU64, types.TypeU64)
+	p.registerNativeType(common.CommonNameUsize, options.UsizeType())
+	p.registerNativeType(common.CommonNameBool, types.TypeBool)
+	p.registerNativeType(common.CommonNameF32, types.TypeF32)
+	p.registerNativeType(common.CommonNameF64, types.TypeF64)
+	p.registerNativeType(common.CommonNameVoid, types.TypeVoid)
+	p.registerNativeType(common.CommonNameNumber, types.TypeF64)
+	p.registerNativeType(common.CommonNameBoolean, types.TypeBool)
+
+	p.registerBuiltinGenericType(common.CommonNameNative)
+	p.registerBuiltinGenericType(common.CommonNameIndexof)
+	p.registerBuiltinGenericType(common.CommonNameValueof)
+	p.registerBuiltinGenericType(common.CommonNameReturnof)
+	p.registerBuiltinGenericType(common.CommonNameNonnull)
+
+	p.registerNativeType(common.CommonNameV128, types.TypeV128)
+	p.registerNativeType(common.CommonNameRefFunc, types.TypeFunc)
+	p.registerNativeType(common.CommonNameRefExtern, types.TypeExtern)
+	p.registerNativeType(common.CommonNameRefAny, types.TypeAnyRef)
+	p.registerNativeType(common.CommonNameRefEq, types.TypeEq)
+	p.registerNativeType(common.CommonNameRefStruct, types.TypeStructRef)
+	p.registerNativeType(common.CommonNameRefArray, types.TypeArrayRef)
+	p.registerNativeType(common.CommonNameRefI31, types.TypeI31)
+	p.registerNativeType(common.CommonNameRefString, types.TypeStringRef)
+	p.registerNativeType(common.CommonNameRefStringviewWtf8, types.TypeStringviewWTF8)
+	p.registerNativeType(common.CommonNameRefStringviewWtf16, types.TypeStringviewWTF16)
+	p.registerNativeType(common.CommonNameRefStringviewIter, types.TypeStringviewIter)
+
+	target := int64(common.TargetWasm32)
+	if options.IsWasm64() {
+		target = int64(common.TargetWasm64)
+	}
+	p.registerConstantInteger(common.CommonNameASCTarget, types.TypeI32, target)
+	p.registerConstantInteger(common.CommonNameASCRuntime, types.TypeI32, int64(options.Runtime))
+	p.registerConstantInteger(common.CommonNameASCNoAssert, types.TypeBool, boolToI64(options.NoAssert))
+	p.registerConstantInteger(common.CommonNameASCMemoryBase, types.TypeI32, int64(options.MemoryBase))
+	p.registerConstantInteger(common.CommonNameASCTableBase, types.TypeI32, int64(options.TableBase))
+	p.registerConstantInteger(common.CommonNameASCOptimizeLevel, types.TypeI32, int64(options.OptimizeLevelHint))
+	p.registerConstantInteger(common.CommonNameASCShrinkLevel, types.TypeI32, int64(options.ShrinkLevelHint))
+	p.registerConstantInteger(common.CommonNameASCLowMemoryLimit, types.TypeI32, int64(options.LowMemoryLimit))
+	p.registerConstantInteger(common.CommonNameASCExportRuntime, types.TypeBool, boolToI64(options.ExportRuntime))
+	p.registerConstantInteger(common.CommonNameASCVersionMajor, types.TypeI32, int64(options.BundleMajorVersion))
+	p.registerConstantInteger(common.CommonNameASCVersionMinor, types.TypeI32, int64(options.BundleMinorVersion))
+	p.registerConstantInteger(common.CommonNameASCVersionPatch, types.TypeI32, int64(options.BundlePatchVersion))
+
+	p.registerConstantInteger(common.CommonNameASCFeatureSignExtension, types.TypeBool, boolToI64(options.HasFeature(common.FeatureSignExtension)))
+	p.registerConstantInteger(common.CommonNameASCFeatureMutableGlobals, types.TypeBool, boolToI64(options.HasFeature(common.FeatureMutableGlobals)))
+	p.registerConstantInteger(common.CommonNameASCFeatureNontrappingF2I, types.TypeBool, boolToI64(options.HasFeature(common.FeatureNontrappingF2I)))
+	p.registerConstantInteger(common.CommonNameASCFeatureBulkMemory, types.TypeBool, boolToI64(options.HasFeature(common.FeatureBulkMemory)))
+	p.registerConstantInteger(common.CommonNameASCFeatureSimd, types.TypeBool, boolToI64(options.HasFeature(common.FeatureSimd)))
+	p.registerConstantInteger(common.CommonNameASCFeatureThreads, types.TypeBool, boolToI64(options.HasFeature(common.FeatureThreads)))
+	p.registerConstantInteger(common.CommonNameASCFeatureExceptionHandling, types.TypeBool, boolToI64(options.HasFeature(common.FeatureExceptionHandling)))
+	p.registerConstantInteger(common.CommonNameASCFeatureTailCalls, types.TypeBool, boolToI64(options.HasFeature(common.FeatureTailCalls)))
+	p.registerConstantInteger(common.CommonNameASCFeatureReferenceTypes, types.TypeBool, boolToI64(options.HasFeature(common.FeatureReferenceTypes)))
+	p.registerConstantInteger(common.CommonNameASCFeatureMultiValue, types.TypeBool, boolToI64(options.HasFeature(common.FeatureMultiValue)))
+	p.registerConstantInteger(common.CommonNameASCFeatureGC, types.TypeBool, boolToI64(options.HasFeature(common.FeatureGC)))
+	p.registerConstantInteger(common.CommonNameASCFeatureMemory64, types.TypeBool, boolToI64(options.HasFeature(common.FeatureMemory64)))
+	p.registerConstantInteger(common.CommonNameASCFeatureRelaxedSimd, types.TypeBool, boolToI64(options.HasFeature(common.FeatureRelaxedSimd)))
+	p.registerConstantInteger(common.CommonNameASCFeatureExtendedConst, types.TypeBool, boolToI64(options.HasFeature(common.FeatureExtendedConst)))
+	p.registerConstantInteger(common.CommonNameASCFeatureStringref, types.TypeBool, boolToI64(options.HasFeature(common.FeatureStringref)))
+
+	p.registerWrapperClass(types.TypeI8, common.CommonNameCapI8)
+	p.registerWrapperClass(types.TypeI16, common.CommonNameCapI16)
+	p.registerWrapperClass(types.TypeI32, common.CommonNameCapI32)
+	p.registerWrapperClass(types.TypeI64, common.CommonNameCapI64)
+	p.registerWrapperClass(options.IsizeType(), common.CommonNameCapIsize)
+	p.registerWrapperClass(types.TypeU8, common.CommonNameCapU8)
+	p.registerWrapperClass(types.TypeU16, common.CommonNameCapU16)
+	p.registerWrapperClass(types.TypeU32, common.CommonNameCapU32)
+	p.registerWrapperClass(types.TypeU64, common.CommonNameCapU64)
+	p.registerWrapperClass(options.UsizeType(), common.CommonNameCapUsize)
+	p.registerWrapperClass(types.TypeBool, common.CommonNameCapBool)
+	p.registerWrapperClass(types.TypeF32, common.CommonNameCapF32)
+	p.registerWrapperClass(types.TypeF64, common.CommonNameCapF64)
+	if options.HasFeature(common.FeatureSimd) {
+		p.registerWrapperClass(types.TypeV128, common.CommonNameCapV128)
+	}
+	if options.HasFeature(common.FeatureReferenceTypes) {
+		p.registerWrapperClass(types.TypeFunc, common.CommonNameCapRefFunc)
+		p.registerWrapperClass(types.TypeExtern, common.CommonNameCapRefExtern)
+		if options.HasFeature(common.FeatureGC) {
+			p.registerWrapperClass(types.TypeAnyRef, common.CommonNameCapRefAny)
+			p.registerWrapperClass(types.TypeEq, common.CommonNameCapRefEq)
+			p.registerWrapperClass(types.TypeStructRef, common.CommonNameCapRefStruct)
+			p.registerWrapperClass(types.TypeArrayRef, common.CommonNameCapRefArray)
+			p.registerWrapperClass(types.TypeI31, common.CommonNameCapRefI31)
+		}
+		if options.HasFeature(common.FeatureStringref) {
+			p.registerWrapperClass(types.TypeStringRef, common.CommonNameCapRefString)
+		}
+	}
+}
+
+func boolToI64(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func (p *Program) checkFeatureEnabled(feature common.Feature, reportNode ast.Node) bool {
+	if p.Options.HasFeature(feature) {
+		return true
+	}
+	p.Error(
+		diagnostics.DiagnosticCodeFeature0IsNotEnabled,
+		reportNode.GetRange(),
+		common.FeatureToString(feature),
+	)
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -284,8 +442,17 @@ func (p *Program) SetNextSignatureId(id uint32) {
 
 // ResolveClass resolves a class prototype with the given type arguments.
 func (p *Program) ResolveClass(prototype interface{}, typeArguments []*types.Type) types.ClassReference {
-	// Stub: will be implemented when resolver is fully ported.
-	return nil
+	if p.Resolver_ == nil || prototype == nil {
+		return nil
+	}
+	switch typedPrototype := prototype.(type) {
+	case *ClassPrototype:
+		return p.Resolver_.ResolveClass(typedPrototype, typeArguments, make(map[string]*types.Type), ReportModeSwallow)
+	case *InterfacePrototype:
+		return p.Resolver_.ResolveClass(&typedPrototype.ClassPrototype, typeArguments, make(map[string]*types.Type), ReportModeSwallow)
+	default:
+		return nil
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +519,61 @@ func (p *Program) MarkModuleImport(moduleName, name string, element Element) {
 	moduleMap[name] = element
 }
 
+// registerNativeType registers a native type definition with the program.
+func (p *Program) registerNativeType(name string, typ *types.Type) {
+	element := NewTypeDefinition(
+		name,
+		p.NativeFile,
+		p.MakeNativeTypeDeclaration(name, common.CommonFlagsExport),
+		DecoratorFlagsBuiltin,
+	)
+	element.SetType(typ)
+	p.NativeFile.Add(name, element, nil)
+}
+
+// registerBuiltinGenericType registers a builtin generic type helper.
+func (p *Program) registerBuiltinGenericType(name string) {
+	element := NewTypeDefinition(
+		name,
+		p.NativeFile,
+		p.MakeNativeTypeDeclaration(name, common.CommonFlagsExport|common.CommonFlagsGeneric),
+		DecoratorFlagsBuiltin,
+	)
+	p.NativeFile.Add(name, element, nil)
+}
+
+// registerConstantInteger registers a constant integer value in the global scope.
+func (p *Program) registerConstantInteger(name string, typ *types.Type, value int64) {
+	global := NewGlobal(
+		name,
+		p.NativeFile,
+		DecoratorFlagsLazy,
+		p.MakeNativeVariableDeclaration(name, common.CommonFlagsConst|common.CommonFlagsExport),
+	)
+	global.SetConstantIntegerValue(value, typ)
+	p.NativeFile.Add(name, global, nil)
+}
+
+// registerWrapperClass registers the wrapper class for a non-class type if present.
+func (p *Program) registerWrapperClass(typ *types.Type, className string) {
+	if typ == nil || typ.IsInternalReference() {
+		return
+	}
+	if _, exists := p.WrapperClasses[typ]; exists {
+		return
+	}
+	element := p.Lookup(className)
+	if element == nil || element.GetElementKind() != ElementKindClassPrototype {
+		return
+	}
+	classElement := p.Resolver_.ResolveClass(element.(*ClassPrototype), nil, make(map[string]*types.Type), ReportModeSwallow)
+	if classElement == nil {
+		return
+	}
+	classElement.WrappedType = typ
+	p.WrapperClasses[typ] = classElement
+}
+
 // ---------------------------------------------------------------------------
 // Native declaration factory methods
 // ---------------------------------------------------------------------------
@@ -378,8 +600,13 @@ func (p *Program) MakeNativeFunctionDeclaration(name string, flags common.Common
 	rng := nativeRange()
 	ident := ast.NewIdentifierExpression(name, rng, false)
 	if p.nativeDummySignature == nil {
-		omittedType := ast.NewOmittedType(rng)
-		p.nativeDummySignature = ast.NewFunctionTypeNode(nil, omittedType, nil, false, rng)
+		voidType := ast.NewNamedTypeNode(
+			ast.NewSimpleTypeName(common.CommonNameVoid, rng),
+			nil,
+			false,
+			rng,
+		)
+		p.nativeDummySignature = ast.NewFunctionTypeNode(nil, voidType, nil, false, rng)
 	}
 	return ast.NewFunctionDeclaration(
 		ident,
@@ -416,6 +643,9 @@ func (p *Program) MakeNativeFunction(
 	flags common.CommonFlags,
 	decoratorFlags DecoratorFlags,
 ) *Function {
+	if parent == nil {
+		parent = p.NativeFile
+	}
 	declaration := p.MakeNativeFunctionDeclaration(name, flags)
 	prototype := NewFunctionPrototype(name, parent, declaration, decoratorFlags)
 	return NewFunction(name, prototype, nil, signature, nil)
@@ -428,12 +658,18 @@ func (p *Program) MakeNativeFunction(
 // BlockOverhead returns the size of a runtime BLOCK header.
 // In AssemblyScript this is typically 16 bytes (mmInfo + gcInfo + rtId + rtSize).
 func (p *Program) BlockOverhead() int32 {
+	if blockInstance := p.RequireClass(common.CommonNameBlock); blockInstance != nil {
+		return int32(blockInstance.NextMemoryOffset)
+	}
 	return 16
 }
 
 // ObjectOverhead returns the size of a runtime OBJECT header beyond the block.
 // In AssemblyScript this is typically 4 bytes (gcInfo2) on wasm32, 8 on wasm64.
 func (p *Program) ObjectOverhead() int32 {
+	if objectInstance := p.RequireClass(common.CommonNameObject_); objectInstance != nil {
+		return (int32(objectInstance.NextMemoryOffset) - p.BlockOverhead() + AlMask) & ^int32(AlMask)
+	}
 	if p.Options.IsWasm64() {
 		return 8
 	}
@@ -447,7 +683,8 @@ func (p *Program) TotalOverhead() int32 {
 
 // ComputeBlockStart computes the aligned block start for a given current offset.
 func (p *Program) ComputeBlockStart(currentOffset int32) int32 {
-	return (currentOffset + AlMask) & ^int32(AlMask)
+	blockOverhead := p.BlockOverhead()
+	return ((currentOffset + blockOverhead + AlMask) & ^int32(AlMask)) - blockOverhead
 }
 
 // ---------------------------------------------------------------------------
@@ -481,11 +718,10 @@ func (p *Program) RequireClass(name string) *Class {
 	if proto == nil {
 		return nil
 	}
-	if proto.Instances == nil {
-		return nil
-	}
-	for _, inst := range proto.Instances {
-		return inst // first instance of a non-generic class
+	if p.Resolver_ != nil {
+		if resolved := p.Resolver_.ResolveClass(proto, nil, make(map[string]*types.Type), ReportModeSwallow); resolved != nil {
+			return resolved
+		}
 	}
 	return nil
 }
@@ -612,6 +848,18 @@ func (p *Program) AbortInstance() *Function {
 		p.cachedAbortInstance = p.RequireFunction(common.CommonNameAbort, nil)
 	}
 	return p.cachedAbortInstance
+}
+
+// VisitInstance returns the cached __visit runtime function instance.
+func (p *Program) VisitInstance() *Function {
+	if p.cachedVisitInstance == nil {
+		if instance, ok := p.InstancesByNameMap[common.CommonNameVisit].(*Function); ok {
+			p.cachedVisitInstance = instance
+		} else {
+			p.cachedVisitInstance = p.RequireFunction(common.CommonNameVisit, nil)
+		}
+	}
+	return p.cachedVisitInstance
 }
 
 // Typed array prototype accessors

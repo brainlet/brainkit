@@ -16,9 +16,15 @@ const (
 	BuiltinNameStackPointer = "~lib/memory/__stack_pointer"
 	BuiltinNameHeapBase     = "~lib/memory/__heap_base"
 	BuiltinNameRttiBase     = "~lib/rt/__rtti_base"
+	BuiltinNameVisitGlobals = "~lib/rt/__visit_globals"
+	BuiltinNameVisitMembers = "~lib/rt/__visit_members"
+	BuiltinNameTostack      = "~lib/rt/__tostack"
 
 	// Standard library builtins.
-	BuiltinNameAbort = "~lib/builtins/abort"
-	BuiltinNameTrace = "~lib/builtins/trace"
-	BuiltinNameSeed  = "~lib/builtins/seed"
+	BuiltinNameAbort     = "~lib/builtins/abort"
+	BuiltinNameTrace     = "~lib/builtins/trace"
+	BuiltinNameSeed      = "~lib/builtins/seed"
+	BuiltinNameStringEq  = "~lib/string/String.__eq"
+	BuiltinNameStringNe  = "~lib/string/String.__ne"
+	BuiltinNameStringNot = "~lib/string/String.__not"
 )
