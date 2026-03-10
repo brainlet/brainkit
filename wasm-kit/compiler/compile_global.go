@@ -77,7 +77,7 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 			global.SetType(resolvedType)
 			c.Program.CheckTypeSupported(resolvedType, typeNode)
 
-		// Otherwise infer type from initializer
+			// Otherwise infer type from initializer
 		} else if initializerNode != nil {
 			previousFlow := c.CurrentFlow
 			if global.HasDecorator(program.DecoratorFlagsLazy) {
@@ -99,7 +99,7 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 			}
 			global.SetType(c.CurrentType)
 
-		// Error if there's neither a type nor an initializer
+			// Error if there's neither a type nor an initializer
 		} else {
 			c.Error(
 				diagnostics.DiagnosticCodeTypeExpected,
@@ -115,10 +115,11 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 	// Handle builtins like '__heap_base' that need to be resolved but are added explicitly
 	if global.HasDecorator(program.DecoratorFlagsBuiltin) {
 		internalName := global.GetInternalName()
-		if program.BuiltinVariablesOnCompile != nil {
-			if fn, ok := program.BuiltinVariablesOnCompile[internalName]; ok {
-				fn(c, global) // optional
-			}
+		if fn, ok := BuiltinVariablesOnCompile[internalName]; ok {
+			fn(&BuiltinVariableContext{
+				Compiler: c,
+				Element:  global,
+			})
 		}
 		delete(pendingElements, global)
 		return true
@@ -249,7 +250,7 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 			}
 		}
 
-	// Initialize to zero if there's no initializer
+		// Initialize to zero if there's no initializer
 	} else {
 		if global.Is(common.CommonFlagsInlined) {
 			initExpr = c.compileInlineConstant(global, typ, ConstraintsPreferStatic)

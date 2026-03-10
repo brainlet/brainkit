@@ -1992,14 +1992,17 @@ func (c *Compiler) compileIdentifierExpressionBuiltin(global *program.Global, ex
 	if global.HasDecorator(program.DecoratorFlagsUnsafe) {
 		c.checkUnsafe(expression, global.IdentifierNode())
 	}
-	// TODO: implement builtinVariables_onAccess dispatch
-	c.Error(
-		diagnostics.DiagnosticCodeNotImplemented0,
-		expression.GetRange(),
-		"Built-in variable access", "", "",
-	)
-	c.CurrentType = contextualType
-	return c.Module().Unreachable()
+	internalName := global.GetInternalName()
+	fn, ok := BuiltinVariablesOnAccess[internalName]
+	if !ok {
+		panic("missing builtin variable access handler")
+	}
+	return fn(&BuiltinVariableContext{
+		Compiler:       c,
+		Element:        global,
+		ContextualType: contextualType,
+		ReportNode:     expression,
+	})
 }
 
 // compileInstanceOfExpression compiles an instanceof expression.
@@ -2118,7 +2121,7 @@ func (c *Compiler) makeInstanceofType(expression *ast.InstanceOfExpression, expe
 			}
 		}
 
-	// either none or both nullable
+		// either none or both nullable
 	} else {
 
 		// same or upcast - check statically
@@ -2191,7 +2194,7 @@ func (c *Compiler) makeInstanceofClass(expression *ast.InstanceOfExpression, pro
 				// <nonNullable> is just `true`
 				return mod.MaybeDropCondition(expr, mod.I32(1))
 
-			// dynamic check against all possible concrete ids
+				// dynamic check against all possible concrete ids
 			} else if prototype.Extends(classInstance.Prototype) {
 				fl := c.CurrentFlow
 				temp := fl.GetTempLocal(actualType)
@@ -4340,7 +4343,7 @@ func (c *Compiler) compileLogicalAnd(left, right ast.Node, expression *ast.Binar
 				fl.Inherit(rightFlow) // true && RHS -> RHS always executes
 			} else {
 				expr = mod.If(leftExpr, rightExpr, mod.I32(0))
-				fl.MergeBranch(rightFlow) // LHS && RHS -> RHS conditionally executes
+				fl.MergeBranch(rightFlow)    // LHS && RHS -> RHS conditionally executes
 				fl.NoteThen(expr, rightFlow) // LHS && RHS == true -> RHS always executes
 			}
 		}
@@ -4400,8 +4403,8 @@ func (c *Compiler) compileLogicalAnd(left, right ast.Node, expression *ast.Binar
 				mod.LocalGet(tempIndex, leftType.ToRef()),
 			)
 		}
-		fl.MergeBranch(rightFlow)     // LHS && RHS -> RHS conditionally executes
-		fl.NoteThen(expr, rightFlow)  // LHS && RHS == true -> RHS always executes
+		fl.MergeBranch(rightFlow)    // LHS && RHS -> RHS conditionally executes
+		fl.NoteThen(expr, rightFlow) // LHS && RHS == true -> RHS always executes
 		c.CurrentFlow = fl
 		c.CurrentType = commonType
 	}
@@ -4443,7 +4446,7 @@ func (c *Compiler) compileLogicalOr(left, right ast.Node, expression *ast.Binary
 				fl.Inherit(rightFlow) // false || RHS -> RHS always executes
 			} else {
 				expr = mod.If(leftExpr, mod.I32(1), rightExpr)
-				fl.MergeBranch(rightFlow) // LHS || RHS -> RHS conditionally executes
+				fl.MergeBranch(rightFlow)    // LHS || RHS -> RHS conditionally executes
 				fl.NoteElse(expr, rightFlow) // LHS || RHS == false -> RHS always executes
 			}
 		}
@@ -4504,8 +4507,8 @@ func (c *Compiler) compileLogicalOr(left, right ast.Node, expression *ast.Binary
 				rightExpr,
 			)
 		}
-		fl.MergeBranch(rightFlow)     // LHS || RHS -> RHS conditionally executes
-		fl.NoteElse(expr, rightFlow)  // LHS || RHS == false -> RHS always executes
+		fl.MergeBranch(rightFlow)    // LHS || RHS -> RHS conditionally executes
+		fl.NoteElse(expr, rightFlow) // LHS || RHS == false -> RHS always executes
 		c.CurrentFlow = fl
 		if possiblyNull {
 			c.CurrentType = commonType

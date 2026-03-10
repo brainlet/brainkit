@@ -3,7 +3,9 @@
 package compiler
 
 import (
+	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
+	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/module"
 	"github.com/brainlet/brainkit/wasm-kit/types"
 )
@@ -348,326 +350,2017 @@ func registerSIMDBuiltins() {
 	builtinFunctions[common.BuiltinNameI32x4RelaxedDotI8x16I7x16AddS] = builtinI32x4RelaxedDotI8x16I7x16AddS
 }
 
-// ========================================================================================
-// Stub forward declarations for operator builtins not yet ported.
-// TODO: Port these from assemblyscript/src/builtins.ts when the operator builtins section is done.
-// ========================================================================================
+func reportBuiltinOperationTypeError(ctx *BuiltinFunctionContext, op string, typ *types.Type) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	typeArgsRange := ctx.ReportNode.TypeArgumentsRange()
+	typeName := "<nil>"
+	if typ != nil {
+		typeName = typ.String()
+	}
+	compiler.Error(
+		diagnostics.DiagnosticCodeOperation0CannotBeAppliedToType1,
+		&typeArgsRange,
+		op,
+		typeName,
+		"",
+	)
+	return mod.Unreachable()
+}
+
+func prepareBuiltinValueBinaryOperands(ctx *BuiltinFunctionContext) (module.ExpressionRef, module.ExpressionRef, *types.Type, bool) {
+	compiler := ctx.Compiler
+	if checkTypeOptional(ctx, true) || checkArgsRequired(ctx, 2) {
+		return 0, 0, compiler.CurrentType, false
+	}
+	operands := ctx.Operands
+	typeArguments := ctx.TypeArguments
+	left := operands[0]
+
+	var arg0 module.ExpressionRef
+	if len(typeArguments) > 0 {
+		arg0 = compiler.CompileExpression(left, typeArguments[0], ConstraintsConvImplicit)
+	} else {
+		arg0 = compiler.CompileExpression(left, types.TypeAuto, 0)
+	}
+	typ := compiler.CurrentType
+	if typ == nil || !typ.IsValue() {
+		return arg0, 0, typ, false
+	}
+
+	var arg1 module.ExpressionRef
+	if len(typeArguments) == 0 && ast.IsNumericLiteral(left) {
+		arg1 = compiler.CompileExpression(operands[1], typ, 0)
+		if compiler.CurrentType != typ {
+			typ = compiler.CurrentType
+			arg0 = compiler.CompileExpression(left, typ, ConstraintsConvImplicit)
+		}
+	} else {
+		arg1 = compiler.CompileExpression(operands[1], typ, ConstraintsConvImplicit)
+	}
+	return arg0, arg1, typ, true
+}
+
+func prepareRequiredV128UnaryBuiltin(
+	ctx *BuiltinFunctionContext,
+	resultType *types.Type,
+) (*Compiler, *module.Module, *types.Type, module.ExpressionRef, bool) {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = resultType
+		return compiler, mod, nil, 0, false
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = resultType
+	return compiler, mod, typ, arg0, true
+}
+
+func prepareOptionalV128UnaryBuiltin(
+	ctx *BuiltinFunctionContext,
+	defaultType *types.Type,
+	resultType *types.Type,
+) (*Compiler, *module.Module, *types.Type, module.ExpressionRef, bool) {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeOptional(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = resultType
+		return compiler, mod, nil, 0, false
+	}
+	typ := defaultType
+	if len(ctx.TypeArguments) > 0 {
+		typ = ctx.TypeArguments[0]
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = resultType
+	return compiler, mod, typ, arg0, true
+}
+
+func prepareRequiredV128BinaryBuiltin(
+	ctx *BuiltinFunctionContext,
+	arg1Type *types.Type,
+	resultType *types.Type,
+) (*Compiler, *module.Module, *types.Type, module.ExpressionRef, module.ExpressionRef, bool) {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = resultType
+		return compiler, mod, nil, 0, 0, false
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], arg1Type, ConstraintsConvImplicit)
+	compiler.CurrentType = resultType
+	return compiler, mod, typ, arg0, arg1, true
+}
+
+func prepareRequiredV128TernaryBuiltin(
+	ctx *BuiltinFunctionContext,
+	feature common.Feature,
+	resultType *types.Type,
+) (*Compiler, *module.Module, *types.Type, module.ExpressionRef, module.ExpressionRef, module.ExpressionRef, bool) {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, feature))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 3)) != 0 {
+		compiler.CurrentType = resultType
+		return compiler, mod, nil, 0, 0, 0, false
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	arg2 := compiler.CompileExpression(ctx.Operands[2], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = resultType
+	return compiler, mod, typ, arg0, arg1, arg2, true
+}
+
+func evaluateSIMDConstantIndex(expr module.ExpressionRef, reportNode ast.Node, compiler *Compiler) int32 {
+	mod := compiler.Module()
+	precomp := mod.RunExpression(expr, module.ExpressionRunnerFlagsPreserveSideeffects, 8, 1)
+	if precomp != 0 {
+		return module.GetConstValueI32(precomp)
+	}
+	compiler.Error(
+		diagnostics.DiagnosticCodeExpressionMustBeACompileTimeConstant,
+		reportNode.GetRange(),
+		"", "", "",
+	)
+	return 0
+}
+
+func validateSIMDLaneIndex(idx int32, laneType *types.Type, reportNode ast.Node, compiler *Compiler) uint8 {
+	if laneType == nil {
+		return 0
+	}
+	laneWidth := laneType.ByteSize()
+	if laneWidth <= 0 {
+		return 0
+	}
+	maxIdx := (16 / laneWidth) - 1
+	if idx < 0 || idx > maxIdx {
+		compiler.Error(
+			diagnostics.DiagnosticCode0MustBeAValueBetween1And2Inclusive,
+			reportNode.GetRange(),
+			"Lane index",
+			"0",
+			intToString(int(maxIdx)),
+		)
+		idx = 0
+	}
+	return uint8(idx)
+}
+
+func evaluateSIMDMemoryImmediateOperands(
+	operands []ast.Node,
+	immediateStart int,
+	naturalAlign int32,
+	compiler *Compiler,
+) (uint32, uint32, bool) {
+	immOffset := int32(0)
+	immAlign := naturalAlign
+	numOperands := len(operands)
+	if numOperands >= immediateStart+1 {
+		immOffset = evaluateImmediateOffset(operands[immediateStart], compiler)
+		if immOffset < 0 {
+			return 0, 0, false
+		}
+		if numOperands == immediateStart+2 {
+			immAlign = evaluateImmediateAlign(operands[immediateStart+1], immAlign, compiler)
+			if immAlign < 0 {
+				return 0, 0, false
+			}
+		}
+	}
+	return uint32(immOffset), uint32(immAlign), true
+}
+
+func builtinV128BitwiseBinaryOp(ctx *BuiltinFunctionContext, op module.Op) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	return mod.Binary(op, arg0, arg1)
+}
+
+func builtinV128BitwiseUnaryOp(ctx *BuiltinFunctionContext, op module.Op) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	return mod.Unary(op, arg0)
+}
 
 func builtinRem(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinRem not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsIntegerValue() {
+		return ctx.Compiler.makeBinaryRem(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "rem", typ)
 }
 
 func builtinAdd(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinAdd not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		return ctx.Compiler.makeBinaryAdd(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "add", typ)
 }
 
 func builtinSub(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinSub not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		return ctx.Compiler.makeBinarySub(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "sub", typ)
 }
 
 func builtinMul(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinMul not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		return ctx.Compiler.makeBinaryMul(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "mul", typ)
 }
 
 func builtinDiv(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinDiv not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		return ctx.Compiler.makeBinaryDiv(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "div", typ)
 }
 
 func builtinEq(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinEq not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		ctx.Compiler.CurrentType = types.TypeI32
+		return ctx.Compiler.makeBinaryEq(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "eq", typ)
 }
 
 func builtinNe(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinNe not yet ported")
+	arg0, arg1, typ, ok := prepareBuiltinValueBinaryOperands(ctx)
+	if ok && typ.IsNumericValue() {
+		ctx.Compiler.CurrentType = types.TypeI32
+		return ctx.Compiler.makeBinaryNe(arg0, arg1, typ)
+	}
+	return reportBuiltinOperationTypeError(ctx, "ne", typ)
 }
 
-// ========================================================================================
-// Stub forward declarations for v128/SIMD core builtins not yet ported.
-// TODO: Port these from assemblyscript/src/builtins.ts when the SIMD builtins section is done.
-// ========================================================================================
-
 func builtinV128Splat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Splat not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], typ, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Unary(module.UnaryOpSplatI8x16, arg0)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Unary(module.UnaryOpSplatI16x8, arg0)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Unary(module.UnaryOpSplatI32x4, arg0)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Unary(module.UnaryOpSplatI64x2, arg0)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Unary(module.UnaryOpSplatI64x2, arg0)
+			}
+			return mod.Unary(module.UnaryOpSplatI32x4, arg0)
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpSplatF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpSplatF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.splat", typ)
 }
 
 func builtinV128ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtractLane not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(operands[1], types.TypeU8, ConstraintsConvImplicit)
+	compiler.CurrentType = typ
+	idx := validateSIMDLaneIndex(evaluateSIMDConstantIndex(arg1, operands[1], compiler), typ, operands[1], compiler)
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI8x16, arg0, idx)
+		case types.TypeKindU8:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneU8x16, arg0, idx)
+		case types.TypeKindI16:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI16x8, arg0, idx)
+		case types.TypeKindU16:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneU16x8, arg0, idx)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI32x4, arg0, idx)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI64x2, arg0, idx)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI64x2, arg0, idx)
+			}
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneI32x4, arg0, idx)
+		case types.TypeKindF32:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneF32x4, arg0, idx)
+		case types.TypeKindF64:
+			return mod.SIMDExtract(module.SIMDExtractOpExtractLaneF64x2, arg0, idx)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extract_lane", typ)
 }
 
 func builtinV128ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ReplaceLane not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 3)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(operands[1], types.TypeU8, ConstraintsConvImplicit)
+	arg2 := compiler.CompileExpression(operands[2], typ, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	idx := validateSIMDLaneIndex(evaluateSIMDConstantIndex(arg1, operands[1], compiler), typ, operands[1], compiler)
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI8x16, arg0, idx, arg2)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI16x8, arg0, idx, arg2)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI32x4, arg0, idx, arg2)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI64x2, arg0, idx, arg2)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI64x2, arg0, idx, arg2)
+			}
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneI32x4, arg0, idx, arg2)
+		case types.TypeKindF32:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneF32x4, arg0, idx, arg2)
+		case types.TypeKindF64:
+			return mod.SIMDReplace(module.SIMDReplaceOpReplaceLaneF64x2, arg0, idx, arg2)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.replace_lane", typ)
 }
 
 func builtinV128Add(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Add not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Binary(module.BinaryOpAddI8x16, arg0, arg1)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Binary(module.BinaryOpAddI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Binary(module.BinaryOpAddI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Binary(module.BinaryOpAddI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpAddI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpAddI32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpAddF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpAddF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.add", typ)
 }
 
 func builtinV128Sub(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Sub not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Binary(module.BinaryOpSubI8x16, arg0, arg1)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Binary(module.BinaryOpSubI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Binary(module.BinaryOpSubI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Binary(module.BinaryOpSubI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpSubI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpSubI32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpSubF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpSubF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.sub", typ)
 }
 
 func builtinV128Mul(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Mul not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Binary(module.BinaryOpMulI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Binary(module.BinaryOpMulI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Binary(module.BinaryOpMulI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpMulI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpMulI32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpMulF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpMulF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.mul", typ)
 }
 
 func builtinV128Div(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Div not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpDivF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpDivF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.div", typ)
 }
 
 func builtinV128Neg(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Neg not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Unary(module.UnaryOpNegI8x16, arg0)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Unary(module.UnaryOpNegI16x8, arg0)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Unary(module.UnaryOpNegI32x4, arg0)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Unary(module.UnaryOpNegI64x2, arg0)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Unary(module.UnaryOpNegI64x2, arg0)
+			}
+			return mod.Unary(module.UnaryOpNegI32x4, arg0)
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpNegF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpNegF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.neg", typ)
 }
 
 func builtinV128Min(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Min not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpMinI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpMinU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpMinI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpMinU16x8, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpMinI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpMinU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpMinF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpMinF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.min", typ)
 }
 
 func builtinV128Max(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Max not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpMaxI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpMaxU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpMaxI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpMaxU16x8, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpMaxI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpMaxU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpMaxF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpMaxF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.max", typ)
 }
 
 func builtinV128Pmin(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Pmin not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpPminF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpPminF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.pmin", typ)
 }
 
 func builtinV128Pmax(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Pmax not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpPmaxF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpPmaxF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.pmax", typ)
 }
 
 func builtinV128Abs(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Abs not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Unary(module.UnaryOpAbsI8x16, arg0)
+		case types.TypeKindI16:
+			return mod.Unary(module.UnaryOpAbsI16x8, arg0)
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpAbsI32x4, arg0)
+		case types.TypeKindI64:
+			return mod.Unary(module.UnaryOpAbsI64x2, arg0)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Unary(module.UnaryOpAbsI64x2, arg0)
+			}
+			return mod.Unary(module.UnaryOpAbsI32x4, arg0)
+		case types.TypeKindU8, types.TypeKindU16, types.TypeKindU32, types.TypeKindU64, types.TypeKindUsize:
+			return arg0
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpAbsF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpAbsF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.abs", typ)
 }
 
 func builtinV128Sqrt(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Sqrt not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpSqrtF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpSqrtF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.sqrt", typ)
 }
 
 func builtinV128Ceil(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Ceil not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpCeilF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpCeilF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.ceil", typ)
 }
 
 func builtinV128Floor(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Floor not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpFloorF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpFloorF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.floor", typ)
 }
 
 func builtinV128Trunc(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Trunc not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpTruncF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpTruncF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.trunc", typ)
 }
 
 func builtinV128Nearest(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Nearest not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpNearestF32x4, arg0)
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpNearestF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.nearest", typ)
 }
 
 func builtinV128Eq(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Eq not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Binary(module.BinaryOpEqI8x16, arg0, arg1)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Binary(module.BinaryOpEqI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Binary(module.BinaryOpEqI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Binary(module.BinaryOpEqI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpEqI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpEqI32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpEqF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpEqF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.eq", typ)
 }
 
 func builtinV128Ne(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Ne not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Binary(module.BinaryOpNeI8x16, arg0, arg1)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Binary(module.BinaryOpNeI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Binary(module.BinaryOpNeI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Binary(module.BinaryOpNeI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpNeI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpNeI32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpNeF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpNeF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.ne", typ)
 }
 
 func builtinV128Lt(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Lt not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpLtI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpLtU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpLtI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpLtU16x8, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpLtI32x4, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpLtU32x4, arg0, arg1)
+		case types.TypeKindI64:
+			return mod.Binary(module.BinaryOpLtI64x2, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpLtI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpLtI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			return mod.Binary(module.BinaryOpLtU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpLtF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpLtF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.lt", typ)
 }
 
 func builtinV128Le(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Le not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpLeI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpLeU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpLeI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpLeU16x8, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpLeI32x4, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpLeU32x4, arg0, arg1)
+		case types.TypeKindI64:
+			return mod.Binary(module.BinaryOpLeI64x2, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpLeI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpLeI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			return mod.Binary(module.BinaryOpLeU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpLeF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpLeF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.le", typ)
 }
 
 func builtinV128Gt(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Gt not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpGtI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpGtU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpGtI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpGtU16x8, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpGtI32x4, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpGtU32x4, arg0, arg1)
+		case types.TypeKindI64:
+			return mod.Binary(module.BinaryOpGtI64x2, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpGtI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpGtI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			return mod.Binary(module.BinaryOpGtU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpGtF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpGtF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.gt", typ)
 }
 
 func builtinV128Ge(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Ge not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpGeI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpGeU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpGeI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpGeU16x8, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpGeI32x4, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpGeU32x4, arg0, arg1)
+		case types.TypeKindI64:
+			return mod.Binary(module.BinaryOpGeI64x2, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Binary(module.BinaryOpGeI64x2, arg0, arg1)
+			}
+			return mod.Binary(module.BinaryOpGeI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			return mod.Binary(module.BinaryOpGeU32x4, arg0, arg1)
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpGeF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpGeF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.ge", typ)
 }
 
 func builtinV128Shl(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Shl not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeI32, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDShift(module.SIMDShiftOpShlI8x16, arg0, arg1)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDShift(module.SIMDShiftOpShlI16x8, arg0, arg1)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.SIMDShift(module.SIMDShiftOpShlI32x4, arg0, arg1)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.SIMDShift(module.SIMDShiftOpShlI64x2, arg0, arg1)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDShift(module.SIMDShiftOpShlI64x2, arg0, arg1)
+			}
+			return mod.SIMDShift(module.SIMDShiftOpShlI32x4, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.shl", typ)
 }
 
 func builtinV128Shr(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Shr not yet ported")
+	compiler, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeI32, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.SIMDShift(module.SIMDShiftOpShrI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.SIMDShift(module.SIMDShiftOpShrU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.SIMDShift(module.SIMDShiftOpShrI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.SIMDShift(module.SIMDShiftOpShrU16x8, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.SIMDShift(module.SIMDShiftOpShrI32x4, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.SIMDShift(module.SIMDShiftOpShrU32x4, arg0, arg1)
+		case types.TypeKindI64:
+			return mod.SIMDShift(module.SIMDShiftOpShrI64x2, arg0, arg1)
+		case types.TypeKindU64:
+			return mod.SIMDShift(module.SIMDShiftOpShrU64x2, arg0, arg1)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDShift(module.SIMDShiftOpShrI64x2, arg0, arg1)
+			}
+			return mod.SIMDShift(module.SIMDShiftOpShrI32x4, arg0, arg1)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDShift(module.SIMDShiftOpShrU64x2, arg0, arg1)
+			}
+			return mod.SIMDShift(module.SIMDShiftOpShrU32x4, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.shr", typ)
 }
 
 func builtinV128AllTrue(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128AllTrue not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeBool)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Unary(module.UnaryOpAllTrueI8x16, arg0)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Unary(module.UnaryOpAllTrueI16x8, arg0)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Unary(module.UnaryOpAllTrueI32x4, arg0)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Unary(module.UnaryOpAllTrueI64x2, arg0)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Unary(module.UnaryOpAllTrueI64x2, arg0)
+			}
+			return mod.Unary(module.UnaryOpAllTrueI32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.all_true", typ)
 }
 
 func builtinV128Bitmask(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Bitmask not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeI32)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Unary(module.UnaryOpBitmaskI8x16, arg0)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.Unary(module.UnaryOpBitmaskI16x8, arg0)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.Unary(module.UnaryOpBitmaskI32x4, arg0)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.Unary(module.UnaryOpBitmaskI64x2, arg0)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.Unary(module.UnaryOpBitmaskI64x2, arg0)
+			}
+			return mod.Unary(module.UnaryOpBitmaskI32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.bitmask", typ)
 }
 
 func builtinV128Popcnt(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Popcnt not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.Unary(module.UnaryOpPopcntI8x16, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.popcnt", typ)
 }
 
 func builtinV128AddSat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128AddSat not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpAddSatI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpAddSatU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpAddSatI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpAddSatU16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.add_sat", typ)
 }
 
 func builtinV128SubSat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128SubSat not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpSubSatI8x16, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpSubSatU8x16, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpSubSatI16x8, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpSubSatU16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.sub_sat", typ)
 }
 
 func builtinV128Avgr(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Avgr not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpAvgrU8x16, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpAvgrU16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.avgr", typ)
 }
 
 func builtinV128Narrow(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Narrow not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpNarrowI16x8ToI8x16, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpNarrowU16x8ToU8x16, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpNarrowI32x4ToI16x8, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpNarrowU32x4ToU16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.narrow", typ)
 }
 
 func builtinV128Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Shuffle not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, false)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	if typ.IsValue() {
+		laneWidth := typ.ByteSize()
+		laneCount := int32(16 / laneWidth)
+		if checkArgsRequired(ctx, int(2+laneCount)) {
+			compiler.CurrentType = types.TypeV128
+			return mod.Unreachable()
+		}
+		arg0 := compiler.CompileExpression(operands[0], types.TypeV128, ConstraintsConvImplicit)
+		arg1 := compiler.CompileExpression(operands[1], types.TypeV128, ConstraintsConvImplicit)
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindI16, types.TypeKindI32, types.TypeKindI64, types.TypeKindIsize,
+			types.TypeKindU8, types.TypeKindU16, types.TypeKindU32, types.TypeKindU64, types.TypeKindUsize,
+			types.TypeKindF32, types.TypeKindF64:
+			var mask [16]byte
+			maxIdx := (laneCount << 1) - 1
+			for i := int32(0); i < laneCount; i++ {
+				operand := operands[2+i]
+				argN := compiler.CompileExpression(operand, types.TypeU8, ConstraintsConvImplicit)
+				idx := evaluateSIMDConstantIndex(argN, operand, compiler)
+				if idx < 0 || idx > maxIdx {
+					compiler.Error(
+						diagnostics.DiagnosticCode0MustBeAValueBetween1And2Inclusive,
+						operand.GetRange(),
+						"Lane index",
+						"0",
+						intToString(int(maxIdx)),
+					)
+					idx = 0
+				}
+				offset := i * laneWidth
+				idx8 := idx * laneWidth
+				for j := int32(0); j < laneWidth; j++ {
+					mask[offset+j] = byte(idx8 + j)
+				}
+			}
+			compiler.CurrentType = types.TypeV128
+			return mod.SIMDShuffle(arg0, arg1, mask)
+		}
+	}
+	compiler.CurrentType = types.TypeV128
+	return reportBuiltinOperationTypeError(ctx, "v128.shuffle", typ)
 }
 
 func builtinV128Swizzle(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Swizzle not yet ported")
+	return builtinV128BitwiseBinaryOp(ctx, module.BinaryOpSwizzleI8x16)
 }
 
 func builtinV128LoadExt(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128LoadExt not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsOptional(ctx, 1, 3)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	offset, align, ok := evaluateSIMDMemoryImmediateOperands(operands, 1, typ.ByteSize(), compiler)
+	if !ok {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad8x8S, arg0, offset, align, "")
+		case types.TypeKindU8:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad8x8U, arg0, offset, align, "")
+		case types.TypeKindI16:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad16x4S, arg0, offset, align, "")
+		case types.TypeKindU16:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad16x4U, arg0, offset, align, "")
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad32x2S, arg0, offset, align, "")
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad32x2U, arg0, offset, align, "")
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.load_ext", typ)
 }
 
 func builtinV128LoadSplat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128LoadSplat not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsOptional(ctx, 1, 3)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	offset, align, ok := evaluateSIMDMemoryImmediateOperands(operands, 1, typ.ByteSize(), compiler)
+	if !ok {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad8Splat, arg0, offset, align, "")
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad16Splat, arg0, offset, align, "")
+		case types.TypeKindI32, types.TypeKindU32, types.TypeKindF32:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad32Splat, arg0, offset, align, "")
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if !compiler.Options().IsWasm64() {
+				return mod.SIMDLoad(module.SIMDLoadOpLoad32Splat, arg0, offset, align, "")
+			}
+			fallthrough
+		case types.TypeKindI64, types.TypeKindU64, types.TypeKindF64:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad64Splat, arg0, offset, align, "")
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.load_splat", typ)
 }
 
 func builtinV128LoadZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128LoadZero not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsOptional(ctx, 1, 3)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	offset, align, ok := evaluateSIMDMemoryImmediateOperands(operands, 1, typ.ByteSize(), compiler)
+	if !ok {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI32, types.TypeKindU32, types.TypeKindF32:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad32Zero, arg0, offset, align, "")
+		case types.TypeKindI64, types.TypeKindU64, types.TypeKindF64:
+			return mod.SIMDLoad(module.SIMDLoadOpLoad64Zero, arg0, offset, align, "")
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDLoad(module.SIMDLoadOpLoad64Zero, arg0, offset, align, "")
+			}
+			return mod.SIMDLoad(module.SIMDLoadOpLoad32Zero, arg0, offset, align, "")
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.load_zero", typ)
 }
 
 func builtinV128LoadLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128LoadLane not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsOptional(ctx, 3, 5)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(operands[1], types.TypeV128, ConstraintsConvImplicit)
+	arg2 := compiler.CompileExpression(operands[2], types.TypeU8, ConstraintsConvImplicit)
+	idx := validateSIMDLaneIndex(evaluateSIMDConstantIndex(arg2, operands[2], compiler), typ, operands[1], compiler)
+	offset, align, ok := evaluateSIMDMemoryImmediateOperands(operands, 3, typ.ByteSize(), compiler)
+	if !ok {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad8Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad16Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI32, types.TypeKindU32, types.TypeKindF32:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad32Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI64, types.TypeKindU64, types.TypeKindF64:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad64Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad64Lane, arg0, offset, align, idx, arg1, "")
+			}
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpLoad32Lane, arg0, offset, align, idx, arg1, "")
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.load_lane", typ)
 }
 
 func builtinV128StoreLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128StoreLane not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeRequired(ctx, true))|
+		boolToInt(checkArgsOptional(ctx, 3, 5)) != 0 {
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(operands[1], types.TypeV128, ConstraintsConvImplicit)
+	arg2 := compiler.CompileExpression(operands[2], types.TypeU8, ConstraintsConvImplicit)
+	idx := validateSIMDLaneIndex(evaluateSIMDConstantIndex(arg2, operands[2], compiler), typ, operands[1], compiler)
+	offset, align, ok := evaluateSIMDMemoryImmediateOperands(operands, 3, typ.ByteSize(), compiler)
+	if !ok {
+		compiler.CurrentType = types.TypeVoid
+		return mod.Unreachable()
+	}
+	compiler.CurrentType = types.TypeVoid
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore8Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore16Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI32, types.TypeKindU32, types.TypeKindF32:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore32Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindI64, types.TypeKindU64, types.TypeKindF64:
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore64Lane, arg0, offset, align, idx, arg1, "")
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore64Lane, arg0, offset, align, idx, arg1, "")
+			}
+			return mod.SIMDLoadStoreLane(module.SIMDLoadStoreLaneOpStore32Lane, arg0, offset, align, idx, arg1, "")
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.store_lane", typ)
 }
 
 func builtinV128Convert(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Convert not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpConvertI32x4ToF32x4, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpConvertU32x4ToF32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.convert", typ)
 }
 
 func builtinV128ConvertLow(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ConvertLow not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpConvertLowI32x4ToF64x2, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpConvertLowU32x4ToF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.convert_low", typ)
 }
 
 func builtinV128TruncSat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128TruncSat not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpTruncSatF32x4ToI32x4, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpTruncSatF32x4ToU32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.trunc_sat", typ)
 }
 
 func builtinV128TruncSatZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128TruncSatZero not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpTruncSatF64x2ToI32x4Zero, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpTruncSatF64x2ToU32x4Zero, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.trunc_sat_zero", typ)
 }
 
 func builtinV128ExtendLow(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtendLow not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Unary(module.UnaryOpExtendLowI8x16ToI16x8, arg0)
+		case types.TypeKindU8:
+			return mod.Unary(module.UnaryOpExtendLowU8x16ToU16x8, arg0)
+		case types.TypeKindI16:
+			return mod.Unary(module.UnaryOpExtendLowI16x8ToI32x4, arg0)
+		case types.TypeKindU16:
+			return mod.Unary(module.UnaryOpExtendLowU16x8ToU32x4, arg0)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpExtendLowI32x4ToI64x2, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpExtendLowU32x4ToU64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extend_low", typ)
 }
 
 func builtinV128ExtendHigh(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtendHigh not yet ported")
+	compiler, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Unary(module.UnaryOpExtendHighI8x16ToI16x8, arg0)
+		case types.TypeKindU8:
+			return mod.Unary(module.UnaryOpExtendHighU8x16ToU16x8, arg0)
+		case types.TypeKindI16:
+			return mod.Unary(module.UnaryOpExtendHighI16x8ToI32x4, arg0)
+		case types.TypeKindU16:
+			return mod.Unary(module.UnaryOpExtendHighU16x8ToU32x4, arg0)
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpExtendHighI32x4ToI64x2, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpExtendHighU32x4ToU64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extend_high", typ)
 }
 
 func builtinV128ExtaddPairwise(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtaddPairwise not yet ported")
+	_, mod, typ, arg0, ok := prepareRequiredV128UnaryBuiltin(ctx, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Unary(module.UnaryOpExtaddPairwiseI8x16ToI16x8, arg0)
+		case types.TypeKindU8:
+			return mod.Unary(module.UnaryOpExtaddPairwiseU8x16ToU16x8, arg0)
+		case types.TypeKindI16:
+			return mod.Unary(module.UnaryOpExtaddPairwiseI16x8ToI32x4, arg0)
+		case types.TypeKindU16:
+			return mod.Unary(module.UnaryOpExtaddPairwiseU16x8ToU32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extadd_pairwise", typ)
 }
 
 func builtinV128DemoteZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128DemoteZero not yet ported")
+	_, mod, typ, arg0, ok := prepareOptionalV128UnaryBuiltin(ctx, types.TypeF64, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF64:
+			return mod.Unary(module.UnaryOpDemoteZeroF64x2ToF32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.demote_zero", typ)
 }
 
 func builtinV128PromoteLow(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128PromoteLow not yet ported")
+	_, mod, typ, arg0, ok := prepareOptionalV128UnaryBuiltin(ctx, types.TypeF32, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Unary(module.UnaryOpPromoteLowF32x4ToF64x2, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.promote_low", typ)
 }
 
 func builtinV128Q15mulrSat(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Q15mulrSat not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpQ15mulrSatI16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.q15mulr_sat", typ)
 }
 
 func builtinV128ExtmulLow(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtmulLow not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpExtmulLowI16x8, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpExtmulLowU16x8, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpExtmulLowI32x4, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpExtmulLowU32x4, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpExtmulLowI64x2, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpExtmulLowU64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extmul_low", typ)
 }
 
 func builtinV128ExtmulHigh(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128ExtmulHigh not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8:
+			return mod.Binary(module.BinaryOpExtmulHighI16x8, arg0, arg1)
+		case types.TypeKindU8:
+			return mod.Binary(module.BinaryOpExtmulHighU16x8, arg0, arg1)
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpExtmulHighI32x4, arg0, arg1)
+		case types.TypeKindU16:
+			return mod.Binary(module.BinaryOpExtmulHighU32x4, arg0, arg1)
+		case types.TypeKindI32:
+			return mod.Binary(module.BinaryOpExtmulHighI64x2, arg0, arg1)
+		case types.TypeKindU32:
+			return mod.Binary(module.BinaryOpExtmulHighU64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.extmul_high", typ)
 }
 
 func builtinV128Dot(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Dot not yet ported")
+	_, mod, typ, arg0, arg1, ok := prepareRequiredV128BinaryBuiltin(ctx, types.TypeV128, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpDotI16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.dot", typ)
 }
 
 func builtinV128RelaxedSwizzle(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedSwizzle not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	return mod.Binary(module.BinaryOpRelaxedSwizzleI8x16, arg0, arg1)
 }
 
 func builtinV128RelaxedTrunc(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedTrunc not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpRelaxedTruncF32x4ToI32x4, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpRelaxedTruncF32x4ToU32x4, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_trunc", typ)
 }
 
 func builtinV128RelaxedTruncZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedTruncZero not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindIsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindI32:
+			return mod.Unary(module.UnaryOpRelaxedTruncF64x2ToI32x4Zero, arg0)
+		case types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				break
+			}
+			fallthrough
+		case types.TypeKindU32:
+			return mod.Unary(module.UnaryOpRelaxedTruncF64x2ToU32x4Zero, arg0)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_trunc_zero", typ)
 }
 
 func builtinV128RelaxedMadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedMadd not yet ported")
+	_, mod, typ, arg0, arg1, arg2, ok := prepareRequiredV128TernaryBuiltin(ctx, common.FeatureRelaxedSimd, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedMaddF32x4, arg0, arg1, arg2)
+		case types.TypeKindF64:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedMaddF64x2, arg0, arg1, arg2)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_madd", typ)
 }
 
 func builtinV128RelaxedNmadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedNmadd not yet ported")
+	_, mod, typ, arg0, arg1, arg2, ok := prepareRequiredV128TernaryBuiltin(ctx, common.FeatureRelaxedSimd, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedNmaddF32x4, arg0, arg1, arg2)
+		case types.TypeKindF64:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedNmaddF64x2, arg0, arg1, arg2)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_nmadd", typ)
 }
 
 func builtinV128RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedLaneselect not yet ported")
+	compiler, mod, typ, arg0, arg1, arg2, ok := prepareRequiredV128TernaryBuiltin(ctx, common.FeatureRelaxedSimd, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI8, types.TypeKindU8:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI8x16, arg0, arg1, arg2)
+		case types.TypeKindI16, types.TypeKindU16:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI16x8, arg0, arg1, arg2)
+		case types.TypeKindI32, types.TypeKindU32:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI32x4, arg0, arg1, arg2)
+		case types.TypeKindI64, types.TypeKindU64:
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI64x2, arg0, arg1, arg2)
+		case types.TypeKindIsize, types.TypeKindUsize:
+			if compiler.Options().IsWasm64() {
+				return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI64x2, arg0, arg1, arg2)
+			}
+			return mod.SIMDTernary(module.SIMDTernaryOpRelaxedLaneselectI32x4, arg0, arg1, arg2)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_laneselect", typ)
 }
 
 func builtinV128RelaxedMin(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedMin not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpRelaxedMinF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpRelaxedMinF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_min", typ)
 }
 
 func builtinV128RelaxedMax(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedMax not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindF32:
+			return mod.Binary(module.BinaryOpRelaxedMaxF32x4, arg0, arg1)
+		case types.TypeKindF64:
+			return mod.Binary(module.BinaryOpRelaxedMaxF64x2, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_max", typ)
 }
 
 func builtinV128RelaxedQ15mulr(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedQ15mulr not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpRelaxedQ15MulrI16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_q15mulr", typ)
 }
 
 func builtinV128RelaxedDot(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedDot not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureRelaxedSimd))|
+		boolToInt(checkTypeRequired(ctx, false))|
+		boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	typ := ctx.TypeArguments[0]
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	if typ.IsValue() {
+		switch typ.Kind {
+		case types.TypeKindI16:
+			return mod.Binary(module.BinaryOpRelaxedDotI8x16I7x16ToI16x8, arg0, arg1)
+		}
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_dot", typ)
 }
 
 func builtinV128RelaxedDotAdd(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128RelaxedDotAdd not yet ported")
+	compiler, mod, typ, arg0, arg1, arg2, ok := prepareRequiredV128TernaryBuiltin(ctx, common.FeatureRelaxedSimd, types.TypeV128)
+	if !ok {
+		return mod.Unreachable()
+	}
+	switch typ.Kind {
+	case types.TypeKindIsize:
+		if compiler.Options().IsWasm64() {
+			break
+		}
+		fallthrough
+	case types.TypeKindI32:
+		return mod.SIMDTernary(module.SIMDTernaryOpRelaxedDotI8x16I7x16AddToI32x4, arg0, arg1, arg2)
+	}
+	return reportBuiltinOperationTypeError(ctx, "v128.relaxed_dot_add", typ)
 }
 
 func builtinV128And(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128And not yet ported")
+	return builtinV128BitwiseBinaryOp(ctx, module.BinaryOpAndV128)
 }
 
 func builtinV128Or(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Or not yet ported")
+	return builtinV128BitwiseBinaryOp(ctx, module.BinaryOpOrV128)
 }
 
 func builtinV128Xor(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Xor not yet ported")
+	return builtinV128BitwiseBinaryOp(ctx, module.BinaryOpXorV128)
 }
 
 func builtinV128Andnot(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Andnot not yet ported")
+	return builtinV128BitwiseBinaryOp(ctx, module.BinaryOpAndnotV128)
 }
 
 func builtinV128Not(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Not not yet ported")
+	return builtinV128BitwiseUnaryOp(ctx, module.UnaryOpNotV128)
 }
 
 func builtinV128Bitselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128Bitselect not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 3)) != 0 {
+		compiler.CurrentType = types.TypeV128
+		return mod.Unreachable()
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(ctx.Operands[1], types.TypeV128, ConstraintsConvImplicit)
+	arg2 := compiler.CompileExpression(ctx.Operands[2], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeV128
+	return mod.SIMDTernary(module.SIMDTernaryOpBitselect, arg0, arg1, arg2)
 }
 
 func builtinV128AnyTrue(ctx *BuiltinFunctionContext) module.ExpressionRef {
-	panic("builtinV128AnyTrue not yet ported")
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkFeatureEnabled(ctx, common.FeatureSimd))|
+		boolToInt(checkTypeAbsent(ctx))|
+		boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeBool
+		return mod.Unreachable()
+	}
+	arg0 := compiler.CompileExpression(ctx.Operands[0], types.TypeV128, ConstraintsConvImplicit)
+	compiler.CurrentType = types.TypeBool
+	return mod.Unary(module.UnaryOpAnyTrueV128, arg0)
 }
 
 // ========================================================================================
@@ -1452,149 +3145,785 @@ func builtinI16x8Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
 // i32x4 SIMD alias functions
 // ========================================================================================
 
-func builtinI32x4Splat(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Splat(ctx) }
-func builtinI32x4ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeI32; return builtinV128ExtractLane(ctx) }
-func builtinI32x4ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ReplaceLane(ctx) }
-func builtinI32x4Add(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Add(ctx) }
-func builtinI32x4Sub(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Sub(ctx) }
-func builtinI32x4Mul(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Mul(ctx) }
-func builtinI32x4MinS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Min(ctx) }
-func builtinI32x4MinU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Min(ctx) }
-func builtinI32x4MaxS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Max(ctx) }
-func builtinI32x4MaxU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Max(ctx) }
-func builtinI32x4DotI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128Dot(ctx) }
-func builtinI32x4Abs(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Abs(ctx) }
-func builtinI32x4Neg(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Neg(ctx) }
-func builtinI32x4Shl(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Shl(ctx) }
-func builtinI32x4ShrS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Shr(ctx) }
-func builtinI32x4ShrU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Shr(ctx) }
-func builtinI32x4AllTrue(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeI32; return builtinV128AllTrue(ctx) }
-func builtinI32x4Bitmask(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeI32; return builtinV128Bitmask(ctx) }
-func builtinI32x4Eq(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Eq(ctx) }
-func builtinI32x4Ne(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Ne(ctx) }
-func builtinI32x4LtS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Lt(ctx) }
-func builtinI32x4LtU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Lt(ctx) }
-func builtinI32x4LeS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Le(ctx) }
-func builtinI32x4LeU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Le(ctx) }
-func builtinI32x4GtS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Gt(ctx) }
-func builtinI32x4GtU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Gt(ctx) }
-func builtinI32x4GeS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Ge(ctx) }
-func builtinI32x4GeU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Ge(ctx) }
-func builtinI32x4TruncSatF32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128TruncSat(ctx) }
-func builtinI32x4TruncSatF32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128TruncSat(ctx) }
-func builtinI32x4TruncSatF64x2SZero(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128TruncSatZero(ctx) }
-func builtinI32x4TruncSatF64x2UZero(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128TruncSatZero(ctx) }
-func builtinI32x4ExtendLowI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendLow(ctx) }
-func builtinI32x4ExtendLowI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendLow(ctx) }
-func builtinI32x4ExtendHighI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendHigh(ctx) }
-func builtinI32x4ExtendHighI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendHigh(ctx) }
-func builtinI32x4ExtaddPairwiseI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtaddPairwise(ctx) }
-func builtinI32x4ExtaddPairwiseI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtaddPairwise(ctx) }
-func builtinI32x4ExtmulLowI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulLow(ctx) }
-func builtinI32x4ExtmulLowI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulLow(ctx) }
-func builtinI32x4ExtmulHighI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulHigh(ctx) }
-func builtinI32x4ExtmulHighI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU16}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulHigh(ctx) }
-func builtinI32x4Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Shuffle(ctx) }
+func builtinI32x4Splat(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Splat(ctx)
+}
+func builtinI32x4ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeI32
+	return builtinV128ExtractLane(ctx)
+}
+func builtinI32x4ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ReplaceLane(ctx)
+}
+func builtinI32x4Add(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Add(ctx)
+}
+func builtinI32x4Sub(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sub(ctx)
+}
+func builtinI32x4Mul(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Mul(ctx)
+}
+func builtinI32x4MinS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Min(ctx)
+}
+func builtinI32x4MinU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Min(ctx)
+}
+func builtinI32x4MaxS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Max(ctx)
+}
+func builtinI32x4MaxU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Max(ctx)
+}
+func builtinI32x4DotI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Dot(ctx)
+}
+func builtinI32x4Abs(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Abs(ctx)
+}
+func builtinI32x4Neg(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Neg(ctx)
+}
+func builtinI32x4Shl(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shl(ctx)
+}
+func builtinI32x4ShrS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shr(ctx)
+}
+func builtinI32x4ShrU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shr(ctx)
+}
+func builtinI32x4AllTrue(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeI32
+	return builtinV128AllTrue(ctx)
+}
+func builtinI32x4Bitmask(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeI32
+	return builtinV128Bitmask(ctx)
+}
+func builtinI32x4Eq(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Eq(ctx)
+}
+func builtinI32x4Ne(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ne(ctx)
+}
+func builtinI32x4LtS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Lt(ctx)
+}
+func builtinI32x4LtU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Lt(ctx)
+}
+func builtinI32x4LeS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Le(ctx)
+}
+func builtinI32x4LeU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Le(ctx)
+}
+func builtinI32x4GtS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Gt(ctx)
+}
+func builtinI32x4GtU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Gt(ctx)
+}
+func builtinI32x4GeS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ge(ctx)
+}
+func builtinI32x4GeU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ge(ctx)
+}
+func builtinI32x4TruncSatF32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128TruncSat(ctx)
+}
+func builtinI32x4TruncSatF32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128TruncSat(ctx)
+}
+func builtinI32x4TruncSatF64x2SZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128TruncSatZero(ctx)
+}
+func builtinI32x4TruncSatF64x2UZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128TruncSatZero(ctx)
+}
+func builtinI32x4ExtendLowI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendLow(ctx)
+}
+func builtinI32x4ExtendLowI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendLow(ctx)
+}
+func builtinI32x4ExtendHighI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendHigh(ctx)
+}
+func builtinI32x4ExtendHighI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendHigh(ctx)
+}
+func builtinI32x4ExtaddPairwiseI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtaddPairwise(ctx)
+}
+func builtinI32x4ExtaddPairwiseI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtaddPairwise(ctx)
+}
+func builtinI32x4ExtmulLowI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulLow(ctx)
+}
+func builtinI32x4ExtmulLowI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulLow(ctx)
+}
+func builtinI32x4ExtmulHighI16x8S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulHigh(ctx)
+}
+func builtinI32x4ExtmulHighI16x8U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulHigh(ctx)
+}
+func builtinI32x4Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shuffle(ctx)
+}
 
 // ========================================================================================
 // i64x2 SIMD alias functions
 // ========================================================================================
 
-func builtinI64x2Splat(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Splat(ctx) }
-func builtinI64x2ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeI64; return builtinV128ExtractLane(ctx) }
-func builtinI64x2ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128ReplaceLane(ctx) }
-func builtinI64x2Add(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Add(ctx) }
-func builtinI64x2Sub(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Sub(ctx) }
-func builtinI64x2Mul(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Mul(ctx) }
-func builtinI64x2Abs(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Abs(ctx) }
-func builtinI64x2Neg(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Neg(ctx) }
-func builtinI64x2Shl(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Shl(ctx) }
-func builtinI64x2ShrS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Shr(ctx) }
-func builtinI64x2ShrU(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU64}; ctx.ContextualType = types.TypeV128; return builtinV128Shr(ctx) }
-func builtinI64x2AllTrue(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeI32; return builtinV128AllTrue(ctx) }
-func builtinI64x2Bitmask(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeI32; return builtinV128Bitmask(ctx) }
-func builtinI64x2Eq(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Eq(ctx) }
-func builtinI64x2Ne(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Ne(ctx) }
-func builtinI64x2LtS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Lt(ctx) }
-func builtinI64x2LeS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Le(ctx) }
-func builtinI64x2GtS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Gt(ctx) }
-func builtinI64x2GeS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Ge(ctx) }
-func builtinI64x2ExtendLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendLow(ctx) }
-func builtinI64x2ExtendLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendLow(ctx) }
-func builtinI64x2ExtendHighI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendHigh(ctx) }
-func builtinI64x2ExtendHighI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtendHigh(ctx) }
-func builtinI64x2ExtmulLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulLow(ctx) }
-func builtinI64x2ExtmulLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulLow(ctx) }
-func builtinI64x2ExtmulHighI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulHigh(ctx) }
-func builtinI64x2ExtmulHighI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128ExtmulHigh(ctx) }
-func builtinI64x2Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128Shuffle(ctx) }
+func builtinI64x2Splat(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Splat(ctx)
+}
+func builtinI64x2ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeI64
+	return builtinV128ExtractLane(ctx)
+}
+func builtinI64x2ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ReplaceLane(ctx)
+}
+func builtinI64x2Add(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Add(ctx)
+}
+func builtinI64x2Sub(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sub(ctx)
+}
+func builtinI64x2Mul(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Mul(ctx)
+}
+func builtinI64x2Abs(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Abs(ctx)
+}
+func builtinI64x2Neg(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Neg(ctx)
+}
+func builtinI64x2Shl(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shl(ctx)
+}
+func builtinI64x2ShrS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shr(ctx)
+}
+func builtinI64x2ShrU(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shr(ctx)
+}
+func builtinI64x2AllTrue(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeI32
+	return builtinV128AllTrue(ctx)
+}
+func builtinI64x2Bitmask(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeI32
+	return builtinV128Bitmask(ctx)
+}
+func builtinI64x2Eq(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Eq(ctx)
+}
+func builtinI64x2Ne(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ne(ctx)
+}
+func builtinI64x2LtS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Lt(ctx)
+}
+func builtinI64x2LeS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Le(ctx)
+}
+func builtinI64x2GtS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Gt(ctx)
+}
+func builtinI64x2GeS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ge(ctx)
+}
+func builtinI64x2ExtendLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendLow(ctx)
+}
+func builtinI64x2ExtendLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendLow(ctx)
+}
+func builtinI64x2ExtendHighI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendHigh(ctx)
+}
+func builtinI64x2ExtendHighI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtendHigh(ctx)
+}
+func builtinI64x2ExtmulLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulLow(ctx)
+}
+func builtinI64x2ExtmulLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulLow(ctx)
+}
+func builtinI64x2ExtmulHighI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulHigh(ctx)
+}
+func builtinI64x2ExtmulHighI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ExtmulHigh(ctx)
+}
+func builtinI64x2Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shuffle(ctx)
+}
 
 // ========================================================================================
 // f32x4 SIMD alias functions
 // ========================================================================================
 
-func builtinF32x4Splat(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Splat(ctx) }
-func builtinF32x4ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeF32; return builtinV128ExtractLane(ctx) }
-func builtinF32x4ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128ReplaceLane(ctx) }
-func builtinF32x4Add(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Add(ctx) }
-func builtinF32x4Sub(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Sub(ctx) }
-func builtinF32x4Mul(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Mul(ctx) }
-func builtinF32x4Div(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Div(ctx) }
-func builtinF32x4Neg(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Neg(ctx) }
-func builtinF32x4Min(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Min(ctx) }
-func builtinF32x4Max(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Max(ctx) }
-func builtinF32x4Pmin(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Pmin(ctx) }
-func builtinF32x4Pmax(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Pmax(ctx) }
-func builtinF32x4Abs(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Abs(ctx) }
-func builtinF32x4Sqrt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Sqrt(ctx) }
-func builtinF32x4Ceil(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Ceil(ctx) }
-func builtinF32x4Floor(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Floor(ctx) }
-func builtinF32x4Trunc(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Trunc(ctx) }
-func builtinF32x4Nearest(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Nearest(ctx) }
-func builtinF32x4Eq(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Eq(ctx) }
-func builtinF32x4Ne(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Ne(ctx) }
-func builtinF32x4Lt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Lt(ctx) }
-func builtinF32x4Le(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Le(ctx) }
-func builtinF32x4Gt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Gt(ctx) }
-func builtinF32x4Ge(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Ge(ctx) }
-func builtinF32x4ConvertI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128Convert(ctx) }
-func builtinF32x4ConvertI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128Convert(ctx) }
-func builtinF32x4DemoteF64x2Zero(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128DemoteZero(ctx) }
-func builtinF32x4Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128Shuffle(ctx) }
+func builtinF32x4Splat(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Splat(ctx)
+}
+func builtinF32x4ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeF32
+	return builtinV128ExtractLane(ctx)
+}
+func builtinF32x4ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ReplaceLane(ctx)
+}
+func builtinF32x4Add(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Add(ctx)
+}
+func builtinF32x4Sub(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sub(ctx)
+}
+func builtinF32x4Mul(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Mul(ctx)
+}
+func builtinF32x4Div(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Div(ctx)
+}
+func builtinF32x4Neg(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Neg(ctx)
+}
+func builtinF32x4Min(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Min(ctx)
+}
+func builtinF32x4Max(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Max(ctx)
+}
+func builtinF32x4Pmin(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Pmin(ctx)
+}
+func builtinF32x4Pmax(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Pmax(ctx)
+}
+func builtinF32x4Abs(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Abs(ctx)
+}
+func builtinF32x4Sqrt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sqrt(ctx)
+}
+func builtinF32x4Ceil(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ceil(ctx)
+}
+func builtinF32x4Floor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Floor(ctx)
+}
+func builtinF32x4Trunc(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Trunc(ctx)
+}
+func builtinF32x4Nearest(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Nearest(ctx)
+}
+func builtinF32x4Eq(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Eq(ctx)
+}
+func builtinF32x4Ne(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ne(ctx)
+}
+func builtinF32x4Lt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Lt(ctx)
+}
+func builtinF32x4Le(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Le(ctx)
+}
+func builtinF32x4Gt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Gt(ctx)
+}
+func builtinF32x4Ge(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ge(ctx)
+}
+func builtinF32x4ConvertI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Convert(ctx)
+}
+func builtinF32x4ConvertI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Convert(ctx)
+}
+func builtinF32x4DemoteF64x2Zero(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128DemoteZero(ctx)
+}
+func builtinF32x4Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shuffle(ctx)
+}
 
 // ========================================================================================
 // f64x2 SIMD alias functions
 // ========================================================================================
 
-func builtinF64x2Splat(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Splat(ctx) }
-func builtinF64x2ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeF64; return builtinV128ExtractLane(ctx) }
-func builtinF64x2ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128ReplaceLane(ctx) }
-func builtinF64x2Add(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Add(ctx) }
-func builtinF64x2Sub(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Sub(ctx) }
-func builtinF64x2Mul(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Mul(ctx) }
-func builtinF64x2Div(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Div(ctx) }
-func builtinF64x2Neg(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Neg(ctx) }
-func builtinF64x2Min(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Min(ctx) }
-func builtinF64x2Max(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Max(ctx) }
-func builtinF64x2Pmin(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Pmin(ctx) }
-func builtinF64x2Pmax(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Pmax(ctx) }
-func builtinF64x2Abs(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Abs(ctx) }
-func builtinF64x2Sqrt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Sqrt(ctx) }
-func builtinF64x2Ceil(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Ceil(ctx) }
-func builtinF64x2Floor(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Floor(ctx) }
-func builtinF64x2Trunc(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Trunc(ctx) }
-func builtinF64x2Nearest(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Nearest(ctx) }
-func builtinF64x2Eq(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Eq(ctx) }
-func builtinF64x2Ne(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Ne(ctx) }
-func builtinF64x2Lt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Lt(ctx) }
-func builtinF64x2Le(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Le(ctx) }
-func builtinF64x2Gt(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Gt(ctx) }
-func builtinF64x2Ge(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Ge(ctx) }
-func builtinF64x2ConvertLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128ConvertLow(ctx) }
-func builtinF64x2ConvertLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128ConvertLow(ctx) }
+func builtinF64x2Splat(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Splat(ctx)
+}
+func builtinF64x2ExtractLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeF64
+	return builtinV128ExtractLane(ctx)
+}
+func builtinF64x2ReplaceLane(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ReplaceLane(ctx)
+}
+func builtinF64x2Add(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Add(ctx)
+}
+func builtinF64x2Sub(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sub(ctx)
+}
+func builtinF64x2Mul(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Mul(ctx)
+}
+func builtinF64x2Div(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Div(ctx)
+}
+func builtinF64x2Neg(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Neg(ctx)
+}
+func builtinF64x2Min(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Min(ctx)
+}
+func builtinF64x2Max(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Max(ctx)
+}
+func builtinF64x2Pmin(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Pmin(ctx)
+}
+func builtinF64x2Pmax(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Pmax(ctx)
+}
+func builtinF64x2Abs(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Abs(ctx)
+}
+func builtinF64x2Sqrt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Sqrt(ctx)
+}
+func builtinF64x2Ceil(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ceil(ctx)
+}
+func builtinF64x2Floor(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Floor(ctx)
+}
+func builtinF64x2Trunc(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Trunc(ctx)
+}
+func builtinF64x2Nearest(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Nearest(ctx)
+}
+func builtinF64x2Eq(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Eq(ctx)
+}
+func builtinF64x2Ne(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ne(ctx)
+}
+func builtinF64x2Lt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Lt(ctx)
+}
+func builtinF64x2Le(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Le(ctx)
+}
+func builtinF64x2Gt(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Gt(ctx)
+}
+func builtinF64x2Ge(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Ge(ctx)
+}
+func builtinF64x2ConvertLowI32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ConvertLow(ctx)
+}
+func builtinF64x2ConvertLowI32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128ConvertLow(ctx)
+}
+
 // Note: TS source names this function builtin_f64x4_promote_low_f32x4 (typo in TS, registered as f64x2_promote_low_f32x4)
-func builtinF64x2PromoteLowF32x4(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128PromoteLow(ctx) }
-func builtinF64x2Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128Shuffle(ctx) }
+func builtinF64x2PromoteLowF32x4(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128PromoteLow(ctx)
+}
+func builtinF64x2Shuffle(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128Shuffle(ctx)
+}
 
 // ========================================================================================
 // Relaxed SIMD alias functions
@@ -1608,22 +3937,117 @@ func builtinI8x16RelaxedSwizzle(ctx *BuiltinFunctionContext) module.ExpressionRe
 	return builtinV128RelaxedSwizzle(ctx)
 }
 
-func builtinI32x4RelaxedTruncF32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedTrunc(ctx) }
-func builtinI32x4RelaxedTruncF32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedTrunc(ctx) }
-func builtinI32x4RelaxedTruncF64x2SZero(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedTruncZero(ctx) }
-func builtinI32x4RelaxedTruncF64x2UZero(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeU32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedTruncZero(ctx) }
-func builtinF32x4RelaxedMadd(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMadd(ctx) }
-func builtinF32x4RelaxedNmadd(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedNmadd(ctx) }
-func builtinF64x2RelaxedMadd(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMadd(ctx) }
-func builtinF64x2RelaxedNmadd(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedNmadd(ctx) }
-func builtinI8x16RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI8}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedLaneselect(ctx) }
-func builtinI16x8RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedLaneselect(ctx) }
-func builtinI32x4RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedLaneselect(ctx) }
-func builtinI64x2RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI64}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedLaneselect(ctx) }
-func builtinF32x4RelaxedMin(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMin(ctx) }
-func builtinF32x4RelaxedMax(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMax(ctx) }
-func builtinF64x2RelaxedMin(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMin(ctx) }
-func builtinF64x2RelaxedMax(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeF64}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedMax(ctx) }
-func builtinI16x8RelaxedQ15mulrS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedQ15mulr(ctx) }
-func builtinI16x8RelaxedDotI8x16I7x16S(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI16}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedDot(ctx) }
-func builtinI32x4RelaxedDotI8x16I7x16AddS(ctx *BuiltinFunctionContext) module.ExpressionRef { checkTypeAbsent(ctx); ctx.TypeArguments = []*types.Type{types.TypeI32}; ctx.ContextualType = types.TypeV128; return builtinV128RelaxedDotAdd(ctx) }
+func builtinI32x4RelaxedTruncF32x4S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedTrunc(ctx)
+}
+func builtinI32x4RelaxedTruncF32x4U(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedTrunc(ctx)
+}
+func builtinI32x4RelaxedTruncF64x2SZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedTruncZero(ctx)
+}
+func builtinI32x4RelaxedTruncF64x2UZero(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeU32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedTruncZero(ctx)
+}
+func builtinF32x4RelaxedMadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMadd(ctx)
+}
+func builtinF32x4RelaxedNmadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedNmadd(ctx)
+}
+func builtinF64x2RelaxedMadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMadd(ctx)
+}
+func builtinF64x2RelaxedNmadd(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedNmadd(ctx)
+}
+func builtinI8x16RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI8}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedLaneselect(ctx)
+}
+func builtinI16x8RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedLaneselect(ctx)
+}
+func builtinI32x4RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedLaneselect(ctx)
+}
+func builtinI64x2RelaxedLaneselect(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedLaneselect(ctx)
+}
+func builtinF32x4RelaxedMin(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMin(ctx)
+}
+func builtinF32x4RelaxedMax(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMax(ctx)
+}
+func builtinF64x2RelaxedMin(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMin(ctx)
+}
+func builtinF64x2RelaxedMax(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeF64}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedMax(ctx)
+}
+func builtinI16x8RelaxedQ15mulrS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedQ15mulr(ctx)
+}
+func builtinI16x8RelaxedDotI8x16I7x16S(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI16}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedDot(ctx)
+}
+func builtinI32x4RelaxedDotI8x16I7x16AddS(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	checkTypeAbsent(ctx)
+	ctx.TypeArguments = []*types.Type{types.TypeI32}
+	ctx.ContextualType = types.TypeV128
+	return builtinV128RelaxedDotAdd(ctx)
+}

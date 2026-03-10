@@ -405,6 +405,9 @@ func (p *Program) initializeMethod(
 
 // isBuiltinFunction checks if a function name is a registered builtin.
 func isBuiltinFunction(name string) bool {
+	if BuiltinFunctionLookup != nil {
+		return BuiltinFunctionLookup(name)
+	}
 	if BuiltinFunctions == nil {
 		return false
 	}
@@ -414,6 +417,9 @@ func isBuiltinFunction(name string) bool {
 
 // isBuiltinVariableOnAccess checks if a variable name is a registered builtin on-access.
 func isBuiltinVariableOnAccess(name string) bool {
+	if BuiltinVariableOnAccessLookup != nil {
+		return BuiltinVariableOnAccessLookup(name)
+	}
 	if BuiltinVariablesOnAccess == nil {
 		return false
 	}

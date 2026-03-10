@@ -33,7 +33,11 @@ var builtinTypeHandlers map[string]BuiltinTypeHandler
 func getBuiltinTypeHandler(name string) (BuiltinTypeHandler, bool) {
 	if builtinTypeHandlers == nil {
 		builtinTypeHandlers = map[string]BuiltinTypeHandler{
-			common.CommonNameNonnull: resolveBuiltinNotNullableType,
+			common.CommonNameNative:   resolveBuiltinNativeType,
+			common.CommonNameIndexof:  resolveBuiltinIndexOfType,
+			common.CommonNameValueof:  resolveBuiltinValueOfType,
+			common.CommonNameReturnof: resolveBuiltinReturnOfType,
+			common.CommonNameNonnull:  resolveBuiltinNotNullableType,
 		}
 	}
 	h, ok := builtinTypeHandlers[name]
@@ -319,6 +323,158 @@ func (r *Resolver) resolveNamedType(
 			diagnostics.DiagnosticCodeCannotFindName0,
 			nameNode.GetRange(),
 			nameNode.Identifier.Text,
+		)
+	}
+	return nil
+}
+
+// resolveBuiltinNativeType resolves the builtin `native<T>` type to its wasm-native type.
+// Ported from: assemblyscript/src/builtins.ts builtin_resolveNativeType.
+func resolveBuiltinNativeType(
+	r *Resolver,
+	node *ast.NamedTypeNode,
+	ctxElement Element,
+	ctxTypes map[string]*types.Type,
+	reportMode ReportMode,
+) *types.Type {
+	typeArgument := r.EnsureOneTypeArgument(node.TypeArguments, nil, ctxElement, ctxTypes, node, reportMode)
+	if typeArgument == nil {
+		return nil
+	}
+	switch typeArgument.Kind {
+	case types.TypeKindI8, types.TypeKindI16, types.TypeKindI32:
+		return types.TypeI32
+	case types.TypeKindIsize:
+		if !r.program.Options.IsWasm64() {
+			return types.TypeI32
+		}
+		return types.TypeI64
+	case types.TypeKindI64:
+		return types.TypeI64
+	case types.TypeKindU8, types.TypeKindU16, types.TypeKindU32, types.TypeKindBool:
+		return types.TypeU32
+	case types.TypeKindUsize:
+		if !r.program.Options.IsWasm64() {
+			return types.TypeU32
+		}
+		return types.TypeU64
+	case types.TypeKindU64:
+		return types.TypeU64
+	case types.TypeKindF32:
+		return types.TypeF32
+	case types.TypeKindF64:
+		return types.TypeF64
+	case types.TypeKindV128:
+		return types.TypeV128
+	case types.TypeKindVoid:
+		return types.TypeVoid
+	default:
+		panic("unexpected type kind in resolveBuiltinNativeType")
+	}
+}
+
+// resolveBuiltinIndexOfType resolves the builtin `indexof<T>` type from an
+// indexed getter overload on a class reference.
+// Ported from: assemblyscript/src/builtins.ts builtin_resolveIndexOfType.
+func resolveBuiltinIndexOfType(
+	r *Resolver,
+	node *ast.NamedTypeNode,
+	ctxElement Element,
+	ctxTypes map[string]*types.Type,
+	reportMode ReportMode,
+) *types.Type {
+	typeArgument := r.EnsureOneTypeArgument(node.TypeArguments, nil, ctxElement, ctxTypes, node, reportMode)
+	if typeArgument == nil {
+		return nil
+	}
+	classReference := typeArgument.GetClass()
+	if classReference == nil {
+		if reportMode == ReportModeReport {
+			r.program.Error(
+				diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
+				node.TypeArguments[0].GetRange(),
+				typeArgument.String(),
+			)
+		}
+		return nil
+	}
+	overloadRef := classReference.LookupOverload(int32(OperatorKindIndexedGet))
+	if overloadRef != nil {
+		overload := overloadRef.(*Function)
+		parameterTypes := overload.Signature.ParameterTypes
+		if overload.Is(common.CommonFlagsStatic) {
+			if len(parameterTypes) != 2 {
+				panic("static indexed getter overload must have 2 parameters")
+			}
+			return parameterTypes[1]
+		}
+		if len(parameterTypes) != 1 {
+			panic("instance indexed getter overload must have 1 parameter")
+		}
+		return parameterTypes[0]
+	}
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
+			node.TypeArguments[0].GetRange(),
+			typeArgument.String(),
+		)
+	}
+	return nil
+}
+
+// resolveBuiltinValueOfType resolves the builtin `valueof<T>` type from the
+// indexed getter return type on a class or wrapper reference.
+// Ported from: assemblyscript/src/builtins.ts builtin_resolveValueOfType.
+func resolveBuiltinValueOfType(
+	r *Resolver,
+	node *ast.NamedTypeNode,
+	ctxElement Element,
+	ctxTypes map[string]*types.Type,
+	reportMode ReportMode,
+) *types.Type {
+	typeArgument := r.EnsureOneTypeArgument(node.TypeArguments, nil, ctxElement, ctxTypes, node, reportMode)
+	if typeArgument == nil {
+		return nil
+	}
+	classReference := typeArgument.GetClassOrWrapper(r.program)
+	if classReference != nil {
+		if overloadRef := classReference.LookupOverload(int32(OperatorKindIndexedGet)); overloadRef != nil {
+			return overloadRef.(*Function).Signature.ReturnType
+		}
+	}
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
+			node.TypeArguments[0].GetRange(),
+			typeArgument.String(),
+		)
+	}
+	return nil
+}
+
+// resolveBuiltinReturnOfType resolves the builtin `returnof<T>` type from a
+// function signature.
+// Ported from: assemblyscript/src/builtins.ts builtin_resolveReturnOfType.
+func resolveBuiltinReturnOfType(
+	r *Resolver,
+	node *ast.NamedTypeNode,
+	ctxElement Element,
+	ctxTypes map[string]*types.Type,
+	reportMode ReportMode,
+) *types.Type {
+	typeArgument := r.EnsureOneTypeArgument(node.TypeArguments, nil, ctxElement, ctxTypes, node, reportMode)
+	if typeArgument == nil {
+		return nil
+	}
+	if signatureReference := typeArgument.GetSignature(); signatureReference != nil {
+		return signatureReference.ReturnType
+	}
+	if reportMode == ReportModeReport {
+		r.program.Error(
+			diagnostics.DiagnosticCodeType0HasNoCallSignatures,
+			node.TypeArguments[0].GetRange(),
+			typeArgument.String(),
 		)
 	}
 	return nil
@@ -3354,7 +3510,6 @@ func (r *Resolver) ensureResolvedLazyGlobal(g *Global, reportMode ReportMode) bo
 	return true
 }
 
-
 // =========================================================================
 // Unary and binary expression resolution
 // =========================================================================
@@ -3822,6 +3977,7 @@ func (r *Resolver) resolveBinaryExpression(
 	}
 	panic("unreachable")
 }
+
 // EnsureOneTypeArgument verifies exactly one type argument is provided and resolves it.
 func (r *Resolver) EnsureOneTypeArgument(
 	typeArgumentNodes []ast.Node,
