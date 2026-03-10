@@ -631,6 +631,12 @@ func (f *Flow) IsLocalFlag(index int32, flag LocalFlags) bool {
 	return f.isLocalFlagDefault(index, flag, true)
 }
 
+// IsLocalFlagDefault tests if the local at the specified index has ALL of the specified flags,
+// with a configurable default for inlined flows (when index < 0).
+func (f *Flow) IsLocalFlagDefault(index int32, flag LocalFlags, defaultIfInlined bool) bool {
+	return f.isLocalFlagDefault(index, flag, defaultIfInlined)
+}
+
 func (f *Flow) isLocalFlagDefault(index int32, flag LocalFlags, defaultIfInlined bool) bool {
 	if index < 0 {
 		return defaultIfInlined

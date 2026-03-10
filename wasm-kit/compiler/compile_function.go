@@ -44,25 +44,22 @@ func (c *Compiler) compileFunctionImpl(instance *program.Function, forceStdAlter
 
 	// ensure the function has no duplicate parameters
 	prototype := instance.Prototype
-	fnTypeNode := prototype.FunctionTypeNode()
-	if fnTypeNode != nil {
-		parameters := fnTypeNode.Parameters
-		numParameters := len(parameters)
-		if numParameters >= 2 {
-			visited := make(map[string]struct{})
-			visited[parameters[0].Name.Text] = struct{}{}
-			for i := 1; i < numParameters; i++ {
-				paramIdentifier := parameters[i].Name
-				paramName := paramIdentifier.Text
-				if _, exists := visited[paramName]; !exists {
-					visited[paramName] = struct{}{}
-				} else {
-					c.Error(
-						diagnostics.DiagnosticCodeDuplicateIdentifier0,
-						paramIdentifier.GetRange(),
-						paramName, "", "",
-					)
-				}
+	parameters := prototype.FunctionTypeNode().Parameters
+	numParameters := len(parameters)
+	if numParameters >= 2 {
+		visited := make(map[string]struct{})
+		visited[parameters[0].Name.Text] = struct{}{}
+		for i := 1; i < numParameters; i++ {
+			paramIdentifier := parameters[i].Name
+			paramName := paramIdentifier.Text
+			if _, exists := visited[paramName]; !exists {
+				visited[paramName] = struct{}{}
+			} else {
+				c.Error(
+					diagnostics.DiagnosticCodeDuplicateIdentifier0,
+					paramIdentifier.GetRange(),
+					paramName, "", "",
+				)
 			}
 		}
 	}
@@ -84,11 +81,7 @@ func (c *Compiler) compileFunctionImpl(instance *program.Function, forceStdAlter
 	// Check signature types are supported
 	// TS: this.checkSignatureSupported(instance.signature, (<FunctionDeclaration>declarationNode).signature)
 	// Called unconditionally in TS — declarationNode is always FunctionDeclaration or MethodDeclaration
-	if fnTypeNode != nil {
-		c.checkSignatureSupported(signature, fnTypeNode)
-	}
-	// Note: fnTypeNode nil guard retained since Go's FunctionTypeNode() may return nil
-	// for compiler-generated functions that lack declaration AST nodes
+	c.checkSignatureSupported(signature, declarationNode.(*ast.FunctionDeclaration).Signature)
 
 	var funcRef module.FunctionRef
 
@@ -172,7 +165,7 @@ func (c *Compiler) compileFunctionImpl(instance *program.Function, forceStdAlter
 		}
 
 	} else if instance.Is(common.CommonFlagsAbstract) ||
-		(instance.GetParent() != nil && instance.GetParent().GetElementKind() == program.ElementKindInterface) {
+		instance.GetParent().GetElementKind() == program.ElementKindInterface {
 		// abstract or interface function
 		funcRef = mod.AddFunction(
 			instance.GetInternalName(),
@@ -213,21 +206,13 @@ func (c *Compiler) compileFunctionImpl(instance *program.Function, forceStdAlter
 	if instance.Is(common.CommonFlagsAmbient) || instance.Is(common.CommonFlagsExport) {
 		// Verify and print warn if signature has v128 type for imported or exported functions
 		if signature.HasVectorValueOperands() {
+			sigNode := prototype.FunctionTypeNode()
 			var rng *diagnostics.Range
-			if fnTypeNode != nil {
-				if signature.ReturnType == types.TypeV128 {
-					rng = fnTypeNode.ReturnType.GetRange()
-				} else {
-					indices := signature.GetVectorValueOperandIndices()
-					if len(indices) > 0 {
-						firstIndex := indices[0]
-						if int(firstIndex) < len(fnTypeNode.Parameters) {
-							rng = fnTypeNode.Parameters[firstIndex].GetRange()
-						} else {
-							rng = fnTypeNode.GetRange()
-						}
-					}
-				}
+			if signature.ReturnType == types.TypeV128 {
+				rng = sigNode.ReturnType.GetRange()
+			} else {
+				firstIndex := signature.GetVectorValueOperandIndices()[0]
+				rng = sigNode.Parameters[firstIndex].GetRange()
 			}
 			c.Warning(
 				diagnostics.DiagnosticCodeExchangeOf0ValuesIsNotSupportedByAllEmbeddings,
@@ -252,10 +237,7 @@ func (c *Compiler) compileFunctionBody(instance *program.Function, stmts *[]modu
 	funcFlow := c.CurrentFlow
 	var thisLocal *program.Local
 	if instance.Signature.ThisType != nil {
-		localRef := funcFlow.LookupLocal(common.CommonNameThis)
-		if localRef != nil {
-			thisLocal = localRef.(*program.Local)
-		}
+		thisLocal = funcFlow.LookupLocal(common.CommonNameThis).(*program.Local)
 	}
 	bodyStartIndex := len(*stmts)
 
@@ -351,13 +333,11 @@ func (c *Compiler) compileFunctionBody(instance *program.Function, stmts *[]modu
 
 	} else if returnType != types.TypeVoid && !funcFlow.Is(flow.FlowFlagTerminates) {
 		// if this is a normal function, make sure that all branches terminate
-		if fnTypeNode := instance.Prototype.FunctionTypeNode(); fnTypeNode != nil {
-			c.Error(
-				diagnostics.DiagnosticCodeAFunctionWhoseDeclaredTypeIsNotVoidMustReturnAValue,
-				fnTypeNode.ReturnType.GetRange(),
-				"", "", "",
-			)
-		}
+		c.Error(
+			diagnostics.DiagnosticCodeAFunctionWhoseDeclaredTypeIsNotVoidMustReturnAValue,
+			instance.Prototype.FunctionTypeNode().ReturnType.GetRange(),
+			"", "", "",
+		)
 		return false // not recoverable
 	}
 
@@ -370,10 +350,8 @@ func (c *Compiler) checkSignatureSupported(signature *types.Signature, reportNod
 	supported := true
 	explicitThisType := reportNode.ExplicitThisType
 	if explicitThisType != nil {
-		if signature.ThisType != nil {
-			if !c.Program.CheckTypeSupported(signature.ThisType, explicitThisType) {
-				supported = false
-			}
+		if !c.Program.CheckTypeSupported(signature.ThisType, explicitThisType) {
+			supported = false
 		}
 	}
 	parameterTypes := signature.ParameterTypes
@@ -400,13 +378,7 @@ func (c *Compiler) checkSignatureSupported(signature *types.Signature, reportNod
 // Ported from: assemblyscript/src/compiler.ts mangleImportName (lines 10632-10687).
 func mangleImportName(element program.Element, declaration ast.Node) (string, string) {
 	// by default, use the file name as the module name
-	rng := declaration.GetRange()
-	moduleName := ""
-	if rng != nil {
-		if src, ok := rng.Source.(*ast.Source); ok {
-			moduleName = src.SimplePath
-		}
-	}
+	moduleName := declaration.GetRange().Source.(*ast.Source).SimplePath
 	// and the internal name of the element within that file as the element name
 	elementName := program.MangleInternalName(
 		element.GetName(), element.GetParent(), element.Is(common.CommonFlagsInstance), true,
@@ -667,15 +639,13 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 
 	mod := c.Module()
 	fl := c.CurrentFlow
-	isInline := fl != nil && fl.IsInline()
+	isInline := fl.IsInline()
 	thisLocalIndex := int32(0)
 	if isInline {
-		if thisLocal := fl.LookupLocal(common.CommonNameThis); thisLocal != nil {
-			thisLocalIndex = thisLocal.FlowIndex()
-		}
+		thisLocalIndex = fl.LookupLocal(common.CommonNameThis).FlowIndex()
 	}
 	sizeTypeRef := c.Options().SizeTypeRef()
-	nonParameterFields := make([]*program.Property, 0)
+	var nonParameterFields []*program.Property
 
 	for _, member := range members {
 		propertyPrototype, ok := member.(*program.PropertyPrototype)
@@ -683,6 +653,7 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 			continue
 		}
 
+		// only interested in fields (resolved during class finalization)
 		property := propertyPrototype.PropertyInstance
 		if property == nil || !property.IsField() || property.GetBoundClassOrInterface() != classInstance {
 			continue
@@ -691,74 +662,60 @@ func (c *Compiler) makeFieldInitializationInConstructor(classInstance *program.C
 			panic("const fields must not be initialized in the constructor")
 		}
 
-		parameterIndex := propertyPrototype.ParameterIndex()
+		fieldPrototype := property.Prototype
+		parameterIndex := fieldPrototype.ParameterIndex()
+
+		// Defer non-parameter fields until parameter fields are initialized
 		if parameterIndex < 0 {
 			nonParameterFields = append(nonParameterFields, property)
 			continue
 		}
 
+		// Initialize constructor parameter field
+		fieldType := property.GetType()
+		fieldTypeRef := fieldType.ToRef()
+		// assert: parameter fields must not have an initializer
 		setterInstance := property.SetterInstance
-		if setterInstance == nil {
-			continue
-		}
-
-		fieldType := property.GetResolvedType()
-		if fieldType == nil {
-			continue
-		}
 
 		parameterLocalIndex := int32(1 + parameterIndex)
 		if isInline {
-			if parameterLocal := fl.LookupLocal(property.GetName()); parameterLocal != nil {
-				parameterLocalIndex = parameterLocal.FlowIndex()
-			}
-		}
-
-		var reportNode ast.Node = property.IdentifierNode()
-		if reportNode == nil {
-			reportNode = property.GetDeclaration()
+			parameterLocalIndex = fl.LookupLocal(property.GetName()).FlowIndex()
 		}
 
 		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
 			mod.LocalGet(thisLocalIndex, sizeTypeRef),
-			mod.LocalGet(parameterLocalIndex, fieldType.ToRef()),
-		}, reportNode, true)
+			mod.LocalGet(parameterLocalIndex, fieldTypeRef),
+		}, setterInstance.IdentifierNode(), true)
 		if c.CurrentType != types.TypeVoid {
 			expr = mod.Drop(expr)
 		}
 		*stmts = append(*stmts, expr)
 	}
 
-	for _, field := range nonParameterFields {
-		fieldType := field.GetResolvedType()
-		if fieldType == nil {
-			continue
-		}
+	// Initialize deferred non-parameter fields
+	if nonParameterFields != nil {
+		for _, field := range nonParameterFields {
+			fieldType := field.GetType()
+			fieldPrototype := field.Prototype
+			initializerNode := fieldPrototype.PropertyInitializerNode()
+			setterInstance := field.SetterInstance
 
-		setterInstance := field.SetterInstance
-		if setterInstance == nil {
-			continue
-		}
+			var fieldValue module.ExpressionRef
+			if initializerNode != nil {
+				fieldValue = c.CompileExpression(initializerNode, fieldType, ConstraintsConvImplicit)
+			} else {
+				fieldValue = c.makeZeroOfType(fieldType)
+			}
 
-		initializerNode := field.Prototype.PropertyInitializerNode()
-		fieldValue := c.makeZeroOfType(fieldType)
-		if initializerNode != nil {
-			fieldValue = c.CompileExpression(initializerNode, fieldType, ConstraintsConvImplicit)
+			expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
+				mod.LocalGet(thisLocalIndex, sizeTypeRef),
+				fieldValue,
+			}, field.IdentifierNode(), true)
+			if c.CurrentType != types.TypeVoid {
+				expr = mod.Drop(expr)
+			}
+			*stmts = append(*stmts, expr)
 		}
-
-		var reportNode ast.Node = field.IdentifierNode()
-		if reportNode == nil {
-			reportNode = field.GetDeclaration()
-		}
-
-		expr := c.makeCallDirect(setterInstance, []module.ExpressionRef{
-			mod.LocalGet(thisLocalIndex, sizeTypeRef),
-			fieldValue,
-		}, reportNode, true)
-		if c.CurrentType != types.TypeVoid {
-			expr = mod.Drop(expr)
-		}
-		*stmts = append(*stmts, expr)
 	}
 
 	c.CurrentType = types.TypeVoid

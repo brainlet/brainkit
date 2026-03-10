@@ -117,7 +117,7 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 		internalName := global.GetInternalName()
 		if program.BuiltinVariablesOnCompile != nil {
 			if fn, ok := program.BuiltinVariablesOnCompile[internalName]; ok {
-				fn(c, global)
+				fn(c, global) // optional
 			}
 		}
 		delete(pendingElements, global)
@@ -194,7 +194,7 @@ func (c *Compiler) CompileGlobal(global *program.Global) bool {
 		// If not a constant expression, attempt to precompute
 		if !mod.IsConstExpression(initExpr) {
 			if isDeclaredConstant {
-				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 0, 0)
+				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
 				if precomp != 0 {
 					initExpr = precomp
 				} else {
@@ -398,6 +398,10 @@ func (c *Compiler) makeNegOneOfType(typ *types.Type) module.ExpressionRef {
 // compileInlineConstant compiles an inlined constant value.
 // Ported from: assemblyscript/src/compiler.ts compileInlineConstant (lines 3350-3429).
 func (c *Compiler) compileInlineConstant(element program.VariableLikeElement, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
+	// assert(element.is(CommonFlags.Inlined | CommonFlags.Resolved))
+	if !element.Is(common.CommonFlagsInlined | common.CommonFlagsResolved) {
+		panic("compileInlineConstant: element must be inlined and resolved")
+	}
 	mod := c.Module()
 	typ := element.GetResolvedType()
 	c.CurrentType = typ
@@ -492,7 +496,7 @@ func (c *Compiler) evaluateCondition(expr module.ExpressionRef) flow.ConditionKi
 		return flow.ConditionKindUnknown
 	}
 	mod := c.Module()
-	evaled := mod.RunExpression(expr, module.ExpressionRunnerFlagsDefault, 1, 0)
+	evaled := mod.RunExpression(expr, module.ExpressionRunnerFlagsDefault, 50, 1)
 	if evaled != 0 {
 		if module.GetConstValueI32(evaled) != 0 {
 			return flow.ConditionKindTrue

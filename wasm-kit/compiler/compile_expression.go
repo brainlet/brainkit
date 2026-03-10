@@ -4,6 +4,7 @@
 package compiler
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 
@@ -853,7 +854,7 @@ func (c *Compiler) makeAssignment(
 
 	case program.ElementKindGlobal:
 		global := target.(*program.Global)
-		if !c.CompileGlobalLazy(global) {
+		if !c.CompileGlobalLazy(global, valueExpression) {
 			return mod.Unreachable()
 		}
 		globalType := global.GetResolvedType()
@@ -1059,7 +1060,7 @@ func (c *Compiler) makeLocalAssignment(local *program.Local, valueExpr module.Ex
 
 // makeGlobalAssignment makes an assignment to a global variable.
 // Ported from: assemblyscript/src/compiler.ts makeGlobalAssignment (lines 6024-6053).
-func (c *Compiler) makeGlobalAssignment(global *program.Global, valueExpr module.ExpressionRef, valueType *types.Type, tee bool) module.ExpressionRef {
+func (c *Compiler) makeGlobalAssignment(global program.VariableLikeElement, valueExpr module.ExpressionRef, valueType *types.Type, tee bool) module.ExpressionRef {
 	mod := c.Module()
 	globalType := global.GetResolvedType()
 	typeRef := globalType.ToRef()
@@ -1113,7 +1114,7 @@ func (c *Compiler) compileCallExpression(expression *ast.CallExpression, context
 		}
 		c.checkFieldInitialization(baseClassInstance, expression)
 		superCall := c.compileCallDirect(baseCtorInstance, expression.Args, expression,
-			mod.LocalGet(thisLocal.(*program.Local).Index, sizeTypeRef), constraints)
+			mod.LocalGet(thisLocal.(*program.Local).Index, sizeTypeRef), ConstraintsNone)
 
 		// check that super had been called before accessing `this`
 		if fl.IsAny(flow.FlowFlagAccessesThis | flow.FlowFlagConditionallyAccessesThis) {
@@ -1402,122 +1403,269 @@ func (c *Compiler) compileCommaExpression(expression *ast.CommaExpression, conte
 }
 
 // compileElementAccessExpression compiles an element access expression (array indexing).
-// Ported from: assemblyscript/src/compiler.ts compileElementAccessExpression (lines 4367-4465).
+// Ported from: assemblyscript/src/compiler.ts compileElementAccessExpression (lines 7131-7176).
 func (c *Compiler) compileElementAccessExpression(expression *ast.ElementAccessExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
-	fl := c.CurrentFlow
+	targetExpression := expression.Expression
 	resolver := c.Resolver()
+	fl := c.CurrentFlow
 
-	// Resolve the target of the element access
-	target := resolver.LookupExpression(expression, fl, contextualType, program.ReportModeReport)
-	if target == nil {
-		c.CurrentType = contextualType
-		return mod.Unreachable()
-	}
-
-	switch target.GetElementKind() {
-	case program.ElementKindClass:
-		classInstance := target.(*program.Class)
-		// Check for an indexed get overload ([])
-		isUnchecked := c.Options().UncheckedBehavior == int32(UncheckedBehaviorAlways)
-		indexedGet := classInstance.FindOverload(program.OperatorKindIndexedGet, isUnchecked)
-		if indexedGet == nil {
-			c.Error(
-				diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
-				expression.GetRange(),
-				classInstance.GetInternalName(), "", "",
-			)
-			c.CurrentType = contextualType
+	// Check if the target is an enum (enum-to-string conversion path)
+	targetElement := resolver.LookupExpression(targetExpression, fl, types.TypeAuto, program.ReportModeSwallow)
+	if targetElement != nil && targetElement.GetElementKind() == program.ElementKindEnum {
+		elementExpr := c.CompileExpression(expression.ElementExpression, types.TypeI32, ConstraintsConvImplicit)
+		toStringFunctionName := c.ensureEnumToString(targetElement.(*program.Enum), expression)
+		c.CurrentType = c.Program.StringInstance().GetResolvedType()
+		if toStringFunctionName == "" {
 			return mod.Unreachable()
 		}
-
-		// Compile the this expression
-		thisExpression := resolver.CurrentThisExpression
-		var thisArg module.ExpressionRef
-		if thisExpression != nil {
-			thisArg = c.CompileExpression(thisExpression, classInstance.GetResolvedType(), ConstraintsConvImplicit|ConstraintsIsThis)
-		}
-
-		// Compile the element (index) expression as the argument
-		return c.compileCallDirect(indexedGet, []ast.Node{expression.ElementExpression}, expression, thisArg, constraints)
+		return mod.Call(toStringFunctionName, []module.ExpressionRef{elementExpr}, module.TypeRefI32)
 	}
 
-	c.Error(
-		diagnostics.DiagnosticCodeNotImplemented0,
-		expression.GetRange(),
-		"Element access on non-class target", "", "",
-	)
-	c.CurrentType = contextualType
+	// Resolve the target type
+	targetType := resolver.ResolveExpression(targetExpression, fl, types.TypeAuto, program.ReportModeReport)
+	if targetType != nil {
+		classReference := targetType.GetClassOrWrapper(c.Program)
+		if classReference != nil {
+			if classInstance, ok := classReference.(*program.Class); ok {
+				isUnchecked := fl.Is(flow.FlowFlagUncheckedContext)
+				indexedGet := classInstance.FindOverload(program.OperatorKindIndexedGet, isUnchecked)
+				if indexedGet != nil {
+					thisType := indexedGet.Signature.ThisType
+					thisArg := c.CompileExpression(targetExpression, thisType, ConstraintsConvImplicit)
+					if !isUnchecked && c.Options().Pedantic {
+						c.Pedantic(
+							diagnostics.DiagnosticCodeIndexedAccessMayInvolveBoundsChecking,
+							expression.GetRange(),
+							"", "", "",
+						)
+					}
+					return c.compileCallDirect(indexedGet, []ast.Node{
+						expression.ElementExpression,
+					}, expression, thisArg, constraints)
+				}
+			}
+		}
+		c.Error(
+			diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
+			targetExpression.GetRange(),
+			targetType.String(), "", "",
+		)
+	}
 	return mod.Unreachable()
 }
 
-// compileFunctionExpression compiles a function expression (closure / arrow function).
-// Ported from: assemblyscript/src/compiler.ts compileFunctionExpression (lines 4467-4545).
 // compileFunctionExpression compiles a function expression (arrow function or anonymous function).
-// Ported from: assemblyscript/src/compiler.ts compileFunctionExpression (lines 4467-4545).
+// Ported from: assemblyscript/src/compiler.ts compileFunctionExpression (lines 7178-7344).
 func (c *Compiler) compileFunctionExpression(expression *ast.FunctionExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
 	fl := c.CurrentFlow
 	resolver := c.Resolver()
+	sourceFunction := fl.SourceFunction()
 
 	declaration := expression.Declaration
 	if declaration == nil {
 		c.CurrentType = contextualType
 		return mod.Unreachable()
 	}
+	declaration = declaration.Clone() // generic contexts can have multiple
 
-	// Resolve the function type from the declaration's type node
-	var signature *types.Signature
-	if declaration.Signature != nil {
-		resolvedType := resolver.ResolveType(
-			declaration.Signature,
-			fl,
-			fl.TargetFunction.(program.Element),
+	isNamed := len(declaration.Name.Text) > 0
+	isSemanticallyAnonymous := !isNamed || contextualType != types.TypeVoid
+
+	// Build prototype name
+	var protoName string
+	if isSemanticallyAnonymous {
+		nameBase := "anonymous"
+		if isNamed {
+			nameBase = declaration.Name.Text
+		}
+		protoName = fmt.Sprintf("%s|%d", nameBase, sourceFunction.(*program.Function).NextAnonymousId)
+		sourceFunction.(*program.Function).NextAnonymousId++
+	} else {
+		protoName = declaration.Name.Text
+	}
+
+	prototype := program.NewFunctionPrototype(
+		protoName,
+		sourceFunction.(program.Element),
+		declaration,
+		program.DecoratorFlagsNone,
+	)
+	contextualTypeArguments := cloneTypeArgMap(fl.ContextualTypeArguments())
+
+	var instance *program.Function
+
+	// Compile according to context: omitted parameter/return types can be inferred
+	contextualSignature := contextualType.SignatureReference
+	if contextualSignature != nil {
+		signatureNode := prototype.FunctionTypeNode()
+		parameterNodes := signatureNode.Parameters
+		numPresentParameters := int32(len(parameterNodes))
+
+		// must not require more than the maximum number of parameters
+		parameterTypes := contextualSignature.ParameterTypes
+		numParameters := int32(len(parameterTypes))
+		if numPresentParameters > numParameters {
+			c.Error(
+				diagnostics.DiagnosticCodeExpected0ArgumentsButGot1,
+				expression.GetRange(),
+				fmt.Sprintf("%d", numParameters), fmt.Sprintf("%d", numPresentParameters), "",
+			)
+			return mod.Unreachable()
+		}
+
+		// check non-omitted parameter types
+		for i := int32(0); i < numPresentParameters; i++ {
+			parameterNode := parameterNodes[i]
+			if !ast.IsTypeOmitted(parameterNode.Type) {
+				resolvedType := resolver.ResolveType(
+					parameterNode.Type, fl,
+					sourceFunction.(program.Element).GetParent(),
+					contextualTypeArguments,
+					program.ReportModeReport,
+				)
+				if resolvedType == nil {
+					return mod.Unreachable()
+				}
+				if !parameterTypes[i].IsStrictlyAssignableTo(resolvedType, false) {
+					c.Error(
+						diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+						parameterNode.GetRange(),
+						parameterTypes[i].String(), resolvedType.String(), "",
+					)
+					return mod.Unreachable()
+				}
+			}
+		}
+
+		// check non-omitted return type
+		returnType := contextualSignature.ReturnType
+		if !ast.IsTypeOmitted(signatureNode.ReturnType) {
+			resolvedType := resolver.ResolveType(
+				signatureNode.ReturnType, fl,
+				sourceFunction.(program.Element).GetParent(),
+				contextualTypeArguments,
+				program.ReportModeReport,
+			)
+			if resolvedType == nil {
+				return mod.Unreachable()
+			}
+			if returnType == types.TypeVoid {
+				if resolvedType != types.TypeVoid {
+					c.Error(
+						diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+						signatureNode.ReturnType.GetRange(),
+						resolvedType.String(), returnType.String(), "",
+					)
+					return mod.Unreachable()
+				}
+			} else if !resolvedType.IsStrictlyAssignableTo(returnType, false) {
+				c.Error(
+					diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+					signatureNode.ReturnType.GetRange(),
+					resolvedType.String(), returnType.String(), "",
+				)
+				return mod.Unreachable()
+			}
+		}
+
+		// check explicit this type
+		thisType := contextualSignature.ThisType
+		thisTypeNode := signatureNode.ExplicitThisType
+		if thisTypeNode != nil {
+			if thisType == nil {
+				c.Error(
+					diagnostics.DiagnosticCodeThisCannotBeReferencedInCurrentLocation,
+					thisTypeNode.GetRange(),
+					"", "", "",
+				)
+				return mod.Unreachable()
+			}
+			resolvedType := resolver.ResolveType(
+				thisTypeNode, fl,
+				sourceFunction.(program.Element).GetParent(),
+				contextualTypeArguments,
+				program.ReportModeReport,
+			)
+			if resolvedType == nil {
+				return mod.Unreachable()
+			}
+			if !thisType.IsStrictlyAssignableTo(resolvedType, false) {
+				c.Error(
+					diagnostics.DiagnosticCodeType0IsNotAssignableToType1,
+					thisTypeNode.GetRange(),
+					thisType.String(), resolvedType.String(), "",
+				)
+				return mod.Unreachable()
+			}
+		}
+
+		signature := types.CreateSignature(c.Program, parameterTypes, returnType, thisType, numParameters, false)
+		instance = program.NewFunction(
+			prototype.GetName(),
+			prototype,
 			nil,
-			program.ReportModeReport,
+			signature,
+			contextualTypeArguments,
 		)
-		if resolvedType != nil {
-			signature = resolvedType.GetSignature()
+		instance.Flow.Outer = fl
+		worked := c.CompileFunction(instance)
+		c.CurrentType = contextualSignature.Type
+		if !worked {
+			return mod.Unreachable()
+		}
+	} else {
+		// otherwise compile like a normal function
+		instance = resolver.ResolveFunction(prototype, nil, contextualTypeArguments, program.ReportModeReport)
+		if instance == nil {
+			return mod.Unreachable()
+		}
+		instance.Flow.Outer = fl
+		worked := c.CompileFunction(instance)
+		c.CurrentType = instance.Signature.Type
+		if !worked {
+			return mod.Unreachable()
 		}
 	}
 
-	// If contextual type has a signature, use it as fallback
-	if signature == nil && contextualType != nil {
-		signature = contextualType.GetSignature()
-	}
-	if signature == nil {
-		c.Error(
-			diagnostics.DiagnosticCodeNotImplemented0,
-			expression.GetRange(),
-			"Function expression without signature", "", "",
-		)
-		c.CurrentType = contextualType
-		return mod.Unreachable()
-	}
-
-	// Create a unique internal name for the anonymous function
-	scopeFunc := fl.TargetFunction
-	anonName := scopeFunc.FlowInternalName() + "|anonymous"
-
-	// Create a FunctionPrototype and resolve it
-	parent := scopeFunc.(program.Element)
-	prototype := program.NewFunctionPrototype(anonName, parent, declaration, 0)
-	instance := program.NewFunction(anonName, prototype, nil, signature, nil)
-	instance.SetInternalName(anonName)
-
-	// Compile the function
-	if !c.CompileFunction(instance) {
-		c.CurrentType = contextualType
-		return mod.Unreachable()
-	}
-
-	// Get its function table index
 	offset := c.ensureRuntimeFunction(instance)
-	c.CurrentType = instance.GetResolvedType()
+	var expr module.ExpressionRef
 	if c.Options().IsWasm64() {
-		return mod.I64(int64(offset))
+		expr = mod.I64(int64(offset))
+	} else {
+		expr = mod.I32(int32(offset))
 	}
-	return mod.I32(int32(offset))
+
+	// add a constant local referring to the function if applicable
+	if !isSemanticallyAnonymous {
+		fname := instance.GetName()
+		existingLocal := fl.GetScopedLocal(fname)
+		if existingLocal != nil {
+			if existingLocal.DeclarationIsNative() {
+				// scoped locals are shared temps that don't track declarations
+				c.Error(
+					diagnostics.DiagnosticCodeDuplicateIdentifier0,
+					declaration.Name.GetRange(),
+					fname, "", "",
+				)
+			} else {
+				c.ErrorRelated(
+					diagnostics.DiagnosticCodeDuplicateIdentifier0,
+					declaration.Name.GetRange(),
+					existingLocal.DeclarationNameRange().(*diagnostics.Range),
+					fname, "", "",
+				)
+			}
+		} else {
+			ftype := instance.GetResolvedType()
+			local := fl.AddScopedLocal(instance.GetName(), ftype)
+			fl.SetLocalFlag(local.FlowIndex(), flow.LocalFlagConstant|flow.LocalFlagInitialized)
+			expr = mod.LocalTee(local.FlowIndex(), expr, ftype.IsManaged(), ftype.ToRef())
+		}
+	}
+
+	return expr
 }
 
 // compileIdentifierExpression compiles an identifier expression (variable, constant, true, false, null, etc.).
@@ -1652,142 +1800,206 @@ func (c *Compiler) compileIdentifierExpression(expression *ast.IdentifierExpress
 		return mod.Unreachable()
 	}
 
-	// Regular identifier — look up in the flow
-	name := expression.Text
+	// Maybe compile the enclosing source file
+	c.maybeCompileEnclosingSource(expression)
 
-	// Check scoped locals first
-	local := fl.LookupLocal(name)
-	if local != nil {
-		localIndex := local.FlowIndex()
-		localType := local.GetType()
-		c.CurrentType = localType
-		return mod.LocalGet(localIndex, localType.ToRef())
-	}
-
-	// Look up in the program's element table
-	elemRef := fl.TargetFunction.FlowLookup(name)
-	if elemRef == nil {
-		c.Error(
-			diagnostics.DiagnosticCodeCannotFindName0,
-			expression.GetRange(),
-			name, "", "",
-		)
-		c.CurrentType = contextualType
+	// Resolve identifier through the resolver
+	resolver := c.Resolver()
+	target := resolver.LookupExpression(expression, fl, contextualType, program.ReportModeReport)
+	if target == nil {
+		// make a guess to avoid assertions in calling code
+		if c.CurrentType == types.TypeVoid {
+			c.CurrentType = types.TypeI32
+		}
 		return mod.Unreachable()
 	}
-	element := elemRef.(program.Element)
 
-	return c.compileElementAccess(element, expression, contextualType, constraints)
-}
+	switch target.GetElementKind() {
+	case program.ElementKindLocal:
+		local := target.(*program.Local)
+		localType := local.GetResolvedType()
+		if localType == types.TypeVoid {
+			panic("assertion failed: local type != void")
+		}
+		if _, pending := c.PendingElements[local]; pending {
+			c.Error(
+				diagnostics.DiagnosticCodeVariable0UsedBeforeItsDeclaration,
+				expression.GetRange(),
+				local.GetInternalName(), "", "",
+			)
+			c.CurrentType = localType
+			return mod.Unreachable()
+		}
+		if local.Is(common.CommonFlagsInlined) {
+			return c.compileInlineConstant(local, contextualType, constraints)
+		}
+		localIndex := local.Index
+		if !fl.IsLocalFlag(localIndex, flow.LocalFlagInitialized) {
+			c.Error(
+				diagnostics.DiagnosticCodeVariable0IsUsedBeforeBeingAssigned,
+				expression.GetRange(),
+				local.GetName(), "", "",
+			)
+		}
+		if localIndex < 0 {
+			panic("assertion failed: local index >= 0")
+		}
+		isNonNull := fl.IsLocalFlagDefault(localIndex, flow.LocalFlagNonNull, false)
+		if localType.IsNullableReference() && isNonNull && (!localType.IsExternalReference() || c.Options().HasFeature(common.FeatureGC)) {
+			c.CurrentType = localType.NonNullableType()
+		} else {
+			c.CurrentType = localType
+		}
 
-// compileElementAccess compiles access to a resolved program element.
-func (c *Compiler) compileElementAccess(element program.Element, reportNode ast.Node, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
-	mod := c.Module()
+		if !local.DeclaredByFlow(fl) {
+			// TODO: closures
+			c.Error(
+				diagnostics.DiagnosticCodeNotImplemented0,
+				expression.GetRange(),
+				"Closures", "", "",
+			)
+			return mod.Unreachable()
+		}
+		expr := mod.LocalGet(localIndex, localType.ToRef())
+		// TODO: ref_as_nonnull for GC-enabled nullable external references
+		return expr
 
-	switch element.GetElementKind() {
 	case program.ElementKindGlobal:
-		global := element.(*program.Global)
-		if !c.CompileGlobalLazy(global) {
-			c.CurrentType = contextualType
+		global := target.(*program.Global)
+		if !c.CompileGlobalLazy(global, expression) {
 			return mod.Unreachable()
 		}
 		globalType := global.GetResolvedType()
-		c.CurrentType = globalType
-
-		// If the global is inlined, return the constant value directly
-		switch global.GetConstantValueKind() {
-		case program.ConstantValueKindInteger:
-			switch globalType.ToRef() {
-			case module.TypeRefI32:
-				return mod.I32(int32(global.GetConstantIntegerValue()))
-			case module.TypeRefI64:
-				return mod.I64(global.GetConstantIntegerValue())
-			}
-		case program.ConstantValueKindFloat:
-			switch globalType.ToRef() {
-			case module.TypeRefF32:
-				return mod.F32(float32(global.GetConstantFloatValue()))
-			case module.TypeRefF64:
-				return mod.F64(global.GetConstantFloatValue())
-			}
+		if _, pending := c.PendingElements[global]; pending {
+			c.Error(
+				diagnostics.DiagnosticCodeVariable0UsedBeforeItsDeclaration,
+				expression.GetRange(),
+				global.GetInternalName(), "", "",
+			)
+			c.CurrentType = globalType
+			return mod.Unreachable()
 		}
-
-		return mod.GlobalGet(global.GetInternalName(), globalType.ToRef())
+		if globalType == types.TypeVoid {
+			panic("assertion failed: global type != void")
+		}
+		if global.HasDecorator(program.DecoratorFlagsBuiltin) {
+			return c.compileIdentifierExpressionBuiltin(global, expression, contextualType)
+		}
+		if global.Is(common.CommonFlagsInlined) {
+			return c.compileInlineConstant(global, contextualType, constraints)
+		}
+		expr := mod.GlobalGet(global.GetInternalName(), globalType.ToRef())
+		if global.Is(common.CommonFlagsDefinitelyAssigned) && globalType.IsReference() && !globalType.IsNullableReference() {
+			expr = c.makeRuntimeNonNullCheck(expr, globalType, expression)
+		}
+		c.CurrentType = globalType
+		return expr
 
 	case program.ElementKindEnumValue:
-		enumValue := element.(*program.EnumValue)
-		// Compile the parent enum if not yet compiled
-		enumParent := enumValue.GetParent().(*program.Enum)
-		c.CompileEnum(enumParent)
-
+		// here: if referenced from within the same enum
+		enumValue := target.(*program.EnumValue)
+		if !target.Is(common.CommonFlagsCompiled) {
+			c.Error(
+				diagnostics.DiagnosticCodeAMemberInitializerInAEnumDeclarationCannotReferenceMembersDeclaredAfterItIncludingMembersDefinedInOtherEnums,
+				expression.GetRange(),
+				"", "", "",
+			)
+			c.CurrentType = types.TypeI32
+			return mod.Unreachable()
+		}
 		c.CurrentType = types.TypeI32
-
-		// If the value is inlined, return it directly
-		if enumValue.GetConstantValueKind() == program.ConstantValueKindInteger {
+		if enumValue.Is(common.CommonFlagsInlined) {
 			return mod.I32(int32(enumValue.GetConstantIntegerValue()))
 		}
-
 		return mod.GlobalGet(enumValue.GetInternalName(), module.TypeRefI32)
 
-	case program.ElementKindFunction:
-		// Already-resolved function reference — compile and get table index
-		functionInstance := element.(*program.Function)
-		if !c.CompileFunction(functionInstance) {
-			c.CurrentType = contextualType
-			return mod.Unreachable()
-		}
-		c.CurrentType = functionInstance.GetResolvedType()
-		offset := c.ensureRuntimeFunction(functionInstance)
-		if c.Options().IsWasm64() {
-			return mod.I64(int64(offset))
-		}
-		return mod.I32(int32(offset))
-
 	case program.ElementKindFunctionPrototype:
-		// Function reference — resolve and get table index
-		functionPrototype := element.(*program.FunctionPrototype)
-		resolver := c.Resolver()
-		functionInstance := resolver.ResolveFunction(functionPrototype, nil, nil, program.ReportModeReport)
-		if functionInstance == nil {
-			c.CurrentType = contextualType
+		functionPrototype := target.(*program.FunctionPrototype)
+		typeParameterNodes := functionPrototype.TypeParameterNodes()
+
+		if typeParameterNodes != nil && len(typeParameterNodes) != 0 {
+			c.Error(
+				diagnostics.DiagnosticCodeTypeArgumentExpected,
+				expression.GetRange(),
+				"", "", "",
+			)
+			break // also diagnose 'not a value at runtime'
+		}
+
+		functionInstance := resolver.ResolveFunction(
+			functionPrototype,
+			nil,
+			cloneTypeArgMap(fl.ContextualTypeArguments()),
+			program.ReportModeReport,
+		)
+		if functionInstance == nil || !c.CompileFunction(functionInstance) {
 			return mod.Unreachable()
 		}
-		if !c.CompileFunction(functionInstance) {
-			c.CurrentType = contextualType
+		if functionInstance.HasDecorator(program.DecoratorFlagsBuiltin) {
+			c.Error(
+				diagnostics.DiagnosticCodeNotImplemented0,
+				expression.GetRange(),
+				"First-class built-ins", "", "",
+			)
+			c.CurrentType = functionInstance.GetResolvedType()
 			return mod.Unreachable()
 		}
-		c.CurrentType = functionInstance.GetResolvedType()
+		if contextualType.IsExternalReference() {
+			// TODO: Concrete function types currently map to first class functions implemented in
+			// linear memory (on top of `usize`), leaving only generic `funcref` for use here.
+			c.CurrentType = types.TypeFunc
+			return mod.RefFunc(functionInstance.GetInternalName(), types.TypeFunc.ToRef())
+		}
 		offset := c.ensureRuntimeFunction(functionInstance)
+		c.CurrentType = functionInstance.Signature.Type
 		if c.Options().IsWasm64() {
 			return mod.I64(int64(offset))
 		}
 		return mod.I32(int32(offset))
-
-	case program.ElementKindClassPrototype:
-		// Class reference (e.g., used as value) — return class ID
-		classPrototype := element.(*program.ClassPrototype)
-		resolver := c.Resolver()
-		classInstance := resolver.ResolveClassInclTypeArguments(
-			classPrototype, nil, c.CurrentFlow,
-			c.CurrentFlow.TargetFunction.(program.Element),
-			nil, reportNode, program.ReportModeReport,
-		)
-		if classInstance == nil {
-			c.CurrentType = contextualType
-			return mod.Unreachable()
-		}
-		c.CurrentType = types.TypeI32
-		return mod.I32(int32(classInstance.Id()))
-
-	default:
-		c.Error(
-			diagnostics.DiagnosticCodeNotImplemented0,
-			reportNode.GetRange(),
-			"Element access for kind", "", "",
-		)
-		c.CurrentType = contextualType
-		return mod.Unreachable()
 	}
+
+	c.Error(
+		diagnostics.DiagnosticCodeExpressionDoesNotCompileToAValueAtRuntime,
+		expression.GetRange(),
+		"", "", "",
+	)
+	return mod.Unreachable()
+}
+
+// maybeCompileEnclosingSource makes sure the enclosing source file of the specified expression
+// has been compiled. Ported from: assemblyscript/src/compiler.ts maybeCompileEnclosingSource (lines 7346-7355).
+func (c *Compiler) maybeCompileEnclosingSource(expression ast.Node) {
+	rng := expression.GetRange()
+	if rng == nil || rng.Source == nil {
+		return
+	}
+	src, ok := rng.Source.(*ast.Source)
+	if !ok {
+		return
+	}
+	internalPath := src.InternalPath
+	filesByName := c.Program.FilesByName
+	if enclosingFile, exists := filesByName[internalPath]; exists {
+		if !enclosingFile.Is(common.CommonFlagsCompiled) {
+			c.CompileFileByPath(internalPath, expression)
+		}
+	}
+}
+
+// compileIdentifierExpressionBuiltin compiles a builtin identifier expression.
+// Ported from: assemblyscript/src/compiler.ts compileIdentifierExpressionBuiltin (lines 7633-7648).
+func (c *Compiler) compileIdentifierExpressionBuiltin(global *program.Global, expression *ast.IdentifierExpression, contextualType *types.Type) module.ExpressionRef {
+	if global.HasDecorator(program.DecoratorFlagsUnsafe) {
+		c.checkUnsafe(expression, global.IdentifierNode())
+	}
+	// TODO: implement builtinVariables_onAccess dispatch
+	c.Error(
+		diagnostics.DiagnosticCodeNotImplemented0,
+		expression.GetRange(),
+		"Built-in variable access", "", "",
+	)
+	c.CurrentType = contextualType
+	return c.Module().Unreachable()
 }
 
 // compileInstanceOfExpression compiles an instanceof expression.
@@ -2116,13 +2328,13 @@ func (c *Compiler) compileStringLiteral(expression *ast.StringLiteralExpression,
 	}
 
 	c.CurrentType = stringInstance.GetResolvedType()
-	return c.ensureStaticString(value)
+	return c.EnsureStaticString(value)
 }
 
-// ensureStaticString ensures a static string is in the data segment and returns a
+// EnsureStaticString ensures a static string is in the data segment and returns a
 // pointer expression to it.
 // Ported from: assemblyscript/src/compiler.ts ensureStaticString (lines 9515-9598).
-func (c *Compiler) ensureStaticString(value string) module.ExpressionRef {
+func (c *Compiler) EnsureStaticString(value string) module.ExpressionRef {
 	mod := c.Module()
 	isWasm64 := c.Options().IsWasm64()
 	totalOverhead := c.Program.TotalOverhead()
@@ -2205,7 +2417,7 @@ func (c *Compiler) compileStaticString(value string) module.ExpressionRef {
 		return c.makeZeroOfType(c.CurrentType)
 	}
 	c.CurrentType = stringInstance.GetResolvedType()
-	return c.ensureStaticString(value)
+	return c.EnsureStaticString(value)
 }
 
 // compileArrayLiteral compiles an array literal expression.
@@ -2469,18 +2681,18 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 }
 
 // compileNewExpression compiles a new expression.
-// Ported from: assemblyscript/src/compiler.ts compileNewExpression (lines 5012-5075).
+// Ported from: assemblyscript/src/compiler.ts compileNewExpression (lines 8805-8865).
 func (c *Compiler) compileNewExpression(expression *ast.NewExpression, contextualType *types.Type, constraints Constraints) module.ExpressionRef {
 	mod := c.Module()
 	fl := c.CurrentFlow
 	resolver := c.Resolver()
 
 	// Obtain the class being instantiated
-	// Ported from: assemblyscript/src/compiler.ts compileNewExpression (lines 8805-8865).
+	sourceFunc := fl.SourceFunction()
 	target := resolver.ResolveTypeName(
 		expression.TypeName,
 		fl,
-		fl.TargetFunction.(program.Element),
+		sourceFunc.(program.Element),
 		program.ReportModeReport,
 	)
 	if target == nil {
@@ -2506,16 +2718,36 @@ func (c *Compiler) compileNewExpression(expression *ast.NewExpression, contextua
 	classPrototype := target.(*program.ClassPrototype)
 
 	// Resolve type arguments to get a concrete class instance.
-	// TODO: Infer generic type arguments from contextualType when typeArguments are omitted.
-	classInstance := resolver.ResolveClassInclTypeArguments(
-		classPrototype,
-		expression.TypeArguments,
-		fl,
-		fl.TargetFunction.(program.Element),
-		nil, // contextual type arguments
-		expression,
-		program.ReportModeReport,
-	)
+	var classInstance *program.Class
+	typeArguments := expression.TypeArguments
+	if len(typeArguments) == 0 {
+		// Check if we can infer generic type arguments from contextual type
+		// e.g. `arr: Array<T> = new Array()`
+		classReference := contextualType.ClassRef
+		if classReference != nil {
+			if classRef, ok := classReference.(*program.Class); ok {
+				if classRef.Prototype == classPrototype && classRef.Is(common.CommonFlagsGeneric) {
+					classInstance = resolver.ResolveClass(
+						classPrototype,
+						classRef.TypeArguments,
+						cloneTypeArgMap(fl.ContextualTypeArguments()),
+						program.ReportModeReport,
+					)
+				}
+			}
+		}
+	}
+	if classInstance == nil {
+		classInstance = resolver.ResolveClassInclTypeArguments(
+			classPrototype,
+			typeArguments,
+			fl,
+			sourceFunc.(program.Element).GetParent(),
+			cloneTypeArgMap(fl.ContextualTypeArguments()),
+			expression,
+			program.ReportModeReport,
+		)
+	}
 	if classInstance == nil {
 		return mod.Unreachable()
 	}
@@ -2570,18 +2802,24 @@ func (c *Compiler) compilePropertyAccessExpression(expression *ast.PropertyAcces
 	mod := c.Module()
 	fl := c.CurrentFlow
 
+	// Ported from: assemblyscript/src/compiler.ts compilePropertyAccessExpression (lines 9078-9210).
+	c.maybeCompileEnclosingSource(expression)
+
 	resolver := c.Resolver()
 	target := resolver.LookupExpression(expression, fl, contextualType, program.ReportModeReport)
 	if target == nil {
 		return mod.Unreachable()
 	}
 	thisExpression := resolver.CurrentThisExpression
+	if target.HasDecorator(program.DecoratorFlagsUnsafe) {
+		c.checkUnsafe(expression, nil)
+	}
 
 	switch target.GetElementKind() {
 	case program.ElementKindGlobal:
 		// static field
 		global := target.(*program.Global)
-		if !c.CompileGlobal(global) {
+		if !c.CompileGlobalLazy(global, expression) {
 			return mod.Unreachable()
 		}
 		globalType := global.GetResolvedType()
@@ -2601,6 +2839,9 @@ func (c *Compiler) compilePropertyAccessExpression(expression *ast.PropertyAcces
 			return c.compileInlineConstant(global, contextualType, constraints)
 		}
 		expr := mod.GlobalGet(global.GetInternalName(), globalType.ToRef())
+		if global.Is(common.CommonFlagsDefinitelyAssigned) && globalType.IsReference() && !globalType.IsNullableReference() {
+			expr = c.makeRuntimeNonNullCheck(expr, globalType, expression)
+		}
 		c.CurrentType = globalType
 		return expr
 
@@ -2621,43 +2862,15 @@ func (c *Compiler) compilePropertyAccessExpression(expression *ast.PropertyAcces
 
 	case program.ElementKindPropertyPrototype:
 		propertyPrototype := target.(*program.PropertyPrototype)
-		propertyInstance := resolver.ResolveProperty(propertyPrototype, program.ReportModeReport)
-		if propertyInstance == nil {
+		resolvedProperty := resolver.ResolveProperty(propertyPrototype, program.ReportModeReport)
+		if resolvedProperty == nil {
 			return mod.Unreachable()
 		}
-		return c.compilePropertyGet(propertyInstance, thisExpression, expression, constraints)
+		return c.compilePropertyAccessProperty(resolvedProperty, fl, thisExpression, expression)
 
 	case program.ElementKindProperty:
 		propertyInstance := target.(*program.Property)
-		return c.compilePropertyGet(propertyInstance, thisExpression, expression, constraints)
-
-	case program.ElementKindFunction:
-		functionInstance := target.(*program.Function)
-		if !c.CompileFunction(functionInstance) {
-			return mod.Unreachable()
-		}
-		c.CurrentType = functionInstance.GetResolvedType()
-		offset := c.ensureRuntimeFunction(functionInstance)
-		if c.Options().IsWasm64() {
-			return mod.I64(int64(offset))
-		}
-		return mod.I32(int32(offset))
-
-	case program.ElementKindFunctionPrototype:
-		functionPrototype := target.(*program.FunctionPrototype)
-		functionInstance := resolver.ResolveFunction(functionPrototype, nil, nil, program.ReportModeReport)
-		if functionInstance == nil {
-			return mod.Unreachable()
-		}
-		if !c.CompileFunction(functionInstance) {
-			return mod.Unreachable()
-		}
-		c.CurrentType = functionInstance.GetResolvedType()
-		offset := c.ensureRuntimeFunction(functionInstance)
-		if c.Options().IsWasm64() {
-			return mod.I64(int64(offset))
-		}
-		return mod.I32(int32(offset))
+		return c.compilePropertyAccessProperty(propertyInstance, fl, thisExpression, expression)
 	}
 
 	c.Error(
@@ -2666,6 +2879,38 @@ func (c *Compiler) compilePropertyAccessExpression(expression *ast.PropertyAcces
 		"", "", "",
 	)
 	return mod.Unreachable()
+}
+
+// compilePropertyAccessProperty handles the Property case for compilePropertyAccessExpression.
+// Ported from: assemblyscript/src/compiler.ts compilePropertyAccessExpression Property case (lines 9145-9173).
+func (c *Compiler) compilePropertyAccessProperty(propertyInstance *program.Property, fl *flow.Flow, thisExpression ast.Node, expression ast.Node) module.ExpressionRef {
+	mod := c.Module()
+	if propertyInstance.IsField() {
+		if fl.SourceFunction().Is(uint32(common.CommonFlagsConstructor)) &&
+			thisExpression != nil && thisExpression.GetKind() == ast.NodeKindThis &&
+			!fl.IsThisFieldFlag(propertyInstance, flow.FieldFlagInitialized) &&
+			!propertyInstance.Is(common.CommonFlagsDefinitelyAssigned) {
+			c.ErrorRelated(
+				diagnostics.DiagnosticCodeProperty0IsUsedBeforeBeingAssigned,
+				expression.GetRange(),
+				propertyInstance.IdentifierNode().GetRange(),
+				propertyInstance.GetInternalName(), "", "",
+			)
+		}
+	}
+	getterInstance := propertyInstance.GetterInstance
+	if getterInstance == nil {
+		return mod.Unreachable() // failed earlier
+	}
+	var thisArg module.ExpressionRef
+	if getterInstance.Is(common.CommonFlagsInstance) {
+		thisArg = c.CompileExpression(
+			thisExpression,
+			getterInstance.Signature.ThisType,
+			ConstraintsConvImplicit|ConstraintsIsThis,
+		)
+	}
+	return c.compileCallDirect(getterInstance, nil, expression, thisArg, ConstraintsNone)
 }
 
 // compileTernaryExpression compiles a ternary expression (condition ? ifThen : ifElse).
@@ -3248,9 +3493,9 @@ func (c *Compiler) compileTypeof(
 
 	c.CurrentType = stringInstance.GetResolvedType()
 	if expr != 0 {
-		return mod.Block("", []module.ExpressionRef{expr, c.ensureStaticString(typeString)}, c.Options().SizeTypeRef())
+		return mod.Block("", []module.ExpressionRef{expr, c.EnsureStaticString(typeString)}, c.Options().SizeTypeRef())
 	}
-	return c.ensureStaticString(typeString)
+	return c.EnsureStaticString(typeString)
 }
 
 // compilePropertyGet compiles reading a property value, either via a getter call or direct memory load.
@@ -3911,125 +4156,151 @@ func (c *Compiler) compilePow(left, right module.ExpressionRef, typ *types.Type,
 
 // --- Assignment helpers ---
 
-func (c *Compiler) compileAssignment(target ast.Node, value ast.Node, contextualType *types.Type) module.ExpressionRef {
-	// Compile the value expression
-	valueExpr := c.CompileExpression(value, contextualType, ConstraintsConvImplicit)
-	valueType := c.CurrentType
-
-	// Store to the target
-	return c.compileStore(target, valueExpr, valueType)
-}
-
-func (c *Compiler) compileStore(target ast.Node, valueExpr module.ExpressionRef, valueType *types.Type) module.ExpressionRef {
-	mod := c.Module()
-	fl := c.CurrentFlow
+// compileAssignment compiles an assignment expression.
+// Ported from: assemblyscript/src/compiler.ts compileAssignment (lines 5656-5789).
+func (c *Compiler) compileAssignment(expression ast.Node, valueExpression ast.Node, contextualType *types.Type) module.ExpressionRef {
 	resolver := c.Resolver()
+	fl := c.CurrentFlow
+	target := resolver.LookupExpression(expression, fl, contextualType, program.ReportModeReport) // reports
+	if target == nil {
+		return c.Module().Unreachable()
+	}
+	thisExpression := resolver.CurrentThisExpression
+	elementExpression := resolver.CurrentElementExpression
 
-	switch target.GetKind() {
-	case ast.NodeKindIdentifier:
-		ident := target.(*ast.IdentifierExpression)
-		name := ident.Text
-
-		// Check scoped locals
-		local := fl.LookupLocal(name)
-		if local != nil {
-			localIndex := local.FlowIndex()
-			c.CurrentType = valueType
-			return mod.LocalSet(localIndex, valueExpr, false)
-		}
-
-		// Check globals
-		elemRef := fl.TargetFunction.FlowLookup(name)
-		if elemRef != nil && elemRef.GetElementKind() == program.ElementKindGlobal {
-			global := elemRef.(*program.Global)
-			c.CompileGlobalLazy(global)
-			c.CurrentType = valueType
-			return mod.GlobalSet(global.GetInternalName(), valueExpr)
-		}
-
-		c.Error(diagnostics.DiagnosticCodeNotImplemented0, target.GetRange(), "Assignment target", "", "")
-		c.CurrentType = valueType
-		return mod.Unreachable()
-
-	case ast.NodeKindPropertyAccess:
-		// Assignment to a property via setter: obj.prop = value
-		propAccess := target.(*ast.PropertyAccessExpression)
-		element := resolver.LookupExpression(propAccess, fl, valueType, program.ReportModeReport)
-		if element == nil {
-			c.CurrentType = valueType
-			return mod.Unreachable()
-		}
-		thisExpression := resolver.CurrentThisExpression
-
-		switch element.GetElementKind() {
-		case program.ElementKindGlobal:
-			global := element.(*program.Global)
-			c.CompileGlobalLazy(global)
-			c.CurrentType = valueType
-			return mod.GlobalSet(global.GetInternalName(), valueExpr)
-
-		case program.ElementKindPropertyPrototype:
-			propertyPrototype := element.(*program.PropertyPrototype)
-			propertyInstance := resolver.ResolveProperty(propertyPrototype, program.ReportModeReport)
-			if propertyInstance == nil {
-				c.CurrentType = valueType
-				return mod.Unreachable()
+	// to compile just the value, we need to know the target's type
+	var targetType *types.Type
+	switch target.GetElementKind() {
+	case program.ElementKindGlobal, program.ElementKindLocal:
+		if target.GetElementKind() == program.ElementKindGlobal {
+			if !c.CompileGlobalLazy(target.(*program.Global), expression) {
+				return c.Module().Unreachable()
 			}
-			return c.compilePropertySet(propertyInstance, thisExpression, valueExpr, valueType, target)
-
-		case program.ElementKindProperty:
-			propertyInstance := element.(*program.Property)
-			return c.compilePropertySet(propertyInstance, thisExpression, valueExpr, valueType, target)
-		}
-
-		c.Error(diagnostics.DiagnosticCodeNotImplemented0, target.GetRange(), "Property assignment target", "", "")
-		c.CurrentType = valueType
-		return mod.Unreachable()
-
-	case ast.NodeKindElementAccess:
-		// Assignment to an element: arr[i] = value
-		elemAccess := target.(*ast.ElementAccessExpression)
-		element := resolver.LookupExpression(elemAccess, fl, valueType, program.ReportModeReport)
-		if element == nil {
-			c.CurrentType = valueType
-			return mod.Unreachable()
-		}
-		thisExpression := resolver.CurrentThisExpression
-
-		if element.GetElementKind() == program.ElementKindClass {
-			classInstance := element.(*program.Class)
-			isUnchecked := c.Options().UncheckedBehavior == int32(UncheckedBehaviorAlways)
-			indexedSet := classInstance.FindOverload(program.OperatorKindIndexedSet, isUnchecked)
-			if indexedSet == nil {
+		} else {
+			local := target.(*program.Local)
+			if !local.DeclaredByFlow(fl) {
+				// TODO: closures
 				c.Error(
-					diagnostics.DiagnosticCodeIndexSignatureInType0OnlyPermitsReading,
-					target.GetRange(),
+					diagnostics.DiagnosticCodeNotImplemented0,
+					expression.GetRange(),
+					"Closures", "", "",
+				)
+				return c.Module().Unreachable()
+			}
+		}
+		if _, pending := c.PendingElements[target]; pending {
+			c.Error(
+				diagnostics.DiagnosticCodeVariable0UsedBeforeItsDeclaration,
+				expression.GetRange(),
+				target.GetInternalName(), "", "",
+			)
+			return c.Module().Unreachable()
+		}
+		targetType = target.(program.VariableLikeElement).GetResolvedType()
+		if target.HasDecorator(program.DecoratorFlagsUnsafe) {
+			c.checkUnsafe(expression, nil)
+		}
+
+	case program.ElementKindPropertyPrototype:
+		propertyPrototype := target.(*program.PropertyPrototype)
+		propertyInstance := resolver.ResolveProperty(propertyPrototype, program.ReportModeReport)
+		if propertyInstance == nil {
+			return c.Module().Unreachable()
+		}
+		target = propertyInstance
+		// fall-through to Property
+		fallthrough
+
+	case program.ElementKindProperty:
+		// Handle both direct and fall-through from PropertyPrototype
+		propertyInstance, ok := target.(*program.Property)
+		if !ok {
+			return c.Module().Unreachable()
+		}
+		if propertyInstance.IsField() {
+			if _, pending := c.PendingElements[target]; pending {
+				c.Error(
+					diagnostics.DiagnosticCodeVariable0UsedBeforeItsDeclaration,
+					expression.GetRange(),
+					target.GetInternalName(), "", "",
+				)
+				return c.Module().Unreachable()
+			}
+		}
+		setterInstance := propertyInstance.SetterInstance
+		if setterInstance == nil {
+			c.Error(
+				diagnostics.DiagnosticCodeCannotAssignTo0BecauseItIsAConstantOrAReadOnlyProperty,
+				expression.GetRange(),
+				propertyInstance.GetInternalName(), "", "",
+			)
+			return c.Module().Unreachable()
+		}
+		targetType = setterInstance.Signature.ParameterTypes[0]
+		if setterInstance.HasDecorator(program.DecoratorFlagsUnsafe) {
+			c.checkUnsafe(expression, nil)
+		}
+
+	case program.ElementKindIndexSignature:
+		indexSig := target.(*program.IndexSignature)
+		parent := indexSig.GetParent()
+		classInstance := parent.(*program.Class)
+		isUnchecked := fl.Is(flow.FlowFlagUncheckedContext)
+		indexedSet := classInstance.FindOverload(program.OperatorKindIndexedSet, isUnchecked)
+		if indexedSet == nil {
+			indexedGet := classInstance.FindOverload(program.OperatorKindIndexedGet, isUnchecked)
+			if indexedGet == nil {
+				c.Error(
+					diagnostics.DiagnosticCodeIndexSignatureIsMissingInType0,
+					expression.GetRange(),
 					classInstance.GetInternalName(), "", "",
 				)
-				c.CurrentType = valueType
-				return mod.Unreachable()
+			} else {
+				c.Error(
+					diagnostics.DiagnosticCodeIndexSignatureInType0OnlyPermitsReading,
+					expression.GetRange(),
+					classInstance.GetInternalName(), "", "",
+				)
 			}
-			var thisArg module.ExpressionRef
-			if thisExpression != nil {
-				thisArg = c.CompileExpression(thisExpression, classInstance.GetResolvedType(), ConstraintsConvImplicit|ConstraintsIsThis)
-			}
-			// Call indexedSet with (this, index, value)
-			indexExpr := c.CompileExpression(elemAccess.ElementExpression, indexedSet.Signature.ParameterTypes[0], ConstraintsConvImplicit)
-			c.CurrentType = valueType
-			return c.makeCallDirect(indexedSet, []module.ExpressionRef{
-				thisArg, indexExpr, valueExpr,
-			}, target, false)
+			return c.Module().Unreachable()
+		}
+		parameterTypes := indexedSet.Signature.ParameterTypes
+		targetType = parameterTypes[1] // 2nd parameter is the element
+		if indexedSet.HasDecorator(program.DecoratorFlagsUnsafe) {
+			c.checkUnsafe(expression, nil)
+		}
+		if !isUnchecked && c.Options().Pedantic {
+			c.Pedantic(
+				diagnostics.DiagnosticCodeIndexedAccessMayInvolveBoundsChecking,
+				expression.GetRange(),
+				"", "", "",
+			)
 		}
 
-		c.Error(diagnostics.DiagnosticCodeNotImplemented0, target.GetRange(), "Element assignment target", "", "")
-		c.CurrentType = valueType
-		return mod.Unreachable()
-
 	default:
-		c.Error(diagnostics.DiagnosticCodeNotImplemented0, target.GetRange(), "Assignment target", "", "")
-		c.CurrentType = valueType
-		return mod.Unreachable()
+		c.Error(
+			diagnostics.DiagnosticCodeCannotAssignTo0BecauseItIsAConstantOrAReadOnlyProperty,
+			expression.GetRange(),
+			target.GetInternalName(), "", "",
+		)
+		return c.Module().Unreachable()
 	}
+
+	// compile the value and do the assignment
+	valueExpr := c.CompileExpression(valueExpression, targetType, ConstraintsNone)
+	valueType := c.CurrentType
+	if targetType.IsNullableReference() && fl.IsNonnull(valueExpr, valueType) {
+		targetType = targetType.NonNullableType()
+	}
+	return c.makeAssignment(
+		target,
+		c.convertExpression(valueExpr, valueType, targetType, false, valueExpression),
+		targetType,
+		valueExpression,
+		thisExpression,
+		elementExpression,
+		contextualType != types.TypeVoid,
+	)
 }
 
 // --- Logical operators (short-circuit) ---

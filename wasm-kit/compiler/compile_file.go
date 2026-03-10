@@ -240,10 +240,8 @@ func (c *Compiler) CompileEnum(element *program.Enum) bool {
 			c.CurrentFlow = previousFlow
 			if initInStart {
 				mod.AddGlobal(enumValue.GetInternalName(), module.TypeRefI32, true, mod.I32(0))
-				// Inline makeGlobalAssignment(enumValue, initExpr, Type.i32, tee=false):
-				// For i32 with tee=false, this is just a global_set (ensureSmallIntegerWrap is no-op for i32).
 				c.CurrentBody = append(c.CurrentBody,
-					mod.GlobalSet(enumValue.GetInternalName(), initExpr),
+					c.makeGlobalAssignment(enumValue, initExpr, types.TypeI32, false),
 				)
 				previousValueIsMut = true
 			} else {
@@ -323,7 +321,7 @@ func (c *Compiler) ensureEnumToString(enumElement *program.Enum, reportNode ast.
 		}
 		expr := mod.If(
 			mod.Binary(module.BinaryOpEqI32, enumValueExpr, mod.LocalGet(0, module.TypeRefI32)),
-			mod.Return(c.ensureStaticString(enumValueName)),
+			mod.Return(c.EnsureStaticString(enumValueName)),
 			0,
 		)
 		exprs = append(exprs, expr)

@@ -945,7 +945,7 @@ func (c *Compiler) makeToString(expr module.ExpressionRef, typ *types.Type, repo
 						typ.NonNullableType(),
 						reportNode,
 					),
-					c.ensureStaticString("null"),
+					c.EnsureStaticString("null"),
 				)
 			}
 
@@ -1479,7 +1479,7 @@ func (c *Compiler) FinalizeOverrideStub(instance *program.Function) {
 func (c *Compiler) FinalizeInstanceOf(classInstance *program.Class, name string) {
 	prog := c.Program
 	mod := c.Module()
-	sizeTypeRef := c.Options().UsizeType().ToRef()
+	sizeTypeRef := c.Options().SizeTypeRef()
 
 	stmts := make([]module.ExpressionRef, 0)
 
@@ -1488,18 +1488,16 @@ func (c *Compiler) FinalizeInstanceOf(classInstance *program.Class, name string)
 	rtIdOffset := prog.TotalOverhead() - int32(objectInstance.Offsetof("rtId"))
 
 	// local.set $1, load(4, false, this - rtIdOffset, i32)
-	var subExpr module.ExpressionRef
+	var subOp module.Op
 	if sizeTypeRef == module.TypeRefI64 {
-		subExpr = mod.Binary(module.BinaryOpSubI64,
-			mod.LocalGet(0, sizeTypeRef),
-			mod.I64(int64(rtIdOffset)),
-		)
+		subOp = module.BinaryOpSubI64
 	} else {
-		subExpr = mod.Binary(module.BinaryOpSubI32,
-			mod.LocalGet(0, sizeTypeRef),
-			mod.I32(rtIdOffset),
-		)
+		subOp = module.BinaryOpSubI32
 	}
+	subExpr := mod.Binary(subOp,
+		mod.LocalGet(0, sizeTypeRef),
+		mod.I32(rtIdOffset),
+	)
 	stmts = append(stmts, mod.LocalSet(1,
 		mod.Load(4, false, subExpr, module.TypeRefI32, 0, 4, ""),
 		false,
@@ -1569,18 +1567,16 @@ func (c *Compiler) FinalizeAnyInstanceOf(prototype *program.ClassPrototype, name
 		objectInstance := prog.ObjectInstance()
 		rtIdOffset := prog.TotalOverhead() - int32(objectInstance.Offsetof("rtId"))
 
-		var subExpr module.ExpressionRef
+		var subOp module.Op
 		if sizeTypeRef == module.TypeRefI64 {
-			subExpr = mod.Binary(module.BinaryOpSubI64,
-				mod.LocalGet(0, sizeTypeRef),
-				mod.I64(int64(rtIdOffset)),
-			)
+			subOp = module.BinaryOpSubI64
 		} else {
-			subExpr = mod.Binary(module.BinaryOpSubI32,
-				mod.LocalGet(0, sizeTypeRef),
-				mod.I32(rtIdOffset),
-			)
+			subOp = module.BinaryOpSubI32
 		}
+		subExpr := mod.Binary(subOp,
+			mod.LocalGet(0, sizeTypeRef),
+			mod.I32(rtIdOffset),
+		)
 		stmts = append(stmts, mod.LocalSet(1,
 			mod.Load(4, false, subExpr, module.TypeRefI32, 0, 4, ""),
 			false,
@@ -1685,12 +1681,12 @@ func (c *Compiler) makeAbort(message ast.Node, codeLocation ast.Node) module.Exp
 		messageArg = c.makeZeroOfType(stringInstance.GetType())
 	}
 
-	return c.makeStaticAbort(messageArg, codeLocation)
+	return c.MakeStaticAbort(messageArg, codeLocation)
 }
 
-// makeStaticAbort makes a call to abort, if present, otherwise creates a trap.
+// MakeStaticAbort makes a call to abort, if present, otherwise creates a trap.
 // Ported from: assemblyscript/src/compiler.ts makeStaticAbort.
-func (c *Compiler) makeStaticAbort(messageExpr module.ExpressionRef, codeLocation ast.Node) module.ExpressionRef {
+func (c *Compiler) MakeStaticAbort(messageExpr module.ExpressionRef, codeLocation ast.Node) module.ExpressionRef {
 	mod := c.Module()
 	abortInstance := c.Program.AbortInstance()
 	if abortInstance == nil || !c.CompileFunction(abortInstance) {
@@ -1702,7 +1698,7 @@ func (c *Compiler) makeStaticAbort(messageExpr module.ExpressionRef, codeLocatio
 		return mod.Block("", []module.ExpressionRef{
 			mod.Call(abortInstance.GetInternalName(), []module.ExpressionRef{
 				messageExpr,
-				c.ensureStaticString(""),
+				c.EnsureStaticString(""),
 				mod.I32(0),
 				mod.I32(0),
 			}, module.TypeRefNone),
@@ -1710,7 +1706,7 @@ func (c *Compiler) makeStaticAbort(messageExpr module.ExpressionRef, codeLocatio
 		}, module.TypeRefUnreachable)
 	}
 
-	filenameExpr := c.ensureStaticString(rng.Source.SourceNormalizedPath())
+	filenameExpr := c.EnsureStaticString(rng.Source.SourceNormalizedPath())
 	line := rng.Source.LineAt(rng.Start)
 	col := rng.Source.ColumnAt()
 	return mod.Block("", []module.ExpressionRef{
@@ -2117,8 +2113,8 @@ func (c *Compiler) makeRuntimeNonNullCheck(expr module.ExpressionRef, typ *types
 	}
 	fl.SetLocalFlag(tempIndex, flow.LocalFlagNonNull)
 
-	staticAbortCallExpr := c.makeStaticAbort(
-		c.ensureStaticString("Unexpected 'null' (not assigned or failed cast)"),
+	staticAbortCallExpr := c.MakeStaticAbort(
+		c.EnsureStaticString("Unexpected 'null' (not assigned or failed cast)"),
 		reportNode,
 	)
 
@@ -2155,8 +2151,8 @@ func (c *Compiler) makeRuntimeDowncastCheck(expr module.ExpressionRef, fromType,
 	temp := fl.GetTempLocal(fromType)
 	tempIndex := temp.FlowIndex()
 
-	staticAbortCallExpr := c.makeStaticAbort(
-		c.ensureStaticString("invalid downcast"),
+	staticAbortCallExpr := c.MakeStaticAbort(
+		c.EnsureStaticString("invalid downcast"),
 		reportNode,
 	)
 

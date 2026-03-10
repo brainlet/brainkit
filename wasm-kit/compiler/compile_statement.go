@@ -50,6 +50,9 @@ func (c *Compiler) CompileStatement(statement ast.Node) module.ExpressionRef {
 		stmt = c.compileTryStatement(statement.(*ast.TryStatement))
 	case ast.NodeKindVariable:
 		stmt = c.compileVariableStatement(statement.(*ast.VariableStatement))
+		if stmt == 0 {
+			stmt = mod.Nop()
+		}
 	case ast.NodeKindVoid:
 		stmt = c.compileVoidStatement(statement.(*ast.VoidStatement))
 	case ast.NodeKindWhile:
@@ -778,7 +781,7 @@ func (c *Compiler) compileVariableStatement(statement *ast.VariableStatement) mo
 		isStatic := false
 		if isConst {
 			if initExpr != 0 {
-				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 8, 1)
+				precomp := mod.RunExpression(initExpr, module.ExpressionRunnerFlagsPreserveSideeffects, 50, 1)
 				if precomp != 0 {
 					initExpr = precomp // always use precomputed initExpr
 					var inlinedLocal *program.Local
@@ -892,7 +895,7 @@ func (c *Compiler) compileVariableStatement(statement *ast.VariableStatement) mo
 	}
 	c.CurrentType = types.TypeVoid
 	if len(initializers) == 0 {
-		return mod.Nop()
+		return 0
 	}
 	return mod.Flatten(initializers, module.TypeRefNone)
 }
@@ -928,7 +931,7 @@ func (c *Compiler) doCompileWhileStatement(statement *ast.WhileStatement) module
 	}
 
 	// Compile the body assuming the condition turned out true
-	thenFlow := outerFlow.ForkThen(condExpr, true, false)
+	thenFlow := outerFlow.ForkThen(condExpr, true, true)
 	label := thenFlow.PushControlFlowLabel()
 	breakLabel := fmt.Sprintf("while-break|%d", label)
 	continueLabel := fmt.Sprintf("while-continue|%d", label)

@@ -393,5 +393,10 @@ var NewParserRef func(diagnostics []*diagnostics.DiagnosticMessage, sources []*a
 // BuiltinFunctions is the set of builtin function handlers. Stub.
 var BuiltinFunctions map[string]interface{}
 
+// BuiltinVariablesOnCompile is the set of builtin variables with on-compile callbacks. Stub.
+// Maps internal name -> func(compiler interface{}, global *Global).
+// Ported from: assemblyscript/src/builtins.ts builtinVariables_onCompile.
+var BuiltinVariablesOnCompile map[string]func(compiler interface{}, global *Global)
+
 // BuiltinVariablesOnAccess is the set of builtin variables with on-access callbacks. Stub.
 var BuiltinVariablesOnAccess map[string]interface{}
