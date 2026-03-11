@@ -115,10 +115,14 @@ func (c *Compiler) CompileProgram() *module.Module {
 	// compile pending instanceof helpers
 	for elem, name := range c.PendingInstanceOf {
 		switch elem.GetElementKind() {
-		case program.ElementKindClass, program.ElementKindInterface:
+		case program.ElementKindClass:
 			c.FinalizeInstanceOf(elem.(*program.Class), name)
-		case program.ElementKindClassPrototype, program.ElementKindInterfacePrototype:
+		case program.ElementKindInterface:
+			c.FinalizeInstanceOf(&elem.(*program.Interface).Class, name)
+		case program.ElementKindClassPrototype:
 			c.FinalizeAnyInstanceOf(elem.(*program.ClassPrototype), name)
+		case program.ElementKindInterfacePrototype:
+			c.FinalizeAnyInstanceOf(&elem.(*program.InterfacePrototype).ClassPrototype, name)
 		}
 	}
 

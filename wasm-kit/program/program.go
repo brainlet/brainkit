@@ -54,6 +54,7 @@ type Program struct {
 	cachedRegexpInstance             *Class
 	cachedObjectPrototype            *ClassPrototype
 	cachedObjectInstance             *Class
+	cachedOBJECTInstance             *Class // ~lib/rt/common/OBJECT (internal)
 	cachedAllocInstance              *Function
 	cachedReallocInstance            *Function
 	cachedFreeInstance               *Function
@@ -1212,6 +1213,17 @@ func (p *Program) ObjectInstance() *Class {
 		p.cachedObjectInstance = p.RequireClass(common.CommonNameObject)
 	}
 	return p.cachedObjectInstance
+}
+
+// OBJECTInstance returns the runtime's internal OBJECT class (~lib/rt/common/OBJECT).
+// This is DIFFERENT from ObjectInstance() which returns the AS standard Object class.
+// The OBJECT class defines the memory layout of all managed objects (mmInfo, gcInfo, etc.).
+// Ported from: program.ts lines 769-774.
+func (p *Program) OBJECTInstance() *Class {
+	if p.cachedOBJECTInstance == nil {
+		p.cachedOBJECTInstance = p.RequireClass(common.CommonNameObject_)
+	}
+	return p.cachedOBJECTInstance
 }
 
 // AbortInstance returns the abort function instance, if not explicitly disabled.

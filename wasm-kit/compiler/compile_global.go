@@ -533,7 +533,7 @@ func (c *Compiler) ensureRuntimeFunction(instance *program.Function) int64 {
 		buf := make([]byte, blockOverhead+blockSize)
 
 		// Write OBJECT header fields
-		objectInstance := prog.ObjectInstance()
+		objectInstance := prog.OBJECTInstance() // ~lib/rt/common/OBJECT, NOT Object
 		writeRuntimeField(objectInstance, "mmInfo", int64(blockSize), buf, 0)
 		writeRuntimeField(objectInstance, "gcInfo", 0, buf, 0)
 		writeRuntimeField(objectInstance, "gcInfo2", 0, buf, 0)

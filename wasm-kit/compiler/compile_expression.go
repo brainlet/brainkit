@@ -220,7 +220,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "+", leftType.ToString(false), rightType.ToString(false))
@@ -258,7 +258,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "-", leftType.ToString(false), rightType.ToString(false))
@@ -296,7 +296,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "*", leftType.ToString(false), rightType.ToString(false))
@@ -334,7 +334,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "**", leftType.ToString(false), rightType.ToString(false))
@@ -372,7 +372,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "/", leftType.ToString(false), rightType.ToString(false))
@@ -410,7 +410,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsNumericValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "%", leftType.ToString(false), rightType.ToString(false))
@@ -508,7 +508,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsIntegerValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "&", leftType.ToString(false), rightType.ToString(false))
@@ -546,7 +546,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsIntegerValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "|", leftType.ToString(false), rightType.ToString(false))
@@ -584,7 +584,7 @@ func (c *Compiler) compileBinaryExpression(expression *ast.BinaryExpression, con
 		} else {
 			rightExpr = c.CompileExpression(right, leftType, ConstraintsNone)
 			rightType = c.CurrentType
-			commonType = types.CommonType(leftType, rightType, contextualType, true)
+			commonType = types.CommonType(leftType, rightType, contextualType, false)
 			if commonType == nil || !commonType.IsIntegerValue() {
 				c.Error(diagnostics.DiagnosticCodeOperator0CannotBeAppliedToTypes1And2,
 					expression.GetRange(), "^", leftType.ToString(false), rightType.ToString(false))
@@ -2363,15 +2363,17 @@ func (c *Compiler) compileStringLiteral(expression *ast.StringLiteralExpression,
 // EnsureStaticString ensures a static string is in the data segment and returns a
 // pointer expression to it.
 // Ported from: assemblyscript/src/compiler.ts ensureStaticString (lines 9515-9598).
+// EnsureStaticString ensures a string exists in static memory and returns a pointer expression.
+// Ported from: assemblyscript/src/compiler.ts ensureStaticString (lines 1962-1966)
+// and ensureStaticStringPtr (lines 1969-1996).
 func (c *Compiler) EnsureStaticString(value string) module.ExpressionRef {
 	mod := c.Module()
 	isWasm64 := c.Options().IsWasm64()
-	totalOverhead := c.Program.TotalOverhead()
+	prog := c.Program
+	totalOverhead := prog.TotalOverhead()
 
 	// Check if already cached
 	if seg, ok := c.StringSegments[value]; ok {
-		// The segment already exists. Compute the pointer offset from the segment's raw offset.
-		// Ported from: compiler.ts:1986 — i64_add(stringSegment.offset, i64_new(totalOverhead))
 		ptrOffset := seg.RawOffset + int64(totalOverhead)
 		if isWasm64 {
 			return mod.I64(ptrOffset)
@@ -2379,64 +2381,64 @@ func (c *Compiler) EnsureStaticString(value string) module.ExpressionRef {
 		return mod.I32(int32(ptrOffset))
 	}
 
-	// Encode string as UTF-16LE (AssemblyScript string format)
+	stringInstance := prog.StringInstance()
+	if stringInstance == nil {
+		if isWasm64 {
+			return mod.I64(0)
+		}
+		return mod.I32(0)
+	}
+
+	// Build the buffer using createBuffer logic (program.ts:4683-4695).
+	// payloadSize = stringInstance.nextMemoryOffset + (len << 1)
+	// blockSize = program.computeBlockSize(payloadSize, true)
+	// buffer = new Uint8Array(program.blockOverhead + blockSize)
 	runes := []rune(value)
-	byteLen := len(runes) * 2 // UTF-16 code units
-	stringInstance := c.Program.StringInstance()
+	byteLen := int32(len(runes) * 2) // UTF-16 code units
+	payloadSize := int32(stringInstance.NextMemoryOffset) + byteLen
+	blockSize := prog.ComputeBlockSize(payloadSize, true)
+	blockOverhead := prog.BlockOverhead()
+	buf := make([]byte, blockOverhead+blockSize)
 
-	// Build the data: [BLOCK header][OBJECT header][string content]
-	// BLOCK: mmInfo(4) + gcInfo(4) + rtId(4) + rtSize(4) = 16 bytes
-	// OBJECT: gcInfo2(4) = 4 bytes (wasm32)
+	// Write OBJECT header fields using actual field offsets (program.ts:4688-4693).
+	// Uses OBJECTInstance (~lib/rt/common/OBJECT) NOT ObjectInstance (Object).
+	objectClass := prog.OBJECTInstance()
+	if objectClass != nil {
+		writeRuntimeField(objectClass, "mmInfo", int64(blockSize), buf, 0)
+		writeRuntimeField(objectClass, "gcInfo", 0, buf, 0)
+		writeRuntimeField(objectClass, "gcInfo2", 0, buf, 0)
+		writeRuntimeField(objectClass, "rtId", int64(stringInstance.Id()), buf, 0)
+		writeRuntimeField(objectClass, "rtSize", int64(payloadSize), buf, 0)
+	}
 
-	headerBytes := int(totalOverhead)
-	totalBytes := headerBytes + byteLen
-	buf := make([]byte, totalBytes)
-
-	// Write BLOCK header
-	blockContentSize := int32(byteLen) + c.Program.ObjectOverhead()
-	writeI32(buf, 0, blockContentSize)           // mmInfo
-	writeI32(buf, 4, 0)                          // gcInfo
-	writeI32(buf, 8, int32(stringInstance.Id())) // rtId
-	writeI32(buf, 12, int32(byteLen))            // rtSize
-
-	// Write OBJECT overhead (gcInfo2 = 0)
-	writeI32(buf, 16, 0)
-
-	// Write string content as UTF-16LE
-	contentOffset := headerBytes
+	// Write string content as UTF-16LE at totalOverhead offset
 	for i, r := range runes {
 		code := uint16(r)
-		buf[contentOffset+i*2] = byte(code)
-		buf[contentOffset+i*2+1] = byte(code >> 8)
+		offset := int(totalOverhead) + i*2
+		if offset+1 < len(buf) {
+			buf[offset] = byte(code)
+			buf[offset+1] = byte(code >> 8)
+		}
 	}
 
-	// Allocate in data segment
-	currentOffset := c.MemoryOffset
-	alignedOffset := (currentOffset + 15) & ^int64(15) // align to 16
+	// Add as runtime memory segment (uses computeBlockStart64 for proper alignment)
+	stringSegment := c.addRuntimeMemorySegment(buf)
+	c.StringSegments[value] = stringSegment
 
-	var offsetExpr module.ExpressionRef
+	// Track static GC object offset
+	stringOffset := stringSegment.RawOffset + int64(totalOverhead)
+	hi := int32(stringOffset >> 32)
+	lo := int32(stringOffset)
+	if _, ok := c.StaticGcObjectOffsets[hi]; !ok {
+		c.StaticGcObjectOffsets[hi] = make(map[int32]struct{})
+	}
+	c.StaticGcObjectOffsets[hi][lo] = struct{}{}
+
+	// Return pointer
 	if isWasm64 {
-		offsetExpr = mod.I64(alignedOffset)
-	} else {
-		offsetExpr = mod.I32(int32(alignedOffset))
+		return mod.I64(stringOffset)
 	}
-
-	segment := &module.MemorySegment{
-		Buffer:    buf,
-		Offset:    offsetExpr,
-		RawOffset: alignedOffset,
-	}
-	c.MemorySegments = append(c.MemorySegments, segment)
-	c.StringSegments[value] = segment
-	c.MemoryOffset = alignedOffset + int64(totalBytes)
-
-	// Return pointer to the string data (after the header)
-	// Ported from: compiler.ts:1986 — i64_add(stringSegment.offset, i64_new(totalOverhead))
-	ptrOffset := alignedOffset + int64(totalOverhead)
-	if isWasm64 {
-		return mod.I64(ptrOffset)
-	}
-	return mod.I32(int32(ptrOffset))
+	return mod.I32(int32(stringOffset))
 }
 
 // compileStaticString compiles a static string value (e.g., for typeof results).
