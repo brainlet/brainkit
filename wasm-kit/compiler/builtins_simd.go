@@ -37,6 +37,8 @@ func registerSIMDBuiltins() {
 	builtinFunctions[common.BuiltinNameV128Store16Lane] = builtinV128Store16Lane
 	builtinFunctions[common.BuiltinNameV128Store32Lane] = builtinV128Store32Lane
 	builtinFunctions[common.BuiltinNameV128Store64Lane] = builtinV128Store64Lane
+	builtinFunctions[common.BuiltinNameV128LoadLane] = builtinV128LoadLane
+	builtinFunctions[common.BuiltinNameV128StoreLane] = builtinV128StoreLane
 	builtinFunctions[common.BuiltinNameV128Store] = builtinV128Store
 
 	// v128 core operations (generic, type-parameterized)

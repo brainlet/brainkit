@@ -667,6 +667,9 @@ func (c *Class) HasExtenderImplementing(other *Interface) bool {
 
 // ImplementsInterface tests if this class implements an interface.
 func (c *Class) ImplementsInterface(other *Interface) bool {
+	if other == nil {
+		return false
+	}
 	return other.HasImplementer(c)
 }
 

@@ -748,28 +748,32 @@ func (p *Parser) maybeParseCallExpression(
 ) ast.Node {
 	var typeArguments []ast.Node
 	for {
-		if tn.Skip(tokenizer.TokenOpenParen, tokenizer.IdentifierHandlingDefault) {
-			args := p.parseArguments(tn)
-			if args == nil {
-				break
-			}
-			expr = ast.NewCallExpression(
-				expr,
-				typeArguments,
-				args,
-				*tn.MakeRange(expr.GetRange().Start, tn.Pos),
-			)
-			typeArguments = nil
-			potentiallyGeneric = false
-			continue
-		}
-		if potentiallyGeneric {
+		// In TS, the while condition is:
+		//   tn.skip(Token.OpenParen) ||
+		//   potentiallyGeneric && (typeArguments = tryParseTypeArgumentsBeforeArguments(tn))
+		// Both paths consume '(' — then parseArguments is called.
+		gotParen := tn.Skip(tokenizer.TokenOpenParen, tokenizer.IdentifierHandlingDefault)
+		if !gotParen && potentiallyGeneric {
 			typeArguments = p.tryParseTypeArgumentsBeforeArguments(tn)
 			if typeArguments != nil {
-				continue
+				gotParen = true // tryParse consumed '<' Type '>' '('
 			}
 		}
-		break
+		if !gotParen {
+			break
+		}
+		args := p.parseArguments(tn)
+		if args == nil {
+			break
+		}
+		expr = ast.NewCallExpression(
+			expr,
+			typeArguments,
+			args,
+			*tn.MakeRange(expr.GetRange().Start, tn.Pos),
+		)
+		typeArguments = nil
+		potentiallyGeneric = false
 	}
 	return expr
 }
