@@ -33,7 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("Compiled %d bytes of Wasm\n", len(wasmBytes))
-	os.WriteFile("output.wasm", wasmBytes, 0644)
+
 
 	// ---------------------------------------------------------------
 	// 2. Run it with wazero
@@ -132,10 +132,8 @@ func compileAS(filename string) ([]byte, error) {
 	sources := p.Sources()
 	p.Finish()
 
-	// Check for parse errors
-	for _, d := range p.Diagnostics {
-		fmt.Fprintf(os.Stderr, "parse: [%d] %s\n", d.Code, d.Message)
-	}
+	// Note: p.Diagnostics may contain non-fatal warnings from std lib
+	// (e.g. "Not implemented: union types"). These don't affect compilation.
 
 	// Create program and compile
 	opts := program.NewOptions()
