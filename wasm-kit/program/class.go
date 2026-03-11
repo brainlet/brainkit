@@ -438,7 +438,11 @@ func (c *Class) IsAssignableTo(target types.ClassReference) bool {
 		if c.IsInterface() {
 			return c == t || c.ExtendsClass(t)
 		}
-		return c.ImplementsInterface(t.AsInterface())
+		iface := t.AsInterface()
+		if iface == nil {
+			return false // interface ref not set (shouldn't happen in well-formed program)
+		}
+		return c.ImplementsInterface(iface)
 	}
 	if c.IsInterface() {
 		return t == c.program.ObjectInstance()

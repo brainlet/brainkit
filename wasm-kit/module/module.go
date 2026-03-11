@@ -452,11 +452,17 @@ func (m *Module) TableSet(name string, index, value ExpressionRef) ExpressionRef
 
 // Load creates a memory load expression.
 func (m *Module) Load(bytes uint32, signed bool, ptr ExpressionRef, typ TypeRef, offset uint32, align uint32, memoryName string) ExpressionRef {
+	if memoryName == "" {
+		memoryName = DefaultMemory
+	}
 	return m.bmod.Load(bytes, signed, offset, align, typ, ptr, memoryName)
 }
 
 // Store creates a memory store expression.
 func (m *Module) Store(bytes uint32, ptr, value ExpressionRef, typ TypeRef, offset uint32, align uint32, memoryName string) ExpressionRef {
+	if memoryName == "" {
+		memoryName = DefaultMemory
+	}
 	return m.bmod.Store(bytes, offset, align, ptr, value, typ, memoryName)
 }
 

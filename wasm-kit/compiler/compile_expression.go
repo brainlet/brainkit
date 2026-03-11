@@ -2681,27 +2681,30 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 			}
 			setterInstance := propertyInstance.SetterInstance
 			if setterInstance == nil {
-				// Direct field — store via memory
-				fieldType := propertyInstance.GetterInstance.Signature.ReturnType
-				if fieldType == nil {
-					continue
-				}
-				valueExpr := c.CompileExpression(values[i], fieldType, ConstraintsConvImplicit)
-				thisRef := mod.LocalGet(tempIdx, sizeTypeRef)
-				stmts = append(stmts, mod.Store(
-					uint32(fieldType.ByteSize()),
-					thisRef, valueExpr, fieldType.ToRef(),
-					uint32(propertyInstance.MemoryOffset), uint32(fieldType.AlignLog2()),
-					"",
-				))
-			} else {
-				// Has setter — call it
-				valueExpr := c.CompileExpression(values[i], setterInstance.Signature.ParameterTypes[0], ConstraintsConvImplicit)
-				stmts = append(stmts, c.makeCallDirect(setterInstance,
-					[]module.ExpressionRef{mod.LocalGet(tempIdx, sizeTypeRef), valueExpr},
-					expression, false,
-				))
+				// TS: error — cannot assign to read-only property
+				c.Error(
+					diagnostics.DiagnosticCodeCannotAssignTo0BecauseItIsAConstantOrAReadOnlyProperty,
+					names[i].GetRange(),
+					fieldName, "", "",
+				)
+				continue
 			}
+			// Check if field vs deferred property
+			if !propertyInstance.IsField() {
+				// Defer non-field properties (setters called after fields)
+				// TODO: implement deferred property setter calls
+				continue
+			}
+			propertyType := propertyInstance.GetType()
+			valueExpr := c.CompileExpression(values[i], propertyType, ConstraintsConvImplicit)
+			expr := c.makeCallDirect(setterInstance,
+				[]module.ExpressionRef{mod.LocalGet(tempIdx, sizeTypeRef), valueExpr},
+				expression, true,
+			)
+			if c.CurrentType != types.TypeVoid {
+				expr = mod.Drop(expr)
+			}
+			stmts = append(stmts, expr)
 		}
 	}
 
