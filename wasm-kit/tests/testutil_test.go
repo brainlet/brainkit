@@ -138,18 +138,24 @@ func compileFixture(t *testing.T, basename string, release bool, config fixtureC
 	}
 	p.ParseFile(string(sourceText), basename+".ts", true)
 
-	// Parse std library
+	// Parse std library, filtering runtime files based on opts.Runtime.
+	// The AS CLI only includes the correct runtime entry file.
 	stdFiles := collectStdSources(t)
+	excludedRtFiles := runtimeExclusions(opts.Runtime)
 	for _, filename := range stdFiles {
-		data, err := os.ReadFile(filename)
-		if err != nil {
-			t.Fatalf("read std %s: %v", filename, err)
-		}
 		relativePath, err := filepath.Rel(stdAssemblyRoot(), filename)
 		if err != nil {
 			t.Fatalf("rel %s: %v", filename, err)
 		}
 		logicalPath := common.LIBRARY_PREFIX + filepath.ToSlash(relativePath)
+		// Skip runtime files that don't match the configured runtime
+		if excludedRtFiles[logicalPath] {
+			continue
+		}
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			t.Fatalf("read std %s: %v", filename, err)
+		}
 		p.ParseFile(string(data), logicalPath, false)
 	}
 
@@ -386,6 +392,39 @@ func readASString(mem api.Memory, ptr uint32) string {
 func normalize(text string) string {
 	return strings.ReplaceAll(text, "\r\n", "\n")
 }
+
+// runtimeExclusions returns the set of std library paths to exclude based on runtime.
+// The AS CLI only parses the correct runtime entry file (e.g., index-incremental.ts
+// for RuntimeIncremental), which imports only the needed allocator/GC.
+func runtimeExclusions(runtime common.Runtime) map[string]bool {
+	exclude := map[string]bool{
+		// Always exclude the README
+		"~lib/rt/README.md": true,
+	}
+	switch runtime {
+	case common.RuntimeIncremental:
+		// Incremental uses itcms + tlsf. Exclude stub and minimal runtimes.
+		exclude["~lib/rt/stub.ts"] = true
+		exclude["~lib/rt/index-stub.ts"] = true
+		exclude["~lib/rt/index-minimal.ts"] = true
+		exclude["~lib/rt/tcms.ts"] = true
+	case common.RuntimeStub:
+		// Stub uses its own simple allocator. Exclude incremental/minimal.
+		exclude["~lib/rt/itcms.ts"] = true
+		exclude["~lib/rt/tlsf.ts"] = true
+		exclude["~lib/rt/tcms.ts"] = true
+		exclude["~lib/rt/index-incremental.ts"] = true
+		exclude["~lib/rt/index-minimal.ts"] = true
+	case common.RuntimeMinimal:
+		// Minimal uses tcms + tlsf. Exclude stub and incremental.
+		exclude["~lib/rt/stub.ts"] = true
+		exclude["~lib/rt/itcms.ts"] = true
+		exclude["~lib/rt/index-stub.ts"] = true
+		exclude["~lib/rt/index-incremental.ts"] = true
+	}
+	return exclude
+}
+
 
 func firstDiffPos(a, b string) int {
 	n := len(a)
