@@ -39,8 +39,8 @@ type MemorySegment struct {
 type Target int
 
 const (
-	TargetWasm32 Target = iota
-	TargetWasm64
+	TargetWasm32 Target = 1 // matches common.TargetWasm32
+	TargetWasm64 Target = 2 // matches common.TargetWasm64
 )
 
 // Module wraps a *binaryen.Module with size-type dispatching and shadow-stack
