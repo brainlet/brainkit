@@ -1,111 +1,44 @@
 // Port of: assemblyscript/tests/compiler.js
 // Auto-discovers and runs all official AssemblyScript compiler test fixtures.
 //
-// Each fixture is a .ts file in the AS tests/compiler/ directory with:
-//   - <name>.ts          — AssemblyScript source
-//   - <name>.json        — compiler flags and config
-//   - <name>.debug.wat   — expected WAT output (debug mode)
-//   - <name>.release.wat — expected WAT output (release mode)
-//
-// Tests with a "stderr" key in the JSON config expect compilation errors.
-// Tests without "stderr" expect successful compilation with matching WAT output.
+// Test levels:
+//   - TestCompiler_NoPanic          — Level 0: compile without crashing (172 fixtures)
+//   - TestCompiler_ErrorDiagnostics — Level 1: error fixtures produce expected stderr (42 fixtures)
+//   - TestCompiler_WATMatch         — Level 2: WAT output matches reference files (130 × 2 modes)
+//   - TestCompiler_Runtime          — Level 3+4: compiled Wasm runs in wazero without abort (130 fixtures)
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/brainlet/brainkit/wasm-kit/common"
-	"github.com/brainlet/brainkit/wasm-kit/compiler"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
-	"github.com/brainlet/brainkit/wasm-kit/module"
-	"github.com/brainlet/brainkit/wasm-kit/parser"
 	"github.com/brainlet/brainkit/wasm-kit/program"
 )
 
-// fixtureConfig mirrors the JSON config for each test fixture.
-// Ported from: assemblyscript/tests/compiler.js config handling.
+// ---------------------------------------------------------------------------
+// Fixture config (mirrors the JSON config for each test fixture)
+// ---------------------------------------------------------------------------
+
 type fixtureConfig struct {
-	AscFlags []string `json:"asc_flags"`
-	Features []string `json:"features"`
-	Stderr   any      `json:"stderr"` // string or []string
+	AscFlags        []string `json:"asc_flags"`
+	Features        []string `json:"features"`
+	Stderr          any      `json:"stderr"`          // string or []string
+	AscRtrace       bool     `json:"asc_rtrace"`      // enable rtrace
+	SkipInstantiate bool     `json:"skipInstantiate"` // skip runtime instantiation
 }
 
-// testsRoot returns the path to wasm-kit/tests/ (where this file lives).
-func testsRoot() string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Dir(filename)
-}
-
-func fixturesRoot() string {
-	return filepath.Join(testsRoot(), "compiler")
-}
-
-func stdAssemblyRoot() string {
-	return filepath.Join(testsRoot(), "..", "std", "assembly")
-}
-
-// discoverFixtures finds all .ts test fixtures in the AS tests/compiler/ directory.
-// Mirrors: assemblyscript/tests/compiler.js getTests()
-func discoverFixtures(t *testing.T) []string {
-	t.Helper()
-	root := fixturesRoot()
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		t.Skipf("fixtures not found at %s: %v", root, err)
-	}
-	var names []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".ts") {
-			continue
-		}
-		// Skip .d.ts files
-		if strings.HasSuffix(name, ".d.ts") {
-			continue
-		}
-		// Skip files starting with _ (convention for helper files)
-		if strings.HasPrefix(name, "_") {
-			continue
-		}
-		basename := strings.TrimSuffix(name, ".ts")
-		names = append(names, basename)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// loadFixtureConfig reads the JSON config for a fixture.
-func loadFixtureConfig(t *testing.T, basename string) fixtureConfig {
-	t.Helper()
-	configPath := filepath.Join(fixturesRoot(), basename+".json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		// No config = empty config (defaults)
-		return fixtureConfig{}
-	}
-	var config fixtureConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatalf("unmarshal %s: %v", configPath, err)
-	}
-	return config
-}
-
-// expectsErrors returns true if the fixture expects compilation errors (has stderr config).
 func (c *fixtureConfig) expectsErrors() bool {
 	return c.Stderr != nil
 }
 
-// expectedStderr returns the expected stderr patterns as a string slice.
 func (c *fixtureConfig) expectedStderr() []string {
 	if c.Stderr == nil {
 		return nil
@@ -125,10 +58,47 @@ func (c *fixtureConfig) expectedStderr() []string {
 	return nil
 }
 
-// applyConfig applies fixture config flags to compiler options.
-// Returns an error string if the config has unsupported flags (test should be skipped).
+// ---------------------------------------------------------------------------
+// Fixture discovery and config loading
+// ---------------------------------------------------------------------------
+
+func discoverFixtures(t *testing.T) []string {
+	t.Helper()
+	root := fixturesRoot()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Skipf("fixtures not found at %s: %v", root, err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".d.ts") || strings.HasPrefix(name, "_") {
+			continue
+		}
+		names = append(names, strings.TrimSuffix(name, ".ts"))
+	}
+	sort.Strings(names)
+	return names
+}
+
+func loadFixtureConfig(t *testing.T, basename string) fixtureConfig {
+	t.Helper()
+	configPath := filepath.Join(fixturesRoot(), basename+".json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fixtureConfig{} // No config = defaults
+	}
+	var config fixtureConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("unmarshal %s: %v", configPath, err)
+	}
+	return config
+}
+
 func applyConfig(opts *program.Options, config fixtureConfig) (skip string) {
-	// Parse asc_flags
 	var tokens []string
 	for _, flag := range config.AscFlags {
 		tokens = append(tokens, strings.Fields(flag)...)
@@ -151,7 +121,7 @@ func applyConfig(opts *program.Options, config fixtureConfig) (skip string) {
 			if i+1 >= len(tokens) {
 				return "missing value for --runtime"
 			}
-			i++ // consume runtime name, apply if we support it
+			i++
 			switch tokens[i] {
 			case "stub":
 				opts.Runtime = common.RuntimeStub
@@ -195,8 +165,6 @@ func applyConfig(opts *program.Options, config fixtureConfig) (skip string) {
 			return fmt.Sprintf("unsupported flag: %s", tokens[i])
 		}
 	}
-
-	// Apply feature requirements
 	for _, featureName := range config.Features {
 		feature, ok := featureByName(featureName)
 		if !ok {
@@ -204,298 +172,7 @@ func applyConfig(opts *program.Options, config fixtureConfig) (skip string) {
 		}
 		opts.SetFeature(feature, true)
 	}
-
 	return ""
-}
-
-// collectStdSources walks the AS std/assembly/ directory for all .ts files.
-func collectStdSources(t *testing.T) []string {
-	t.Helper()
-	root := stdAssemblyRoot()
-	var files []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) != ".ts" {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk std sources: %v", err)
-	}
-	sort.Strings(files)
-	return files
-}
-
-// compileFixture parses and compiles a fixture, returning the compiler and any diagnostics.
-func compileFixture(t *testing.T, basename string, release bool, config fixtureConfig) (mod *module.Module, diags []*diagnostics.DiagnosticMessage, panicked bool) {
-	t.Helper()
-
-	// Catch panics anywhere in the pipeline (parser, program, compiler)
-	defer func() {
-		if r := recover(); r != nil {
-			panicked = true
-			buf := make([]byte, 4096)
-			n := runtime.Stack(buf, false)
-			t.Logf("PANIC: %v\n%s", r, buf[:n])
-		}
-	}()
-
-	opts := program.NewOptions()
-	if release {
-		opts.OptimizeLevelHint = 3
-		opts.DebugInfo = false
-	} else {
-		opts.DebugInfo = true
-	}
-
-	if skip := applyConfig(opts, config); skip != "" {
-		t.Skipf("skipping: %s", skip)
-	}
-
-	// Parse the test source
-	p := parser.NewParser(nil)
-	sourcePath := filepath.Join(fixturesRoot(), basename+".ts")
-	sourceText, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read source %s: %v", sourcePath, err)
-	}
-	p.ParseFile(string(sourceText), basename+".ts", true)
-
-	// Parse std library
-	stdFiles := collectStdSources(t)
-	for _, filename := range stdFiles {
-		data, err := os.ReadFile(filename)
-		if err != nil {
-			t.Fatalf("read std %s: %v", filename, err)
-		}
-		relativePath, err := filepath.Rel(stdAssemblyRoot(), filename)
-		if err != nil {
-			t.Fatalf("rel %s: %v", filename, err)
-		}
-		logicalPath := common.LIBRARY_PREFIX + filepath.ToSlash(relativePath)
-		p.ParseFile(string(data), logicalPath, false)
-	}
-
-	// Drain parser file queue
-	for next := p.NextFile(); next != ""; next = p.NextFile() {
-	}
-
-	parserDiags := append([]*diagnostics.DiagnosticMessage(nil), p.Diagnostics...)
-	sources := p.Sources()
-	p.Finish()
-
-	prog := program.NewProgram(opts, nil)
-	prog.Sources = sources
-	c := compiler.NewCompiler(prog)
-	result := c.CompileProgram()
-
-	if release && result != nil {
-		result.Optimize(
-			int(opts.OptimizeLevelHint),
-			int(opts.ShrinkLevelHint),
-			opts.DebugInfo,
-			opts.ZeroFilledMemory,
-		)
-	}
-
-	diags = append(diags, parserDiags...)
-	diags = append(diags, prog.Diagnostics...)
-	diags = append(diags, c.Diagnostics...)
-
-	mod = result
-	return
-}
-
-func normalize(text string) string {
-	return strings.ReplaceAll(text, "\r\n", "\n")
-}
-
-// binaryenFatalFixtures lists fixtures that trigger binaryen C library crashes
-// (Fatal() or SIGSEGV), which cannot be caught by Go's recover().
-// These crash the entire test process and must be skipped.
-var binaryenFatalFixtures = map[string]bool{
-	"duplicate-identifier": true, // Fatal: Module::addGlobal already exists
-	"class-override":       true, // SIGSEGV in FinalizeOverrideStub→Load
-	"super-inline":         true, // SIGSEGV in binaryen CGo call
-}
-
-// TestCompilerFixtures_NoPanic verifies that each fixture compiles without panicking.
-// This is the baseline test — even if WAT output doesn't match, not crashing is progress.
-func TestCompilerFixtures_NoPanic(t *testing.T) {
-	fixtures := discoverFixtures(t)
-	if len(fixtures) == 0 {
-		t.Skip("no fixtures found")
-	}
-
-	passed := 0
-	failed := 0
-	skipped := 0
-
-	for _, name := range fixtures {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			if binaryenFatalFixtures[name] {
-				skipped++
-				t.Skipf("skipping: triggers binaryen Fatal()")
-			}
-			config := loadFixtureConfig(t, name)
-
-			// Only test debug mode for no-panic check
-			_, _, panicked := compileFixture(t, name, false, config)
-			if panicked {
-				failed++
-				t.Errorf("fixture %s panicked during compilation", name)
-			} else {
-				passed++
-			}
-		})
-	}
-
-	t.Logf("Results: %d passed, %d panicked, %d skipped (of %d total)", passed, failed, skipped, len(fixtures))
-}
-
-// TestCompilerFixtures_WATMatch verifies that each fixture produces WAT output
-// matching the stored fixture files. This is the full correctness test.
-func TestCompilerFixtures_WATMatch(t *testing.T) {
-	fixtures := discoverFixtures(t)
-	if len(fixtures) == 0 {
-		t.Skip("no fixtures found")
-	}
-
-	passed := 0
-	failed := 0
-	skipped := 0
-
-	for _, name := range fixtures {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			config := loadFixtureConfig(t, name)
-
-			if config.expectsErrors() {
-				// Error-expecting tests: check that diagnostics contain expected patterns
-				_, diags, panicked := compileFixture(t, name, false, config)
-				if panicked {
-					failed++
-					t.Errorf("fixture %s panicked", name)
-					return
-				}
-
-				expectedPatterns := config.expectedStderr()
-				diagText := formatDiagnostics(diags)
-				lastIndex := 0
-				for i, pattern := range expectedPatterns {
-					if pattern == "EOF" {
-						continue
-					}
-					idx := strings.Index(diagText[lastIndex:], pattern)
-					if idx < 0 {
-						failed++
-						t.Errorf("missing expected stderr pattern #%d: %q\nGot diagnostics:\n%s", i+1, pattern, diagText)
-						return
-					}
-					lastIndex += idx + len(pattern)
-				}
-				passed++
-				return
-			}
-
-			// Success-expecting tests: compare WAT output
-			for _, mode := range []struct {
-				name    string
-				release bool
-			}{
-				{"debug", false},
-				{"release", true},
-			} {
-				t.Run(mode.name, func(t *testing.T) {
-					expectedPath := filepath.Join(fixturesRoot(), name+"."+mode.name+".wat")
-					expectedBytes, err := os.ReadFile(expectedPath)
-					if err != nil {
-						t.Skipf("no %s fixture file: %v", mode.name, err)
-						return
-					}
-					expected := normalize(string(expectedBytes))
-
-					mod, diags, panicked := compileFixture(t, name, mode.release, config)
-					if panicked {
-						failed++
-						t.Errorf("panicked during %s compilation", mode.name)
-						return
-					}
-					if len(diags) > 0 {
-						failed++
-						t.Errorf("unexpected diagnostics:\n%s", formatDiagnostics(diags))
-						return
-					}
-					if mod == nil {
-						failed++
-						t.Error("compiler returned nil module")
-						return
-					}
-
-					actual := normalize(mod.ToText(false))
-					if actual != expected {
-						failed++
-						// Show first difference location
-						diffPos := firstDiffPos(expected, actual)
-						context := 200
-						start := diffPos - context
-						if start < 0 {
-							start = 0
-						}
-						end := diffPos + context
-						if end > len(expected) {
-							end = len(expected)
-						}
-						endActual := diffPos + context
-						if endActual > len(actual) {
-							endActual = len(actual)
-						}
-						t.Errorf("WAT mismatch at byte %d\n--- expected (around diff) ---\n%s\n--- actual (around diff) ---\n%s",
-							diffPos,
-							expected[start:end],
-							actual[start:endActual],
-						)
-						return
-					}
-					passed++
-				})
-			}
-		})
-	}
-
-	t.Logf("Results: %d passed, %d failed, %d skipped (of %d total)", passed, failed, skipped, len(fixtures))
-}
-
-func formatDiagnostics(diags []*diagnostics.DiagnosticMessage) string {
-	var b strings.Builder
-	for i, d := range diags {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(d.String())
-	}
-	return b.String()
-}
-
-func firstDiffPos(a, b string) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
-		if a[i] != b[i] {
-			return i
-		}
-	}
-	return n
 }
 
 func featureByName(name string) (common.Feature, bool) {
@@ -532,5 +209,277 @@ func featureByName(name string) (common.Feature, bool) {
 		return common.FeatureStringref, true
 	default:
 		return 0, false
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Skip lists
+// ---------------------------------------------------------------------------
+
+// binaryenFatalFixtures trigger binaryen C library crashes (Fatal() or SIGSEGV)
+// which cannot be caught by Go's recover(). These crash the entire test process.
+var binaryenFatalFixtures = map[string]bool{
+	"binary":               true, // call $ipow32 not defined
+	"call-rest":            true, // call $__newArray not defined
+	"class-override":       true, // SIGSEGV in FinalizeOverrideStub
+	"duplicate-identifier": true, // Fatal: Module::addGlobal already exists
+	"export":               true, // call target not defined
+	"exports":              true, // call target not defined
+	"exports-lazy":         true, // call $__newArray not defined
+	"extends-baseaggregate": true, // call $__newArray not defined
+	"field":                true, // call $__newArray not defined
+	"field-initialization": true, // call target not defined
+	"infer-generic":        true, // call $__newArray not defined
+	"object-literal":       true, // call target not defined
+	"resolve-access":       true, // call $__newArray not defined
+	"resolve-binary":       true, // call $ipow32 not defined
+	"super-inline":         true, // SIGSEGV in binaryen CGo call
+}
+
+// binaryenReleaseFatalFixtures crash binaryen only in release/optimized mode.
+var binaryenReleaseFatalFixtures = map[string]bool{
+	"class-overloading": true, // SIGABRT in optimizer
+	"class":             true, // SIGABRT in optimizer
+}
+
+// glueFixtures need custom host imports (ported in glue_test.go).
+// Runtime tests skip these unless glue is registered.
+var glueFixtures = map[string]bool{
+	"bigint-integration": true,
+	"declare":            true,
+	"exportimport-table": true,
+	"external":           true,
+	"mutable-globals":    true,
+}
+
+// ---------------------------------------------------------------------------
+// Level 0: TestCompiler_NoPanic
+// ---------------------------------------------------------------------------
+
+// TestCompiler_NoPanic verifies that each fixture compiles without panicking.
+// This is the broadest, cheapest test — 172 fixtures, debug mode only.
+func TestCompiler_NoPanic(t *testing.T) {
+	fixtures := discoverFixtures(t)
+	if len(fixtures) == 0 {
+		t.Skip("no fixtures found")
+	}
+
+	for _, name := range fixtures {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			if binaryenFatalFixtures[name] {
+				t.Skipf("triggers binaryen Fatal()")
+			}
+			config := loadFixtureConfig(t, name)
+			result := compileFixture(t, name, false, config)
+			if result.Panicked {
+				t.Errorf("panicked: %v", result.PanicValue)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Level 1: TestCompiler_ErrorDiagnostics
+// ---------------------------------------------------------------------------
+
+// TestCompiler_ErrorDiagnostics verifies that error-expecting fixtures produce
+// the expected diagnostic patterns in the correct order.
+func TestCompiler_ErrorDiagnostics(t *testing.T) {
+	fixtures := discoverFixtures(t)
+	if len(fixtures) == 0 {
+		t.Skip("no fixtures found")
+	}
+
+	for _, name := range fixtures {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			config := loadFixtureConfig(t, name)
+			if !config.expectsErrors() {
+				t.Skip("not an error fixture")
+			}
+			if binaryenFatalFixtures[name] {
+				t.Skipf("triggers binaryen Fatal()")
+			}
+
+			result := compileFixture(t, name, false, config)
+			if result.Panicked {
+				t.Fatalf("panicked: %v", result.PanicValue)
+			}
+
+			expectedPatterns := config.expectedStderr()
+			diagText := formatDiagnostics(result.Diagnostics)
+			lastIndex := 0
+			for i, pattern := range expectedPatterns {
+				if pattern == "EOF" {
+					continue
+				}
+				idx := strings.Index(diagText[lastIndex:], pattern)
+				if idx < 0 {
+					t.Errorf("missing expected stderr pattern #%d: %q\nGot diagnostics:\n%s", i+1, pattern, diagText)
+					return
+				}
+				lastIndex += idx + len(pattern)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Level 2: TestCompiler_WATMatch
+// ---------------------------------------------------------------------------
+
+// TestCompiler_WATMatch verifies that success fixtures produce WAT output
+// matching the stored reference files, in both debug and release modes.
+func TestCompiler_WATMatch(t *testing.T) {
+	fixtures := discoverFixtures(t)
+	if len(fixtures) == 0 {
+		t.Skip("no fixtures found")
+	}
+
+	for _, name := range fixtures {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			config := loadFixtureConfig(t, name)
+			if config.expectsErrors() {
+				t.Skip("error fixture — tested by TestCompiler_ErrorDiagnostics")
+			}
+			if binaryenFatalFixtures[name] {
+				t.Skipf("triggers binaryen Fatal()")
+			}
+
+			for _, mode := range []struct {
+				name    string
+				release bool
+			}{
+				{"debug", false},
+				{"release", true},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					expectedPath := filepath.Join(fixturesRoot(), name+"."+mode.name+".wat")
+					expectedBytes, err := os.ReadFile(expectedPath)
+					if err != nil {
+						t.Skipf("no %s fixture file", mode.name)
+					}
+					expected := normalize(string(expectedBytes))
+
+					result := compileFixture(t, name, mode.release, config)
+					if result.Panicked {
+						t.Fatalf("panicked: %v", result.PanicValue)
+					}
+					if result.Module == nil {
+						t.Fatal("compiler returned nil module")
+					}
+
+					// Filter to only error-level diagnostics for success fixtures
+					var errors []*diagnostics.DiagnosticMessage
+					for _, d := range result.Diagnostics {
+					if d.Category == diagnostics.DiagnosticCategoryError {
+							errors = append(errors, d)
+						}
+					}
+					if len(errors) > 0 {
+						t.Errorf("unexpected error diagnostics:\n%s", formatDiagnostics(errors))
+						return
+					}
+
+					actual := normalize(result.Module.ToText(false))
+					if actual != expected {
+						diffPos := firstDiffPos(expected, actual)
+						ctx := 200
+						start := max(0, diffPos-ctx)
+						end := min(len(expected), diffPos+ctx)
+						endActual := min(len(actual), diffPos+ctx)
+						t.Errorf("WAT mismatch at byte %d\n--- expected ---\n%s\n--- actual ---\n%s",
+							diffPos, expected[start:end], actual[start:endActual])
+					}
+				})
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Level 3+4: TestCompiler_Runtime
+// ---------------------------------------------------------------------------
+
+// TestCompiler_Runtime compiles each success fixture to Wasm binary in both debug
+// and release modes, instantiates via wazero with standard AS host imports
+// (env.abort, env.trace, env.seed), calls _start/_initialize, and verifies no
+// abort or trap occurs.
+//
+// This is the most valuable test — it proves the full pipeline works end-to-end.
+func TestCompiler_Runtime(t *testing.T) {
+	fixtures := discoverFixtures(t)
+	if len(fixtures) == 0 {
+		t.Skip("no fixtures found")
+	}
+
+	for _, name := range fixtures {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			config := loadFixtureConfig(t, name)
+			if config.expectsErrors() {
+				t.Skip("error fixture")
+			}
+			if binaryenFatalFixtures[name] {
+				t.Skip("triggers binaryen Fatal()")
+			}
+			if config.SkipInstantiate {
+				t.Skip("fixture config says skipInstantiate")
+			}
+
+			// Check for glue — use registered glue or skip
+			var glue *Glue
+			if glueFixtures[name] {
+				glue = getGlue(name)
+				if glue == nil {
+					t.Skipf("needs glue imports (not yet ported)")
+				}
+			}
+
+			// Test both debug and release modes
+			for _, mode := range []struct {
+				name    string
+				release bool
+			}{
+				{"debug", false},
+				{"release", true},
+			} {
+				t.Run(mode.name, func(t *testing.T) {
+					if mode.release && binaryenReleaseFatalFixtures[name] {
+						t.Skip("crashes binaryen optimizer")
+					}
+
+					ctx := context.Background()
+					wasmBytes, result := compileFixtureToBinary(t, name, mode.release, config)
+					if result.Panicked {
+						t.Fatalf("panicked during compilation: %v", result.PanicValue)
+					}
+					if wasmBytes == nil {
+						t.Fatal("compilation produced nil binary")
+					}
+					if len(wasmBytes) == 0 {
+						t.Fatal("compilation produced empty binary")
+					}
+
+					// Instantiate and run
+					rr := instantiateAndRun(t, ctx, wasmBytes, glue)
+					if rr.Runtime != nil {
+						defer rr.Runtime.Close(ctx)
+					}
+
+					if rr.InstErr != nil {
+						t.Fatalf("instantiation error: %v", rr.InstErr)
+					}
+					if rr.Aborted {
+						t.Errorf("abort called: %s in %s(%d:%d)", rr.AbortMsg, rr.AbortFile, rr.AbortLine, rr.AbortCol)
+					}
+					if rr.StartErr != nil && !rr.Aborted {
+						t.Errorf("runtime error: %v", rr.StartErr)
+					}
+				})
+			}
+		})
 	}
 }

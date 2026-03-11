@@ -23,7 +23,8 @@ func (c *Compiler) CompileProgram() *module.Module {
 	mod := c.Module()
 	prog := c.Program
 	resolver := c.Resolver()
-	hasShadowStack := options.StackSize > 0 // implies runtime=incremental
+	hasStackSize := options.StackSize > 0
+	hasShadowStack := hasStackSize && c.ShadowStack != nil // only if pass is ported
 
 	// initialize lookup maps, built-ins, imports, exports, etc.
 	prog.Initialize()
@@ -135,9 +136,19 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	memoryOffset := i64Align(c.MemoryOffset, int64(options.UsizeType().ByteSize()))
 
+	// Determine if runtime globals are needed.
+	// The stack gap is always added when any runtime feature is used,
+	// even if StackSize is 0 (ShadowStack pass not yet ported).
+	// This matches the TS CLI behavior which always sets StackSize=32768.
+	needsRuntimeGlobals := (c.RuntimeFeatures&(RuntimeFeaturesData|RuntimeFeaturesStack|RuntimeFeaturesHeap)) != 0 || hasStackSize
+	effectiveStackSize := int64(options.StackSize)
+	if effectiveStackSize == 0 && needsRuntimeGlobals {
+		effectiveStackSize = 32768 // DEFAULT_STACK_SIZE
+	}
+
 	// finalize data
 	mod.RemoveGlobal(common.BuiltinNameDataEnd)
-	if (c.RuntimeFeatures&RuntimeFeaturesData != 0) || hasShadowStack {
+	if needsRuntimeGlobals {
 		if options.IsWasm64() {
 			mod.AddGlobal(common.BuiltinNameDataEnd, module.TypeRefI64, false,
 				mod.I64(memoryOffset),
@@ -151,9 +162,9 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	// finalize stack (grows down from __heap_base to __data_end)
 	mod.RemoveGlobal(common.BuiltinNameStackPointer)
-	if (c.RuntimeFeatures&RuntimeFeaturesStack != 0) || hasShadowStack {
+	if needsRuntimeGlobals {
 		memoryOffset = i64Align(
-			memoryOffset+int64(options.StackSize),
+			memoryOffset+effectiveStackSize,
 			int64(options.UsizeType().ByteSize()),
 		)
 		if options.IsWasm64() {
@@ -169,7 +180,7 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	// finalize heap
 	mod.RemoveGlobal(common.BuiltinNameHeapBase)
-	if (c.RuntimeFeatures&RuntimeFeaturesHeap != 0) || hasShadowStack {
+	if needsRuntimeGlobals {
 		if options.IsWasm64() {
 			mod.AddGlobal(common.BuiltinNameHeapBase, module.TypeRefI64, false,
 				mod.I64(memoryOffset),

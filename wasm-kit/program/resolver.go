@@ -2503,8 +2503,8 @@ func (r *Resolver) resolveFunctionExpression(
 	return functionType
 }
 
-// determineIntegerLiteralType determines the final type of an integer literal.
-func (r *Resolver) determineIntegerLiteralType(
+// DetermineIntegerLiteralType determines the final type of an integer literal.
+func (r *Resolver) DetermineIntegerLiteralType(
 	expr *ast.IntegerLiteralExpression,
 	negate bool,
 	ctxType *types.Type,
@@ -2913,7 +2913,7 @@ func (r *Resolver) lookupLiteralExpression(
 
 	switch n := node.(type) {
 	case *ast.IntegerLiteralExpression:
-		return r.GetElementOfType(r.determineIntegerLiteralType(n, false, ctxType))
+		return r.GetElementOfType(r.DetermineIntegerLiteralType(n, false, ctxType))
 
 	case *ast.FloatLiteralExpression:
 		if ctxType == types.TypeF32 {
@@ -3492,7 +3492,7 @@ func (r *Resolver) resolveUnaryPrefixExpression(
 	case tokenizer.TokenMinus:
 		// implicitly negate if an integer literal to distinguish between i32/u32/i64
 		if ast.IsLiteralKind(operand, ast.LiteralKindInteger) {
-			return r.determineIntegerLiteralType(
+			return r.DetermineIntegerLiteralType(
 				operand.(*ast.IntegerLiteralExpression),
 				true,
 				ctxType,

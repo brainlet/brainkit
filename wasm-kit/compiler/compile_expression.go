@@ -2283,45 +2283,37 @@ func (c *Compiler) compileLiteralExpression(expression ast.Node, contextualType 
 // Ported from: assemblyscript/src/compiler.ts compileIntegerLiteralExpression (lines 4902-4970).
 func (c *Compiler) compileIntegerLiteral(expression *ast.IntegerLiteralExpression, contextualType *types.Type) module.ExpressionRef {
 	mod := c.Module()
-	value := expression.Value
+	intValue := expression.Value
 
-	// If the contextual type is f64 or f32, produce a float
-	if contextualType == types.TypeF64 {
-		c.CurrentType = types.TypeF64
-		return mod.F64(float64(value))
-	}
-	if contextualType == types.TypeF32 {
-		c.CurrentType = types.TypeF32
-		return mod.F32(float32(value))
-	}
+	// Determine the actual type based on the value and contextual type.
+	// Ported from: compiler.ts lines 8052-8071.
+	typ := c.Resolver().DetermineIntegerLiteralType(expression, false, contextualType)
+	c.CurrentType = typ
 
-	// If the contextual type is i64 or u64, produce i64
-	if contextualType == types.TypeI64 || contextualType == types.TypeU64 {
-		c.CurrentType = contextualType
-		return mod.I64(value)
-	}
-
-	// isize/usize: depends on wasm32 vs wasm64
-	if contextualType.Kind == types.TypeKindIsize || contextualType.Kind == types.TypeKindUsize {
-		c.CurrentType = contextualType
-		if c.Options().IsWasm64() {
-			return mod.I64(value)
+	switch typ.Kind {
+	case types.TypeKindIsize:
+		if !c.Options().IsWasm64() {
+			return mod.I32(int32(intValue))
 		}
-		return mod.I32(int32(value))
+		fallthrough
+	case types.TypeKindI64:
+		return mod.I64(intValue)
+	case types.TypeKindUsize:
+		if !c.Options().IsWasm64() {
+			return mod.I32(int32(intValue))
+		}
+		fallthrough
+	case types.TypeKindU64:
+		return mod.I64(intValue)
+	case types.TypeKindF32:
+		c.CurrentType = types.TypeF32
+		return mod.F32(float32(intValue))
+	case types.TypeKindF64:
+		c.CurrentType = types.TypeF64
+		return mod.F64(float64(intValue))
+	default:
+		return mod.I32(int32(intValue))
 	}
-
-	// Otherwise, produce i32
-	if contextualType == types.TypeI32 || contextualType == types.TypeU32 ||
-		contextualType == types.TypeI16 || contextualType == types.TypeU16 ||
-		contextualType == types.TypeI8 || contextualType == types.TypeU8 ||
-		contextualType == types.TypeBool {
-		c.CurrentType = contextualType
-		return mod.I32(int32(value))
-	}
-
-	// Default: i32
-	c.CurrentType = types.TypeI32
-	return mod.I32(int32(value))
 }
 
 // compileFloatLiteral compiles a float literal.
