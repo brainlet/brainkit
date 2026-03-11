@@ -2060,7 +2060,7 @@ func (r *Resolver) LookupExpression(
 		return r.lookupFunctionExpression(node.(*ast.FunctionExpression), ctxFlow, ctxType, reportMode)
 
 	case ast.NodeKindIdentifier, ast.NodeKindFalse, ast.NodeKindNull, ast.NodeKindTrue:
-		return r.lookupIdentifierExpression(node.(*ast.IdentifierExpression), ctxFlow, ctxFlow.SourceFunction().(Element), reportMode)
+		return r.LookupIdentifierExpression(node.(*ast.IdentifierExpression), ctxFlow, ctxFlow.SourceFunction().(Element), reportMode)
 
 	case ast.NodeKindThis:
 		return r.lookupThisExpression(node.(*ast.IdentifierExpression), ctxFlow, ctxType, reportMode)
@@ -2210,8 +2210,9 @@ func (r *Resolver) resolveSuperExpression(
 }
 
 // lookupIdentifierExpression looks up the program element the specified identifier expression refers to.
+// LookupIdentifierExpression resolves an identifier expression within a given context.
 // Ported from: assemblyscript/src/resolver.ts lookupIdentifierExpression (lines 1151-1201).
-func (r *Resolver) lookupIdentifierExpression(
+func (r *Resolver) LookupIdentifierExpression(
 	node *ast.IdentifierExpression,
 	ctxFlow *flow.Flow,
 	ctxElement Element, // differs for enums and namespaces
@@ -2303,7 +2304,7 @@ func (r *Resolver) resolveIdentifierExpression(
 		return r.program.Options.UsizeType()
 	}
 
-	element := r.lookupIdentifierExpression(node, ctxFlow, ctxElement, reportMode)
+	element := r.LookupIdentifierExpression(node, ctxFlow, ctxElement, reportMode)
 	if element == nil {
 		return nil
 	}

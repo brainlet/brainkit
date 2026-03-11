@@ -221,9 +221,7 @@ func featureByName(name string) (common.Feature, bool) {
 var binaryenFatalFixtures = map[string]bool{
 	"class-override":       true, // SIGSEGV in FinalizeOverrideStub
 	"duplicate-identifier": true, // Fatal: Module::addGlobal already exists
-	"export":               true, // SIGSEGV in wazero instantiation
-	"exports":              true, // SIGSEGV in wazero instantiation
-	"exports-lazy":         true, // local.set index validator error
+	"exports-lazy":         true, // Assertion: local.set index too large (binaryen ToBinary)
 	"super-inline":         true, // SIGSEGV in binaryen CGo call
 }
 

@@ -1829,9 +1829,17 @@ func (c *Compiler) compileIdentifierExpression(expression *ast.IdentifierExpress
 	// Maybe compile the enclosing source file
 	c.maybeCompileEnclosingSource(expression)
 
-	// Resolve identifier through the resolver
+	// Resolve identifier through the resolver.
+	// Ported from: compiler.ts lines 7477-7481:
+	//   let currentParent = this.currentParent;
+	//   if (!currentParent) currentParent = sourceFunction;
+	//   let target = this.resolver.lookupIdentifierExpression(expression, flow, currentParent, reportMode);
 	resolver := c.Resolver()
-	target := resolver.LookupExpression(expression, fl, contextualType, program.ReportModeReport)
+	currentParent := c.CurrentParent
+	if currentParent == nil {
+		currentParent = fl.SourceFunction().(program.Element)
+	}
+	target := resolver.LookupIdentifierExpression(expression, fl, currentParent, program.ReportModeReport)
 	if target == nil {
 		// make a guess to avoid assertions in calling code
 		if c.CurrentType == types.TypeVoid {
