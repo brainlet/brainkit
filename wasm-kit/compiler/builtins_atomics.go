@@ -12,21 +12,21 @@ import (
 
 // registerAtomicsBuiltins registers atomic operation builtin handlers.
 func registerAtomicsBuiltins() {
-	builtinFunctions["atomic.load"] = builtinAtomicLoad
-	builtinFunctions["atomic.store"] = builtinAtomicStore
-	builtinFunctions["atomic.add"] = builtinAtomicAdd
-	builtinFunctions["atomic.sub"] = builtinAtomicSub
-	builtinFunctions["atomic.and"] = builtinAtomicAnd
-	builtinFunctions["atomic.or"] = builtinAtomicOr
-	builtinFunctions["atomic.xor"] = builtinAtomicXor
-	builtinFunctions["atomic.xchg"] = builtinAtomicXchg
-	builtinFunctions["atomic.cmpxchg"] = builtinAtomicCmpxchg
-	builtinFunctions["atomic.wait"] = builtinAtomicWait
-	builtinFunctions["atomic.notify"] = builtinAtomicNotify
-	builtinFunctions["atomic.fence"] = builtinAtomicFence
+	builtinFunctions[common.BuiltinNameAtomicLoad] = builtinAtomicLoad
+	builtinFunctions[common.BuiltinNameAtomicStore] = builtinAtomicStore
+	builtinFunctions[common.BuiltinNameAtomicAdd] = builtinAtomicAdd
+	builtinFunctions[common.BuiltinNameAtomicSub] = builtinAtomicSub
+	builtinFunctions[common.BuiltinNameAtomicAnd] = builtinAtomicAnd
+	builtinFunctions[common.BuiltinNameAtomicOr] = builtinAtomicOr
+	builtinFunctions[common.BuiltinNameAtomicXor] = builtinAtomicXor
+	builtinFunctions[common.BuiltinNameAtomicXchg] = builtinAtomicXchg
+	builtinFunctions[common.BuiltinNameAtomicCmpxchg] = builtinAtomicCmpxchg
+	builtinFunctions[common.BuiltinNameAtomicWait] = builtinAtomicWait
+	builtinFunctions[common.BuiltinNameAtomicNotify] = builtinAtomicNotify
+	builtinFunctions[common.BuiltinNameAtomicFence] = builtinAtomicFence
 	// memory.atomic.wait32/wait64 aliases
-	builtinFunctions["memory.atomic.wait32"] = builtinMemoryAtomicWait32
-	builtinFunctions["memory.atomic.wait64"] = builtinMemoryAtomicWait64
+	builtinFunctions[common.BuiltinNameMemoryAtomicWait32] = builtinMemoryAtomicWait32
+	builtinFunctions[common.BuiltinNameMemoryAtomicWait64] = builtinMemoryAtomicWait64
 }
 
 // atomic.load<T!>(ptr: usize, immOffset?: usize) -> T*

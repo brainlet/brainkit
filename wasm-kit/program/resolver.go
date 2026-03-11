@@ -212,8 +212,16 @@ func (r *Resolver) resolveNamedType(
 		// Handle classes and interfaces
 		if element.GetElementKind() == ElementKindClassPrototype ||
 			element.GetElementKind() == ElementKindInterfacePrototype {
+			// In TS, InterfacePrototype extends ClassPrototype so the cast is direct.
+			// In Go, InterfacePrototype embeds ClassPrototype — extract it.
+			var prototype *ClassPrototype
+			if cp, ok := element.(*ClassPrototype); ok {
+				prototype = cp
+			} else if ip, ok := element.(*InterfacePrototype); ok {
+				prototype = &ip.ClassPrototype
+			}
 			instance := r.ResolveClassInclTypeArguments(
-				element.(*ClassPrototype),
+				prototype,
 				typeArgumentNodes,
 				f,
 				ctxElement,
@@ -1326,6 +1334,12 @@ func (r *Resolver) ResolveClass(
 	ctxTypes map[string]*types.Type,
 	reportMode ReportMode,
 ) *Class {
+	// Guard: callers may pass nil prototype when std lib component is missing.
+	// TS require() throws, so this path is unreachable in TS, but Go callers
+	// may get nil from FunctionPrototype() etc. when the std lib isn't loaded.
+	if prototype == nil {
+		return nil
+	}
 	instanceKey := ""
 	if typeArguments != nil {
 		instanceKey = types.TypesToString(typeArguments)
@@ -3236,13 +3250,20 @@ func (r *Resolver) lookupNewExpression(
 	if element == nil {
 		return nil
 	}
-	if element.GetElementKind() == ElementKindClassPrototype {
+	if element.GetElementKind() == ElementKindClassPrototype ||
+		element.GetElementKind() == ElementKindInterfacePrototype {
 		ctxTypes := util.CloneMap(ctxFlow.ContextualTypeArguments())
 		if ctxTypes == nil {
 			ctxTypes = make(map[string]*types.Type)
 		}
+		var prototype *ClassPrototype
+		if cp, ok := element.(*ClassPrototype); ok {
+			prototype = cp
+		} else if ip, ok := element.(*InterfacePrototype); ok {
+			prototype = &ip.ClassPrototype
+		}
 		return r.ResolveClassInclTypeArguments(
-			element.(*ClassPrototype),
+			prototype,
 			node.TypeArguments,
 			ctxFlow,
 			sourceFunction,

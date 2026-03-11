@@ -6,7 +6,10 @@ package binaryen
 #include <stdlib.h>
 */
 import "C"
-import "unsafe"
+import (
+	"runtime"
+	"unsafe"
+)
 
 // ---------------------------------------------------------------------------
 // Module validation, optimization, and output
@@ -259,6 +262,8 @@ func (m *Module) SetMemoryFull(initial, maximum Index, exportName string, segmen
 			cExport, nil, nil, nil, nil, nil, 0, cBool(shared), cBool(is64), m.str(memoryName))
 		return
 	}
+	var pinner runtime.Pinner
+	defer pinner.Unpin()
 	cNames := make([]*C.char, n)
 	cData := make([]*C.char, n)
 	cPassive := make([]C.bool, n)
@@ -267,6 +272,7 @@ func (m *Module) SetMemoryFull(initial, maximum Index, exportName string, segmen
 	for i, seg := range segments {
 		cNames[i] = m.str(seg.Name)
 		if len(seg.Data) > 0 {
+			pinner.Pin(&seg.Data[0])
 			cData[i] = (*C.char)(unsafe.Pointer(&seg.Data[0]))
 		}
 		cPassive[i] = cBool(seg.Passive)

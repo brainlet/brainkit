@@ -549,9 +549,7 @@ func (c *Compiler) ensureRuntimeFunction(instance *program.Function) int64 {
 	}
 
 	// Return memory address: segment offset + totalOverhead
-	// The segment Offset is an ExpressionRef (i32.const or i64.const), we need the raw value.
-	segmentOffset := module.GetConstValueI64(memorySegment.Offset)
-	return segmentOffset + int64(prog.TotalOverhead())
+	return memorySegment.RawOffset + int64(prog.TotalOverhead())
 }
 
 // writeRuntimeField writes a field value into a byte buffer at the field's memory offset.

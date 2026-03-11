@@ -68,7 +68,7 @@ func (p *Parser) parseTopLevelStatement(tn *tokenizer.Tokenizer, namespace *ast.
 	}
 
 	// parse the actual statement
-	token := tn.Peek(tokenizer.IdentifierHandlingPrefer, MaxInt32)
+	token := tn.Peek(tokenizer.IdentifierHandlingDefault, MaxInt32)
 	if startPos < 0 {
 		startPos = tn.NextTokenPos()
 	}

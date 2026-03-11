@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/brainlet/brainkit/wasm-kit/ast"
+	"github.com/brainlet/brainkit/wasm-kit/common"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/module"
 	"github.com/brainlet/brainkit/wasm-kit/types"
@@ -15,9 +16,9 @@ import (
 
 // registerMemoryBuiltins registers memory access builtin handlers.
 func registerMemoryBuiltins() {
-	builtinFunctions["load"] = builtinLoad
-	builtinFunctions["store"] = builtinStore
-	builtinFunctions["memory.data"] = builtinMemoryData
+	builtinFunctions[common.BuiltinNameLoad] = builtinLoad
+	builtinFunctions[common.BuiltinNameStore] = builtinStore
+	builtinFunctions[common.BuiltinNameMemoryData] = builtinMemoryData
 }
 
 // load<T!>(ptr: usize, immOffset?: usize, immAlign?: usize) -> T*

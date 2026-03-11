@@ -2309,8 +2309,9 @@ func (c *Compiler) addRuntimeMemorySegment(buffer []byte) *module.MemorySegment 
 		offsetExpr = c.Module().I32(int32(memoryOffset))
 	}
 	segment := &module.MemorySegment{
-		Buffer: buffer,
-		Offset: offsetExpr,
+		Buffer:    buffer,
+		Offset:    offsetExpr,
+		RawOffset: memoryOffset,
 	}
 	c.MemorySegments = append(c.MemorySegments, segment)
 	c.MemoryOffset = memoryOffset + int64(len(buffer))

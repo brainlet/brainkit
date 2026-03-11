@@ -1064,9 +1064,12 @@ func (p *Program) ComputeBlockStart64(currentOffset int64) int64 {
 func (p *Program) require(name string, kind ElementKind) Element {
 	elem := p.Lookup(name)
 	if elem == nil {
+		// TS throws: "Missing standard library component: <name>"
+		// This is a fatal condition — the standard library is incomplete.
 		return nil
 	}
 	if elem.GetElementKind() != kind {
+		// TS throws: "Invalid standard library component kind: <name>"
 		return nil
 	}
 	return elem

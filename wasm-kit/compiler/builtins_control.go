@@ -6,6 +6,7 @@ package compiler
 import (
 	"math"
 
+	"github.com/brainlet/brainkit/wasm-kit/ast"
 	"github.com/brainlet/brainkit/wasm-kit/common"
 	"github.com/brainlet/brainkit/wasm-kit/diagnostics"
 	"github.com/brainlet/brainkit/wasm-kit/flow"
@@ -28,6 +29,12 @@ func registerControlBuiltins() {
 	builtinFunctions[common.BuiltinNameUnchecked] = builtinUnchecked
 	builtinFunctions[common.BuiltinNameInlineAlways] = builtinInlineAlways
 	builtinFunctions[common.BuiltinNameInstantiate] = builtinInstantiate
+	builtinFunctions[common.BuiltinNameVisitGlobals] = builtinVisitGlobals
+	builtinFunctions[common.BuiltinNameVisitMembers] = builtinVisitMembers
+	builtinFunctions[common.BuiltinNameERROR] = builtinError
+	builtinFunctions[common.BuiltinNameWARNING] = builtinWarning
+	builtinFunctions[common.BuiltinNameINFO] = builtinInfo
+	builtinFunctions[common.BuiltinNameFunctionCall] = builtinFunctionCall
 }
 
 // select<T?>(ifTrue: T, ifFalse: T, condition: bool) -> T
@@ -294,4 +301,129 @@ func builtinInstantiate(ctx *BuiltinFunctionContext) module.ExpressionRef {
 	ctor := compiler.ensureConstructor(classInstance.(*program.Class), ctx.ReportNode)
 	compiler.checkFieldInitialization(classInstance.(*program.Class), ctx.ReportNode)
 	return compiler.compileInstantiate(ctor, operands, ConstraintsNone, ctx.ReportNode)
+}
+
+// __visit_globals(cookie: u32) -> void
+// Ported from: assemblyscript/src/builtins.ts builtin_visit_globals (lines 7092-7107).
+func builtinVisitGlobals(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkTypeAbsent(ctx))|boolToInt(checkArgsRequired(ctx, 1)) != 0 {
+		compiler.CurrentType = types.TypeVoid
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	arg0 := compiler.CompileExpression(operands[0], types.TypeU32, ConstraintsConvImplicit)
+	compiler.RuntimeFeatures |= RuntimeFeaturesVisitGlobals
+	compiler.CurrentType = types.TypeVoid
+	return mod.Call(common.BuiltinNameVisitGlobals, []module.ExpressionRef{arg0}, module.TypeRefNone)
+}
+
+// __visit_members(ref: usize, cookie: u32) -> void
+// Ported from: assemblyscript/src/builtins.ts builtin_visit_members (lines 7111-7127).
+func builtinVisitMembers(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	if boolToInt(checkTypeAbsent(ctx))|boolToInt(checkArgsRequired(ctx, 2)) != 0 {
+		compiler.CurrentType = types.TypeVoid
+		return mod.Unreachable()
+	}
+	operands := ctx.Operands
+	arg0 := compiler.CompileExpression(operands[0], compiler.Options().UsizeType(), ConstraintsConvImplicit)
+	arg1 := compiler.CompileExpression(operands[1], types.TypeU32, ConstraintsConvImplicit)
+	compiler.RuntimeFeatures |= RuntimeFeaturesVisitMembers
+	compiler.CurrentType = types.TypeVoid
+	return mod.Call(common.BuiltinNameVisitMembers, []module.ExpressionRef{arg0, arg1}, module.TypeRefNone)
+}
+
+// builtin_diagnostic is a shared helper for ERROR, WARNING, INFO builtins.
+// Ported from: assemblyscript/src/builtins.ts builtin_diagnostic (lines 3846-3864).
+func builtinDiagnostic(ctx *BuiltinFunctionContext, category diagnostics.DiagnosticCategory) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	checkTypeAbsent(ctx)
+	operands := ctx.Operands
+	reportNode := ctx.ReportNode
+	var messageStr string
+	if len(operands) > 0 {
+		messageStr = operands[0].GetRange().String()
+	} else {
+		messageStr = reportNode.GetRange().String()
+	}
+	compiler.EmitDiagnostic(
+		diagnostics.DiagnosticCodeUserDefined0,
+		category,
+		reportNode.GetRange(),
+		nil,
+		messageStr, "", "",
+	)
+	if category == diagnostics.DiagnosticCategoryError {
+		return mod.Unreachable()
+	}
+	return mod.Nop()
+}
+
+// ERROR(message?)
+// Ported from: assemblyscript/src/builtins.ts builtin_error (line 3867).
+func builtinError(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	return builtinDiagnostic(ctx, diagnostics.DiagnosticCategoryError)
+}
+
+// WARNING(message?)
+// Ported from: assemblyscript/src/builtins.ts builtin_warning (line 3873).
+func builtinWarning(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	return builtinDiagnostic(ctx, diagnostics.DiagnosticCategoryWarning)
+}
+
+// INFO(message?)
+// Ported from: assemblyscript/src/builtins.ts builtin_info (line 3879).
+func builtinInfo(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	return builtinDiagnostic(ctx, diagnostics.DiagnosticCategoryInfo)
+}
+
+// Function<T>#call(thisArg: thisof<T> | null, ...args: *[]) -> returnof<T>
+// Ported from: assemblyscript/src/builtins.ts builtin_function_call (lines 3887-3919).
+func builtinFunctionCall(ctx *BuiltinFunctionContext) module.ExpressionRef {
+	compiler := ctx.Compiler
+	mod := compiler.Module()
+	parent := ctx.Prototype.GetParent()
+	if parent == nil || parent.GetElementKind() != program.ElementKindClass {
+		panic("expected parent to be a Class")
+	}
+	classInstance := parent.(*program.Class)
+	typeArguments := classInstance.TypeArguments
+	if typeArguments == nil || len(typeArguments) != 1 {
+		panic("expected exactly 1 type argument")
+	}
+	ftype := typeArguments[0]
+	signature := ftype.GetSignature()
+	if signature == nil {
+		panic("expected type to have a signature")
+	}
+	returnType := signature.ReturnType
+	if boolToInt(checkTypeAbsent(ctx))|boolToInt(checkArgsOptional(ctx, 1+int(signature.RequiredParameters), 1+len(signature.ParameterTypes))) != 0 {
+		compiler.CurrentType = returnType
+		return mod.Unreachable()
+	}
+	functionArg := compiler.CompileExpression(ctx.ThisOperand, ftype, ConstraintsConvImplicit)
+	// shift first operand as thisOperand
+	operands := ctx.Operands
+	if len(operands) == 0 {
+		panic("expected at least one operand")
+	}
+	thisOperand := operands[0]
+	operands = operands[1:]
+	thisType := signature.ThisType
+	var thisArg module.ExpressionRef
+	if thisType != nil {
+		thisArg = compiler.CompileExpression(thisOperand, thisType, ConstraintsConvImplicit)
+	} else if thisOperand.GetKind() != ast.NodeKindNull {
+		compiler.Error(
+			diagnostics.DiagnosticCodeThisCannotBeReferencedInCurrentLocation,
+			thisOperand.GetRange(),
+			"", "", "",
+		)
+		return mod.Unreachable()
+	}
+	return compiler.compileCallIndirect(signature, functionArg, operands, ctx.ReportNode, thisArg, ctx.ContextualType == types.TypeVoid)
 }
