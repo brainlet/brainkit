@@ -2658,6 +2658,13 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 	stmts := make([]module.ExpressionRef, 0, 2+len(names))
 	stmts = append(stmts, mod.LocalSet(tempIdx, allocExpr, false))
 
+	// Ported from: assemblyscript/src/compiler.ts compileObjectLiteral (lines 8648-8719).
+	type deferredProp struct {
+		property  *program.Property
+		valueExpr ast.Node
+	}
+	var deferredProperties []deferredProp
+
 	// For each name/value pair, look up the member on the class and store
 	for i := 0; i < len(names) && i < len(values); i++ {
 		fieldName := names[i].Text
@@ -2689,10 +2696,9 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 				)
 				continue
 			}
-			// Check if field vs deferred property
+			// Defer non-field properties (setters called after fields)
 			if !propertyInstance.IsField() {
-				// Defer non-field properties (setters called after fields)
-				// TODO: implement deferred property setter calls
+				deferredProperties = append(deferredProperties, deferredProp{propertyInstance, values[i]})
 				continue
 			}
 			propertyType := propertyInstance.GetType()
@@ -2706,6 +2712,16 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 			}
 			stmts = append(stmts, expr)
 		}
+	}
+
+	// Call deferred real property setters after all fields are initialized
+	for _, dp := range deferredProperties {
+		setterInstance := dp.property.SetterInstance
+		valueExpr := c.CompileExpression(dp.valueExpr, dp.property.GetType(), ConstraintsConvImplicit)
+		stmts = append(stmts, c.makeCallDirect(setterInstance,
+			[]module.ExpressionRef{mod.LocalGet(tempIdx, sizeTypeRef), valueExpr},
+			expression, false,
+		))
 	}
 
 	stmts = append(stmts, mod.LocalGet(tempIdx, sizeTypeRef))
