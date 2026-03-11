@@ -2505,16 +2505,17 @@ func (c *Compiler) compileArrayLiteral(expression *ast.ArrayLiteralExpression, c
 	// Returns the array reference
 
 	// Allocate: call __newArray(numElements, alignLog2, classId, 0 /* no static buffer */)
-	allocExpr := mod.Call(
-		common.CommonNameNewArray,
-		[]module.ExpressionRef{
-			mod.I32(numElements),
-			mod.I32(alignLog2),
-			mod.I32(classId),
-			c.makeZeroOfType(c.Options().UsizeType()), // no static data buffer
-		},
-		sizeTypeRef,
-	)
+	newArrayFn := c.ensureRuntimeFunctionCompiled(common.CommonNameNewArray)
+	if newArrayFn == nil {
+		c.CurrentType = types.TypeVoid
+		return mod.Unreachable()
+	}
+	allocExpr := c.makeCallDirect(newArrayFn, []module.ExpressionRef{
+		mod.I32(numElements),
+		mod.I32(alignLog2),
+		mod.I32(classId),
+		c.makeZeroOfType(c.Options().UsizeType()), // no static data buffer
+	}, expression, false)
 
 	if numElements == 0 {
 		c.CurrentType = contextualType
@@ -2626,14 +2627,9 @@ func (c *Compiler) compileObjectLiteral(expression *ast.ObjectLiteralExpression,
 		return mod.Unreachable()
 	}
 
-	// Allocate the object via __new
+	// Allocate the object via makeAllocation (handles __new resolution and compilation)
+	allocExpr := c.makeAllocation(classInstance)
 	sizeTypeRef := c.Options().UsizeType().ToRef()
-	size := int32(classInstance.NextMemoryOffset)
-	classId := int32(classInstance.Id())
-	allocExpr := mod.Call("~lib/rt/__new",
-		[]module.ExpressionRef{mod.I32(size), mod.I32(classId)},
-		sizeTypeRef,
-	)
 
 	names := expression.Names
 	values := expression.Values
@@ -4239,41 +4235,52 @@ func (c *Compiler) makeUnaryNeg(expr module.ExpressionRef, typ *types.Type) modu
 
 // compilePow compiles a power expression (x ** y).
 // Ported from: assemblyscript/src/compiler.ts makePow (lines 5087-5230).
-// TODO: Full implementation needs runtime function resolution (ipow32/ipow64 instances).
 func (c *Compiler) compilePow(left, right module.ExpressionRef, typ *types.Type, reportNode ast.Node) module.ExpressionRef {
 	mod := c.Module()
 	c.CurrentType = typ
+
+	// Helper to resolve, compile, and call a runtime math function.
+	callMathFunc := func(name string, args []module.ExpressionRef, retType module.TypeRef) module.ExpressionRef {
+		prototype := c.Program.Lookup(name)
+		if prototype == nil {
+			c.Error(diagnostics.DiagnosticCodeCannotFindName0, reportNode.GetRange(), name, "", "")
+			return mod.Unreachable()
+		}
+		if prototype.GetElementKind() != program.ElementKindFunctionPrototype {
+			return mod.Unreachable()
+		}
+		instance := c.Resolver().ResolveFunction(prototype.(*program.FunctionPrototype), nil, nil, program.ReportModeReport)
+		if instance == nil || !c.CompileFunction(instance) {
+			return mod.Unreachable()
+		}
+		return c.makeCallDirect(instance, args, reportNode, false)
+	}
+
 	switch typ.Kind {
 	case types.TypeKindBool:
-		// select(1, right == 0, left)
 		return mod.Select(mod.I32(1),
 			mod.Binary(module.BinaryOpEqI32, right, mod.I32(0)),
 			left)
 	case types.TypeKindI8, types.TypeKindU8, types.TypeKindI16, types.TypeKindU16:
 		left = c.ensureSmallIntegerWrap(left, typ)
 		right = c.ensureSmallIntegerWrap(right, typ)
-		// fall through to I32 case — call ipow32, then wrap result
-		expr := mod.Call(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
+		expr := callMathFunc(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
 		return c.ensureSmallIntegerWrap(expr, typ)
 	case types.TypeKindI32, types.TypeKindU32:
-		return mod.Call(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
+		return callMathFunc(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
 	case types.TypeKindI64, types.TypeKindU64:
-		return mod.Call(common.CommonNameIpow64, []module.ExpressionRef{left, right}, module.TypeRefI64)
+		return callMathFunc(common.CommonNameIpow64, []module.ExpressionRef{left, right}, module.TypeRefI64)
 	case types.TypeKindIsize, types.TypeKindUsize:
 		if c.Options().IsWasm64() {
-			return mod.Call(common.CommonNameIpow64, []module.ExpressionRef{left, right}, module.TypeRefI64)
+			return callMathFunc(common.CommonNameIpow64, []module.ExpressionRef{left, right}, module.TypeRefI64)
 		}
-		return mod.Call(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
+		return callMathFunc(common.CommonNameIpow32, []module.ExpressionRef{left, right}, module.TypeRefI32)
 	case types.TypeKindF32:
-		return mod.Call("~lib/math/NativeMathf.pow", []module.ExpressionRef{left, right}, module.TypeRefF32)
+		return callMathFunc("~lib/math/NativeMathf.pow", []module.ExpressionRef{left, right}, module.TypeRefF32)
 	case types.TypeKindF64:
-		return mod.Call("~lib/math/NativeMath.pow", []module.ExpressionRef{left, right}, module.TypeRefF64)
+		return callMathFunc("~lib/math/NativeMath.pow", []module.ExpressionRef{left, right}, module.TypeRefF64)
 	default:
-		c.Error(
-			diagnostics.DiagnosticCodeNotImplemented0,
-			reportNode.GetRange(),
-			"Power operator type", "", "",
-		)
+		c.Error(diagnostics.DiagnosticCodeNotImplemented0, reportNode.GetRange(), "Power operator type", "", "")
 		return mod.Unreachable()
 	}
 }

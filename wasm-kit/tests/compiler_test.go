@@ -219,24 +219,15 @@ func featureByName(name string) (common.Feature, bool) {
 // binaryenFatalFixtures trigger binaryen C library crashes (Fatal() or SIGSEGV)
 // which cannot be caught by Go's recover(). These crash the entire test process.
 var binaryenFatalFixtures = map[string]bool{
-	"binary":               true, // call $ipow32 not defined
-	"call-rest":            true, // call $__newArray not defined
 	"class-override":       true, // SIGSEGV in FinalizeOverrideStub
 	"duplicate-identifier": true, // Fatal: Module::addGlobal already exists
-	"export":               true, // call target not defined
-	"exports":              true, // call target not defined
-	"exports-lazy":         true, // call $__newArray not defined
-	"extends-baseaggregate": true, // call $__newArray not defined
-	"field":                true, // call $__newArray not defined
-	"field-initialization": true, // call target not defined
-	"infer-generic":        true, // call $__newArray not defined
-	"object-literal":       true, // call target not defined
-	"resolve-access":       true, // call $__newArray not defined
-	"resolve-binary":       true, // call $ipow32 not defined
+	"export":               true, // SIGSEGV in wazero instantiation
+	"exports":              true, // SIGSEGV in wazero instantiation
+	"exports-lazy":         true, // local.set index validator error
 	"super-inline":         true, // SIGSEGV in binaryen CGo call
 }
 
-// binaryenReleaseFatalFixtures crash binaryen only in release/optimized mode.
+// binaryenReleaseFatalFixtures crash binaryen in release/optimized mode.
 var binaryenReleaseFatalFixtures = map[string]bool{
 	"class-overloading": true, // SIGABRT in optimizer
 	"class":             true, // SIGABRT in optimizer

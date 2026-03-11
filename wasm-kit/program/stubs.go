@@ -92,8 +92,7 @@ func NewOptions() *Options {
 	return &Options{
 		Target:       common.TargetWasm32,
 		Runtime:      common.RuntimeIncremental,
-		// StackSize 0 = no ShadowStack pass (not yet ported).
-		// The compiler adds a default 32KB stack gap in the memory layout.
+		StackSize:    32768, // DEFAULT_STACK_SIZE (index-wasm.ts:156)
 		ExportMemory: true,
 		Features:     common.FeatureMutableGlobals | common.FeatureSignExtension | common.FeatureNontrappingF2I | common.FeatureBulkMemory,
 		BasenameHint: "output",

@@ -136,19 +136,9 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	memoryOffset := i64Align(c.MemoryOffset, int64(options.UsizeType().ByteSize()))
 
-	// Determine if runtime globals are needed.
-	// The stack gap is always added when any runtime feature is used,
-	// even if StackSize is 0 (ShadowStack pass not yet ported).
-	// This matches the TS CLI behavior which always sets StackSize=32768.
-	needsRuntimeGlobals := (c.RuntimeFeatures&(RuntimeFeaturesData|RuntimeFeaturesStack|RuntimeFeaturesHeap)) != 0 || hasStackSize
-	effectiveStackSize := int64(options.StackSize)
-	if effectiveStackSize == 0 && needsRuntimeGlobals {
-		effectiveStackSize = 32768 // DEFAULT_STACK_SIZE
-	}
-
 	// finalize data
 	mod.RemoveGlobal(common.BuiltinNameDataEnd)
-	if needsRuntimeGlobals {
+	if (c.RuntimeFeatures&RuntimeFeaturesData != 0) || hasStackSize {
 		if options.IsWasm64() {
 			mod.AddGlobal(common.BuiltinNameDataEnd, module.TypeRefI64, false,
 				mod.I64(memoryOffset),
@@ -162,9 +152,9 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	// finalize stack (grows down from __heap_base to __data_end)
 	mod.RemoveGlobal(common.BuiltinNameStackPointer)
-	if needsRuntimeGlobals {
+	if (c.RuntimeFeatures&RuntimeFeaturesStack != 0) || hasStackSize {
 		memoryOffset = i64Align(
-			memoryOffset+effectiveStackSize,
+			memoryOffset+int64(options.StackSize),
 			int64(options.UsizeType().ByteSize()),
 		)
 		if options.IsWasm64() {
@@ -180,7 +170,7 @@ func (c *Compiler) CompileProgram() *module.Module {
 
 	// finalize heap
 	mod.RemoveGlobal(common.BuiltinNameHeapBase)
-	if needsRuntimeGlobals {
+	if (c.RuntimeFeatures&RuntimeFeaturesHeap != 0) || hasStackSize {
 		if options.IsWasm64() {
 			mod.AddGlobal(common.BuiltinNameHeapBase, module.TypeRefI64, false,
 				mod.I64(memoryOffset),
@@ -250,6 +240,19 @@ func (c *Compiler) CompileProgram() *module.Module {
 	// Run custom passes
 	if hasShadowStack {
 		c.ShadowStack.WalkModule()
+	} else if hasStackSize {
+		// ShadowStack pass not ported yet. Add a stub ~tostack function
+		// that is an identity (returns its argument). This allows StackSize>0
+		// to work for correct memory layout without the full pass.
+		sizeTypeRef := module.TypeRef(options.SizeTypeRef())
+		params := module.CreateType([]module.TypeRef{sizeTypeRef})
+		mod.AddFunction(
+			"~tostack", // matches the call name used by Module.Tostack()
+			params,
+			sizeTypeRef,
+			nil,
+			mod.LocalGet(0, sizeTypeRef),
+		)
 	}
 	if prog.Lookup("ASC_RTRACE") != nil {
 		// RtraceMemory pass would be instantiated and run here.
@@ -991,6 +994,25 @@ func (c *Compiler) makeToString(expr module.ExpressionRef, typ *types.Type, repo
 // Handles inline expansion, default parameter filling, varargs stubs,
 // override stub dispatch, and managed operand stacking.
 // Ported from: assemblyscript/src/compiler.ts makeCallDirect (lines 6881-7004).
+// ensureRuntimeFunctionCompiled looks up a runtime function by name, resolves it,
+// compiles it, and returns the instance. Returns nil if not found.
+func (c *Compiler) ensureRuntimeFunctionCompiled(name string) *program.Function {
+	prototype := c.Program.Lookup(name)
+	if prototype == nil {
+		return nil
+	}
+	if prototype.GetElementKind() != program.ElementKindFunctionPrototype {
+		return nil
+	}
+	instance := c.Resolver().ResolveFunction(prototype.(*program.FunctionPrototype), nil, nil, program.ReportModeReport)
+	if instance == nil {
+		return nil
+	}
+	c.CompileFunction(instance)
+	return instance
+}
+
+
 func (c *Compiler) makeCallDirect(instance *program.Function, operands []module.ExpressionRef, reportNode ast.Node, immediatelyDropped bool) module.ExpressionRef {
 	// Try to inline if decorated with @inline
 	if instance.HasDecorator(program.DecoratorFlagsInline) {
