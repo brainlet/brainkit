@@ -69,7 +69,7 @@ func collectStdSources(t *testing.T) []string {
 			if walkErr != nil {
 				return walkErr
 			}
-			if entry.IsDir() || filepath.Ext(path) != ".ts" {
+			if entry.IsDir() || filepath.Ext(path) != ".ts" || strings.HasSuffix(path, ".d.ts") {
 				return nil
 			}
 			stdSourcesCache = append(stdSourcesCache, path)

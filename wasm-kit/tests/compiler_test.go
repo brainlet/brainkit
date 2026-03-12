@@ -345,6 +345,9 @@ func TestCompiler_WATMatch(t *testing.T) {
 				{"release", true},
 			} {
 				t.Run(mode.name, func(t *testing.T) {
+					if mode.release && binaryenReleaseFatalFixtures[name] {
+						t.Skip("crashes binaryen optimizer")
+					}
 					expectedPath := filepath.Join(fixturesRoot(), name+"."+mode.name+".wat")
 					expectedBytes, err := os.ReadFile(expectedPath)
 					if err != nil {
