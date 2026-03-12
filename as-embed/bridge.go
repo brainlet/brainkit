@@ -16,7 +16,11 @@ func RegisterMemoryBridge(ctx *qjs.Context, lm *LinearMemory) {
 
 	ctx.SetFunc("__i32_store", func(this *qjs.This) (*qjs.Value, error) {
 		args := this.Args()
-		lm.I32Store(int(args[0].Int32()), int(args[1].Int32()))
+		addr := int(args[0].Int32())
+		// Use Float64 to preserve full 64-bit pointer values on ARM64.
+		// Int32() would truncate Binaryen pointers that exceed 32 bits.
+		val := uint64(args[1].Float64())
+		lm.I32StorePtr(addr, val)
 		return this.Context().NewInt32(0), nil
 	})
 
@@ -33,7 +37,9 @@ func RegisterMemoryBridge(ctx *qjs.Context, lm *LinearMemory) {
 	})
 
 	ctx.SetFunc("__i32_load", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewInt32(int32(lm.I32Load(int(this.Args()[0].Int32())))), nil
+		addr := int(this.Args()[0].Int32())
+		// Use I32LoadPtr to return full 64-bit pointer values on ARM64.
+		return this.Context().NewFloat64(float64(lm.I32LoadPtr(addr))), nil
 	})
 
 	ctx.SetFunc("__i32_load8_u", func(this *qjs.This) (*qjs.Value, error) {

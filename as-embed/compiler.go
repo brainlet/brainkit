@@ -28,6 +28,7 @@ type CompileOptions struct {
 type CompileResult struct {
 	Binary []byte
 	Text   string // diagnostic/warning text
+	WAT    string // text format (S-expression) of the module
 }
 
 // NewCompiler creates a Compiler instance. It initializes the JS bridge,
@@ -223,6 +224,7 @@ func (c *Compiler) Compile(sources map[string]string, opts CompileOptions) (*Com
 	}
 
 	br := cgoModuleAllocateAndWrite(modulePtr, "")
+	wat := cgoModuleAllocateAndWriteText(modulePtr)
 
 	warningText := ""
 	if len(result.Warnings) > 0 {
@@ -234,5 +236,6 @@ func (c *Compiler) Compile(sources map[string]string, opts CompileOptions) (*Com
 	return &CompileResult{
 		Binary: br.Binary,
 		Text:   warningText,
+		WAT:    wat,
 	}, nil
 }

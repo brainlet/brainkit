@@ -67,13 +67,14 @@ func readCStr(lm *LinearMemory, ptr int) unsafe.Pointer {
 }
 
 // readPtrArray reads count pointers from linear memory starting at ptr.
+// Uses I32LoadPtr to retrieve full 64-bit pointer values on ARM64.
 func readPtrArray(lm *LinearMemory, ptr, count int) []uintptr {
 	if ptr == 0 || count <= 0 {
 		return nil
 	}
 	result := make([]uintptr, count)
 	for i := 0; i < count; i++ {
-		result[i] = uintptr(uint32(lm.I32Load(ptr + i*4)))
+		result[i] = lm.I32LoadPtr(ptr + i*4)
 	}
 	return result
 }
