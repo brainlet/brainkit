@@ -2,13 +2,16 @@ package aiembed
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/brainlet/brainkit/jsbridge"
 	"github.com/fastschema/qjs"
 )
 
@@ -144,6 +147,192 @@ func TestGenerateTextAPIError(t *testing.T) {
 		t.Fatal("expected error for 401 response")
 	}
 	t.Logf("Got expected error: %v", err)
+}
+
+func TestStreamText(t *testing.T) {
+	chunks := []string{"Hello", " from", " streaming", "!"}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.Error(w, "not found", 404)
+			return
+		}
+
+		// Verify stream=true in request
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+		if req["stream"] != true {
+			t.Errorf("expected stream=true, got %v", req["stream"])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(200)
+
+		for i, chunk := range chunks {
+			data := map[string]interface{}{
+				"id":      "chatcmpl-test-stream",
+				"object":  "chat.completion.chunk",
+				"created": 1234567890,
+				"model":   "gpt-4",
+				"choices": []map[string]interface{}{
+					{
+						"index": 0,
+						"delta": map[string]interface{}{
+							"content": chunk,
+						},
+						"finish_reason": nil,
+					},
+				},
+			}
+			if i == len(chunks)-1 {
+				data["choices"] = []map[string]interface{}{
+					{
+						"index": 0,
+						"delta": map[string]interface{}{
+							"content": chunk,
+						},
+						"finish_reason": "stop",
+					},
+				}
+			}
+			b, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	var tokens []string
+	result, err := c.StreamText(StreamTextParams{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test-key",
+		Model:   "gpt-4",
+		Prompt:  "Say hello",
+		OnToken: func(token string) {
+			tokens = append(tokens, token)
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	if len(tokens) == 0 {
+		t.Error("expected tokens via callback, got none")
+	}
+	t.Logf("Received %d tokens: %v", len(tokens), tokens)
+
+	want := "Hello from streaming!"
+	if result.Text != want {
+		t.Errorf("full text = %q, want %q", result.Text, want)
+	}
+}
+
+func TestBytecodeLoading(t *testing.T) {
+	// Verify the precompiled bytecode loads and works
+	if len(bundleBytecode) == 0 {
+		t.Skip("no precompiled bytecode (run go generate)")
+	}
+
+	t.Logf("Source: %.1f KB, Bytecode: %.1f KB",
+		float64(len(bundleSource))/1024, float64(len(bundleBytecode))/1024)
+
+	// NewClient now uses bytecode by default
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	// Verify __ai_sdk is functional
+	val, err := c.bridge.Eval("test.js", qjs.Code(`
+		JSON.stringify({
+			generateText: typeof globalThis.__ai_sdk.generateText,
+			streamText: typeof globalThis.__ai_sdk.streamText,
+			createOpenAI: typeof globalThis.__ai_sdk.createOpenAI,
+		});
+	`))
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	defer val.Free()
+
+	var types map[string]string
+	json.Unmarshal([]byte(val.String()), &types)
+	for name, typ := range types {
+		if typ != "function" {
+			t.Errorf("__ai_sdk.%s = %q, want 'function'", name, typ)
+		}
+	}
+}
+
+func TestBytecodeSpeedup(t *testing.T) {
+	if len(bundleBytecode) == 0 {
+		t.Skip("no precompiled bytecode (run go generate)")
+	}
+
+	const iterations = 5
+
+	// Measure source loading
+	var sourceTotal time.Duration
+	for i := 0; i < iterations; i++ {
+		b, err := jsbridge.New(jsbridge.Config{},
+			jsbridge.Console(), jsbridge.Encoding(), jsbridge.Streams(),
+			jsbridge.Crypto(), jsbridge.URL(), jsbridge.Timers(),
+			jsbridge.Abort(), jsbridge.Events(), jsbridge.StructuredClone(),
+			jsbridge.Fetch(),
+		)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		start := time.Now()
+		if err := LoadBundleFromSource(b); err != nil {
+			b.Close()
+			t.Fatalf("LoadBundleFromSource: %v", err)
+		}
+		sourceTotal += time.Since(start)
+		b.Close()
+	}
+
+	// Measure bytecode loading
+	var bytecodeTotal time.Duration
+	for i := 0; i < iterations; i++ {
+		b, err := jsbridge.New(jsbridge.Config{},
+			jsbridge.Console(), jsbridge.Encoding(), jsbridge.Streams(),
+			jsbridge.Crypto(), jsbridge.URL(), jsbridge.Timers(),
+			jsbridge.Abort(), jsbridge.Events(), jsbridge.StructuredClone(),
+			jsbridge.Fetch(),
+		)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		start := time.Now()
+		if err := LoadBundle(b); err != nil {
+			b.Close()
+			t.Fatalf("LoadBundle: %v", err)
+		}
+		bytecodeTotal += time.Since(start)
+		b.Close()
+	}
+
+	sourceAvg := sourceTotal / time.Duration(iterations)
+	bytecodeAvg := bytecodeTotal / time.Duration(iterations)
+	speedup := float64(sourceAvg) / float64(bytecodeAvg)
+
+	t.Logf("Source avg:   %s", sourceAvg.Round(time.Millisecond))
+	t.Logf("Bytecode avg: %s", bytecodeAvg.Round(time.Millisecond))
+	t.Logf("Speedup:      %.2fx", speedup)
+
+	if speedup < 1.5 {
+		t.Logf("Warning: speedup below 1.5x (got %.2fx) — bytecode may not be worth the complexity", speedup)
+	}
 }
 
 func TestGenerateTextRealOpenAI(t *testing.T) {

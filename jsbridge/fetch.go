@@ -132,6 +132,22 @@ globalThis.Response = class Response {
     this.redirected = false;
     this.bodyUsed = false;
   }
+  get body() {
+    const text = this._body;
+    if (typeof ReadableStream === 'undefined') return null;
+    return new ReadableStream({
+      start(controller) {
+        if (text.length > 0) {
+          if (typeof TextEncoder !== 'undefined') {
+            controller.enqueue(new TextEncoder().encode(text));
+          } else {
+            controller.enqueue(text);
+          }
+        }
+        controller.close();
+      }
+    });
+  }
   async text() { this.bodyUsed = true; return this._body; }
   async json() { this.bodyUsed = true; return JSON.parse(this._body); }
   async arrayBuffer() {

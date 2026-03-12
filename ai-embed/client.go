@@ -29,11 +29,13 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	b, err := jsbridge.New(jsbridge.Config{},
 		jsbridge.Console(),
 		jsbridge.Encoding(),
+		jsbridge.Streams(),
 		jsbridge.Crypto(),
 		jsbridge.URL(),
 		jsbridge.Timers(),
 		jsbridge.Abort(),
 		jsbridge.Events(),
+		jsbridge.StructuredClone(),
 		jsbridge.Fetch(fetchOpts...),
 	)
 	if err != nil {
@@ -69,6 +71,66 @@ type GenerateTextParams struct {
 // GenerateTextResult holds the result of a generateText call.
 type GenerateTextResult struct {
 	Text string `json:"text"`
+}
+
+// StreamTextParams configures a streamText call.
+type StreamTextParams struct {
+	BaseURL  string
+	APIKey   string
+	Model    string
+	Prompt   string
+	OnToken  func(token string) // called for each text delta
+}
+
+// StreamTextResult holds the final result of a streamText call.
+type StreamTextResult struct {
+	Text string `json:"text"`
+}
+
+// StreamText calls the AI SDK's streamText function, streaming tokens via OnToken callback.
+func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) {
+	ctx := c.bridge.Context()
+
+	ctx.SetFunc("__go_stream_token", func(this *qjs.This) (*qjs.Value, error) {
+		args := this.Args()
+		if len(args) < 1 {
+			return nil, fmt.Errorf("__go_stream_token: missing argument")
+		}
+		if params.OnToken != nil {
+			params.OnToken(args[0].String())
+		}
+		return this.Context().NewBool(true), nil
+	})
+
+	js := fmt.Sprintf(`
+		const { streamText, createOpenAI } = globalThis.__ai_sdk;
+		const openai = createOpenAI({
+			apiKey: %q,
+			baseURL: %q,
+		});
+		const result = streamText({
+			model: openai(%q),
+			prompt: %q,
+		});
+		let fullText = "";
+		for await (const delta of result.textStream) {
+			__go_stream_token(delta);
+			fullText += delta;
+		}
+		JSON.stringify({ text: fullText });
+	`, params.APIKey, params.BaseURL, params.Model, params.Prompt)
+
+	val, err := c.bridge.Eval("stream-text.js", qjs.Code(js), qjs.FlagAsync())
+	if err != nil {
+		return nil, fmt.Errorf("ai-embed: streamText: %w", err)
+	}
+	defer val.Free()
+
+	var result StreamTextResult
+	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
+		return nil, fmt.Errorf("ai-embed: parse streamText result %q: %w", val.String(), err)
+	}
+	return &result, nil
 }
 
 // GenerateText calls the AI SDK's generateText function.

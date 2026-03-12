@@ -1,5 +1,7 @@
 package aiembed
 
+//go:generate go run ./cmd/compile-bundle
+
 import (
 	_ "embed"
 
@@ -12,23 +14,33 @@ import (
 //go:embed ai_sdk_bundle.js
 var bundleSource string
 
-// stubs provides global stubs for Web APIs that QuickJS lacks but the AI SDK references.
-const stubs = `
-if (typeof globalThis.structuredClone === 'undefined') {
-  globalThis.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); };
-}
-`
+//go:embed ai_sdk_bundle.bc
+var bundleBytecode []byte
 
-// LoadBundle evaluates the AI SDK bundle into a jsbridge.Bridge.
-// After loading, globalThis.__ai_sdk is available with generateText and createOpenAI.
+// LoadBundle evaluates the AI SDK bundle from precompiled bytecode.
+// Falls back to source evaluation if bytecode is empty.
+// After loading, globalThis.__ai_sdk is available with generateText, streamText, and createOpenAI.
 func LoadBundle(b *jsbridge.Bridge) error {
-	// Install stubs for missing Web APIs before the bundle
-	stub, err := b.Eval("stubs.js", qjs.Code(stubs))
-	if err != nil {
-		return fmt.Errorf("ai-embed: load stubs: %w", err)
+	if len(bundleBytecode) > 0 {
+		val, err := b.Eval("ai-sdk-bundle.js", qjs.Bytecode(bundleBytecode))
+		if err != nil {
+			return fmt.Errorf("ai-embed: load bytecode: %w", err)
+		}
+		val.Free()
+		return nil
 	}
-	stub.Free()
 
+	val, err := b.Eval("ai-sdk-bundle.js", qjs.Code(bundleSource))
+	if err != nil {
+		return fmt.Errorf("ai-embed: load bundle: %w", err)
+	}
+	val.Free()
+	return nil
+}
+
+// LoadBundleFromSource forces evaluation from JavaScript source instead of bytecode.
+// Useful for debugging or when bytecode may be stale.
+func LoadBundleFromSource(b *jsbridge.Bridge) error {
 	val, err := b.Eval("ai-sdk-bundle.js", qjs.Code(bundleSource))
 	if err != nil {
 		return fmt.Errorf("ai-embed: load bundle: %w", err)
