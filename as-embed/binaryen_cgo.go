@@ -2112,6 +2112,1332 @@ func cgoMemoryFill(module uintptr, dest, value, size uintptr, memoryName unsafe.
 	return uintptr(unsafe.Pointer(ref))
 }
 
+// --- Atomic expression constructors ---
+
+func cgoAtomicRMW(module uintptr, op int, bytes int, offset int, ptr, value uintptr, typ uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenAtomicRMW(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.BinaryenIndex(bytes),
+		C.BinaryenIndex(offset),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(value)),
+		C.BinaryenType(typ),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoAtomicCmpxchg(module uintptr, bytes int, offset int, ptr, expected, replacement uintptr, typ uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenAtomicCmpxchg(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenIndex(bytes),
+		C.BinaryenIndex(offset),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(expected)),
+		C.BinaryenExpressionRef(unsafe.Pointer(replacement)),
+		C.BinaryenType(typ),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoAtomicWait(module uintptr, ptr, expected, timeout uintptr, typ uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenAtomicWait(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(expected)),
+		C.BinaryenExpressionRef(unsafe.Pointer(timeout)),
+		C.BinaryenType(typ),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoAtomicNotify(module uintptr, ptr, notifyCount uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenAtomicNotify(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(notifyCount)),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoAtomicFence(module uintptr) uintptr {
+	ref := C.BinaryenAtomicFence(C.BinaryenModuleRef(unsafe.Pointer(module)))
+	return uintptr(unsafe.Pointer(ref))
+}
+
+// --- SIMD expression constructors ---
+
+func cgoSIMDExtract(module uintptr, op int32, vec uintptr, index uint8) uintptr {
+	ref := C.BinaryenSIMDExtract(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.BinaryenExpressionRef(unsafe.Pointer(vec)),
+		C.uint8_t(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDReplace(module uintptr, op int32, vec uintptr, index uint8, value uintptr) uintptr {
+	ref := C.BinaryenSIMDReplace(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.BinaryenExpressionRef(unsafe.Pointer(vec)),
+		C.uint8_t(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(value)),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDShuffle(module uintptr, left, right uintptr, mask [16]byte) uintptr {
+	var cMask [16]C.uint8_t
+	for i := 0; i < 16; i++ {
+		cMask[i] = C.uint8_t(mask[i])
+	}
+	ref := C.BinaryenSIMDShuffle(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenExpressionRef(unsafe.Pointer(left)),
+		C.BinaryenExpressionRef(unsafe.Pointer(right)),
+		&cMask[0],
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDTernary(module uintptr, op int32, a, b, c uintptr) uintptr {
+	ref := C.BinaryenSIMDTernary(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.BinaryenExpressionRef(unsafe.Pointer(a)),
+		C.BinaryenExpressionRef(unsafe.Pointer(b)),
+		C.BinaryenExpressionRef(unsafe.Pointer(c)),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDShift(module uintptr, op int32, vec, shift uintptr) uintptr {
+	ref := C.BinaryenSIMDShift(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.BinaryenExpressionRef(unsafe.Pointer(vec)),
+		C.BinaryenExpressionRef(unsafe.Pointer(shift)),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDLoad(module uintptr, op int32, offset, align uint32, ptr uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenSIMDLoad(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.uint32_t(offset),
+		C.uint32_t(align),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSIMDLoadStoreLane(module uintptr, op int32, offset, align uint32, index uint8, ptr, vec uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenSIMDLoadStoreLane(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenOp(op),
+		C.uint32_t(offset),
+		C.uint32_t(align),
+		C.uint8_t(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(ptr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(vec)),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+// --- Bulk memory expression constructors ---
+
+func cgoDataDrop(module uintptr, segment unsafe.Pointer) uintptr {
+	ref := C.BinaryenDataDrop(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(segment),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoMemoryInit(module uintptr, segment unsafe.Pointer, dest, offset, size uintptr, memoryName unsafe.Pointer) uintptr {
+	ref := C.BinaryenMemoryInit(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(segment),
+		C.BinaryenExpressionRef(unsafe.Pointer(dest)),
+		C.BinaryenExpressionRef(unsafe.Pointer(offset)),
+		C.BinaryenExpressionRef(unsafe.Pointer(size)),
+		(*C.char)(memoryName),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+// --- GC array expression constructors ---
+
+func cgoArrayNewData(module uintptr, typ uintptr, name unsafe.Pointer, offset, size uintptr) uintptr {
+	ref := C.BinaryenArrayNewData(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		C.BinaryenHeapType(typ),
+		(*C.char)(name),
+		C.BinaryenExpressionRef(unsafe.Pointer(offset)),
+		C.BinaryenExpressionRef(unsafe.Pointer(size)),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+// --- Mutation operations ---
+
+func cgoBlockAppendChild(expr, child uintptr) uint32 {
+	return uint32(C.BinaryenBlockAppendChild(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(child)),
+	))
+}
+
+func cgoBlockInsertChildAt(expr uintptr, index uint32, child uintptr) {
+	C.BinaryenBlockInsertChildAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(child)),
+	)
+}
+
+func cgoBlockRemoveChildAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenBlockRemoveChildAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoCallAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenCallAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoCallInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoCallRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenCallRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoCallIndirectAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenCallIndirectAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoCallIndirectInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallIndirectInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoCallIndirectRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenCallIndirectRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoCallRefAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenCallRefAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoCallRefInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallRefInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoCallRefRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenCallRefRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoSwitchAppendName(expr uintptr, name unsafe.Pointer) uint32 {
+	return uint32(C.BinaryenSwitchAppendName(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		(*C.char)(name),
+	))
+}
+
+func cgoSwitchInsertNameAt(expr uintptr, index uint32, name unsafe.Pointer) {
+	C.BinaryenSwitchInsertNameAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		(*C.char)(name),
+	)
+}
+
+func cgoSwitchRemoveNameAt(expr uintptr, index uint32) unsafe.Pointer {
+	return unsafe.Pointer(C.BinaryenSwitchRemoveNameAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	))
+}
+
+func cgoThrowAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenThrowAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoThrowInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenThrowInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoThrowRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenThrowRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoTryAppendCatchTag(expr uintptr, catchTag unsafe.Pointer) uint32 {
+	return uint32(C.BinaryenTryAppendCatchTag(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		(*C.char)(catchTag),
+	))
+}
+
+func cgoTryInsertCatchTagAt(expr uintptr, index uint32, catchTag unsafe.Pointer) {
+	C.BinaryenTryInsertCatchTagAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		(*C.char)(catchTag),
+	)
+}
+
+func cgoTryRemoveCatchTagAt(expr uintptr, index uint32) unsafe.Pointer {
+	return unsafe.Pointer(C.BinaryenTryRemoveCatchTagAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	))
+}
+
+func cgoTryAppendCatchBody(expr, catchBody uintptr) uint32 {
+	return uint32(C.BinaryenTryAppendCatchBody(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(catchBody)),
+	))
+}
+
+func cgoTryInsertCatchBodyAt(expr uintptr, index uint32, catchBody uintptr) {
+	C.BinaryenTryInsertCatchBodyAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(catchBody)),
+	)
+}
+
+func cgoTryRemoveCatchBodyAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenTryRemoveCatchBodyAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoTryHasCatchAll(expr uintptr) bool {
+	return bool(C.BinaryenTryHasCatchAll(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+	))
+}
+
+func cgoTupleMakeAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenTupleMakeAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoTupleMakeInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenTupleMakeInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoTupleMakeRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenTupleMakeRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoStructNewAppendOperand(expr, operand uintptr) uint32 {
+	return uint32(C.BinaryenStructNewAppendOperand(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	))
+}
+
+func cgoStructNewInsertOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenStructNewInsertOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(operand)),
+	)
+}
+
+func cgoStructNewRemoveOperandAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenStructNewRemoveOperandAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoArrayNewFixedAppendValue(expr, value uintptr) uint32 {
+	return uint32(C.BinaryenArrayNewFixedAppendValue(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenExpressionRef(unsafe.Pointer(value)),
+	))
+}
+
+func cgoArrayNewFixedInsertValueAt(expr uintptr, index uint32, value uintptr) {
+	C.BinaryenArrayNewFixedInsertValueAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+		C.BinaryenExpressionRef(unsafe.Pointer(value)),
+	)
+}
+
+func cgoArrayNewFixedRemoveValueAt(expr uintptr, index uint32) uintptr {
+	ref := C.BinaryenArrayNewFixedRemoveValueAt(
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(index),
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
+// --- Module operations ---
+
+func cgoModuleParse(text unsafe.Pointer) uintptr {
+	ref := C.BinaryenModuleParse((*C.char)(text))
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoModuleRead(data unsafe.Pointer, size int) uintptr {
+	ref := C.BinaryenModuleRead((*C.char)(data), C.size_t(size))
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoModuleReadWithFeatures(data unsafe.Pointer, size int, features uint32) uintptr {
+	ref := C.BinaryenModuleReadWithFeatures((*C.char)(data), C.size_t(size), C.BinaryenFeatures(features))
+	return uintptr(unsafe.Pointer(ref))
+}
+
+func cgoModuleInterpret(module uintptr) {
+	C.BinaryenModuleInterpret(C.BinaryenModuleRef(unsafe.Pointer(module)))
+}
+
+func cgoModuleAddDebugInfoFileName(module uintptr, filename unsafe.Pointer) uint32 {
+	return uint32(C.BinaryenModuleAddDebugInfoFileName(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(filename),
+	))
+}
+
+// --- Function operations ---
+
+func cgoFunctionAddVar(fn uintptr, typ uintptr) uint32 {
+	return uint32(C.BinaryenFunctionAddVar(
+		C.BinaryenFunctionRef(unsafe.Pointer(fn)),
+		C.BinaryenType(typ),
+	))
+}
+
+func cgoFunctionOptimize(fn uintptr, module uintptr) {
+	C.BinaryenFunctionOptimize(
+		C.BinaryenFunctionRef(unsafe.Pointer(fn)),
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+	)
+}
+
+func cgoFunctionRunPasses(fn uintptr, module uintptr, passes []string) {
+	if len(passes) == 0 {
+		return
+	}
+	cPasses := make([]*C.char, len(passes))
+	for i, p := range passes {
+		cPasses[i] = C.CString(p)
+	}
+	C.BinaryenFunctionRunPasses(
+		C.BinaryenFunctionRef(unsafe.Pointer(fn)),
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		&cPasses[0],
+		C.BinaryenIndex(len(passes)),
+	)
+	for _, cp := range cPasses {
+		C.free(unsafe.Pointer(cp))
+	}
+}
+
+// --- Misc operations ---
+
+func cgoLiteralVec128(x [16]byte, out []byte) {
+	var cX [16]C.uint8_t
+	for i := 0; i < 16; i++ {
+		cX[i] = C.uint8_t(x[i])
+	}
+	lit := C.BinaryenLiteralVec128(&cX[0])
+	copy(out, (*[256]byte)(unsafe.Pointer(&lit))[:len(out)])
+}
+
+func cgoRemoveElementSegment(module uintptr, name unsafe.Pointer) {
+	C.BinaryenRemoveElementSegment(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(name),
+	)
+}
+
+func cgoTableHasMax(table uintptr) bool {
+	return bool(C.BinaryenTableHasMax(
+		C.BinaryenTableRef(unsafe.Pointer(table)),
+	))
+}
+
+func cgoCopyMemorySegmentData(module uintptr, segmentName unsafe.Pointer, buffer unsafe.Pointer) {
+	C.BinaryenCopyMemorySegmentData(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(segmentName),
+		(*C.char)(buffer),
+	)
+}
+
+func cgoGetMemorySegmentByteLength(module uintptr, segmentName unsafe.Pointer) uint32 {
+	return uint32(C.BinaryenGetMemorySegmentByteLength(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		(*C.char)(segmentName),
+	))
+}
+
+// --- Expression Setters ---
+
+// Block
+func cgoBlockSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenBlockSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoBlockSetChildAt(expr uintptr, index uint32, child uintptr) {
+	C.BinaryenBlockSetChildAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(child)))
+}
+
+// If
+func cgoIfSetCondition(expr, cond uintptr) {
+	C.BinaryenIfSetCondition(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(cond)))
+}
+func cgoIfSetIfTrue(expr, ifTrue uintptr) {
+	C.BinaryenIfSetIfTrue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ifTrue)))
+}
+func cgoIfSetIfFalse(expr, ifFalse uintptr) {
+	C.BinaryenIfSetIfFalse(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ifFalse)))
+}
+
+// Loop
+func cgoLoopSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenLoopSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoLoopSetBody(expr, body uintptr) {
+	C.BinaryenLoopSetBody(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(body)))
+}
+
+// Break
+func cgoBreakSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenBreakSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoBreakSetCondition(expr, cond uintptr) {
+	C.BinaryenBreakSetCondition(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(cond)))
+}
+func cgoBreakSetValue(expr, value uintptr) {
+	C.BinaryenBreakSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// Switch
+func cgoSwitchSetNameAt(expr uintptr, index uint32, name unsafe.Pointer) {
+	C.BinaryenSwitchSetNameAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), (*C.char)(name))
+}
+func cgoSwitchSetDefaultName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenSwitchSetDefaultName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoSwitchSetCondition(expr, cond uintptr) {
+	C.BinaryenSwitchSetCondition(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(cond)))
+}
+func cgoSwitchSetValue(expr, value uintptr) {
+	C.BinaryenSwitchSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// Call
+func cgoCallSetTarget(expr uintptr, target unsafe.Pointer) {
+	C.BinaryenCallSetTarget(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(target))
+}
+func cgoCallSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+func cgoCallSetReturn(expr uintptr, isReturn bool) {
+	C.BinaryenCallSetReturn(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isReturn))
+}
+
+// CallIndirect
+func cgoCallIndirectSetTarget(expr, target uintptr) {
+	C.BinaryenCallIndirectSetTarget(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(target)))
+}
+func cgoCallIndirectSetTable(expr uintptr, table unsafe.Pointer) {
+	C.BinaryenCallIndirectSetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(table))
+}
+func cgoCallIndirectSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallIndirectSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+func cgoCallIndirectSetReturn(expr uintptr, isReturn bool) {
+	C.BinaryenCallIndirectSetReturn(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isReturn))
+}
+
+// LocalGet
+func cgoLocalGetSetIndex(expr uintptr, index uint32) {
+	C.BinaryenLocalGetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index))
+}
+
+// LocalSet (expression type) - getters
+func cgoLocalSetGetIndex(expr uintptr) uint32 {
+	return uint32(C.BinaryenLocalSetGetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr))))
+}
+func cgoLocalSetGetValue(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenLocalSetGetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+func cgoLocalSetIsTee(expr uintptr) bool {
+	return bool(C.BinaryenLocalSetIsTee(C.BinaryenExpressionRef(unsafe.Pointer(expr))))
+}
+
+// LocalSet (expression type) - setters
+func cgoLocalSetSetIndex(expr uintptr, index uint32) {
+	C.BinaryenLocalSetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index))
+}
+func cgoLocalSetSetValue(expr, value uintptr) {
+	C.BinaryenLocalSetSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// GlobalGet (expression type)
+func cgoGlobalGetSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenGlobalGetSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+
+// GlobalSet (expression type) - getters
+func cgoGlobalSetGetName(expr uintptr) unsafe.Pointer {
+	return unsafe.Pointer(C.BinaryenGlobalSetGetName(C.BinaryenExpressionRef(unsafe.Pointer(expr))))
+}
+func cgoGlobalSetGetValue(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenGlobalSetGetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+
+// GlobalSet (expression type) - setters
+func cgoGlobalSetSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenGlobalSetSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoGlobalSetSetValue(expr, value uintptr) {
+	C.BinaryenGlobalSetSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// TableGet (expression type)
+func cgoTableGetSetTable(expr uintptr, table unsafe.Pointer) {
+	C.BinaryenTableGetSetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(table))
+}
+func cgoTableGetSetIndex(expr, index uintptr) {
+	C.BinaryenTableGetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(index)))
+}
+
+// TableSet (expression type) - getters
+func cgoTableSetGetTable(expr uintptr) unsafe.Pointer {
+	return unsafe.Pointer(C.BinaryenTableSetGetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr))))
+}
+func cgoTableSetGetIndex(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenTableSetGetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+func cgoTableSetGetValue(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenTableSetGetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+
+// TableSet (expression type) - setters
+func cgoTableSetSetTable(expr uintptr, table unsafe.Pointer) {
+	C.BinaryenTableSetSetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(table))
+}
+func cgoTableSetSetIndex(expr, index uintptr) {
+	C.BinaryenTableSetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(index)))
+}
+func cgoTableSetSetValue(expr, value uintptr) {
+	C.BinaryenTableSetSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// TableSize (expression type)
+func cgoTableSizeSetTable(expr uintptr, table unsafe.Pointer) {
+	C.BinaryenTableSizeSetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(table))
+}
+
+// TableGrow (expression type)
+func cgoTableGrowSetTable(expr uintptr, table unsafe.Pointer) {
+	C.BinaryenTableGrowSetTable(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(table))
+}
+func cgoTableGrowSetValue(expr, value uintptr) {
+	C.BinaryenTableGrowSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+func cgoTableGrowSetDelta(expr, delta uintptr) {
+	C.BinaryenTableGrowSetDelta(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(delta)))
+}
+
+// Table (module-level)
+func cgoTableSetName(table uintptr, name unsafe.Pointer) {
+	C.BinaryenTableSetName(C.BinaryenTableRef(unsafe.Pointer(table)), (*C.char)(name))
+}
+func cgoTableSetInitial(table uintptr, initial uint32) {
+	C.BinaryenTableSetInitial(C.BinaryenTableRef(unsafe.Pointer(table)), C.BinaryenIndex(initial))
+}
+func cgoTableSetMax(table uintptr, max uint32) {
+	C.BinaryenTableSetMax(C.BinaryenTableRef(unsafe.Pointer(table)), C.BinaryenIndex(max))
+}
+func cgoTableSetType(table uintptr, tableType uintptr) {
+	C.BinaryenTableSetType(C.BinaryenTableRef(unsafe.Pointer(table)), C.BinaryenType(tableType))
+}
+
+// MemoryGrow
+func cgoMemoryGrowSetDelta(expr, delta uintptr) {
+	C.BinaryenMemoryGrowSetDelta(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(delta)))
+}
+
+// Load
+func cgoLoadSetAtomic(expr uintptr, isAtomic bool) {
+	C.BinaryenLoadSetAtomic(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isAtomic))
+}
+func cgoLoadSetSigned(expr uintptr, isSigned bool) {
+	C.BinaryenLoadSetSigned(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isSigned))
+}
+func cgoLoadSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenLoadSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoLoadSetBytes(expr uintptr, bytes uint32) {
+	C.BinaryenLoadSetBytes(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(bytes))
+}
+func cgoLoadSetAlign(expr uintptr, align uint32) {
+	C.BinaryenLoadSetAlign(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(align))
+}
+func cgoLoadSetPtr(expr, ptr uintptr) {
+	C.BinaryenLoadSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+
+// Store
+func cgoStoreSetAtomic(expr uintptr, isAtomic bool) {
+	C.BinaryenStoreSetAtomic(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isAtomic))
+}
+func cgoStoreSetBytes(expr uintptr, bytes uint32) {
+	C.BinaryenStoreSetBytes(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(bytes))
+}
+func cgoStoreSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenStoreSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoStoreSetAlign(expr uintptr, align uint32) {
+	C.BinaryenStoreSetAlign(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(align))
+}
+func cgoStoreSetPtr(expr, ptr uintptr) {
+	C.BinaryenStoreSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoStoreSetValue(expr, value uintptr) {
+	C.BinaryenStoreSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+func cgoStoreSetValueType(expr, valueType uintptr) {
+	C.BinaryenStoreSetValueType(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenType(valueType))
+}
+
+// Const
+func cgoConstSetValueI32(expr uintptr, value int32) {
+	C.BinaryenConstSetValueI32(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.int32_t(value))
+}
+func cgoConstSetValueI64Low(expr uintptr, value int32) {
+	C.BinaryenConstSetValueI64Low(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.int32_t(value))
+}
+func cgoConstSetValueI64High(expr uintptr, value int32) {
+	C.BinaryenConstSetValueI64High(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.int32_t(value))
+}
+func cgoConstSetValueF32(expr uintptr, value float32) {
+	C.BinaryenConstSetValueF32(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.float(value))
+}
+func cgoConstSetValueF64(expr uintptr, value float64) {
+	C.BinaryenConstSetValueF64(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.double(value))
+}
+func cgoConstSetValueV128(expr uintptr, value [16]byte) {
+	C.BinaryenConstSetValueV128(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.uint8_t)(&value[0]))
+}
+
+// Unary
+func cgoUnarySetOp(expr uintptr, op int32) {
+	C.BinaryenUnarySetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoUnarySetValue(expr, value uintptr) {
+	C.BinaryenUnarySetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// Binary
+func cgoBinarySetOp(expr uintptr, op int32) {
+	C.BinaryenBinarySetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoBinarySetLeft(expr, left uintptr) {
+	C.BinaryenBinarySetLeft(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(left)))
+}
+func cgoBinarySetRight(expr, right uintptr) {
+	C.BinaryenBinarySetRight(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(right)))
+}
+
+// Select
+func cgoSelectSetIfTrue(expr, ifTrue uintptr) {
+	C.BinaryenSelectSetIfTrue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ifTrue)))
+}
+func cgoSelectSetIfFalse(expr, ifFalse uintptr) {
+	C.BinaryenSelectSetIfFalse(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ifFalse)))
+}
+func cgoSelectSetCondition(expr, cond uintptr) {
+	C.BinaryenSelectSetCondition(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(cond)))
+}
+
+// Drop
+func cgoDropSetValue(expr, value uintptr) {
+	C.BinaryenDropSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// Return
+func cgoReturnSetValue(expr, value uintptr) {
+	C.BinaryenReturnSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// AtomicRMW
+func cgoAtomicRMWSetOp(expr uintptr, op int32) {
+	C.BinaryenAtomicRMWSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoAtomicRMWSetBytes(expr uintptr, bytes uint32) {
+	C.BinaryenAtomicRMWSetBytes(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(bytes))
+}
+func cgoAtomicRMWSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenAtomicRMWSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoAtomicRMWSetPtr(expr, ptr uintptr) {
+	C.BinaryenAtomicRMWSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoAtomicRMWSetValue(expr, value uintptr) {
+	C.BinaryenAtomicRMWSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// AtomicCmpxchg
+func cgoAtomicCmpxchgSetBytes(expr uintptr, bytes uint32) {
+	C.BinaryenAtomicCmpxchgSetBytes(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(bytes))
+}
+func cgoAtomicCmpxchgSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenAtomicCmpxchgSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoAtomicCmpxchgSetPtr(expr, ptr uintptr) {
+	C.BinaryenAtomicCmpxchgSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoAtomicCmpxchgSetExpected(expr, expected uintptr) {
+	C.BinaryenAtomicCmpxchgSetExpected(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(expected)))
+}
+func cgoAtomicCmpxchgSetReplacement(expr, replacement uintptr) {
+	C.BinaryenAtomicCmpxchgSetReplacement(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(replacement)))
+}
+
+// AtomicWait
+func cgoAtomicWaitSetPtr(expr, ptr uintptr) {
+	C.BinaryenAtomicWaitSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoAtomicWaitSetExpected(expr, expected uintptr) {
+	C.BinaryenAtomicWaitSetExpected(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(expected)))
+}
+func cgoAtomicWaitSetTimeout(expr, timeout uintptr) {
+	C.BinaryenAtomicWaitSetTimeout(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(timeout)))
+}
+func cgoAtomicWaitSetExpectedType(expr, expectedType uintptr) {
+	C.BinaryenAtomicWaitSetExpectedType(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenType(expectedType))
+}
+
+// AtomicNotify
+func cgoAtomicNotifySetPtr(expr, ptr uintptr) {
+	C.BinaryenAtomicNotifySetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoAtomicNotifySetNotifyCount(expr, notifyCount uintptr) {
+	C.BinaryenAtomicNotifySetNotifyCount(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(notifyCount)))
+}
+
+// AtomicFence
+func cgoAtomicFenceSetOrder(expr uintptr, order uint8) {
+	C.BinaryenAtomicFenceSetOrder(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint8_t(order))
+}
+
+// SIMDExtract
+func cgoSIMDExtractSetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDExtractSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDExtractSetVec(expr, vec uintptr) {
+	C.BinaryenSIMDExtractSetVec(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(vec)))
+}
+func cgoSIMDExtractSetIndex(expr uintptr, index uint8) {
+	C.BinaryenSIMDExtractSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint8_t(index))
+}
+
+// SIMDReplace
+func cgoSIMDReplaceSetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDReplaceSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDReplaceSetVec(expr, vec uintptr) {
+	C.BinaryenSIMDReplaceSetVec(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(vec)))
+}
+func cgoSIMDReplaceSetIndex(expr uintptr, index uint8) {
+	C.BinaryenSIMDReplaceSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint8_t(index))
+}
+func cgoSIMDReplaceSetValue(expr, value uintptr) {
+	C.BinaryenSIMDReplaceSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// SIMDShuffle
+func cgoSIMDShuffleSetLeft(expr, left uintptr) {
+	C.BinaryenSIMDShuffleSetLeft(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(left)))
+}
+func cgoSIMDShuffleSetRight(expr, right uintptr) {
+	C.BinaryenSIMDShuffleSetRight(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(right)))
+}
+func cgoSIMDShuffleSetMask(expr uintptr, mask [16]byte) {
+	C.BinaryenSIMDShuffleSetMask(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.uint8_t)(&mask[0]))
+}
+
+// SIMDTernary
+func cgoSIMDTernarySetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDTernarySetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDTernarySetA(expr, a uintptr) {
+	C.BinaryenSIMDTernarySetA(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(a)))
+}
+func cgoSIMDTernarySetB(expr, b uintptr) {
+	C.BinaryenSIMDTernarySetB(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(b)))
+}
+func cgoSIMDTernarySetC(expr, c uintptr) {
+	C.BinaryenSIMDTernarySetC(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(c)))
+}
+
+// SIMDShift
+func cgoSIMDShiftSetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDShiftSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDShiftSetVec(expr, vec uintptr) {
+	C.BinaryenSIMDShiftSetVec(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(vec)))
+}
+func cgoSIMDShiftSetShift(expr, shift uintptr) {
+	C.BinaryenSIMDShiftSetShift(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(shift)))
+}
+
+// SIMDLoad
+func cgoSIMDLoadSetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDLoadSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDLoadSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenSIMDLoadSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoSIMDLoadSetAlign(expr uintptr, align uint32) {
+	C.BinaryenSIMDLoadSetAlign(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(align))
+}
+func cgoSIMDLoadSetPtr(expr, ptr uintptr) {
+	C.BinaryenSIMDLoadSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+
+// SIMDLoadStoreLane
+func cgoSIMDLoadStoreLaneSetOp(expr uintptr, op int32) {
+	C.BinaryenSIMDLoadStoreLaneSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoSIMDLoadStoreLaneSetOffset(expr uintptr, offset uint32) {
+	C.BinaryenSIMDLoadStoreLaneSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(offset))
+}
+func cgoSIMDLoadStoreLaneSetAlign(expr uintptr, align uint32) {
+	C.BinaryenSIMDLoadStoreLaneSetAlign(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint32_t(align))
+}
+func cgoSIMDLoadStoreLaneSetIndex(expr uintptr, index uint8) {
+	C.BinaryenSIMDLoadStoreLaneSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.uint8_t(index))
+}
+func cgoSIMDLoadStoreLaneSetPtr(expr, ptr uintptr) {
+	C.BinaryenSIMDLoadStoreLaneSetPtr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ptr)))
+}
+func cgoSIMDLoadStoreLaneSetVec(expr, vec uintptr) {
+	C.BinaryenSIMDLoadStoreLaneSetVec(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(vec)))
+}
+
+// MemoryInit
+func cgoMemoryInitSetSegment(expr uintptr, segment unsafe.Pointer) {
+	C.BinaryenMemoryInitSetSegment(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(segment))
+}
+func cgoMemoryInitSetDest(expr, dest uintptr) {
+	C.BinaryenMemoryInitSetDest(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(dest)))
+}
+func cgoMemoryInitSetOffset(expr, offset uintptr) {
+	C.BinaryenMemoryInitSetOffset(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(offset)))
+}
+func cgoMemoryInitSetSize(expr, size uintptr) {
+	C.BinaryenMemoryInitSetSize(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(size)))
+}
+
+// DataDrop
+func cgoDataDropSetSegment(expr uintptr, segment unsafe.Pointer) {
+	C.BinaryenDataDropSetSegment(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(segment))
+}
+
+// MemoryCopy
+func cgoMemoryCopySetDest(expr, dest uintptr) {
+	C.BinaryenMemoryCopySetDest(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(dest)))
+}
+func cgoMemoryCopySetSource(expr, source uintptr) {
+	C.BinaryenMemoryCopySetSource(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(source)))
+}
+func cgoMemoryCopySetSize(expr, size uintptr) {
+	C.BinaryenMemoryCopySetSize(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(size)))
+}
+
+// MemoryFill
+func cgoMemoryFillSetDest(expr, dest uintptr) {
+	C.BinaryenMemoryFillSetDest(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(dest)))
+}
+func cgoMemoryFillSetValue(expr, value uintptr) {
+	C.BinaryenMemoryFillSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+func cgoMemoryFillSetSize(expr, size uintptr) {
+	C.BinaryenMemoryFillSetSize(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(size)))
+}
+
+// RefIsNull
+func cgoRefIsNullSetValue(expr, value uintptr) {
+	C.BinaryenRefIsNullSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// RefAs
+func cgoRefAsSetOp(expr uintptr, op int32) {
+	C.BinaryenRefAsSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoRefAsSetValue(expr, value uintptr) {
+	C.BinaryenRefAsSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// RefFunc
+func cgoRefFuncSetFunc(expr uintptr, funcName unsafe.Pointer) {
+	C.BinaryenRefFuncSetFunc(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(funcName))
+}
+
+// RefI31
+func cgoRefI31SetValue(expr, value uintptr) {
+	C.BinaryenRefI31SetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// RefEq
+func cgoRefEqSetLeft(expr, left uintptr) {
+	C.BinaryenRefEqSetLeft(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(left)))
+}
+func cgoRefEqSetRight(expr, right uintptr) {
+	C.BinaryenRefEqSetRight(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(right)))
+}
+
+// RefTest
+func cgoRefTestSetRef(expr, ref uintptr) {
+	C.BinaryenRefTestSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoRefTestSetCastType(expr, castType uintptr) {
+	C.BinaryenRefTestSetCastType(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenType(castType))
+}
+
+// RefCast
+func cgoRefCastSetRef(expr, ref uintptr) {
+	C.BinaryenRefCastSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+
+// BrOn
+func cgoBrOnSetOp(expr uintptr, op int32) {
+	C.BinaryenBrOnSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoBrOnSetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenBrOnSetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoBrOnSetRef(expr, ref uintptr) {
+	C.BinaryenBrOnSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoBrOnSetCastType(expr, castType uintptr) {
+	C.BinaryenBrOnSetCastType(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenType(castType))
+}
+
+// I31Get
+func cgoI31GetSetI31(expr, i31 uintptr) {
+	C.BinaryenI31GetSetI31(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(i31)))
+}
+func cgoI31GetSetSigned(expr uintptr, signed bool) {
+	C.BinaryenI31GetSetSigned(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(signed))
+}
+
+// Try
+func cgoTrySetName(expr uintptr, name unsafe.Pointer) {
+	C.BinaryenTrySetName(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(name))
+}
+func cgoTrySetBody(expr, body uintptr) {
+	C.BinaryenTrySetBody(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(body)))
+}
+func cgoTrySetCatchTagAt(expr uintptr, index uint32, tag unsafe.Pointer) {
+	C.BinaryenTrySetCatchTagAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), (*C.char)(tag))
+}
+func cgoTrySetCatchBodyAt(expr uintptr, index uint32, catchBody uintptr) {
+	C.BinaryenTrySetCatchBodyAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(catchBody)))
+}
+func cgoTrySetDelegateTarget(expr uintptr, target unsafe.Pointer) {
+	C.BinaryenTrySetDelegateTarget(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(target))
+}
+
+// Throw
+func cgoThrowSetTag(expr uintptr, tag unsafe.Pointer) {
+	C.BinaryenThrowSetTag(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(tag))
+}
+func cgoThrowSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenThrowSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+
+// TupleMake
+func cgoTupleMakeSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenTupleMakeSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+
+// TupleExtract
+func cgoTupleExtractSetTuple(expr, tuple uintptr) {
+	C.BinaryenTupleExtractSetTuple(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(tuple)))
+}
+func cgoTupleExtractSetIndex(expr uintptr, index uint32) {
+	C.BinaryenTupleExtractSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index))
+}
+
+// CallRef
+func cgoCallRefSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenCallRefSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+func cgoCallRefSetTarget(expr, target uintptr) {
+	C.BinaryenCallRefSetTarget(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(target)))
+}
+func cgoCallRefSetReturn(expr uintptr, isReturn bool) {
+	C.BinaryenCallRefSetReturn(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(isReturn))
+}
+
+// StructNew
+func cgoStructNewSetOperandAt(expr uintptr, index uint32, operand uintptr) {
+	C.BinaryenStructNewSetOperandAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(operand)))
+}
+
+// StructGet
+func cgoStructGetSetIndex(expr uintptr, index uint32) {
+	C.BinaryenStructGetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index))
+}
+func cgoStructGetSetRef(expr, ref uintptr) {
+	C.BinaryenStructGetSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStructGetSetSigned(expr uintptr, signed bool) {
+	C.BinaryenStructGetSetSigned(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(signed))
+}
+
+// StructSet (expression type) - getters
+func cgoStructSetGetIndex(expr uintptr) uint32 {
+	return uint32(C.BinaryenStructSetGetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr))))
+}
+func cgoStructSetGetRef(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenStructSetGetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+func cgoStructSetGetValue(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenStructSetGetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+
+// StructSet (expression type) - setters
+func cgoStructSetSetIndex(expr uintptr, index uint32) {
+	C.BinaryenStructSetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index))
+}
+func cgoStructSetSetRef(expr, ref uintptr) {
+	C.BinaryenStructSetSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStructSetSetValue(expr, value uintptr) {
+	C.BinaryenStructSetSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// ArrayNew
+func cgoArrayNewSetInit(expr, init uintptr) {
+	C.BinaryenArrayNewSetInit(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(init)))
+}
+func cgoArrayNewSetSize(expr, size uintptr) {
+	C.BinaryenArrayNewSetSize(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(size)))
+}
+
+// ArrayNewFixed
+func cgoArrayNewFixedSetValueAt(expr uintptr, index uint32, value uintptr) {
+	C.BinaryenArrayNewFixedSetValueAt(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenIndex(index), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// ArrayGet
+func cgoArrayGetSetRef(expr, ref uintptr) {
+	C.BinaryenArrayGetSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoArrayGetSetIndex(expr, index uintptr) {
+	C.BinaryenArrayGetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(index)))
+}
+func cgoArrayGetSetSigned(expr uintptr, signed bool) {
+	C.BinaryenArrayGetSetSigned(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.bool(signed))
+}
+
+// ArraySet (expression type) - getters
+func cgoArraySetGetRef(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenArraySetGetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+func cgoArraySetGetIndex(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenArraySetGetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+func cgoArraySetGetValue(expr uintptr) uintptr {
+	return uintptr(unsafe.Pointer(C.BinaryenArraySetGetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)))))
+}
+
+// ArraySet (expression type) - setters
+func cgoArraySetSetRef(expr, ref uintptr) {
+	C.BinaryenArraySetSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoArraySetSetIndex(expr, index uintptr) {
+	C.BinaryenArraySetSetIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(index)))
+}
+func cgoArraySetSetValue(expr, value uintptr) {
+	C.BinaryenArraySetSetValue(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(value)))
+}
+
+// ArrayLen
+func cgoArrayLenSetRef(expr, ref uintptr) {
+	C.BinaryenArrayLenSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+
+// ArrayCopy
+func cgoArrayCopySetDestRef(expr, destRef uintptr) {
+	C.BinaryenArrayCopySetDestRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(destRef)))
+}
+func cgoArrayCopySetDestIndex(expr, destIndex uintptr) {
+	C.BinaryenArrayCopySetDestIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(destIndex)))
+}
+func cgoArrayCopySetSrcRef(expr, srcRef uintptr) {
+	C.BinaryenArrayCopySetSrcRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(srcRef)))
+}
+func cgoArrayCopySetSrcIndex(expr, srcIndex uintptr) {
+	C.BinaryenArrayCopySetSrcIndex(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(srcIndex)))
+}
+func cgoArrayCopySetLength(expr, length uintptr) {
+	C.BinaryenArrayCopySetLength(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(length)))
+}
+
+// String expressions
+func cgoStringNewSetOp(expr uintptr, op int32) {
+	C.BinaryenStringNewSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoStringNewSetRef(expr, ref uintptr) {
+	C.BinaryenStringNewSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStringNewSetStart(expr, start uintptr) {
+	C.BinaryenStringNewSetStart(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(start)))
+}
+func cgoStringNewSetEnd(expr, end uintptr) {
+	C.BinaryenStringNewSetEnd(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(end)))
+}
+func cgoStringConstSetString(expr uintptr, str unsafe.Pointer) {
+	C.BinaryenStringConstSetString(C.BinaryenExpressionRef(unsafe.Pointer(expr)), (*C.char)(str))
+}
+func cgoStringMeasureSetOp(expr uintptr, op int32) {
+	C.BinaryenStringMeasureSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoStringMeasureSetRef(expr, ref uintptr) {
+	C.BinaryenStringMeasureSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStringEncodeSetOp(expr uintptr, op int32) {
+	C.BinaryenStringEncodeSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoStringEncodeSetStr(expr, str uintptr) {
+	C.BinaryenStringEncodeSetStr(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(str)))
+}
+func cgoStringEncodeSetArray(expr, arr uintptr) {
+	C.BinaryenStringEncodeSetArray(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(arr)))
+}
+func cgoStringEncodeSetStart(expr, start uintptr) {
+	C.BinaryenStringEncodeSetStart(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(start)))
+}
+func cgoStringConcatSetLeft(expr, left uintptr) {
+	C.BinaryenStringConcatSetLeft(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(left)))
+}
+func cgoStringConcatSetRight(expr, right uintptr) {
+	C.BinaryenStringConcatSetRight(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(right)))
+}
+func cgoStringEqSetOp(expr uintptr, op int32) {
+	C.BinaryenStringEqSetOp(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenOp(op))
+}
+func cgoStringEqSetLeft(expr, left uintptr) {
+	C.BinaryenStringEqSetLeft(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(left)))
+}
+func cgoStringEqSetRight(expr, right uintptr) {
+	C.BinaryenStringEqSetRight(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(right)))
+}
+func cgoStringWTF16GetSetRef(expr, ref uintptr) {
+	C.BinaryenStringWTF16GetSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStringWTF16GetSetPos(expr, pos uintptr) {
+	C.BinaryenStringWTF16GetSetPos(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(pos)))
+}
+func cgoStringSliceWTFSetRef(expr, ref uintptr) {
+	C.BinaryenStringSliceWTFSetRef(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(ref)))
+}
+func cgoStringSliceWTFSetStart(expr, start uintptr) {
+	C.BinaryenStringSliceWTFSetStart(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(start)))
+}
+func cgoStringSliceWTFSetEnd(expr, end uintptr) {
+	C.BinaryenStringSliceWTFSetEnd(C.BinaryenExpressionRef(unsafe.Pointer(expr)), C.BinaryenExpressionRef(unsafe.Pointer(end)))
+}
+
+// Function (module-level)
+func cgoFunctionSetType(fn uintptr, typ uintptr) {
+	C.BinaryenFunctionSetType(C.BinaryenFunctionRef(unsafe.Pointer(fn)), C.BinaryenHeapType(typ))
+}
+func cgoFunctionSetDebugLocation(fn uintptr, expr uintptr, fileIndex, lineNumber, columnNumber uint32) {
+	C.BinaryenFunctionSetDebugLocation(
+		C.BinaryenFunctionRef(unsafe.Pointer(fn)),
+		C.BinaryenExpressionRef(unsafe.Pointer(expr)),
+		C.BinaryenIndex(fileIndex),
+		C.BinaryenIndex(lineNumber),
+		C.BinaryenIndex(columnNumber),
+	)
+}
+
 // Utility: CString helper (caller must free)
 func cgoCString(s string) unsafe.Pointer {
 	return unsafe.Pointer(C.CString(s))

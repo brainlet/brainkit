@@ -122,6 +122,7 @@ func RegisterBinaryenBridgeImpl(ctx *qjs.Context, lm *LinearMemory) {
 	registerExpressionInfoImpls(ctx, lm)
 	registerExpressionConstructorImpls(ctx, lm)
 	registerExpressionGetterSetterImpls(ctx, lm)
+	registerAllSetterImpls(ctx, lm)
 	registerFunctionImpls(ctx, lm)
 	registerGlobalImpls(ctx, lm)
 	registerExportImpls(ctx, lm)
@@ -140,4 +141,6 @@ func RegisterBinaryenBridgeImpl(ctx *qjs.Context, lm *LinearMemory) {
 	registerGCImpls(ctx, lm)
 	registerStringImpls(ctx, lm)
 	registerMiscImpls(ctx, lm)
+	registerAllConstructorImpls(ctx, lm)
+	registerAllGetterImpls(ctx, lm)
 }
