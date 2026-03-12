@@ -1,0 +1,10 @@
+{
+  "name": "as-embed-bundle",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "as-float": "^1.0.1",
+    "long": "^5.2.3",
+    "esbuild": "^0.24.0"
+  }
+}

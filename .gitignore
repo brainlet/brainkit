@@ -5,3 +5,5 @@ picomatch/audit_upstream_test.go
 .c*
 C*.md
 .env
+
+wasm-kit/docs/**
