@@ -1,0 +1,17 @@
+{
+  "name": "ai-sdk-bundle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "ai": "^4.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/provider": "^1.0.0",
+    "@ai-sdk/provider-utils": "^2.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
