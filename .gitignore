@@ -2,7 +2,8 @@
 .env
 
 # Node.js build dependencies (installed by `make deps`)
-**/node_modules/
+**/node_modules/**
 
 # Build dependencies (downloaded by setup scripts, not committed)
 as-embed/deps/
+
