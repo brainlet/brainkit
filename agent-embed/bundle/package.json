@@ -1,0 +1,24 @@
+{
+  "name": "agent-embed-bundle",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/cerebras": "^2.0.39",
+    "@ai-sdk/cohere": "^3.0.25",
+    "@ai-sdk/deepseek": "^2.0.24",
+    "@ai-sdk/fireworks": "^2.0.40",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/groq": "^3.0.29",
+    "@ai-sdk/mistral": "^3.0.24",
+    "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/perplexity": "^3.0.23",
+    "@ai-sdk/togetherai": "^2.0.39",
+    "@ai-sdk/xai": "^3.0.67",
+    "@mastra/core": "^1.13.1",
+    "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

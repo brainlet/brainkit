@@ -1,12 +1,8 @@
 .DS_Store
-.s*
-picomatch/testdata/upstream_audit_cases.js
-picomatch/audit_upstream_test.go
-.c*
-C*.md
 .env
 
-wasm-kit/docs/**
+# Node.js build dependencies (installed by `make deps`)
+**/node_modules/
 
 # Build dependencies (downloaded by setup scripts, not committed)
 as-embed/deps/

@@ -1,0 +1,690 @@
+import * as esbuild from "esbuild";
+import { statSync, writeFileSync } from "node:fs";
+
+// Node.js built-ins that Mastra imports.
+// We stub them at build time so esbuild can resolve named imports.
+// At runtime in QuickJS, jsbridge polyfills provide the real implementations
+// on globalThis (fetch, crypto, TextEncoder, URL, streams, etc.).
+// File-system and child-process APIs will throw — they need Go-side bridges.
+
+const nodeBuiltins = new Set([
+  "assert", "async_hooks", "buffer", "child_process", "crypto",
+  "diagnostics_channel", "events", "fs", "http", "https", "module",
+  "net", "os", "path", "perf_hooks", "process", "querystring",
+  "stream", "string_decoder", "tls", "url", "util", "worker_threads", "zlib",
+]);
+
+// Subpath modules that need their own stubs (not just the parent module)
+const nodeSubpaths = new Set([
+  "fs/promises", "stream/web", "path/posix", "stream/promises", "util/types",
+]);
+
+function isNodeBuiltin(id) {
+  if (id.startsWith("node:")) return true;
+  if (nodeSubpaths.has(id)) return true;
+  const base = id.split("/")[0];
+  return nodeBuiltins.has(base);
+}
+
+// Normalize "node:crypto" -> "crypto", "stream/web" -> "stream/web"
+function normalizeId(id) {
+  return id.startsWith("node:") ? id.slice(5) : id;
+}
+
+// Per-module stub contents. Each export is a no-op function or empty object.
+// These stubs exist ONLY to satisfy esbuild's named-import resolution.
+// At runtime, jsbridge polyfills override the ones that matter (crypto, streams, events).
+// The fs/path/child_process stubs will throw if actually called — that's intentional,
+// those need Go-side bridges before they can work.
+const noop = "() => {}";
+const noopTrue = "() => true";
+const noopFalse = "() => false";
+const throwFn = (name) => `() => { throw new Error("${name}: not available in QuickJS, needs Go bridge"); }`;
+
+const moduleStubs = {
+  "crypto": `
+    export const randomUUID = () => globalThis.crypto?.randomUUID?.() ?? "00000000-0000-0000-0000-000000000000";
+    export const randomBytes = (n) => {
+      const b = new Uint8Array(n);
+      if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(b);
+      return b;
+    };
+    export const randomFillSync = (buf) => {
+      if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(buf);
+      return buf;
+    };
+    export const randomInt = (min, max) => {
+      if (max === undefined) { max = min; min = 0; }
+      return min + Math.floor(Math.random() * (max - min));
+    };
+    export const createHash = (alg) => {
+      if (globalThis.__node_crypto?.createHash) return globalThis.__node_crypto.createHash(alg);
+      return { update(d) { return this; }, digest(enc) { return "stub"; }, copy() { return this; } };
+    };
+    export const createHmac = (alg, key) => {
+      if (globalThis.__node_crypto?.createHmac) return globalThis.__node_crypto.createHmac(alg, key);
+      return { update(d) { return this; }, digest(enc) { return "stub"; } };
+    };
+    export const createCipheriv = ${throwFn("createCipheriv")};
+    export const createDecipheriv = ${throwFn("createDecipheriv")};
+    export const createSign = ${throwFn("createSign")};
+    export const createVerify = ${throwFn("createVerify")};
+    export const pbkdf2 = ${throwFn("pbkdf2")};
+    export const pbkdf2Sync = ${throwFn("pbkdf2Sync")};
+    export const scrypt = ${throwFn("scrypt")};
+    export const scryptSync = ${throwFn("scryptSync")};
+    export const timingSafeEqual = (a, b) => {
+      if (a.length !== b.length) return false;
+      let r = 0;
+      for (let i = 0; i < a.length; i++) r |= a[i] ^ b[i];
+      return r === 0;
+    };
+    export const constants = {};
+    export const webcrypto = globalThis.crypto;
+    export const getHashes = () => ["sha256", "sha512"];
+    export const getCiphers = () => [];
+    export default { randomUUID, randomBytes, randomFillSync, randomInt, createHash, createHmac,
+      createCipheriv, createDecipheriv, createSign, createVerify, pbkdf2, pbkdf2Sync,
+      scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers };
+  `,
+  "stream": `
+    export class Readable {
+      constructor(opts) { this._events = {}; this.readable = true; this.destroyed = false; }
+      pipe(dest) { return dest; }
+      on(ev, fn) { (this._events[ev] = this._events[ev] || []).push(fn); return this; }
+      once(ev, fn) { const w = (...a) => { this.removeListener(ev, w); fn(...a); }; return this.on(ev, w); }
+      removeListener(ev, fn) { const a = this._events[ev]; if (a) this._events[ev] = a.filter(f => f !== fn); return this; }
+      emit(ev, ...args) { (this._events[ev] || []).forEach(fn => fn(...args)); return true; }
+      read() { return null; }
+      push() { return true; }
+      unshift() {}
+      resume() { return this; }
+      pause() { return this; }
+      isPaused() { return false; }
+      destroy() { this.destroyed = true; return this; }
+      [Symbol.asyncIterator]() { return { next: () => Promise.resolve({ done: true }) }; }
+      static from(iterable) { return new Readable(); }
+    }
+    export class Writable {
+      constructor(opts) { this._events = {}; this.writable = true; this.destroyed = false; }
+      write(chunk, enc, cb) { if (cb) cb(); return true; }
+      end(chunk, enc, cb) { if (typeof chunk === "function") { chunk(); } else if (cb) cb(); }
+      on(ev, fn) { (this._events[ev] = this._events[ev] || []).push(fn); return this; }
+      once(ev, fn) { return this.on(ev, fn); }
+      emit(ev, ...args) { (this._events[ev] || []).forEach(fn => fn(...args)); return true; }
+      destroy() { this.destroyed = true; return this; }
+    }
+    export class Duplex extends Readable {
+      constructor(opts) { super(opts); this.writable = true; }
+      write(chunk, enc, cb) { if (cb) cb(); return true; }
+      end(chunk, enc, cb) { if (typeof chunk === "function") { chunk(); } else if (cb) cb(); }
+    }
+    export class Transform extends Duplex {
+      constructor(opts) { super(opts); }
+      _transform(chunk, enc, cb) { this.push(chunk); cb(); }
+      _flush(cb) { cb(); }
+    }
+    export class PassThrough extends Transform {}
+    export const pipeline = (...args) => { const cb = args.pop(); if (typeof cb === "function") cb(); };
+    export const finished = (stream, cb) => { if (cb) cb(); };
+    export default { Readable, Writable, Duplex, Transform, PassThrough, pipeline, finished };
+  `,
+  "stream/web": `
+    export const ReadableStream = globalThis.ReadableStream || class ReadableStream {};
+    export const WritableStream = globalThis.WritableStream || class WritableStream {};
+    export const TransformStream = globalThis.TransformStream || class TransformStream {};
+    export default { ReadableStream, WritableStream, TransformStream };
+  `,
+  "stream/promises": `
+    export const pipeline = (...args) => Promise.resolve();
+    export const finished = (stream) => Promise.resolve();
+    export default { pipeline, finished };
+  `,
+  "events": `
+    export class EventEmitter {
+      constructor() { this._events = {}; this._maxListeners = 10; }
+      on(e, fn) { (this._events[e] = this._events[e] || []).push(fn); return this; }
+      addListener(e, fn) { return this.on(e, fn); }
+      prependListener(e, fn) { (this._events[e] = this._events[e] || []).unshift(fn); return this; }
+      off(e, fn) { const a = this._events[e]; if (a) this._events[e] = a.filter(f => f !== fn); return this; }
+      removeListener(e, fn) { return this.off(e, fn); }
+      emit(e, ...args) { for (const fn of this._events[e] || []) fn(...args); return true; }
+      once(e, fn) { const w = (...a) => { this.off(e, w); fn(...a); }; return this.on(e, w); }
+      prependOnceListener(e, fn) { const w = (...a) => { this.off(e, w); fn(...a); }; return this.prependListener(e, w); }
+      removeAllListeners(e) { if (e) delete this._events[e]; else this._events = {}; return this; }
+      listeners(e) { return (this._events[e] || []).slice(); }
+      rawListeners(e) { return (this._events[e] || []).slice(); }
+      listenerCount(e) { return (this._events[e] || []).length; }
+      eventNames() { return Object.keys(this._events); }
+      setMaxListeners(n) { this._maxListeners = n; return this; }
+      getMaxListeners() { return this._maxListeners; }
+    }
+    EventEmitter.defaultMaxListeners = 10;
+    EventEmitter.EventEmitter = EventEmitter;
+    export const once = (emitter, event) => new Promise((resolve) => emitter.once(event, (...args) => resolve(args)));
+    export const on = (emitter, event) => { throw new Error("events.on: not supported in QuickJS"); };
+    export const getEventListeners = (emitter, event) => emitter.listeners?.(event) || [];
+    export default EventEmitter;
+  `,
+  "path": `
+    export const sep = "/";
+    export const delimiter = ":";
+    export const join = (...parts) => parts.filter(Boolean).join("/").replace(/\\/\\/+/g, "/");
+    export const resolve = (...parts) => "/" + join(...parts).replace(/^\\/+/, "");
+    export const dirname = (p) => { const i = (p||"").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : "."; };
+    export const basename = (p, ext) => { const b = (p||"").split("/").pop() || ""; return ext && b.endsWith(ext) ? b.slice(0, -ext.length) : b; };
+    export const extname = (p) => { const b = basename(p); const i = b.lastIndexOf("."); return i > 0 ? b.slice(i) : ""; };
+    export const normalize = (p) => (p||"").replace(/\\/\\/+/g, "/").replace(/\\/$/, "") || ".";
+    export const parse = (p) => { const b = basename(p); const e = extname(p); return { root: "", dir: dirname(p), base: b, ext: e, name: e ? b.slice(0, -e.length) : b }; };
+    export const relative = (from, to) => to;
+    export const isAbsolute = (p) => (p||"").startsWith("/");
+    export const format = (o) => (o.dir || o.root || "") + "/" + (o.base || o.name + (o.ext || ""));
+    export const toNamespacedPath = (p) => p;
+    const posix = { sep, delimiter, join, resolve, dirname, basename, extname, normalize, parse, relative, isAbsolute, format, toNamespacedPath };
+    export { posix };
+    export const win32 = posix;
+    export default posix;
+  `,
+  "path/posix": `
+    export const sep = "/";
+    export const delimiter = ":";
+    export const join = (...parts) => parts.filter(Boolean).join("/").replace(/\\/\\/+/g, "/");
+    export const resolve = (...parts) => "/" + join(...parts).replace(/^\\/+/, "");
+    export const dirname = (p) => { const i = (p||"").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : "."; };
+    export const basename = (p, ext) => { const b = (p||"").split("/").pop() || ""; return ext && b.endsWith(ext) ? b.slice(0, -ext.length) : b; };
+    export const extname = (p) => { const b = basename(p); const i = b.lastIndexOf("."); return i > 0 ? b.slice(i) : ""; };
+    export const normalize = (p) => (p||"").replace(/\\/\\/+/g, "/").replace(/\\/$/, "") || ".";
+    export const parse = (p) => { const b = basename(p); const e = extname(p); return { root: "", dir: dirname(p), base: b, ext: e, name: e ? b.slice(0, -e.length) : b }; };
+    export const relative = (from, to) => to;
+    export const isAbsolute = (p) => (p||"").startsWith("/");
+    export const format = (o) => (o.dir || o.root || "") + "/" + (o.base || o.name + (o.ext || ""));
+    export const toNamespacedPath = (p) => p;
+    export default { sep, delimiter, join, resolve, dirname, basename, extname, normalize, parse, relative, isAbsolute, format, toNamespacedPath };
+  `,
+  "fs": `
+    const notAvailable = (name) => (...args) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb(new Error(name + ": not available in QuickJS"));
+      else throw new Error(name + ": not available in QuickJS");
+    };
+    const notAvailableSync = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
+    export const constants = {
+      F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1,
+      O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024,
+      S_IFMT: 61440, S_IFREG: 32768, S_IFDIR: 16384, S_IFLNK: 40960,
+    };
+    export const existsSync = () => false;
+    export const readFileSync = notAvailableSync("readFileSync");
+    export const writeFileSync = notAvailableSync("writeFileSync");
+    export const appendFileSync = notAvailableSync("appendFileSync");
+    export const mkdirSync = notAvailableSync("mkdirSync");
+    export const rmdirSync = notAvailableSync("rmdirSync");
+    export const realpathSync = (p) => p;
+    export const readdirSync = notAvailableSync("readdirSync");
+    export const renameSync = notAvailableSync("renameSync");
+    export const rmSync = notAvailableSync("rmSync");
+    export const statSync = notAvailableSync("statSync");
+    export const lstatSync = notAvailableSync("lstatSync");
+    export const unlinkSync = notAvailableSync("unlinkSync");
+    export const chmodSync = notAvailableSync("chmodSync");
+    export const accessSync = notAvailableSync("accessSync");
+    export const copyFileSync = notAvailableSync("copyFileSync");
+    export const openSync = notAvailableSync("openSync");
+    export const closeSync = notAvailableSync("closeSync");
+    export const readSync = notAvailableSync("readSync");
+    export const writeSync = notAvailableSync("writeSync");
+    export const createReadStream = notAvailableSync("createReadStream");
+    export const createWriteStream = notAvailableSync("createWriteStream");
+    export const watch = notAvailable("watch");
+    export const watchFile = notAvailable("watchFile");
+    export const unwatchFile = notAvailable("unwatchFile");
+    export const readFile = notAvailable("readFile");
+    export const writeFile = notAvailable("writeFile");
+    export const access = notAvailable("access");
+    export const stat = notAvailable("stat");
+    export const lstat = notAvailable("lstat");
+    export const mkdir = notAvailable("mkdir");
+    export const readdir = notAvailable("readdir");
+    export const unlink = notAvailable("unlink");
+    export const rename = notAvailable("rename");
+    export const copyFile = notAvailable("copyFile");
+    export const promises = {
+      readFile: async () => { throw new Error("fs.promises.readFile: not available in QuickJS"); },
+      writeFile: async () => { throw new Error("fs.promises.writeFile: not available in QuickJS"); },
+      mkdir: async () => { throw new Error("fs.promises.mkdir: not available in QuickJS"); },
+      readdir: async () => { throw new Error("fs.promises.readdir: not available in QuickJS"); },
+      stat: async () => { throw new Error("fs.promises.stat: not available in QuickJS"); },
+      lstat: async () => { throw new Error("fs.promises.lstat: not available in QuickJS"); },
+      access: async () => { throw new Error("fs.promises.access: not available in QuickJS"); },
+      unlink: async () => { throw new Error("fs.promises.unlink: not available in QuickJS"); },
+      rename: async () => { throw new Error("fs.promises.rename: not available in QuickJS"); },
+      copyFile: async () => { throw new Error("fs.promises.copyFile: not available in QuickJS"); },
+      rm: async () => { throw new Error("fs.promises.rm: not available in QuickJS"); },
+    };
+    export default { constants, existsSync, readFileSync, writeFileSync, appendFileSync,
+      mkdirSync, rmdirSync, realpathSync, readdirSync, renameSync, rmSync, statSync, lstatSync,
+      unlinkSync, chmodSync, accessSync, copyFileSync, openSync, closeSync, readSync, writeSync,
+      createReadStream, createWriteStream, watch, watchFile, unwatchFile,
+      readFile, writeFile, access, stat, lstat, mkdir, readdir, unlink, rename, copyFile, promises };
+  `,
+  "fs/promises": `
+    const notAvailable = (name) => async () => { throw new Error(name + ": not available in QuickJS"); };
+    export const readFile = notAvailable("readFile");
+    export const writeFile = notAvailable("writeFile");
+    export const mkdir = notAvailable("mkdir");
+    export const readdir = notAvailable("readdir");
+    export const stat = notAvailable("stat");
+    export const lstat = notAvailable("lstat");
+    export const access = notAvailable("access");
+    export const unlink = notAvailable("unlink");
+    export const rename = notAvailable("rename");
+    export const copyFile = notAvailable("copyFile");
+    export const rm = notAvailable("rm");
+    export const realpath = async (p) => p;
+    export const open = notAvailable("open");
+    export const mkdtemp = notAvailable("mkdtemp");
+    export const chmod = notAvailable("chmod");
+    export const chown = notAvailable("chown");
+    export const symlink = notAvailable("symlink");
+    export const readlink = notAvailable("readlink");
+    export const appendFile = notAvailable("appendFile");
+    export const truncate = notAvailable("truncate");
+    export const watch = notAvailable("watch");
+    export default { readFile, writeFile, mkdir, readdir, stat, lstat, access, unlink, rename,
+      copyFile, rm, realpath, open, mkdtemp, chmod, chown, symlink, readlink, appendFile, truncate, watch };
+  `,
+  "child_process": `
+    const notAvailable = (name) => (...args) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb(new Error(name + ": not available in QuickJS"));
+      else throw new Error(name + ": not available in QuickJS");
+    };
+    const notAvailableSync = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
+    export const exec = notAvailable("exec");
+    export const execFile = notAvailable("execFile");
+    export const execSync = notAvailableSync("execSync");
+    export const execFileSync = notAvailableSync("execFileSync");
+    export const spawn = notAvailableSync("spawn");
+    export const spawnSync = notAvailableSync("spawnSync");
+    export const fork = notAvailableSync("fork");
+    export default { exec, execFile, execSync, execFileSync, spawn, spawnSync, fork };
+  `,
+  "url": `
+    export const URL = globalThis.URL || class URL { constructor(u) { this.href = u; } toString() { return this.href; } };
+    export const URLSearchParams = globalThis.URLSearchParams || class URLSearchParams { constructor() { this._p = []; } };
+    export const pathToFileURL = (p) => new (globalThis.URL)(\"file://\" + p);
+    export const fileURLToPath = (u) => {
+      const s = typeof u === "string" ? u : u.href || u.toString();
+      return s.startsWith("file://") ? s.slice(7) : s;
+    };
+    export const format = (u) => typeof u === "string" ? u : u.href || u.toString();
+    export const parse = (u) => { try { return new (globalThis.URL)(u); } catch(e) { return { href: u }; } };
+    export const resolve = (from, to) => new (globalThis.URL)(to, from).href;
+    export default { URL, URLSearchParams, pathToFileURL, fileURLToPath, format, parse, resolve };
+  `,
+  "module": `
+    export const createRequire = () => { const r = () => ({}); r.resolve = () => ""; return r; };
+    export const builtinModules = [];
+    export const isBuiltin = () => false;
+    export default { createRequire, builtinModules, isBuiltin };
+  `,
+  "os": `
+    export const homedir = () => "/home/user";
+    export const tmpdir = () => "/tmp";
+    export const platform = () => "linux";
+    export const arch = () => "x64";
+    export const cpus = () => [{ model: "stub", speed: 0, times: {} }];
+    export const hostname = () => "quickjs";
+    export const type = () => "Linux";
+    export const release = () => "0.0.0";
+    export const EOL = "\\n";
+    export const endianness = () => "LE";
+    export const totalmem = () => 4294967296;
+    export const freemem = () => 2147483648;
+    export const uptime = () => 0;
+    export const loadavg = () => [0, 0, 0];
+    export const networkInterfaces = () => ({});
+    export const userInfo = () => ({ username: "user", uid: 1000, gid: 1000, shell: "/bin/sh", homedir: "/home/user" });
+    export const constants = { signals: {}, errno: {} };
+    export default { homedir, tmpdir, platform, arch, cpus, hostname, type, release, EOL, endianness,
+      totalmem, freemem, uptime, loadavg, networkInterfaces, userInfo, constants };
+  `,
+  "util": `
+    export const promisify = (fn) => (...args) => new Promise((res, rej) => fn(...args, (err, val) => err ? rej(err) : res(val)));
+    export const callbackify = (fn) => (...args) => { const cb = args.pop(); fn(...args).then(v => cb(null, v), e => cb(e)); };
+    export const inspect = (obj, opts) => {
+      try { return JSON.stringify(obj, null, 2); }
+      catch(e) { return String(obj); }
+    };
+    inspect.custom = Symbol.for("nodejs.util.inspect.custom");
+    export const deprecate = (fn, msg) => fn;
+    export const inherits = (ctor, superCtor) => { ctor.super_ = superCtor; Object.setPrototypeOf(ctor.prototype, superCtor.prototype); };
+    export const format = (fmt, ...args) => {
+      let i = 0;
+      return String(fmt).replace(/%[sdifjoO%]/g, (m) => {
+        if (m === "%%") return "%";
+        if (i >= args.length) return m;
+        const v = args[i++];
+        switch (m) { case "%s": return String(v); case "%d": case "%i": return parseInt(v, 10); case "%f": return parseFloat(v);
+          case "%j": try { return JSON.stringify(v); } catch(e) { return "[Circular]"; }
+          case "%o": case "%O": return inspect(v); default: return m; }
+      });
+    };
+    export const debuglog = (section) => () => {};
+    export const types = {
+      isPromise: (v) => v instanceof Promise,
+      isDate: (v) => v instanceof Date,
+      isRegExp: (v) => v instanceof RegExp,
+      isNativeError: (v) => v instanceof Error,
+      isMap: (v) => v instanceof Map,
+      isSet: (v) => v instanceof Set,
+      isTypedArray: (v) => ArrayBuffer.isView(v) && !(v instanceof DataView),
+      isArrayBuffer: (v) => v instanceof ArrayBuffer,
+      isDataView: (v) => v instanceof DataView,
+      isWeakMap: (v) => v instanceof WeakMap,
+      isWeakSet: (v) => v instanceof WeakSet,
+      isSymbolObject: (v) => typeof v === "object" && typeof v.valueOf() === "symbol",
+    };
+    export const TextEncoder = globalThis.TextEncoder;
+    export const TextDecoder = globalThis.TextDecoder;
+    export const isDeepStrictEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    export default { promisify, callbackify, inspect, deprecate, inherits, format, debuglog, types,
+      TextEncoder, TextDecoder, isDeepStrictEqual };
+  `,
+  "util/types": `
+    export const isPromise = (v) => v instanceof Promise;
+    export const isDate = (v) => v instanceof Date;
+    export const isRegExp = (v) => v instanceof RegExp;
+    export const isNativeError = (v) => v instanceof Error;
+    export const isMap = (v) => v instanceof Map;
+    export const isSet = (v) => v instanceof Set;
+    export const isTypedArray = (v) => ArrayBuffer.isView(v) && !(v instanceof DataView);
+    export const isArrayBuffer = (v) => v instanceof ArrayBuffer;
+    export default { isPromise, isDate, isRegExp, isNativeError, isMap, isSet, isTypedArray, isArrayBuffer };
+  `,
+  "process": `
+    const p = globalThis.process || {
+      env: {}, cwd: () => "/", platform: "linux",
+      version: "v20.0.0", versions: { node: "20.0.0" },
+      argv: [], pid: 1, exit: () => {},
+    };
+    export default p;
+    export const env = p.env;
+    export const cwd = p.cwd || (() => "/");
+    export const platform = p.platform || "linux";
+    export const arch = p.arch || "x64";
+    export const version = p.version || "v20.0.0";
+    export const versions = p.versions || { node: "20.0.0" };
+    export const argv = p.argv || [];
+    export const execArgv = p.execArgv || [];
+    export const pid = p.pid || 1;
+    export const exit = p.exit || (() => {});
+    export const kill = p.kill || (() => {});
+    export const abort = p.abort || (() => {});
+    export const umask = p.umask || (() => 0o22);
+    export const uptime = p.uptime || (() => 0);
+    export const hrtime = p.hrtime || Object.assign(
+      (prev) => { const now = Date.now(); const s = Math.floor(now/1000); const ns = (now%1000)*1e6;
+        if (prev) { return [s-prev[0], ns-prev[1]<0?(s-prev[0]-1,ns-prev[1]+1e9):(ns-prev[1])]; }
+        return [s, ns]; },
+      { bigint: () => BigInt(Date.now()) * BigInt(1e6) }
+    );
+    export const nextTick = (fn, ...args) => queueMicrotask(() => fn(...args));
+    export const stdout = p.stdout || { write: () => true, isTTY: false };
+    export const stderr = p.stderr || { write: () => true, isTTY: false };
+    export const stdin = p.stdin || { isTTY: false, on: () => stdin, resume: () => stdin };
+    export const title = p.title || "node";
+    export const release = p.release || { name: "node" };
+    export const config = p.config || {};
+    export const features = p.features || {};
+    export const memoryUsage = p.memoryUsage || (() => ({ rss:0, heapTotal:0, heapUsed:0, external:0, arrayBuffers:0 }));
+    export const cpuUsage = p.cpuUsage || (() => ({ user:0, system:0 }));
+    export const on = p.on || (() => p);
+    export const off = p.off || (() => p);
+    export const once = p.once || (() => p);
+    export const addListener = p.addListener || (() => p);
+    export const removeListener = p.removeListener || (() => p);
+    export const removeAllListeners = p.removeAllListeners || (() => p);
+    export const emit = p.emit || (() => false);
+    export const listeners = p.listeners || (() => []);
+    export const listenerCount = p.listenerCount || (() => 0);
+  `,
+  "buffer": `
+    export const Buffer = globalThis.Buffer || {
+      from: (v, enc) => typeof v === "string" ? new TextEncoder().encode(v) : new Uint8Array(v),
+      alloc: (n, fill) => { const b = new Uint8Array(n); if (fill) b.fill(typeof fill === "number" ? fill : 0); return b; },
+      allocUnsafe: (n) => new Uint8Array(n),
+      allocUnsafeSlow: (n) => new Uint8Array(n),
+      isBuffer: () => false,
+      isEncoding: (enc) => ["utf8","utf-8","ascii","latin1","binary","hex","base64"].indexOf((enc||"").toLowerCase()) !== -1,
+      byteLength: (str, enc) => typeof str === "string" ? new TextEncoder().encode(str).length : (str.byteLength || str.length || 0),
+      concat: (bufs, totalLength) => {
+        if (!totalLength) { totalLength = 0; for (const b of bufs) totalLength += b.length; }
+        const r = new Uint8Array(totalLength); let off = 0;
+        for (const b of bufs) { r.set(b, off); off += b.length; }
+        return r;
+      },
+      compare: (a, b) => {
+        const len = Math.min(a.length, b.length);
+        for (let i = 0; i < len; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; }
+        return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
+      },
+    };
+    export const SlowBuffer = Buffer;
+    export const INSPECT_MAX_BYTES = 50;
+    export const kMaxLength = 2147483647;
+    export const constants = { MAX_LENGTH: 2147483647, MAX_STRING_LENGTH: 536870888 };
+    export default Buffer;
+  `,
+  "assert": `
+    export default function assert(val, msg) { if (!val) throw new Error(msg || "Assertion failed"); };
+    export const ok = (val, msg) => { if (!val) throw new Error(msg || "Assertion failed"); };
+    export const strictEqual = (a, b, msg) => { if (a !== b) throw new Error(msg || a + " !== " + b); };
+    export const notStrictEqual = (a, b, msg) => { if (a === b) throw new Error(msg || a + " === " + b); };
+    export const deepStrictEqual = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(msg || "Not deeply equal"); };
+    export const throws = (fn, msg) => { try { fn(); throw new Error(msg || "Expected to throw"); } catch(e) {} };
+    export const doesNotThrow = (fn, msg) => { try { fn(); } catch(e) { throw new Error(msg || "Did not expect to throw: " + e.message); } };
+    export const fail = (msg) => { throw new Error(msg || "Assertion failed"); };
+    export const AssertionError = class AssertionError extends Error { constructor(opts) { super(opts?.message || "Assertion failed"); } };
+    export const strict = Object.assign(assert, { ok, strictEqual, notStrictEqual, deepStrictEqual, throws, doesNotThrow, fail });
+  `,
+  "http": `
+    const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS, use fetch"); };
+    export const createServer = notAvailable("http.createServer");
+    export const request = notAvailable("http.request");
+    export const get = notAvailable("http.get");
+    export const Agent = class Agent { constructor() {} };
+    export const globalAgent = new Agent();
+    export const METHODS = ["GET","HEAD","POST","PUT","DELETE","CONNECT","OPTIONS","TRACE","PATCH"];
+    export const STATUS_CODES = { 200:"OK", 201:"Created", 204:"No Content", 301:"Moved Permanently",
+      302:"Found", 304:"Not Modified", 400:"Bad Request", 401:"Unauthorized", 403:"Forbidden",
+      404:"Not Found", 405:"Method Not Allowed", 500:"Internal Server Error", 502:"Bad Gateway",
+      503:"Service Unavailable" };
+    export default { createServer, request, get, Agent, globalAgent, METHODS, STATUS_CODES };
+  `,
+  "https": `
+    const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS, use fetch"); };
+    export const createServer = notAvailable("https.createServer");
+    export const request = notAvailable("https.request");
+    export const get = notAvailable("https.get");
+    export const Agent = class Agent { constructor() {} };
+    export const globalAgent = new Agent();
+    export default { createServer, request, get, Agent, globalAgent };
+  `,
+  "net": `
+    const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
+    export const createServer = notAvailable("net.createServer");
+    export const createConnection = notAvailable("net.createConnection");
+    export const connect = notAvailable("net.connect");
+    export const Socket = class Socket {};
+    export const Server = class Server {};
+    export const isIP = (input) => { try { return input.includes(":") ? 6 : input.match(/^\\d+\\.\\d+\\.\\d+\\.\\d+$/) ? 4 : 0; } catch(e) { return 0; } };
+    export const isIPv4 = (input) => isIP(input) === 4;
+    export const isIPv6 = (input) => isIP(input) === 6;
+    export default { createServer, createConnection, connect, Socket, Server, isIP, isIPv4, isIPv6 };
+  `,
+  "tls": `
+    const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
+    export const createServer = notAvailable("tls.createServer");
+    export const connect = notAvailable("tls.connect");
+    export const TLSSocket = class TLSSocket {};
+    export const DEFAULT_ECDH_CURVE = "auto";
+    export const DEFAULT_MIN_VERSION = "TLSv1.2";
+    export const DEFAULT_MAX_VERSION = "TLSv1.3";
+    export default { createServer, connect, TLSSocket, DEFAULT_ECDH_CURVE, DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION };
+  `,
+  "querystring": `
+    export const parse = (str) => {
+      const obj = {};
+      (str || "").split("&").forEach(pair => {
+        if (!pair) return;
+        const [k, ...v] = pair.split("=");
+        obj[decodeURIComponent(k)] = decodeURIComponent(v.join("="));
+      });
+      return obj;
+    };
+    export const stringify = (obj) => Object.entries(obj || {}).map(([k,v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("&");
+    export const encode = stringify;
+    export const decode = parse;
+    export const escape = encodeURIComponent;
+    export const unescape = decodeURIComponent;
+    export default { parse, stringify, encode, decode, escape, unescape };
+  `,
+  "string_decoder": `
+    export class StringDecoder {
+      constructor(encoding) { this.encoding = encoding || "utf-8"; this._decoder = new TextDecoder(this.encoding); }
+      write(buf) { return this._decoder.decode(buf instanceof Uint8Array ? buf : new Uint8Array(buf), { stream: true }); }
+      end(buf) { if (buf) return this._decoder.decode(buf instanceof Uint8Array ? buf : new Uint8Array(buf)); return this._decoder.decode(); }
+    }
+    export default { StringDecoder };
+  `,
+  "perf_hooks": `
+    export const performance = globalThis.performance || { now: () => Date.now(), timeOrigin: Date.now() };
+    export const PerformanceObserver = class PerformanceObserver { constructor() {} observe() {} disconnect() {} };
+    export const monitorEventLoopDelay = () => ({ enable: () => {}, disable: () => {}, percentile: () => 0, min: 0, max: 0, mean: 0, stddev: 0 });
+    export default { performance, PerformanceObserver, monitorEventLoopDelay };
+  `,
+  "async_hooks": `
+    export const createHook = () => ({ enable: () => {}, disable: () => {} });
+    export const executionAsyncId = () => 0;
+    export const triggerAsyncId = () => 0;
+    export const executionAsyncResource = () => ({});
+    export class AsyncLocalStorage {
+      constructor() { this._store = undefined; }
+      getStore() { return this._store; }
+      run(store, fn, ...args) { const prev = this._store; this._store = store; try { return fn(...args); } finally { this._store = prev; } }
+      enterWith(store) { this._store = store; }
+      disable() { this._store = undefined; }
+    }
+    export class AsyncResource {
+      constructor(type) { this.type = type; }
+      runInAsyncScope(fn, thisArg, ...args) { return fn.apply(thisArg, args); }
+      emitDestroy() { return this; }
+      asyncId() { return 0; }
+      triggerAsyncId() { return 0; }
+    }
+    export default { createHook, executionAsyncId, triggerAsyncId, executionAsyncResource, AsyncLocalStorage, AsyncResource };
+  `,
+  "diagnostics_channel": `
+    export const channel = (name) => ({
+      subscribe: () => {},
+      unsubscribe: () => {},
+      publish: () => {},
+      hasSubscribers: false,
+    });
+    export const hasSubscribers = () => false;
+    export const subscribe = () => {};
+    export const unsubscribe = () => {};
+    export class Channel { constructor() { this.hasSubscribers = false; } subscribe() {} unsubscribe() {} publish() {} }
+    export default { channel, hasSubscribers, subscribe, unsubscribe, Channel };
+  `,
+  "worker_threads": `
+    export const isMainThread = true;
+    export const parentPort = null;
+    export const workerData = undefined;
+    export const threadId = 0;
+    export class Worker { constructor() { throw new Error("Worker threads not available in QuickJS"); } }
+    export class MessageChannel { constructor() { this.port1 = {}; this.port2 = {}; } }
+    export class MessagePort {}
+    export default { isMainThread, parentPort, workerData, threadId, Worker, MessageChannel, MessagePort };
+  `,
+  "zlib": `
+    const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
+    export const createGzip = notAvailable("createGzip");
+    export const createGunzip = notAvailable("createGunzip");
+    export const createDeflate = notAvailable("createDeflate");
+    export const createInflate = notAvailable("createInflate");
+    export const gzip = notAvailable("gzip");
+    export const gunzip = notAvailable("gunzip");
+    export const deflate = notAvailable("deflate");
+    export const inflate = notAvailable("inflate");
+    export const gzipSync = notAvailable("gzipSync");
+    export const gunzipSync = notAvailable("gunzipSync");
+    export const deflateSync = notAvailable("deflateSync");
+    export const inflateSync = notAvailable("inflateSync");
+    export const brotliCompressSync = notAvailable("brotliCompressSync");
+    export const brotliDecompressSync = notAvailable("brotliDecompressSync");
+    export const constants = {};
+    export default { createGzip, createGunzip, createDeflate, createInflate, gzip, gunzip, deflate, inflate,
+      gzipSync, gunzipSync, deflateSync, inflateSync, brotliCompressSync, brotliDecompressSync, constants };
+  `,
+};
+
+// Fallback: empty module for any Node.js built-in not explicitly stubbed
+const fallbackStub = "export default {};";
+
+const nodeStubPlugin = {
+  name: "node-stub",
+  setup(build) {
+    build.onResolve({ filter: /.*/ }, (args) => {
+      if (isNodeBuiltin(args.path)) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+    });
+    build.onLoad({ filter: /.*/, namespace: "node-stub" }, (args) => {
+      const id = normalizeId(args.path);
+      return {
+        contents: moduleStubs[id] || fallbackStub,
+        loader: "js",
+      };
+    });
+  },
+};
+
+const result = await esbuild.build({
+  entryPoints: ["entry.mjs"],
+  bundle: true,
+  format: "iife",
+  platform: "browser",
+  target: "es2020",
+  minify: true,
+  treeShaking: true,
+  plugins: [nodeStubPlugin],
+  external: [
+    // Database drivers — handled by Go, not JS
+    "pg",
+    "mongodb",
+    "@libsql/client",
+    "better-sqlite3",
+    // Native modules that can't run in QuickJS
+    "@ast-grep/napi",
+    "fastembed",
+    "@opentelemetry/api",
+    // Server framework — not needed
+    "hono",
+  ],
+  define: {
+    "process.env.NODE_ENV": '"production"',
+  },
+  logLevel: "info",
+  metafile: true,
+  outfile: "../agent_embed_bundle.js",
+});
+
+// Report size
+const stats = statSync("../agent_embed_bundle.js");
+console.log(`Bundle size: ${(stats.size / 1024).toFixed(1)} KB`);
+
+// Write metafile for analysis
+writeFileSync("meta.json", JSON.stringify(result.metafile));
+console.log("Metafile written to meta.json (use https://esbuild.github.io/analyze/ to inspect)");
