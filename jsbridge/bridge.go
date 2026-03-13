@@ -1,6 +1,7 @@
 package jsbridge
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,12 +11,15 @@ import (
 
 // Config configures a Bridge.
 type Config struct {
-	MemoryLimit  int       // bytes; default 256MB
-	MaxStackSize int       // bytes; default 4MB
-	GCThreshold  int       // bytes; default 256KB
-	Stdout       io.Writer // default os.Stdout
-	Stderr       io.Writer // default os.Stderr
-	CWD          string    // working directory
+	MemoryLimit        int             // bytes; default 256MB
+	MaxStackSize       int             // bytes; default 4MB
+	MaxExecutionTime   int             // milliseconds; default 0 (no limit)
+	GCThreshold        int             // bytes; default 256KB
+	Context            context.Context // parent context for cancellation; default background
+	CloseOnContextDone bool            // abort WASM execution when context is cancelled (adds overhead)
+	Stdout             io.Writer       // default os.Stdout
+	Stderr             io.Writer       // default os.Stderr
+	CWD                string          // working directory
 }
 
 // Bridge wraps a QuickJS runtime with polyfills and bridge functions.
@@ -42,12 +46,15 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 	}
 
 	rt, err := qjs.New(qjs.Option{
-		MemoryLimit:  cfg.MemoryLimit,
-		MaxStackSize: cfg.MaxStackSize,
-		GCThreshold:  cfg.GCThreshold,
-		Stdout:       cfg.Stdout,
-		Stderr:       cfg.Stderr,
-		CWD:          cfg.CWD,
+		MemoryLimit:        cfg.MemoryLimit,
+		MaxStackSize:       cfg.MaxStackSize,
+		MaxExecutionTime:   cfg.MaxExecutionTime,
+		GCThreshold:        cfg.GCThreshold,
+		Context:            cfg.Context,
+		CloseOnContextDone: cfg.CloseOnContextDone,
+		Stdout:             cfg.Stdout,
+		Stderr:             cfg.Stderr,
+		CWD:                cfg.CWD,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jsbridge: create runtime: %w", err)
@@ -90,4 +97,9 @@ func (b *Bridge) Eval(file string, flags ...qjs.EvalOptionFunc) (*qjs.Value, err
 // Compile compiles JavaScript to bytecode without executing.
 func (b *Bridge) Compile(file string, flags ...qjs.EvalOptionFunc) ([]byte, error) {
 	return b.runtime.Compile(file, flags...)
+}
+
+// MemorySize returns the current WASM memory usage in bytes.
+func (b *Bridge) MemorySize() uint32 {
+	return b.runtime.Mem().Size()
 }

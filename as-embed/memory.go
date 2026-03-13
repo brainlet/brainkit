@@ -19,7 +19,7 @@ type LinearMemory struct {
 }
 
 func NewLinearMemory() *LinearMemory {
-	const size = 64 * 1024 * 1024
+	const size = 256 * 1024 * 1024
 	return &LinearMemory{
 		data:         make([]byte, size),
 		offset:       8,

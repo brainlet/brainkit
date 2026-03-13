@@ -118,7 +118,8 @@ func registerGlobalImpls(ctx *qjs.Context, lm *LinearMemory) {
 		init := argU(a, 4)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoAddGlobal(module, name, typ, mutable, init))
+		result := cgoAddGlobal(module, name, typ, mutable, init)
+		return retF(this.Context(), result)
 	})
 	ctx.SetFunc("_BinaryenGetGlobal", func(this *qjs.This) (*qjs.Value, error) {
 		a := this.Args()

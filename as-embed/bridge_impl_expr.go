@@ -236,9 +236,7 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		// Read literal struct from linear memory
 		litSize := cgoSizeofLiteral()
 		litBytes := lm.ReadBytes(litPtr, litSize)
-		var lit [256]byte
-		copy(lit[:], litBytes)
-		return retF(this.Context(), cgoConst(module, unsafe.Pointer(&lit[0])))
+		return retF(this.Context(), cgoConstBytes(module, litBytes))
 	})
 	ctx.SetFunc("_BinaryenUnary", func(this *qjs.This) (*qjs.Value, error) {
 		a := this.Args()

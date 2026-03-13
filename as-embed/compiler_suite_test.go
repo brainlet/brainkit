@@ -3,6 +3,7 @@ package asembed
 import (
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,7 +27,7 @@ func TestASCompilerSuite(t *testing.T) {
 
 	type testCase struct {
 		name       string
-		ts         string
+		sources    map[string]string
 		flags      []string
 		expectedWT string // expected WAT from .debug.wat fixture
 	}
@@ -75,8 +76,7 @@ func TestASCompilerSuite(t *testing.T) {
 			continue
 		}
 
-		// Read source
-		tsData, err := os.ReadFile(filepath.Join(testDir, name+".ts"))
+		sources, err := collectFixtureSources(testDir, name+".ts")
 		if err != nil {
 			continue
 		}
@@ -89,7 +89,7 @@ func TestASCompilerSuite(t *testing.T) {
 
 		cases = append(cases, testCase{
 			name:       name,
-			ts:         string(tsData),
+			sources:    sources,
 			flags:      flags,
 			expectedWT: string(watData),
 		})
@@ -97,35 +97,64 @@ func TestASCompilerSuite(t *testing.T) {
 
 	t.Logf("Found %d compilable test cases", len(cases))
 
+	passed, failed, watMatch, watMismatch, panicked, timedOut := 0, 0, 0, 0, 0, 0
+
+	// Create compiler — will be recreated if the QJS runtime dies.
+	// Close() is safe on corrupted runtimes (cancels context + recovers panics).
 	c, err := NewCompiler()
 	if err != nil {
 		t.Fatalf("NewCompiler: %v", err)
 	}
-	defer c.Close()
-
-	passed, failed, watMatch, watMismatch := 0, 0, 0, 0
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			runtime := "stub"
+			if c.Dead() {
+				c.Close()
+				var cerr error
+				c, cerr = NewCompiler()
+				if cerr != nil {
+					t.Fatalf("NewCompiler after reset: %v", cerr)
+				}
+			}
+
+			runtime := "incremental"
 			for i, f := range tc.flags {
 				if f == "--runtime" && i+1 < len(tc.flags) {
 					runtime = tc.flags[i+1]
 				}
 			}
 
-			result, err := c.Compile(map[string]string{
-				tc.name + ".ts": tc.ts,
-			}, CompileOptions{
-				OptimizeLevel: 0,
-				ShrinkLevel:   0,
-				Runtime:       runtime,
-			})
+			// Compile with panic recovery and per-test timeout
+			var result *CompileResult
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						panicked++
+						c.dead = true // mark dead so next test recreates
+						t.Errorf("PANIC: %v", r)
+					}
+				}()
+				var cerr error
+				result, cerr = c.Compile(tc.sources, CompileOptions{
+					OptimizeLevel: 0,
+					ShrinkLevel:   0,
+					Debug:         true,
+					Runtime:       runtime,
+					Timeout:       0, // no Go-level timeout; panics caught by test recover
+				})
+				if cerr != nil {
+					if strings.Contains(cerr.Error(), "timed out") {
+						timedOut++
+						t.Errorf("Timed out: %v", cerr)
+					} else {
+						failed++
+						t.Errorf("Compile failed: %v", cerr)
+					}
+				}
+			}()
 
-			if err != nil {
-				failed++
-				t.Errorf("Compile failed: %v", err)
+			if result == nil {
 				return
 			}
 
@@ -175,7 +204,60 @@ func TestASCompilerSuite(t *testing.T) {
 		})
 	}
 
+	c.Close()
+
 	t.Logf("=== SUMMARY ===")
-	t.Logf("Compiled: %d passed, %d failed", passed, failed)
+	t.Logf("Compiled: %d passed, %d failed, %d panicked, %d timed out", passed, failed, panicked, timedOut)
 	t.Logf("WAT output: %d match, %d mismatch", watMatch, watMismatch)
+}
+
+func collectFixtureSources(rootDir string, entry string) (map[string]string, error) {
+	sources := make(map[string]string)
+	queue := []string{path.Clean(filepath.ToSlash(entry))}
+
+	for len(queue) > 0 {
+		sourcePath := queue[0]
+		queue = queue[1:]
+
+		if _, ok := sources[sourcePath]; ok {
+			continue
+		}
+
+		fullPath := filepath.Join(rootDir, filepath.FromSlash(sourcePath))
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			return nil, err
+		}
+
+		text := string(data)
+		sources[sourcePath] = text
+
+		dir := path.Dir(sourcePath)
+		for _, match := range sourceImportPattern.FindAllStringSubmatch(text, -1) {
+			resolved := resolveFixtureImportPath(rootDir, dir, match[1])
+			if resolved == "" {
+				continue
+			}
+			if _, ok := sources[resolved]; !ok {
+				queue = append(queue, resolved)
+			}
+		}
+	}
+
+	return sources, nil
+}
+
+func resolveFixtureImportPath(rootDir string, dir string, spec string) string {
+	if strings.HasPrefix(spec, "~lib/") {
+		return ""
+	}
+
+	for _, candidate := range sourceImportCandidates(dir, spec) {
+		fullPath := filepath.Join(rootDir, filepath.FromSlash(candidate))
+		info, err := os.Stat(fullPath)
+		if err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }

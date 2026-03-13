@@ -25,17 +25,17 @@ func cgoTypeVec128() uintptr      { return uintptr(C.BinaryenTypeVec128()) }
 func cgoTypeUnreachable() uintptr { return uintptr(C.BinaryenTypeUnreachable()) }
 func cgoTypeAuto() uintptr        { return uintptr(C.BinaryenTypeAuto()) }
 
-func cgoTypeFuncref() uintptr     { return uintptr(C.BinaryenTypeFuncref()) }
-func cgoTypeExternref() uintptr   { return uintptr(C.BinaryenTypeExternref()) }
-func cgoTypeAnyref() uintptr      { return uintptr(C.BinaryenTypeAnyref()) }
-func cgoTypeEqref() uintptr       { return uintptr(C.BinaryenTypeEqref()) }
-func cgoTypeI31ref() uintptr      { return uintptr(C.BinaryenTypeI31ref()) }
-func cgoTypeStructref() uintptr   { return uintptr(C.BinaryenTypeStructref()) }
-func cgoTypeArrayref() uintptr    { return uintptr(C.BinaryenTypeArrayref()) }
-func cgoTypeStringref() uintptr   { return uintptr(C.BinaryenTypeStringref()) }
-func cgoTypeNullref() uintptr     { return uintptr(C.BinaryenTypeNullref()) }
+func cgoTypeFuncref() uintptr       { return uintptr(C.BinaryenTypeFuncref()) }
+func cgoTypeExternref() uintptr     { return uintptr(C.BinaryenTypeExternref()) }
+func cgoTypeAnyref() uintptr        { return uintptr(C.BinaryenTypeAnyref()) }
+func cgoTypeEqref() uintptr         { return uintptr(C.BinaryenTypeEqref()) }
+func cgoTypeI31ref() uintptr        { return uintptr(C.BinaryenTypeI31ref()) }
+func cgoTypeStructref() uintptr     { return uintptr(C.BinaryenTypeStructref()) }
+func cgoTypeArrayref() uintptr      { return uintptr(C.BinaryenTypeArrayref()) }
+func cgoTypeStringref() uintptr     { return uintptr(C.BinaryenTypeStringref()) }
+func cgoTypeNullref() uintptr       { return uintptr(C.BinaryenTypeNullref()) }
 func cgoTypeNullExternref() uintptr { return uintptr(C.BinaryenTypeNullExternref()) }
-func cgoTypeNullFuncref() uintptr { return uintptr(C.BinaryenTypeNullFuncref()) }
+func cgoTypeNullFuncref() uintptr   { return uintptr(C.BinaryenTypeNullFuncref()) }
 
 func cgoTypeCreate(types []uintptr) uintptr {
 	if len(types) == 0 {
@@ -530,6 +530,17 @@ func cgoConst(module uintptr, literalPtr unsafe.Pointer) uintptr {
 	return uintptr(unsafe.Pointer(ref))
 }
 
+func cgoConstBytes(module uintptr, literal []byte) uintptr {
+	var lit C.struct_BinaryenLiteral
+	size := int(C.sizeof_struct_BinaryenLiteral)
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(&lit)), size), literal[:size])
+	ref := C.BinaryenConst(
+		C.BinaryenModuleRef(unsafe.Pointer(module)),
+		lit,
+	)
+	return uintptr(unsafe.Pointer(ref))
+}
+
 func cgoUnary(module uintptr, op int32, value uintptr) uintptr {
 	ref := C.BinaryenUnary(
 		C.BinaryenModuleRef(unsafe.Pointer(module)),
@@ -975,28 +986,30 @@ func cgoSetShrinkLevel(l int)   { C.BinaryenSetShrinkLevel(C.int(l)) }
 func cgoGetDebugInfo() bool     { return bool(C.BinaryenGetDebugInfo()) }
 func cgoSetDebugInfo(on bool)   { C.BinaryenSetDebugInfo(C.bool(on)) }
 
-func cgoGetLowMemoryUnused() bool     { return bool(C.BinaryenGetLowMemoryUnused()) }
-func cgoSetLowMemoryUnused(on bool)   { C.BinaryenSetLowMemoryUnused(C.bool(on)) }
-func cgoGetZeroFilledMemory() bool    { return bool(C.BinaryenGetZeroFilledMemory()) }
-func cgoSetZeroFilledMemory(on bool)  { C.BinaryenSetZeroFilledMemory(C.bool(on)) }
-func cgoGetFastMath() bool            { return bool(C.BinaryenGetFastMath()) }
-func cgoSetFastMath(on bool)          { C.BinaryenSetFastMath(C.bool(on)) }
-func cgoGetTrapsNeverHappen() bool    { return bool(C.BinaryenGetTrapsNeverHappen()) }
-func cgoSetTrapsNeverHappen(on bool)  { C.BinaryenSetTrapsNeverHappen(C.bool(on)) }
-func cgoGetClosedWorld() bool         { return bool(C.BinaryenGetClosedWorld()) }
-func cgoSetClosedWorld(on bool)       { C.BinaryenSetClosedWorld(C.bool(on)) }
+func cgoGetLowMemoryUnused() bool    { return bool(C.BinaryenGetLowMemoryUnused()) }
+func cgoSetLowMemoryUnused(on bool)  { C.BinaryenSetLowMemoryUnused(C.bool(on)) }
+func cgoGetZeroFilledMemory() bool   { return bool(C.BinaryenGetZeroFilledMemory()) }
+func cgoSetZeroFilledMemory(on bool) { C.BinaryenSetZeroFilledMemory(C.bool(on)) }
+func cgoGetFastMath() bool           { return bool(C.BinaryenGetFastMath()) }
+func cgoSetFastMath(on bool)         { C.BinaryenSetFastMath(C.bool(on)) }
+func cgoGetTrapsNeverHappen() bool   { return bool(C.BinaryenGetTrapsNeverHappen()) }
+func cgoSetTrapsNeverHappen(on bool) { C.BinaryenSetTrapsNeverHappen(C.bool(on)) }
+func cgoGetClosedWorld() bool        { return bool(C.BinaryenGetClosedWorld()) }
+func cgoSetClosedWorld(on bool)      { C.BinaryenSetClosedWorld(C.bool(on)) }
 
-func cgoGetGenerateStackIR() bool     { return bool(C.BinaryenGetGenerateStackIR()) }
-func cgoSetGenerateStackIR(on bool)   { C.BinaryenSetGenerateStackIR(C.bool(on)) }
-func cgoGetOptimizeStackIR() bool     { return bool(C.BinaryenGetOptimizeStackIR()) }
-func cgoSetOptimizeStackIR(on bool)   { C.BinaryenSetOptimizeStackIR(C.bool(on)) }
+func cgoGetGenerateStackIR() bool   { return bool(C.BinaryenGetGenerateStackIR()) }
+func cgoSetGenerateStackIR(on bool) { C.BinaryenSetGenerateStackIR(C.bool(on)) }
+func cgoGetOptimizeStackIR() bool   { return bool(C.BinaryenGetOptimizeStackIR()) }
+func cgoSetOptimizeStackIR(on bool) { C.BinaryenSetOptimizeStackIR(C.bool(on)) }
 
-func cgoGetAlwaysInlineMaxSize() int          { return int(C.BinaryenGetAlwaysInlineMaxSize()) }
-func cgoSetAlwaysInlineMaxSize(size int)      { C.BinaryenSetAlwaysInlineMaxSize(C.BinaryenIndex(size)) }
-func cgoGetFlexibleInlineMaxSize() int        { return int(C.BinaryenGetFlexibleInlineMaxSize()) }
-func cgoSetFlexibleInlineMaxSize(size int)    { C.BinaryenSetFlexibleInlineMaxSize(C.BinaryenIndex(size)) }
-func cgoGetOneCallerInlineMaxSize() int       { return int(C.BinaryenGetOneCallerInlineMaxSize()) }
-func cgoSetOneCallerInlineMaxSize(size int)   { C.BinaryenSetOneCallerInlineMaxSize(C.BinaryenIndex(size)) }
+func cgoGetAlwaysInlineMaxSize() int       { return int(C.BinaryenGetAlwaysInlineMaxSize()) }
+func cgoSetAlwaysInlineMaxSize(size int)   { C.BinaryenSetAlwaysInlineMaxSize(C.BinaryenIndex(size)) }
+func cgoGetFlexibleInlineMaxSize() int     { return int(C.BinaryenGetFlexibleInlineMaxSize()) }
+func cgoSetFlexibleInlineMaxSize(size int) { C.BinaryenSetFlexibleInlineMaxSize(C.BinaryenIndex(size)) }
+func cgoGetOneCallerInlineMaxSize() int    { return int(C.BinaryenGetOneCallerInlineMaxSize()) }
+func cgoSetOneCallerInlineMaxSize(size int) {
+	C.BinaryenSetOneCallerInlineMaxSize(C.BinaryenIndex(size))
+}
 func cgoGetAllowInliningFunctionsWithLoops() bool {
 	return bool(C.BinaryenGetAllowInliningFunctionsWithLoops())
 }
@@ -1622,52 +1635,52 @@ func cgoExpressionGetSideEffects(expr uintptr, module uintptr) uint32 {
 
 // --- Feature flags ---
 
-func cgoFeatureAll() uint32     { return uint32(C.BinaryenFeatureAll()) }
-func cgoFeatureMVP() uint32     { return uint32(C.BinaryenFeatureMVP()) }
-func cgoFeatureAtomics() uint32 { return uint32(C.BinaryenFeatureAtomics()) }
-func cgoFeatureBulkMemory() uint32 { return uint32(C.BinaryenFeatureBulkMemory()) }
-func cgoFeatureMutableGlobals() uint32 { return uint32(C.BinaryenFeatureMutableGlobals()) }
+func cgoFeatureAll() uint32                { return uint32(C.BinaryenFeatureAll()) }
+func cgoFeatureMVP() uint32                { return uint32(C.BinaryenFeatureMVP()) }
+func cgoFeatureAtomics() uint32            { return uint32(C.BinaryenFeatureAtomics()) }
+func cgoFeatureBulkMemory() uint32         { return uint32(C.BinaryenFeatureBulkMemory()) }
+func cgoFeatureMutableGlobals() uint32     { return uint32(C.BinaryenFeatureMutableGlobals()) }
 func cgoFeatureNontrappingFPToInt() uint32 { return uint32(C.BinaryenFeatureNontrappingFPToInt()) }
-func cgoFeatureSignExt() uint32 { return uint32(C.BinaryenFeatureSignExt()) }
-func cgoFeatureSIMD128() uint32 { return uint32(C.BinaryenFeatureSIMD128()) }
-func cgoFeatureExceptionHandling() uint32 { return uint32(C.BinaryenFeatureExceptionHandling()) }
-func cgoFeatureTailCall() uint32 { return uint32(C.BinaryenFeatureTailCall()) }
-func cgoFeatureReferenceTypes() uint32 { return uint32(C.BinaryenFeatureReferenceTypes()) }
-func cgoFeatureMultivalue() uint32 { return uint32(C.BinaryenFeatureMultivalue()) }
-func cgoFeatureGC() uint32      { return uint32(C.BinaryenFeatureGC()) }
-func cgoFeatureMemory64() uint32 { return uint32(C.BinaryenFeatureMemory64()) }
-func cgoFeatureStrings() uint32  { return uint32(C.BinaryenFeatureStrings()) }
-func cgoFeatureMultiMemory() uint32 { return uint32(C.BinaryenFeatureMultiMemory()) }
+func cgoFeatureSignExt() uint32            { return uint32(C.BinaryenFeatureSignExt()) }
+func cgoFeatureSIMD128() uint32            { return uint32(C.BinaryenFeatureSIMD128()) }
+func cgoFeatureExceptionHandling() uint32  { return uint32(C.BinaryenFeatureExceptionHandling()) }
+func cgoFeatureTailCall() uint32           { return uint32(C.BinaryenFeatureTailCall()) }
+func cgoFeatureReferenceTypes() uint32     { return uint32(C.BinaryenFeatureReferenceTypes()) }
+func cgoFeatureMultivalue() uint32         { return uint32(C.BinaryenFeatureMultivalue()) }
+func cgoFeatureGC() uint32                 { return uint32(C.BinaryenFeatureGC()) }
+func cgoFeatureMemory64() uint32           { return uint32(C.BinaryenFeatureMemory64()) }
+func cgoFeatureStrings() uint32            { return uint32(C.BinaryenFeatureStrings()) }
+func cgoFeatureMultiMemory() uint32        { return uint32(C.BinaryenFeatureMultiMemory()) }
 
 // --- Opcode functions ---
 // These return BinaryenOp constants.
 
-func cgoClzInt32() int32    { return int32(C.BinaryenClzInt32()) }
-func cgoCtzInt32() int32    { return int32(C.BinaryenCtzInt32()) }
-func cgoPopcntInt32() int32 { return int32(C.BinaryenPopcntInt32()) }
-func cgoNegFloat32() int32  { return int32(C.BinaryenNegFloat32()) }
-func cgoAbsFloat32() int32  { return int32(C.BinaryenAbsFloat32()) }
-func cgoCeilFloat32() int32 { return int32(C.BinaryenCeilFloat32()) }
-func cgoFloorFloat32() int32 { return int32(C.BinaryenFloorFloat32()) }
-func cgoTruncFloat32() int32 { return int32(C.BinaryenTruncFloat32()) }
+func cgoClzInt32() int32       { return int32(C.BinaryenClzInt32()) }
+func cgoCtzInt32() int32       { return int32(C.BinaryenCtzInt32()) }
+func cgoPopcntInt32() int32    { return int32(C.BinaryenPopcntInt32()) }
+func cgoNegFloat32() int32     { return int32(C.BinaryenNegFloat32()) }
+func cgoAbsFloat32() int32     { return int32(C.BinaryenAbsFloat32()) }
+func cgoCeilFloat32() int32    { return int32(C.BinaryenCeilFloat32()) }
+func cgoFloorFloat32() int32   { return int32(C.BinaryenFloorFloat32()) }
+func cgoTruncFloat32() int32   { return int32(C.BinaryenTruncFloat32()) }
 func cgoNearestFloat32() int32 { return int32(C.BinaryenNearestFloat32()) }
-func cgoSqrtFloat32() int32 { return int32(C.BinaryenSqrtFloat32()) }
-func cgoEqZInt32() int32    { return int32(C.BinaryenEqZInt32()) }
-func cgoClzInt64() int32    { return int32(C.BinaryenClzInt64()) }
-func cgoCtzInt64() int32    { return int32(C.BinaryenCtzInt64()) }
-func cgoPopcntInt64() int32 { return int32(C.BinaryenPopcntInt64()) }
-func cgoNegFloat64() int32  { return int32(C.BinaryenNegFloat64()) }
-func cgoAbsFloat64() int32  { return int32(C.BinaryenAbsFloat64()) }
-func cgoCeilFloat64() int32 { return int32(C.BinaryenCeilFloat64()) }
-func cgoFloorFloat64() int32 { return int32(C.BinaryenFloorFloat64()) }
-func cgoTruncFloat64() int32 { return int32(C.BinaryenTruncFloat64()) }
+func cgoSqrtFloat32() int32    { return int32(C.BinaryenSqrtFloat32()) }
+func cgoEqZInt32() int32       { return int32(C.BinaryenEqZInt32()) }
+func cgoClzInt64() int32       { return int32(C.BinaryenClzInt64()) }
+func cgoCtzInt64() int32       { return int32(C.BinaryenCtzInt64()) }
+func cgoPopcntInt64() int32    { return int32(C.BinaryenPopcntInt64()) }
+func cgoNegFloat64() int32     { return int32(C.BinaryenNegFloat64()) }
+func cgoAbsFloat64() int32     { return int32(C.BinaryenAbsFloat64()) }
+func cgoCeilFloat64() int32    { return int32(C.BinaryenCeilFloat64()) }
+func cgoFloorFloat64() int32   { return int32(C.BinaryenFloorFloat64()) }
+func cgoTruncFloat64() int32   { return int32(C.BinaryenTruncFloat64()) }
 func cgoNearestFloat64() int32 { return int32(C.BinaryenNearestFloat64()) }
-func cgoSqrtFloat64() int32 { return int32(C.BinaryenSqrtFloat64()) }
-func cgoEqZInt64() int32    { return int32(C.BinaryenEqZInt64()) }
+func cgoSqrtFloat64() int32    { return int32(C.BinaryenSqrtFloat64()) }
+func cgoEqZInt64() int32       { return int32(C.BinaryenEqZInt64()) }
 
-func cgoAddInt32() int32 { return int32(C.BinaryenAddInt32()) }
-func cgoSubInt32() int32 { return int32(C.BinaryenSubInt32()) }
-func cgoMulInt32() int32 { return int32(C.BinaryenMulInt32()) }
+func cgoAddInt32() int32  { return int32(C.BinaryenAddInt32()) }
+func cgoSubInt32() int32  { return int32(C.BinaryenSubInt32()) }
+func cgoMulInt32() int32  { return int32(C.BinaryenMulInt32()) }
 func cgoDivSInt32() int32 { return int32(C.BinaryenDivSInt32()) }
 func cgoDivUInt32() int32 { return int32(C.BinaryenDivUInt32()) }
 func cgoRemSInt32() int32 { return int32(C.BinaryenRemSInt32()) }
@@ -1691,9 +1704,9 @@ func cgoGtUInt32() int32  { return int32(C.BinaryenGtUInt32()) }
 func cgoGeSInt32() int32  { return int32(C.BinaryenGeSInt32()) }
 func cgoGeUInt32() int32  { return int32(C.BinaryenGeUInt32()) }
 
-func cgoAddInt64() int32 { return int32(C.BinaryenAddInt64()) }
-func cgoSubInt64() int32 { return int32(C.BinaryenSubInt64()) }
-func cgoMulInt64() int32 { return int32(C.BinaryenMulInt64()) }
+func cgoAddInt64() int32  { return int32(C.BinaryenAddInt64()) }
+func cgoSubInt64() int32  { return int32(C.BinaryenSubInt64()) }
+func cgoMulInt64() int32  { return int32(C.BinaryenMulInt64()) }
 func cgoDivSInt64() int32 { return int32(C.BinaryenDivSInt64()) }
 func cgoDivUInt64() int32 { return int32(C.BinaryenDivUInt64()) }
 func cgoRemSInt64() int32 { return int32(C.BinaryenRemSInt64()) }
@@ -1717,60 +1730,60 @@ func cgoGtUInt64() int32  { return int32(C.BinaryenGtUInt64()) }
 func cgoGeSInt64() int32  { return int32(C.BinaryenGeSInt64()) }
 func cgoGeUInt64() int32  { return int32(C.BinaryenGeUInt64()) }
 
-func cgoAddFloat32() int32 { return int32(C.BinaryenAddFloat32()) }
-func cgoSubFloat32() int32 { return int32(C.BinaryenSubFloat32()) }
-func cgoMulFloat32() int32 { return int32(C.BinaryenMulFloat32()) }
-func cgoDivFloat32() int32 { return int32(C.BinaryenDivFloat32()) }
+func cgoAddFloat32() int32      { return int32(C.BinaryenAddFloat32()) }
+func cgoSubFloat32() int32      { return int32(C.BinaryenSubFloat32()) }
+func cgoMulFloat32() int32      { return int32(C.BinaryenMulFloat32()) }
+func cgoDivFloat32() int32      { return int32(C.BinaryenDivFloat32()) }
 func cgoCopySignFloat32() int32 { return int32(C.BinaryenCopySignFloat32()) }
-func cgoMinFloat32() int32 { return int32(C.BinaryenMinFloat32()) }
-func cgoMaxFloat32() int32 { return int32(C.BinaryenMaxFloat32()) }
-func cgoEqFloat32() int32  { return int32(C.BinaryenEqFloat32()) }
-func cgoNeFloat32() int32  { return int32(C.BinaryenNeFloat32()) }
-func cgoLtFloat32() int32  { return int32(C.BinaryenLtFloat32()) }
-func cgoLeFloat32() int32  { return int32(C.BinaryenLeFloat32()) }
-func cgoGtFloat32() int32  { return int32(C.BinaryenGtFloat32()) }
-func cgoGeFloat32() int32  { return int32(C.BinaryenGeFloat32()) }
+func cgoMinFloat32() int32      { return int32(C.BinaryenMinFloat32()) }
+func cgoMaxFloat32() int32      { return int32(C.BinaryenMaxFloat32()) }
+func cgoEqFloat32() int32       { return int32(C.BinaryenEqFloat32()) }
+func cgoNeFloat32() int32       { return int32(C.BinaryenNeFloat32()) }
+func cgoLtFloat32() int32       { return int32(C.BinaryenLtFloat32()) }
+func cgoLeFloat32() int32       { return int32(C.BinaryenLeFloat32()) }
+func cgoGtFloat32() int32       { return int32(C.BinaryenGtFloat32()) }
+func cgoGeFloat32() int32       { return int32(C.BinaryenGeFloat32()) }
 
-func cgoAddFloat64() int32 { return int32(C.BinaryenAddFloat64()) }
-func cgoSubFloat64() int32 { return int32(C.BinaryenSubFloat64()) }
-func cgoMulFloat64() int32 { return int32(C.BinaryenMulFloat64()) }
-func cgoDivFloat64() int32 { return int32(C.BinaryenDivFloat64()) }
+func cgoAddFloat64() int32      { return int32(C.BinaryenAddFloat64()) }
+func cgoSubFloat64() int32      { return int32(C.BinaryenSubFloat64()) }
+func cgoMulFloat64() int32      { return int32(C.BinaryenMulFloat64()) }
+func cgoDivFloat64() int32      { return int32(C.BinaryenDivFloat64()) }
 func cgoCopySignFloat64() int32 { return int32(C.BinaryenCopySignFloat64()) }
-func cgoMinFloat64() int32 { return int32(C.BinaryenMinFloat64()) }
-func cgoMaxFloat64() int32 { return int32(C.BinaryenMaxFloat64()) }
-func cgoEqFloat64() int32  { return int32(C.BinaryenEqFloat64()) }
-func cgoNeFloat64() int32  { return int32(C.BinaryenNeFloat64()) }
-func cgoLtFloat64() int32  { return int32(C.BinaryenLtFloat64()) }
-func cgoLeFloat64() int32  { return int32(C.BinaryenLeFloat64()) }
-func cgoGtFloat64() int32  { return int32(C.BinaryenGtFloat64()) }
-func cgoGeFloat64() int32  { return int32(C.BinaryenGeFloat64()) }
+func cgoMinFloat64() int32      { return int32(C.BinaryenMinFloat64()) }
+func cgoMaxFloat64() int32      { return int32(C.BinaryenMaxFloat64()) }
+func cgoEqFloat64() int32       { return int32(C.BinaryenEqFloat64()) }
+func cgoNeFloat64() int32       { return int32(C.BinaryenNeFloat64()) }
+func cgoLtFloat64() int32       { return int32(C.BinaryenLtFloat64()) }
+func cgoLeFloat64() int32       { return int32(C.BinaryenLeFloat64()) }
+func cgoGtFloat64() int32       { return int32(C.BinaryenGtFloat64()) }
+func cgoGeFloat64() int32       { return int32(C.BinaryenGeFloat64()) }
 
 // Conversion ops
-func cgoTruncSFloat32ToInt32() int32 { return int32(C.BinaryenTruncSFloat32ToInt32()) }
-func cgoTruncSFloat32ToInt64() int32 { return int32(C.BinaryenTruncSFloat32ToInt64()) }
-func cgoTruncUFloat32ToInt32() int32 { return int32(C.BinaryenTruncUFloat32ToInt32()) }
-func cgoTruncUFloat32ToInt64() int32 { return int32(C.BinaryenTruncUFloat32ToInt64()) }
-func cgoTruncSFloat64ToInt32() int32 { return int32(C.BinaryenTruncSFloat64ToInt32()) }
-func cgoTruncSFloat64ToInt64() int32 { return int32(C.BinaryenTruncSFloat64ToInt64()) }
-func cgoTruncUFloat64ToInt32() int32 { return int32(C.BinaryenTruncUFloat64ToInt32()) }
-func cgoTruncUFloat64ToInt64() int32 { return int32(C.BinaryenTruncUFloat64ToInt64()) }
-func cgoReinterpretFloat32() int32   { return int32(C.BinaryenReinterpretFloat32()) }
-func cgoReinterpretFloat64() int32   { return int32(C.BinaryenReinterpretFloat64()) }
-func cgoConvertSInt32ToFloat32() int32 { return int32(C.BinaryenConvertSInt32ToFloat32()) }
-func cgoConvertSInt32ToFloat64() int32 { return int32(C.BinaryenConvertSInt32ToFloat64()) }
-func cgoConvertUInt32ToFloat32() int32 { return int32(C.BinaryenConvertUInt32ToFloat32()) }
-func cgoConvertUInt32ToFloat64() int32 { return int32(C.BinaryenConvertUInt32ToFloat64()) }
-func cgoConvertSInt64ToFloat32() int32 { return int32(C.BinaryenConvertSInt64ToFloat32()) }
-func cgoConvertSInt64ToFloat64() int32 { return int32(C.BinaryenConvertSInt64ToFloat64()) }
-func cgoConvertUInt64ToFloat32() int32 { return int32(C.BinaryenConvertUInt64ToFloat32()) }
-func cgoConvertUInt64ToFloat64() int32 { return int32(C.BinaryenConvertUInt64ToFloat64()) }
-func cgoPromoteFloat32() int32       { return int32(C.BinaryenPromoteFloat32()) }
-func cgoDemoteFloat64() int32        { return int32(C.BinaryenDemoteFloat64()) }
-func cgoReinterpretInt32() int32     { return int32(C.BinaryenReinterpretInt32()) }
-func cgoReinterpretInt64() int32     { return int32(C.BinaryenReinterpretInt64()) }
-func cgoExtendSInt32() int32         { return int32(C.BinaryenExtendSInt32()) }
-func cgoExtendUInt32() int32         { return int32(C.BinaryenExtendUInt32()) }
-func cgoWrapInt64() int32            { return int32(C.BinaryenWrapInt64()) }
+func cgoTruncSFloat32ToInt32() int32    { return int32(C.BinaryenTruncSFloat32ToInt32()) }
+func cgoTruncSFloat32ToInt64() int32    { return int32(C.BinaryenTruncSFloat32ToInt64()) }
+func cgoTruncUFloat32ToInt32() int32    { return int32(C.BinaryenTruncUFloat32ToInt32()) }
+func cgoTruncUFloat32ToInt64() int32    { return int32(C.BinaryenTruncUFloat32ToInt64()) }
+func cgoTruncSFloat64ToInt32() int32    { return int32(C.BinaryenTruncSFloat64ToInt32()) }
+func cgoTruncSFloat64ToInt64() int32    { return int32(C.BinaryenTruncSFloat64ToInt64()) }
+func cgoTruncUFloat64ToInt32() int32    { return int32(C.BinaryenTruncUFloat64ToInt32()) }
+func cgoTruncUFloat64ToInt64() int32    { return int32(C.BinaryenTruncUFloat64ToInt64()) }
+func cgoReinterpretFloat32() int32      { return int32(C.BinaryenReinterpretFloat32()) }
+func cgoReinterpretFloat64() int32      { return int32(C.BinaryenReinterpretFloat64()) }
+func cgoConvertSInt32ToFloat32() int32  { return int32(C.BinaryenConvertSInt32ToFloat32()) }
+func cgoConvertSInt32ToFloat64() int32  { return int32(C.BinaryenConvertSInt32ToFloat64()) }
+func cgoConvertUInt32ToFloat32() int32  { return int32(C.BinaryenConvertUInt32ToFloat32()) }
+func cgoConvertUInt32ToFloat64() int32  { return int32(C.BinaryenConvertUInt32ToFloat64()) }
+func cgoConvertSInt64ToFloat32() int32  { return int32(C.BinaryenConvertSInt64ToFloat32()) }
+func cgoConvertSInt64ToFloat64() int32  { return int32(C.BinaryenConvertSInt64ToFloat64()) }
+func cgoConvertUInt64ToFloat32() int32  { return int32(C.BinaryenConvertUInt64ToFloat32()) }
+func cgoConvertUInt64ToFloat64() int32  { return int32(C.BinaryenConvertUInt64ToFloat64()) }
+func cgoPromoteFloat32() int32          { return int32(C.BinaryenPromoteFloat32()) }
+func cgoDemoteFloat64() int32           { return int32(C.BinaryenDemoteFloat64()) }
+func cgoReinterpretInt32() int32        { return int32(C.BinaryenReinterpretInt32()) }
+func cgoReinterpretInt64() int32        { return int32(C.BinaryenReinterpretInt64()) }
+func cgoExtendSInt32() int32            { return int32(C.BinaryenExtendSInt32()) }
+func cgoExtendUInt32() int32            { return int32(C.BinaryenExtendUInt32()) }
+func cgoWrapInt64() int32               { return int32(C.BinaryenWrapInt64()) }
 func cgoTruncSatSFloat32ToInt32() int32 { return int32(C.BinaryenTruncSatSFloat32ToInt32()) }
 func cgoTruncSatSFloat32ToInt64() int32 { return int32(C.BinaryenTruncSatSFloat32ToInt64()) }
 func cgoTruncSatUFloat32ToInt32() int32 { return int32(C.BinaryenTruncSatUFloat32ToInt32()) }
@@ -1779,59 +1792,59 @@ func cgoTruncSatSFloat64ToInt32() int32 { return int32(C.BinaryenTruncSatSFloat6
 func cgoTruncSatSFloat64ToInt64() int32 { return int32(C.BinaryenTruncSatSFloat64ToInt64()) }
 func cgoTruncSatUFloat64ToInt32() int32 { return int32(C.BinaryenTruncSatUFloat64ToInt32()) }
 func cgoTruncSatUFloat64ToInt64() int32 { return int32(C.BinaryenTruncSatUFloat64ToInt64()) }
-func cgoExtendS8Int32() int32       { return int32(C.BinaryenExtendS8Int32()) }
-func cgoExtendS16Int32() int32      { return int32(C.BinaryenExtendS16Int32()) }
-func cgoExtendS8Int64() int32       { return int32(C.BinaryenExtendS8Int64()) }
-func cgoExtendS16Int64() int32      { return int32(C.BinaryenExtendS16Int64()) }
-func cgoExtendS32Int64() int32      { return int32(C.BinaryenExtendS32Int64()) }
+func cgoExtendS8Int32() int32           { return int32(C.BinaryenExtendS8Int32()) }
+func cgoExtendS16Int32() int32          { return int32(C.BinaryenExtendS16Int32()) }
+func cgoExtendS8Int64() int32           { return int32(C.BinaryenExtendS8Int64()) }
+func cgoExtendS16Int64() int32          { return int32(C.BinaryenExtendS16Int64()) }
+func cgoExtendS32Int64() int32          { return int32(C.BinaryenExtendS32Int64()) }
 
 // --- GC ref ops ---
-func cgoBrOnCast() int32       { return int32(C.BinaryenBrOnCast()) }
-func cgoBrOnCastFail() int32   { return int32(C.BinaryenBrOnCastFail()) }
-func cgoRefAsNonNull() int32   { return int32(C.BinaryenRefAsNonNull()) }
+func cgoBrOnCast() int32               { return int32(C.BinaryenBrOnCast()) }
+func cgoBrOnCastFail() int32           { return int32(C.BinaryenBrOnCastFail()) }
+func cgoRefAsNonNull() int32           { return int32(C.BinaryenRefAsNonNull()) }
 func cgoRefAsExternInternalize() int32 { return int32(C.BinaryenRefAsExternInternalize()) }
 func cgoRefAsExternExternalize() int32 { return int32(C.BinaryenRefAsExternExternalize()) }
 
 // --- String ops (only those available in this binaryen version) ---
-func cgoStringNewLossyUTF8Array() int32 { return int32(C.BinaryenStringNewLossyUTF8Array()) }
-func cgoStringNewWTF16Array() int32 { return int32(C.BinaryenStringNewWTF16Array()) }
-func cgoStringNewFromCodePoint() int32 { return int32(C.BinaryenStringNewFromCodePoint()) }
-func cgoStringMeasureUTF8() int32   { return int32(C.BinaryenStringMeasureUTF8()) }
-func cgoStringMeasureWTF16() int32  { return int32(C.BinaryenStringMeasureWTF16()) }
+func cgoStringNewLossyUTF8Array() int32    { return int32(C.BinaryenStringNewLossyUTF8Array()) }
+func cgoStringNewWTF16Array() int32        { return int32(C.BinaryenStringNewWTF16Array()) }
+func cgoStringNewFromCodePoint() int32     { return int32(C.BinaryenStringNewFromCodePoint()) }
+func cgoStringMeasureUTF8() int32          { return int32(C.BinaryenStringMeasureUTF8()) }
+func cgoStringMeasureWTF16() int32         { return int32(C.BinaryenStringMeasureWTF16()) }
 func cgoStringEncodeLossyUTF8Array() int32 { return int32(C.BinaryenStringEncodeLossyUTF8Array()) }
-func cgoStringEncodeWTF16Array() int32 { return int32(C.BinaryenStringEncodeWTF16Array()) }
-func cgoStringEqEqual() int32      { return int32(C.BinaryenStringEqEqual()) }
-func cgoStringEqCompare() int32    { return int32(C.BinaryenStringEqCompare()) }
+func cgoStringEncodeWTF16Array() int32     { return int32(C.BinaryenStringEncodeWTF16Array()) }
+func cgoStringEqEqual() int32              { return int32(C.BinaryenStringEqEqual()) }
+func cgoStringEqCompare() int32            { return int32(C.BinaryenStringEqCompare()) }
 
 // ArrayFill, ArrayInitData, ArrayInitElem are not available in this binaryen version.
 // They remain as stubs (return 0) in the bridge.
 
 // --- ExpressionId constants ---
 
-func cgoInvalidId() int  { return int(C.BinaryenInvalidId()) }
-func cgoNopId() int      { return int(C.BinaryenNopId()) }
-func cgoBlockId() int    { return int(C.BinaryenBlockId()) }
-func cgoIfId() int       { return int(C.BinaryenIfId()) }
-func cgoLoopId() int     { return int(C.BinaryenLoopId()) }
-func cgoBreakId() int    { return int(C.BinaryenBreakId()) }
-func cgoSwitchId() int   { return int(C.BinaryenSwitchId()) }
-func cgoCallId() int     { return int(C.BinaryenCallId()) }
+func cgoInvalidId() int      { return int(C.BinaryenInvalidId()) }
+func cgoNopId() int          { return int(C.BinaryenNopId()) }
+func cgoBlockId() int        { return int(C.BinaryenBlockId()) }
+func cgoIfId() int           { return int(C.BinaryenIfId()) }
+func cgoLoopId() int         { return int(C.BinaryenLoopId()) }
+func cgoBreakId() int        { return int(C.BinaryenBreakId()) }
+func cgoSwitchId() int       { return int(C.BinaryenSwitchId()) }
+func cgoCallId() int         { return int(C.BinaryenCallId()) }
 func cgoCallIndirectId() int { return int(C.BinaryenCallIndirectId()) }
-func cgoLocalGetId() int { return int(C.BinaryenLocalGetId()) }
-func cgoLocalSetId() int { return int(C.BinaryenLocalSetId()) }
-func cgoGlobalGetId() int { return int(C.BinaryenGlobalGetId()) }
-func cgoGlobalSetId() int { return int(C.BinaryenGlobalSetId()) }
-func cgoLoadId() int     { return int(C.BinaryenLoadId()) }
-func cgoStoreId() int    { return int(C.BinaryenStoreId()) }
-func cgoConstId() int    { return int(C.BinaryenConstId()) }
-func cgoUnaryId() int    { return int(C.BinaryenUnaryId()) }
-func cgoBinaryId() int   { return int(C.BinaryenBinaryId()) }
-func cgoSelectId() int   { return int(C.BinaryenSelectId()) }
-func cgoDropId() int     { return int(C.BinaryenDropId()) }
-func cgoReturnId() int   { return int(C.BinaryenReturnId()) }
-func cgoMemorySizeId() int { return int(C.BinaryenMemorySizeId()) }
-func cgoMemoryGrowId() int { return int(C.BinaryenMemoryGrowId()) }
-func cgoUnreachableId() int { return int(C.BinaryenUnreachableId()) }
+func cgoLocalGetId() int     { return int(C.BinaryenLocalGetId()) }
+func cgoLocalSetId() int     { return int(C.BinaryenLocalSetId()) }
+func cgoGlobalGetId() int    { return int(C.BinaryenGlobalGetId()) }
+func cgoGlobalSetId() int    { return int(C.BinaryenGlobalSetId()) }
+func cgoLoadId() int         { return int(C.BinaryenLoadId()) }
+func cgoStoreId() int        { return int(C.BinaryenStoreId()) }
+func cgoConstId() int        { return int(C.BinaryenConstId()) }
+func cgoUnaryId() int        { return int(C.BinaryenUnaryId()) }
+func cgoBinaryId() int       { return int(C.BinaryenBinaryId()) }
+func cgoSelectId() int       { return int(C.BinaryenSelectId()) }
+func cgoDropId() int         { return int(C.BinaryenDropId()) }
+func cgoReturnId() int       { return int(C.BinaryenReturnId()) }
+func cgoMemorySizeId() int   { return int(C.BinaryenMemorySizeId()) }
+func cgoMemoryGrowId() int   { return int(C.BinaryenMemoryGrowId()) }
+func cgoUnreachableId() int  { return int(C.BinaryenUnreachableId()) }
 
 // --- Function getters ---
 

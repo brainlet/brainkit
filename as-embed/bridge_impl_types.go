@@ -26,7 +26,7 @@ func registerTypeImpls(ctx *qjs.Context, lm *LinearMemory) {
 		buf := make([]uintptr, arity)
 		cgoTypeExpand(t, buf)
 		for i := 0; i < arity; i++ {
-			lm.I32Store(outPtr+i*4, int(buf[i]))
+			lm.I32StorePtr(outPtr+i*4, uint64(buf[i]))
 		}
 		return retVoid(this.Context())
 	})

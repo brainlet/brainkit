@@ -148,7 +148,7 @@ func registerTypeBuilderImpls(ctx *qjs.Context, lm *LinearMemory) {
 		ok := cgoTypeBuilderBuildAndDispose(builder, heapTypes)
 		if ok && outPtr != 0 {
 			for i := 0; i < size; i++ {
-				lm.I32Store(outPtr+i*4, int(heapTypes[i]))
+				lm.I32StorePtr(outPtr+i*4, uint64(heapTypes[i]))
 			}
 		}
 		return retBool(this.Context(), ok)
