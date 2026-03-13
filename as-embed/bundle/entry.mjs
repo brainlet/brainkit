@@ -4,7 +4,8 @@
 // Dependencies: as-float, long (needed by glue/js/ float and i64 modules).
 
 // The AS source entry: loads JS glue, then re-exports compiler C-like API.
-import "/Users/davidroman/Documents/code/clones/assemblyscript/src/index-js.ts";
+// Uses the GitHub git dependency (npm lacks src/ — only ships pre-built dist/ with WebAssembly).
+import "assemblyscript/src/index-js.ts";
 import {
   newOptions,
   setTarget,
@@ -34,11 +35,11 @@ import {
   isInfo,
   FEATURES_DEFAULT,
   FEATURES_ALL,
-} from "/Users/davidroman/Documents/code/clones/assemblyscript/src/index-wasm.ts";
+} from "assemblyscript/src/index-wasm.ts";
 
 // Target and Runtime enums live in std/assembly/shared/, not index-wasm.ts
-import { Target } from "/Users/davidroman/Documents/code/clones/assemblyscript/std/assembly/shared/target.ts";
-import { Runtime } from "/Users/davidroman/Documents/code/clones/assemblyscript/std/assembly/shared/runtime.ts";
+import { Target } from "assemblyscript/std/assembly/shared/target.ts";
+import { Runtime } from "assemblyscript/std/assembly/shared/runtime.ts";
 
 globalThis.__as_compiler = {
   newOptions,

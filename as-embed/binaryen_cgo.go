@@ -1,8 +1,8 @@
 package asembed
 
 /*
-#cgo CFLAGS: -I/Users/davidroman/Documents/code/clones/binaryen/src
-#cgo LDFLAGS: -L/Users/davidroman/Documents/code/clones/binaryen/build/lib -lbinaryen -lstdc++ -lm
+#cgo CFLAGS: -I${SRCDIR}/deps/binaryen/include
+#cgo LDFLAGS: -L${SRCDIR}/deps/binaryen/lib -lbinaryen -lstdc++ -lm
 #include "binaryen-c.h"
 #include <stdlib.h>
 #include <string.h>

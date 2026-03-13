@@ -14,7 +14,7 @@ import (
 // tests/compiler/ directory. We verify they compile to valid Wasm and compare
 // the WAT output against the upstream fixtures.
 func TestASCompilerSuite(t *testing.T) {
-	const testDir = "/Users/davidroman/Documents/code/clones/assemblyscript/tests/compiler"
+	const testDir = "bundle/node_modules/assemblyscript/tests/compiler"
 
 	if _, err := os.Stat(testDir); os.IsNotExist(err) {
 		t.Skip("AS compiler test directory not found; skipping suite test")

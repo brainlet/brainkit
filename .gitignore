@@ -7,3 +7,6 @@ C*.md
 .env
 
 wasm-kit/docs/**
+
+# Build dependencies (downloaded by setup scripts, not committed)
+as-embed/deps/

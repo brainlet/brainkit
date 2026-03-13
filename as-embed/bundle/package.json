@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "assemblyscript": "https://github.com/AssemblyScript/assemblyscript/archive/refs/tags/v0.28.10.tar.gz",
     "as-float": "^1.0.1",
-    "long": "^5.2.3",
+    "long": "^5.2.3"
+  },
+  "devDependencies": {
     "esbuild": "^0.24.0"
   }
 }
