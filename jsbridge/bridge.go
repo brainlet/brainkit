@@ -12,6 +12,7 @@ import (
 type Config struct {
 	MemoryLimit  int       // bytes; default 256MB
 	MaxStackSize int       // bytes; default 4MB
+	GCThreshold  int64     // bytes; auto-GC trigger threshold; -1 disables (default: -1)
 	Stdout       io.Writer // default os.Stdout
 	Stderr       io.Writer // default os.Stderr
 	CWD          string    // working directory
@@ -42,10 +43,15 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		cfg.Stderr = os.Stderr
 	}
 
-	rt := quickjs.NewRuntime(
+	rtOpts := []quickjs.Option{
 		quickjs.WithMemoryLimit(uint64(cfg.MemoryLimit)),
 		quickjs.WithMaxStackSize(uint64(cfg.MaxStackSize)),
-	)
+	}
+	if cfg.GCThreshold != 0 {
+		rtOpts = append(rtOpts, quickjs.WithGCThreshold(cfg.GCThreshold))
+	}
+
+	rt := quickjs.NewRuntime(rtOpts...)
 
 	ctx := rt.NewContext()
 

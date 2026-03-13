@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 func main() {
@@ -31,14 +31,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	rt, err := qjs.New()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "create runtime: %v\n", err)
-		os.Exit(1)
-	}
+	rt := quickjs.NewRuntime()
 	defer rt.Close()
 
-	bytecode, err := rt.Context().Compile("ai-sdk-bundle.js", qjs.Code(string(source)))
+	ctx := rt.NewContext()
+	defer ctx.Close()
+
+	bytecode, err := ctx.Compile(string(source), quickjs.EvalFileName("ai-sdk-bundle.js"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "compile: %v\n", err)
 		os.Exit(1)

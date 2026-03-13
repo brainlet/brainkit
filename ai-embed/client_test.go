@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/jsbridge"
-	"github.com/fastschema/qjs"
 )
 
 func loadEnv(t *testing.T) {
@@ -40,7 +39,7 @@ func TestBundleLoads(t *testing.T) {
 	defer c.Close()
 
 	// Verify __ai_sdk is defined
-	val, err := c.bridge.Eval("test.js", qjs.Code(`typeof globalThis.__ai_sdk`))
+	val, err := c.bridge.Eval("test.js", `typeof globalThis.__ai_sdk`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -252,13 +251,13 @@ func TestBytecodeLoading(t *testing.T) {
 	defer c.Close()
 
 	// Verify __ai_sdk is functional
-	val, err := c.bridge.Eval("test.js", qjs.Code(`
+	val, err := c.bridge.Eval("test.js", `
 		JSON.stringify({
 			generateText: typeof globalThis.__ai_sdk.generateText,
 			streamText: typeof globalThis.__ai_sdk.streamText,
 			createOpenAI: typeof globalThis.__ai_sdk.createOpenAI,
 		});
-	`))
+	`)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}

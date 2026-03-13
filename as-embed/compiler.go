@@ -68,6 +68,7 @@ func NewCompilerWithConfig(cfg CompilerConfig) (*Compiler, error) {
 	b, err := jsbridge.New(jsbridge.Config{
 		MemoryLimit:  cfg.MemoryLimit,
 		MaxStackSize: cfg.MaxStackSize,
+		GCThreshold:  4 * 1024 * 1024, // 4MB — auto-GC to prevent heap accumulation across compilations
 	},
 		jsbridge.Console(),
 		jsbridge.Encoding(),
@@ -223,6 +224,8 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 	js := fmt.Sprintf(`
 		(function() {
 		var module = null;
+		var program = null;
+		var options = null;
 		try {
 			var asc = globalThis.__as_compiler;
 			var previousModule = globalThis.__as_last_module;
@@ -237,7 +240,7 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 			var runtimeText = %s;
 			var runtimePath = %s;
 
-			var options = asc.newOptions();
+			options = asc.newOptions();
 			asc.setTarget(options, 0);
 			asc.setOptimizeLevelHints(options, %d, %d);
 			if (%v) asc.setDebugInfo(options, true);
@@ -251,7 +254,7 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 				asc.setStackSize(options, asc.DEFAULT_STACK_SIZE);
 			}
 
-			var program = asc.newProgram(options);
+			program = asc.newProgram(options);
 
 			// Step 1: Parse top-level library files (matching asc CLI behavior)
 			var libKeys = Object.keys(topLevelLib);
@@ -289,10 +292,20 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 				else if (asc.isWarning(diag)) warnings.push(msg);
 			}
 
+			// Release the Program — its internal Maps (filesByName, elementsByName,
+			// instancesByName, etc.) and cached prototypes accumulate across compilations
+			// and increase GC traversal depth which eventually causes stack overflow.
+			program = null;
+			options = null;
+			topLevelLib = null;
+			onDemandSources = null;
+			userSources = null;
+
 			if (errors.length > 0) {
 				if (module) {
 					try { module.dispose(); } catch (_) {}
 				}
+				module = null;
 				return JSON.stringify({ error: errors.join("\n") });
 			}
 
@@ -312,6 +325,9 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 			if (module) {
 				try { module.dispose(); } catch (_) {}
 			}
+			module = null;
+			program = null;
+			options = null;
 			return JSON.stringify({ error: e.message + "\n" + (e.stack || "") });
 		}
 		})()

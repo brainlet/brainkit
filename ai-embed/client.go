@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	quickjs "github.com/buke/quickjs-go"
+
 	"github.com/brainlet/brainkit/jsbridge"
-	"github.com/fastschema/qjs"
 )
 
 // ClientConfig configures an AI SDK client.
@@ -91,18 +92,14 @@ type StreamTextResult struct {
 func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) {
 	ctx := c.bridge.Context()
 
-	ctx.SetFunc("__go_stream_token", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		if len(args) < 1 {
-			return nil, fmt.Errorf("__go_stream_token: missing argument")
-		}
-		if params.OnToken != nil {
+	ctx.Globals().Set("__go_stream_token", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) > 0 && params.OnToken != nil {
 			params.OnToken(args[0].String())
 		}
-		return this.Context().NewBool(true), nil
-	})
+		return qctx.NewBool(true)
+	}))
 
-	js := fmt.Sprintf(`
+	js := fmt.Sprintf(`(async () => {
 		const { streamText, createOpenAI } = globalThis.__ai_sdk;
 		const openai = createOpenAI({
 			apiKey: %q,
@@ -117,10 +114,10 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 			__go_stream_token(delta);
 			fullText += delta;
 		}
-		JSON.stringify({ text: fullText });
-	`, params.APIKey, params.BaseURL, params.Model, params.Prompt)
+		return JSON.stringify({ text: fullText });
+	})()`, params.APIKey, params.BaseURL, params.Model, params.Prompt)
 
-	val, err := c.bridge.Eval("stream-text.js", qjs.Code(js), qjs.FlagAsync())
+	val, err := c.bridge.Eval("stream-text.js", js, quickjs.EvalAwait(true))
 	if err != nil {
 		return nil, fmt.Errorf("ai-embed: streamText: %w", err)
 	}
@@ -135,7 +132,7 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 
 // GenerateText calls the AI SDK's generateText function.
 func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, error) {
-	js := fmt.Sprintf(`
+	js := fmt.Sprintf(`(async () => {
 		const { generateText, createOpenAI } = globalThis.__ai_sdk;
 		const openai = createOpenAI({
 			apiKey: %q,
@@ -145,10 +142,10 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 			model: openai(%q),
 			prompt: %q,
 		});
-		JSON.stringify({ text: result.text });
-	`, params.APIKey, params.BaseURL, params.Model, params.Prompt)
+		return JSON.stringify({ text: result.text });
+	})()`, params.APIKey, params.BaseURL, params.Model, params.Prompt)
 
-	val, err := c.bridge.Eval("generate-text.js", qjs.Code(js), qjs.FlagAsync())
+	val, err := c.bridge.Eval("generate-text.js", js, quickjs.EvalAwait(true))
 	if err != nil {
 		return nil, fmt.Errorf("ai-embed: generateText: %w", err)
 	}
