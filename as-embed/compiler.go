@@ -273,18 +273,63 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 			// Step 2: Parse runtime entry file as entry
 			asc.parse(program, runtimeText, runtimePath, true);
 
-			// Step 3: Parse user entry files
+			// Step 3: Parse user entry files (skip node_modules — those are
+			// resolved on-demand in Step 4 with ~lib/ prefixed paths).
 			var userKeys = Object.keys(userSources);
 			for (var k = 0; k < userKeys.length; k++) {
-				var path = userKeys[k];
-				asc.parse(program, userSources[path], path, path === entryFile);
+				var uPath = userKeys[k];
+				if (uPath.indexOf("node_modules/") === 0 || uPath.indexOf("node_modules\\") === 0) continue;
+				asc.parse(program, userSources[uPath], uPath, uPath === entryFile);
 			}
 
-			// Step 4: Drain nextFile backlog, providing on-demand sources
+			// Step 4: Drain nextFile backlog, providing on-demand sources.
+			// Replicates the ASC CLI's getFile + packageBases logic for
+			// bare package imports (e.g., import "_" → ~lib/_).
+			var packageBases = {};
+			var libPrefix = "~lib/";
+			var pkgRe = /^~lib\/((?:@[^\/]+\/)?[^\/]+)(?:\/(.+))?/;
 			var file;
 			while ((file = asc.nextFile(program)) !== null) {
 				var text = onDemandSources[file] || null;
-				asc.parse(program, text, file + ".ts", false);
+				var sourcePath = file + ".ts";
+
+				// If not found and it's a ~lib/ path not in stdlib,
+				// try node_modules resolution (like ASC CLI getFile).
+				if (text === null && file.indexOf(libPrefix) === 0) {
+					var match = pkgRe.exec(file);
+					if (match) {
+						var packageName = match[1];
+						var filePath = match[2] || "index";
+						var dependee = asc.getDependee(program, file);
+						var basePath = dependee && packageBases[dependee] ? packageBases[dependee] : ".";
+
+						// Walk up from basePath looking for node_modules/
+						var parts = basePath.split("/");
+						for (var d = parts.length; d >= 0 && text === null; d--) {
+							var searchDir = d > 0 ? parts.slice(0, d).join("/") : ".";
+							if (parts[d - 1] === "node_modules") continue;
+							var nmDir = searchDir === "." ? "node_modules" : searchDir + "/node_modules";
+
+							// Try file.ts then file/index.ts
+							var candidate = nmDir + "/" + packageName + "/" + filePath + ".ts";
+							if (onDemandSources[candidate] != null) {
+								text = onDemandSources[candidate];
+								sourcePath = libPrefix + packageName + "/" + filePath + ".ts";
+								packageBases[sourcePath.replace(/\.ts$/, "")] = nmDir + "/" + packageName;
+								break;
+							}
+							candidate = nmDir + "/" + packageName + "/" + filePath + "/index.ts";
+							if (onDemandSources[candidate] != null) {
+								text = onDemandSources[candidate];
+								sourcePath = libPrefix + packageName + "/" + filePath + "/index.ts";
+								packageBases[sourcePath.replace(/\.ts$/, "")] = nmDir + "/" + packageName;
+								break;
+							}
+						}
+					}
+				}
+
+				asc.parse(program, text, sourcePath, false);
 			}
 
 			asc.initializeProgram(program);
