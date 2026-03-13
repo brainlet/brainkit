@@ -9,7 +9,7 @@ import (
 	"hash"
 
 	"github.com/google/uuid"
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // CryptoPolyfill provides crypto.randomUUID and Node.js-style createHash/createHmac.
@@ -20,18 +20,17 @@ func Crypto() *CryptoPolyfill { return &CryptoPolyfill{} }
 
 func (p *CryptoPolyfill) Name() string { return "crypto" }
 
-func (p *CryptoPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_crypto_randomUUID", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewString(uuid.NewString()), nil
-	})
+func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_crypto_randomUUID", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		return ctx.NewString(uuid.NewString())
+	}))
 
-	ctx.SetFunc("__go_crypto_hash", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_crypto_hash", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 2 {
-			return nil, fmt.Errorf("crypto.hash: requires algorithm and data")
+			return ctx.ThrowError(fmt.Errorf("crypto.hash: requires algorithm and data"))
 		}
-		alg := args[0].String()
-		data := args[1].String()
+		alg := args[0].ToString()
+		data := args[1].ToString()
 
 		var h hash.Hash
 		switch alg {
@@ -40,20 +39,19 @@ func (p *CryptoPolyfill) Setup(ctx *qjs.Context) error {
 		case "sha512":
 			h = sha512.New()
 		default:
-			return nil, fmt.Errorf("crypto.hash: unsupported algorithm %q", alg)
+			return ctx.ThrowError(fmt.Errorf("crypto.hash: unsupported algorithm %q", alg))
 		}
 		h.Write([]byte(data))
-		return this.Context().NewString(hex.EncodeToString(h.Sum(nil))), nil
-	})
+		return ctx.NewString(hex.EncodeToString(h.Sum(nil)))
+	}))
 
-	ctx.SetFunc("__go_crypto_hmac", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_crypto_hmac", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 3 {
-			return nil, fmt.Errorf("crypto.hmac: requires algorithm, key, and data")
+			return ctx.ThrowError(fmt.Errorf("crypto.hmac: requires algorithm, key, and data"))
 		}
-		alg := args[0].String()
-		key := args[1].String()
-		data := args[2].String()
+		alg := args[0].ToString()
+		key := args[1].ToString()
+		data := args[2].ToString()
 
 		var hf func() hash.Hash
 		switch alg {
@@ -62,12 +60,12 @@ func (p *CryptoPolyfill) Setup(ctx *qjs.Context) error {
 		case "sha512":
 			hf = sha512.New
 		default:
-			return nil, fmt.Errorf("crypto.hmac: unsupported algorithm %q", alg)
+			return ctx.ThrowError(fmt.Errorf("crypto.hmac: unsupported algorithm %q", alg))
 		}
 		mac := hmac.New(hf, []byte(key))
 		mac.Write([]byte(data))
-		return this.Context().NewString(hex.EncodeToString(mac.Sum(nil))), nil
-	})
+		return ctx.NewString(hex.EncodeToString(mac.Sum(nil)))
+	}))
 
 	return evalJS(ctx, `
 globalThis.crypto = globalThis.crypto || {};

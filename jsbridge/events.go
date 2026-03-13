@@ -1,6 +1,6 @@
 package jsbridge
 
-import "github.com/fastschema/qjs"
+import quickjs "github.com/buke/quickjs-go"
 
 // EventsPolyfill provides a Node.js-compatible EventEmitter (pure JS).
 type EventsPolyfill struct{}
@@ -10,7 +10,7 @@ func Events() *EventsPolyfill { return &EventsPolyfill{} }
 
 func (p *EventsPolyfill) Name() string { return "events" }
 
-func (p *EventsPolyfill) Setup(ctx *qjs.Context) error {
+func (p *EventsPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, eventsJS)
 }
 

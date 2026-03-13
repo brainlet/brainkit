@@ -3,12 +3,12 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
-func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenBlock", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+func registerExpressionConstructorImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenBlock", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		childrenPtr := argI(a, 2)
@@ -21,14 +21,14 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			defer cgoFree(unsafe.Pointer(name))
 		}
 		children := readPtrArray(lm, childrenPtr, numChildren)
-		return retF(this.Context(), cgoBlock(module, name, children, typ))
+		return retF(c, cgoBlock(module, name, children, typ))
 	})
-	ctx.SetFunc("_BinaryenIf", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoIf(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenIf", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoIf(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenLoop", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenLoop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		body := argU(a, 2)
@@ -38,10 +38,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			name = cgoCString(s)
 			defer cgoFree(unsafe.Pointer(name))
 		}
-		return retF(this.Context(), cgoLoop(module, name, body))
+		return retF(c, cgoLoop(module, name, body))
 	})
-	ctx.SetFunc("_BinaryenBreak", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBreak", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		condition := argU(a, 2)
@@ -52,10 +52,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			name = cgoCString(s)
 			defer cgoFree(unsafe.Pointer(name))
 		}
-		return retF(this.Context(), cgoBreak(module, name, condition, value))
+		return retF(c, cgoBreak(module, name, condition, value))
 	})
-	ctx.SetFunc("_BinaryenSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namesPtr := argI(a, 1)
 		numNames := argI(a, 2)
@@ -78,10 +78,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		if defaultName != nil {
 			cgoFree(unsafe.Pointer(defaultName))
 		}
-		return retF(this.Context(), result)
+		return retF(c, result)
 	})
-	ctx.SetFunc("_BinaryenCall", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCall", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		targetPtr := argI(a, 1)
 		operandsPtr := argI(a, 2)
@@ -90,10 +90,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		target := cgoCString(lm.ReadString(targetPtr))
 		defer cgoFree(unsafe.Pointer(target))
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoCall(module, target, operands, returnType))
+		return retF(c, cgoCall(module, target, operands, returnType))
 	})
-	ctx.SetFunc("_BinaryenReturnCall", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenReturnCall", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		targetPtr := argI(a, 1)
 		operandsPtr := argI(a, 2)
@@ -102,10 +102,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		target := cgoCString(lm.ReadString(targetPtr))
 		defer cgoFree(unsafe.Pointer(target))
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoReturnCall(module, target, operands, returnType))
+		return retF(c, cgoReturnCall(module, target, operands, returnType))
 	})
-	ctx.SetFunc("_BinaryenCallIndirect", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallIndirect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		tablePtr := argI(a, 1)
 		target := argU(a, 2)
@@ -116,10 +116,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		table := cgoCString(lm.ReadString(tablePtr))
 		defer cgoFree(unsafe.Pointer(table))
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoCallIndirect(module, table, target, operands, params, results))
+		return retF(c, cgoCallIndirect(module, table, target, operands, params, results))
 	})
-	ctx.SetFunc("_BinaryenReturnCallIndirect", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenReturnCallIndirect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		tablePtr := argI(a, 1)
 		target := argU(a, 2)
@@ -130,40 +130,40 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		table := cgoCString(lm.ReadString(tablePtr))
 		defer cgoFree(unsafe.Pointer(table))
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoReturnCallIndirect(module, table, target, operands, params, results))
+		return retF(c, cgoReturnCallIndirect(module, table, target, operands, params, results))
 	})
-	ctx.SetFunc("_BinaryenLocalGet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoLocalGet(argU(a, 0), argI(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenLocalGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoLocalGet(argU(a, 0), argI(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenLocalSet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoLocalSet(argU(a, 0), argI(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenLocalSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoLocalSet(argU(a, 0), argI(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenLocalTee", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoLocalTee(argU(a, 0), argI(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenLocalTee", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoLocalTee(argU(a, 0), argI(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenGlobalGet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGlobalGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		typ := argU(a, 2)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoGlobalGet(module, name, typ))
+		return retF(c, cgoGlobalGet(module, name, typ))
 	})
-	ctx.SetFunc("_BinaryenGlobalSet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGlobalSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		value := argU(a, 2)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoGlobalSet(module, name, value))
+		return retF(c, cgoGlobalSet(module, name, value))
 	})
-	ctx.SetFunc("_BinaryenLoad", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		bytes := argU32(a, 1)
 		signed := argBool(a, 2)
@@ -177,10 +177,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoLoad(module, bytes, signed, offset, align, typ, ptr, memName))
+		return retF(c, cgoLoad(module, bytes, signed, offset, align, typ, ptr, memName))
 	})
-	ctx.SetFunc("_BinaryenStore", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		bytes := argU32(a, 1)
 		offset := argU32(a, 2)
@@ -194,11 +194,11 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoStore(module, bytes, offset, align, ptr, value, typ, memName))
+		return retF(c, cgoStore(module, bytes, offset, align, ptr, value, typ, memName))
 	})
-	ctx.SetFunc("_BinaryenAtomicLoad", func(this *qjs.This) (*qjs.Value, error) {
+	setFunc(ctx, "_BinaryenAtomicLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		// AtomicLoad(module, bytes, offset, type, ptr, memoryName) — same as Load but atomic=true
-		a := this.Args()
+		a := args
 		module := argU(a, 0)
 		bytes := argU32(a, 1)
 		offset := argU32(a, 2)
@@ -211,10 +211,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			defer cgoFree(unsafe.Pointer(memName))
 		}
 		// Use Load with signed=false, align=bytes (natural alignment for atomics)
-		return retF(this.Context(), cgoLoad(module, bytes, false, offset, bytes, typ, ptr, memName))
+		return retF(c, cgoLoad(module, bytes, false, offset, bytes, typ, ptr, memName))
 	})
-	ctx.SetFunc("_BinaryenAtomicStore", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAtomicStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		bytes := argU32(a, 1)
 		offset := argU32(a, 2)
@@ -227,45 +227,45 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoStore(module, bytes, offset, bytes, ptr, value, typ, memName))
+		return retF(c, cgoStore(module, bytes, offset, bytes, ptr, value, typ, memName))
 	})
-	ctx.SetFunc("_BinaryenConst", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenConst", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		litPtr := argI(a, 1)
 		// Read literal struct from linear memory
 		litSize := cgoSizeofLiteral()
 		litBytes := lm.ReadBytes(litPtr, litSize)
-		return retF(this.Context(), cgoConstBytes(module, litBytes))
+		return retF(c, cgoConstBytes(module, litBytes))
 	})
-	ctx.SetFunc("_BinaryenUnary", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoUnary(argU(a, 0), argI32(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenUnary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoUnary(argU(a, 0), argI32(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenBinary", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBinary(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenBinary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBinary(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenSelect", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSelect(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenSelect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSelect(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenDrop", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoDrop(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenDrop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoDrop(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenReturn", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoReturn(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoReturn(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenNop", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoNop(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenNop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoNop(argU(args, 0)))
 	})
-	ctx.SetFunc("_BinaryenUnreachable", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoUnreachable(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenUnreachable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoUnreachable(argU(args, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemorySize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemorySize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		memNamePtr := argI(a, 1)
 		memIs64 := argBool(a, 2)
@@ -274,10 +274,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoMemorySize(module, memName, memIs64))
+		return retF(c, cgoMemorySize(module, memName, memIs64))
 	})
-	ctx.SetFunc("_BinaryenMemoryGrow", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemoryGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		delta := argU(a, 1)
 		memNamePtr := argI(a, 2)
@@ -287,10 +287,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoMemoryGrow(module, delta, memName, memIs64))
+		return retF(c, cgoMemoryGrow(module, delta, memName, memIs64))
 	})
-	ctx.SetFunc("_BinaryenTry", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTry", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		body := argU(a, 2)
@@ -321,10 +321,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		if delegateTarget != nil {
 			cgoFree(unsafe.Pointer(delegateTarget))
 		}
-		return retF(this.Context(), result)
+		return retF(c, result)
 	})
-	ctx.SetFunc("_BinaryenThrow", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenThrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		tagPtr := argI(a, 1)
 		operandsPtr := argI(a, 2)
@@ -332,97 +332,97 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		tag := cgoCString(lm.ReadString(tagPtr))
 		defer cgoFree(unsafe.Pointer(tag))
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoThrow(module, tag, operands))
+		return retF(c, cgoThrow(module, tag, operands))
 	})
-	ctx.SetFunc("_BinaryenRethrow", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenRethrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		targetPtr := argI(a, 1)
 		target := cgoCString(lm.ReadString(targetPtr))
 		defer cgoFree(unsafe.Pointer(target))
-		return retF(this.Context(), cgoRethrow(module, target))
+		return retF(c, cgoRethrow(module, target))
 	})
-	ctx.SetFunc("_BinaryenRefNull", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefNull(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenRefNull", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefNull(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenRefIsNull", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefIsNull(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenRefIsNull", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefIsNull(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenRefAs", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefAs(argU(a, 0), argI32(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenRefAs", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefAs(argU(a, 0), argI32(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenRefFunc", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenRefFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		funcNamePtr := argI(a, 1)
 		typ := argU(a, 2)
 		funcName := cgoCString(lm.ReadString(funcNamePtr))
 		defer cgoFree(unsafe.Pointer(funcName))
-		return retF(this.Context(), cgoRefFunc(module, funcName, typ))
+		return retF(c, cgoRefFunc(module, funcName, typ))
 	})
-	ctx.SetFunc("_BinaryenRefEq", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefEq(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenRefEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefEq(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenTableGet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		index := argU(a, 2)
 		typ := argU(a, 3)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoTableGet(module, name, index, typ))
+		return retF(c, cgoTableGet(module, name, index, typ))
 	})
-	ctx.SetFunc("_BinaryenTableSet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		index := argU(a, 2)
 		value := argU(a, 3)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoTableSet(module, name, index, value))
+		return retF(c, cgoTableSet(module, name, index, value))
 	})
-	ctx.SetFunc("_BinaryenTableSize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoTableSize(module, name))
+		return retF(c, cgoTableSize(module, name))
 	})
-	ctx.SetFunc("_BinaryenTableGrow", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		value := argU(a, 2)
 		delta := argU(a, 3)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoTableGrow(module, name, value, delta))
+		return retF(c, cgoTableGrow(module, name, value, delta))
 	})
-	ctx.SetFunc("_BinaryenTupleMake", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTupleMake", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		operandsPtr := argI(a, 1)
 		numOperands := argI(a, 2)
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoTupleMake(module, operands))
+		return retF(c, cgoTupleMake(module, operands))
 	})
-	ctx.SetFunc("_BinaryenTupleExtract", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTupleExtract(argU(a, 0), argU(a, 1), argI(a, 2)))
+	setFunc(ctx, "_BinaryenTupleExtract", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTupleExtract(argU(a, 0), argU(a, 1), argI(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenPop", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoPop(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenPop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoPop(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenMemoryCopy", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemoryCopy", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		dest := argU(a, 1)
 		source := argU(a, 2)
@@ -438,10 +438,10 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			srcMem = cgoCString(lm.ReadString(srcMemPtr))
 			defer cgoFree(unsafe.Pointer(srcMem))
 		}
-		return retF(this.Context(), cgoMemoryCopy(module, dest, source, size, destMem, srcMem))
+		return retF(c, cgoMemoryCopy(module, dest, source, size, destMem, srcMem))
 	})
-	ctx.SetFunc("_BinaryenMemoryFill", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemoryFill", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		dest := argU(a, 1)
 		value := argU(a, 2)
@@ -452,7 +452,7 @@ func registerExpressionConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoMemoryFill(module, dest, value, size, memName))
+		return retF(c, cgoMemoryFill(module, dest, value, size, memName))
 	})
 }
 

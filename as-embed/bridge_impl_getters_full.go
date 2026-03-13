@@ -3,362 +3,362 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // registerAllGetterImpls registers all expression getter (and related property accessor)
 // bridge functions with real CGo implementations, overriding the stubs from RegisterBinaryenBridge.
-func registerAllGetterImpls(ctx *qjs.Context, lm *LinearMemory) {
+func registerAllGetterImpls(ctx *quickjs.Context, lm *LinearMemory) {
 	// =====================================================================
 	// Block
 	// =====================================================================
-	ctx.SetFunc("_BinaryenBlockGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBlockGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoBlockGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenBlockGetNumChildren", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoBlockGetNumChildren(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBlockGetNumChildren", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoBlockGetNumChildren(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBlockGetChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBlockGetChildAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenBlockGetChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBlockGetChildAt(argU(a, 0), argI(a, 1)))
 	})
 
 	// =====================================================================
 	// If
 	// =====================================================================
-	ctx.SetFunc("_BinaryenIfGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoIfGetCondition(argU(a, 0)))
+	setFunc(ctx, "_BinaryenIfGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoIfGetCondition(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenIfGetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoIfGetIfTrue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenIfGetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoIfGetIfTrue(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenIfGetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoIfGetIfFalse(argU(a, 0)))
+	setFunc(ctx, "_BinaryenIfGetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoIfGetIfFalse(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Loop
 	// =====================================================================
-	ctx.SetFunc("_BinaryenLoopGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenLoopGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoLoopGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenLoopGetBody", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoLoopGetBody(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoopGetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoLoopGetBody(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Break
 	// =====================================================================
-	ctx.SetFunc("_BinaryenBreakGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBreakGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoBreakGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenBreakGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBreakGetCondition(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBreakGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBreakGetCondition(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBreakGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBreakGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBreakGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBreakGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Switch
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSwitchGetNumNames", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoSwitchGetNumNames(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSwitchGetNumNames", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoSwitchGetNumNames(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSwitchGetNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitchGetNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoSwitchGetNameAt(argU(a, 0), argI(a, 1))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenSwitchGetDefaultName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitchGetDefaultName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoSwitchGetDefaultName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenSwitchGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSwitchGetCondition(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSwitchGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSwitchGetCondition(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSwitchGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSwitchGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSwitchGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSwitchGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Call
 	// =====================================================================
-	ctx.SetFunc("_BinaryenCallGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoCallGetTarget(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenCallGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoCallGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoCallGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenCallGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenCallGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenCallIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoCallIsReturn(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoCallIsReturn(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// CallIndirect
 	// =====================================================================
-	ctx.SetFunc("_BinaryenCallIndirectGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallIndirectGetTarget(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallIndirectGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallIndirectGetTarget(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenCallIndirectGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallIndirectGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoCallIndirectGetTable(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenCallIndirectGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoCallIndirectGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallIndirectGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoCallIndirectGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenCallIndirectGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallIndirectGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenCallIndirectGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallIndirectGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenCallIndirectIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoCallIndirectIsReturn(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallIndirectIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoCallIndirectIsReturn(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// LocalGet
 	// =====================================================================
-	ctx.SetFunc("_BinaryenLocalGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoLocalGetGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLocalGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoLocalGetGetIndex(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// GlobalGet (expression)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenGlobalGetGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGlobalGetGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoGlobalGetGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// TableGet (expression)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTableGetGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableGetGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTableGetGetTable(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTableGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTableGetGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTableGetGetIndex(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// TableSize (expression)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTableSizeGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableSizeGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTableSizeGetTable(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// TableGrow (expression)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTableGrowGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableGrowGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTableGrowGetTable(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTableGrowGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTableGrowGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGrowGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTableGrowGetValue(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTableGrowGetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTableGrowGetDelta(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGrowGetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTableGrowGetDelta(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// MemoryGrow
 	// =====================================================================
-	ctx.SetFunc("_BinaryenMemoryGrowGetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryGrowGetDelta(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryGrowGetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryGrowGetDelta(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Load
 	// =====================================================================
-	ctx.SetFunc("_BinaryenLoadIsAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoLoadIsAtomic(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadIsAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoLoadIsAtomic(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenLoadIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoLoadIsSigned(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoLoadIsSigned(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenLoadGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoLoadGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoLoadGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenLoadGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoLoadGetBytes(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoLoadGetBytes(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenLoadGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoLoadGetAlign(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoLoadGetAlign(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenLoadGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoLoadGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenLoadGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoLoadGetPtr(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Store
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStoreIsAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoStoreIsAtomic(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreIsAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoStoreIsAtomic(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoStoreGetBytes(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoStoreGetBytes(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoStoreGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoStoreGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoStoreGetAlign(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoStoreGetAlign(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStoreGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStoreGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStoreGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStoreGetValue(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStoreGetValueType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStoreGetValueType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStoreGetValueType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStoreGetValueType(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Const
 	// =====================================================================
-	ctx.SetFunc("_BinaryenConstGetValueI32", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoConstGetValueI32(argU(a, 0)))
+	setFunc(ctx, "_BinaryenConstGetValueI32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoConstGetValueI32(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenConstGetValueI64Low", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoConstGetValueI64Low(argU(a, 0)))
+	setFunc(ctx, "_BinaryenConstGetValueI64Low", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoConstGetValueI64Low(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenConstGetValueI64High", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoConstGetValueI64High(argU(a, 0)))
+	setFunc(ctx, "_BinaryenConstGetValueI64High", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoConstGetValueI64High(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenConstGetValueF32", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return this.Context().NewFloat64(float64(cgoConstGetValueF32(argU(a, 0)))), nil
+	setFunc(ctx, "_BinaryenConstGetValueF32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return c.NewFloat64(float64(cgoConstGetValueF32(argU(a, 0))))
 	})
-	ctx.SetFunc("_BinaryenConstGetValueF64", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return this.Context().NewFloat64(cgoConstGetValueF64(argU(a, 0))), nil
+	setFunc(ctx, "_BinaryenConstGetValueF64", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return c.NewFloat64(cgoConstGetValueF64(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenConstGetValueV128", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenConstGetValueV128", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		outPtr := argI(a, 1)
 		var v128 [16]byte
@@ -366,206 +366,206 @@ func registerAllGetterImpls(ctx *qjs.Context, lm *LinearMemory) {
 		for i := 0; i < 16; i++ {
 			lm.I32Store8(outPtr+i, v128[i])
 		}
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
 	// =====================================================================
 	// Unary
 	// =====================================================================
-	ctx.SetFunc("_BinaryenUnaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoUnaryGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenUnaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoUnaryGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenUnaryGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoUnaryGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenUnaryGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoUnaryGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Binary
 	// =====================================================================
-	ctx.SetFunc("_BinaryenBinaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoBinaryGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBinaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoBinaryGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBinaryGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBinaryGetLeft(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBinaryGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBinaryGetLeft(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBinaryGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBinaryGetRight(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBinaryGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBinaryGetRight(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Select
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSelectGetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSelectGetIfTrue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSelectGetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSelectGetIfTrue(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSelectGetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSelectGetIfFalse(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSelectGetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSelectGetIfFalse(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSelectGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSelectGetCondition(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSelectGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSelectGetCondition(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Drop
 	// =====================================================================
-	ctx.SetFunc("_BinaryenDropGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoDropGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenDropGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoDropGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Return
 	// =====================================================================
-	ctx.SetFunc("_BinaryenReturnGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoReturnGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenReturnGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoReturnGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// AtomicRMW
 	// =====================================================================
-	ctx.SetFunc("_BinaryenAtomicRMWGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoAtomicRMWGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicRMWGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoAtomicRMWGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicRMWGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoAtomicRMWGetBytes(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicRMWGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoAtomicRMWGetBytes(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicRMWGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoAtomicRMWGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicRMWGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoAtomicRMWGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicRMWGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicRMWGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicRMWGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicRMWGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicRMWGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicRMWGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicRMWGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicRMWGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// AtomicCmpxchg
 	// =====================================================================
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoAtomicCmpxchgGetBytes(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoAtomicCmpxchgGetBytes(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoAtomicCmpxchgGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoAtomicCmpxchgGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicCmpxchgGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicCmpxchgGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicCmpxchgGetExpected(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicCmpxchgGetExpected(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetReplacement", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicCmpxchgGetReplacement(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetReplacement", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicCmpxchgGetReplacement(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// AtomicWait
 	// =====================================================================
-	ctx.SetFunc("_BinaryenAtomicWaitGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicWaitGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicWaitGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicWaitGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicWaitGetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicWaitGetExpected(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicWaitGetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicWaitGetExpected(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicWaitGetTimeout", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicWaitGetTimeout(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicWaitGetTimeout", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicWaitGetTimeout(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicWaitGetExpectedType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicWaitGetExpectedType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicWaitGetExpectedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicWaitGetExpectedType(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// AtomicNotify
 	// =====================================================================
-	ctx.SetFunc("_BinaryenAtomicNotifyGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicNotifyGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicNotifyGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicNotifyGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenAtomicNotifyGetNotifyCount", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoAtomicNotifyGetNotifyCount(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicNotifyGetNotifyCount", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoAtomicNotifyGetNotifyCount(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// AtomicFence
 	// =====================================================================
-	ctx.SetFunc("_BinaryenAtomicFenceGetOrder", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoAtomicFenceGetOrder(argU(a, 0)))
+	setFunc(ctx, "_BinaryenAtomicFenceGetOrder", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoAtomicFenceGetOrder(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDExtract
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDExtractGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDExtractGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDExtractGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDExtractGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDExtractGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDExtractGetVec(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDExtractGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDExtractGetVec(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDExtractGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoSIMDExtractGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDExtractGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoSIMDExtractGetIndex(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDReplace
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDReplaceGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDReplaceGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDReplaceGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDReplaceGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDReplaceGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDReplaceGetVec(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDReplaceGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDReplaceGetVec(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDReplaceGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoSIMDReplaceGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDReplaceGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoSIMDReplaceGetIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDReplaceGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDReplaceGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDReplaceGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDReplaceGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDShuffle
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDShuffleGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDShuffleGetLeft(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDShuffleGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDShuffleGetLeft(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDShuffleGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDShuffleGetRight(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDShuffleGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDShuffleGetRight(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDShuffleGetMask", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDShuffleGetMask", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		outPtr := argI(a, 1)
 		var mask [16]byte
@@ -573,826 +573,826 @@ func registerAllGetterImpls(ctx *qjs.Context, lm *LinearMemory) {
 		for i := 0; i < 16; i++ {
 			lm.I32Store8(outPtr+i, mask[i])
 		}
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
 	// =====================================================================
 	// SIMDTernary
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDTernaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDTernaryGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDTernaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDTernaryGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDTernaryGetA", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDTernaryGetA(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDTernaryGetA", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDTernaryGetA(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDTernaryGetB", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDTernaryGetB(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDTernaryGetB", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDTernaryGetB(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDTernaryGetC", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDTernaryGetC(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDTernaryGetC", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDTernaryGetC(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDShift
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDShiftGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDShiftGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDShiftGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDShiftGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDShiftGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDShiftGetVec(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDShiftGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDShiftGetVec(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDShiftGetShift", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDShiftGetShift(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDShiftGetShift", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDShiftGetShift(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDLoad
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDLoadGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDLoadGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDLoadGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoSIMDLoadGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoSIMDLoadGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoSIMDLoadGetAlign(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoSIMDLoadGetAlign(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDLoadGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDLoadGetPtr(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// SIMDLoadStoreLane
 	// =====================================================================
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoSIMDLoadStoreLaneGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoSIMDLoadStoreLaneGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoSIMDLoadStoreLaneGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoSIMDLoadStoreLaneGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoSIMDLoadStoreLaneGetAlign(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoSIMDLoadStoreLaneGetAlign(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoSIMDLoadStoreLaneGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoSIMDLoadStoreLaneGetIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDLoadStoreLaneGetPtr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDLoadStoreLaneGetPtr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoSIMDLoadStoreLaneGetVec(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoSIMDLoadStoreLaneGetVec(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneIsStore", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoSIMDLoadStoreLaneIsStore(argU(a, 0)))
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneIsStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoSIMDLoadStoreLaneIsStore(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// MemoryInit
 	// =====================================================================
-	ctx.SetFunc("_BinaryenMemoryInitGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemoryInitGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoMemoryInitGetSegment(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenMemoryInitGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryInitGetDest(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryInitGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryInitGetDest(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryInitGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryInitGetOffset(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryInitGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryInitGetOffset(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryInitGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryInitGetSize(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryInitGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryInitGetSize(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// DataDrop
 	// =====================================================================
-	ctx.SetFunc("_BinaryenDataDropGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenDataDropGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoDataDropGetSegment(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// MemoryCopy
 	// =====================================================================
-	ctx.SetFunc("_BinaryenMemoryCopyGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryCopyGetDest(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryCopyGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryCopyGetDest(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryCopyGetSource", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryCopyGetSource(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryCopyGetSource", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryCopyGetSource(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryCopyGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryCopyGetSize(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryCopyGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryCopyGetSize(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// MemoryFill
 	// =====================================================================
-	ctx.SetFunc("_BinaryenMemoryFillGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryFillGetDest(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryFillGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryFillGetDest(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryFillGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryFillGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryFillGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryFillGetValue(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenMemoryFillGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoMemoryFillGetSize(argU(a, 0)))
+	setFunc(ctx, "_BinaryenMemoryFillGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoMemoryFillGetSize(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefIsNull
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefIsNullGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefIsNullGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefIsNullGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefIsNullGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefAs
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefAsGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoRefAsGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefAsGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoRefAsGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenRefAsGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefAsGetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefAsGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefAsGetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefFunc
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefFuncGetFunc", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenRefFuncGetFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoRefFuncGetFunc(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// RefEq
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefEqGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefEqGetLeft(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefEqGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefEqGetLeft(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenRefEqGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefEqGetRight(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefEqGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefEqGetRight(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Try
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTryGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTryGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTryGetBody", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTryGetBody(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTryGetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTryGetBody(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTryGetNumCatchTags", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTryGetNumCatchTags(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTryGetNumCatchTags", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTryGetNumCatchTags(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTryGetNumCatchBodies", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTryGetNumCatchBodies(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTryGetNumCatchBodies", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTryGetNumCatchBodies(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTryGetCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryGetCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTryGetCatchTagAt(argU(a, 0), argI(a, 1))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTryGetCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTryGetCatchBodyAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenTryGetCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTryGetCatchBodyAt(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenTryGetDelegateTarget", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryGetDelegateTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTryGetDelegateTarget(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTryIsDelegate", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoTryIsDelegate(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTryIsDelegate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoTryIsDelegate(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Throw
 	// =====================================================================
-	ctx.SetFunc("_BinaryenThrowGetTag", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenThrowGetTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoThrowGetTag(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenThrowGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoThrowGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenThrowGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoThrowGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenThrowGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoThrowGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenThrowGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoThrowGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
 
 	// =====================================================================
 	// Rethrow
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRethrowGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenRethrowGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoRethrowGetTarget(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// TupleMake
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTupleMakeGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTupleMakeGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTupleMakeGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTupleMakeGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTupleMakeGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTupleMakeGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenTupleMakeGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTupleMakeGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
 
 	// =====================================================================
 	// TupleExtract
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTupleExtractGetTuple", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTupleExtractGetTuple(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTupleExtractGetTuple", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTupleExtractGetTuple(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTupleExtractGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTupleExtractGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTupleExtractGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTupleExtractGetIndex(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefI31
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefI31GetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefI31GetValue(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefI31GetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefI31GetValue(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// I31Get
 	// =====================================================================
-	ctx.SetFunc("_BinaryenI31GetGetI31", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoI31GetGetI31(argU(a, 0)))
+	setFunc(ctx, "_BinaryenI31GetGetI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoI31GetGetI31(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenI31GetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoI31GetIsSigned(argU(a, 0)))
+	setFunc(ctx, "_BinaryenI31GetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoI31GetIsSigned(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// CallRef
 	// =====================================================================
-	ctx.SetFunc("_BinaryenCallRefGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoCallRefGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallRefGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoCallRefGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenCallRefGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallRefGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenCallRefGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallRefGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenCallRefGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallRefGetTarget(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallRefGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallRefGetTarget(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenCallRefIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoCallRefIsReturn(argU(a, 0)))
+	setFunc(ctx, "_BinaryenCallRefIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoCallRefIsReturn(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefTest
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefTestGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefTestGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefTestGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefTestGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenRefTestGetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefTestGetCastType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefTestGetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefTestGetCastType(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// RefCast
 	// =====================================================================
-	ctx.SetFunc("_BinaryenRefCastGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefCastGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenRefCastGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefCastGetRef(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// BrOn
 	// =====================================================================
-	ctx.SetFunc("_BinaryenBrOnGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoBrOnGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBrOnGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoBrOnGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBrOnGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBrOnGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoBrOnGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenBrOnGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBrOnGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBrOnGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBrOnGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenBrOnGetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBrOnGetCastType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenBrOnGetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBrOnGetCastType(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StructNew
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStructNewGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoStructNewGetNumOperands(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStructNewGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoStructNewGetNumOperands(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStructNewGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructNewGetOperandAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenStructNewGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructNewGetOperandAt(argU(a, 0), argI(a, 1)))
 	})
 
 	// =====================================================================
 	// StructGet
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStructGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoStructGetGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStructGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoStructGetGetIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStructGetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructGetGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStructGetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructGetGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStructGetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoStructGetIsSigned(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStructGetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoStructGetIsSigned(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// ArrayNew
 	// =====================================================================
-	ctx.SetFunc("_BinaryenArrayNewGetInit", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayNewGetInit(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayNewGetInit", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayNewGetInit(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayNewGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayNewGetSize(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayNewGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayNewGetSize(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// ArrayNewFixed
 	// =====================================================================
-	ctx.SetFunc("_BinaryenArrayNewFixedGetNumValues", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoArrayNewFixedGetNumValues(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayNewFixedGetNumValues", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoArrayNewFixedGetNumValues(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayNewFixedGetValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayNewFixedGetValueAt(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenArrayNewFixedGetValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayNewFixedGetValueAt(argU(a, 0), argI(a, 1)))
 	})
 
 	// =====================================================================
 	// ArrayGet
 	// =====================================================================
-	ctx.SetFunc("_BinaryenArrayGetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayGetGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayGetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayGetGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayGetGetIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayGetGetIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayGetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoArrayGetIsSigned(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayGetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoArrayGetIsSigned(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// ArrayLen
 	// =====================================================================
-	ctx.SetFunc("_BinaryenArrayLenGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayLenGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayLenGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayLenGetRef(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// ArrayCopy
 	// =====================================================================
-	ctx.SetFunc("_BinaryenArrayCopyGetDestRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopyGetDestRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayCopyGetDestRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopyGetDestRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayCopyGetDestIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopyGetDestIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayCopyGetDestIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopyGetDestIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayCopyGetSrcRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopyGetSrcRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayCopyGetSrcRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopyGetSrcRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayCopyGetSrcIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopyGetSrcIndex(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayCopyGetSrcIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopyGetSrcIndex(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenArrayCopyGetLength", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopyGetLength(argU(a, 0)))
+	setFunc(ctx, "_BinaryenArrayCopyGetLength", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopyGetLength(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringNew
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringNewGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoStringNewGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringNewGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoStringNewGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringNewGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringNewGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringNewGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringNewGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringNewGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringNewGetStart(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringNewGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringNewGetStart(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringNewGetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringNewGetEnd(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringNewGetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringNewGetEnd(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringConst
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringConstGetString", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStringConstGetString", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoStringConstGetString(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// StringMeasure
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringMeasureGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoStringMeasureGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringMeasureGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoStringMeasureGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringMeasureGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringMeasureGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringMeasureGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringMeasureGetRef(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringEncode
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringEncodeGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoStringEncodeGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEncodeGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoStringEncodeGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringEncodeGetStr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEncodeGetStr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEncodeGetStr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEncodeGetStr(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringEncodeGetArray", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEncodeGetArray(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEncodeGetArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEncodeGetArray(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringEncodeGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEncodeGetStart(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEncodeGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEncodeGetStart(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringConcat
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringConcatGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringConcatGetLeft(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringConcatGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringConcatGetLeft(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringConcatGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringConcatGetRight(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringConcatGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringConcatGetRight(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringEq
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringEqGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI32(this.Context(), cgoStringEqGetOp(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEqGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI32(c, cgoStringEqGetOp(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringEqGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEqGetLeft(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEqGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEqGetLeft(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringEqGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEqGetRight(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringEqGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEqGetRight(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringWTF16Get
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringWTF16GetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringWTF16GetGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringWTF16GetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringWTF16GetGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringWTF16GetGetPos", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringWTF16GetGetPos(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringWTF16GetGetPos", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringWTF16GetGetPos(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// StringSliceWTF
 	// =====================================================================
-	ctx.SetFunc("_BinaryenStringSliceWTFGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringSliceWTFGetRef(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringSliceWTFGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringSliceWTFGetRef(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringSliceWTFGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringSliceWTFGetStart(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringSliceWTFGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringSliceWTFGetStart(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenStringSliceWTFGetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringSliceWTFGetEnd(argU(a, 0)))
+	setFunc(ctx, "_BinaryenStringSliceWTFGetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringSliceWTFGetEnd(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Global object getters (non-expression - takes GlobalRef)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenGlobalGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGlobalGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoGlobalObjGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenGlobalGetType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGlobalObjGetType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenGlobalGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGlobalObjGetType(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenGlobalIsMutable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoGlobalObjIsMutable(argU(a, 0)))
+	setFunc(ctx, "_BinaryenGlobalIsMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoGlobalObjIsMutable(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenGlobalGetInitExpr", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGlobalObjGetInitExpr(argU(a, 0)))
+	setFunc(ctx, "_BinaryenGlobalGetInitExpr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGlobalObjGetInitExpr(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Export getters
 	// =====================================================================
-	ctx.SetFunc("_BinaryenExportGetKind", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoExportGetKind(argU(a, 0)))
+	setFunc(ctx, "_BinaryenExportGetKind", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoExportGetKind(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenExportGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenExportGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoExportGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenExportGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenExportGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoExportGetValue(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// Function type getter
 	// =====================================================================
-	ctx.SetFunc("_BinaryenFunctionGetType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoFunctionObjGetType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenFunctionGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoFunctionObjGetType(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Module-level indexed getters
 	// =====================================================================
-	ctx.SetFunc("_BinaryenGetExportByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGetExportByIndex(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenGetExportByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGetExportByIndex(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenGetGlobalByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGetGlobalByIndex(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenGetGlobalByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGetGlobalByIndex(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenGetTableByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGetTableByIndex(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenGetTableByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGetTableByIndex(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenGetNumElementSegments", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoGetNumElementSegments(argU(a, 0)))
+	setFunc(ctx, "_BinaryenGetNumElementSegments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoGetNumElementSegments(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenGetElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGetElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		cName := readCStr(lm, argI(a, 1))
 		if cName != nil {
 			defer cgoFree(cName)
 		}
-		return retF(this.Context(), cgoGetElementSegment(module, cName))
+		return retF(c, cgoGetElementSegment(module, cName))
 	})
-	ctx.SetFunc("_BinaryenGetElementSegmentByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoGetElementSegmentByIndex(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenGetElementSegmentByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoGetElementSegmentByIndex(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenGetNumMemorySegments", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoGetNumMemorySegments(argU(a, 0)))
+	setFunc(ctx, "_BinaryenGetNumMemorySegments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoGetNumMemorySegments(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenGetMemorySegmentByteOffset", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGetMemorySegmentByteOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		cName := readCStr(lm, argI(a, 1))
 		if cName != nil {
 			defer cgoFree(cName)
 		}
-		return retU32(this.Context(), cgoGetMemorySegmentByteOffset(module, cName))
+		return retU32(c, cgoGetMemorySegmentByteOffset(module, cName))
 	})
-	ctx.SetFunc("_BinaryenGetMemorySegmentByteLength", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGetMemorySegmentByteLength", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		cName := readCStr(lm, argI(a, 1))
 		if cName != nil {
 			defer cgoFree(cName)
 		}
-		return retU32(this.Context(), cgoGetMemorySegmentByteLength(module, cName))
+		return retU32(c, cgoGetMemorySegmentByteLength(module, cName))
 	})
-	ctx.SetFunc("_BinaryenModuleGetDebugInfoFileName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenModuleGetDebugInfoFileName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoModuleGetDebugInfoFileName(argU(a, 0), argI(a, 1))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// =====================================================================
 	// Tag getters
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTagGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTagGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTagGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTagGetParams", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTagGetParams(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTagGetParams", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTagGetParams(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTagGetResults", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTagGetResults(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTagGetResults", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTagGetResults(argU(a, 0)))
 	})
 
 	// =====================================================================
 	// Table object getters (non-expression - takes TableRef)
 	// =====================================================================
-	ctx.SetFunc("_BinaryenTableGetName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTableGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cStr := cgoTableObjGetName(argU(a, 0))
 		if cStr == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cStr)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenTableGetInitial", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTableObjGetInitial(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGetInitial", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTableObjGetInitial(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTableGetMax", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retI(this.Context(), cgoTableObjGetMax(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGetMax", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retI(c, cgoTableObjGetMax(argU(a, 0)))
 	})
-	ctx.SetFunc("_BinaryenTableGetType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTableObjGetType(argU(a, 0)))
+	setFunc(ctx, "_BinaryenTableGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTableObjGetType(argU(a, 0)))
 	})
 }
 

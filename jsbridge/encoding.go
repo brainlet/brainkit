@@ -3,7 +3,7 @@ package jsbridge
 import (
 	"encoding/base64"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // EncodingPolyfill provides TextEncoder, TextDecoder, btoa, and atob.
@@ -14,40 +14,48 @@ func Encoding() *EncodingPolyfill { return &EncodingPolyfill{} }
 
 func (p *EncodingPolyfill) Name() string { return "encoding" }
 
-func (p *EncodingPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_text_encode", func(this *qjs.This) (*qjs.Value, error) {
+func (p *EncodingPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_text_encode", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		s := ""
-		if args := this.Args(); len(args) > 0 {
-			s = args[0].String()
+		if len(args) > 0 {
+			s = args[0].ToString()
 		}
-		return this.Context().NewArrayBuffer([]byte(s)), nil
-	})
+		return ctx.NewArrayBuffer([]byte(s))
+	}))
 
-	ctx.SetFunc("__go_text_decode", func(this *qjs.This) (*qjs.Value, error) {
-		if args := this.Args(); len(args) > 0 {
-			return this.Context().NewString(string(args[0].ToByteArray())), nil
-		}
-		return this.Context().NewString(""), nil
-	})
-
-	ctx.SetFunc("__go_btoa", func(this *qjs.This) (*qjs.Value, error) {
-		s := ""
-		if args := this.Args(); len(args) > 0 {
-			s = args[0].String()
-		}
-		return this.Context().NewString(base64.StdEncoding.EncodeToString([]byte(s))), nil
-	})
-
-	ctx.SetFunc("__go_atob", func(this *qjs.This) (*qjs.Value, error) {
-		if args := this.Args(); len(args) > 0 {
-			b, err := base64.StdEncoding.DecodeString(args[0].String())
-			if err != nil {
-				return nil, err
+	ctx.Globals().Set("__go_text_decode", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) > 0 {
+			size := args[0].ByteLen()
+			if size > 0 {
+				b, err := args[0].ToByteArray(uint(size))
+				if err != nil {
+					return ctx.ThrowError(err)
+				}
+				return ctx.NewString(string(b))
 			}
-			return this.Context().NewString(string(b)), nil
+			return ctx.NewString("")
 		}
-		return this.Context().NewString(""), nil
-	})
+		return ctx.NewString("")
+	}))
+
+	ctx.Globals().Set("__go_btoa", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		s := ""
+		if len(args) > 0 {
+			s = args[0].ToString()
+		}
+		return ctx.NewString(base64.StdEncoding.EncodeToString([]byte(s)))
+	}))
+
+	ctx.Globals().Set("__go_atob", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) > 0 {
+			b, err := base64.StdEncoding.DecodeString(args[0].ToString())
+			if err != nil {
+				return ctx.ThrowError(err)
+			}
+			return ctx.NewString(string(b))
+		}
+		return ctx.NewString("")
+	}))
 
 	return evalJS(ctx, `
 globalThis.TextEncoder = class TextEncoder {

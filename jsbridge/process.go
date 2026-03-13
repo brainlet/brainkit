@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // ProcessPolyfill provides process.env and process.cwd.
@@ -15,33 +15,31 @@ func Process() *ProcessPolyfill { return &ProcessPolyfill{} }
 
 func (p *ProcessPolyfill) Name() string { return "process" }
 
-func (p *ProcessPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_process_env", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func (p *ProcessPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_process_env", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return nil, fmt.Errorf("process.env: key argument required")
+			return ctx.ThrowError(fmt.Errorf("process.env: key argument required"))
 		}
-		return this.Context().NewString(os.Getenv(args[0].String())), nil
-	})
+		return ctx.NewString(os.Getenv(args[0].ToString()))
+	}))
 
-	ctx.SetFunc("__go_process_env_set", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_process_env_set", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 2 {
-			return nil, fmt.Errorf("process.env.set: key and value arguments required")
+			return ctx.ThrowError(fmt.Errorf("process.env.set: key and value arguments required"))
 		}
-		if err := os.Setenv(args[0].String(), args[1].String()); err != nil {
-			return nil, fmt.Errorf("process.env.set: %w", err)
+		if err := os.Setenv(args[0].ToString(), args[1].ToString()); err != nil {
+			return ctx.ThrowError(fmt.Errorf("process.env.set: %w", err))
 		}
-		return this.Context().NewBool(true), nil
-	})
+		return ctx.NewBool(true)
+	}))
 
-	ctx.SetFunc("__go_process_cwd", func(this *qjs.This) (*qjs.Value, error) {
+	ctx.Globals().Set("__go_process_cwd", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("process.cwd: %w", err)
+			return ctx.ThrowError(fmt.Errorf("process.cwd: %w", err))
 		}
-		return this.Context().NewString(cwd), nil
-	})
+		return ctx.NewString(cwd)
+	}))
 
 	return evalJS(ctx, `
 globalThis.process = globalThis.process || {};

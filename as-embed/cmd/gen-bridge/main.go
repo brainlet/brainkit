@@ -317,7 +317,7 @@ func generateBridgeGo(names []string, outputDir string) error {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "package asembed")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, `import "github.com/fastschema/qjs"`)
+	fmt.Fprintln(w, `import quickjs "github.com/buke/quickjs-go"`)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "// RegisterBinaryenBridge registers stub implementations for all Binaryen")
 	fmt.Fprintln(w, "// C API functions exported by the AS compiler's binaryen.js glue.")
@@ -326,13 +326,13 @@ func generateBridgeGo(names []string, outputDir string) error {
 	fmt.Fprintln(w, "//")
 	fmt.Fprintf(w, "// Total functions: %d (excluding %d memory ops handled by RegisterMemoryBridge)\n",
 		len(bridgeNames), len(names)-len(bridgeNames))
-	fmt.Fprintln(w, "func RegisterBinaryenBridge(ctx *qjs.Context, lm *LinearMemory) {")
+	fmt.Fprintln(w, "func RegisterBinaryenBridge(ctx *quickjs.Context, lm *LinearMemory) {")
 
 	for _, name := range bridgeNames {
 		kind := classifyFunction(name)
 		fmt.Fprintf(w, "\t// %s (%s)\n", name, kind)
-		fmt.Fprintf(w, "\tctx.SetFunc(%q, func(this *qjs.This) (*qjs.Value, error) {\n", name)
-		fmt.Fprintf(w, "\t\treturn this.Context().NewFloat64(0), nil\n")
+		fmt.Fprintf(w, "\tsetFunc(ctx, %q, func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {\n", name)
+		fmt.Fprintf(w, "\t\treturn c.NewFloat64(0)\n")
 		fmt.Fprintf(w, "\t})\n\n")
 	}
 

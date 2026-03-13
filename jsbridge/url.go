@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // URLPolyfill provides globalThis.URL and globalThis.URLSearchParams.
@@ -17,29 +17,28 @@ func URL() *URLPolyfill { return &URLPolyfill{} }
 
 func (p *URLPolyfill) Name() string { return "url" }
 
-func (p *URLPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_url_parse", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func (p *URLPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_url_parse", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) == 0 {
-			return nil, fmt.Errorf("URL: missing argument")
+			return ctx.ThrowError(fmt.Errorf("URL: missing argument"))
 		}
-		raw := args[0].String()
+		raw := args[0].ToString()
 
 		if len(args) > 1 && !args[1].IsUndefined() && !args[1].IsNull() {
-			base, err := url.Parse(args[1].String())
+			base, err := url.Parse(args[1].ToString())
 			if err != nil {
-				return nil, fmt.Errorf("URL: invalid base: %w", err)
+				return ctx.ThrowError(fmt.Errorf("URL: invalid base: %w", err))
 			}
 			ref, err := url.Parse(raw)
 			if err != nil {
-				return nil, fmt.Errorf("URL: invalid url: %w", err)
+				return ctx.ThrowError(fmt.Errorf("URL: invalid url: %w", err))
 			}
 			raw = base.ResolveReference(ref).String()
 		}
 
 		u, err := url.Parse(raw)
 		if err != nil {
-			return nil, fmt.Errorf("URL: invalid url %q: %w", raw, err)
+			return ctx.ThrowError(fmt.Errorf("URL: invalid url %q: %w", raw, err))
 		}
 
 		username := ""
@@ -70,17 +69,17 @@ func (p *URLPolyfill) Setup(ctx *qjs.Context) error {
 		}
 
 		b, _ := json.Marshal(result)
-		return this.Context().ParseJSON(string(b)), nil
-	})
+		return ctx.ParseJSON(string(b))
+	}))
 
-	ctx.SetFunc("__go_url_search_params", func(this *qjs.This) (*qjs.Value, error) {
+	ctx.Globals().Set("__go_url_search_params", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		qs := ""
-		if args := this.Args(); len(args) > 0 {
-			qs = strings.TrimPrefix(args[0].String(), "?")
+		if len(args) > 0 {
+			qs = strings.TrimPrefix(args[0].ToString(), "?")
 		}
 		vals, err := url.ParseQuery(qs)
 		if err != nil {
-			return nil, fmt.Errorf("URLSearchParams: %w", err)
+			return ctx.ThrowError(fmt.Errorf("URLSearchParams: %w", err))
 		}
 		var pairs [][]string
 		for k, vs := range vals {
@@ -89,8 +88,8 @@ func (p *URLPolyfill) Setup(ctx *qjs.Context) error {
 			}
 		}
 		b, _ := json.Marshal(pairs)
-		return this.Context().ParseJSON(string(b)), nil
-	})
+		return ctx.ParseJSON(string(b))
+	}))
 
 	return evalJS(ctx, urlJS)
 }

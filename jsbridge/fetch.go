@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // FetchPolyfill provides globalThis.fetch, Headers, Response, and Request.
@@ -34,11 +34,10 @@ func Fetch(opts ...FetchOption) *FetchPolyfill {
 
 func (p *FetchPolyfill) Name() string { return "fetch" }
 
-func (p *FetchPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_fetch_sync", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_fetch_sync", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) == 0 {
-			return nil, fmt.Errorf("fetch: missing request argument")
+			return ctx.ThrowError(fmt.Errorf("fetch: missing request argument"))
 		}
 
 		var req struct {
@@ -47,8 +46,8 @@ func (p *FetchPolyfill) Setup(ctx *qjs.Context) error {
 			Headers map[string]string `json:"headers"`
 			Body    *string           `json:"body"`
 		}
-		if err := json.Unmarshal([]byte(args[0].String()), &req); err != nil {
-			return nil, fmt.Errorf("fetch: invalid request: %w", err)
+		if err := json.Unmarshal([]byte(args[0].ToString()), &req); err != nil {
+			return ctx.ThrowError(fmt.Errorf("fetch: invalid request: %w", err))
 		}
 
 		var bodyReader io.Reader
@@ -58,7 +57,7 @@ func (p *FetchPolyfill) Setup(ctx *qjs.Context) error {
 
 		httpReq, err := http.NewRequest(req.Method, req.URL, bodyReader)
 		if err != nil {
-			return nil, fmt.Errorf("fetch: %w", err)
+			return ctx.ThrowError(fmt.Errorf("fetch: %w", err))
 		}
 		for k, v := range req.Headers {
 			httpReq.Header.Set(k, v)
@@ -66,13 +65,13 @@ func (p *FetchPolyfill) Setup(ctx *qjs.Context) error {
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
-			return nil, fmt.Errorf("fetch: %w", err)
+			return ctx.ThrowError(fmt.Errorf("fetch: %w", err))
 		}
 		defer resp.Body.Close()
 
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("fetch: read body: %w", err)
+			return ctx.ThrowError(fmt.Errorf("fetch: read body: %w", err))
 		}
 
 		respHeaders := make(map[string]string)
@@ -88,8 +87,8 @@ func (p *FetchPolyfill) Setup(ctx *qjs.Context) error {
 			"url":        resp.Request.URL.String(),
 		}
 		b, _ := json.Marshal(result)
-		return this.Context().NewString(string(b)), nil
-	})
+		return ctx.NewString(string(b))
+	}))
 
 	return evalJS(ctx, fetchJS)
 }

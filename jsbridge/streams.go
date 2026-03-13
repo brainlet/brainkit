@@ -1,6 +1,6 @@
 package jsbridge
 
-import "github.com/fastschema/qjs"
+import quickjs "github.com/buke/quickjs-go"
 
 // StreamsPolyfill provides ReadableStream, WritableStream, TransformStream,
 // TextDecoderStream, and TextEncoderStream.
@@ -14,7 +14,7 @@ func Streams() *StreamsPolyfill { return &StreamsPolyfill{} }
 
 func (p *StreamsPolyfill) Name() string { return "streams" }
 
-func (p *StreamsPolyfill) Setup(ctx *qjs.Context) error {
+func (p *StreamsPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, streamsJS)
 }
 

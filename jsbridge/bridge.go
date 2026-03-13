@@ -1,30 +1,30 @@
 package jsbridge
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // Config configures a Bridge.
 type Config struct {
-	MemoryLimit        int             // bytes; default 256MB
-	MaxStackSize       int             // bytes; default 4MB
-	MaxExecutionTime   int             // milliseconds; default 0 (no limit)
-	GCThreshold        int             // bytes; default 256KB
-	Context            context.Context // parent context for cancellation; default background
-	CloseOnContextDone bool            // abort WASM execution when context is cancelled (adds overhead)
-	Stdout             io.Writer       // default os.Stdout
-	Stderr             io.Writer       // default os.Stderr
-	CWD                string          // working directory
+	MemoryLimit  int       // bytes; default 256MB
+	MaxStackSize int       // bytes; default 4MB
+	Stdout       io.Writer // default os.Stdout
+	Stderr       io.Writer // default os.Stderr
+	CWD          string    // working directory
 }
 
-// Bridge wraps a QuickJS runtime with polyfills and bridge functions.
+// Bridge wraps a native QuickJS runtime with polyfills and bridge functions.
+// NOTE: Bridge does NOT call runtime.LockOSThread/UnlockOSThread.
+// buke/quickjs-go's NewRuntime() handles thread locking internally.
 type Bridge struct {
-	runtime *qjs.Runtime
+	runtime *quickjs.Runtime
+	ctx     *quickjs.Context
+	stdout  io.Writer
+	stderr  io.Writer
 }
 
 // New creates a Bridge, sets up all polyfills, and returns it ready for use.
@@ -35,9 +35,6 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 	if cfg.MaxStackSize == 0 {
 		cfg.MaxStackSize = 4 * 1024 * 1024
 	}
-	if cfg.GCThreshold == 0 {
-		cfg.GCThreshold = 256 * 1024
-	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = os.Stdout
 	}
@@ -45,27 +42,23 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		cfg.Stderr = os.Stderr
 	}
 
-	rt, err := qjs.New(qjs.Option{
-		MemoryLimit:        cfg.MemoryLimit,
-		MaxStackSize:       cfg.MaxStackSize,
-		MaxExecutionTime:   cfg.MaxExecutionTime,
-		GCThreshold:        cfg.GCThreshold,
-		Context:            cfg.Context,
-		CloseOnContextDone: cfg.CloseOnContextDone,
-		Stdout:             cfg.Stdout,
-		Stderr:             cfg.Stderr,
-		CWD:                cfg.CWD,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("jsbridge: create runtime: %w", err)
+	rt := quickjs.NewRuntime(
+		quickjs.WithMemoryLimit(uint64(cfg.MemoryLimit)),
+		quickjs.WithMaxStackSize(uint64(cfg.MaxStackSize)),
+	)
+
+	ctx := rt.NewContext()
+
+	b := &Bridge{
+		runtime: rt,
+		ctx:     ctx,
+		stdout:  cfg.Stdout,
+		stderr:  cfg.Stderr,
 	}
 
-	b := &Bridge{runtime: rt}
-
-	ctx := rt.Context()
 	for _, p := range polyfills {
 		if err := p.Setup(ctx); err != nil {
-			rt.Close()
+			b.Close()
 			return nil, fmt.Errorf("jsbridge: polyfill %s: %w", p.Name(), err)
 		}
 	}
@@ -75,31 +68,58 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 
 // Close shuts down the runtime and frees all resources.
 func (b *Bridge) Close() {
+	if b.ctx != nil {
+		b.ctx.Close()
+		b.ctx = nil
+	}
 	if b.runtime != nil {
 		b.runtime.Close()
+		b.runtime = nil
 	}
 }
 
-// Runtime returns the underlying QuickJS runtime.
-func (b *Bridge) Runtime() *qjs.Runtime { return b.runtime }
-
 // Context returns the QuickJS execution context.
-func (b *Bridge) Context() *qjs.Context { return b.runtime.Context() }
+func (b *Bridge) Context() *quickjs.Context { return b.ctx }
+
+// Runtime returns the underlying QuickJS runtime.
+func (b *Bridge) Runtime() *quickjs.Runtime { return b.runtime }
 
 // Global returns the global JavaScript object.
-func (b *Bridge) Global() *qjs.Value { return b.runtime.Context().Global() }
+func (b *Bridge) Global() *quickjs.Value { return b.ctx.Globals() }
 
-// Eval evaluates JavaScript code.
-func (b *Bridge) Eval(file string, flags ...qjs.EvalOptionFunc) (*qjs.Value, error) {
-	return b.runtime.Eval(file, flags...)
+// Eval evaluates JavaScript code and returns the result.
+// The file parameter is used for error reporting only.
+// Extra opts (e.g. quickjs.EvalAwait(true)) are forwarded to the engine.
+// Returns (*Value, error) — if the JS throws, error is set and *Value is nil.
+func (b *Bridge) Eval(file string, code string, opts ...quickjs.EvalOption) (*quickjs.Value, error) {
+	allOpts := append([]quickjs.EvalOption{quickjs.EvalFileName(file)}, opts...)
+	val := b.ctx.Eval(code, allOpts...)
+	if val.IsException() {
+		err := b.ctx.Exception()
+		val.Free()
+		return nil, err
+	}
+	return val, nil
+}
+
+// EvalBytecode evaluates precompiled bytecode.
+func (b *Bridge) EvalBytecode(bytecode []byte) (*quickjs.Value, error) {
+	val := b.ctx.EvalBytecode(bytecode)
+	if val.IsException() {
+		err := b.ctx.Exception()
+		val.Free()
+		return nil, err
+	}
+	return val, nil
 }
 
 // Compile compiles JavaScript to bytecode without executing.
-func (b *Bridge) Compile(file string, flags ...qjs.EvalOptionFunc) ([]byte, error) {
-	return b.runtime.Compile(file, flags...)
+func (b *Bridge) Compile(file string, code string) ([]byte, error) {
+	return b.ctx.Compile(code, quickjs.EvalFileName(file))
 }
 
-// MemorySize returns the current WASM memory usage in bytes.
-func (b *Bridge) MemorySize() uint32 {
-	return b.runtime.Mem().Size()
-}
+// Stdout returns the configured stdout writer.
+func (b *Bridge) Stdout() io.Writer { return b.stdout }
+
+// Stderr returns the configured stderr writer.
+func (b *Bridge) Stderr() io.Writer { return b.stderr }

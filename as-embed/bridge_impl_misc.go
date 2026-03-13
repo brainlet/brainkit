@@ -3,28 +3,28 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
-func registerRelooperImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_RelooperCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoRelooperCreate(argU(this.Args(), 0)))
+func registerRelooperImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_RelooperCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoRelooperCreate(argU(args, 0)))
 	})
-	ctx.SetFunc("_RelooperAddBlock", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRelooperAddBlock(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_RelooperAddBlock", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRelooperAddBlock(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_RelooperAddBranch", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_RelooperAddBranch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoRelooperAddBranch(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_RelooperAddBlockWithSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRelooperAddBlockWithSwitch(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_RelooperAddBlockWithSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRelooperAddBlockWithSwitch(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_RelooperAddBranchForSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_RelooperAddBranchForSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		from := argU(a, 0)
 		to := argU(a, 1)
 		indexesPtr := argI(a, 2)
@@ -35,57 +35,57 @@ func registerRelooperImpls(ctx *qjs.Context, lm *LinearMemory) {
 			indexes[i] = uint32(lm.I32Load(indexesPtr + i*4))
 		}
 		cgoRelooperAddBranchForSwitch(from, to, indexes, code)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_RelooperRenderAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRelooperRenderAndDispose(argU(a, 0), argU(a, 1), argU32(a, 2)))
+	setFunc(ctx, "_RelooperRenderAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRelooperRenderAndDispose(argU(a, 0), argU(a, 1), argU32(a, 2)))
 	})
 }
 
-func registerExpressionRunnerImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_ExpressionRunnerCreate", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoExpressionRunnerCreate(argU(a, 0), argU32(a, 1), argU32(a, 2), argU32(a, 3)))
+func registerExpressionRunnerImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_ExpressionRunnerCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoExpressionRunnerCreate(argU(a, 0), argU32(a, 1), argU32(a, 2), argU32(a, 3)))
 	})
-	ctx.SetFunc("_ExpressionRunnerSetLocalValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoExpressionRunnerSetLocalValue(argU(a, 0), argU32(a, 1), argU(a, 2)))
+	setFunc(ctx, "_ExpressionRunnerSetLocalValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoExpressionRunnerSetLocalValue(argU(a, 0), argU32(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_ExpressionRunnerSetGlobalValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_ExpressionRunnerSetGlobalValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		runner := argU(a, 0)
 		namePtr := argI(a, 1)
 		value := argU(a, 2)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retBool(this.Context(), cgoExpressionRunnerSetGlobalValue(runner, name, value))
+		return retBool(c, cgoExpressionRunnerSetGlobalValue(runner, name, value))
 	})
-	ctx.SetFunc("_ExpressionRunnerRunAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoExpressionRunnerRunAndDispose(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_ExpressionRunnerRunAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoExpressionRunnerRunAndDispose(argU(a, 0), argU(a, 1)))
 	})
 }
 
-func registerTypeBuilderImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_TypeBuilderCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeBuilderCreate(argI(this.Args(), 0)))
+func registerTypeBuilderImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_TypeBuilderCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeBuilderCreate(argI(args, 0)))
 	})
-	ctx.SetFunc("_TypeBuilderGrow", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderGrow(argU(a, 0), argI(a, 1))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoTypeBuilderGetSize(argU(this.Args(), 0)))
+	setFunc(ctx, "_TypeBuilderGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoTypeBuilderGetSize(argU(args, 0)))
 	})
-	ctx.SetFunc("_TypeBuilderSetSignatureType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderSetSignatureType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderSetSignatureType(argU(a, 0), argI(a, 1), argU(a, 2), argU(a, 3))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderSetStructType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderSetStructType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		builder := argU(a, 0)
 		index := argI(a, 1)
 		fieldTypesPtr := argI(a, 2)
@@ -100,46 +100,46 @@ func registerTypeBuilderImpls(ctx *qjs.Context, lm *LinearMemory) {
 			fieldMutables[i] = lm.I32Load(fieldMutablesPtr+i*4) != 0
 		}
 		cgoTypeBuilderSetStructType(builder, index, fieldTypes, fieldPackedTypes, fieldMutables)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderSetArrayType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderSetArrayType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderSetArrayType(argU(a, 0), argI(a, 1), argU(a, 2), argU32(a, 3), argBool(a, 4))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderGetTempHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTypeBuilderGetTempHeapType(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_TypeBuilderGetTempHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTypeBuilderGetTempHeapType(argU(a, 0), argI(a, 1)))
 	})
-	ctx.SetFunc("_TypeBuilderGetTempTupleType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderGetTempTupleType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		builder := argU(a, 0)
 		typesPtr := argI(a, 1)
 		numTypes := argI(a, 2)
 		types := readPtrArray(lm, typesPtr, numTypes)
-		return retF(this.Context(), cgoTypeBuilderGetTempTupleType(builder, types))
+		return retF(c, cgoTypeBuilderGetTempTupleType(builder, types))
 	})
-	ctx.SetFunc("_TypeBuilderGetTempRefType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTypeBuilderGetTempRefType(argU(a, 0), argU(a, 1), argBool(a, 2)))
+	setFunc(ctx, "_TypeBuilderGetTempRefType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTypeBuilderGetTempRefType(argU(a, 0), argU(a, 1), argBool(a, 2)))
 	})
-	ctx.SetFunc("_TypeBuilderSetSubType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderSetSubType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderSetSubType(argU(a, 0), argI(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderSetOpen", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderSetOpen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderSetOpen(argU(a, 0), argI(a, 1))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderCreateRecGroup", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderCreateRecGroup", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTypeBuilderCreateRecGroup(argU(a, 0), argI(a, 1), argI(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_TypeBuilderBuildAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_TypeBuilderBuildAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		builder := argU(a, 0)
 		outPtr := argI(a, 1)
 		// errorIndexPtr := argI(a, 2) // not used for now
@@ -151,29 +151,29 @@ func registerTypeBuilderImpls(ctx *qjs.Context, lm *LinearMemory) {
 				lm.I32StorePtr(outPtr+i*4, uint64(heapTypes[i]))
 			}
 		}
-		return retBool(this.Context(), ok)
+		return retBool(c, ok)
 	})
 }
 
-func registerGCImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenRefI31", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefI31(argU(a, 0), argU(a, 1)))
+func registerGCImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenRefI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefI31(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenI31Get", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoI31Get(argU(a, 0), argU(a, 1), argBool(a, 2)))
+	setFunc(ctx, "_BinaryenI31Get", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoI31Get(argU(a, 0), argU(a, 1), argBool(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenRefTest", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefTest(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenRefTest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefTest(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenRefCast", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoRefCast(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenRefCast", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoRefCast(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenBrOn", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBrOn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		namePtr := argI(a, 2)
@@ -181,10 +181,10 @@ func registerGCImpls(ctx *qjs.Context, lm *LinearMemory) {
 		castType := argU(a, 4)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoBrOn(module, op, name, ref, castType))
+		return retF(c, cgoBrOn(module, op, name, ref, castType))
 	})
-	ctx.SetFunc("_BinaryenCallRef", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		target := argU(a, 1)
 		operandsPtr := argI(a, 2)
@@ -192,97 +192,97 @@ func registerGCImpls(ctx *qjs.Context, lm *LinearMemory) {
 		typ := argU(a, 4)
 		isReturn := argBool(a, 5)
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoCallRef(module, target, operands, typ, isReturn))
+		return retF(c, cgoCallRef(module, target, operands, typ, isReturn))
 	})
-	ctx.SetFunc("_BinaryenStructNew", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStructNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		operandsPtr := argI(a, 1)
 		numOperands := argI(a, 2)
 		typ := argU(a, 3)
 		operands := readPtrArray(lm, operandsPtr, numOperands)
-		return retF(this.Context(), cgoStructNew(module, operands, typ))
+		return retF(c, cgoStructNew(module, operands, typ))
 	})
-	ctx.SetFunc("_BinaryenStructGet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructGet(argU(a, 0), argU32(a, 1), argU(a, 2), argU(a, 3), argBool(a, 4)))
+	setFunc(ctx, "_BinaryenStructGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructGet(argU(a, 0), argU32(a, 1), argU(a, 2), argU(a, 3), argBool(a, 4)))
 	})
-	ctx.SetFunc("_BinaryenStructSet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructSet(argU(a, 0), argU32(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenStructSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructSet(argU(a, 0), argU32(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenArrayNew", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayNew(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenArrayNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayNew(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenArrayNewFixed", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenArrayNewFixed", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		typ := argU(a, 1)
 		valuesPtr := argI(a, 2)
 		numValues := argI(a, 3)
 		values := readPtrArray(lm, valuesPtr, numValues)
-		return retF(this.Context(), cgoArrayNewFixed(module, typ, values))
+		return retF(c, cgoArrayNewFixed(module, typ, values))
 	})
-	ctx.SetFunc("_BinaryenArrayGet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayGet(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3), argBool(a, 4)))
+	setFunc(ctx, "_BinaryenArrayGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayGet(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3), argBool(a, 4)))
 	})
-	ctx.SetFunc("_BinaryenArraySet", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArraySet(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenArraySet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArraySet(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenArrayLen", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayLen(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenArrayLen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayLen(argU(a, 0), argU(a, 1)))
 	})
-	ctx.SetFunc("_BinaryenArrayCopy", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayCopy(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3), argU(a, 4), argU(a, 5)))
+	setFunc(ctx, "_BinaryenArrayCopy", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayCopy(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3), argU(a, 4), argU(a, 5)))
 	})
 	// ArrayFill, ArrayInitData, ArrayInitElem — not in this binaryen version, stay as stubs
 }
 
-func registerStringImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenStringNew", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringNew(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3), argU(a, 4)))
+func registerStringImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenStringNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringNew(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3), argU(a, 4)))
 	})
-	ctx.SetFunc("_BinaryenStringConst", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStringConst", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoStringConst(module, name))
+		return retF(c, cgoStringConst(module, name))
 	})
-	ctx.SetFunc("_BinaryenStringMeasure", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringMeasure(argU(a, 0), argI32(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenStringMeasure", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringMeasure(argU(a, 0), argI32(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenStringEncode", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEncode(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3), argU(a, 4)))
+	setFunc(ctx, "_BinaryenStringEncode", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEncode(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3), argU(a, 4)))
 	})
-	ctx.SetFunc("_BinaryenStringConcat", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringConcat(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenStringConcat", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringConcat(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenStringEq", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringEq(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenStringEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringEq(argU(a, 0), argI32(a, 1), argU(a, 2), argU(a, 3)))
 	})
-	ctx.SetFunc("_BinaryenStringWTF16Get", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringWTF16Get(argU(a, 0), argU(a, 1), argU(a, 2)))
+	setFunc(ctx, "_BinaryenStringWTF16Get", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringWTF16Get(argU(a, 0), argU(a, 1), argU(a, 2)))
 	})
-	ctx.SetFunc("_BinaryenStringSliceWTF", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStringSliceWTF(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
+	setFunc(ctx, "_BinaryenStringSliceWTF", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStringSliceWTF(argU(a, 0), argU(a, 1), argU(a, 2), argU(a, 3)))
 	})
 }
 
-func registerExpressionGetterSetterImpls(ctx *qjs.Context, lm *LinearMemory) {
+func registerExpressionGetterSetterImpls(ctx *quickjs.Context, lm *LinearMemory) {
 	// Expression getter/setters are numerous (300+) but not needed for basic compilation.
 	// The AS compiler creates expressions via constructors and doesn't read back properties
 	// during the compile() -> optimize() -> validate() flow.
@@ -290,7 +290,7 @@ func registerExpressionGetterSetterImpls(ctx *qjs.Context, lm *LinearMemory) {
 	// We'll implement them on-demand as needed.
 }
 
-func registerMiscImpls(ctx *qjs.Context, lm *LinearMemory) {
+func registerMiscImpls(ctx *quickjs.Context, lm *LinearMemory) {
 	// ModuleParse, ModuleRead, ModuleReadWithFeatures, ModuleInterpret,
 	// ModuleAddDebugInfoFileName, ModuleGetDebugInfoFileName,
 	// ModuleSetTypeName, ModuleSetFieldName,
@@ -299,12 +299,12 @@ func registerMiscImpls(ctx *qjs.Context, lm *LinearMemory) {
 	// CopyMemorySegmentData, GetExportByIndex, GetGlobalByIndex, GetTableByIndex,
 	// etc. — all remain as stubs from RegisterBinaryenBridge.
 	// Implement on-demand as the compilation flow requires them.
-	ctx.SetFunc("_BinaryenModuleSetTypeName", func(this *qjs.This) (*qjs.Value, error) {
+	setFunc(ctx, "_BinaryenModuleSetTypeName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		// Used by AS compiler for debug info — safe to ignore
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenModuleSetFieldName", func(this *qjs.This) (*qjs.Value, error) {
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenModuleSetFieldName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retVoid(c)
 	})
 }
 

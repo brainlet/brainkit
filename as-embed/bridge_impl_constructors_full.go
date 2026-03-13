@@ -3,14 +3,14 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
-func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
+func registerAllConstructorImpls(ctx *quickjs.Context, lm *LinearMemory) {
 	// --- Atomic expression constructors ---
 
-	ctx.SetFunc("_BinaryenAtomicRMW", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAtomicRMW", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI(a, 1)
 		bytes := argI(a, 2)
@@ -24,11 +24,11 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoAtomicRMW(module, op, bytes, offset, ptr, value, typ, memName))
+		return retF(c, cgoAtomicRMW(module, op, bytes, offset, ptr, value, typ, memName))
 	})
 
-	ctx.SetFunc("_BinaryenAtomicCmpxchg", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAtomicCmpxchg", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		bytes := argI(a, 1)
 		offset := argI(a, 2)
@@ -42,11 +42,11 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoAtomicCmpxchg(module, bytes, offset, ptr, expected, replacement, typ, memName))
+		return retF(c, cgoAtomicCmpxchg(module, bytes, offset, ptr, expected, replacement, typ, memName))
 	})
 
-	ctx.SetFunc("_BinaryenAtomicWait", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAtomicWait", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		ptr := argU(a, 1)
 		expected := argU(a, 2)
@@ -58,11 +58,11 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoAtomicWait(module, ptr, expected, timeout, typ, memName))
+		return retF(c, cgoAtomicWait(module, ptr, expected, timeout, typ, memName))
 	})
 
-	ctx.SetFunc("_BinaryenAtomicNotify", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAtomicNotify", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		ptr := argU(a, 1)
 		notifyCount := argU(a, 2)
@@ -72,36 +72,36 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoAtomicNotify(module, ptr, notifyCount, memName))
+		return retF(c, cgoAtomicNotify(module, ptr, notifyCount, memName))
 	})
 
-	ctx.SetFunc("_BinaryenAtomicFence", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoAtomicFence(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenAtomicFence", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoAtomicFence(argU(args, 0)))
 	})
 
 	// --- SIMD expression constructors ---
 
-	ctx.SetFunc("_BinaryenSIMDExtract", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDExtract", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		vec := argU(a, 2)
 		index := uint8(argI32(a, 3))
-		return retF(this.Context(), cgoSIMDExtract(module, op, vec, index))
+		return retF(c, cgoSIMDExtract(module, op, vec, index))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDReplace", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDReplace", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		vec := argU(a, 2)
 		index := uint8(argI32(a, 3))
 		value := argU(a, 4)
-		return retF(this.Context(), cgoSIMDReplace(module, op, vec, index, value))
+		return retF(c, cgoSIMDReplace(module, op, vec, index, value))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDShuffle", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDShuffle", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		left := argU(a, 1)
 		right := argU(a, 2)
@@ -111,30 +111,30 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			maskBytes := lm.ReadBytes(maskPtr, 16)
 			copy(mask[:], maskBytes)
 		}
-		return retF(this.Context(), cgoSIMDShuffle(module, left, right, mask))
+		return retF(c, cgoSIMDShuffle(module, left, right, mask))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDTernary", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDTernary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		va := argU(a, 2)
 		vb := argU(a, 3)
 		vc := argU(a, 4)
-		return retF(this.Context(), cgoSIMDTernary(module, op, va, vb, vc))
+		return retF(c, cgoSIMDTernary(module, op, va, vb, vc))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDShift", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDShift", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		vec := argU(a, 2)
 		shift := argU(a, 3)
-		return retF(this.Context(), cgoSIMDShift(module, op, vec, shift))
+		return retF(c, cgoSIMDShift(module, op, vec, shift))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDLoad", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		offset := argU32(a, 2)
@@ -146,11 +146,11 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoSIMDLoad(module, op, offset, align, ptr, memName))
+		return retF(c, cgoSIMDLoad(module, op, offset, align, ptr, memName))
 	})
 
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLane", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLane", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		op := argI32(a, 1)
 		offset := argU32(a, 2)
@@ -164,22 +164,22 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoSIMDLoadStoreLane(module, op, offset, align, index, ptr, vec, memName))
+		return retF(c, cgoSIMDLoadStoreLane(module, op, offset, align, index, ptr, vec, memName))
 	})
 
 	// --- Bulk memory expression constructors ---
 
-	ctx.SetFunc("_BinaryenDataDrop", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenDataDrop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		segmentPtr := argI(a, 1)
 		segment := cgoCString(lm.ReadString(segmentPtr))
 		defer cgoFree(unsafe.Pointer(segment))
-		return retF(this.Context(), cgoDataDrop(module, segment))
+		return retF(c, cgoDataDrop(module, segment))
 	})
 
-	ctx.SetFunc("_BinaryenMemoryInit", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenMemoryInit", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		segmentPtr := argI(a, 1)
 		dest := argU(a, 2)
@@ -193,13 +193,13 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
-		return retF(this.Context(), cgoMemoryInit(module, segment, dest, offset, size, memName))
+		return retF(c, cgoMemoryInit(module, segment, dest, offset, size, memName))
 	})
 
 	// --- GC array expression constructors ---
 
-	ctx.SetFunc("_BinaryenArrayNewData", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenArrayNewData", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		typ := argU(a, 1)
 		namePtr := argI(a, 2)
@@ -207,7 +207,7 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		size := argU(a, 4)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retF(this.Context(), cgoArrayNewData(module, typ, name, offset, size))
+		return retF(c, cgoArrayNewData(module, typ, name, offset, size))
 	})
 
 	// ArrayNewElem, ArrayFill, ArrayInitData, ArrayInitElem are not available in this
@@ -216,259 +216,259 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 
 	// --- Mutation operations: Block ---
 
-	ctx.SetFunc("_BinaryenBlockAppendChild", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBlockAppendChild", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoBlockAppendChild(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenBlockInsertChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenBlockInsertChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoBlockInsertChildAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenBlockRemoveChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoBlockRemoveChildAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenBlockRemoveChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoBlockRemoveChildAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: Call ---
 
-	ctx.SetFunc("_BinaryenCallAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoCallAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenCallInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoCallInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenCallRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenCallRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: CallIndirect ---
 
-	ctx.SetFunc("_BinaryenCallIndirectAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallIndirectAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoCallIndirectAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenCallIndirectInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallIndirectInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoCallIndirectInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenCallIndirectRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallIndirectRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenCallIndirectRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallIndirectRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: CallRef ---
 
-	ctx.SetFunc("_BinaryenCallRefAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallRefAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoCallRefAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenCallRefInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCallRefInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoCallRefInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenCallRefRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoCallRefRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenCallRefRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoCallRefRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: Switch ---
 
-	ctx.SetFunc("_BinaryenSwitchAppendName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitchAppendName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		namePtr := argI(a, 1)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
 		idx := cgoSwitchAppendName(expr, name)
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenSwitchInsertNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitchInsertNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		index := argU32(a, 1)
 		namePtr := argI(a, 2)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
 		cgoSwitchInsertNameAt(expr, index, name)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenSwitchRemoveNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSwitchRemoveNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cName := cgoSwitchRemoveNameAt(argU(a, 0), argU32(a, 1))
 		if cName == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cName)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
 	// --- Mutation operations: Throw ---
 
-	ctx.SetFunc("_BinaryenThrowAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenThrowAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoThrowAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenThrowInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenThrowInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoThrowInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenThrowRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoThrowRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenThrowRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoThrowRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: Try ---
 
-	ctx.SetFunc("_BinaryenTryAppendCatchTag", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryAppendCatchTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		tagPtr := argI(a, 1)
 		tag := cgoCString(lm.ReadString(tagPtr))
 		defer cgoFree(unsafe.Pointer(tag))
 		idx := cgoTryAppendCatchTag(expr, tag)
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenTryInsertCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryInsertCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		expr := argU(a, 0)
 		index := argU32(a, 1)
 		tagPtr := argI(a, 2)
 		tag := cgoCString(lm.ReadString(tagPtr))
 		defer cgoFree(unsafe.Pointer(tag))
 		cgoTryInsertCatchTagAt(expr, index, tag)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenTryRemoveCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryRemoveCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cName := cgoTryRemoveCatchTagAt(argU(a, 0), argU32(a, 1))
 		if cName == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(cName)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
 
-	ctx.SetFunc("_BinaryenTryAppendCatchBody", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryAppendCatchBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoTryAppendCatchBody(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenTryInsertCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTryInsertCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTryInsertCatchBodyAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenTryRemoveCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTryRemoveCatchBodyAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenTryRemoveCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTryRemoveCatchBodyAt(argU(a, 0), argU32(a, 1)))
 	})
 
-	ctx.SetFunc("_BinaryenTryHasCatchAll", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoTryHasCatchAll(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenTryHasCatchAll", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoTryHasCatchAll(argU(args, 0)))
 	})
 
 	// --- Mutation operations: TupleMake ---
 
-	ctx.SetFunc("_BinaryenTupleMakeAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTupleMakeAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoTupleMakeAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenTupleMakeInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenTupleMakeInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoTupleMakeInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenTupleMakeRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoTupleMakeRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenTupleMakeRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoTupleMakeRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: StructNew ---
 
-	ctx.SetFunc("_BinaryenStructNewAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStructNewAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoStructNewAppendOperand(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenStructNewInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenStructNewInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoStructNewInsertOperandAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenStructNewRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructNewRemoveOperandAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenStructNewRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructNewRemoveOperandAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Mutation operations: ArrayNewFixed ---
 
-	ctx.SetFunc("_BinaryenArrayNewFixedAppendValue", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenArrayNewFixedAppendValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		idx := cgoArrayNewFixedAppendValue(argU(a, 0), argU(a, 1))
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenArrayNewFixedInsertValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenArrayNewFixedInsertValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		cgoArrayNewFixedInsertValueAt(argU(a, 0), argU32(a, 1), argU(a, 2))
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenArrayNewFixedRemoveValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoArrayNewFixedRemoveValueAt(argU(a, 0), argU32(a, 1)))
+	setFunc(ctx, "_BinaryenArrayNewFixedRemoveValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoArrayNewFixedRemoveValueAt(argU(a, 0), argU32(a, 1)))
 	})
 
 	// --- Module operations ---
 
-	ctx.SetFunc("_BinaryenModuleParse", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenModuleParse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		textPtr := argI(a, 0)
 		text := cgoCString(lm.ReadString(textPtr))
 		defer cgoFree(unsafe.Pointer(text))
-		return retF(this.Context(), cgoModuleParse(text))
+		return retF(c, cgoModuleParse(text))
 	})
 
-	ctx.SetFunc("_BinaryenModuleRead", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenModuleRead", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		dataPtr := argI(a, 0)
 		size := argI(a, 1)
 		data := lm.ReadBytes(dataPtr, size)
@@ -476,11 +476,11 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		if len(data) > 0 {
 			cData = unsafe.Pointer(&data[0])
 		}
-		return retF(this.Context(), cgoModuleRead(cData, size))
+		return retF(c, cgoModuleRead(cData, size))
 	})
 
-	ctx.SetFunc("_BinaryenModuleReadWithFeatures", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenModuleReadWithFeatures", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		dataPtr := argI(a, 0)
 		size := argI(a, 1)
 		features := argU32(a, 2)
@@ -489,44 +489,44 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		if len(data) > 0 {
 			cData = unsafe.Pointer(&data[0])
 		}
-		return retF(this.Context(), cgoModuleReadWithFeatures(cData, size, features))
+		return retF(c, cgoModuleReadWithFeatures(cData, size, features))
 	})
 
-	ctx.SetFunc("_BinaryenModuleInterpret", func(this *qjs.This) (*qjs.Value, error) {
-		cgoModuleInterpret(argU(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenModuleInterpret", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoModuleInterpret(argU(args, 0))
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenModuleAddDebugInfoFileName", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenModuleAddDebugInfoFileName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		filenamePtr := argI(a, 1)
 		filename := cgoCString(lm.ReadString(filenamePtr))
 		defer cgoFree(unsafe.Pointer(filename))
 		idx := cgoModuleAddDebugInfoFileName(module, filename)
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
 	// --- Function operations ---
 
-	ctx.SetFunc("_BinaryenFunctionAddVar", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenFunctionAddVar", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		fn := argU(a, 0)
 		typ := argU(a, 1)
 		idx := cgoFunctionAddVar(fn, typ)
-		return retU32(this.Context(), idx)
+		return retU32(c, idx)
 	})
 
-	ctx.SetFunc("_BinaryenFunctionOptimize", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenFunctionOptimize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		fn := argU(a, 0)
 		module := argU(a, 1)
 		cgoFunctionOptimize(fn, module)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenFunctionRunPasses", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenFunctionRunPasses", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		fn := argU(a, 0)
 		module := argU(a, 1)
 		passesPtr := argI(a, 2)
@@ -537,13 +537,13 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			passes[i] = lm.ReadString(sp)
 		}
 		cgoFunctionRunPasses(fn, module, passes)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
 	// --- Misc operations ---
 
-	ctx.SetFunc("_BinaryenLiteralVec128", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenLiteralVec128", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		xPtr := argI(a, 0)
 		outPtr := argI(a, 1)
 		var x [16]byte
@@ -557,25 +557,25 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 		if outPtr != 0 {
 			lm.WriteBytes(outPtr, out)
 		}
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenRemoveElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenRemoveElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		namePtr := argI(a, 1)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
 		cgoRemoveElementSegment(module, name)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
-	ctx.SetFunc("_BinaryenTableHasMax", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoTableHasMax(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenTableHasMax", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoTableHasMax(argU(args, 0)))
 	})
 
-	ctx.SetFunc("_BinaryenCopyMemorySegmentData", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenCopyMemorySegmentData", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		module := argU(a, 0)
 		segNamePtr := argI(a, 1)
 		bufferPtr := argI(a, 2)
@@ -602,7 +602,7 @@ func registerAllConstructorImpls(ctx *qjs.Context, lm *LinearMemory) {
 			cgoCopyMemorySegmentData(module, segName, unsafe.Pointer(&buf[0]))
 			lm.WriteBytes(bufferPtr, buf)
 		}
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
 
 	// ArrayNewElem — not in this binaryen C API version, stays as stub

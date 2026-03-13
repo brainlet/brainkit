@@ -3,96 +3,96 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
-func registerSettingsImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenGetOptimizeLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoGetOptimizeLevel())
+func registerSettingsImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenGetOptimizeLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoGetOptimizeLevel())
 	})
-	ctx.SetFunc("_BinaryenSetOptimizeLevel", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetOptimizeLevel(argI(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetOptimizeLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetOptimizeLevel(argI(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetShrinkLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoGetShrinkLevel())
+	setFunc(ctx, "_BinaryenGetShrinkLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoGetShrinkLevel())
 	})
-	ctx.SetFunc("_BinaryenSetShrinkLevel", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetShrinkLevel(argI(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetShrinkLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetShrinkLevel(argI(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetDebugInfo", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetDebugInfo())
+	setFunc(ctx, "_BinaryenGetDebugInfo", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetDebugInfo())
 	})
-	ctx.SetFunc("_BinaryenSetDebugInfo", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetDebugInfo(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetDebugInfo", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetDebugInfo(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetTrapsNeverHappen", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetTrapsNeverHappen())
+	setFunc(ctx, "_BinaryenGetTrapsNeverHappen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetTrapsNeverHappen())
 	})
-	ctx.SetFunc("_BinaryenSetTrapsNeverHappen", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetTrapsNeverHappen(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetTrapsNeverHappen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetTrapsNeverHappen(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetClosedWorld", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetClosedWorld())
+	setFunc(ctx, "_BinaryenGetClosedWorld", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetClosedWorld())
 	})
-	ctx.SetFunc("_BinaryenSetClosedWorld", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetClosedWorld(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetClosedWorld", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetClosedWorld(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetLowMemoryUnused", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetLowMemoryUnused())
+	setFunc(ctx, "_BinaryenGetLowMemoryUnused", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetLowMemoryUnused())
 	})
-	ctx.SetFunc("_BinaryenSetLowMemoryUnused", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetLowMemoryUnused(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetLowMemoryUnused", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetLowMemoryUnused(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetZeroFilledMemory", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetZeroFilledMemory())
+	setFunc(ctx, "_BinaryenGetZeroFilledMemory", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetZeroFilledMemory())
 	})
-	ctx.SetFunc("_BinaryenSetZeroFilledMemory", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetZeroFilledMemory(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetZeroFilledMemory", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetZeroFilledMemory(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetFastMath", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetFastMath())
+	setFunc(ctx, "_BinaryenGetFastMath", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetFastMath())
 	})
-	ctx.SetFunc("_BinaryenSetFastMath", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetFastMath(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetFastMath", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetFastMath(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetGenerateStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetGenerateStackIR())
+	setFunc(ctx, "_BinaryenGetGenerateStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetGenerateStackIR())
 	})
-	ctx.SetFunc("_BinaryenSetGenerateStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetGenerateStackIR(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetGenerateStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetGenerateStackIR(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetOptimizeStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetOptimizeStackIR())
+	setFunc(ctx, "_BinaryenGetOptimizeStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetOptimizeStackIR())
 	})
-	ctx.SetFunc("_BinaryenSetOptimizeStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetOptimizeStackIR(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetOptimizeStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetOptimizeStackIR(argBool(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetPassArgument", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenGetPassArgument", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		namePtr := argI(a, 0)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
 		result := cgoGetPassArgument(name)
 		if result == nil {
-			return retI(this.Context(), 0)
+			return retI(c, 0)
 		}
 		s := cgoGoString(result)
 		ptr := lm.Malloc(len(s) + 1)
 		lm.WriteString(ptr, s)
-		return retI(this.Context(), ptr)
+		return retI(c, ptr)
 	})
-	ctx.SetFunc("_BinaryenSetPassArgument", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenSetPassArgument", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		namePtr := argI(a, 0)
 		valuePtr := argI(a, 1)
 		name := cgoCString(lm.ReadString(namePtr))
@@ -103,58 +103,58 @@ func registerSettingsImpls(ctx *qjs.Context, lm *LinearMemory) {
 			defer cgoFree(unsafe.Pointer(value))
 		}
 		cgoSetPassArgument(name, value)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenClearPassArguments", func(this *qjs.This) (*qjs.Value, error) {
+	setFunc(ctx, "_BinaryenClearPassArguments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		cgoClearPassArguments()
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenHasPassToSkip", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenHasPassToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		namePtr := argI(a, 0)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
-		return retBool(this.Context(), cgoHasPassToSkip(name))
+		return retBool(c, cgoHasPassToSkip(name))
 	})
-	ctx.SetFunc("_BinaryenAddPassToSkip", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
+	setFunc(ctx, "_BinaryenAddPassToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
 		namePtr := argI(a, 0)
 		name := cgoCString(lm.ReadString(namePtr))
 		defer cgoFree(unsafe.Pointer(name))
 		cgoAddPassToSkip(name)
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenClearPassesToSkip", func(this *qjs.This) (*qjs.Value, error) {
+	setFunc(ctx, "_BinaryenClearPassesToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		cgoClearPassesToSkip()
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetAlwaysInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoGetAlwaysInlineMaxSize())
+	setFunc(ctx, "_BinaryenGetAlwaysInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoGetAlwaysInlineMaxSize())
 	})
-	ctx.SetFunc("_BinaryenSetAlwaysInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetAlwaysInlineMaxSize(argI(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetAlwaysInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetAlwaysInlineMaxSize(argI(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetFlexibleInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoGetFlexibleInlineMaxSize())
+	setFunc(ctx, "_BinaryenGetFlexibleInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoGetFlexibleInlineMaxSize())
 	})
-	ctx.SetFunc("_BinaryenSetFlexibleInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetFlexibleInlineMaxSize(argI(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetFlexibleInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetFlexibleInlineMaxSize(argI(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetOneCallerInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoGetOneCallerInlineMaxSize())
+	setFunc(ctx, "_BinaryenGetOneCallerInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoGetOneCallerInlineMaxSize())
 	})
-	ctx.SetFunc("_BinaryenSetOneCallerInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetOneCallerInlineMaxSize(argI(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetOneCallerInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetOneCallerInlineMaxSize(argI(args, 0))
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenGetAllowInliningFunctionsWithLoops", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoGetAllowInliningFunctionsWithLoops())
+	setFunc(ctx, "_BinaryenGetAllowInliningFunctionsWithLoops", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoGetAllowInliningFunctionsWithLoops())
 	})
-	ctx.SetFunc("_BinaryenSetAllowInliningFunctionsWithLoops", func(this *qjs.This) (*qjs.Value, error) {
-		cgoSetAllowInliningFunctionsWithLoops(argBool(this.Args(), 0))
-		return retVoid(this.Context())
+	setFunc(ctx, "_BinaryenSetAllowInliningFunctionsWithLoops", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		cgoSetAllowInliningFunctionsWithLoops(argBool(args, 0))
+		return retVoid(c)
 	})
 }
 

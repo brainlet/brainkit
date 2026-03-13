@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit/jsbridge"
-	"github.com/fastschema/qjs"
 )
 
 //go:embed as_compiler_bundle.js
@@ -55,7 +54,7 @@ func stdSources() map[string]string {
 //
 // Call order: RegisterMemoryBridge → RegisterBinaryenBridge → LoadShim → LoadBundle
 func LoadShim(b *jsbridge.Bridge) error {
-	val, err := b.Eval("binaryen-shim.js", qjs.Code(shimSource))
+	val, err := b.Eval("binaryen-shim.js", shimSource)
 	if err != nil {
 		return fmt.Errorf("as-embed: load shim: %w", err)
 	}
@@ -80,7 +79,7 @@ func LoadBundle(b *jsbridge.Bridge) error {
 		if err := ensurePrelude(b); err != nil {
 			return err
 		}
-		val, err := b.Eval("as-compiler-bundle.js", qjs.Bytecode(bundleBytecode))
+		val, err := b.EvalBytecode(bundleBytecode)
 		if err != nil {
 			return fmt.Errorf("as-embed: load bytecode: %w", err)
 		}
@@ -93,7 +92,7 @@ func LoadBundle(b *jsbridge.Bridge) error {
 		return err
 	}
 
-	val, err := b.Eval("as-compiler-bundle.js", qjs.Code(bundleSource))
+	val, err := b.Eval("as-compiler-bundle.js", bundleSource)
 	if err != nil {
 		return fmt.Errorf("as-embed: load bundle: %w", err)
 	}
@@ -105,7 +104,7 @@ func LoadBundle(b *jsbridge.Bridge) error {
 // If LoadShim was already called, this is a no-op. Otherwise it installs a
 // minimal inline prelude for backward compatibility.
 func ensurePrelude(b *jsbridge.Bridge) error {
-	check, err := b.Eval("shim-check.js", qjs.Code(`typeof globalThis.require !== "undefined"`))
+	check, err := b.Eval("shim-check.js", `typeof globalThis.require !== "undefined"`)
 	if err != nil {
 		return fmt.Errorf("as-embed: shim check: %w", err)
 	}
@@ -116,7 +115,7 @@ func ensurePrelude(b *jsbridge.Bridge) error {
 		return nil
 	}
 
-	stub, err := b.Eval("as-compiler-prelude.js", qjs.Code(`
+	stub, err := b.Eval("as-compiler-prelude.js", `
 		if (typeof self === "undefined") globalThis.self = globalThis;
 		if (typeof global === "undefined") globalThis.global = globalThis;
 		globalThis.require = function(m) {
@@ -130,7 +129,7 @@ func ensurePrelude(b *jsbridge.Bridge) error {
 			}
 			throw new Error("require: " + m);
 		};
-	`))
+	`)
 	if err != nil {
 		return fmt.Errorf("as-embed: load require stub: %w", err)
 	}

@@ -3,23 +3,20 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
-func registerTypeImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenTypeCreate", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func registerTypeImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenTypeCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		typesPtr := argI(args, 0)
 		numTypes := argI(args, 1)
 		types := readPtrArray(lm, typesPtr, numTypes)
-		return retF(this.Context(), cgoTypeCreate(types))
+		return retF(c, cgoTypeCreate(types))
 	})
-	ctx.SetFunc("_BinaryenTypeArity", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		return retI(this.Context(), cgoTypeArity(argU(args, 0)))
+	setFunc(ctx, "_BinaryenTypeArity", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoTypeArity(argU(args, 0)))
 	})
-	ctx.SetFunc("_BinaryenTypeExpand", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	setFunc(ctx, "_BinaryenTypeExpand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
 		t := argU(args, 0)
 		outPtr := argI(args, 1)
 		arity := cgoTypeArity(t)
@@ -28,144 +25,141 @@ func registerTypeImpls(ctx *qjs.Context, lm *LinearMemory) {
 		for i := 0; i < arity; i++ {
 			lm.I32StorePtr(outPtr+i*4, uint64(buf[i]))
 		}
-		return retVoid(this.Context())
+		return retVoid(c)
 	})
-	ctx.SetFunc("_BinaryenTypeGetHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		return retF(this.Context(), cgoTypeGetHeapType(argU(args, 0)))
+	setFunc(ctx, "_BinaryenTypeGetHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeGetHeapType(argU(args, 0)))
 	})
-	ctx.SetFunc("_BinaryenTypeFromHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		return retF(this.Context(), cgoTypeFromHeapType(argU(args, 0), argBool(args, 1)))
+	setFunc(ctx, "_BinaryenTypeFromHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeFromHeapType(argU(args, 0), argBool(args, 1)))
 	})
-	ctx.SetFunc("_BinaryenTypeIsNullable", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		return retBool(this.Context(), cgoTypeIsNullable(argU(args, 0)))
+	setFunc(ctx, "_BinaryenTypeIsNullable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoTypeIsNullable(argU(args, 0)))
 	})
 	// No-arg type constants
-	ctx.SetFunc("_BinaryenTypeFuncref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeFuncref())
+	setFunc(ctx, "_BinaryenTypeFuncref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeFuncref())
 	})
-	ctx.SetFunc("_BinaryenTypeExternref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeExternref())
+	setFunc(ctx, "_BinaryenTypeExternref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeExternref())
 	})
-	ctx.SetFunc("_BinaryenTypeAnyref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeAnyref())
+	setFunc(ctx, "_BinaryenTypeAnyref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeAnyref())
 	})
-	ctx.SetFunc("_BinaryenTypeEqref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeEqref())
+	setFunc(ctx, "_BinaryenTypeEqref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeEqref())
 	})
-	ctx.SetFunc("_BinaryenTypeI31ref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeI31ref())
+	setFunc(ctx, "_BinaryenTypeI31ref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeI31ref())
 	})
-	ctx.SetFunc("_BinaryenTypeStructref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeStructref())
+	setFunc(ctx, "_BinaryenTypeStructref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeStructref())
 	})
-	ctx.SetFunc("_BinaryenTypeArrayref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeArrayref())
+	setFunc(ctx, "_BinaryenTypeArrayref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeArrayref())
 	})
-	ctx.SetFunc("_BinaryenTypeStringref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeStringref())
+	setFunc(ctx, "_BinaryenTypeStringref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeStringref())
 	})
-	ctx.SetFunc("_BinaryenTypeNullref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeNullref())
+	setFunc(ctx, "_BinaryenTypeNullref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeNullref())
 	})
-	ctx.SetFunc("_BinaryenTypeNullExternref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeNullExternref())
+	setFunc(ctx, "_BinaryenTypeNullExternref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeNullExternref())
 	})
-	ctx.SetFunc("_BinaryenTypeNullFuncref", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoTypeNullFuncref())
-	})
-}
-
-func registerHeapTypeImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenHeapTypeFunc", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeFunc())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeExt", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeExt())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeAny", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeAny())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeEq", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeEq())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeI31", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeI31())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeStruct", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeStruct())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeArray", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeArray())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeString", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeString())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeNone", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeNone())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeNoext", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeNoext())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeNofunc", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeNofunc())
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsBasic", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoHeapTypeIsBasic(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsSignature", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoHeapTypeIsSignature(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsStruct", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoHeapTypeIsStruct(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsArray", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoHeapTypeIsArray(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsBottom", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoHeapTypeIsBottom(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeGetBottom", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoHeapTypeGetBottom(argU(this.Args(), 0)))
-	})
-	ctx.SetFunc("_BinaryenHeapTypeIsSubType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoHeapTypeIsSubType(argU(a, 0), argU(a, 1)))
+	setFunc(ctx, "_BinaryenTypeNullFuncref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoTypeNullFuncref())
 	})
 }
 
-func registerStructArraySigTypeImpls(ctx *qjs.Context, lm *LinearMemory) {
-	ctx.SetFunc("_BinaryenStructTypeGetNumFields", func(this *qjs.This) (*qjs.Value, error) {
-		return retI(this.Context(), cgoStructTypeGetNumFields(argU(this.Args(), 0)))
+func registerHeapTypeImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenHeapTypeFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeFunc())
 	})
-	ctx.SetFunc("_BinaryenStructTypeGetFieldType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retF(this.Context(), cgoStructTypeGetFieldType(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenHeapTypeExt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeExt())
 	})
-	ctx.SetFunc("_BinaryenStructTypeGetFieldPackedType", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retU32(this.Context(), cgoStructTypeGetFieldPackedType(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenHeapTypeAny", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeAny())
 	})
-	ctx.SetFunc("_BinaryenStructTypeIsFieldMutable", func(this *qjs.This) (*qjs.Value, error) {
-		a := this.Args()
-		return retBool(this.Context(), cgoStructTypeIsFieldMutable(argU(a, 0), argI(a, 1)))
+	setFunc(ctx, "_BinaryenHeapTypeEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeEq())
 	})
-	ctx.SetFunc("_BinaryenArrayTypeGetElementType", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoArrayTypeGetElementType(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenHeapTypeI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeI31())
 	})
-	ctx.SetFunc("_BinaryenArrayTypeGetElementPackedType", func(this *qjs.This) (*qjs.Value, error) {
-		return retU32(this.Context(), cgoArrayTypeGetElementPackedType(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenHeapTypeStruct", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeStruct())
 	})
-	ctx.SetFunc("_BinaryenArrayTypeIsElementMutable", func(this *qjs.This) (*qjs.Value, error) {
-		return retBool(this.Context(), cgoArrayTypeIsElementMutable(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenHeapTypeArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeArray())
 	})
-	ctx.SetFunc("_BinaryenSignatureTypeGetParams", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoSignatureTypeGetParams(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenHeapTypeString", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeString())
 	})
-	ctx.SetFunc("_BinaryenSignatureTypeGetResults", func(this *qjs.This) (*qjs.Value, error) {
-		return retF(this.Context(), cgoSignatureTypeGetResults(argU(this.Args(), 0)))
+	setFunc(ctx, "_BinaryenHeapTypeNone", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeNone())
+	})
+	setFunc(ctx, "_BinaryenHeapTypeNoext", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeNoext())
+	})
+	setFunc(ctx, "_BinaryenHeapTypeNofunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeNofunc())
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsBasic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoHeapTypeIsBasic(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsSignature", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoHeapTypeIsSignature(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsStruct", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoHeapTypeIsStruct(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoHeapTypeIsArray(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsBottom", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoHeapTypeIsBottom(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeGetBottom", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoHeapTypeGetBottom(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenHeapTypeIsSubType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoHeapTypeIsSubType(argU(a, 0), argU(a, 1)))
+	})
+}
+
+func registerStructArraySigTypeImpls(ctx *quickjs.Context, lm *LinearMemory) {
+	setFunc(ctx, "_BinaryenStructTypeGetNumFields", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retI(c, cgoStructTypeGetNumFields(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenStructTypeGetFieldType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retF(c, cgoStructTypeGetFieldType(argU(a, 0), argI(a, 1)))
+	})
+	setFunc(ctx, "_BinaryenStructTypeGetFieldPackedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retU32(c, cgoStructTypeGetFieldPackedType(argU(a, 0), argI(a, 1)))
+	})
+	setFunc(ctx, "_BinaryenStructTypeIsFieldMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		a := args
+		return retBool(c, cgoStructTypeIsFieldMutable(argU(a, 0), argI(a, 1)))
+	})
+	setFunc(ctx, "_BinaryenArrayTypeGetElementType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoArrayTypeGetElementType(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenArrayTypeGetElementPackedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retU32(c, cgoArrayTypeGetElementPackedType(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenArrayTypeIsElementMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retBool(c, cgoArrayTypeIsElementMutable(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenSignatureTypeGetParams", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoSignatureTypeGetParams(argU(args, 0)))
+	})
+	setFunc(ctx, "_BinaryenSignatureTypeGetResults", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return retF(c, cgoSignatureTypeGetResults(argU(args, 0)))
 	})
 }
 

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/jsbridge"
-	"github.com/fastschema/qjs"
 )
 
 func newTestBridge(t *testing.T) *jsbridge.Bridge {
@@ -36,7 +35,7 @@ func TestBundleLoads(t *testing.T) {
 		t.Fatalf("LoadBundle: %v", err)
 	}
 
-	val, err := b.Eval("test.js", qjs.Code(`typeof globalThis.__as_compiler`))
+	val, err := b.Eval("test.js", `typeof globalThis.__as_compiler`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -53,7 +52,7 @@ func TestParserWorks(t *testing.T) {
 		t.Fatalf("LoadBundle: %v", err)
 	}
 
-	val, err := b.Eval("test-parse.js", qjs.Code(`
+	val, err := b.Eval("test-parse.js", `
 		const asc = globalThis.__as_compiler;
 		const options = asc.newOptions();
 		const program = asc.newProgram(options);
@@ -81,7 +80,7 @@ func TestParserWorks(t *testing.T) {
 			errorCount: errors.length,
 			errors: errors.slice(0, 3),
 		});
-	`))
+	`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -95,7 +94,7 @@ func TestMemoryBridgeFromJS(t *testing.T) {
 	lm := NewLinearMemory()
 	RegisterMemoryBridge(b.Context(), lm)
 
-	val, err := b.Eval("test-mem.js", qjs.Code(`
+	val, err := b.Eval("test-mem.js", `
 		var ptr = _malloc(16);
 		__i32_store(ptr, 42);
 		var loaded = __i32_load(ptr);
@@ -109,7 +108,7 @@ func TestMemoryBridgeFromJS(t *testing.T) {
 		__f64_store(fPtr, 3.14159);
 		var fLoaded = __f64_load(fPtr);
 		JSON.stringify({ loaded: loaded, fLoaded: fLoaded, ptr: ptr, sPtr: sPtr });
-	`))
+	`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}

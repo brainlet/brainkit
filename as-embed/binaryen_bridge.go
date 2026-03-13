@@ -2,7 +2,7 @@
 
 package asembed
 
-import "github.com/fastschema/qjs"
+import quickjs "github.com/buke/quickjs-go"
 
 // RegisterBinaryenBridge registers stub implementations for all Binaryen
 // C API functions exported by the AS compiler's binaryen.js glue.
@@ -10,3920 +10,3920 @@ import "github.com/fastschema/qjs"
 // CGo implementations in later tasks.
 //
 // Total functions: 783 (excluding 14 memory ops handled by RegisterMemoryBridge)
-func RegisterBinaryenBridge(ctx *qjs.Context, lm *LinearMemory) {
+func RegisterBinaryenBridge(ctx *quickjs.Context, lm *LinearMemory) {
 	// _BinaryenTypeCreate (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTypeCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeArity (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTypeArity", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeArity", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeExpand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTypeExpand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeExpand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeGetHeapType (SigExprGetter)
-	ctx.SetFunc("_BinaryenTypeGetHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeGetHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeFromHeapType (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTypeFromHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeFromHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeIsNullable (SigExprGetter)
-	ctx.SetFunc("_BinaryenTypeIsNullable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeIsNullable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeFuncref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeFuncref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeFuncref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeExternref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeExternref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeExternref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeAnyref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeAnyref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeAnyref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeEqref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeEqref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeEqref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeI31ref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeI31ref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeI31ref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeStructref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeStructref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeStructref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeArrayref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeArrayref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeArrayref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeStringref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeStringref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeStringref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeNullref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeNullref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeNullref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeNullExternref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeNullExternref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeNullExternref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTypeNullFuncref (SigNoArgs)
-	ctx.SetFunc("_BinaryenTypeNullFuncref", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTypeNullFuncref", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeFunc (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeFunc", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeExt (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeExt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeExt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeAny (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeAny", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeAny", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeEq (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeEq", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeI31 (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeI31", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeStruct (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeStruct", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeStruct", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeArray (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeArray", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeString (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeString", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeString", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeNone (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeNone", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeNone", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeNoext (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeNoext", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeNoext", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeNofunc (SigNoArgs)
-	ctx.SetFunc("_BinaryenHeapTypeNofunc", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeNofunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsBasic (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsBasic", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsBasic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsSignature (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsSignature", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsSignature", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsStruct (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsStruct", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsStruct", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsArray (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsArray", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsBottom (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsBottom", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsBottom", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeGetBottom (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeGetBottom", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeGetBottom", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHeapTypeIsSubType (SigExprGetter)
-	ctx.SetFunc("_BinaryenHeapTypeIsSubType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHeapTypeIsSubType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructTypeGetNumFields (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructTypeGetNumFields", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructTypeGetNumFields", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructTypeGetFieldType (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructTypeGetFieldType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructTypeGetFieldType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructTypeGetFieldPackedType (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructTypeGetFieldPackedType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructTypeGetFieldPackedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructTypeIsFieldMutable (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructTypeIsFieldMutable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructTypeIsFieldMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayTypeGetElementType (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayTypeGetElementType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayTypeGetElementType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayTypeGetElementPackedType (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayTypeGetElementPackedType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayTypeGetElementPackedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayTypeIsElementMutable (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayTypeIsElementMutable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayTypeIsElementMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSignatureTypeGetParams (SigExprGetter)
-	ctx.SetFunc("_BinaryenSignatureTypeGetParams", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSignatureTypeGetParams", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSignatureTypeGetResults (SigExprGetter)
-	ctx.SetFunc("_BinaryenSignatureTypeGetResults", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSignatureTypeGetResults", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleCreate (SigModuleOnly)
-	ctx.SetFunc("_BinaryenModuleCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleDispose (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleDispose", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSizeofLiteral (SigLiteral)
-	ctx.SetFunc("_BinaryenSizeofLiteral", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSizeofLiteral", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralInt32 (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralInt32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralInt32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralInt64 (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralInt64", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralInt64", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralFloat32 (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralFloat32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralFloat32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralFloat64 (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralFloat64", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralFloat64", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralVec128 (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralVec128", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralVec128", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralFloat32Bits (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralFloat32Bits", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralFloat32Bits", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLiteralFloat64Bits (SigLiteral)
-	ctx.SetFunc("_BinaryenLiteralFloat64Bits", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLiteralFloat64Bits", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionGetId (SigExprGetter)
-	ctx.SetFunc("_BinaryenExpressionGetId", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionGetId", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionGetType (SigExprGetter)
-	ctx.SetFunc("_BinaryenExpressionGetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionSetType (SigExprSetter)
-	ctx.SetFunc("_BinaryenExpressionSetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionSetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionPrint (SigExprConstructor)
-	ctx.SetFunc("_BinaryenExpressionPrint", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionPrint", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionCopy (SigExprConstructor)
-	ctx.SetFunc("_BinaryenExpressionCopy", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionCopy", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionFinalize (SigExprConstructor)
-	ctx.SetFunc("_BinaryenExpressionFinalize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionFinalize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlock (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBlock", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlock", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenBlockGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenBlockSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockGetNumChildren (SigExprGetter)
-	ctx.SetFunc("_BinaryenBlockGetNumChildren", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockGetNumChildren", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockGetChildAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenBlockGetChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockGetChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockSetChildAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenBlockSetChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockSetChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockAppendChild (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBlockAppendChild", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockAppendChild", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockInsertChildAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBlockInsertChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockInsertChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBlockRemoveChildAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBlockRemoveChildAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBlockRemoveChildAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIf (SigExprConstructor)
-	ctx.SetFunc("_BinaryenIf", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIf", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfGetCondition (SigExprGetter)
-	ctx.SetFunc("_BinaryenIfGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfSetCondition (SigExprSetter)
-	ctx.SetFunc("_BinaryenIfSetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfSetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfGetIfTrue (SigExprGetter)
-	ctx.SetFunc("_BinaryenIfGetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfGetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfSetIfTrue (SigExprSetter)
-	ctx.SetFunc("_BinaryenIfSetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfSetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfGetIfFalse (SigExprGetter)
-	ctx.SetFunc("_BinaryenIfGetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfGetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenIfSetIfFalse (SigExprSetter)
-	ctx.SetFunc("_BinaryenIfSetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenIfSetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoop (SigExprConstructor)
-	ctx.SetFunc("_BinaryenLoop", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoopGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoopGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoopGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoopSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoopSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoopSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoopGetBody (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoopGetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoopGetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoopSetBody (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoopSetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoopSetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreak (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBreak", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreak", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenBreakGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenBreakSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakGetCondition (SigExprGetter)
-	ctx.SetFunc("_BinaryenBreakGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakSetCondition (SigExprSetter)
-	ctx.SetFunc("_BinaryenBreakSetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakSetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenBreakGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBreakSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenBreakSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBreakSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitch (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchGetNumNames (SigExprGetter)
-	ctx.SetFunc("_BinaryenSwitchGetNumNames", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchGetNumNames", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchGetNameAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenSwitchGetNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchGetNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchSetNameAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenSwitchSetNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchSetNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchAppendName (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSwitchAppendName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchAppendName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchInsertNameAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSwitchInsertNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchInsertNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchRemoveNameAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSwitchRemoveNameAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchRemoveNameAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchGetDefaultName (SigExprGetter)
-	ctx.SetFunc("_BinaryenSwitchGetDefaultName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchGetDefaultName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchSetDefaultName (SigExprSetter)
-	ctx.SetFunc("_BinaryenSwitchSetDefaultName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchSetDefaultName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchGetCondition (SigExprGetter)
-	ctx.SetFunc("_BinaryenSwitchGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchSetCondition (SigExprSetter)
-	ctx.SetFunc("_BinaryenSwitchSetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchSetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenSwitchGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSwitchSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenSwitchSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSwitchSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCall (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCall", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCall", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallGetTarget (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallSetTarget (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallSetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallSetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIsReturn (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallSetReturn (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallSetReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallSetReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenReturnCall (SigExprConstructor)
-	ctx.SetFunc("_BinaryenReturnCall", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenReturnCall", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirect (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallIndirect", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectGetTable (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIndirectGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectSetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallIndirectSetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectSetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectGetTarget (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIndirectGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectSetTarget (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallIndirectSetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectSetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIndirectGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIndirectGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallIndirectSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallIndirectAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallIndirectInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallIndirectRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectIsReturn (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallIndirectIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallIndirectSetReturn (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallIndirectSetReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallIndirectSetReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenReturnCallIndirect (SigExprConstructor)
-	ctx.SetFunc("_BinaryenReturnCallIndirect", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenReturnCallIndirect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalGet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenLocalGet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalGetGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenLocalGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalGetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalGetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalGetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenLocalSet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSetIsTee (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalSetIsTee", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSetIsTee", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSetGetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalSetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalSetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSetGetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalSetGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSetGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalSetSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenLocalSetSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalSetSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLocalTee (SigExprConstructor)
-	ctx.SetFunc("_BinaryenLocalTee", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLocalTee", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenGlobalGet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGetGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenGlobalGetGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGetGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGetSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenGlobalGetSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGetSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalSet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenGlobalSet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalSetGetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenGlobalSetGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalSetGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalSetSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenGlobalSetSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalSetSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalSetGetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenGlobalSetGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalSetGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalSetSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenGlobalSetSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalSetSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemorySize (SigExprConstructor)
-	ctx.SetFunc("_BinaryenMemorySize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemorySize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryGrow (SigExprConstructor)
-	ctx.SetFunc("_BinaryenMemoryGrow", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryGrowGetDelta (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryGrowGetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryGrowGetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryGrowSetDelta (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryGrowSetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryGrowSetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoad (SigExprConstructor)
-	ctx.SetFunc("_BinaryenLoad", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadIsAtomic (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadIsAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadIsAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetAtomic (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadIsSigned (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetSigned (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadGetBytes (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetBytes (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadGetAlign (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetAlign (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenLoadGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenLoadSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenLoadSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenLoadSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicLoad (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicLoad", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStore (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStore", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreIsAtomic (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreIsAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreIsAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetAtomic (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetAtomic", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetAtomic", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetBytes (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetBytes (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetAlign (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetAlign (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreGetValueType (SigExprGetter)
-	ctx.SetFunc("_BinaryenStoreGetValueType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreGetValueType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStoreSetValueType (SigExprSetter)
-	ctx.SetFunc("_BinaryenStoreSetValueType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStoreSetValueType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicStore (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicStore", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConst (SigExprConstructor)
-	ctx.SetFunc("_BinaryenConst", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConst", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueI32 (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueI32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueI32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueI32 (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueI32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueI32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueI64Low (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueI64Low", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueI64Low", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueI64Low (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueI64Low", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueI64Low", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueI64High (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueI64High", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueI64High", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueI64High (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueI64High", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueI64High", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueF32 (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueF32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueF32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueF32 (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueF32", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueF32", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueF64 (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueF64", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueF64", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueF64 (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueF64", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueF64", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstGetValueV128 (SigExprGetter)
-	ctx.SetFunc("_BinaryenConstGetValueV128", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstGetValueV128", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenConstSetValueV128 (SigExprSetter)
-	ctx.SetFunc("_BinaryenConstSetValueV128", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenConstSetValueV128", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnary (SigExprConstructor)
-	ctx.SetFunc("_BinaryenUnary", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnaryGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenUnaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnarySetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenUnarySetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnarySetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnaryGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenUnaryGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnaryGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnarySetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenUnarySetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnarySetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinary (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBinary", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinaryGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenBinaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinarySetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenBinarySetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinarySetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinaryGetLeft (SigExprGetter)
-	ctx.SetFunc("_BinaryenBinaryGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinaryGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinarySetLeft (SigExprSetter)
-	ctx.SetFunc("_BinaryenBinarySetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinarySetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinaryGetRight (SigExprGetter)
-	ctx.SetFunc("_BinaryenBinaryGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinaryGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBinarySetRight (SigExprSetter)
-	ctx.SetFunc("_BinaryenBinarySetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBinarySetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelect (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSelect", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelect", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectGetIfTrue (SigExprGetter)
-	ctx.SetFunc("_BinaryenSelectGetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectGetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectSetIfTrue (SigExprSetter)
-	ctx.SetFunc("_BinaryenSelectSetIfTrue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectSetIfTrue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectGetIfFalse (SigExprGetter)
-	ctx.SetFunc("_BinaryenSelectGetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectGetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectSetIfFalse (SigExprSetter)
-	ctx.SetFunc("_BinaryenSelectSetIfFalse", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectSetIfFalse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectGetCondition (SigExprGetter)
-	ctx.SetFunc("_BinaryenSelectGetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectGetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSelectSetCondition (SigExprSetter)
-	ctx.SetFunc("_BinaryenSelectSetCondition", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSelectSetCondition", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDrop (SigExprConstructor)
-	ctx.SetFunc("_BinaryenDrop", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDrop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDropGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenDropGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDropGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDropSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenDropSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDropSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenReturn (SigExprConstructor)
-	ctx.SetFunc("_BinaryenReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenReturnGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenReturnGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenReturnGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenReturnSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenReturnSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenReturnSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenNop (SigExprConstructor)
-	ctx.SetFunc("_BinaryenNop", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenNop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenUnreachable (SigExprConstructor)
-	ctx.SetFunc("_BinaryenUnreachable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenUnreachable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMW (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicRMW", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMW", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicRMWGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicRMWSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWGetBytes (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicRMWGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWSetBytes (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicRMWSetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWSetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicRMWGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicRMWSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicRMWGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicRMWSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicRMWGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicRMWSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicRMWSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicRMWSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchg (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicCmpxchg", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchg", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgGetBytes (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgSetBytes (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgSetBytes", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgSetBytes", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgGetExpected (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgSetExpected (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgSetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgSetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgGetReplacement (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgGetReplacement", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgGetReplacement", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicCmpxchgSetReplacement (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicCmpxchgSetReplacement", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicCmpxchgSetReplacement", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWait (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicWait", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWait", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicWaitGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicWaitSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitGetExpected (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicWaitGetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitGetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitSetExpected (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicWaitSetExpected", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitSetExpected", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitGetTimeout (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicWaitGetTimeout", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitGetTimeout", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitSetTimeout (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicWaitSetTimeout", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitSetTimeout", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitGetExpectedType (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicWaitGetExpectedType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitGetExpectedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicWaitSetExpectedType (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicWaitSetExpectedType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicWaitSetExpectedType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicNotify (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicNotify", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicNotify", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicNotifyGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicNotifyGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicNotifyGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicNotifySetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicNotifySetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicNotifySetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicNotifyGetNotifyCount (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicNotifyGetNotifyCount", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicNotifyGetNotifyCount", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicNotifySetNotifyCount (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicNotifySetNotifyCount", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicNotifySetNotifyCount", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicFence (SigExprConstructor)
-	ctx.SetFunc("_BinaryenAtomicFence", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicFence", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicFenceGetOrder (SigExprGetter)
-	ctx.SetFunc("_BinaryenAtomicFenceGetOrder", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicFenceGetOrder", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAtomicFenceSetOrder (SigExprSetter)
-	ctx.SetFunc("_BinaryenAtomicFenceSetOrder", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAtomicFenceSetOrder", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtract (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDExtract", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtract", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDExtractGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDExtractSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractGetVec (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDExtractGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractSetVec (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDExtractSetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractSetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDExtractGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDExtractSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDExtractSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDExtractSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplace (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDReplace", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplace", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceGetVec (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceSetVec (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceSetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceSetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDReplaceSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDReplaceSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDReplaceSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffle (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDShuffle", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffle", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleGetLeft (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleSetLeft (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleSetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleSetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleGetRight (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleSetRight (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleSetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleSetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleGetMask (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleGetMask", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleGetMask", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShuffleSetMask (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShuffleSetMask", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShuffleSetMask", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernary (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDTernary", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernary", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernaryGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDTernaryGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernaryGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernarySetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDTernarySetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernarySetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernaryGetA (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDTernaryGetA", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernaryGetA", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernarySetA (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDTernarySetA", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernarySetA", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernaryGetB (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDTernaryGetB", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernaryGetB", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernarySetB (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDTernarySetB", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernarySetB", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernaryGetC (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDTernaryGetC", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernaryGetC", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDTernarySetC (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDTernarySetC", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDTernarySetC", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShift (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDShift", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShift", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShiftGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShiftSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftGetVec (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShiftGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftSetVec (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShiftSetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftSetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftGetShift (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDShiftGetShift", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftGetShift", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDShiftSetShift (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDShiftSetShift", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDShiftSetShift", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoad (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDLoad", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoad", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadGetAlign (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadSetAlign (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadSetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadSetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLane (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLane", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLane", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetAlign (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetAlign (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetAlign", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetAlign", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetPtr (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetPtr (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetPtr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetPtr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneGetVec (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneGetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneGetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneSetVec (SigExprSetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneSetVec", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneSetVec", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSIMDLoadStoreLaneIsStore (SigExprGetter)
-	ctx.SetFunc("_BinaryenSIMDLoadStoreLaneIsStore", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSIMDLoadStoreLaneIsStore", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInit (SigExprConstructor)
-	ctx.SetFunc("_BinaryenMemoryInit", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInit", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryInitGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryInitSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitGetDest (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryInitGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitSetDest (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryInitSetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitSetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryInitGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryInitSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryInitGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryInitSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryInitSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryInitSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDataDrop (SigExprConstructor)
-	ctx.SetFunc("_BinaryenDataDrop", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDataDrop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDataDropGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenDataDropGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDataDropGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenDataDropSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenDataDropSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenDataDropSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopy (SigExprConstructor)
-	ctx.SetFunc("_BinaryenMemoryCopy", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopy", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopyGetDest (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryCopyGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopyGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopySetDest (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryCopySetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopySetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopyGetSource (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryCopyGetSource", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopyGetSource", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopySetSource (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryCopySetSource", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopySetSource", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopyGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryCopyGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopyGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryCopySetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryCopySetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryCopySetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFill (SigExprConstructor)
-	ctx.SetFunc("_BinaryenMemoryFill", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFill", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillGetDest (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryFillGetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillGetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillSetDest (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryFillSetDest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillSetDest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryFillGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryFillSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenMemoryFillGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenMemoryFillSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenMemoryFillSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenMemoryFillSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefNull (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefNull", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefNull", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefIsNull (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefIsNull", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefIsNull", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefIsNullGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefIsNullGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefIsNullGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefIsNullSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefIsNullSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefIsNullSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefAs (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefAs", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefAs", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefAsGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefAsGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefAsGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefAsSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefAsSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefAsSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefAsGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefAsGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefAsGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefAsSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefAsSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefAsSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefFunc (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefFunc", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefFuncGetFunc (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefFuncGetFunc", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefFuncGetFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefFuncSetFunc (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefFuncSetFunc", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefFuncSetFunc", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefEq (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefEq", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefEqGetLeft (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefEqGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefEqGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefEqSetLeft (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefEqSetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefEqSetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefEqGetRight (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefEqGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefEqGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefEqSetRight (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefEqSetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefEqSetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTableGet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetGetTable (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetSetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableGetSetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetSetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableGetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTableSet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetGetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetSetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetSetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetSetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetGetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetGetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSize (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTableSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSizeGetTable (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableSizeGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSizeGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSizeSetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSizeSetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSizeSetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrow (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTableGrow", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowGetTable (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGrowGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowSetTable (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableGrowSetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowSetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGrowGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableGrowSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowGetDelta (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGrowGetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowGetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGrowSetDelta (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableGrowSetDelta", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGrowSetDelta", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTry (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTry", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTry", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTrySetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenTrySetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTrySetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetBody (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTrySetBody (SigExprSetter)
-	ctx.SetFunc("_BinaryenTrySetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTrySetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetNumCatchTags (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetNumCatchTags", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetNumCatchTags", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetNumCatchBodies (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetNumCatchBodies", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetNumCatchBodies", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetCatchTagAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTrySetCatchTagAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenTrySetCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTrySetCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryAppendCatchTag (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryAppendCatchTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryAppendCatchTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryInsertCatchTagAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryInsertCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryInsertCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryRemoveCatchTagAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryRemoveCatchTagAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryRemoveCatchTagAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetCatchBodyAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTrySetCatchBodyAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenTrySetCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTrySetCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryAppendCatchBody (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryAppendCatchBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryAppendCatchBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryInsertCatchBodyAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryInsertCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryInsertCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryRemoveCatchBodyAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTryRemoveCatchBodyAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryRemoveCatchBodyAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryHasCatchAll (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryHasCatchAll", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryHasCatchAll", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryGetDelegateTarget (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryGetDelegateTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryGetDelegateTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTrySetDelegateTarget (SigExprSetter)
-	ctx.SetFunc("_BinaryenTrySetDelegateTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTrySetDelegateTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTryIsDelegate (SigExprGetter)
-	ctx.SetFunc("_BinaryenTryIsDelegate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTryIsDelegate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrow (SigExprConstructor)
-	ctx.SetFunc("_BinaryenThrow", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowGetTag (SigExprGetter)
-	ctx.SetFunc("_BinaryenThrowGetTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowGetTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowSetTag (SigExprSetter)
-	ctx.SetFunc("_BinaryenThrowSetTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowSetTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenThrowGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenThrowGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenThrowSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenThrowAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenThrowInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenThrowRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenThrowRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenThrowRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRethrow (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRethrow", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRethrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRethrowGetTarget (SigExprGetter)
-	ctx.SetFunc("_BinaryenRethrowGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRethrowGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRethrowSetDepth (SigExprSetter)
-	ctx.SetFunc("_BinaryenRethrowSetDepth", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRethrowSetDepth", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMake (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTupleMake", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMake", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenTupleMakeGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenTupleMakeGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenTupleMakeSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTupleMakeAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTupleMakeInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleMakeRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTupleMakeRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleMakeRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleExtract (SigExprConstructor)
-	ctx.SetFunc("_BinaryenTupleExtract", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleExtract", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleExtractGetTuple (SigExprGetter)
-	ctx.SetFunc("_BinaryenTupleExtractGetTuple", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleExtractGetTuple", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleExtractSetTuple (SigExprSetter)
-	ctx.SetFunc("_BinaryenTupleExtractSetTuple", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleExtractSetTuple", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleExtractGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenTupleExtractGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleExtractGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTupleExtractSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenTupleExtractSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTupleExtractSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenPop (SigExprConstructor)
-	ctx.SetFunc("_BinaryenPop", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenPop", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefI31 (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefI31", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefI31GetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefI31GetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefI31GetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefI31SetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefI31SetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefI31SetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenI31Get (SigExprConstructor)
-	ctx.SetFunc("_BinaryenI31Get", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenI31Get", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenI31GetGetI31 (SigExprGetter)
-	ctx.SetFunc("_BinaryenI31GetGetI31", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenI31GetGetI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenI31GetSetI31 (SigExprSetter)
-	ctx.SetFunc("_BinaryenI31GetSetI31", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenI31GetSetI31", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenI31GetIsSigned (SigExprGetter)
-	ctx.SetFunc("_BinaryenI31GetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenI31GetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenI31GetSetSigned (SigExprSetter)
-	ctx.SetFunc("_BinaryenI31GetSetSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenI31GetSetSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRef (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallRefGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallRefGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallRefSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallRefAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallRefInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCallRefRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefGetTarget (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallRefGetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefGetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefSetTarget (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallRefSetTarget", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefSetTarget", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefIsReturn (SigExprGetter)
-	ctx.SetFunc("_BinaryenCallRefIsReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefIsReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCallRefSetReturn (SigExprSetter)
-	ctx.SetFunc("_BinaryenCallRefSetReturn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCallRefSetReturn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefTest (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefTest", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefTest", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefTestGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefTestGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefTestGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefTestSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefTestSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefTestSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefTestGetCastType (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefTestGetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefTestGetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefTestSetCastType (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefTestSetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefTestSetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefCast (SigExprConstructor)
-	ctx.SetFunc("_BinaryenRefCast", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefCast", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefCastGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenRefCastGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefCastGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRefCastSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenRefCastSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRefCastSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOn (SigExprConstructor)
-	ctx.SetFunc("_BinaryenBrOn", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOn", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenBrOnGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenBrOnSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenBrOnGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenBrOnSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenBrOnGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenBrOnSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnGetCastType (SigExprGetter)
-	ctx.SetFunc("_BinaryenBrOnGetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnGetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenBrOnSetCastType (SigExprSetter)
-	ctx.SetFunc("_BinaryenBrOnSetCastType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenBrOnSetCastType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNew (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructNew", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewGetNumOperands (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructNewGetNumOperands", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewGetNumOperands", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewGetOperandAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructNewGetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewGetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewSetOperandAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructNewSetOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewSetOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewAppendOperand (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructNewAppendOperand", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewAppendOperand", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewInsertOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructNewInsertOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewInsertOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructNewRemoveOperandAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructNewRemoveOperandAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructNewRemoveOperandAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructGet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructGetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructGetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructGetSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetIsSigned (SigExprGetter)
-	ctx.SetFunc("_BinaryenStructGetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructGetSetSigned (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructGetSetSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructGetSetSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStructSet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetGetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetGetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetGetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStructSetSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenStructSetSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStructSetSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNew (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNew", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewGetInit (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewGetInit", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewGetInit", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewSetInit (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewSetInit", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewSetInit", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixed (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewFixed", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixed", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedGetNumValues (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewFixedGetNumValues", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedGetNumValues", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedGetValueAt (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewFixedGetValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedGetValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedSetValueAt (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewFixedSetValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedSetValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedAppendValue (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewFixedAppendValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedAppendValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedInsertValueAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewFixedInsertValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedInsertValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewFixedRemoveValueAt (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewFixedRemoveValueAt", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewFixedRemoveValueAt", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewData (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewData", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewData", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewDataGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewDataSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewDataGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewDataSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewDataGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewDataSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewDataSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewDataSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElem (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayNewElem", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElem", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewElemGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewElemSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewElemGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewElemSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayNewElemGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayNewElemSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayNewElemSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayNewElemSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayGet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayGetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayGetSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayGetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayGetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetIsSigned (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayGetIsSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetIsSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayGetSetSigned (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayGetSetSigned", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayGetSetSigned", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySet (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArraySet", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySet", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetGetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetGetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetGetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArraySetSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenArraySetSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArraySetSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayLen (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayLen", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayLen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayLenGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayLenGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayLenGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayLenSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayLenSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayLenSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFill (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayFill", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFill", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayFillGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayFillSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayFillGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayFillSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayFillGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillSetValue (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayFillSetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillSetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayFillGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayFillSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayFillSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayFillSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopy (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayCopy", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopy", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopyGetDestRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayCopyGetDestRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopyGetDestRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopySetDestRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayCopySetDestRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopySetDestRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopyGetDestIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayCopyGetDestIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopyGetDestIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopySetDestIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayCopySetDestIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopySetDestIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopyGetSrcRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayCopyGetSrcRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopyGetSrcRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopySetSrcRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayCopySetSrcRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopySetSrcRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopyGetSrcIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayCopyGetSrcIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopyGetSrcIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopySetSrcIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayCopySetSrcIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopySetSrcIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopyGetLength (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayCopyGetLength", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopyGetLength", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayCopySetLength (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayCopySetLength", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayCopySetLength", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitData (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayInitData", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitData", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitDataGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitDataSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitDataGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitDataSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitDataGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitDataSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitDataGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitDataSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitDataGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitDataSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitDataSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitDataSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElem (SigExprConstructor)
-	ctx.SetFunc("_BinaryenArrayInitElem", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElem", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemGetSegment (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitElemGetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemGetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemSetSegment (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitElemSetSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemSetSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitElemGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitElemSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemGetIndex (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitElemGetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemGetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemSetIndex (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitElemSetIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemSetIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemGetOffset (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitElemGetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemGetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemSetOffset (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitElemSetOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemSetOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemGetSize (SigExprGetter)
-	ctx.SetFunc("_BinaryenArrayInitElemGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenArrayInitElemSetSize (SigExprSetter)
-	ctx.SetFunc("_BinaryenArrayInitElemSetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenArrayInitElemSetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNew (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringNew", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNew", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringNewGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringNewSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringNewGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringNewSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewGetStart (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringNewGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewSetStart (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringNewSetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewSetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewGetEnd (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringNewGetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewGetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringNewSetEnd (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringNewSetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringNewSetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConst (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringConst", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConst", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConstGetString (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringConstGetString", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConstGetString", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConstSetString (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringConstSetString", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConstSetString", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringMeasure (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringMeasure", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringMeasure", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringMeasureGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringMeasureGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringMeasureGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringMeasureSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringMeasureSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringMeasureSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringMeasureGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringMeasureGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringMeasureGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringMeasureSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringMeasureSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringMeasureSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncode (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringEncode", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncode", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEncodeGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEncodeSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeGetStr (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEncodeGetStr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeGetStr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeSetStr (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEncodeSetStr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeSetStr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeGetArray (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEncodeGetArray", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeGetArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeSetArray (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEncodeSetArray", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeSetArray", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeGetStart (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEncodeGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEncodeSetStart (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEncodeSetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEncodeSetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConcat (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringConcat", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConcat", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConcatGetLeft (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringConcatGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConcatGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConcatSetLeft (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringConcatSetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConcatSetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConcatGetRight (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringConcatGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConcatGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringConcatSetRight (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringConcatSetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringConcatSetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEq (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringEq", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEq", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqGetOp (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEqGetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqGetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqSetOp (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEqSetOp", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqSetOp", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqGetLeft (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEqGetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqGetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqSetLeft (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEqSetLeft", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqSetLeft", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqGetRight (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringEqGetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqGetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringEqSetRight (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringEqSetRight", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringEqSetRight", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringWTF16Get (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringWTF16Get", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringWTF16Get", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringWTF16GetGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringWTF16GetGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringWTF16GetGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringWTF16GetSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringWTF16GetSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringWTF16GetSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringWTF16GetGetPos (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringWTF16GetGetPos", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringWTF16GetGetPos", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringWTF16GetSetPos (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringWTF16GetSetPos", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringWTF16GetSetPos", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTF (SigExprConstructor)
-	ctx.SetFunc("_BinaryenStringSliceWTF", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTF", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFGetRef (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFGetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFGetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFSetRef (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFSetRef", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFSetRef", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFGetStart (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFSetStart (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFSetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFSetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFGetEnd (SigExprGetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFGetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFGetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenStringSliceWTFSetEnd (SigExprSetter)
-	ctx.SetFunc("_BinaryenStringSliceWTFSetEnd", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenStringSliceWTFSetEnd", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddFunction (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddFunction", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddFunction", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetFunction (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetFunction", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetFunction", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveFunction (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveFunction", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveFunction", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumFunctions (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumFunctions", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumFunctions", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetFunctionByIndex (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetFunctionByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetFunctionByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetParams (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetParams", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetParams", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetResults (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetResults", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetResults", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetNumVars (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetNumVars", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetNumVars", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetVar (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetVar", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetVar", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionAddVar (SigExprConstructor)
-	ctx.SetFunc("_BinaryenFunctionAddVar", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionAddVar", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetNumLocals (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetNumLocals", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetNumLocals", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionHasLocalName (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionHasLocalName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionHasLocalName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetLocalName (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetLocalName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetLocalName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionSetLocalName (SigExprSetter)
-	ctx.SetFunc("_BinaryenFunctionSetLocalName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionSetLocalName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetBody (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionSetBody (SigExprSetter)
-	ctx.SetFunc("_BinaryenFunctionSetBody", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionSetBody", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionGetType (SigExprGetter)
-	ctx.SetFunc("_BinaryenFunctionGetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionSetType (SigExprSetter)
-	ctx.SetFunc("_BinaryenFunctionSetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionSetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionOptimize (SigExprConstructor)
-	ctx.SetFunc("_BinaryenFunctionOptimize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionOptimize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionRunPasses (SigExprConstructor)
-	ctx.SetFunc("_BinaryenFunctionRunPasses", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionRunPasses", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenFunctionSetDebugLocation (SigExprSetter)
-	ctx.SetFunc("_BinaryenFunctionSetDebugLocation", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenFunctionSetDebugLocation", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddFunctionImport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddFunctionImport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddFunctionImport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTableImport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTableImport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTableImport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddMemoryImport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddMemoryImport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddMemoryImport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddGlobalImport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddGlobalImport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddGlobalImport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTagImport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTagImport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTagImport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddFunctionExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddFunctionExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddFunctionExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTableExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTableExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTableExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddMemoryExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddMemoryExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddMemoryExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddGlobalExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddGlobalExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddGlobalExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTagExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTagExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTagExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveExport (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveExport", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveExport", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumExports (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumExports", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumExports", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetExportByIndex (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetExportByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetExportByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExportGetKind (SigExprGetter)
-	ctx.SetFunc("_BinaryenExportGetKind", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExportGetKind", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExportGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenExportGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExportGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExportGetValue (SigExprGetter)
-	ctx.SetFunc("_BinaryenExportGetValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExportGetValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddGlobal (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddGlobal", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddGlobal", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetGlobal (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetGlobal", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetGlobal", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveGlobal (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveGlobal", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveGlobal", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumGlobals (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumGlobals", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumGlobals", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetGlobalByIndex (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetGlobalByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetGlobalByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenGlobalGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGetType (SigExprGetter)
-	ctx.SetFunc("_BinaryenGlobalGetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalIsMutable (SigExprGetter)
-	ctx.SetFunc("_BinaryenGlobalIsMutable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalIsMutable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGlobalGetInitExpr (SigExprGetter)
-	ctx.SetFunc("_BinaryenGlobalGetInitExpr", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGlobalGetInitExpr", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTag (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetTag (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveTag (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveTag", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveTag", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTagGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenTagGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTagGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTagGetParams (SigExprGetter)
-	ctx.SetFunc("_BinaryenTagGetParams", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTagGetParams", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTagGetResults (SigExprGetter)
-	ctx.SetFunc("_BinaryenTagGetResults", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTagGetResults", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddTable (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveTable (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumTables (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumTables", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumTables", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetTable (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetTable", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetTable", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetTableByIndex (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetTableByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetTableByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetName (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetName (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetInitial (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetInitial", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetInitial", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetInitial (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetInitial", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetInitial", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableHasMax (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableHasMax", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableHasMax", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetMax (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetMax", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetMax", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetMax (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetMax", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetMax", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableGetType (SigExprGetter)
-	ctx.SetFunc("_BinaryenTableGetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableGetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenTableSetType (SigExprSetter)
-	ctx.SetFunc("_BinaryenTableSetType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenTableSetType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddActiveElementSegment (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddActiveElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddActiveElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddPassiveElementSegment (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddPassiveElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddPassiveElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenRemoveElementSegment (SigFuncOp)
-	ctx.SetFunc("_BinaryenRemoveElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenRemoveElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumElementSegments (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumElementSegments", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumElementSegments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetElementSegment (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetElementSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetElementSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetElementSegmentByIndex (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetElementSegmentByIndex", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetElementSegmentByIndex", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetMemory (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSetMemory", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetMemory", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetNumMemorySegments (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetNumMemorySegments", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetNumMemorySegments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetMemorySegmentByteOffset (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetMemorySegmentByteOffset", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetMemorySegmentByteOffset", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetMemorySegmentByteLength (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetMemorySegmentByteLength", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetMemorySegmentByteLength", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenCopyMemorySegmentData (SigExprConstructor)
-	ctx.SetFunc("_BinaryenCopyMemorySegmentData", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenCopyMemorySegmentData", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddDataSegment (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddDataSegment", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddDataSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetStart (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetStart (SigFuncOp)
-	ctx.SetFunc("_BinaryenGetStart", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetStart", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleParse (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleParse", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleParse", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModulePrint (SigModuleArg)
-	ctx.SetFunc("_BinaryenModulePrint", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModulePrint", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModulePrintAsmjs (SigModuleArg)
-	ctx.SetFunc("_BinaryenModulePrintAsmjs", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModulePrintAsmjs", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleValidate (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleValidate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleValidate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleOptimize (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleOptimize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleOptimize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleRunPasses (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleRunPasses", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleRunPasses", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSizeofAllocateAndWriteResult (SigExprConstructor)
-	ctx.SetFunc("_BinaryenSizeofAllocateAndWriteResult", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSizeofAllocateAndWriteResult", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleAllocateAndWrite (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleAllocateAndWrite", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleAllocateAndWrite", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleAllocateAndWriteText (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleAllocateAndWriteText", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleAllocateAndWriteText", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleAllocateAndWriteStackIR (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleAllocateAndWriteStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleAllocateAndWriteStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleRead (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleRead", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleRead", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleReadWithFeatures (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleReadWithFeatures", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleReadWithFeatures", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleInterpret (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleInterpret", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleInterpret", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleAddDebugInfoFileName (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleAddDebugInfoFileName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleAddDebugInfoFileName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleGetDebugInfoFileName (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleGetDebugInfoFileName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleGetDebugInfoFileName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleGetFeatures (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleGetFeatures", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleGetFeatures", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleSetFeatures (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleSetFeatures", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleSetFeatures", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddCustomSection (SigFuncOp)
-	ctx.SetFunc("_BinaryenAddCustomSection", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddCustomSection", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenExpressionGetSideEffects (SigExprGetter)
-	ctx.SetFunc("_BinaryenExpressionGetSideEffects", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenExpressionGetSideEffects", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperCreate (SigComplex)
-	ctx.SetFunc("_RelooperCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperAddBlock (SigComplex)
-	ctx.SetFunc("_RelooperAddBlock", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperAddBlock", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperAddBranch (SigComplex)
-	ctx.SetFunc("_RelooperAddBranch", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperAddBranch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperAddBlockWithSwitch (SigComplex)
-	ctx.SetFunc("_RelooperAddBlockWithSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperAddBlockWithSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperAddBranchForSwitch (SigComplex)
-	ctx.SetFunc("_RelooperAddBranchForSwitch", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperAddBranchForSwitch", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _RelooperRenderAndDispose (SigComplex)
-	ctx.SetFunc("_RelooperRenderAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_RelooperRenderAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _ExpressionRunnerCreate (SigComplex)
-	ctx.SetFunc("_ExpressionRunnerCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_ExpressionRunnerCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _ExpressionRunnerSetLocalValue (SigComplex)
-	ctx.SetFunc("_ExpressionRunnerSetLocalValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_ExpressionRunnerSetLocalValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _ExpressionRunnerSetGlobalValue (SigComplex)
-	ctx.SetFunc("_ExpressionRunnerSetGlobalValue", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_ExpressionRunnerSetGlobalValue", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _ExpressionRunnerRunAndDispose (SigComplex)
-	ctx.SetFunc("_ExpressionRunnerRunAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_ExpressionRunnerRunAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderCreate (SigComplex)
-	ctx.SetFunc("_TypeBuilderCreate", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderCreate", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderGrow (SigComplex)
-	ctx.SetFunc("_TypeBuilderGrow", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderGrow", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderGetSize (SigComplex)
-	ctx.SetFunc("_TypeBuilderGetSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderGetSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderSetSignatureType (SigComplex)
-	ctx.SetFunc("_TypeBuilderSetSignatureType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderSetSignatureType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderSetStructType (SigComplex)
-	ctx.SetFunc("_TypeBuilderSetStructType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderSetStructType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderSetArrayType (SigComplex)
-	ctx.SetFunc("_TypeBuilderSetArrayType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderSetArrayType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderGetTempHeapType (SigComplex)
-	ctx.SetFunc("_TypeBuilderGetTempHeapType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderGetTempHeapType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderGetTempTupleType (SigComplex)
-	ctx.SetFunc("_TypeBuilderGetTempTupleType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderGetTempTupleType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderGetTempRefType (SigComplex)
-	ctx.SetFunc("_TypeBuilderGetTempRefType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderGetTempRefType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderSetSubType (SigComplex)
-	ctx.SetFunc("_TypeBuilderSetSubType", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderSetSubType", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderSetOpen (SigComplex)
-	ctx.SetFunc("_TypeBuilderSetOpen", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderSetOpen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderCreateRecGroup (SigComplex)
-	ctx.SetFunc("_TypeBuilderCreateRecGroup", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderCreateRecGroup", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _TypeBuilderBuildAndDispose (SigComplex)
-	ctx.SetFunc("_TypeBuilderBuildAndDispose", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_TypeBuilderBuildAndDispose", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleSetTypeName (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleSetTypeName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleSetTypeName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenModuleSetFieldName (SigModuleArg)
-	ctx.SetFunc("_BinaryenModuleSetFieldName", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenModuleSetFieldName", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetOptimizeLevel (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetOptimizeLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetOptimizeLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetOptimizeLevel (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetOptimizeLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetOptimizeLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetShrinkLevel (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetShrinkLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetShrinkLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetShrinkLevel (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetShrinkLevel", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetShrinkLevel", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetDebugInfo (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetDebugInfo", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetDebugInfo", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetDebugInfo (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetDebugInfo", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetDebugInfo", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetTrapsNeverHappen (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetTrapsNeverHappen", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetTrapsNeverHappen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetTrapsNeverHappen (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetTrapsNeverHappen", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetTrapsNeverHappen", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetClosedWorld (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetClosedWorld", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetClosedWorld", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetClosedWorld (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetClosedWorld", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetClosedWorld", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetLowMemoryUnused (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetLowMemoryUnused", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetLowMemoryUnused", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetLowMemoryUnused (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetLowMemoryUnused", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetLowMemoryUnused", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetZeroFilledMemory (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetZeroFilledMemory", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetZeroFilledMemory", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetZeroFilledMemory (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetZeroFilledMemory", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetZeroFilledMemory", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetFastMath (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetFastMath", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetFastMath", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetFastMath (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetFastMath", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetFastMath", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetGenerateStackIR (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetGenerateStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetGenerateStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetGenerateStackIR (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetGenerateStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetGenerateStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetOptimizeStackIR (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetOptimizeStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetOptimizeStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetOptimizeStackIR (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetOptimizeStackIR", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetOptimizeStackIR", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetPassArgument (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetPassArgument", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetPassArgument", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetPassArgument (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetPassArgument", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetPassArgument", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenClearPassArguments (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenClearPassArguments", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenClearPassArguments", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenHasPassToSkip (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenHasPassToSkip", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenHasPassToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenAddPassToSkip (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenAddPassToSkip", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenAddPassToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenClearPassesToSkip (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenClearPassesToSkip", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenClearPassesToSkip", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetAlwaysInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetAlwaysInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetAlwaysInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetAlwaysInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetAlwaysInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetAlwaysInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetFlexibleInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetFlexibleInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetFlexibleInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetFlexibleInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetFlexibleInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetFlexibleInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetOneCallerInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetOneCallerInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetOneCallerInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetOneCallerInlineMaxSize (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetOneCallerInlineMaxSize", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetOneCallerInlineMaxSize", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenGetAllowInliningFunctionsWithLoops (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenGetAllowInliningFunctionsWithLoops", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenGetAllowInliningFunctionsWithLoops", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 	// _BinaryenSetAllowInliningFunctionsWithLoops (SigGlobalSetting)
-	ctx.SetFunc("_BinaryenSetAllowInliningFunctionsWithLoops", func(this *qjs.This) (*qjs.Value, error) {
-		return this.Context().NewFloat64(0), nil
+	setFunc(ctx, "_BinaryenSetAllowInliningFunctionsWithLoops", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {
+		return c.NewFloat64(0)
 	})
 
 }

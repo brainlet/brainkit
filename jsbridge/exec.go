@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // spawnedProcess tracks a spawned child process for streaming reads.
@@ -34,13 +34,12 @@ func Exec() *ExecPolyfill {
 
 func (p *ExecPolyfill) Name() string { return "exec" }
 
-func (p *ExecPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_exec", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
+	ctx.Globals().Set("__go_exec", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return nil, fmt.Errorf("exec: command argument required")
+			return ctx.ThrowError(fmt.Errorf("exec: command argument required"))
 		}
-		command := args[0].String()
+		command := args[0].ToString()
 
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
@@ -59,7 +58,7 @@ func (p *ExecPolyfill) Setup(ctx *qjs.Context) error {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
 			} else {
-				return nil, fmt.Errorf("exec: %w", err)
+				return ctx.ThrowError(fmt.Errorf("exec: %w", err))
 			}
 		}
 
@@ -69,32 +68,31 @@ func (p *ExecPolyfill) Setup(ctx *qjs.Context) error {
 			"exitCode": exitCode,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("exec: json marshal: %w", err)
+			return ctx.ThrowError(fmt.Errorf("exec: json marshal: %w", err))
 		}
-		return this.Context().NewString(string(b)), nil
-	})
+		return ctx.NewString(string(b))
+	}))
 
-	ctx.SetFunc("__go_spawn", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_spawn", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return nil, fmt.Errorf("spawn: command argument required")
+			return ctx.ThrowError(fmt.Errorf("spawn: command argument required"))
 		}
-		command := args[0].String()
+		command := args[0].ToString()
 		var cmdArgs []string
 		if len(args) >= 2 {
-			if err := json.Unmarshal([]byte(args[1].String()), &cmdArgs); err != nil {
-				return nil, fmt.Errorf("spawn: json unmarshal args: %w", err)
+			if err := json.Unmarshal([]byte(args[1].ToString()), &cmdArgs); err != nil {
+				return ctx.ThrowError(fmt.Errorf("spawn: json unmarshal args: %w", err))
 			}
 		}
 
 		cmd := exec.Command(command, cmdArgs...)
 		stdoutPipe, err := cmd.StdoutPipe()
 		if err != nil {
-			return nil, fmt.Errorf("spawn: stdout pipe: %w", err)
+			return ctx.ThrowError(fmt.Errorf("spawn: stdout pipe: %w", err))
 		}
 
 		if err := cmd.Start(); err != nil {
-			return nil, fmt.Errorf("spawn: start: %w", err)
+			return ctx.ThrowError(fmt.Errorf("spawn: start: %w", err))
 		}
 
 		proc := &spawnedProcess{
@@ -127,42 +125,40 @@ func (p *ExecPolyfill) Setup(ctx *qjs.Context) error {
 		p.procs[id] = proc
 		p.mu.Unlock()
 
-		return this.Context().NewInt32(int32(id)), nil
-	})
+		return ctx.NewInt32(int32(id))
+	}))
 
-	ctx.SetFunc("__go_spawn_read", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_spawn_read", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return nil, fmt.Errorf("spawn_read: id argument required")
+			return ctx.ThrowError(fmt.Errorf("spawn_read: id argument required"))
 		}
-		id := int(args[0].Int32())
+		id := int(args[0].ToInt32())
 
 		p.mu.Lock()
 		proc, ok := p.procs[id]
 		p.mu.Unlock()
 		if !ok {
-			return nil, fmt.Errorf("spawn_read: no process with id %d", id)
+			return ctx.ThrowError(fmt.Errorf("spawn_read: no process with id %d", id))
 		}
 
 		line, ok := <-proc.lines
 		if !ok {
-			return this.Context().NewNull(), nil
+			return ctx.NewNull()
 		}
-		return this.Context().NewString(line), nil
-	})
+		return ctx.NewString(line)
+	}))
 
-	ctx.SetFunc("__go_spawn_wait", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+	ctx.Globals().Set("__go_spawn_wait", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return nil, fmt.Errorf("spawn_wait: id argument required")
+			return ctx.ThrowError(fmt.Errorf("spawn_wait: id argument required"))
 		}
-		id := int(args[0].Int32())
+		id := int(args[0].ToInt32())
 
 		p.mu.Lock()
 		proc, ok := p.procs[id]
 		p.mu.Unlock()
 		if !ok {
-			return nil, fmt.Errorf("spawn_wait: no process with id %d", id)
+			return ctx.ThrowError(fmt.Errorf("spawn_wait: no process with id %d", id))
 		}
 
 		waitErr := <-proc.waitErr
@@ -177,8 +173,8 @@ func (p *ExecPolyfill) Setup(ctx *qjs.Context) error {
 		delete(p.procs, id)
 		p.mu.Unlock()
 
-		return this.Context().NewInt32(int32(exitCode)), nil
-	})
+		return ctx.NewInt32(int32(exitCode))
+	}))
 
 	return evalJS(ctx, `
 globalThis.child_process = {

@@ -1,17 +1,17 @@
 package jsbridge
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 type timerEntry struct {
-	id       int32
-	callback *qjs.Value
-	delay    time.Duration
-	cleared  bool
+	id      int32
+	delay   time.Duration
+	cleared bool
 }
 
 // TimersPolyfill provides setTimeout and clearTimeout with a drain mechanism.
@@ -20,6 +20,7 @@ type TimersPolyfill struct {
 	mu     sync.Mutex
 	timers map[int32]*timerEntry
 	nextID int32
+	ctx    *quickjs.Context
 }
 
 // Timers creates a timers polyfill.
@@ -31,7 +32,7 @@ func (p *TimersPolyfill) Name() string { return "timers" }
 
 // Drain executes all pending timers in delay order.
 // Call after Eval() to fire setTimeout callbacks.
-func (p *TimersPolyfill) Drain(ctx *qjs.Context) error {
+func (p *TimersPolyfill) Drain(ctx *quickjs.Context) error {
 	for {
 		p.mu.Lock()
 		if len(p.timers) == 0 {
@@ -53,69 +54,78 @@ func (p *TimersPolyfill) Drain(ctx *qjs.Context) error {
 			return nil
 		}
 
-		cb := best.callback
+		id := best.id
 		delay := best.delay
-		delete(p.timers, best.id)
+		delete(p.timers, id)
 		p.mu.Unlock()
 
 		if delay > 0 {
 			time.Sleep(delay)
 		}
 
-		result, err := ctx.Invoke(cb, ctx.Global())
-		if err != nil {
-			cb.Free()
+		// Retrieve and invoke the callback via the JS-side storage map.
+		// __timer_cbs.get(id) returns the function; __timer_cbs.delete(id) cleans up.
+		ids := strconv.FormatInt(int64(id), 10)
+		result := ctx.Eval(`(function() { var cb = __timer_cbs.get(` + ids + `); __timer_cbs.delete(` + ids + `); return cb(); })()`)
+		if result.IsException() {
+			err := ctx.Exception()
+			result.Free()
 			return err
 		}
-		if result != nil {
-			result.Free()
-		}
-		cb.Free()
+		result.Free()
 	}
 }
 
-func (p *TimersPolyfill) Setup(ctx *qjs.Context) error {
-	ctx.SetFunc("__go_set_timeout", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
+func (p *TimersPolyfill) Setup(ctx *quickjs.Context) error {
+	p.ctx = ctx
+
+	ctx.Globals().Set("__go_set_timeout", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
-			return this.Context().NewInt32(0), nil
+			return ctx.NewInt32(0)
 		}
 
-		callback := args[0].Clone()
 		delay := int32(0)
 		if len(args) > 1 {
-			delay = args[1].Int32()
+			delay = args[1].ToInt32()
 		}
 
 		p.mu.Lock()
 		p.nextID++
 		id := p.nextID
 		p.timers[id] = &timerEntry{
-			id:       id,
-			callback: callback,
-			delay:    time.Duration(delay) * time.Millisecond,
+			id:    id,
+			delay: time.Duration(delay) * time.Millisecond,
 		}
 		p.mu.Unlock()
 
-		return this.Context().NewInt32(id), nil
-	})
+		return ctx.NewInt32(id)
+	}))
 
-	ctx.SetFunc("__go_clear_timeout", func(this *qjs.This) (*qjs.Value, error) {
-		if args := this.Args(); len(args) > 0 {
-			id := args[0].Int32()
+	ctx.Globals().Set("__go_clear_timeout", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) > 0 {
+			id := args[0].ToInt32()
 			p.mu.Lock()
 			if t, ok := p.timers[id]; ok {
 				t.cleared = true
-				t.callback.Free()
 				delete(p.timers, id)
 			}
 			p.mu.Unlock()
 		}
-		return this.Context().NewUndefined(), nil
-	})
+		return ctx.NewUndefined()
+	}))
 
+	// Initialize the JS-side callback storage map and setTimeout/clearTimeout wrappers.
+	// Callbacks are stored in __timer_cbs to keep JS references alive until Drain().
 	return evalJS(ctx, `
-globalThis.setTimeout = (fn, delay) => __go_set_timeout(fn, delay || 0);
-globalThis.clearTimeout = (id) => __go_clear_timeout(id);
+var __timer_cbs = new Map();
+globalThis.setTimeout = (fn, delay) => {
+  var id = __go_set_timeout(fn, delay || 0);
+  __timer_cbs.set(id, fn);
+  return id;
+};
+globalThis.clearTimeout = (id) => {
+  __go_clear_timeout(id);
+  __timer_cbs.delete(id);
+};
 `)
 }

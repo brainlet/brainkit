@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // ConsoleMessage is a captured console output entry.
@@ -62,17 +62,17 @@ func (c *ConsolePolyfill) capture(level, msg string) {
 	c.mu.Unlock()
 }
 
-func (c *ConsolePolyfill) Setup(ctx *qjs.Context) error {
+func (c *ConsolePolyfill) Setup(ctx *quickjs.Context) error {
 	reg := func(name, level string, w io.Writer) {
-		ctx.SetFunc(name, func(this *qjs.This) (*qjs.Value, error) {
+		ctx.Globals().Set(name, ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			msg := ""
-			if args := this.Args(); len(args) > 0 {
-				msg = args[0].String()
+			if len(args) > 0 {
+				msg = args[0].ToString()
 			}
 			c.capture(level, msg)
 			fmt.Fprintln(w, msg)
-			return this.Context().NewUndefined(), nil
-		})
+			return ctx.NewUndefined()
+		}))
 	}
 
 	reg("__go_console_log", "log", c.stdout)

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 func newTestBridge(t *testing.T, polyfills ...Polyfill) *Bridge {
@@ -27,7 +27,7 @@ func newTestBridge(t *testing.T, polyfills ...Polyfill) *Bridge {
 
 func evalString(t *testing.T, b *Bridge, code string) string {
 	t.Helper()
-	val, err := b.Eval("test.js", qjs.Code(code))
+	val, err := b.Eval("test.js", code)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -301,10 +301,10 @@ func TestFetch(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", qjs.Code(fmt.Sprintf(`
+	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/api");
 		const data = await resp.json();
-		JSON.stringify({
+		return JSON.stringify({
 			ok: resp.ok,
 			status: resp.status,
 			contentType: resp.headers.get("content-type"),
@@ -312,7 +312,7 @@ func TestFetch(t *testing.T) {
 			message: data.message,
 			method: data.method,
 		});
-	`, srv.URL)), qjs.FlagAsync())
+	})()`, srv.URL), quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -358,15 +358,15 @@ func TestFetchPOST(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", qjs.Code(fmt.Sprintf(`
+	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/api", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ key: "value" }),
 		});
 		const data = await resp.json();
-		JSON.stringify(data);
-	`, srv.URL)), qjs.FlagAsync())
+		return JSON.stringify(data);
+	})()`, srv.URL), quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -751,7 +751,7 @@ func TestFetchResponseBody(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Streams(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", qjs.Code(fmt.Sprintf(`
+	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/data");
 		const reader = resp.body.getReader();
 		const chunks = [];
@@ -763,8 +763,8 @@ func TestFetchResponseBody(t *testing.T) {
 		// value should be Uint8Array, decode it
 		const dec = new TextDecoder();
 		const text = chunks.map(c => dec.decode(c)).join("");
-		text;
-	`, srv.URL)), qjs.FlagAsync())
+		return text;
+	})()`, srv.URL), quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -785,7 +785,7 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Streams(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", qjs.Code(fmt.Sprintf(`
+	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/stream");
 		const textStream = resp.body.pipeThrough(new TextDecoderStream());
 		const reader = textStream.getReader();
@@ -795,8 +795,8 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 			if (done) break;
 			parts.push(value);
 		}
-		parts.join("");
-	`, srv.URL)), qjs.FlagAsync())
+		return parts.join("");
+	})()`, srv.URL), quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -813,7 +813,7 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 func TestReadableStreamBasic(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const stream = new ReadableStream({
 			start(controller) {
 				controller.enqueue("hello");
@@ -828,8 +828,8 @@ func TestReadableStreamBasic(t *testing.T) {
 			if (done) break;
 			chunks.push(value);
 		}
-		JSON.stringify(chunks);
-	`), qjs.FlagAsync())
+		return JSON.stringify(chunks);
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -845,13 +845,13 @@ func TestReadableStreamBasic(t *testing.T) {
 func TestReadableStreamLocked(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `
 		const stream = new ReadableStream({ start(c) { c.close(); } });
 		stream.getReader();
 		let threw = false;
 		try { stream.getReader(); } catch(e) { threw = true; }
 		JSON.stringify({ locked: stream.locked, threw });
-	`), qjs.FlagAsync())
+	`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -873,7 +873,7 @@ func TestReadableStreamLocked(t *testing.T) {
 func TestTransformStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const input = new ReadableStream({
 			start(controller) {
 				controller.enqueue("hello");
@@ -896,8 +896,8 @@ func TestTransformStream(t *testing.T) {
 			if (done) break;
 			results.push(value);
 		}
-		JSON.stringify(results);
-	`), qjs.FlagAsync())
+		return JSON.stringify(results);
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -913,7 +913,7 @@ func TestTransformStream(t *testing.T) {
 func TestWritableStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const chunks = [];
 		const ws = new WritableStream({
 			write(chunk) { chunks.push(chunk); },
@@ -922,8 +922,8 @@ func TestWritableStream(t *testing.T) {
 		await writer.write("a");
 		await writer.write("b");
 		await writer.close();
-		JSON.stringify(chunks);
-	`), qjs.FlagAsync())
+		return JSON.stringify(chunks);
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -939,7 +939,7 @@ func TestWritableStream(t *testing.T) {
 func TestTextDecoderStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const encoder = new TextEncoder();
 		const bytes = encoder.encode("hello streams");
 
@@ -958,8 +958,8 @@ func TestTextDecoderStream(t *testing.T) {
 			if (done) break;
 			parts.push(value);
 		}
-		parts.join("");
-	`), qjs.FlagAsync())
+		return parts.join("");
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -973,7 +973,7 @@ func TestTextDecoderStream(t *testing.T) {
 func TestStreamPipeToWritable(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const collected = [];
 		const readable = new ReadableStream({
 			start(controller) {
@@ -987,8 +987,8 @@ func TestStreamPipeToWritable(t *testing.T) {
 			write(chunk) { collected.push(chunk); },
 		});
 		await readable.pipeTo(writable);
-		JSON.stringify(collected);
-	`), qjs.FlagAsync())
+		return JSON.stringify(collected);
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -1005,7 +1005,7 @@ func TestStreamPipeThroughChain(t *testing.T) {
 	// Simulates the AI SDK pattern: ReadableStream -> TextDecoderStream -> TransformStream
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", qjs.Code(`
+	val, err := b.Eval("test.js", `(async () => {
 		const encoder = new TextEncoder();
 		const lines = ["data: hello\n", "data: world\n", "data: [DONE]\n"];
 
@@ -1042,8 +1042,8 @@ func TestStreamPipeThroughChain(t *testing.T) {
 			if (done) break;
 			tokens.push(value);
 		}
-		JSON.stringify(tokens);
-	`), qjs.FlagAsync())
+		return JSON.stringify(tokens);
+	})()`, quickjs.EvalAwait(true))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}

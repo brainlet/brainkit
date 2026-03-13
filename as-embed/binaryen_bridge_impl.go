@@ -3,57 +3,57 @@ package asembed
 import (
 	"unsafe"
 
-	"github.com/fastschema/qjs"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 // arg helpers — keep the bridge code compact
-func argU(args []*qjs.Value, i int) uintptr {
+func argU(args []*quickjs.Value, i int) uintptr {
 	if i >= len(args) {
 		return 0
 	}
-	return uintptr(uint64(args[i].Float64()))
+	return uintptr(uint64(args[i].ToFloat64()))
 }
 
-func argI(args []*qjs.Value, i int) int {
+func argI(args []*quickjs.Value, i int) int {
 	if i >= len(args) {
 		return 0
 	}
-	return int(args[i].Int32())
+	return int(args[i].ToInt32())
 }
 
-func argI32(args []*qjs.Value, i int) int32 {
+func argI32(args []*quickjs.Value, i int) int32 {
 	if i >= len(args) {
 		return 0
 	}
-	return args[i].Int32()
+	return args[i].ToInt32()
 }
 
-func argU32(args []*qjs.Value, i int) uint32 {
+func argU32(args []*quickjs.Value, i int) uint32 {
 	if i >= len(args) {
 		return 0
 	}
-	return uint32(args[i].Int32())
+	return uint32(args[i].ToInt32())
 }
 
-func argF32(args []*qjs.Value, i int) float32 {
+func argF32(args []*quickjs.Value, i int) float32 {
 	if i >= len(args) {
 		return 0
 	}
-	return float32(args[i].Float64())
+	return float32(args[i].ToFloat64())
 }
 
-func argF64(args []*qjs.Value, i int) float64 {
+func argF64(args []*quickjs.Value, i int) float64 {
 	if i >= len(args) {
 		return 0
 	}
-	return args[i].Float64()
+	return args[i].ToFloat64()
 }
 
-func argBool(args []*qjs.Value, i int) bool {
+func argBool(args []*quickjs.Value, i int) bool {
 	if i >= len(args) {
 		return false
 	}
-	return args[i].Int32() != 0
+	return args[i].ToInt32() != 0
 }
 
 // readCStr reads a null-terminated string from linear memory at the given pointer.
@@ -79,42 +79,50 @@ func readPtrArray(lm *LinearMemory, ptr, count int) []uintptr {
 	return result
 }
 
-// retF returns a float64 qjs value.
-func retF(ctx *qjs.Context, v uintptr) (*qjs.Value, error) {
-	return ctx.NewFloat64(float64(v)), nil
+// retF returns a float64 value.
+func retF(ctx *quickjs.Context, v uintptr) *quickjs.Value {
+	return ctx.NewFloat64(float64(v))
 }
 
-// retI returns an int as float64 qjs value.
-func retI(ctx *qjs.Context, v int) (*qjs.Value, error) {
-	return ctx.NewFloat64(float64(v)), nil
+// retI returns an int as float64 value.
+func retI(ctx *quickjs.Context, v int) *quickjs.Value {
+	return ctx.NewFloat64(float64(v))
 }
 
-// retI32 returns an int32 as float64 qjs value.
-func retI32(ctx *qjs.Context, v int32) (*qjs.Value, error) {
-	return ctx.NewFloat64(float64(v)), nil
+// retI32 returns an int32 as float64 value.
+func retI32(ctx *quickjs.Context, v int32) *quickjs.Value {
+	return ctx.NewFloat64(float64(v))
 }
 
-// retU32 returns a uint32 as float64 qjs value.
-func retU32(ctx *qjs.Context, v uint32) (*qjs.Value, error) {
-	return ctx.NewFloat64(float64(v)), nil
+// retU32 returns a uint32 as float64 value.
+func retU32(ctx *quickjs.Context, v uint32) *quickjs.Value {
+	return ctx.NewFloat64(float64(v))
 }
 
 // retBool returns a bool as float64 (0 or 1).
-func retBool(ctx *qjs.Context, v bool) (*qjs.Value, error) {
+func retBool(ctx *quickjs.Context, v bool) *quickjs.Value {
 	if v {
-		return ctx.NewFloat64(1), nil
+		return ctx.NewFloat64(1)
 	}
-	return ctx.NewFloat64(0), nil
+	return ctx.NewFloat64(0)
 }
 
 // retVoid returns 0 for void functions.
-func retVoid(ctx *qjs.Context) (*qjs.Value, error) {
-	return ctx.NewFloat64(0), nil
+func retVoid(ctx *quickjs.Context) *quickjs.Value {
+	return ctx.NewFloat64(0)
+}
+
+// setFunc registers a bridge function as a global JS function.
+// This helper standardizes the registration pattern for all bridge functions.
+func setFunc(ctx *quickjs.Context, name string, fn func(ctx *quickjs.Context, args []*quickjs.Value) *quickjs.Value) {
+	ctx.Globals().Set(name, ctx.NewFunction(func(c *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		return fn(c, args)
+	}))
 }
 
 // RegisterBinaryenBridgeImpl re-registers all Binaryen bridge functions
 // with real CGo implementations, overriding the stubs from RegisterBinaryenBridge.
-func RegisterBinaryenBridgeImpl(ctx *qjs.Context, lm *LinearMemory) {
+func RegisterBinaryenBridgeImpl(ctx *quickjs.Context, lm *LinearMemory) {
 	registerTypeImpls(ctx, lm)
 	registerHeapTypeImpls(ctx, lm)
 	registerStructArraySigTypeImpls(ctx, lm)

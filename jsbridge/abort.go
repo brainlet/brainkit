@@ -1,6 +1,6 @@
 package jsbridge
 
-import "github.com/fastschema/qjs"
+import quickjs "github.com/buke/quickjs-go"
 
 // AbortPolyfill provides AbortController and AbortSignal (pure JS).
 type AbortPolyfill struct{}
@@ -10,7 +10,7 @@ func Abort() *AbortPolyfill { return &AbortPolyfill{} }
 
 func (p *AbortPolyfill) Name() string { return "abort" }
 
-func (p *AbortPolyfill) Setup(ctx *qjs.Context) error {
+func (p *AbortPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, abortJS)
 }
 
