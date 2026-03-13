@@ -7,3 +7,7 @@
 # Build dependencies (downloaded by setup scripts, not committed)
 as-embed/deps/
 
+
+.a*
+.s*
+.c*

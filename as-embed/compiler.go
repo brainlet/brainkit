@@ -30,7 +30,7 @@ type Compiler struct {
 // CompilerConfig controls Compiler creation.
 type CompilerConfig struct {
 	MemoryLimit  int // bytes; default 512MB
-	MaxStackSize int // bytes; default 8MB
+	MaxStackSize int // bytes; default 0 (disabled — see below)
 }
 
 // CompileOptions controls compilation behavior.
@@ -61,9 +61,14 @@ func NewCompilerWithConfig(cfg CompilerConfig) (*Compiler, error) {
 	if cfg.MemoryLimit == 0 {
 		cfg.MemoryLimit = 512 * 1024 * 1024 // 512MB
 	}
-	if cfg.MaxStackSize == 0 {
-		cfg.MaxStackSize = 8 * 1024 * 1024 // 8MB
-	}
+	// MaxStackSize=0 disables QuickJS's JS_SetMaxStackSize check.
+	// This is intentional: the AS compiler's deep recursion (200-500 JS
+	// frames during std library compilation) combined with CGo stack
+	// position variability causes QuickJS's stack_top-based detection to
+	// fire false positives. The OS provides SIGSEGV protection against
+	// real stack exhaustion, and compileWithRecover() catches panics.
+	// See: buke/quickjs-go never calls JS_UpdateStackTop() to recalibrate
+	// the stack pointer after CGo transitions.
 
 	b, err := jsbridge.New(jsbridge.Config{
 		MemoryLimit:  cfg.MemoryLimit,
