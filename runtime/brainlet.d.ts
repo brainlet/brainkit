@@ -166,14 +166,47 @@ declare module "brainlet" {
    */
   export function output(value: any): void;
 
+  /**
+   * WASM operations — compile AssemblyScript and execute WASM modules.
+   * Compilation uses as-embed (separate QuickJS runtime, CPU-bound).
+   * Execution uses wazero (Go WASM runtime).
+   *
+   * @example
+   * ```ts
+   * const mod = await wasm.compile('export function run(): i32 { return 42; }');
+   * const result = await wasm.run(mod, {});
+   * console.log(result.exitCode); // 42
+   * ```
+   */
+  export const wasm: {
+    /** Compile AssemblyScript source to WASM. Returns a module handle. */
+    compile(source: string, opts?: WASMCompileOpts): Promise<WASMModule>;
+
+    /** Execute a compiled WASM module. */
+    run(module: WASMModule, input?: any): Promise<WASMRunResult>;
+
+    // ── Not yet wired ──────────────────────────────────────────
+    // validate(module: WASMModule): Promise<void>;
+    // deploy(module: WASMModule, trigger: TriggerConfig): Promise<void>;
+  };
+
+  interface WASMCompileOpts {
+    optimizeLevel?: number;
+    shrinkLevel?: number;
+    debug?: boolean;
+    runtime?: "stub" | "incremental" | "minimal";
+  }
+
+  interface WASMModule {
+    moduleId: string;
+  }
+
+  interface WASMRunResult {
+    exitCode: number;
+    value?: number;
+  }
+
   // ── Not yet wired ──────────────────────────────────────────────
-  // export const wasm: {
-  //   compile(source: string, opts?: WASMCompileOpts): Promise<WASMModule>;
-  //   run(module: WASMModule, input?: any): Promise<any>;
-  //   validate(module: WASMModule): Promise<void>;
-  //   deploy(module: WASMModule, trigger: TriggerConfig): Promise<void>;
-  // };
-  //
   // export const agents: {
   //   request(agentId: string, prompt: string): Promise<AgentResult>;
   //   send(agentId: string, message: string): Promise<void>;
