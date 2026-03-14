@@ -11,39 +11,20 @@ import (
 	"github.com/brainlet/brainkit/registry"
 )
 
-func TestKitCreateSandbox(t *testing.T) {
+func TestKitCreate(t *testing.T) {
 	kit := newTestKit(t)
-
-	sandbox, err := kit.CreateSandbox(SandboxConfig{
-		Namespace: "test",
-		CallerID:  "test.kit",
-	})
-	if err != nil {
-		t.Fatalf("CreateSandbox: %v", err)
+	if kit.Namespace() != "test" {
+		t.Errorf("namespace = %q, want test", kit.Namespace())
 	}
-	defer sandbox.Close()
-
-	if sandbox.ID() == "" {
-		t.Error("expected non-empty sandbox ID")
-	}
-	if sandbox.Namespace() != "test" {
-		t.Errorf("namespace = %q, want test", sandbox.Namespace())
-	}
-	if sandbox.CallerID() != "test.kit" {
-		t.Errorf("callerID = %q, want test.kit", sandbox.CallerID())
+	if kit.CallerID() == "" {
+		t.Error("empty callerID")
 	}
 }
 
-func TestKitSandboxAgentGenerate(t *testing.T) {
+func TestKitAgentGenerate(t *testing.T) {
 	kit := newTestKit(t)
 
-	sandbox, err := kit.CreateSandbox(SandboxConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
-
-	agent, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	agent, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name:         "test",
 		Model:        "openai/gpt-4o-mini",
 		Instructions: "Reply with exactly: KIT_WORKS",
@@ -53,7 +34,7 @@ func TestKitSandboxAgentGenerate(t *testing.T) {
 	}
 
 	result, err := agent.Generate(context.Background(), agentembed.GenerateParams{
-		Prompt: "Say the magic word",
+		Prompt: "Say it",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,28 +43,6 @@ func TestKitSandboxAgentGenerate(t *testing.T) {
 	t.Logf("Response: %q", result.Text)
 	if result.Text == "" {
 		t.Error("expected non-empty response")
-	}
-}
-
-func TestKitMultipleSandboxes(t *testing.T) {
-	kit := newTestKitNoKey(t)
-
-	s1, err := kit.CreateSandbox(SandboxConfig{Namespace: "team-a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s2, err := kit.CreateSandbox(SandboxConfig{Namespace: "team-b"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s1.Close()
-	defer s2.Close()
-
-	if s1.ID() == s2.ID() {
-		t.Error("sandboxes should have different IDs")
-	}
-	if s1.Namespace() == s2.Namespace() {
-		t.Error("sandboxes should have different namespaces")
 	}
 }
 
@@ -102,7 +61,6 @@ func TestKitBusPubSub(t *testing.T) {
 
 	select {
 	case <-received:
-		// ok
 	case <-time.After(time.Second):
 		t.Fatal("timeout")
 	}

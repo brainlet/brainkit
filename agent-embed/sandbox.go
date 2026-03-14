@@ -27,6 +27,9 @@ type SandboxConfig struct {
 	// EnvVars injected into process.env within this sandbox.
 	// Fallback for provider resolution when Providers map doesn't have the key.
 	EnvVars map[string]string
+
+	// MaxStackSize for the QuickJS runtime in bytes. 0 = use jsbridge default.
+	MaxStackSize int
 }
 
 // Sandbox is an isolated execution environment with its own QuickJS runtime.
@@ -52,7 +55,12 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		fetchOpts = append(fetchOpts, jsbridge.FetchClient(cfg.HTTPClient))
 	}
 
-	b, err := jsbridge.New(jsbridge.Config{},
+	bridgeCfg := jsbridge.Config{}
+	if cfg.MaxStackSize > 0 {
+		bridgeCfg.MaxStackSize = cfg.MaxStackSize
+	}
+
+	b, err := jsbridge.New(bridgeCfg,
 		jsbridge.Console(),
 		jsbridge.Encoding(),
 		jsbridge.Streams(),

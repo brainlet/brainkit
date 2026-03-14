@@ -45,11 +45,7 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		cfg.MemoryLimit = 256 * 1024 * 1024
 	}
 	if cfg.MaxStackSize == 0 {
-		// 256MB — QuickJS's stack_top-based detection misfires with CGo
-		// because stack position varies between CGo transitions. 256MB puts
-		// the threshold well below the OS thread stack so only real exhaustion
-		// (SIGSEGV) triggers. See as-embed-fixes memory note.
-		cfg.MaxStackSize = 256 * 1024 * 1024
+		cfg.MaxStackSize = 64 * 1024 * 1024 // 64MB
 	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = os.Stdout
@@ -194,6 +190,16 @@ func (b *Bridge) EvalBytecode(bytecode []byte) (*quickjs.Value, error) {
 // Safe for concurrent use — calls are serialized via mutex.
 // Panics from Go bridge functions are caught and returned as errors.
 func (b *Bridge) EvalAsync(file string, code string) (result *quickjs.Value, err error) {
+	return b.evalAsync(file, code, false)
+}
+
+// EvalAsyncModule evaluates JavaScript as an ES module with top-level await support.
+// import statements are resolved against pre-loaded modules (e.g., "brainlet").
+func (b *Bridge) EvalAsyncModule(file string, code string) (result *quickjs.Value, err error) {
+	return b.evalAsync(file, code, true)
+}
+
+func (b *Bridge) evalAsync(file string, code string, module bool) (result *quickjs.Value, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	defer func() {
@@ -202,7 +208,11 @@ func (b *Bridge) EvalAsync(file string, code string) (result *quickjs.Value, err
 			err = fmt.Errorf("jsbridge: panic during eval: %v", r)
 		}
 	}()
-	val := b.ctx.Eval(code, quickjs.EvalFileName(file))
+	opts := []quickjs.EvalOption{quickjs.EvalFileName(file)}
+	if module {
+		opts = append(opts, quickjs.EvalFlagModule(true))
+	}
+	val := b.ctx.Eval(code, opts...)
 	if val.IsException() {
 		e := b.ctx.Exception()
 		val.Free()

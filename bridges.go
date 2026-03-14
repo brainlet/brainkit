@@ -8,10 +8,9 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 )
 
-// registerBridges adds Go bridge functions to the sandbox's QuickJS context.
-// Called by brainlet-runtime.js for PLATFORM operations.
-func (s *Sandbox) registerBridges() {
-	ctx := s.agents.Bridge().Context()
+// registerBridges adds Go bridge functions to the Kit's QuickJS context.
+func (k *Kit) registerBridges() {
+	ctx := k.bridge.Context()
 
 	// __go_brainkit_request(topic, payloadJSON) → resultJSON
 	ctx.Globals().Set("__go_brainkit_request",
@@ -23,7 +22,7 @@ func (s *Sandbox) registerBridges() {
 			payload := json.RawMessage(args[1].String())
 
 			goCtx := context.Background()
-			resp, err := s.kit.Bus.Request(goCtx, topic, s.callerID, payload)
+			resp, err := k.Bus.Request(goCtx, topic, k.callerID, payload)
 			if err != nil {
 				return qctx.ThrowError(fmt.Errorf("brainkit_request %s: %w", topic, err))
 			}
@@ -31,8 +30,8 @@ func (s *Sandbox) registerBridges() {
 			return qctx.NewString(string(resp.Payload))
 		}))
 
-	// Set sandbox context globals
-	ctx.Globals().Set("__brainkit_sandbox_id", ctx.NewString(s.id))
-	ctx.Globals().Set("__brainkit_sandbox_namespace", ctx.NewString(s.namespace))
-	ctx.Globals().Set("__brainkit_sandbox_callerID", ctx.NewString(s.callerID))
+	// Set context globals
+	ctx.Globals().Set("__brainkit_sandbox_id", ctx.NewString(k.agents.ID()))
+	ctx.Globals().Set("__brainkit_sandbox_namespace", ctx.NewString(k.namespace))
+	ctx.Globals().Set("__brainkit_sandbox_callerID", ctx.NewString(k.callerID))
 }

@@ -124,17 +124,45 @@
     return result;
   }
 
-  // ai.* — direct LLM calls via ai-embed
+  // ai.* — LOCAL: direct LLM calls via AI SDK in the same runtime.
+  // Uses a temporary Mastra Agent as a thin wrapper around the AI SDK.
+  // No bus round-trip, no separate QuickJS runtime.
   var ai = {
     generate: async function(params) {
-      var raw = bridgeRequest("ai.generate", params);
-      return parseBridgeResponse(raw);
+      var model = resolveModel(params.model);
+      var a = new embed.Agent({
+        name: "__ai_generate",
+        model: model,
+        instructions: params.system || "",
+      });
+      var result = await a.generate(params.prompt || "", {});
+      return {
+        text: result.text || "",
+        reasoning: result.reasoningText || "",
+        usage: {
+          promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
+          completionTokens: result.usage?.outputTokens || result.usage?.completionTokens || 0,
+          totalTokens: result.usage?.totalTokens || 0,
+        },
+        finishReason: result.finishReason || "stop",
+        response: {
+          id: result.response?.id || "",
+          modelId: result.response?.modelId || "",
+          timestamp: result.response?.timestamp?.toISOString?.() || "",
+        },
+      };
     },
     stream: async function(params) {
-      var raw = bridgeRequest("ai.stream", params);
-      return parseBridgeResponse(raw);
+      var model = resolveModel(params.model);
+      var a = new embed.Agent({
+        name: "__ai_stream",
+        model: model,
+        instructions: params.system || "",
+      });
+      return await a.stream(params.prompt || "", {});
     },
     embed: async function(params) {
+      // Embedding still routes through Go bridge (not available directly in Mastra bundle)
       var raw = bridgeRequest("ai.embed", params);
       return parseBridgeResponse(raw);
     },

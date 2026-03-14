@@ -13,19 +13,13 @@ import (
 )
 
 // ═══════════════════════════════════════════════════════════════
-// LOCAL OPERATIONS — within one sandbox, direct Mastra
-// Every test here is a promise: "this works in a .ts file"
+// LOCAL OPERATIONS — within the Kit's runtime
 // ═══════════════════════════════════════════════════════════════
 
 func TestContract_LocalAgentGenerate(t *testing.T) {
 	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
-	agent, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	agent, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name:         "greeter",
 		Model:        "openai/gpt-4o-mini",
 		Instructions: "Reply with exactly: HELLO_CONTRACT",
@@ -49,13 +43,8 @@ func TestContract_LocalAgentGenerate(t *testing.T) {
 
 func TestContract_LocalAgentStream(t *testing.T) {
 	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
-	agent, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	agent, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name:         "streamer",
 		Model:        "openai/gpt-4o-mini",
 		Instructions: "Count from 1 to 3, one per line.",
@@ -86,14 +75,9 @@ func TestContract_LocalAgentStream(t *testing.T) {
 
 func TestContract_LocalAgentWithTools(t *testing.T) {
 	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
 	toolCalled := false
-	agent, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	agent, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name:         "tool-user",
 		Model:        "openai/gpt-4o-mini",
 		Instructions: "Always use the add tool when asked to compute.",
@@ -133,20 +117,15 @@ func TestContract_LocalAgentWithTools(t *testing.T) {
 
 func TestContract_LocalMultipleAgents(t *testing.T) {
 	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
-	a1, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	a1, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name: "a1", Model: "openai/gpt-4o-mini",
 		Instructions: "Reply with exactly: ALPHA",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a2, err := sandbox.AgentSandbox().CreateAgent(agentembed.AgentConfig{
+	a2, err := kit.CreateAgent(agentembed.AgentConfig{
 		Name: "a2", Model: "openai/gpt-4o-mini",
 		Instructions: "Reply with exactly: BETA",
 	})
@@ -173,18 +152,13 @@ func TestContract_LocalMultipleAgents(t *testing.T) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// .ts EXECUTION — the brainlet import surface
+// .ts EXECUTION — brainlet import surface
 // ═══════════════════════════════════════════════════════════════
 
 func TestContract_TSAgentGenerate(t *testing.T) {
 	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
-	result, err := sandbox.EvalTS(context.Background(), "test.ts", `
+	result, err := kit.EvalTS(context.Background(), "test.ts", `
 		const a = agent({
 			model: "openai/gpt-4o-mini",
 			instructions: "Reply with exactly: TS_WORKS",
@@ -204,18 +178,43 @@ func TestContract_TSAgentGenerate(t *testing.T) {
 	t.Logf("Contract .ts agent.generate: %q", out.Text)
 }
 
+func TestContract_TSAIGenerate(t *testing.T) {
+	kit := newTestKit(t)
+
+	result, err := kit.EvalTS(context.Background(), "test-ai.ts", `
+		try {
+			const r = await ai.generate({
+				model: "openai/gpt-4o-mini",
+				prompt: "Reply with exactly: AI_LOCAL_WORKS",
+			});
+			return JSON.stringify({ text: r.text, hasUsage: !!r.usage });
+		} catch(e) {
+			return JSON.stringify({ error: e.message });
+		}
+	`)
+	if err != nil {
+		t.Fatalf("EvalTS: %v", err)
+	}
+
+	var out struct {
+		Text     string `json:"text"`
+		HasUsage bool   `json:"hasUsage"`
+		Error    string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if out.Error != "" {
+		t.Fatalf("ai.generate error: %s", out.Error)
+	}
+	if !strings.Contains(strings.ToUpper(out.Text), "AI_LOCAL_WORKS") {
+		t.Errorf("unexpected: %q", out.Text)
+	}
+	t.Logf("Contract .ts ai.generate (LOCAL): %q, hasUsage=%v", out.Text, out.HasUsage)
+}
+
 func TestContract_TSSandboxContext(t *testing.T) {
 	kit := newTestKitNoKey(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{
-		Namespace: "test.context",
-		CallerID:  "test.context.caller",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
 
-	result, err := sandbox.EvalTS(context.Background(), "test-ctx.ts", `
+	result, err := kit.EvalTS(context.Background(), "test-ctx.ts", `
 		return JSON.stringify({
 			id: sandbox.id,
 			namespace: sandbox.namespace,
@@ -236,68 +235,21 @@ func TestContract_TSSandboxContext(t *testing.T) {
 	if ctx.ID == "" {
 		t.Error("expected non-empty sandbox.id")
 	}
-	if ctx.Namespace != "test.context" {
-		t.Errorf("sandbox.namespace = %q, want test.context", ctx.Namespace)
-	}
-	if ctx.CallerID != "test.context.caller" {
-		t.Errorf("sandbox.callerID = %q, want test.context.caller", ctx.CallerID)
+	if ctx.Namespace != "test" {
+		t.Errorf("sandbox.namespace = %q, want test", ctx.Namespace)
 	}
 	t.Logf("Contract .ts sandbox context: %+v", ctx)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PLATFORM OPERATIONS — .ts calling ai-embed and tools through bus
+// PLATFORM OPERATIONS — tools through bus
 // ═══════════════════════════════════════════════════════════════
-
-func TestContract_TSAIGenerate(t *testing.T) {
-	kit := newTestKit(t)
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
-
-	result, err := sandbox.EvalTS(context.Background(), "test-ai.ts", `
-		try {
-			const r = await ai.generate({
-				model: "openai/gpt-4o-mini",
-				prompt: "Reply with exactly: AI_BRIDGE_WORKS",
-			});
-			return JSON.stringify({ text: r.text, hasUsage: !!r.usage });
-		} catch(e) {
-			return JSON.stringify({ error: e.message });
-		}
-	`)
-	if err != nil {
-		t.Fatalf("EvalTS: %v", err)
-	}
-
-	var out struct {
-		Text     string `json:"text"`
-		HasUsage bool   `json:"hasUsage"`
-		Error    string `json:"error"`
-	}
-	json.Unmarshal([]byte(result), &out)
-	if out.Error != "" {
-		t.Fatalf("ai.generate error: %s", out.Error)
-	}
-	if !strings.Contains(strings.ToUpper(out.Text), "AI_BRIDGE_WORKS") {
-		t.Errorf("unexpected: %q", out.Text)
-	}
-	if !out.HasUsage {
-		t.Error("expected usage data")
-	}
-	t.Logf("Contract .ts ai.generate: %q, hasUsage=%v", out.Text, out.HasUsage)
-}
 
 func TestContract_TSToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
-	// Register a Go tool
 	kit.Tools.Register(registry.RegisteredTool{
 		Name: "platform.multiply", ShortName: "multiply", Namespace: "platform",
-		Description: "Multiplies two numbers",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"number"},"b":{"type":"number"}}}`),
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				var args struct{ A, B float64 }
@@ -308,14 +260,7 @@ func TestContract_TSToolsCall(t *testing.T) {
 		},
 	})
 
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
-
-	// Call the Go tool from .ts through the bus
-	result, err := sandbox.EvalTS(context.Background(), "test-tool.ts", `
+	result, err := kit.EvalTS(context.Background(), "test-tool.ts", `
 		const r = await tools.call("multiply", {a: 6, b: 7});
 		return JSON.stringify(r);
 	`)
@@ -334,7 +279,6 @@ func TestContract_TSToolsCall(t *testing.T) {
 func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
-	// Register a tool in plugin namespace
 	kit.Tools.Register(registry.RegisteredTool{
 		Name: "plugin.math@1.0.0.square", ShortName: "square",
 		Namespace: "plugin.math@1.0.0",
@@ -348,14 +292,7 @@ func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
 		},
 	})
 
-	sandbox, err := kit.CreateSandbox(SandboxConfig{Namespace: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sandbox.Close()
-
-	// Short name — should resolve to plugin.math@1.0.0.square
-	result, err := sandbox.EvalTS(context.Background(), "test-ns.ts", `
+	result, err := kit.EvalTS(context.Background(), "test-ns.ts", `
 		const r = await tools.call("square", {n: 9});
 		return JSON.stringify(r);
 	`)
@@ -368,11 +305,11 @@ func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
 	if out.Result != 81 {
 		t.Errorf("result = %v, want 81", out.Result)
 	}
-	t.Logf("Contract .ts tools.call (namespace resolution): square(9) = %v", out.Result)
+	t.Logf("Contract .ts tools.call (namespace): square(9) = %v", out.Result)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BUS OPERATIONS — pure infrastructure, no API keys needed
+// BUS + REGISTRY — infrastructure
 // ═══════════════════════════════════════════════════════════════
 
 func TestContract_BusPubSub(t *testing.T) {
@@ -415,17 +352,12 @@ func TestContract_BusRequestResponse(t *testing.T) {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// TOOL REGISTRY — namespace resolution
-// ═══════════════════════════════════════════════════════════════
-
 func TestContract_ToolRegistryResolve(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	kit.Tools.Register(registry.RegisteredTool{
 		Name: "platform.echo", ShortName: "echo", Namespace: "platform",
 		Description: "Echoes input",
-		InputSchema: json.RawMessage(`{"type":"object"}`),
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				return input, nil
@@ -451,56 +383,23 @@ func TestContract_ToolRegistryResolve(t *testing.T) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SANDBOX ISOLATION — security guarantees
+// KIT ISOLATION
 // ═══════════════════════════════════════════════════════════════
 
-func TestContract_SandboxIsolation(t *testing.T) {
-	kit := newTestKitNoKey(t)
+func TestContract_KitIsolation(t *testing.T) {
+	kit1 := newTestKitNoKey(t)
+	kit2 := newTestKitNoKey(t)
 
-	s1, err := kit.CreateSandbox(SandboxConfig{Namespace: "team-a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s2, err := kit.CreateSandbox(SandboxConfig{Namespace: "team-b"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s1.Close()
-	defer s2.Close()
-
-	// Different IDs
-	if s1.ID() == s2.ID() {
-		t.Error("sandboxes should have different IDs")
+	// Different runtimes
+	if kit1.agents.ID() == kit2.agents.ID() {
+		t.Error("Kits should have different runtime IDs")
 	}
 
-	// Different namespaces
-	if s1.Namespace() == s2.Namespace() {
-		t.Error("sandboxes should have different namespaces")
-	}
-
-	// Agents in s1 are NOT visible in s2 (separate QuickJS runtimes)
-	// Verify by checking __agents registry in each sandbox
-	r1, _ := s1.Eval(context.Background(), "check.js", `JSON.stringify(Object.keys(globalThis.__agents))`)
-	r2, _ := s2.Eval(context.Background(), "check.js", `JSON.stringify(Object.keys(globalThis.__agents))`)
+	// Agents in kit1 NOT visible in kit2 (separate QuickJS runtimes)
+	r1, _ := kit1.agents.Eval(context.Background(), "check.js", `JSON.stringify(Object.keys(globalThis.__agents))`)
+	r2, _ := kit2.agents.Eval(context.Background(), "check.js", `JSON.stringify(Object.keys(globalThis.__agents))`)
 
 	if r1 != "[]" || r2 != "[]" {
-		t.Logf("s1 agents: %s, s2 agents: %s (both should be empty)", r1, r2)
-	}
-}
-
-func TestContract_CallerIDOnSandbox(t *testing.T) {
-	kit := newTestKitNoKey(t)
-
-	s, err := kit.CreateSandbox(SandboxConfig{
-		Namespace: "user",
-		CallerID:  "user.test-script",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	if s.CallerID() != "user.test-script" {
-		t.Errorf("callerID = %q, want user.test-script", s.CallerID())
+		t.Logf("kit1 agents: %s, kit2 agents: %s", r1, r2)
 	}
 }

@@ -1,0 +1,9 @@
+export const agent = globalThis.__brainlet.agent;
+export const createTool = globalThis.__brainlet.createTool;
+export const z = globalThis.__brainlet.z;
+export const ai = globalThis.__brainlet.ai;
+export const wasm = globalThis.__brainlet.wasm;
+export const tools = globalThis.__brainlet.tools;
+export const tool = globalThis.__brainlet.tool;
+export const bus = globalThis.__brainlet.bus;
+export const sandbox = globalThis.__brainlet.sandbox;

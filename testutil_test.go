@@ -40,6 +40,7 @@ func newTestKit(t *testing.T) *Kit {
 	t.Helper()
 	key := requireKey(t)
 	kit, err := New(Config{
+		Namespace: "test",
 		Providers: map[string]ProviderConfig{
 			"openai": {APIKey: key},
 		},
@@ -51,10 +52,9 @@ func newTestKit(t *testing.T) *Kit {
 	return kit
 }
 
-// newTestKitNoKey creates a Kit without API keys — for bus/registry tests.
 func newTestKitNoKey(t *testing.T) *Kit {
 	t.Helper()
-	kit, err := New(Config{})
+	kit, err := New(Config{Namespace: "test"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

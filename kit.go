@@ -6,49 +6,79 @@ import (
 	"fmt"
 	"sync"
 
+	agentembed "github.com/brainlet/brainkit/agent-embed"
 	"github.com/brainlet/brainkit/bus"
+	"github.com/brainlet/brainkit/jsbridge"
 	"github.com/brainlet/brainkit/registry"
 )
 
 // Kit is the brainkit execution engine.
+// One Kit = one QuickJS runtime = one isolation boundary.
+// All agents, AI calls, workflows share the same JS context.
 type Kit struct {
-	Bus    *bus.Bus
-	Tools  *registry.ToolRegistry
-	ai     *AIService
-	config Config
+	Bus       *bus.Bus
+	Tools     *registry.ToolRegistry
+	config    Config
+	namespace string
+	callerID  string
+	bridge    *jsbridge.Bridge
+	agents    *agentembed.Sandbox
 
-	mu        sync.Mutex
-	sandboxes map[string]*Sandbox
-	closed    bool
+	mu     sync.Mutex
+	closed bool
 }
 
-// New creates a new Kit.
+// New creates a Kit with one QuickJS runtime.
 func New(cfg Config) (*Kit, error) {
+	if cfg.Namespace == "" {
+		cfg.Namespace = "user"
+	}
+	if cfg.CallerID == "" {
+		cfg.CallerID = cfg.Namespace
+	}
+
 	k := &Kit{
 		Bus:       bus.New(),
 		Tools:     registry.New(),
 		config:    cfg,
-		sandboxes: make(map[string]*Sandbox),
+		namespace: cfg.Namespace,
+		callerID:  cfg.CallerID,
 	}
 
-	// Create AI service (has its own QuickJS runtime via ai-embed)
-	// Only initialize if we have provider configs (avoids loading the bundle for bus-only tests)
-	if len(cfg.Providers) > 0 {
-		ai, err := newAIService(k)
-		if err != nil {
-			return nil, err
-		}
-		k.ai = ai
-	} else {
-		k.ai = &AIService{kit: k}
+	// Build provider config for agent-embed
+	providers := make(map[string]agentembed.ProviderConfig)
+	for name, pc := range cfg.Providers {
+		providers[name] = agentembed.ProviderConfig{APIKey: pc.APIKey, BaseURL: pc.BaseURL}
 	}
 
+	// Create THE single agent-embed sandbox (one QuickJS runtime)
+	agentSandbox, err := agentembed.NewSandbox(agentembed.SandboxConfig{
+		Providers:    providers,
+		EnvVars:      cfg.EnvVars,
+		MaxStackSize: cfg.MaxStackSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("brainkit: create runtime: %w", err)
+	}
+	k.agents = agentSandbox
+	k.bridge = agentSandbox.Bridge()
+
+	// Register Go bridges for PLATFORM operations
+	k.registerBridges()
+
+	// Load brainlet-runtime.js + register "brainlet" ES module
+	if err := k.loadRuntime(); err != nil {
+		agentSandbox.Close()
+		return nil, err
+	}
+
+	// Register bus handlers
 	k.registerHandlers()
 
 	return k, nil
 }
 
-// Close shuts down all sandboxes and the bus.
+// Close shuts down the runtime and the bus.
 func (k *Kit) Close() {
 	k.mu.Lock()
 	if k.closed {
@@ -56,24 +86,56 @@ func (k *Kit) Close() {
 		return
 	}
 	k.closed = true
-	sandboxes := make([]*Sandbox, 0, len(k.sandboxes))
-	for _, s := range k.sandboxes {
-		sandboxes = append(sandboxes, s)
-	}
 	k.mu.Unlock()
 
-	for _, s := range sandboxes {
-		s.Close()
-	}
-	if k.ai != nil {
-		k.ai.close()
+	if k.agents != nil {
+		k.agents.Close()
 	}
 	k.Bus.Close()
 }
 
-func (k *Kit) registerHandlers() {
-	k.Bus.Handle("ai.*", k.ai.handleBusMessage)
+// Namespace returns the Kit's namespace.
+func (k *Kit) Namespace() string { return k.namespace }
 
+// CallerID returns the Kit's identity for bus messages.
+func (k *Kit) CallerID() string { return k.callerID }
+
+// CreateAgent creates a persistent agent in the Kit's runtime.
+func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error) {
+	return k.agents.CreateAgent(cfg)
+}
+
+// EvalTS runs .ts-style code with brainlet imports destructured.
+func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
+	wrapped := fmt.Sprintf(`(async () => {
+		const { agent, createTool, z, ai, wasm, tools, tool, bus, sandbox } = globalThis.__brainlet;
+		%s
+	})()`, code)
+	return k.agents.Eval(ctx, filename, wrapped)
+}
+
+// EvalModule runs code as an ES module with import { ... } from "brainlet".
+func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, error) {
+	k.bridge.Eval("__clear_result.js", `delete globalThis.__module_result`)
+
+	val, err := k.bridge.EvalAsyncModule(filename, code)
+	if err != nil {
+		return "", fmt.Errorf("brainkit: eval module: %w", err)
+	}
+	if val != nil {
+		val.Free()
+	}
+
+	result, err := k.bridge.Eval("__get_result.js",
+		`typeof globalThis.__module_result !== 'undefined' ? String(globalThis.__module_result) : ""`)
+	if err != nil {
+		return "", err
+	}
+	defer result.Free()
+	return result.String(), nil
+}
+
+func (k *Kit) registerHandlers() {
 	k.Bus.Handle("tools.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
 		var req struct {
 			Name  string          `json:"name"`
@@ -93,9 +155,6 @@ func (k *Kit) registerHandlers() {
 			return nil, err
 		}
 
-		return &bus.Message{
-			Topic:   msg.ReplyTo,
-			Payload: result,
-		}, nil
+		return &bus.Message{Payload: result}, nil
 	})
 }
