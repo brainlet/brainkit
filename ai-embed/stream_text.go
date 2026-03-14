@@ -11,6 +11,7 @@ type StreamTextParams struct {
 	ToolChoice      *ToolChoice                        `json:"toolChoice,omitempty"`
 	MaxSteps        int                                `json:"maxSteps,omitempty"`
 	ProviderOptions map[string]map[string]interface{}  `json:"providerOptions,omitempty"`
+	Middleware      []MiddlewareConfig                 `json:"-"`
 	OnToken         func(token string)                 `json:"-"`
 	OnToolCall      func(ToolCall)                     `json:"-"`
 	OnStepFinish    func(StepResult)                   `json:"-"`

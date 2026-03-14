@@ -13,9 +13,10 @@ import (
 
 // ClientConfig configures an AI SDK client.
 type ClientConfig struct {
-	HTTPClient      *http.Client    // optional; defaults to http.DefaultClient
-	DefaultProvider *ProviderConfig // optional; default provider for all calls
+	HTTPClient      *http.Client      // optional; defaults to http.DefaultClient
+	DefaultProvider *ProviderConfig   // optional; default provider for all calls
 	EnvVars         map[string]string // optional; env vars for API key resolution
+	Middleware      []MiddlewareConfig // optional; default middleware for all calls
 }
 
 // Client wraps a jsbridge.Bridge with a loaded AI SDK bundle.
@@ -23,6 +24,7 @@ type Client struct {
 	bridge          *jsbridge.Bridge
 	defaultProvider *ProviderConfig
 	envVars         map[string]string
+	middleware      []MiddlewareConfig
 }
 
 // NewClient creates a Client with all polyfills and the AI SDK bundle loaded.
@@ -57,6 +59,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		bridge:          b,
 		defaultProvider: cfg.DefaultProvider,
 		envVars:         cfg.EnvVars,
+		middleware:      cfg.Middleware,
 	}, nil
 }
 
@@ -70,9 +73,30 @@ func (c *Client) Close() {
 // Bridge returns the underlying jsbridge.Bridge for advanced use.
 func (c *Client) Bridge() *jsbridge.Bridge { return c.bridge }
 
+// resolveModelJS builds the model JS expression with optional middleware wrapping.
+func (c *Client) resolveModelJS(m Model, perCallMiddleware []MiddlewareConfig) (string, error) {
+	modelJS, err := buildProviderJS(m, c.defaultProvider, c.envVars)
+	if err != nil {
+		return "", err
+	}
+
+	// Merge client-level and per-call middleware
+	var allMW []MiddlewareConfig
+	allMW = append(allMW, c.middleware...)
+	allMW = append(allMW, perCallMiddleware...)
+
+	if len(allMW) > 0 {
+		modelJS, err = buildMiddlewareJS(modelJS, allMW)
+		if err != nil {
+			return "", err
+		}
+	}
+	return modelJS, nil
+}
+
 // GenerateText calls the AI SDK's generateText function.
 func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, error) {
-	modelJS, err := buildProviderJS(params.Model, c.defaultProvider, c.envVars)
+	modelJS, err := c.resolveModelJS(params.Model, params.Middleware)
 	if err != nil {
 		return nil, fmt.Errorf("ai-embed: generateText: %w", err)
 	}
@@ -80,7 +104,6 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 	// Register Go tool callbacks if tools are provided
 	toolsJS := ""
 	if len(params.Tools) > 0 {
-		// Register the Go callback for tool execution
 		ctx := c.bridge.Context()
 		ctx.Globals().Set("__go_execute_tool", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
@@ -106,7 +129,6 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 			return qctx.NewString(string(resultJSON))
 		}))
 
-		// Build JS tool definitions
 		var toolDefs []string
 		for name, tool := range params.Tools {
 			hasExecute := tool.Execute != nil
@@ -126,7 +148,6 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 		toolsJS = fmt.Sprintf("opts.tools = {%s};", strings.Join(toolDefs, ",\n"))
 	}
 
-	// Build the prompt/messages payload
 	paramsJSON, err := json.Marshal(struct {
 		Prompt          string                            `json:"prompt,omitempty"`
 		System          string                            `json:"system,omitempty"`
@@ -146,7 +167,6 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 
 	callSettings := buildCallSettingsJS(params.CallSettings)
 
-	// Build toolChoice JS if specified
 	toolChoiceJS := ""
 	if params.ToolChoice != nil {
 		switch params.ToolChoice.Mode {
@@ -216,27 +236,26 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 
 	val, err := c.bridge.Eval("generate-text.js", js, quickjs.EvalAwait(true))
 	if err != nil {
-		return nil, fmt.Errorf("ai-embed: generateText: %w", err)
+		return nil, classifyJSError("generateText", err)
 	}
 	defer val.Free()
 
 	var result GenerateTextResult
 	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
-		return nil, fmt.Errorf("ai-embed: parse result: %w", err)
+		return nil, &InvalidResponseError{Message: "generateText: " + err.Error(), Data: val.String()}
 	}
 	return &result, nil
 }
 
 // StreamText calls the AI SDK's streamText function, streaming tokens via callbacks.
 func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) {
-	modelJS, err := buildProviderJS(params.Model, c.defaultProvider, c.envVars)
+	modelJS, err := c.resolveModelJS(params.Model, params.Middleware)
 	if err != nil {
 		return nil, fmt.Errorf("ai-embed: streamText: %w", err)
 	}
 
 	ctx := c.bridge.Context()
 
-	// Register token callback
 	ctx.Globals().Set("__go_stream_token", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) > 0 && params.OnToken != nil {
 			params.OnToken(args[0].String())
@@ -244,7 +263,6 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 		return qctx.NewBool(true)
 	}))
 
-	// Build the prompt/messages payload
 	paramsJSON, err := json.Marshal(struct {
 		Prompt          string                            `json:"prompt,omitempty"`
 		System          string                            `json:"system,omitempty"`
@@ -305,20 +323,20 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 
 	val, err := c.bridge.Eval("stream-text.js", js, quickjs.EvalAwait(true))
 	if err != nil {
-		return nil, fmt.Errorf("ai-embed: streamText: %w", err)
+		return nil, classifyJSError("streamText", err)
 	}
 	defer val.Free()
 
 	var result StreamTextResult
 	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
-		return nil, fmt.Errorf("ai-embed: parse streamText result: %w", err)
+		return nil, &InvalidResponseError{Message: "streamText: " + err.Error(), Data: val.String()}
 	}
 	return &result, nil
 }
 
 // GenerateObject calls the AI SDK's generateObject function.
 func (c *Client) GenerateObject(params GenerateObjectParams) (*GenerateObjectResult, error) {
-	modelJS, err := buildProviderJS(params.Model, c.defaultProvider, c.envVars)
+	modelJS, err := c.resolveModelJS(params.Model, params.Middleware)
 	if err != nil {
 		return nil, fmt.Errorf("ai-embed: generateObject: %w", err)
 	}
@@ -328,7 +346,6 @@ func (c *Client) GenerateObject(params GenerateObjectParams) (*GenerateObjectRes
 		return nil, fmt.Errorf("ai-embed: generateObject: schema is required")
 	}
 
-	// Build params for the JS side
 	paramsJSON, err := json.Marshal(struct {
 		Prompt            string                            `json:"prompt,omitempty"`
 		System            string                            `json:"system,omitempty"`
@@ -383,13 +400,106 @@ func (c *Client) GenerateObject(params GenerateObjectParams) (*GenerateObjectRes
 
 	val, err := c.bridge.Eval("generate-object.js", js, quickjs.EvalAwait(true))
 	if err != nil {
-		return nil, fmt.Errorf("ai-embed: generateObject: %w", err)
+		return nil, classifyJSError("generateObject", err)
 	}
 	defer val.Free()
 
 	var result GenerateObjectResult
 	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
-		return nil, fmt.Errorf("ai-embed: parse generateObject result: %w", err)
+		return nil, &InvalidResponseError{Message: "generateObject: " + err.Error(), Data: val.String()}
+	}
+	return &result, nil
+}
+
+// StreamObject calls the AI SDK's streamObject function, streaming partial objects via callbacks.
+func (c *Client) StreamObject(params StreamObjectParams) (*StreamObjectResult, error) {
+	modelJS, err := c.resolveModelJS(params.Model, params.Middleware)
+	if err != nil {
+		return nil, fmt.Errorf("ai-embed: streamObject: %w", err)
+	}
+
+	schemaJSON := string(params.Schema)
+	if schemaJSON == "" {
+		return nil, fmt.Errorf("ai-embed: streamObject: schema is required")
+	}
+
+	ctx := c.bridge.Context()
+
+	// Register partial object callback
+	ctx.Globals().Set("__go_stream_partial", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) > 0 && params.OnPartialObject != nil {
+			params.OnPartialObject(json.RawMessage(args[0].String()))
+		}
+		return qctx.NewBool(true)
+	}))
+
+	paramsJSON, err := json.Marshal(struct {
+		Prompt            string                            `json:"prompt,omitempty"`
+		System            string                            `json:"system,omitempty"`
+		Messages          []Message                         `json:"messages,omitempty"`
+		SchemaName        string                            `json:"schemaName,omitempty"`
+		SchemaDescription string                            `json:"schemaDescription,omitempty"`
+		Mode              string                            `json:"mode,omitempty"`
+		ProviderOptions   map[string]map[string]interface{} `json:"providerOptions,omitempty"`
+	}{
+		Prompt:            params.Prompt,
+		System:            params.System,
+		Messages:          params.Messages,
+		SchemaName:        params.SchemaName,
+		SchemaDescription: params.SchemaDescription,
+		Mode:              params.Mode,
+		ProviderOptions:   params.ProviderOptions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ai-embed: marshal params: %w", err)
+	}
+
+	callSettings := buildCallSettingsJS(params.CallSettings)
+
+	js := fmt.Sprintf(`(async () => {
+		const params = %s;
+		const schema = __ai_sdk.jsonSchema(%s);
+		const opts = {
+			model: %s,
+			schema: schema,
+			%s
+		};
+		if (params.prompt) opts.prompt = params.prompt;
+		if (params.system) opts.system = params.system;
+		if (params.messages) opts.messages = params.messages;
+		if (params.schemaName) opts.schemaName = params.schemaName;
+		if (params.schemaDescription) opts.schemaDescription = params.schemaDescription;
+		if (params.mode) opts.mode = params.mode;
+		if (params.providerOptions) opts.providerOptions = params.providerOptions;
+
+		const result = __ai_sdk.streamObject(opts);
+		for await (const partial of result.partialObjectStream) {
+			__go_stream_partial(JSON.stringify(partial));
+		}
+		const finalObject = await result.object;
+		const usage = await result.usage;
+		const response = await result.response;
+		return JSON.stringify({
+			object: finalObject,
+			finishReason: "stop",
+			usage: usage || {},
+			response: {
+				id: response?.id || "",
+				modelId: response?.modelId || "",
+				timestamp: response?.timestamp?.toISOString?.() || "",
+			},
+		});
+	})()`, string(paramsJSON), schemaJSON, modelJS, callSettings)
+
+	val, err := c.bridge.Eval("stream-object.js", js, quickjs.EvalAwait(true))
+	if err != nil {
+		return nil, classifyJSError("streamObject", err)
+	}
+	defer val.Free()
+
+	var result StreamObjectResult
+	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
+		return nil, &InvalidResponseError{Message: "streamObject: " + err.Error(), Data: val.String()}
 	}
 	return &result, nil
 }
@@ -416,13 +526,13 @@ func (c *Client) Embed(params EmbedParams) (*EmbedResult, error) {
 
 	val, err := c.bridge.Eval("embed.js", js, quickjs.EvalAwait(true))
 	if err != nil {
-		return nil, fmt.Errorf("ai-embed: embed: %w", err)
+		return nil, classifyJSError("embed", err)
 	}
 	defer val.Free()
 
 	var result EmbedResult
 	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
-		return nil, fmt.Errorf("ai-embed: parse embed result: %w", err)
+		return nil, &InvalidResponseError{Message: "embed: " + err.Error(), Data: val.String()}
 	}
 	return &result, nil
 }
@@ -449,13 +559,13 @@ func (c *Client) EmbedMany(params EmbedManyParams) (*EmbedManyResult, error) {
 
 	val, err := c.bridge.Eval("embed-many.js", js, quickjs.EvalAwait(true))
 	if err != nil {
-		return nil, fmt.Errorf("ai-embed: embedMany: %w", err)
+		return nil, classifyJSError("embedMany", err)
 	}
 	defer val.Free()
 
 	var result EmbedManyResult
 	if err := json.Unmarshal([]byte(val.String()), &result); err != nil {
-		return nil, fmt.Errorf("ai-embed: parse embedMany result: %w", err)
+		return nil, &InvalidResponseError{Message: "embedMany: " + err.Error(), Data: val.String()}
 	}
 	return &result, nil
 }

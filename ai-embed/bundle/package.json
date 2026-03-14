@@ -6,10 +6,12 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "ai": "^4.0.0",
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.22",
     "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/provider": "^1.0.0",
-    "@ai-sdk/provider-utils": "^2.0.0"
+    "@ai-sdk/provider-utils": "^2.0.0",
+    "ai": "^4.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"

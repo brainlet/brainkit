@@ -11,6 +11,7 @@ type GenerateTextParams struct {
 	ToolChoice      *ToolChoice                        `json:"toolChoice,omitempty"`
 	MaxSteps        int                                `json:"maxSteps,omitempty"`
 	ProviderOptions map[string]map[string]interface{}  `json:"providerOptions,omitempty"`
+	Middleware      []MiddlewareConfig                 `json:"-"`
 	OnStepFinish    func(StepResult)                   `json:"-"`
 }
 

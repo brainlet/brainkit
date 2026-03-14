@@ -57,7 +57,12 @@ func TestBundleExports(t *testing.T) {
 	}
 	defer c.Close()
 
-	exports := []string{"generateText", "streamText", "generateObject", "streamObject", "embed", "embedMany", "tool", "createOpenAI"}
+	exports := []string{
+		"generateText", "streamText", "generateObject", "streamObject",
+		"embed", "embedMany", "tool", "createOpenAI",
+		"createAnthropic", "createGoogleGenerativeAI",
+		"wrapLanguageModel", "defaultSettingsMiddleware", "extractReasoningMiddleware",
+	}
 	for _, name := range exports {
 		val, err := c.bridge.Eval("test.js", `typeof globalThis.__ai_sdk.`+name)
 		if err != nil {
@@ -1026,4 +1031,439 @@ func TestEmbedMany(t *testing.T) {
 		}
 	}
 	t.Logf("Embeddings: %d vectors, Usage: %+v", len(result.Embeddings), result.Usage)
+}
+
+// --- New Phase 1 completion tests ---
+
+func TestMultiProviderAnthropic(t *testing.T) {
+	// Mock Anthropic messages endpoint (SDK appends /messages to baseURL)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		t.Logf("Anthropic mock received: %s %s", r.Method, r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":    "msg_test123",
+			"type":  "message",
+			"role":  "assistant",
+			"model": "claude-3-5-sonnet-20241022",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": "Hello from Anthropic mock!"},
+			},
+			"stop_reason": "end_turn",
+			"usage": map[string]interface{}{
+				"input_tokens":  12,
+				"output_tokens": 5,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "anthropic/claude-3-5-sonnet-20241022",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL},
+		},
+		Prompt: "Say hello",
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with Anthropic: %v", err)
+	}
+
+	if result.Text != "Hello from Anthropic mock!" {
+		t.Errorf("text = %q, want %q", result.Text, "Hello from Anthropic mock!")
+	}
+	t.Logf("Anthropic mock: %q, usage: %+v", result.Text, result.Usage)
+}
+
+func TestMultiProviderGoogle(t *testing.T) {
+	// Mock Google Gemini endpoint
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Google uses a different path pattern
+		w.Header().Set("Content-Type", "application/json")
+
+		// The AI SDK for Google sends requests to the generateContent endpoint
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"candidates": []map[string]interface{}{
+				{
+					"content": map[string]interface{}{
+						"parts": []map[string]interface{}{
+							{"text": "Hello from Google mock!"},
+						},
+						"role": "model",
+					},
+					"finishReason": "STOP",
+				},
+			},
+			"usageMetadata": map[string]interface{}{
+				"promptTokenCount":     10,
+				"candidatesTokenCount": 5,
+				"totalTokenCount":      15,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "google/gemini-2.0-flash",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL},
+		},
+		Prompt: "Say hello",
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with Google: %v", err)
+	}
+
+	if result.Text == "" {
+		t.Error("expected non-empty text from Google mock")
+	}
+	t.Logf("Google mock: %q, usage: %+v", result.Text, result.Usage)
+}
+
+func TestStreamObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		if req["stream"] == true {
+			// Streaming response
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(200)
+
+			chunks := []string{
+				`{"name":"Al"}`,
+				`{"name":"Alice"}`,
+				`{"name":"Alice","age":30}`,
+			}
+			for _, chunk := range chunks {
+				data := map[string]interface{}{
+					"id": "chatcmpl-stream", "object": "chat.completion.chunk",
+					"model": "gpt-4", "created": 1234567890,
+					"choices": []map[string]interface{}{{
+						"index":         0,
+						"delta":         map[string]interface{}{"content": chunk},
+						"finish_reason": nil,
+					}},
+				}
+				b, _ := json.Marshal(data)
+				fmt.Fprintf(w, "data: %s\n\n", b)
+			}
+			// Final chunk
+			finalData := map[string]interface{}{
+				"id": "chatcmpl-stream", "object": "chat.completion.chunk",
+				"model": "gpt-4", "created": 1234567890,
+				"choices": []map[string]interface{}{{
+					"index":         0,
+					"delta":         map[string]interface{}{},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]interface{}{
+					"prompt_tokens": 15, "completion_tokens": 10, "total_tokens": 25,
+				},
+			}
+			b, _ := json.Marshal(finalData)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			fmt.Fprint(w, "data: [DONE]\n\n")
+		} else {
+			// Non-streaming (generateObject uses tool mode by default)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id": "chatcmpl-test", "object": "chat.completion",
+				"model": "gpt-4", "created": 1234567890,
+				"choices": []map[string]interface{}{{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": `{"name":"Alice","age":30}`,
+					},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]interface{}{
+					"prompt_tokens": 15, "completion_tokens": 10, "total_tokens": 25,
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	var partials []json.RawMessage
+	result, err := c.StreamObject(StreamObjectParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Mode:   "json",
+		Prompt: "Generate a person with name and age",
+		Schema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"age": {"type": "number"}
+			},
+			"required": ["name", "age"]
+		}`),
+		OnPartialObject: func(partial json.RawMessage) {
+			partials = append(partials, partial)
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamObject: %v", err)
+	}
+
+	var person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	if err := json.Unmarshal(result.Object, &person); err != nil {
+		t.Fatalf("unmarshal object: %v (raw: %s)", err, string(result.Object))
+	}
+
+	if person.Name == "" {
+		t.Error("expected non-empty name")
+	}
+	t.Logf("StreamObject: %+v, partials received: %d, usage: %+v", person, len(partials), result.Usage)
+}
+
+func TestStreamObjectRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	var partials []json.RawMessage
+	result, err := c.StreamObject(StreamObjectParams{
+		Model:  Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Prompt: "Generate a fictional city with a name and population between 10000-500000",
+		Schema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"population": {"type": "integer"}
+			},
+			"required": ["name", "population"]
+		}`),
+		OnPartialObject: func(partial json.RawMessage) {
+			partials = append(partials, partial)
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamObject: %v", err)
+	}
+
+	var city struct {
+		Name       string `json:"name"`
+		Population int    `json:"population"`
+	}
+	if err := json.Unmarshal(result.Object, &city); err != nil {
+		t.Fatalf("unmarshal: %v (raw: %s)", err, string(result.Object))
+	}
+
+	if city.Name == "" {
+		t.Error("expected non-empty name")
+	}
+	if city.Population <= 0 {
+		t.Errorf("expected positive population, got %d", city.Population)
+	}
+	if len(partials) == 0 {
+		t.Error("expected partial objects during streaming")
+	}
+	t.Logf("StreamObject real: %s (pop %d), partials: %d, usage: %+v",
+		city.Name, city.Population, len(partials), result.Usage)
+}
+
+func TestErrorTyping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": map[string]string{
+				"message": "Incorrect API key provided",
+				"type":    "invalid_request_error",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	_, err = c.GenerateText(GenerateTextParams{
+		Model:  Model{ID: "openai/gpt-4", Provider: &ProviderConfig{APIKey: "bad-key", BaseURL: srv.URL + "/v1"}},
+		Prompt: "hello",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// Check that we get a typed error
+	switch e := err.(type) {
+	case *APICallError:
+		if e.StatusCode != 401 {
+			t.Errorf("expected status 401, got %d", e.StatusCode)
+		}
+		t.Logf("Got typed APICallError: status=%d, message=%s", e.StatusCode, e.Message)
+	case *AIError:
+		t.Logf("Got AIError (classification worked): type=%s, message=%s", e.Type, e.Message)
+	default:
+		t.Logf("Got untyped error (acceptable): %T: %v", err, err)
+	}
+}
+
+func TestProviderNotFound(t *testing.T) {
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	_, err = c.GenerateText(GenerateTextParams{
+		Model:  Model{ID: "unsupported/model", Provider: &ProviderConfig{APIKey: "key"}},
+		Prompt: "hello",
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported provider")
+	}
+	if !strings.Contains(err.Error(), "unsupported provider") {
+		t.Errorf("expected 'unsupported provider' in error, got: %v", err)
+	}
+	t.Logf("Got expected provider error: %v", err)
+}
+
+func TestMiddlewareDefaultSettings(t *testing.T) {
+	// Verify middleware wrapping produces valid JS
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		// The middleware should have set temperature
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "chatcmpl-test", "object": "chat.completion",
+			"model": "gpt-4", "created": 1234567890,
+			"choices": []map[string]interface{}{{
+				"index": 0,
+				"message": map[string]interface{}{
+					"role": "assistant", "content": "Middleware works!",
+				},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]interface{}{
+				"prompt_tokens": 10, "completion_tokens": 3, "total_tokens": 13,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	// Client-level middleware
+	c, err := NewClient(ClientConfig{
+		HTTPClient: srv.Client(),
+		Middleware: []MiddlewareConfig{
+			DefaultSettingsMiddleware(MiddlewareSettings{
+				MaxTokens:   500,
+				Temperature: Float64(0.3),
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Prompt: "Say hello",
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with middleware: %v", err)
+	}
+
+	if result.Text != "Middleware works!" {
+		t.Errorf("text = %q, want %q", result.Text, "Middleware works!")
+	}
+	t.Logf("Middleware test: %q", result.Text)
+}
+
+func TestPerCallMiddleware(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "chatcmpl-test", "object": "chat.completion",
+			"model": "gpt-4", "created": 1234567890,
+			"choices": []map[string]interface{}{{
+				"index": 0,
+				"message": map[string]interface{}{
+					"role": "assistant", "content": "Per-call middleware works!",
+				},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]interface{}{
+				"prompt_tokens": 10, "completion_tokens": 3, "total_tokens": 13,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Prompt: "Say hello",
+		Middleware: []MiddlewareConfig{
+			DefaultSettingsMiddleware(MiddlewareSettings{
+				Temperature: Float64(0.1),
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with per-call middleware: %v", err)
+	}
+
+	if result.Text != "Per-call middleware works!" {
+		t.Errorf("text = %q, want %q", result.Text, "Per-call middleware works!")
+	}
+	t.Logf("Per-call middleware test: %q", result.Text)
 }

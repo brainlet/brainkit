@@ -6,6 +6,49 @@ import (
 	"strings"
 )
 
+// providerJSConfig maps provider names to their JS constructor and options.
+type providerJSConfig struct {
+	CreateFunc string // JS function name, e.g. "createOpenAI"
+	OptsFunc   func(apiKey, baseURL string) map[string]interface{}
+	EmbedFunc  string // method name for embedding, e.g. "embedding" or "textEmbeddingModel"
+}
+
+var providerConfigs = map[string]providerJSConfig{
+	"openai": {
+		CreateFunc: "createOpenAI",
+		OptsFunc: func(apiKey, baseURL string) map[string]interface{} {
+			opts := map[string]interface{}{"apiKey": apiKey, "compatibility": "strict"}
+			if baseURL != "" {
+				opts["baseURL"] = baseURL
+			}
+			return opts
+		},
+		EmbedFunc: "textEmbeddingModel",
+	},
+	"anthropic": {
+		CreateFunc: "createAnthropic",
+		OptsFunc: func(apiKey, baseURL string) map[string]interface{} {
+			opts := map[string]interface{}{"apiKey": apiKey}
+			if baseURL != "" {
+				opts["baseURL"] = baseURL
+			}
+			return opts
+		},
+		EmbedFunc: "textEmbeddingModel",
+	},
+	"google": {
+		CreateFunc: "createGoogleGenerativeAI",
+		OptsFunc: func(apiKey, baseURL string) map[string]interface{} {
+			opts := map[string]interface{}{"apiKey": apiKey}
+			if baseURL != "" {
+				opts["baseURL"] = baseURL
+			}
+			return opts
+		},
+		EmbedFunc: "textEmbeddingModel",
+	},
+}
+
 // buildProviderJS generates JS code to create a provider and model instance.
 // Returns a JS expression evaluating to a LanguageModel (e.g., `openai("gpt-4o")`).
 func buildProviderJS(m Model, defaultProvider *ProviderConfig, envVars map[string]string) (string, error) {
@@ -15,17 +58,14 @@ func buildProviderJS(m Model, defaultProvider *ProviderConfig, envVars map[strin
 		return "", fmt.Errorf("no API key for provider %q (set via ProviderConfig or EnvVars)", provider)
 	}
 
-	switch provider {
-	case "openai":
-		opts := map[string]interface{}{"apiKey": apiKey, "compatibility": "strict"}
-		if baseURL != "" {
-			opts["baseURL"] = baseURL
-		}
-		optsJSON, _ := json.Marshal(opts)
-		return fmt.Sprintf("__ai_sdk.createOpenAI(%s)(%q)", string(optsJSON), modelID), nil
-	default:
-		return "", fmt.Errorf("unsupported provider %q (only 'openai' supported in v1)", provider)
+	cfg, ok := providerConfigs[provider]
+	if !ok {
+		return "", fmt.Errorf("unsupported provider %q (supported: openai, anthropic, google)", provider)
 	}
+
+	opts := cfg.OptsFunc(apiKey, baseURL)
+	optsJSON, _ := json.Marshal(opts)
+	return fmt.Sprintf("__ai_sdk.%s(%s)(%q)", cfg.CreateFunc, string(optsJSON), modelID), nil
 }
 
 // buildEmbeddingProviderJS generates JS code for an embedding model instance.
@@ -37,17 +77,14 @@ func buildEmbeddingProviderJS(m Model, defaultProvider *ProviderConfig, envVars 
 		return "", fmt.Errorf("no API key for provider %q (set via ProviderConfig or EnvVars)", provider)
 	}
 
-	switch provider {
-	case "openai":
-		opts := map[string]interface{}{"apiKey": apiKey, "compatibility": "strict"}
-		if baseURL != "" {
-			opts["baseURL"] = baseURL
-		}
-		optsJSON, _ := json.Marshal(opts)
-		return fmt.Sprintf("__ai_sdk.createOpenAI(%s).embedding(%q)", string(optsJSON), modelID), nil
-	default:
-		return "", fmt.Errorf("unsupported embedding provider %q (only 'openai' supported in v1)", provider)
+	cfg, ok := providerConfigs[provider]
+	if !ok {
+		return "", fmt.Errorf("unsupported embedding provider %q (supported: openai, anthropic, google)", provider)
 	}
+
+	opts := cfg.OptsFunc(apiKey, baseURL)
+	optsJSON, _ := json.Marshal(opts)
+	return fmt.Sprintf("__ai_sdk.%s(%s).%s(%q)", cfg.CreateFunc, string(optsJSON), cfg.EmbedFunc, modelID), nil
 }
 
 // buildCallSettingsJS generates JS object properties for call settings.
@@ -82,4 +119,48 @@ func buildCallSettingsJS(cs CallSettings) string {
 		parts = append(parts, fmt.Sprintf("maxRetries: %d", cs.MaxRetries))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// buildMiddlewareJS generates JS code to wrap a model expression with middleware.
+// Returns the wrapped model expression.
+func buildMiddlewareJS(modelExpr string, mw []MiddlewareConfig) (string, error) {
+	if len(mw) == 0 {
+		return modelExpr, nil
+	}
+
+	expr := modelExpr
+	for _, m := range mw {
+		middlewareJS, err := middlewareToJS(m)
+		if err != nil {
+			return "", err
+		}
+		expr = fmt.Sprintf("__ai_sdk.wrapLanguageModel({model: %s, middleware: %s})", expr, middlewareJS)
+	}
+	return expr, nil
+}
+
+func middlewareToJS(m MiddlewareConfig) (string, error) {
+	switch m.Type {
+	case "defaultSettings":
+		if m.Settings == nil {
+			return "", fmt.Errorf("defaultSettings middleware requires Settings")
+		}
+		settingsJSON, err := json.Marshal(m.Settings)
+		if err != nil {
+			return "", fmt.Errorf("marshal middleware settings: %w", err)
+		}
+		return fmt.Sprintf("__ai_sdk.defaultSettingsMiddleware({settings: %s})", string(settingsJSON)), nil
+	case "extractReasoning":
+		opts := map[string]interface{}{}
+		if m.TagName != "" {
+			opts["tagName"] = m.TagName
+		}
+		if m.Separator != "" {
+			opts["separator"] = m.Separator
+		}
+		optsJSON, _ := json.Marshal(opts)
+		return fmt.Sprintf("__ai_sdk.extractReasoningMiddleware(%s)", string(optsJSON)), nil
+	default:
+		return "", fmt.Errorf("unsupported middleware type %q", m.Type)
+	}
 }

@@ -16,6 +16,7 @@ type GenerateObjectParams struct {
 	Output            string                             `json:"output,omitempty"`
 	Enum              []string                           `json:"enum,omitempty"`
 	ProviderOptions   map[string]map[string]interface{}  `json:"providerOptions,omitempty"`
+	Middleware        []MiddlewareConfig                `json:"-"`
 }
 
 // GenerateObjectResult is returned by GenerateObject.
