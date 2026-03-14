@@ -1,6 +1,8 @@
 package jsbridge
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,9 +12,13 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 )
 
-// FetchPolyfill provides globalThis.fetch, Headers, Response, and Request.
+// FetchPolyfill provides globalThis.fetch with async non-blocking I/O.
+// HTTP calls run in tracked goroutines via Bridge.Go().
+// For SSE/streaming responses, chunks are delivered incrementally
+// via ReadableStream backed by Go goroutine reads.
 type FetchPolyfill struct {
 	client *http.Client
+	bridge *Bridge // set during Setup
 }
 
 // FetchOption configures a FetchPolyfill.
@@ -34,12 +40,14 @@ func Fetch(opts ...FetchOption) *FetchPolyfill {
 
 func (p *FetchPolyfill) Name() string { return "fetch" }
 
+// SetBridge is called by the bridge after construction to give polyfills
+// access to Bridge.Go() for tracked goroutines.
+func (p *FetchPolyfill) SetBridge(b *Bridge) { p.bridge = b }
+
 func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 	client := p.client
+	polyfill := p
 
-	// Async fetch: returns a Promise, HTTP runs in a separate goroutine.
-	// The bridge is NOT held during the HTTP call — other scheduled work
-	// (bus deliveries, other Promise resolutions) can run via ProcessJobs().
 	ctx.Globals().Set("__go_fetch", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) == 0 {
 			return ctx.ThrowError(fmt.Errorf("fetch: missing request argument"))
@@ -48,7 +56,7 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 		reqJSON := args[0].ToString()
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
-			go func() {
+			polyfill.bridge.Go(func(goCtx context.Context) {
 				var req struct {
 					URL     string            `json:"url"`
 					Method  string            `json:"method"`
@@ -69,7 +77,7 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 					bodyReader = strings.NewReader(*req.Body)
 				}
 
-				httpReq, err := http.NewRequest(req.Method, req.URL, bodyReader)
+				httpReq, err := http.NewRequestWithContext(goCtx, req.Method, req.URL, bodyReader)
 				if err != nil {
 					ctx.Schedule(func(ctx *quickjs.Context) {
 						errVal := ctx.NewError(fmt.Errorf("fetch: %w", err))
@@ -84,19 +92,11 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 
 				resp, err := client.Do(httpReq)
 				if err != nil {
+					if goCtx.Err() != nil {
+						return // bridge closing — don't schedule
+					}
 					ctx.Schedule(func(ctx *quickjs.Context) {
 						errVal := ctx.NewError(fmt.Errorf("fetch: %w", err))
-						defer errVal.Free()
-						reject(errVal)
-					})
-					return
-				}
-				defer resp.Body.Close()
-
-				respBody, err := io.ReadAll(resp.Body)
-				if err != nil {
-					ctx.Schedule(func(ctx *quickjs.Context) {
-						errVal := ctx.NewError(fmt.Errorf("fetch: read body: %w", err))
 						defer errVal.Free()
 						reject(errVal)
 					})
@@ -107,21 +107,106 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 				for k, v := range resp.Header {
 					respHeaders[strings.ToLower(k)] = strings.Join(v, ", ")
 				}
+				headersJSON, _ := json.Marshal(respHeaders)
+				respURL := resp.Request.URL.String()
 
-				result := map[string]interface{}{
-					"status":     resp.StatusCode,
-					"statusText": resp.Status,
-					"body":       string(respBody),
-					"headers":    respHeaders,
-					"url":        resp.Request.URL.String(),
+				// Detect SSE streaming from response Content-Type
+				contentType := resp.Header.Get("Content-Type")
+				streaming := strings.Contains(contentType, "text/event-stream") ||
+					strings.Contains(contentType, "text/plain") && resp.TransferEncoding != nil
+
+				if streaming {
+					// SSE/streaming mode: deliver chunks incrementally via ReadableStream.
+					// The Response.body is a ReadableStream backed by this goroutine.
+					streamID := fmt.Sprintf("s%p", resp)
+
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						// Create a ReadableStream with a controller we can push to
+						ctx.Eval(fmt.Sprintf(`
+							globalThis.__stream_ctrl_%s = null;
+							globalThis.__stream_%s = new ReadableStream({
+								start(controller) {
+									globalThis.__stream_ctrl_%s = controller;
+								}
+							});
+						`, streamID, streamID, streamID))
+
+						// Build Response with the streaming body
+						ctx.Eval(fmt.Sprintf(`
+							globalThis.__stream_resp_%s = {
+								status: %d,
+								statusText: %q,
+								headers: %s,
+								url: %q,
+								body: globalThis.__stream_%s,
+							};
+						`, streamID, resp.StatusCode, resp.Status, string(headersJSON), respURL, streamID))
+
+						// Resolve the fetch Promise with the Response
+						resolveJS := ctx.Eval(fmt.Sprintf(`globalThis.__stream_resp_%s`, streamID))
+						resolve(resolveJS)
+					})
+
+					// Read body incrementally in this goroutine
+					reader := bufio.NewReaderSize(resp.Body, 4096)
+					buf := make([]byte, 4096)
+					for {
+						n, readErr := reader.Read(buf)
+						if goCtx.Err() != nil {
+							resp.Body.Close()
+							return // bridge closing
+						}
+						if n > 0 {
+							chunk := string(buf[:n])
+							ctx.Schedule(func(ctx *quickjs.Context) {
+								ctx.Eval(fmt.Sprintf(
+									`globalThis.__stream_ctrl_%s?.enqueue(new TextEncoder().encode(%q))`,
+									streamID, chunk,
+								))
+							})
+						}
+						if readErr != nil {
+							resp.Body.Close()
+							ctx.Schedule(func(ctx *quickjs.Context) {
+								ctx.Eval(fmt.Sprintf(
+									`globalThis.__stream_ctrl_%s?.close(); delete globalThis.__stream_ctrl_%s; delete globalThis.__stream_%s; delete globalThis.__stream_resp_%s`,
+									streamID, streamID, streamID, streamID,
+								))
+							})
+							break
+						}
+					}
+				} else {
+					// Non-streaming mode: read full body, resolve once.
+					defer resp.Body.Close()
+					respBody, err := io.ReadAll(resp.Body)
+					if err != nil {
+						if goCtx.Err() != nil {
+							return
+						}
+						ctx.Schedule(func(ctx *quickjs.Context) {
+							errVal := ctx.NewError(fmt.Errorf("fetch: read body: %w", err))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+
+					result := map[string]interface{}{
+						"status":     resp.StatusCode,
+						"statusText": resp.Status,
+						"body":       string(respBody),
+						"headers":    respHeaders,
+						"url":        respURL,
+					}
+					b, _ := json.Marshal(result)
+					resultJSON := string(b)
+
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						resolve(ctx.NewString(resultJSON))
+					})
 				}
-				b, _ := json.Marshal(result)
-				resultJSON := string(b)
-
-				ctx.Schedule(func(ctx *quickjs.Context) {
-					resolve(ctx.NewString(resultJSON))
-				})
-			}()
+			})
 		})
 	}))
 
@@ -155,23 +240,36 @@ globalThis.Headers = class Headers {
 
 globalThis.Response = class Response {
   constructor(body, init) {
-    this._body = body != null ? String(body) : '';
-    init = init || {};
-    this.status = init.status || 200;
-    this.ok = this.status >= 200 && this.status < 300;
-    this.statusText = init.statusText || '';
-    this.headers = new Headers(init.headers);
+    if (body && typeof body === 'object' && body.body) {
+      // Streaming response from Go — body is {status, headers, url, body: ReadableStream}
+      this._body = null;
+      this._bodyStream = body.body;
+      this.status = body.status || 200;
+      this.ok = this.status >= 200 && this.status < 300;
+      this.statusText = body.statusText || '';
+      this.headers = new Headers(body.headers);
+      this.url = body.url || '';
+    } else {
+      this._body = body != null ? String(body) : '';
+      this._bodyStream = null;
+      init = init || {};
+      this.status = init.status || 200;
+      this.ok = this.status >= 200 && this.status < 300;
+      this.statusText = init.statusText || '';
+      this.headers = new Headers(init.headers);
+      this.url = '';
+    }
     this.type = 'basic';
-    this.url = '';
     this.redirected = false;
     this.bodyUsed = false;
   }
   get body() {
+    if (this._bodyStream) return this._bodyStream;
     const text = this._body;
     if (typeof ReadableStream === 'undefined') return null;
     return new ReadableStream({
       start(controller) {
-        if (text.length > 0) {
+        if (text && text.length > 0) {
           if (typeof TextEncoder !== 'undefined') {
             controller.enqueue(new TextEncoder().encode(text));
           } else {
@@ -182,14 +280,33 @@ globalThis.Response = class Response {
       }
     });
   }
-  async text() { this.bodyUsed = true; return this._body; }
-  async json() { this.bodyUsed = true; return JSON.parse(this._body); }
+  async text() {
+    this.bodyUsed = true;
+    if (this._body !== null) return this._body;
+    // Read from stream
+    if (this._bodyStream) {
+      const reader = this._bodyStream.getReader();
+      const chunks = [];
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(typeof value === 'string' ? value : decoder.decode(value));
+      }
+      this._body = chunks.join('');
+      return this._body;
+    }
+    return '';
+  }
+  async json() { return JSON.parse(await this.text()); }
   async arrayBuffer() {
     this.bodyUsed = true;
+    const text = await this.text();
     const enc = new TextEncoder();
-    return enc.encode(this._body).buffer;
+    return enc.encode(text).buffer;
   }
   clone() {
+    if (this._bodyStream) throw new Error('Cannot clone a streaming response');
     return new Response(this._body, {
       status: this.status, statusText: this.statusText, headers: this.headers._m
     });
@@ -226,12 +343,23 @@ globalThis.fetch = async (input, init) => {
     }
   }
   const body = opts.body != null ? String(opts.body) : null;
+
+  // Always use streaming mode — Go decides based on response Content-Type
+  // whether to read the full body or deliver chunks incrementally.
+  // The AI SDK sets stream:true in the body and the server responds with
+  // Content-Type: text/event-stream for SSE.
   const raw = await __go_fetch(JSON.stringify({ url, method, headers, body }));
-  const data = JSON.parse(raw);
-  const resp = new Response(data.body, {
-    status: data.status, statusText: data.statusText, headers: data.headers
-  });
-  resp.url = data.url || url;
-  return resp;
+  if (typeof raw === 'string') {
+    // Non-streaming response — full body returned as JSON
+    const data = JSON.parse(raw);
+    const resp = new Response(data.body, {
+      status: data.status, statusText: data.statusText, headers: data.headers
+    });
+    resp.url = data.url || url;
+    return resp;
+  } else {
+    // Streaming response — Response object with ReadableStream body
+    return new Response(raw);
+  }
 };
 `

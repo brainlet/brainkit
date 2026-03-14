@@ -135,14 +135,18 @@ globalThis.ReadableStream = class ReadableStream {
   pipeThrough(transform, options) {
     const reader = this.getReader();
     const writer = transform.writable.getWriter();
+    const srcLocked = this._locked;
     (async () => {
+      let n = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
+          n++;
           if (done) { await writer.close(); break; }
           await writer.write(value);
         }
       } catch (e) {
+        console.error('[pipeThrough pipe] error after ' + n + ' reads:', e?.message || e);
         try { await writer.abort(e); } catch(_) {}
       }
     })();
@@ -215,6 +219,12 @@ globalThis.TransformStream = class TransformStream {
     this.readable = new ReadableStream({
       start(controller) { readableController = controller; },
     });
+
+    // Call transformer.start() so it can capture the controller for use in transform().
+    // The AI SDK's SSE parser relies on this to initialize its parser instance.
+    if (xf.start) {
+      xf.start(readableController);
+    }
 
     this.writable = new WritableStream({
       async write(chunk) {

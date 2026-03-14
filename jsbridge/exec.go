@@ -2,6 +2,7 @@ package jsbridge
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -25,7 +26,10 @@ type ExecPolyfill struct {
 	mu     sync.Mutex
 	nextID int
 	procs  map[int]*spawnedProcess
+	bridge *Bridge
 }
+
+func (p *ExecPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
 // Exec creates a child process execution polyfill.
 func Exec() *ExecPolyfill {
@@ -44,17 +48,8 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		command := args[0].ToString()
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						ctx.Schedule(func(ctx *quickjs.Context) {
-							errVal := ctx.NewError(fmt.Errorf("exec panic: %v", r))
-							defer errVal.Free()
-							reject(errVal)
-						})
-					}
-				}()
-
+			polyfill := p
+			polyfill.bridge.Go(func(goCtx context.Context) {
 				var cmd *exec.Cmd
 				if runtime.GOOS == "windows" {
 					cmd = exec.Command("cmd", "/C", command)
@@ -91,7 +86,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					resolve(ctx.NewString(resultJSON))
 				})
-			}()
+			})
 		})
 	}))
 
@@ -164,18 +159,9 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						ctx.Schedule(func(ctx *quickjs.Context) {
-							errVal := ctx.NewError(fmt.Errorf("spawn_read panic: %v", r))
-							defer errVal.Free()
-							reject(errVal)
-						})
-					}
-				}()
-
+			p.bridge.Go(func(goCtx context.Context) {
 				line, ok := <-proc.lines
+				if goCtx.Err() != nil { return }
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					if !ok {
 						resolve(ctx.NewNull())
@@ -183,7 +169,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 						resolve(ctx.NewString(line))
 					}
 				})
-			}()
+			})
 		})
 	}))
 
@@ -202,17 +188,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						ctx.Schedule(func(ctx *quickjs.Context) {
-							errVal := ctx.NewError(fmt.Errorf("spawn_wait panic: %v", r))
-							defer errVal.Free()
-							reject(errVal)
-						})
-					}
-				}()
-
+			p.bridge.Go(func(goCtx context.Context) {
 				waitErr := <-proc.waitErr
 				exitCode := 0
 				if waitErr != nil {
@@ -225,10 +201,11 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 				delete(p.procs, id)
 				p.mu.Unlock()
 
+				if goCtx.Err() != nil { return }
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					resolve(ctx.NewInt32(int32(exitCode)))
 				})
-			}()
+			})
 		})
 	}))
 

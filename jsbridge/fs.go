@@ -1,6 +1,7 @@
 package jsbridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,28 +10,24 @@ import (
 )
 
 // FSPolyfill provides async fs.readFile, fs.writeFile, fs.readdir, fs.stat, fs.mkdir, fs.unlink, fs.rm.
-// All operations run in separate goroutines — the bridge is NOT held during disk I/O.
-type FSPolyfill struct{}
+// All operations run in tracked goroutines via Bridge.Go().
+type FSPolyfill struct {
+	bridge *Bridge
+}
 
 // FS creates a file system polyfill.
 func FS() *FSPolyfill { return &FSPolyfill{} }
 
 func (p *FSPolyfill) Name() string { return "fs" }
 
-// fsAsync is a helper that runs a function in a goroutine and resolves/rejects a Promise.
-func fsAsync(ctx *quickjs.Context, work func() (string, error)) *quickjs.Value {
+func (p *FSPolyfill) SetBridge(b *Bridge) { p.bridge = b }
+
+// fsAsync runs a function in a tracked goroutine and resolves/rejects a Promise.
+func (p *FSPolyfill) fsAsync(ctx *quickjs.Context, work func() (string, error)) *quickjs.Value {
 	return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					ctx.Schedule(func(ctx *quickjs.Context) {
-						errVal := ctx.NewError(fmt.Errorf("fs panic: %v", r))
-						defer errVal.Free()
-						reject(errVal)
-					})
-				}
-			}()
+		p.bridge.Go(func(goCtx context.Context) {
 			result, err := work()
+			if goCtx.Err() != nil { return }
 			if err != nil {
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					errVal := ctx.NewError(err)
@@ -42,7 +39,7 @@ func fsAsync(ctx *quickjs.Context, work func() (string, error)) *quickjs.Value {
 			ctx.Schedule(func(ctx *quickjs.Context) {
 				resolve(ctx.NewString(result))
 			})
-		}()
+		})
 	})
 }
 
@@ -52,7 +49,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("readFile: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			data, err := os.ReadFile(path)
 			if err != nil {
 				return "", fmt.Errorf("readFile: %w", err)
@@ -67,7 +64,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 		path := args[0].ToString()
 		data := args[1].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			if err := os.WriteFile(path, []byte(data), 0644); err != nil {
 				return "", fmt.Errorf("writeFile: %w", err)
 			}
@@ -80,7 +77,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("readdir: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			entries, err := os.ReadDir(path)
 			if err != nil {
 				return "", fmt.Errorf("readdir: %w", err)
@@ -106,7 +103,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("stat: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			info, err := os.Stat(path)
 			if err != nil {
 				return "", fmt.Errorf("stat: %w", err)
@@ -129,7 +126,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("mkdir: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			if err := os.MkdirAll(path, 0755); err != nil {
 				return "", fmt.Errorf("mkdir: %w", err)
 			}
@@ -142,7 +139,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("unlink: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			if err := os.Remove(path); err != nil {
 				return "", fmt.Errorf("unlink: %w", err)
 			}
@@ -155,7 +152,7 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("rm: path argument required"))
 		}
 		path := args[0].ToString()
-		return fsAsync(ctx, func() (string, error) {
+		return p.fsAsync(ctx, func() (string, error) {
 			if err := os.RemoveAll(path); err != nil {
 				return "", fmt.Errorf("rm: %w", err)
 			}
