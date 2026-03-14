@@ -308,6 +308,58 @@ func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
 	t.Logf("Contract .ts tools.call (namespace): square(9) = %v", out.Result)
 }
 
+func TestContract_TSAgentUsesRegisteredTool(t *testing.T) {
+	kit := newTestKit(t)
+
+	// Register a Go tool on the registry (simulates a plugin providing a tool)
+	kit.Tools.Register(registry.RegisteredTool{
+		Name: "platform.multiply", ShortName: "multiply", Namespace: "platform",
+		Description: "Multiplies two numbers",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"number","description":"first number"},"b":{"type":"number","description":"second number"}},"required":["a","b"]}`),
+		Executor: &registry.GoFuncExecutor{
+			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+				var args struct{ A, B float64 }
+				json.Unmarshal(input, &args)
+				result, _ := json.Marshal(map[string]float64{"result": args.A * args.B})
+				return result, nil
+			},
+		},
+	})
+
+	// Agent uses the registered tool via tool("multiply")
+	result, err := kit.EvalTS(context.Background(), "test-agent-tool.ts", `
+		try {
+			const multiplyTool = tool("multiply");
+			const a = agent({
+				model: "openai/gpt-4o-mini",
+				instructions: "Always use the multiply tool. Return just the number.",
+				tools: { multiply: multiplyTool },
+			});
+			const r = await a.generate("What is 6 times 7? Use the multiply tool.");
+			return JSON.stringify({ text: r.text, toolCalls: r.toolCalls?.length || 0 });
+		} catch(e) {
+			return JSON.stringify({ error: e.message });
+		}
+	`)
+	if err != nil {
+		t.Fatalf("EvalTS: %v", err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		ToolCalls int    `json:"toolCalls"`
+		Error     string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if out.Error != "" {
+		t.Fatalf("error: %s", out.Error)
+	}
+	if !strings.Contains(out.Text, "42") {
+		t.Errorf("expected 42 in response: %q", out.Text)
+	}
+	t.Logf("Contract .ts agent + tool('multiply'): %q, toolCalls=%d", out.Text, out.ToolCalls)
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BUS + REGISTRY — infrastructure
 // ═══════════════════════════════════════════════════════════════

@@ -107,12 +107,21 @@
 
   // ─── PLATFORM (cross-sandbox, through Go bridges) ──────────────
 
-  // Generic bridge request — calls Go function if available, otherwise no-op
+  // Synchronous bridge request — blocks QuickJS thread. For quick ops (tools.resolve).
   function bridgeRequest(topic, payload) {
     if (typeof __go_brainkit_request === "function") {
       return __go_brainkit_request(topic, typeof payload === "string" ? payload : JSON.stringify(payload));
     }
     throw new Error("brainlet: platform bridge not available (topic: " + topic + ")");
+  }
+
+  // Async bridge request — returns Promise, frees QuickJS thread. For I/O ops (tools.call).
+  function bridgeRequestAsync(topic, payload) {
+    if (typeof __go_brainkit_request_async === "function") {
+      return __go_brainkit_request_async(topic, typeof payload === "string" ? payload : JSON.stringify(payload));
+    }
+    // Fallback to sync if async not available
+    return Promise.resolve(bridgeRequest(topic, payload));
   }
 
   // Parse bridge response, throwing if it contains an error.
@@ -191,8 +200,9 @@
   // tools.* — tool registry
   var tools = {
     call: async function(name, input) {
-      var raw = bridgeRequest("tools.call", { name: name, input: input });
-      return JSON.parse(raw);
+      // ASYNC — may hit plugin gRPC, external APIs
+      var raw = await bridgeRequestAsync("tools.call", { name: name, input: input });
+      return parseBridgeResponse(raw);
     },
     list: async function(namespace) {
       var raw = bridgeRequest("tools.list", { namespace: namespace || "" });
@@ -203,18 +213,59 @@
     },
   };
 
+  // buildZodFromJsonSchema — converts JSON Schema to Zod object for Mastra tools
+  function buildZodFromJsonSchema(schema) {
+    if (!schema || typeof schema !== "object") return embed.z.object({});
+    var props = schema.properties;
+    if (!props) return embed.z.object({});
+
+    var required = {};
+    if (Array.isArray(schema.required)) {
+      for (var i = 0; i < schema.required.length; i++) {
+        required[schema.required[i]] = true;
+      }
+    }
+
+    var shape = {};
+    for (var key in props) {
+      var prop = props[key];
+      var typ = prop.type || "string";
+      var field;
+      switch (typ) {
+        case "number": case "integer": field = embed.z.number(); break;
+        case "boolean": field = embed.z.boolean(); break;
+        case "array": field = embed.z.array(embed.z.any()); break;
+        case "object": field = buildZodFromJsonSchema(prop); break;
+        default: field = embed.z.string(); break;
+      }
+      if (prop.description) field = field.describe(prop.description);
+      if (!required[key]) field = field.optional();
+      shape[key] = field;
+    }
+    return embed.z.object(shape);
+  }
+
   // tool() — namespace-aware tool lookup, returns Mastra-compatible tool
   function tool(name) {
     if (typeof __go_brainkit_request !== "function") {
       throw new Error("brainlet: platform bridge not available for tool resolution");
     }
     var raw = bridgeRequest("tools.resolve", { name: name });
-    var info = JSON.parse(raw);
+    var info = parseBridgeResponse(raw);
+
+    // Build Zod schema from JSON Schema if available
+    var schema = embed.z.object({});
+    if (info.inputSchema) {
+      try {
+        var jsonSchema = typeof info.inputSchema === "string" ? JSON.parse(info.inputSchema) : info.inputSchema;
+        schema = buildZodFromJsonSchema(jsonSchema);
+      } catch(e) { /* fallback to empty schema */ }
+    }
 
     var t = embed.createTool({
       id: info.shortName || name,
       description: info.description || "",
-      inputSchema: embed.z.object({}),
+      inputSchema: schema,
       execute: async function(input) {
         return await tools.call(info.name || name, input);
       },
@@ -226,14 +277,14 @@
   // bus.* — platform bus
   var busMod = {
     send: async function(topic, payload) {
-      bridgeRequest("bus.send", { topic: topic, payload: payload });
+      await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
     },
     publish: async function(topic, payload) {
-      bridgeRequest("bus.send", { topic: topic, payload: payload });
+      await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
     },
     request: async function(topic, payload) {
-      var raw = bridgeRequest(topic, payload);
-      return JSON.parse(raw);
+      var raw = await bridgeRequestAsync(topic, payload);
+      return parseBridgeResponse(raw);
     },
   };
 
@@ -243,6 +294,11 @@
     namespace: globalThis.__brainkit_sandbox_namespace || "",
     callerID: globalThis.__brainkit_sandbox_callerID || "",
   };
+
+  // output() — set the module's output value (read by Go after execution)
+  function output(value) {
+    globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
+  }
 
   // ─── EXPORT ────────────────────────────────────────────────────
 
@@ -261,5 +317,8 @@
 
     // CONTEXT
     sandbox: sandboxCtx,
+
+    // MODULE
+    output: output,
   };
 })();

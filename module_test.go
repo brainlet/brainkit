@@ -58,17 +58,14 @@ func TestContract_ImportFromBrainlet(t *testing.T) {
 	kit := newTestKit(t)
 
 	result, err := kit.EvalModule(context.Background(), "test-import.js", `
-		import { agent, sandbox } from "brainlet";
+		import { agent, sandbox, output } from "brainlet";
 
 		const a = agent({
 			model: "openai/gpt-4o-mini",
 			instructions: "Reply with exactly: IMPORT_WORKS",
 		});
 		const r = await a.generate("Say it");
-		globalThis.__module_result = JSON.stringify({
-			text: r.text,
-			sandboxNs: sandbox.namespace,
-		});
+		output({ text: r.text, sandboxNs: sandbox.namespace });
 	`)
 	if err != nil {
 		t.Fatalf("EvalModule: %v", err)
@@ -93,13 +90,13 @@ func TestContract_ImportAIFromBrainlet(t *testing.T) {
 	kit := newTestKit(t)
 
 	result, err := kit.EvalModule(context.Background(), "test-ai-import.js", `
-		import { ai } from "brainlet";
+		import { ai, output } from "brainlet";
 
 		const r = await ai.generate({
 			model: "openai/gpt-4o-mini",
 			prompt: "Reply with exactly: IMPORTED_AI",
 		});
-		globalThis.__module_result = JSON.stringify({ text: r.text });
+		output({ text: r.text });
 	`)
 	if err != nil {
 		t.Fatalf("EvalModule: %v", err)

@@ -7,3 +7,4 @@ export const tools = globalThis.__brainlet.tools;
 export const tool = globalThis.__brainlet.tool;
 export const bus = globalThis.__brainlet.bus;
 export const sandbox = globalThis.__brainlet.sandbox;
+export const output = globalThis.__brainlet.output;

@@ -152,6 +152,20 @@ declare module "brainlet" {
    */
   export const sandbox: SandboxContext;
 
+  /**
+   * Set the module's output value. Used in `.ts` modules to pass results
+   * back to the Go runtime. Accepts any JSON-serializable value.
+   *
+   * @example
+   * ```ts
+   * import { ai, output } from "brainlet";
+   *
+   * const result = await ai.generate({ model: "openai/gpt-4o-mini", prompt: "Hi" });
+   * output({ text: result.text, tokens: result.usage.totalTokens });
+   * ```
+   */
+  export function output(value: any): void;
+
   // ── Not yet wired ──────────────────────────────────────────────
   // export const wasm: {
   //   compile(source: string, opts?: WASMCompileOpts): Promise<WASMModule>;
@@ -387,20 +401,153 @@ declare module "brainlet" {
     readonly callerID: string;
   }
 
-  // ── Zod (minimal surface for tool schemas) ───────────────────
+  // ── Zod (schema builder for tool inputs) ──────────────────────
+  // Mirrors the subset of Zod that Mastra's createTool uses.
+  // Full Zod docs: https://zod.dev
 
-  interface ZodObject {
-    describe(description: string): ZodObject;
-    optional(): ZodObject;
+  /** A Zod type — the building block for schemas. */
+  interface ZodType<T = any> {
+    /** Add a description (shown to the LLM as parameter docs). */
+    describe(description: string): ZodType<T>;
+
+    /** Mark as optional (not required). */
+    optional(): ZodType<T | undefined>;
+
+    /** Set a default value. */
+    default(value: T): ZodType<T>;
+
+    /** Mark as nullable. */
+    nullable(): ZodType<T | null>;
+
+    /** Transform the value after parsing. */
+    transform<U>(fn: (val: T) => U): ZodType<U>;
+
+    /** Refine with a custom validation. */
+    refine(check: (val: T) => boolean, message?: string): ZodType<T>;
   }
 
+  /** A Zod string type. */
+  interface ZodString extends ZodType<string> {
+    min(len: number, message?: string): ZodString;
+    max(len: number, message?: string): ZodString;
+    email(message?: string): ZodString;
+    url(message?: string): ZodString;
+    uuid(message?: string): ZodString;
+    regex(pattern: RegExp, message?: string): ZodString;
+    startsWith(prefix: string): ZodString;
+    endsWith(suffix: string): ZodString;
+    trim(): ZodString;
+    toLowerCase(): ZodString;
+    toUpperCase(): ZodString;
+    describe(description: string): ZodString;
+    optional(): ZodType<string | undefined>;
+    default(value: string): ZodString;
+    nullable(): ZodType<string | null>;
+  }
+
+  /** A Zod number type. */
+  interface ZodNumber extends ZodType<number> {
+    min(value: number, message?: string): ZodNumber;
+    max(value: number, message?: string): ZodNumber;
+    int(message?: string): ZodNumber;
+    positive(message?: string): ZodNumber;
+    negative(message?: string): ZodNumber;
+    nonnegative(message?: string): ZodNumber;
+    finite(message?: string): ZodNumber;
+    describe(description: string): ZodNumber;
+    optional(): ZodType<number | undefined>;
+    default(value: number): ZodNumber;
+    nullable(): ZodType<number | null>;
+  }
+
+  /** A Zod boolean type. */
+  interface ZodBoolean extends ZodType<boolean> {
+    describe(description: string): ZodBoolean;
+    optional(): ZodType<boolean | undefined>;
+    default(value: boolean): ZodBoolean;
+  }
+
+  /** A Zod object type. */
+  interface ZodObject<T extends Record<string, any> = Record<string, any>> extends ZodType<T> {
+    /** Allow additional properties beyond the defined shape. */
+    passthrough(): ZodObject<T>;
+    /** Strip unknown properties. */
+    strip(): ZodObject<T>;
+    /** Reject unknown properties. */
+    strict(): ZodObject<T>;
+    /** Merge with another object schema. */
+    merge<U extends Record<string, any>>(other: ZodObject<U>): ZodObject<T & U>;
+    /** Pick specific keys. */
+    pick<K extends keyof T>(keys: Record<K, true>): ZodObject<Pick<T, K>>;
+    /** Omit specific keys. */
+    omit<K extends keyof T>(keys: Record<K, true>): ZodObject<Omit<T, K>>;
+    /** Make all properties optional. */
+    partial(): ZodObject<Partial<T>>;
+    /** Extend with additional properties. */
+    extend<U extends Record<string, ZodType>>(shape: U): ZodObject;
+    describe(description: string): ZodObject<T>;
+    optional(): ZodType<T | undefined>;
+  }
+
+  /** A Zod array type. */
+  interface ZodArray<T = any> extends ZodType<T[]> {
+    min(len: number, message?: string): ZodArray<T>;
+    max(len: number, message?: string): ZodArray<T>;
+    nonempty(message?: string): ZodArray<T>;
+    describe(description: string): ZodArray<T>;
+    optional(): ZodType<T[] | undefined>;
+  }
+
+  /** A Zod enum type. */
+  interface ZodEnum<T extends string = string> extends ZodType<T> {
+    describe(description: string): ZodEnum<T>;
+    optional(): ZodType<T | undefined>;
+  }
+
+  /** The Zod namespace — schema builder functions. */
   interface Zod {
-    string(): ZodObject;
-    number(): ZodObject;
-    boolean(): ZodObject;
-    object(shape: Record<string, ZodObject>): ZodObject;
-    array(element: ZodObject): ZodObject;
-    any(): ZodObject;
-    enum(values: string[]): ZodObject;
+    // Primitives
+    string(): ZodString;
+    number(): ZodNumber;
+    boolean(): ZodBoolean;
+    bigint(): ZodType<bigint>;
+    date(): ZodType<Date>;
+
+    // Structural
+    object<T extends Record<string, ZodType>>(shape: T): ZodObject;
+    array<T extends ZodType>(element: T): ZodArray;
+    tuple(items: ZodType[]): ZodType;
+    record(keyType: ZodType, valueType: ZodType): ZodType;
+    map(keyType: ZodType, valueType: ZodType): ZodType;
+    set(element: ZodType): ZodType;
+
+    // Enums and unions
+    enum<T extends readonly [string, ...string[]]>(values: T): ZodEnum<T[number]>;
+    nativeEnum<T extends Record<string, string | number>>(enumObj: T): ZodType;
+    union(types: ZodType[]): ZodType;
+    discriminatedUnion(discriminator: string, types: ZodObject[]): ZodType;
+    intersection(left: ZodType, right: ZodType): ZodType;
+
+    // Special
+    any(): ZodType<any>;
+    unknown(): ZodType<unknown>;
+    void(): ZodType<void>;
+    never(): ZodType<never>;
+    null(): ZodType<null>;
+    undefined(): ZodType<undefined>;
+    literal<T extends string | number | boolean>(value: T): ZodType<T>;
+
+    // Modifiers
+    optional<T extends ZodType>(type: T): ZodType;
+    nullable<T extends ZodType>(type: T): ZodType;
+
+    // Utilities
+    coerce: {
+      string(): ZodString;
+      number(): ZodNumber;
+      boolean(): ZodBoolean;
+      date(): ZodType<Date>;
+      bigint(): ZodType<bigint>;
+    };
   }
 }

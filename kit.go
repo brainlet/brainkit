@@ -23,6 +23,7 @@ type Kit struct {
 	callerID  string
 	bridge    *jsbridge.Bridge
 	agents    *agentembed.Sandbox
+	wasm      *WASMService
 
 	mu     sync.Mutex
 	closed bool
@@ -72,6 +73,9 @@ func New(cfg Config) (*Kit, error) {
 		return nil, err
 	}
 
+	// Create WASM service (compiler is lazy — only created on first wasm.compile)
+	k.wasm = newWASMService(k)
+
 	// Register bus handlers
 	k.registerHandlers()
 
@@ -88,6 +92,9 @@ func (k *Kit) Close() {
 	k.closed = true
 	k.mu.Unlock()
 
+	if k.wasm != nil {
+		k.wasm.close()
+	}
 	if k.agents != nil {
 		k.agents.Close()
 	}
@@ -108,7 +115,7 @@ func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error)
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, z, ai, wasm, tools, tool, bus, sandbox } = globalThis.__brainlet;
+		const { agent, createTool, z, ai, wasm, tools, tool, bus, sandbox, output } = globalThis.__brainlet;
 		%s
 	})()`, code)
 	return k.agents.Eval(ctx, filename, wrapped)
@@ -136,25 +143,67 @@ func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, er
 }
 
 func (k *Kit) registerHandlers() {
+	k.Bus.Handle("wasm.*", k.wasm.handleBusMessage)
+
 	k.Bus.Handle("tools.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
-		var req struct {
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
+		switch msg.Topic {
+		case "tools.resolve":
+			return k.handleToolsResolve(ctx, msg)
+		case "tools.call":
+			return k.handleToolsCall(ctx, msg)
+		default:
+			return nil, fmt.Errorf("tools: unknown topic %q", msg.Topic)
 		}
-		if err := json.Unmarshal(msg.Payload, &req); err != nil {
-			return nil, fmt.Errorf("tools: invalid request: %w", err)
-		}
-
-		tool, err := k.Tools.Resolve(req.Name, msg.CallerID)
-		if err != nil {
-			return nil, err
-		}
-
-		result, err := tool.Executor.Call(ctx, msg.CallerID, req.Input)
-		if err != nil {
-			return nil, err
-		}
-
-		return &bus.Message{Payload: result}, nil
 	})
+}
+
+func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+	var req struct {
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(msg.Payload, &req); err != nil {
+		return nil, fmt.Errorf("tools.call: invalid request: %w", err)
+	}
+
+	tool, err := k.Tools.Resolve(req.Name, msg.CallerID)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := tool.Executor.Call(ctx, msg.CallerID, req.Input)
+	if err != nil {
+		return nil, err
+	}
+
+	return &bus.Message{Payload: result}, nil
+}
+
+func (k *Kit) handleToolsResolve(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &req); err != nil {
+		return nil, fmt.Errorf("tools.resolve: invalid request: %w", err)
+	}
+
+	tool, err := k.Tools.Resolve(req.Name, msg.CallerID)
+	if err != nil {
+		return nil, err
+	}
+
+	info := map[string]any{
+		"name":        tool.Name,
+		"shortName":   tool.ShortName,
+		"description": tool.Description,
+	}
+	if tool.InputSchema != nil {
+		info["inputSchema"] = string(tool.InputSchema)
+	}
+
+	result, err := json.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+	return &bus.Message{Payload: result}, nil
 }
