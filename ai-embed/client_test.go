@@ -50,6 +50,26 @@ func TestBundleLoads(t *testing.T) {
 	}
 }
 
+func TestBundleExports(t *testing.T) {
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	exports := []string{"generateText", "streamText", "generateObject", "streamObject", "embed", "embedMany", "tool", "createOpenAI"}
+	for _, name := range exports {
+		val, err := c.bridge.Eval("test.js", `typeof globalThis.__ai_sdk.`+name)
+		if err != nil {
+			t.Fatalf("Eval %s: %v", name, err)
+		}
+		if val.String() != "function" {
+			t.Errorf("__ai_sdk.%s = %q, want 'function'", name, val.String())
+		}
+		val.Free()
+	}
+}
+
 func TestGenerateText(t *testing.T) {
 	// Mock OpenAI /v1/chat/completions endpoint
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,10 +123,8 @@ func TestGenerateText(t *testing.T) {
 	defer c.Close()
 
 	result, err := c.GenerateText(GenerateTextParams{
-		BaseURL: srv.URL + "/v1",
-		APIKey:  "test-key",
-		Model:   "gpt-4",
-		Prompt:  "Say hello",
+		Model:  Model{ID: "openai/gpt-4", Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"}},
+		Prompt: "Say hello",
 	})
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
@@ -137,15 +155,76 @@ func TestGenerateTextAPIError(t *testing.T) {
 	defer c.Close()
 
 	_, err = c.GenerateText(GenerateTextParams{
-		BaseURL: srv.URL + "/v1",
-		APIKey:  "bad-key",
-		Model:   "gpt-4",
-		Prompt:  "hello",
+		Model:  Model{ID: "openai/gpt-4", Provider: &ProviderConfig{APIKey: "bad-key", BaseURL: srv.URL + "/v1"}},
+		Prompt: "hello",
 	})
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
 	t.Logf("Got expected error: %v", err)
+}
+
+func TestGenerateTextWithMessages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		messages, ok := req["messages"].([]interface{})
+		if !ok || len(messages) < 2 {
+			t.Errorf("expected at least 2 messages, got %v", req["messages"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "chatcmpl-test", "object": "chat.completion",
+			"model": "gpt-4", "created": 1234567890,
+			"choices": []map[string]interface{}{{
+				"index": 0,
+				"message": map[string]interface{}{
+					"role": "assistant", "content": "I remember you said hello.",
+				},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]interface{}{
+				"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		System: "You are helpful.",
+		Messages: []Message{
+			UserMessage("Hello!"),
+			AssistantMessage("Hi there!"),
+			UserMessage("Do you remember what I said?"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+
+	if result.Text == "" {
+		t.Error("expected non-empty text")
+	}
+	if result.FinishReason != FinishStop {
+		t.Errorf("finishReason = %q, want %q", result.FinishReason, FinishStop)
+	}
+	if result.Usage.TotalTokens == 0 {
+		t.Error("expected non-zero usage")
+	}
+	t.Logf("Response: %q, Usage: %+v", result.Text, result.Usage)
 }
 
 func TestStreamText(t *testing.T) {
@@ -211,10 +290,8 @@ func TestStreamText(t *testing.T) {
 
 	var tokens []string
 	result, err := c.StreamText(StreamTextParams{
-		BaseURL: srv.URL + "/v1",
-		APIKey:  "test-key",
-		Model:   "gpt-4",
-		Prompt:  "Say hello",
+		Model:  Model{ID: "openai/gpt-4", Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"}},
+		Prompt: "Say hello",
 		OnToken: func(token string) {
 			tokens = append(tokens, token)
 		},
@@ -348,10 +425,8 @@ func TestGenerateTextRealOpenAI(t *testing.T) {
 	defer c.Close()
 
 	result, err := c.GenerateText(GenerateTextParams{
-		BaseURL: "https://api.openai.com/v1",
-		APIKey:  key,
-		Model:   "gpt-4o-mini",
-		Prompt:  "Reply with exactly: HELLO_FROM_OPENAI",
+		Model:  Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Prompt: "Reply with exactly: HELLO_FROM_OPENAI",
 	})
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
