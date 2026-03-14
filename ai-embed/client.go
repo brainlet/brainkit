@@ -234,7 +234,7 @@ func (c *Client) GenerateText(params GenerateTextParams) (*GenerateTextResult, e
 		});
 	})()`, string(paramsJSON), modelJS, callSettings, toolsJS, toolChoiceJS)
 
-	val, err := c.bridge.Eval("generate-text.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("generate-text.js", js)
 	if err != nil {
 		return nil, classifyJSError("generateText", err)
 	}
@@ -321,7 +321,7 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 		});
 	})()`, string(paramsJSON), modelJS, callSettings)
 
-	val, err := c.bridge.Eval("stream-text.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("stream-text.js", js)
 	if err != nil {
 		return nil, classifyJSError("streamText", err)
 	}
@@ -398,7 +398,7 @@ func (c *Client) GenerateObject(params GenerateObjectParams) (*GenerateObjectRes
 		});
 	})()`, string(paramsJSON), schemaJSON, modelJS, callSettings)
 
-	val, err := c.bridge.Eval("generate-object.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("generate-object.js", js)
 	if err != nil {
 		return nil, classifyJSError("generateObject", err)
 	}
@@ -491,7 +491,7 @@ func (c *Client) StreamObject(params StreamObjectParams) (*StreamObjectResult, e
 		});
 	})()`, string(paramsJSON), schemaJSON, modelJS, callSettings)
 
-	val, err := c.bridge.Eval("stream-object.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("stream-object.js", js)
 	if err != nil {
 		return nil, classifyJSError("streamObject", err)
 	}
@@ -524,7 +524,7 @@ func (c *Client) Embed(params EmbedParams) (*EmbedResult, error) {
 		});
 	})()`, modelJS, string(valueJSON))
 
-	val, err := c.bridge.Eval("embed.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("embed.js", js)
 	if err != nil {
 		return nil, classifyJSError("embed", err)
 	}
@@ -557,7 +557,7 @@ func (c *Client) EmbedMany(params EmbedManyParams) (*EmbedManyResult, error) {
 		});
 	})()`, modelJS, string(valuesJSON))
 
-	val, err := c.bridge.Eval("embed-many.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("embed-many.js", js)
 	if err != nil {
 		return nil, classifyJSError("embedMany", err)
 	}

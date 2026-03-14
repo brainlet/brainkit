@@ -4,8 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 
-	quickjs "github.com/buke/quickjs-go"
-
 	"github.com/brainlet/brainkit/jsbridge"
 )
 
@@ -25,7 +23,7 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	}
 	setup.Free()
 
-	val, err := b.Eval("agent-embed-bundle.js", bundleSource, quickjs.EvalAwait(true))
+	val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 	if err != nil {
 		return fmt.Errorf("agent-embed: load bundle: %w", err)
 	}

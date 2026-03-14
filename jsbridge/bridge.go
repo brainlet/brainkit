@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -19,13 +20,15 @@ type Config struct {
 }
 
 // Bridge wraps a native QuickJS runtime with polyfills and bridge functions.
-// NOTE: Bridge does NOT call runtime.LockOSThread/UnlockOSThread.
-// buke/quickjs-go's NewRuntime() handles thread locking internally.
+// Bridge is safe for concurrent use from multiple goroutines — calls to Eval
+// are serialized via a mutex. For true parallelism, create multiple Bridges.
+// NOTE: buke/quickjs-go's NewRuntime() handles OS thread locking internally.
 type Bridge struct {
 	runtime *quickjs.Runtime
 	ctx     *quickjs.Context
 	stdout  io.Writer
 	stderr  io.Writer
+	mu      sync.Mutex // serializes Eval/EvalBytecode calls
 }
 
 // New creates a Bridge, sets up all polyfills, and returns it ready for use.
@@ -97,9 +100,32 @@ func (b *Bridge) Global() *quickjs.Value { return b.ctx.Globals() }
 // The file parameter is used for error reporting only.
 // Extra opts (e.g. quickjs.EvalAwait(true)) are forwarded to the engine.
 // Returns (*Value, error) — if the JS throws, error is set and *Value is nil.
-func (b *Bridge) Eval(file string, code string, opts ...quickjs.EvalOption) (*quickjs.Value, error) {
+// Safe for concurrent use — calls are serialized via mutex.
+func (b *Bridge) Eval(file string, code string, opts ...quickjs.EvalOption) (result *quickjs.Value, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			result = nil
+			err = fmt.Errorf("jsbridge: panic during eval: %v", r)
+		}
+	}()
 	allOpts := append([]quickjs.EvalOption{quickjs.EvalFileName(file)}, opts...)
 	val := b.ctx.Eval(code, allOpts...)
+	if val.IsException() {
+		e := b.ctx.Exception()
+		val.Free()
+		return nil, e
+	}
+	return val, nil
+}
+
+// EvalBytecode evaluates precompiled bytecode.
+// Safe for concurrent use — calls are serialized via mutex.
+func (b *Bridge) EvalBytecode(bytecode []byte) (*quickjs.Value, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	val := b.ctx.EvalBytecode(bytecode)
 	if val.IsException() {
 		err := b.ctx.Exception()
 		val.Free()
@@ -108,13 +134,37 @@ func (b *Bridge) Eval(file string, code string, opts ...quickjs.EvalOption) (*qu
 	return val, nil
 }
 
-// EvalBytecode evaluates precompiled bytecode.
-func (b *Bridge) EvalBytecode(bytecode []byte) (*quickjs.Value, error) {
-	val := b.ctx.EvalBytecode(bytecode)
+// EvalAsync evaluates JavaScript code that returns a Promise and waits for it
+// using Go-level polling (ctx.Await) instead of C-level blocking (js_std_await).
+// This allows async Go bridge functions (using ctx.NewPromise + ctx.Schedule)
+// to resolve Promises during the Await loop via ProcessJobs().
+// Use this instead of Eval with EvalAwait(true) when bridge functions are async.
+// Safe for concurrent use — calls are serialized via mutex.
+func (b *Bridge) EvalAsync(file string, code string) (result *quickjs.Value, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			result = nil
+			err = fmt.Errorf("jsbridge: panic during eval: %v", r)
+		}
+	}()
+	val := b.ctx.Eval(code, quickjs.EvalFileName(file))
 	if val.IsException() {
-		err := b.ctx.Exception()
+		e := b.ctx.Exception()
 		val.Free()
-		return nil, err
+		return nil, e
+	}
+	// If result is a Promise, use Go-level Await which polls ProcessJobs()
+	// (ProcessJobs drains ctx.Schedule'd work from goroutines)
+	if val.IsPromise() {
+		awaited := b.ctx.Await(val)
+		if awaited.IsException() {
+			e := b.ctx.Exception()
+			awaited.Free()
+			return nil, e
+		}
+		return awaited, nil
 	}
 	return val, nil
 }
@@ -129,3 +179,4 @@ func (b *Bridge) Stdout() io.Writer { return b.stdout }
 
 // Stderr returns the configured stderr writer.
 func (b *Bridge) Stderr() io.Writer { return b.stderr }
+

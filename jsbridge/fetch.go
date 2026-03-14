@@ -35,59 +35,94 @@ func Fetch(opts ...FetchOption) *FetchPolyfill {
 func (p *FetchPolyfill) Name() string { return "fetch" }
 
 func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
-	ctx.Globals().Set("__go_fetch_sync", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+	client := p.client
+
+	// Async fetch: returns a Promise, HTTP runs in a separate goroutine.
+	// The bridge is NOT held during the HTTP call — other scheduled work
+	// (bus deliveries, other Promise resolutions) can run via ProcessJobs().
+	ctx.Globals().Set("__go_fetch", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) == 0 {
 			return ctx.ThrowError(fmt.Errorf("fetch: missing request argument"))
 		}
 
-		var req struct {
-			URL     string            `json:"url"`
-			Method  string            `json:"method"`
-			Headers map[string]string `json:"headers"`
-			Body    *string           `json:"body"`
-		}
-		if err := json.Unmarshal([]byte(args[0].ToString()), &req); err != nil {
-			return ctx.ThrowError(fmt.Errorf("fetch: invalid request: %w", err))
-		}
+		reqJSON := args[0].ToString()
 
-		var bodyReader io.Reader
-		if req.Body != nil && *req.Body != "" {
-			bodyReader = strings.NewReader(*req.Body)
-		}
+		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+			go func() {
+				var req struct {
+					URL     string            `json:"url"`
+					Method  string            `json:"method"`
+					Headers map[string]string `json:"headers"`
+					Body    *string           `json:"body"`
+				}
+				if err := json.Unmarshal([]byte(reqJSON), &req); err != nil {
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						errVal := ctx.NewError(fmt.Errorf("fetch: invalid request: %w", err))
+						defer errVal.Free()
+						reject(errVal)
+					})
+					return
+				}
 
-		httpReq, err := http.NewRequest(req.Method, req.URL, bodyReader)
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("fetch: %w", err))
-		}
-		for k, v := range req.Headers {
-			httpReq.Header.Set(k, v)
-		}
+				var bodyReader io.Reader
+				if req.Body != nil && *req.Body != "" {
+					bodyReader = strings.NewReader(*req.Body)
+				}
 
-		resp, err := p.client.Do(httpReq)
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("fetch: %w", err))
-		}
-		defer resp.Body.Close()
+				httpReq, err := http.NewRequest(req.Method, req.URL, bodyReader)
+				if err != nil {
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						errVal := ctx.NewError(fmt.Errorf("fetch: %w", err))
+						defer errVal.Free()
+						reject(errVal)
+					})
+					return
+				}
+				for k, v := range req.Headers {
+					httpReq.Header.Set(k, v)
+				}
 
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("fetch: read body: %w", err))
-		}
+				resp, err := client.Do(httpReq)
+				if err != nil {
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						errVal := ctx.NewError(fmt.Errorf("fetch: %w", err))
+						defer errVal.Free()
+						reject(errVal)
+					})
+					return
+				}
+				defer resp.Body.Close()
 
-		respHeaders := make(map[string]string)
-		for k, v := range resp.Header {
-			respHeaders[strings.ToLower(k)] = strings.Join(v, ", ")
-		}
+				respBody, err := io.ReadAll(resp.Body)
+				if err != nil {
+					ctx.Schedule(func(ctx *quickjs.Context) {
+						errVal := ctx.NewError(fmt.Errorf("fetch: read body: %w", err))
+						defer errVal.Free()
+						reject(errVal)
+					})
+					return
+				}
 
-		result := map[string]interface{}{
-			"status":     resp.StatusCode,
-			"statusText": resp.Status,
-			"body":       string(respBody),
-			"headers":    respHeaders,
-			"url":        resp.Request.URL.String(),
-		}
-		b, _ := json.Marshal(result)
-		return ctx.NewString(string(b))
+				respHeaders := make(map[string]string)
+				for k, v := range resp.Header {
+					respHeaders[strings.ToLower(k)] = strings.Join(v, ", ")
+				}
+
+				result := map[string]interface{}{
+					"status":     resp.StatusCode,
+					"statusText": resp.Status,
+					"body":       string(respBody),
+					"headers":    respHeaders,
+					"url":        resp.Request.URL.String(),
+				}
+				b, _ := json.Marshal(result)
+				resultJSON := string(b)
+
+				ctx.Schedule(func(ctx *quickjs.Context) {
+					resolve(ctx.NewString(resultJSON))
+				})
+			}()
+		})
 	}))
 
 	return evalJS(ctx, fetchJS)
@@ -191,7 +226,7 @@ globalThis.fetch = async (input, init) => {
     }
   }
   const body = opts.body != null ? String(opts.body) : null;
-  const raw = __go_fetch_sync(JSON.stringify({ url, method, headers, body }));
+  const raw = await __go_fetch(JSON.stringify({ url, method, headers, body }));
   const data = JSON.parse(raw);
   const resp = new Response(data.body, {
     status: data.status, statusText: data.statusText, headers: data.headers

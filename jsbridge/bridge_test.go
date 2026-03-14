@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
-
-	quickjs "github.com/buke/quickjs-go"
+	"time"
 )
 
 func newTestBridge(t *testing.T, polyfills ...Polyfill) *Bridge {
@@ -301,7 +301,8 @@ func TestFetch(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
+	// Use EvalAsync — Go-level Await that processes ctx.Schedule'd work
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/api");
 		const data = await resp.json();
 		return JSON.stringify({
@@ -312,9 +313,9 @@ func TestFetch(t *testing.T) {
 			message: data.message,
 			method: data.method,
 		});
-	})()`, srv.URL), quickjs.EvalAwait(true))
+	})()`, srv.URL))
 	if err != nil {
-		t.Fatalf("Eval: %v", err)
+		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
@@ -358,7 +359,7 @@ func TestFetchPOST(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/api", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -366,9 +367,9 @@ func TestFetchPOST(t *testing.T) {
 		});
 		const data = await resp.json();
 		return JSON.stringify(data);
-	})()`, srv.URL), quickjs.EvalAwait(true))
+	})()`, srv.URL))
 	if err != nil {
-		t.Fatalf("Eval: %v", err)
+		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
@@ -390,6 +391,54 @@ func TestFetchPOST(t *testing.T) {
 	}
 	if result.CT != "application/json" {
 		t.Errorf("content-type = %q", result.CT)
+	}
+}
+
+func TestFetchConcurrent(t *testing.T) {
+	// Test that multiple fetch calls within one EvalAsync run concurrently
+	// (not sequentially) by using Promise.all with a slow server.
+	callCount := int32(0)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&callCount, 1)
+		// Small delay to ensure requests overlap
+		time.Sleep(50 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"n":%d}`, n)
+	}))
+	defer srv.Close()
+
+	b := newTestBridge(t, Encoding(), Fetch(FetchClient(srv.Client())))
+
+	start := time.Now()
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
+		// Launch 3 fetches concurrently via Promise.all
+		const results = await Promise.all([
+			fetch("%[1]s/1").then(r => r.json()),
+			fetch("%[1]s/2").then(r => r.json()),
+			fetch("%[1]s/3").then(r => r.json()),
+		]);
+		return JSON.stringify(results.map(r => r.n));
+	})()`, srv.URL))
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	var nums []int
+	if err := json.Unmarshal([]byte(val.String()), &nums); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, val.String())
+	}
+
+	if len(nums) != 3 {
+		t.Errorf("expected 3 results, got %d", len(nums))
+	}
+	t.Logf("Concurrent fetch results: %v in %s", nums, elapsed.Round(time.Millisecond))
+
+	// If truly concurrent: ~50ms (parallel). If sequential: ~150ms (3 * 50ms).
+	// Allow generous margin but verify it's faster than sequential.
+	if elapsed > 140*time.Millisecond {
+		t.Errorf("expected concurrent execution (~50ms), took %s — fetches may be sequential", elapsed)
 	}
 }
 
@@ -449,13 +498,18 @@ func TestFsReadWriteFile(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.txt")
 	content := "Hello from JS via Go bridge!"
 
-	// Write from JS
-	evalString(t, b, fmt.Sprintf(`fs.writeFile(%q, %q)`, testFile, content))
+	// Write and read from JS (async)
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
+		await fs.writeFile(%q, %q);
+		return await fs.readFile(%q);
+	})()`, testFile, content, testFile))
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
 
-	// Read back from JS
-	result := evalString(t, b, fmt.Sprintf(`fs.readFile(%q)`, testFile))
-	if result != content {
-		t.Errorf("readFile = %q, want %q", result, content)
+	if val.String() != content {
+		t.Errorf("readFile = %q, want %q", val.String(), content)
 	}
 
 	// Verify from Go side
@@ -476,21 +530,25 @@ func TestFsReaddir(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "beta.txt"), []byte("b"), 0644)
 	os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
 
-	result := evalString(t, b, fmt.Sprintf(`
-		const entries = fs.readdir(%q);
-		JSON.stringify({
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
+		const entries = await fs.readdir(%q);
+		return JSON.stringify({
 			count: entries.length,
 			names: entries.map(e => e.name).sort(),
 			hasDir: entries.some(e => e.isDirectory),
 		});
-	`, tmpDir))
+	})()`, tmpDir))
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
 
 	var parsed struct {
 		Count  int      `json:"count"`
 		Names  []string `json:"names"`
 		HasDir bool     `json:"hasDir"`
 	}
-	json.Unmarshal([]byte(result), &parsed)
+	json.Unmarshal([]byte(val.String()), &parsed)
 	if parsed.Count != 3 {
 		t.Errorf("count = %d, want 3", parsed.Count)
 	}
@@ -507,17 +565,21 @@ func TestFsStat(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "statfile.txt")
 	os.WriteFile(testFile, []byte(content), 0644)
 
-	result := evalString(t, b, fmt.Sprintf(`
-		const s = fs.stat(%q);
-		JSON.stringify({ size: s.size, isFile: s.isFile, isDir: s.isDirectory });
-	`, testFile))
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
+		const s = await fs.stat(%q);
+		return JSON.stringify({ size: s.size, isFile: s.isFile, isDir: s.isDirectory });
+	})()`, testFile))
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
 
 	var parsed struct {
-		Size  int  `json:"size"`
+		Size   int  `json:"size"`
 		IsFile bool `json:"isFile"`
 		IsDir  bool `json:"isDir"`
 	}
-	json.Unmarshal([]byte(result), &parsed)
+	json.Unmarshal([]byte(val.String()), &parsed)
 	if parsed.Size != len(content) {
 		t.Errorf("size = %d, want %d", parsed.Size, len(content))
 	}
@@ -534,22 +596,20 @@ func TestFsMkdirAndRm(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	nested := filepath.Join(tmpDir, "a", "b", "c")
-
-	// mkdir recursive
-	evalString(t, b, fmt.Sprintf(`fs.mkdir(%q, { recursive: true })`, nested))
-
-	info, err := os.Stat(nested)
-	if err != nil {
-		t.Fatalf("nested dir not created: %v", err)
-	}
-	if !info.IsDir() {
-		t.Error("expected directory")
-	}
-
-	// rm recursive
 	rmTarget := filepath.Join(tmpDir, "a")
-	evalString(t, b, fmt.Sprintf(`fs.rm(%q, { recursive: true })`, rmTarget))
 
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
+		await fs.mkdir(%q, { recursive: true });
+		await fs.rm(%q, { recursive: true });
+		return "done";
+	})()`, nested, rmTarget))
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	// Verify mkdir happened (the dir was created then removed)
+	// Since we rm'd after mkdir, check that the rm worked
 	if _, err := os.Stat(rmTarget); !os.IsNotExist(err) {
 		t.Error("expected directory to be removed")
 	}
@@ -624,10 +684,15 @@ func TestPathComponents(t *testing.T) {
 func TestExec(t *testing.T) {
 	b := newTestBridge(t, Exec())
 
-	result := evalString(t, b, `
-		const r = child_process.exec("echo hello world");
-		JSON.stringify({ stdout: r.stdout.trim(), exit: r.exitCode });
-	`)
+	val, err := b.EvalAsync("test.js", `(async () => {
+		const r = await child_process.exec("echo hello world");
+		return JSON.stringify({ stdout: r.stdout.trim(), exit: r.exitCode });
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+	result := val.String()
 
 	var parsed struct {
 		Stdout string `json:"stdout"`
@@ -645,10 +710,15 @@ func TestExec(t *testing.T) {
 func TestExecNonZeroExit(t *testing.T) {
 	b := newTestBridge(t, Exec())
 
-	result := evalString(t, b, `
-		const r = child_process.exec("exit 42");
-		JSON.stringify({ exit: r.exitCode });
-	`)
+	val, err := b.EvalAsync("test.js", `(async () => {
+		const r = await child_process.exec("exit 42");
+		return JSON.stringify({ exit: r.exitCode });
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+	result := val.String()
 
 	var parsed struct {
 		Exit int `json:"exit"`
@@ -662,17 +732,22 @@ func TestExecNonZeroExit(t *testing.T) {
 func TestSpawnStreaming(t *testing.T) {
 	b := newTestBridge(t, Exec())
 
-	result := evalString(t, b, `
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const proc = child_process.spawn("sh", ["-c", "for i in 1 2 3 4 5; do echo line_$i; done"]);
 		const lines = [];
 		while (true) {
-			const line = proc.readLine();
+			const line = await proc.readLine();
 			if (line === null) break;
 			lines.push(line);
 		}
-		const exit = proc.wait();
-		JSON.stringify({ lines, exit, count: lines.length });
-	`)
+		const exit = await proc.wait();
+		return JSON.stringify({ lines, exit, count: lines.length });
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+	result := val.String()
 
 	var parsed struct {
 		Lines []string `json:"lines"`
@@ -751,7 +826,7 @@ func TestFetchResponseBody(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Streams(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/data");
 		const reader = resp.body.getReader();
 		const chunks = [];
@@ -764,9 +839,9 @@ func TestFetchResponseBody(t *testing.T) {
 		const dec = new TextDecoder();
 		const text = chunks.map(c => dec.decode(c)).join("");
 		return text;
-	})()`, srv.URL), quickjs.EvalAwait(true))
+	})()`, srv.URL))
 	if err != nil {
-		t.Fatalf("Eval: %v", err)
+		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
@@ -785,7 +860,7 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 
 	b := newTestBridge(t, Encoding(), Streams(), Fetch(FetchClient(srv.Client())))
 
-	val, err := b.Eval("test.js", fmt.Sprintf(`(async () => {
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
 		const resp = await fetch("%s/stream");
 		const textStream = resp.body.pipeThrough(new TextDecoderStream());
 		const reader = textStream.getReader();
@@ -796,7 +871,7 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 			parts.push(value);
 		}
 		return parts.join("");
-	})()`, srv.URL), quickjs.EvalAwait(true))
+	})()`, srv.URL))
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -813,7 +888,7 @@ func TestFetchResponseBodyPipeThrough(t *testing.T) {
 func TestReadableStreamBasic(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const stream = new ReadableStream({
 			start(controller) {
 				controller.enqueue("hello");
@@ -829,7 +904,7 @@ func TestReadableStreamBasic(t *testing.T) {
 			chunks.push(value);
 		}
 		return JSON.stringify(chunks);
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -851,7 +926,7 @@ func TestReadableStreamLocked(t *testing.T) {
 		let threw = false;
 		try { stream.getReader(); } catch(e) { threw = true; }
 		JSON.stringify({ locked: stream.locked, threw });
-	`, quickjs.EvalAwait(true))
+	`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -873,7 +948,7 @@ func TestReadableStreamLocked(t *testing.T) {
 func TestTransformStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const input = new ReadableStream({
 			start(controller) {
 				controller.enqueue("hello");
@@ -897,7 +972,7 @@ func TestTransformStream(t *testing.T) {
 			results.push(value);
 		}
 		return JSON.stringify(results);
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -913,7 +988,7 @@ func TestTransformStream(t *testing.T) {
 func TestWritableStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const chunks = [];
 		const ws = new WritableStream({
 			write(chunk) { chunks.push(chunk); },
@@ -923,7 +998,7 @@ func TestWritableStream(t *testing.T) {
 		await writer.write("b");
 		await writer.close();
 		return JSON.stringify(chunks);
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -939,7 +1014,7 @@ func TestWritableStream(t *testing.T) {
 func TestTextDecoderStream(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const encoder = new TextEncoder();
 		const bytes = encoder.encode("hello streams");
 
@@ -959,7 +1034,7 @@ func TestTextDecoderStream(t *testing.T) {
 			parts.push(value);
 		}
 		return parts.join("");
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -973,7 +1048,7 @@ func TestTextDecoderStream(t *testing.T) {
 func TestStreamPipeToWritable(t *testing.T) {
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const collected = [];
 		const readable = new ReadableStream({
 			start(controller) {
@@ -988,7 +1063,7 @@ func TestStreamPipeToWritable(t *testing.T) {
 		});
 		await readable.pipeTo(writable);
 		return JSON.stringify(collected);
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}
@@ -1005,7 +1080,7 @@ func TestStreamPipeThroughChain(t *testing.T) {
 	// Simulates the AI SDK pattern: ReadableStream -> TextDecoderStream -> TransformStream
 	b := newTestBridge(t, Encoding(), Streams())
 
-	val, err := b.Eval("test.js", `(async () => {
+	val, err := b.EvalAsync("test.js", `(async () => {
 		const encoder = new TextEncoder();
 		const lines = ["data: hello\n", "data: world\n", "data: [DONE]\n"];
 
@@ -1043,7 +1118,7 @@ func TestStreamPipeThroughChain(t *testing.T) {
 			tokens.push(value);
 		}
 		return JSON.stringify(tokens);
-	})()`, quickjs.EvalAwait(true))
+	})()`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)
 	}

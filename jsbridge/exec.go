@@ -22,9 +22,9 @@ type spawnedProcess struct {
 
 // ExecPolyfill provides child_process.exec and child_process.spawn.
 type ExecPolyfill struct {
-	mu      sync.Mutex
-	nextID  int
-	procs   map[int]*spawnedProcess
+	mu     sync.Mutex
+	nextID int
+	procs  map[int]*spawnedProcess
 }
 
 // Exec creates a child process execution polyfill.
@@ -35,44 +35,68 @@ func Exec() *ExecPolyfill {
 func (p *ExecPolyfill) Name() string { return "exec" }
 
 func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
+	// Async exec: shell command runs in a separate goroutine.
+	// The bridge is NOT held during command execution.
 	ctx.Globals().Set("__go_exec", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return ctx.ThrowError(fmt.Errorf("exec: command argument required"))
 		}
 		command := args[0].ToString()
 
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", command)
-		} else {
-			cmd = exec.Command("sh", "-c", command)
-		}
+		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						ctx.Schedule(func(ctx *quickjs.Context) {
+							errVal := ctx.NewError(fmt.Errorf("exec panic: %v", r))
+							defer errVal.Free()
+							reject(errVal)
+						})
+					}
+				}()
 
-		var stdoutBuf, stderrBuf strings.Builder
-		cmd.Stdout = &stdoutBuf
-		cmd.Stderr = &stderrBuf
+				var cmd *exec.Cmd
+				if runtime.GOOS == "windows" {
+					cmd = exec.Command("cmd", "/C", command)
+				} else {
+					cmd = exec.Command("sh", "-c", command)
+				}
 
-		exitCode := 0
-		err := cmd.Run()
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			} else {
-				return ctx.ThrowError(fmt.Errorf("exec: %w", err))
-			}
-		}
+				var stdoutBuf, stderrBuf strings.Builder
+				cmd.Stdout = &stdoutBuf
+				cmd.Stderr = &stderrBuf
 
-		b, err := json.Marshal(map[string]interface{}{
-			"stdout":   stdoutBuf.String(),
-			"stderr":   stderrBuf.String(),
-			"exitCode": exitCode,
+				exitCode := 0
+				err := cmd.Run()
+				if err != nil {
+					if exitErr, ok := err.(*exec.ExitError); ok {
+						exitCode = exitErr.ExitCode()
+					} else {
+						ctx.Schedule(func(ctx *quickjs.Context) {
+							errVal := ctx.NewError(fmt.Errorf("exec: %w", err))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+				}
+
+				b, _ := json.Marshal(map[string]interface{}{
+					"stdout":   stdoutBuf.String(),
+					"stderr":   stderrBuf.String(),
+					"exitCode": exitCode,
+				})
+				resultJSON := string(b)
+
+				ctx.Schedule(func(ctx *quickjs.Context) {
+					resolve(ctx.NewString(resultJSON))
+				})
+			}()
 		})
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("exec: json marshal: %w", err))
-		}
-		return ctx.NewString(string(b))
 	}))
 
+	// Spawn stays sync for setup (returns PID immediately).
+	// The actual I/O (readLine, wait) becomes async.
 	ctx.Globals().Set("__go_spawn", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return ctx.ThrowError(fmt.Errorf("spawn: command argument required"))
@@ -102,8 +126,6 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			waitErr:   make(chan error, 1),
 		}
 
-		// Read all stdout lines into the channel.
-		// Must complete before cmd.Wait() because Wait closes pipes.
 		go func() {
 			scanner := bufio.NewScanner(stdoutPipe)
 			for scanner.Scan() {
@@ -113,7 +135,6 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			close(proc.linesDone)
 		}()
 
-		// Wait after stdout is fully drained.
 		go func() {
 			<-proc.linesDone
 			proc.waitErr <- cmd.Wait()
@@ -128,6 +149,7 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewInt32(int32(id))
 	}))
 
+	// Async readLine: reading from process stdout can block.
 	ctx.Globals().Set("__go_spawn_read", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return ctx.ThrowError(fmt.Errorf("spawn_read: id argument required"))
@@ -141,13 +163,31 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("spawn_read: no process with id %d", id))
 		}
 
-		line, ok := <-proc.lines
-		if !ok {
-			return ctx.NewNull()
-		}
-		return ctx.NewString(line)
+		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						ctx.Schedule(func(ctx *quickjs.Context) {
+							errVal := ctx.NewError(fmt.Errorf("spawn_read panic: %v", r))
+							defer errVal.Free()
+							reject(errVal)
+						})
+					}
+				}()
+
+				line, ok := <-proc.lines
+				ctx.Schedule(func(ctx *quickjs.Context) {
+					if !ok {
+						resolve(ctx.NewNull())
+					} else {
+						resolve(ctx.NewString(line))
+					}
+				})
+			}()
+		})
 	}))
 
+	// Async wait: waiting for process exit can block.
 	ctx.Globals().Set("__go_spawn_wait", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return ctx.ThrowError(fmt.Errorf("spawn_wait: id argument required"))
@@ -161,29 +201,45 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("spawn_wait: no process with id %d", id))
 		}
 
-		waitErr := <-proc.waitErr
-		exitCode := 0
-		if waitErr != nil {
-			if exitErr, ok := waitErr.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			}
-		}
+		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						ctx.Schedule(func(ctx *quickjs.Context) {
+							errVal := ctx.NewError(fmt.Errorf("spawn_wait panic: %v", r))
+							defer errVal.Free()
+							reject(errVal)
+						})
+					}
+				}()
 
-		p.mu.Lock()
-		delete(p.procs, id)
-		p.mu.Unlock()
+				waitErr := <-proc.waitErr
+				exitCode := 0
+				if waitErr != nil {
+					if exitErr, ok := waitErr.(*exec.ExitError); ok {
+						exitCode = exitErr.ExitCode()
+					}
+				}
 
-		return ctx.NewInt32(int32(exitCode))
+				p.mu.Lock()
+				delete(p.procs, id)
+				p.mu.Unlock()
+
+				ctx.Schedule(func(ctx *quickjs.Context) {
+					resolve(ctx.NewInt32(int32(exitCode)))
+				})
+			}()
+		})
 	}))
 
 	return evalJS(ctx, `
 globalThis.child_process = {
-  exec(command) { return JSON.parse(__go_exec(command)); },
+  async exec(command) { return JSON.parse(await __go_exec(command)); },
   spawn(command, args) {
     const id = __go_spawn(command, args ? JSON.stringify(args) : '[]');
     return {
-      readLine() { return __go_spawn_read(id); },
-      wait() { return __go_spawn_wait(id); },
+      async readLine() { return await __go_spawn_read(id); },
+      async wait() { return await __go_spawn_wait(id); },
     };
   },
 };

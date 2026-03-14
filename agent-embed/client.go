@@ -178,7 +178,7 @@ func (c *Client) Generate(params GenerateParams) (*GenerateResult, error) {
 		params.Prompt,
 	)
 
-	val, err := c.bridge.Eval("agent-generate.js", js, quickjs.EvalAwait(true))
+	val, err := c.bridge.EvalAsync("agent-generate.js", js)
 	if err != nil {
 		return nil, fmt.Errorf("agent-embed: generate: %w", err)
 	}
