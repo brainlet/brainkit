@@ -227,7 +227,7 @@ func (a *Agent) Generate(ctx context.Context, params GenerateParams) (*GenerateR
 		});
 	})()`, a.id, a.id, inputJS, maxStepsJS)
 
-	resultJSON, err := a.sandbox.eval(ctx, "agent-generate.js", js)
+	resultJSON, err := a.sandbox.Eval(ctx, "agent-generate.js", js)
 	if err != nil {
 		return nil, fmt.Errorf("agent-embed: generate: %w", err)
 	}
@@ -306,7 +306,7 @@ func (a *Agent) Stream(ctx context.Context, params StreamParams) (*StreamResult,
 		});
 	})()`, a.id, a.id, inputJS, maxStepsJS, callbackName)
 
-	resultJSON, err := a.sandbox.eval(ctx, "agent-stream.js", js)
+	resultJSON, err := a.sandbox.Eval(ctx, "agent-stream.js", js)
 	if err != nil {
 		return nil, fmt.Errorf("agent-embed: stream: %w", err)
 	}

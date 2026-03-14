@@ -45,8 +45,8 @@ type Sandbox struct {
 	closed bool
 }
 
-// newSandbox creates a sandbox with all polyfills and the Mastra bundle loaded.
-func newSandbox(cfg SandboxConfig) (*Sandbox, error) {
+// NewSandbox creates a sandbox with all polyfills and the Mastra bundle loaded.
+func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 	fetchOpts := []jsbridge.FetchOption{}
 	if cfg.HTTPClient != nil {
 		fetchOpts = append(fetchOpts, jsbridge.FetchClient(cfg.HTTPClient))
@@ -219,8 +219,8 @@ func (s *Sandbox) registerToolCallbacks(agentID string, tools map[string]Tool) {
 	}))
 }
 
-// eval runs JS in the sandbox with async support.
-func (s *Sandbox) eval(ctx context.Context, filename, code string) (string, error) {
+// Eval runs JS in the sandbox with async support.
+func (s *Sandbox) Eval(ctx context.Context, filename, code string) (string, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()

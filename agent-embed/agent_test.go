@@ -67,7 +67,7 @@ func TestBundleExports(t *testing.T) {
 	}
 	defer sandbox.Close()
 
-	result, err := sandbox.eval(context.Background(), "test.js", `
+	result, err := sandbox.Eval(context.Background(), "test.js", `
 		JSON.stringify({
 			Agent: typeof globalThis.__agent_embed.Agent,
 			createTool: typeof globalThis.__agent_embed.createTool,

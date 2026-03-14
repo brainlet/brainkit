@@ -45,7 +45,11 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		cfg.MemoryLimit = 256 * 1024 * 1024
 	}
 	if cfg.MaxStackSize == 0 {
-		cfg.MaxStackSize = 4 * 1024 * 1024
+		// 256MB — QuickJS's stack_top-based detection misfires with CGo
+		// because stack position varies between CGo transitions. 256MB puts
+		// the threshold well below the OS thread stack so only real exhaustion
+		// (SIGSEGV) triggers. See as-embed-fixes memory note.
+		cfg.MaxStackSize = 256 * 1024 * 1024
 	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = os.Stdout

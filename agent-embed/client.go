@@ -38,7 +38,7 @@ func (c *Client) CreateSandbox(cfg SandboxConfig) (*Sandbox, error) {
 	if cfg.EnvVars == nil && c.envVars != nil {
 		cfg.EnvVars = c.envVars
 	}
-	return newSandbox(cfg)
+	return NewSandbox(cfg)
 }
 
 // CreateAgent is a convenience that creates a sandbox with one agent.
