@@ -17,7 +17,7 @@ func buildProviderJS(m Model, defaultProvider *ProviderConfig, envVars map[strin
 
 	switch provider {
 	case "openai":
-		opts := map[string]string{"apiKey": apiKey}
+		opts := map[string]interface{}{"apiKey": apiKey, "compatibility": "strict"}
 		if baseURL != "" {
 			opts["baseURL"] = baseURL
 		}
@@ -39,7 +39,7 @@ func buildEmbeddingProviderJS(m Model, defaultProvider *ProviderConfig, envVars 
 
 	switch provider {
 	case "openai":
-		opts := map[string]string{"apiKey": apiKey}
+		opts := map[string]interface{}{"apiKey": apiKey, "compatibility": "strict"}
 		if baseURL != "" {
 			opts["baseURL"] = baseURL
 		}

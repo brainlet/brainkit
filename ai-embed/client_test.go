@@ -676,6 +676,228 @@ func TestGenerateTextRealOpenAI(t *testing.T) {
 	}
 }
 
+func TestStreamTextRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	var tokens []string
+	result, err := c.StreamText(StreamTextParams{
+		Model:  Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Prompt: "Count from 1 to 5, one number per word, nothing else",
+		OnToken: func(token string) {
+			tokens = append(tokens, token)
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	if len(tokens) == 0 {
+		t.Error("expected tokens via callback")
+	}
+	if result.Text == "" {
+		t.Error("expected non-empty text")
+	}
+	t.Logf("StreamText real: %d tokens, text: %q, usage: %+v", len(tokens), result.Text, result.Usage)
+}
+
+func TestGenerateTextWithMessagesRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		System: "You are a helpful assistant. Always respond in exactly one word.",
+		Messages: []Message{
+			UserMessage("What color is the sky?"),
+			AssistantMessage("Blue"),
+			UserMessage("What color is grass?"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+
+	if result.Text == "" {
+		t.Error("expected non-empty text")
+	}
+	t.Logf("Messages real: %q, finishReason: %s, usage: %+v", result.Text, result.FinishReason, result.Usage)
+}
+
+func TestGenerateTextWithToolsRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	toolCalled := false
+	result, err := c.GenerateText(GenerateTextParams{
+		Model:    Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Prompt:   "What is 42 multiplied by 17? Use the calculator tool.",
+		MaxSteps: 3,
+		Tools: map[string]Tool{
+			"calculator": {
+				Description: "Multiplies two numbers together",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"a":{"type":"number","description":"first number"},"b":{"type":"number","description":"second number"}},"required":["a","b"]}`),
+				Execute: func(args json.RawMessage) (interface{}, error) {
+					toolCalled = true
+					var input struct {
+						A float64 `json:"a"`
+						B float64 `json:"b"`
+					}
+					json.Unmarshal(args, &input)
+					return map[string]interface{}{
+						"result": input.A * input.B,
+					}, nil
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with tools: %v", err)
+	}
+
+	if !toolCalled {
+		t.Error("expected calculator tool to be called")
+	}
+	if !strings.Contains(result.Text, "714") {
+		t.Errorf("expected result to contain 714 (42*17), got: %q", result.Text)
+	}
+	t.Logf("Tool calling real: %q, steps: %d, toolCalled: %v, usage: %+v", result.Text, len(result.Steps), toolCalled, result.Usage)
+}
+
+func TestEmbedManyRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.EmbedMany(EmbedManyParams{
+		Model:  Model{ID: "openai/text-embedding-3-small", Provider: &ProviderConfig{APIKey: key}},
+		Values: []string{"Hello world", "Goodbye world", "Machine learning is fascinating"},
+	})
+	if err != nil {
+		t.Fatalf("EmbedMany: %v", err)
+	}
+
+	if len(result.Embeddings) != 3 {
+		t.Errorf("expected 3 embeddings, got %d", len(result.Embeddings))
+	}
+	for i, emb := range result.Embeddings {
+		if len(emb) != 1536 {
+			t.Errorf("embedding[%d]: expected 1536 dimensions, got %d", i, len(emb))
+		}
+	}
+	t.Logf("EmbedMany real: %d embeddings, %d dimensions each, usage: %d tokens",
+		len(result.Embeddings), len(result.Embeddings[0]), result.Usage.Tokens)
+}
+
+func TestEmbedRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.Embed(EmbedParams{
+		Model: Model{ID: "openai/text-embedding-3-small", Provider: &ProviderConfig{APIKey: key}},
+		Value: "The quick brown fox jumps over the lazy dog",
+	})
+	if err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+
+	if len(result.Embedding) == 0 {
+		t.Error("expected non-empty embedding")
+	}
+	t.Logf("Embedding: %d dimensions, first 3: [%.4f, %.4f, %.4f], usage: %d tokens",
+		len(result.Embedding), result.Embedding[0], result.Embedding[1], result.Embedding[2], result.Usage.Tokens)
+}
+
+func TestGenerateObjectRealOpenAI(t *testing.T) {
+	loadEnv(t)
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		t.Skip("OPENAI_API_KEY not set")
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateObject(GenerateObjectParams{
+		Model:  Model{ID: "openai/gpt-4o-mini", Provider: &ProviderConfig{APIKey: key}},
+		Prompt: "Generate a fictional person with a name and age between 20-40",
+		Schema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"age": {"type": "integer"}
+			},
+			"required": ["name", "age"]
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("GenerateObject: %v", err)
+	}
+
+	var person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	if err := json.Unmarshal(result.Object, &person); err != nil {
+		t.Fatalf("unmarshal: %v (raw: %s)", err, string(result.Object))
+	}
+
+	if person.Name == "" {
+		t.Error("expected non-empty name")
+	}
+	if person.Age < 20 || person.Age > 40 {
+		t.Errorf("age = %d, expected 20-40", person.Age)
+	}
+	t.Logf("Generated person: %s, age %d. Usage: %+v", person.Name, person.Age, result.Usage)
+}
+
 func TestEmbed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/embeddings" {

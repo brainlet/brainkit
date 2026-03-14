@@ -278,16 +278,28 @@ func (c *Client) StreamText(params StreamTextParams) (*StreamTextResult, error) 
 
 		const result = __ai_sdk.streamText(opts);
 		let fullText = "";
-		for await (const delta of result.textStream) {
-			__go_stream_token(delta);
-			fullText += delta;
+		for await (const part of result.fullStream) {
+			if (part.type === "text-delta") {
+				__go_stream_token(part.textDelta);
+				fullText += part.textDelta;
+			}
 		}
 		const usage = await result.usage;
 		const finishReason = await result.finishReason;
+		const response = await result.response;
 		return JSON.stringify({
 			text: fullText,
 			finishReason: finishReason || "stop",
-			usage: usage || {},
+			usage: {
+				promptTokens: usage?.promptTokens || 0,
+				completionTokens: usage?.completionTokens || 0,
+				totalTokens: usage?.totalTokens || 0,
+			},
+			response: {
+				id: response?.id || "",
+				modelId: response?.modelId || "",
+				timestamp: response?.timestamp?.toISOString?.() || "",
+			},
 		});
 	})()`, string(paramsJSON), modelJS, callSettings)
 
