@@ -367,16 +367,6 @@ These tests compile to valid Wasm but fail at execution time:
 | Memory per compilation | ~50-100MB (reclaimed by GC) |
 | Binary size overhead | ~631KB JS + ~43MB libbinaryen |
 
-## Comparison with Manual Go Port
-
-| Metric | Manual Go Port (wasm-kit) | QuickJS Embedding (as-embed) |
-|--------|--------------------------|------------------------------|
-| Lines written | ~47K Go (20K remaining) | ~4.5K Go (bridge + API) |
-| Correctness | 0/122 tests passing | 116/116 compile, 103 execute |
-| Time invested | Months | Days |
-| Upstream sync | Re-port every change | Re-bundle, re-test |
-| Performance | Native Go | ~3.3s/compilation (acceptable for build tool) |
-
 ## Dependencies
 
 | Dependency | Role | Type |
