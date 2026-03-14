@@ -3,6 +3,7 @@ import {
   generateObject, streamObject,
   embed, embedMany,
   tool,
+  jsonSchema,
 } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
@@ -11,5 +12,6 @@ globalThis.__ai_sdk = {
   generateObject, streamObject,
   embed, embedMany,
   tool,
+  jsonSchema,
   createOpenAI,
 };

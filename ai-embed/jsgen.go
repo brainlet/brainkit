@@ -28,6 +28,28 @@ func buildProviderJS(m Model, defaultProvider *ProviderConfig, envVars map[strin
 	}
 }
 
+// buildEmbeddingProviderJS generates JS code for an embedding model instance.
+// Returns a JS expression evaluating to an EmbeddingModel.
+func buildEmbeddingProviderJS(m Model, defaultProvider *ProviderConfig, envVars map[string]string) (string, error) {
+	provider, modelID, apiKey, baseURL := resolveModel(m, defaultProvider, envVars)
+
+	if apiKey == "" {
+		return "", fmt.Errorf("no API key for provider %q (set via ProviderConfig or EnvVars)", provider)
+	}
+
+	switch provider {
+	case "openai":
+		opts := map[string]string{"apiKey": apiKey}
+		if baseURL != "" {
+			opts["baseURL"] = baseURL
+		}
+		optsJSON, _ := json.Marshal(opts)
+		return fmt.Sprintf("__ai_sdk.createOpenAI(%s).embedding(%q)", string(optsJSON), modelID), nil
+	default:
+		return "", fmt.Errorf("unsupported embedding provider %q (only 'openai' supported in v1)", provider)
+	}
+}
+
 // buildCallSettingsJS generates JS object properties for call settings.
 func buildCallSettingsJS(cs CallSettings) string {
 	var parts []string

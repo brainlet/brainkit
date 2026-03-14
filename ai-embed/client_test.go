@@ -311,6 +311,78 @@ func TestStreamText(t *testing.T) {
 	}
 }
 
+func TestStreamTextWithMessages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		if req["stream"] != true {
+			t.Errorf("expected stream=true")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		chunks := []string{"I", " remember", " our", " conversation"}
+		for i, chunk := range chunks {
+			data := map[string]interface{}{
+				"id": "chatcmpl-stream", "object": "chat.completion.chunk",
+				"model": "gpt-4", "created": 1234567890,
+				"choices": []map[string]interface{}{{
+					"index":         0,
+					"delta":         map[string]interface{}{"content": chunk},
+					"finish_reason": nil,
+				}},
+			}
+			if i == len(chunks)-1 {
+				data["choices"] = []map[string]interface{}{{
+					"index":         0,
+					"delta":         map[string]interface{}{"content": chunk},
+					"finish_reason": "stop",
+				}}
+			}
+			b, _ := json.Marshal(data)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	var tokens []string
+	result, err := c.StreamText(StreamTextParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		System: "You are helpful.",
+		Messages: []Message{
+			UserMessage("Hello!"),
+			AssistantMessage("Hi!"),
+			UserMessage("Do you remember?"),
+		},
+		OnToken: func(token string) {
+			tokens = append(tokens, token)
+		},
+	})
+	if err != nil {
+		t.Fatalf("StreamText: %v", err)
+	}
+
+	if len(tokens) == 0 {
+		t.Error("expected tokens")
+	}
+	if result.Text != "I remember our conversation" {
+		t.Errorf("text = %q, want 'I remember our conversation'", result.Text)
+	}
+	t.Logf("StreamText with messages: %d tokens, text: %q", len(tokens), result.Text)
+}
+
 func TestBytecodeLoading(t *testing.T) {
 	// Verify the precompiled bytecode loads and works
 	if len(bundleBytecode) == 0 {
@@ -411,6 +483,172 @@ func TestBytecodeSpeedup(t *testing.T) {
 	}
 }
 
+func TestGenerateTextWithTools(t *testing.T) {
+	callNum := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callNum++
+		w.Header().Set("Content-Type", "application/json")
+
+		if callNum == 1 {
+			// First call: model decides to call the weather tool
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id": "chatcmpl-1", "object": "chat.completion",
+				"model": "gpt-4", "created": 1234567890,
+				"choices": []map[string]interface{}{{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": nil,
+						"tool_calls": []map[string]interface{}{{
+							"id":   "call_abc123",
+							"type": "function",
+							"function": map[string]interface{}{
+								"name":      "get_weather",
+								"arguments": `{"city":"San Francisco"}`,
+							},
+						}},
+					},
+					"finish_reason": "tool_calls",
+				}},
+				"usage": map[string]interface{}{
+					"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30,
+				},
+			})
+		} else {
+			// Second call: model uses the tool result to generate final response
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id": "chatcmpl-2", "object": "chat.completion",
+				"model": "gpt-4", "created": 1234567890,
+				"choices": []map[string]interface{}{{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": "The weather in San Francisco is 72F and sunny.",
+					},
+					"finish_reason": "stop",
+				}},
+				"usage": map[string]interface{}{
+					"prompt_tokens": 40, "completion_tokens": 12, "total_tokens": 52,
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	toolExecuted := false
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateText(GenerateTextParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Prompt:   "What is the weather in San Francisco?",
+		MaxSteps: 3,
+		Tools: map[string]Tool{
+			"get_weather": {
+				Description: "Get the current weather in a city",
+				Parameters:  json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
+				Execute: func(args json.RawMessage) (interface{}, error) {
+					toolExecuted = true
+					var input struct {
+						City string `json:"city"`
+					}
+					json.Unmarshal(args, &input)
+					return map[string]interface{}{
+						"city":        input.City,
+						"temperature": 72,
+						"conditions":  "sunny",
+					}, nil
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText with tools: %v", err)
+	}
+
+	if !toolExecuted {
+		t.Error("expected tool to be executed")
+	}
+	if !strings.Contains(result.Text, "72") || !strings.Contains(result.Text, "sunny") {
+		t.Errorf("expected response to mention weather, got: %q", result.Text)
+	}
+	if callNum != 2 {
+		t.Errorf("expected 2 API calls (tool call + final), got %d", callNum)
+	}
+	t.Logf("Tool calling result: %q (steps: %d, API calls: %d)", result.Text, len(result.Steps), callNum)
+}
+
+func TestGenerateObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "chatcmpl-test", "object": "chat.completion",
+			"model": "gpt-4", "created": 1234567890,
+			"choices": []map[string]interface{}{{
+				"index": 0,
+				"message": map[string]interface{}{
+					"role":    "assistant",
+					"content": `{"name":"Alice","age":30}`,
+				},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]interface{}{
+				"prompt_tokens": 15, "completion_tokens": 10, "total_tokens": 25,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.GenerateObject(GenerateObjectParams{
+		Model: Model{
+			ID:       "openai/gpt-4",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Mode:   "json",
+		Prompt: "Generate a person with name and age",
+		Schema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"age": {"type": "number"}
+			},
+			"required": ["name", "age"]
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("GenerateObject: %v", err)
+	}
+
+	// Parse the object
+	var person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	if err := json.Unmarshal(result.Object, &person); err != nil {
+		t.Fatalf("unmarshal object: %v (raw: %s)", err, string(result.Object))
+	}
+
+	if person.Name != "Alice" {
+		t.Errorf("name = %q, want Alice", person.Name)
+	}
+	if person.Age != 30 {
+		t.Errorf("age = %d, want 30", person.Age)
+	}
+	t.Logf("Object: %+v, Usage: %+v", person, result.Usage)
+}
+
 func TestGenerateTextRealOpenAI(t *testing.T) {
 	loadEnv(t)
 	key := os.Getenv("OPENAI_API_KEY")
@@ -436,4 +674,134 @@ func TestGenerateTextRealOpenAI(t *testing.T) {
 	if !strings.Contains(strings.ToUpper(result.Text), "HELLO_FROM_OPENAI") {
 		t.Errorf("unexpected response: %q", result.Text)
 	}
+}
+
+func TestEmbed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/embeddings" {
+			http.Error(w, "not found", 404)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		if req["model"] != "text-embedding-3-small" {
+			t.Errorf("model = %v, want text-embedding-3-small", req["model"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"object": "list",
+			"data": []map[string]interface{}{
+				{
+					"object":    "embedding",
+					"embedding": []float64{0.1, 0.2, 0.3, 0.4, 0.5},
+					"index":     0,
+				},
+			},
+			"model": "text-embedding-3-small",
+			"usage": map[string]interface{}{
+				"prompt_tokens": 5,
+				"total_tokens":  5,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.Embed(EmbedParams{
+		Model: Model{
+			ID:       "openai/text-embedding-3-small",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Value: "Hello world",
+	})
+	if err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+
+	if len(result.Embedding) != 5 {
+		t.Errorf("embedding length = %d, want 5", len(result.Embedding))
+	}
+	if result.Embedding[0] != 0.1 {
+		t.Errorf("embedding[0] = %v, want 0.1", result.Embedding[0])
+	}
+	t.Logf("Embedding: %v, Usage: %+v", result.Embedding, result.Usage)
+}
+
+func TestEmbedMany(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		json.Unmarshal(body, &req)
+
+		// The AI SDK sends input as an array
+		inputs, ok := req["input"].([]interface{})
+		if !ok {
+			// Single input
+			inputs = []interface{}{req["input"]}
+		}
+
+		data := make([]map[string]interface{}, len(inputs))
+		for i := range inputs {
+			embedding := make([]float64, 3)
+			for j := range embedding {
+				embedding[j] = float64(i*10 + j + 1)
+			}
+			data[i] = map[string]interface{}{
+				"object":    "embedding",
+				"embedding": embedding,
+				"index":     i,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"object": "list",
+			"data":   data,
+			"model":  "text-embedding-3-small",
+			"usage": map[string]interface{}{
+				"prompt_tokens": len(inputs) * 3,
+				"total_tokens":  len(inputs) * 3,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(ClientConfig{HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer c.Close()
+
+	result, err := c.EmbedMany(EmbedManyParams{
+		Model: Model{
+			ID:       "openai/text-embedding-3-small",
+			Provider: &ProviderConfig{APIKey: "test-key", BaseURL: srv.URL + "/v1"},
+		},
+		Values: []string{"Hello", "World", "Test"},
+	})
+	if err != nil {
+		t.Fatalf("EmbedMany: %v", err)
+	}
+
+	if len(result.Embeddings) != 3 {
+		t.Errorf("embeddings count = %d, want 3", len(result.Embeddings))
+	}
+	for i, emb := range result.Embeddings {
+		if len(emb) != 3 {
+			t.Errorf("embedding[%d] length = %d, want 3", i, len(emb))
+		}
+	}
+	t.Logf("Embeddings: %d vectors, Usage: %+v", len(result.Embeddings), result.Usage)
 }
