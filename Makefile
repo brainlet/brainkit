@@ -27,6 +27,14 @@ test:
 test-v:
 	go test -v ./jsbridge/... ./ai-embed/... ./agent-embed/... ./as-embed/... -timeout 120s
 
+# Run as-embed benchmarks (compilation performance)
+bench:
+	cd as-embed && go test -run='^$$' -bench=. -benchmem -benchtime=1x -timeout 10m
+
+# Run as-embed benchmarks with 3 iterations for stable numbers
+bench-stable:
+	cd as-embed && go test -run='^$$' -bench=. -benchmem -benchtime=3x -timeout 30m
+
 # Clean generated bundles and node_modules
 clean:
 	rm -rf ai-embed/bundle/node_modules agent-embed/bundle/node_modules as-embed/bundle/node_modules

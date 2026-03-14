@@ -356,16 +356,36 @@ These tests compile to valid Wasm but fail at execution time:
 
 ## Performance
 
+The compiler caches parsed standard library AST between compilations. The first compilation on a new `Compiler` is cold (~3.3s); subsequent compilations skip stdlib parsing and run **13-20x faster**.
+
+### Benchmarks (Apple M1 Max)
+
+| Metric | Cold (first) | Warm (cached) |
+|--------|-------------|---------------|
+| Trivial function (stub) | 3,329ms | **165ms** |
+| Simple functions (stub) | 3,386ms | **186ms** |
+| Classes + methods (incremental) | 3,499ms | **270ms** |
+| Generics + BST (incremental) | 3,579ms | **278ms** |
+| Sequential throughput | 3,913ms | **839ms** |
+
+### Other Metrics
+
 | Metric | Value |
 |--------|-------|
-| Bundle load (bytecode) | ~7ms |
-| Bundle load (source) | ~30ms |
-| Compilation (simple function) | ~3.5s |
-| Compilation (complex program) | ~3.5s |
-| Sequential compilations | Stable at ~3.3s/each for 50+ |
+| Compiler initialization | ~18ms |
+| Bundle load (bytecode) | ~37ms |
+| Bundle load (source fallback) | ~139ms |
 | Bridge call overhead | ~8us per Binaryen call |
-| Memory per compilation | ~50-100MB (reclaimed by GC) |
+| Memory per compilation | ~5-10MB (reclaimed by GC) |
 | Binary size overhead | ~631KB JS + ~43MB libbinaryen |
+| Optimization level impact | Negligible (O0-O3 all ~165ms warm) |
+
+Run benchmarks yourself:
+
+```bash
+make bench          # quick (1 iteration each)
+make bench-stable   # stable (3 iterations each)
+```
 
 ## Dependencies
 

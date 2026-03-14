@@ -263,15 +263,50 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 
 			program = asc.newProgram(options);
 
-			// Step 1: Parse top-level library files (matching asc CLI behavior)
-			var libKeys = Object.keys(topLevelLib);
-			for (var i = 0; i < libKeys.length; i++) {
-				var libPath = libKeys[i];
-				asc.parse(program, topLevelLib[libPath], libPath + ".ts", false);
-			}
+			// === Stdlib caching ===
+			// The stdlib takes ~3.3s to parse (98%% of compile time).
+			// Cache the parsed Source objects after the first compilation
+			// and inject them directly on subsequent calls.
+			var cacheKey = "rt" + runtimeId;
+			var cache = globalThis.__stdlib_cache;
+			if (cache && cache.key === cacheKey) {
+				// Fast path: inject cached Source objects into the new parser
+				var p = program.parser;
+				var cached = cache.sources;
+				for (var ci = 0; ci < cached.length; ci++) {
+					p.sources.push(cached[ci]);
+				}
+				cache.donelog.forEach(function(v) { p.donelog.add(v); });
+				cache.seenlog.forEach(function(v) { p.seenlog.add(v); });
+			} else {
+				// Cold path: parse stdlib and cache the results
 
-			// Step 2: Parse runtime entry file as entry
-			asc.parse(program, runtimeText, runtimePath, true);
+				// Step 1: Parse top-level library files
+				var libKeys = Object.keys(topLevelLib);
+				for (var i = 0; i < libKeys.length; i++) {
+					var libPath = libKeys[i];
+					asc.parse(program, topLevelLib[libPath], libPath + ".ts", false);
+				}
+
+				// Step 2: Parse runtime entry file as entry
+				asc.parse(program, runtimeText, runtimePath, true);
+
+				// Drain stdlib nextFile backlog (on-demand sub-directory files)
+				var file;
+				while ((file = asc.nextFile(program)) !== null) {
+					var text = onDemandSources[file] || null;
+					asc.parse(program, text, file + ".ts", false);
+				}
+
+				// Cache the parsed sources and parser tracking state
+				var p = program.parser;
+				globalThis.__stdlib_cache = {
+					key: cacheKey,
+					sources: p.sources.slice(),
+					donelog: new Set(p.donelog),
+					seenlog: new Set(p.seenlog),
+				};
+			}
 
 			// Step 3: Parse user entry files (skip node_modules — those are
 			// resolved on-demand in Step 4 with ~lib/ prefixed paths).
@@ -282,7 +317,7 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 				asc.parse(program, userSources[uPath], uPath, uPath === entryFile);
 			}
 
-			// Step 4: Drain nextFile backlog, providing on-demand sources.
+			// Step 4: Drain nextFile backlog for user code imports.
 			// Replicates the ASC CLI's getFile + packageBases logic for
 			// bare package imports (e.g., import "_" → ~lib/_).
 			var packageBases = {};

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"sync"
 
 	"github.com/brainlet/brainkit/jsbridge"
 )
@@ -23,28 +24,35 @@ var shimSource string
 //go:embed std
 var stdFS embed.FS
 
+var (
+	cachedStdSources map[string]string
+	stdSourcesOnce   sync.Once
+)
+
 // stdSources returns a map from ~lib/ internal paths (without .ts extension)
-// to source text for all AS standard library files.
+// to source text for all AS standard library files. Cached after first call.
 func stdSources() map[string]string {
-	m := make(map[string]string)
-	fs.WalkDir(stdFS, "std", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		if !strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".d.ts") {
+	stdSourcesOnce.Do(func() {
+		m := make(map[string]string)
+		fs.WalkDir(stdFS, "std", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			if !strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".d.ts") {
+				return nil
+			}
+			data, err := stdFS.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			rel := strings.TrimPrefix(path, "std/")
+			key := "~lib/" + strings.TrimSuffix(rel, ".ts")
+			m[key] = string(data)
 			return nil
-		}
-		data, err := stdFS.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		// path is "std/object.ts" -> key is "~lib/object"
-		rel := strings.TrimPrefix(path, "std/")
-		key := "~lib/" + strings.TrimSuffix(rel, ".ts")
-		m[key] = string(data)
-		return nil
+		})
+		cachedStdSources = m
 	})
-	return m
+	return cachedStdSources
 }
 
 // LoadShim evaluates the binaryen shim in the given bridge context.
