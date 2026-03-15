@@ -177,72 +177,239 @@ if (typeof performance === "undefined") {
 }
 
 // ─── Buffer ─────────────────────────────────────────────────────────────
-// Node.js Buffer — used by crypto stubs, HTTP parsing, and various SDK internals.
+// Node.js Buffer — pg-protocol needs .write(), .copy(), .writeInt32BE(), .slice(), .toString(), etc.
+// We extend Uint8Array with Buffer methods so objects work as both typed arrays and Buffers.
 if (typeof Buffer === "undefined") {
-  var _Buffer = {
-    from: function(v, enc) {
-      if (v instanceof Uint8Array || v instanceof ArrayBuffer) {
-        return new Uint8Array(v);
-      }
-      if (typeof v === "string") {
-        if (enc === "base64") {
-          var bin = atob(v);
-          var arr = new Uint8Array(bin.length);
-          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-          return arr;
+  (function() {
+    var _te = new TextEncoder();
+    var _td = new TextDecoder();
+
+    function _addBufferMethods(buf) {
+      if (buf._isBuffer) return buf;
+      buf._isBuffer = true;
+
+      buf.write = function(string, offset, lengthOrEnc, encoding) {
+        if (typeof offset === 'string') { encoding = offset; offset = 0; }
+        if (typeof lengthOrEnc === 'string') { encoding = lengthOrEnc; lengthOrEnc = undefined; }
+        offset = offset || 0;
+        var bytes = _te.encode(string);
+        var len = lengthOrEnc !== undefined ? Math.min(bytes.length, lengthOrEnc) : bytes.length;
+        for (var i = 0; i < len && (offset + i) < buf.length; i++) buf[offset + i] = bytes[i];
+        return len;
+      };
+
+      buf.copy = function(target, targetStart, sourceStart, sourceEnd) {
+        targetStart = targetStart || 0;
+        sourceStart = sourceStart || 0;
+        sourceEnd = sourceEnd || buf.length;
+        for (var i = sourceStart; i < sourceEnd && (targetStart + i - sourceStart) < target.length; i++) {
+          target[targetStart + i - sourceStart] = buf[i];
         }
-        if (enc === "hex") {
-          var arr = new Uint8Array(v.length / 2);
-          for (var i = 0; i < v.length; i += 2) arr[i / 2] = parseInt(v.substr(i, 2), 16);
-          return arr;
+        return sourceEnd - sourceStart;
+      };
+
+      buf.writeInt32BE = function(value, offset) {
+        offset = offset || 0;
+        buf[offset]     = (value >>> 24) & 0xff;
+        buf[offset + 1] = (value >>> 16) & 0xff;
+        buf[offset + 2] = (value >>> 8) & 0xff;
+        buf[offset + 3] = value & 0xff;
+        return offset + 4;
+      };
+
+      buf.writeUInt32BE = buf.writeInt32BE;
+
+      buf.writeInt16BE = function(value, offset) {
+        offset = offset || 0;
+        buf[offset]     = (value >>> 8) & 0xff;
+        buf[offset + 1] = value & 0xff;
+        return offset + 2;
+      };
+
+      buf.writeUInt16BE = buf.writeInt16BE;
+
+      buf.readInt32BE = function(offset) {
+        offset = offset || 0;
+        return (buf[offset] << 24) | (buf[offset+1] << 16) | (buf[offset+2] << 8) | buf[offset+3];
+      };
+
+      buf.readUInt32BE = function(offset) {
+        offset = offset || 0;
+        return ((buf[offset] << 24) | (buf[offset+1] << 16) | (buf[offset+2] << 8) | buf[offset+3]) >>> 0;
+      };
+
+      buf.readInt16BE = function(offset) {
+        offset = offset || 0;
+        var val = (buf[offset] << 8) | buf[offset+1];
+        return val > 0x7FFF ? val - 0x10000 : val;
+      };
+
+      buf.readUInt16BE = function(offset) {
+        offset = offset || 0;
+        return (buf[offset] << 8) | buf[offset+1];
+      };
+
+      buf.readUInt8 = function(offset) { return buf[offset || 0]; };
+      buf.writeUInt8 = function(value, offset) { buf[offset || 0] = value & 0xff; return (offset || 0) + 1; };
+
+      var origSlice = buf.slice.bind(buf);
+      buf.slice = function(start, end) {
+        return _addBufferMethods(origSlice(start, end));
+      };
+
+      buf.subarray = function(start, end) {
+        return _addBufferMethods(Uint8Array.prototype.subarray.call(buf, start, end));
+      };
+
+      buf.toString = function(encoding, start, end) {
+        start = start || 0;
+        end = end !== undefined ? end : buf.length;
+        var sub = buf.subarray(start, end);
+        encoding = (encoding || 'utf8').toLowerCase();
+        if (encoding === 'utf8' || encoding === 'utf-8') {
+          return _td.decode(sub);
         }
-        return new TextEncoder().encode(v);
-      }
-      if (Array.isArray(v)) {
-        return new Uint8Array(v);
-      }
-      return new Uint8Array(0);
-    },
-    alloc: function(n, fill) {
-      var b = new Uint8Array(n);
-      if (fill !== undefined) b.fill(typeof fill === "number" ? fill : 0);
-      return b;
-    },
-    allocUnsafe: function(n) { return new Uint8Array(n); },
-    allocUnsafeSlow: function(n) { return new Uint8Array(n); },
-    isBuffer: function(obj) { return false; },
-    isEncoding: function(enc) {
-      return ["utf8", "utf-8", "ascii", "latin1", "binary", "hex", "base64", "ucs2", "ucs-2", "utf16le", "utf-16le"]
-        .indexOf((enc || "").toLowerCase()) !== -1;
-    },
-    byteLength: function(str, enc) {
-      if (typeof str === "string") return new TextEncoder().encode(str).length;
-      if (str instanceof Uint8Array || str instanceof ArrayBuffer) return str.byteLength || str.length;
-      return 0;
-    },
-    concat: function(bufs, totalLength) {
-      if (!totalLength) {
-        totalLength = 0;
-        for (var i = 0; i < bufs.length; i++) totalLength += bufs[i].length;
-      }
-      var r = new Uint8Array(totalLength);
-      var off = 0;
-      for (var i = 0; i < bufs.length; i++) {
-        r.set(bufs[i], off);
-        off += bufs[i].length;
-      }
-      return r;
-    },
-    compare: function(a, b) {
-      var len = Math.min(a.length, b.length);
-      for (var i = 0; i < len; i++) {
-        if (a[i] < b[i]) return -1;
-        if (a[i] > b[i]) return 1;
-      }
-      return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
-    },
-  };
-  globalThis.Buffer = _Buffer;
+        if (encoding === 'hex') {
+          var hex = '';
+          for (var i = 0; i < sub.length; i++) hex += (sub[i] < 16 ? '0' : '') + sub[i].toString(16);
+          return hex;
+        }
+        if (encoding === 'base64') {
+          var binary = '';
+          for (var i = 0; i < sub.length; i++) binary += String.fromCharCode(sub[i]);
+          return btoa(binary);
+        }
+        if (encoding === 'ascii' || encoding === 'latin1' || encoding === 'binary') {
+          var str = '';
+          for (var i = 0; i < sub.length; i++) str += String.fromCharCode(sub[i]);
+          return str;
+        }
+        return _td.decode(sub);
+      };
+
+      buf.toJSON = function() {
+        return { type: 'Buffer', data: Array.from(buf) };
+      };
+
+      buf.equals = function(other) {
+        if (buf.length !== other.length) return false;
+        for (var i = 0; i < buf.length; i++) if (buf[i] !== other[i]) return false;
+        return true;
+      };
+
+      buf.compare = function(other) {
+        var len = Math.min(buf.length, other.length);
+        for (var i = 0; i < len; i++) {
+          if (buf[i] < other[i]) return -1;
+          if (buf[i] > other[i]) return 1;
+        }
+        return buf.length < other.length ? -1 : buf.length > other.length ? 1 : 0;
+      };
+
+      buf.fill = function(value, start, end) {
+        start = start || 0;
+        end = end || buf.length;
+        var fillVal = typeof value === 'number' ? value : 0;
+        Uint8Array.prototype.fill.call(buf, fillVal, start, end);
+        return buf;
+      };
+
+      buf.indexOf = function(val, byteOffset) {
+        byteOffset = byteOffset || 0;
+        if (typeof val === 'number') {
+          for (var i = byteOffset; i < buf.length; i++) if (buf[i] === val) return i;
+          return -1;
+        }
+        return -1;
+      };
+
+      buf.map = function(fn) {
+        return _addBufferMethods(Uint8Array.prototype.map.call(buf, fn));
+      };
+
+      return buf;
+    }
+
+    var _Buffer = {
+      from: function(v, encOrOffset, length) {
+        if (v instanceof ArrayBuffer) {
+          var offset = encOrOffset || 0;
+          var len = length !== undefined ? length : v.byteLength - offset;
+          return _addBufferMethods(new Uint8Array(v, offset, len));
+        }
+        if (v instanceof Uint8Array || ArrayBuffer.isView(v)) {
+          if (typeof encOrOffset === 'number') {
+            return _addBufferMethods(new Uint8Array(v.buffer, (v.byteOffset || 0) + encOrOffset, length));
+          }
+          return _addBufferMethods(new Uint8Array(v));
+        }
+        if (typeof v === 'string') {
+          var enc = encOrOffset;
+          if (enc === 'base64') {
+            var bin = atob(v);
+            var arr = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            return _addBufferMethods(arr);
+          }
+          if (enc === 'hex') {
+            var arr = new Uint8Array(v.length / 2);
+            for (var i = 0; i < v.length; i += 2) arr[i / 2] = parseInt(v.substr(i, 2), 16);
+            return _addBufferMethods(arr);
+          }
+          return _addBufferMethods(_te.encode(v));
+        }
+        if (Array.isArray(v)) {
+          return _addBufferMethods(new Uint8Array(v));
+        }
+        if (typeof v === 'number') {
+          return _addBufferMethods(new Uint8Array(v));
+        }
+        return _addBufferMethods(new Uint8Array(0));
+      },
+      alloc: function(n, fill) {
+        var b = new Uint8Array(n);
+        if (fill !== undefined) b.fill(typeof fill === 'number' ? fill : 0);
+        return _addBufferMethods(b);
+      },
+      allocUnsafe: function(n) { return _addBufferMethods(new Uint8Array(n)); },
+      allocUnsafeSlow: function(n) { return _addBufferMethods(new Uint8Array(n)); },
+      isBuffer: function(obj) { return !!(obj && obj._isBuffer); },
+      isEncoding: function(enc) {
+        return ['utf8','utf-8','ascii','latin1','binary','hex','base64','ucs2','ucs-2','utf16le','utf-16le']
+          .indexOf((enc || '').toLowerCase()) !== -1;
+      },
+      byteLength: function(str, enc) {
+        if (typeof str === 'string') {
+          if (enc === 'base64') return Math.ceil(str.length * 3 / 4);
+          return _te.encode(str).length;
+        }
+        if (str instanceof Uint8Array || str instanceof ArrayBuffer) return str.byteLength || str.length;
+        return 0;
+      },
+      concat: function(bufs, totalLength) {
+        if (!totalLength) {
+          totalLength = 0;
+          for (var i = 0; i < bufs.length; i++) totalLength += bufs[i].length;
+        }
+        var r = new Uint8Array(totalLength);
+        var off = 0;
+        for (var i = 0; i < bufs.length; i++) {
+          r.set(bufs[i], off);
+          off += bufs[i].length;
+        }
+        return _addBufferMethods(r);
+      },
+      compare: function(a, b) {
+        var len = Math.min(a.length, b.length);
+        for (var i = 0; i < len; i++) {
+          if (a[i] < b[i]) return -1;
+          if (a[i] > b[i]) return 1;
+        }
+        return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
+      },
+    };
+    globalThis.Buffer = _Buffer;
+  })();
 }
 
 // ─── Scheduling ─────────────────────────────────────────────────────────

@@ -9,6 +9,9 @@ import { MockMemory } from '@mastra/core/memory';
 import { InMemoryStore } from '@mastra/core/storage';
 import { LibSQLStore } from '@mastra/libsql';
 import { UpstashStore } from '@mastra/upstash';
+// TCP-based stores — require jsbridge/net.go polyfill at runtime
+import { PostgresStore } from '@mastra/pg';
+// import { MongoDBStore } from '@mastra/mongodb';    // TODO: enable next
 import { z } from 'zod';
 
 // AI SDK providers
@@ -36,6 +39,8 @@ globalThis.__agent_embed = {
   InMemoryStore,
   LibSQLStore,
   UpstashStore,
+  PostgresStore,
+  // MongoDBStore,    // TODO: enable next
   z,
 
   // AI SDK providers

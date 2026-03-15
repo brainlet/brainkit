@@ -13,3 +13,5 @@ export const Memory = globalThis.__brainlet.Memory;
 export const InMemoryStore = globalThis.__brainlet.InMemoryStore;
 export const LibSQLStore = globalThis.__brainlet.LibSQLStore;
 export const UpstashStore = globalThis.__brainlet.UpstashStore;
+export const PostgresStore = globalThis.__brainlet.PostgresStore;
+export const MongoDBStore = globalThis.__brainlet.MongoDBStore;

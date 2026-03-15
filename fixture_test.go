@@ -3,12 +3,15 @@ package brainkit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/registry"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // loadFixture reads a test fixture file from testdata/.
@@ -200,13 +203,45 @@ func TestFixture_TS_MemoryInMemory(t *testing.T) {
 }
 
 func TestFixture_TS_MemoryLibSQL(t *testing.T) {
-	if os.Getenv("LIBSQL_URL") == "" {
-		t.Skip("LIBSQL_URL not set — need a LibSQL HTTP endpoint (testcontainer or Turso)")
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "ghcr.io/tursodatabase/libsql-server:latest",
+			ExposedPorts: []string{"8080/tcp"},
+			WaitingFor:   wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start LibSQL container: %v", err)
 	}
+	defer container.Terminate(ctx)
 
-	kit := newTestKit(t)
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "8080")
+	libsqlURL := fmt.Sprintf("http://%s:%s", host, port.Port())
+	t.Logf("LibSQL container running at %s", libsqlURL)
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"LIBSQL_URL": libsqlURL,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
 	code := loadFixture(t, "testdata/ts/memory-libsql.js")
-
 	result, err := kit.EvalModule(context.Background(), "memory-libsql.js", code)
 	if err != nil {
 		t.Fatal(err)

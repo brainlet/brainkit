@@ -355,10 +355,12 @@
     z: z,
 
     // STORAGE (for custom memory configs)
+    Memory: embed.Memory,
     InMemoryStore: embed.InMemoryStore,
     LibSQLStore: embed.LibSQLStore,
     UpstashStore: embed.UpstashStore,
-    Memory: embed.Memory,
+    PostgresStore: embed.PostgresStore,
+    MongoDBStore: embed.MongoDBStore,
 
     // PLATFORM
     ai: ai,

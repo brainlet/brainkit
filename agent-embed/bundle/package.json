@@ -18,6 +18,8 @@
     "@mastra/core": "^1.13.1",
     "@mastra/libsql": "^1.7.0",
     "@mastra/memory": "^1.8.2",
+    "@mastra/mongodb": "^1.5.5",
+    "@mastra/pg": "^1.8.0",
     "@mastra/upstash": "^1.0.4",
     "events": "^3.3.0",
     "pg": "^8.20.0"

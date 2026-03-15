@@ -120,7 +120,10 @@ func (p *TimersPolyfill) Setup(ctx *quickjs.Context) error {
 	// for Mastra's internal workflow step scheduling which uses setTimeout(fn, 0).
 	// Delayed timers still use the Go-side Drain() mechanism.
 	return evalJS(ctx, `
-var __timer_cbs = new Map();
+if (typeof queueMicrotask === "undefined") {
+  globalThis.queueMicrotask = function(fn) { Promise.resolve().then(fn); };
+}
+var __timer_cleared = new Set();
 var __timer_next_id = 0;
 globalThis.setTimeout = function(fn, delay) {
   __timer_next_id++;
@@ -132,12 +135,16 @@ globalThis.setTimeout = function(fn, delay) {
   // would never fire. queueMicrotask ensures callbacks run via JS_ExecutePendingJob.
   // The delay is ignored — in our single-threaded QuickJS, there's no real
   // async scheduling, just microtask ordering.
-  queueMicrotask(function() { fn.apply(null, args); });
+  queueMicrotask(function() {
+    if (!__timer_cleared.has(id)) {
+      fn.apply(null, args);
+    }
+    __timer_cleared.delete(id);
+  });
   return id;
 };
 globalThis.clearTimeout = function(id) {
-  __go_clear_timeout(id);
-  __timer_cbs.delete(id);
+  __timer_cleared.add(id);
 };
 `)
 }

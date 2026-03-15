@@ -210,19 +210,22 @@ func TestTimers(t *testing.T) {
 	timers := Timers()
 	b := newTestBridge(t, timers)
 
-	evalString(t, b, `
+	// Use EvalAsync with async IIFE so microtasks (queueMicrotask) get processed via Await
+	val, err := b.EvalAsync("timer-test.js", `(async () => {
 		globalThis._results = [];
 		setTimeout(() => _results.push("a"), 0);
 		setTimeout(() => _results.push("b"), 0);
 		const id = setTimeout(() => _results.push("cancelled"), 0);
 		clearTimeout(id);
-	`)
-
-	if err := timers.Drain(b.Context()); err != nil {
-		t.Fatalf("Drain: %v", err)
+		// Give microtasks a chance to run
+		await new Promise(r => setTimeout(r, 0));
+		return JSON.stringify(_results);
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
 	}
-
-	result := evalString(t, b, `JSON.stringify(_results)`)
+	defer val.Free()
+	result := val.String()
 	if result != `["a","b"]` {
 		t.Errorf("timers result = %s, want %s", result, `["a","b"]`)
 	}

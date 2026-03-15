@@ -9,14 +9,14 @@ import { statSync, writeFileSync } from "node:fs";
 
 const nodeBuiltins = new Set([
   "assert", "async_hooks", "buffer", "child_process", "crypto",
-  "diagnostics_channel", "events", "fs", "http", "https", "module",
+  "diagnostics_channel", "dns", "events", "fs", "http", "https", "module", "timers",
   "net", "os", "path", "perf_hooks", "process", "querystring",
   "stream", "string_decoder", "tls", "url", "util", "worker_threads", "zlib",
 ]);
 
 // Subpath modules that need their own stubs (not just the parent module)
 const nodeSubpaths = new Set([
-  "fs/promises", "stream/web", "path/posix", "stream/promises", "util/types",
+  "fs/promises", "stream/web", "path/posix", "stream/promises", "util/types", "timers/promises",
 ]);
 
 function isNodeBuiltin(id) {
@@ -139,6 +139,45 @@ const moduleStubs = {
     export const pipeline = (...args) => Promise.resolve();
     export const finished = (stream) => Promise.resolve();
     export default { pipeline, finished };
+  `,
+  "timers": `
+    export const setTimeout = globalThis.setTimeout;
+    export const clearTimeout = globalThis.clearTimeout;
+    export const setInterval = globalThis.setInterval;
+    export const clearInterval = globalThis.clearInterval;
+    export const setImmediate = globalThis.setImmediate || ((fn) => globalThis.setTimeout(fn, 0));
+    export const clearImmediate = globalThis.clearImmediate || (() => {});
+    export default { setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate };
+  `,
+  "timers/promises": `
+    export const setTimeout = (delay, value) => new Promise(resolve => globalThis.setTimeout(() => resolve(value), delay));
+    export const setInterval = () => { throw new Error("timers/promises.setInterval: not supported in QuickJS"); };
+    export const setImmediate = (value) => new Promise(resolve => globalThis.setTimeout(() => resolve(value), 0));
+    export const scheduler = {
+      wait: (delay) => new Promise(resolve => globalThis.setTimeout(resolve, delay)),
+      yield: () => new Promise(resolve => globalThis.setTimeout(resolve, 0)),
+    };
+    export default { setTimeout, setInterval, setImmediate, scheduler };
+  `,
+  "dns": `
+    export const lookup = (hostname, opts, cb) => {
+      if (typeof opts === "function") { cb = opts; opts = {}; }
+      // Resolve to the hostname itself — Go's net.Dial handles DNS
+      if (cb) cb(null, hostname, 4);
+    };
+    export const resolve = (hostname, rrtype, cb) => {
+      if (typeof rrtype === "function") { cb = rrtype; rrtype = "A"; }
+      if (cb) cb(null, [hostname]);
+    };
+    export const resolve4 = (hostname, cb) => { if (cb) cb(null, [hostname]); };
+    export const resolve6 = (hostname, cb) => { if (cb) cb(null, [hostname]); };
+    export const promises = {
+      lookup: async (hostname) => ({ address: hostname, family: 4 }),
+      resolve: async (hostname) => [hostname],
+      resolve4: async (hostname) => [hostname],
+      resolve6: async (hostname) => [hostname],
+    };
+    export default { lookup, resolve, resolve4, resolve6, promises };
   `,
   "events": `
     export class EventEmitter {
@@ -514,13 +553,37 @@ const moduleStubs = {
   "net": `
     const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
     export const createServer = notAvailable("net.createServer");
-    export const createConnection = (...args) => {
-      const s = new (globalThis.GoSocket || class{})();
-      if (args.length > 0) s.connect(args[0]?.port || args[0], args[0]?.host || args[1]);
-      return s;
-    };
+    export class Socket {
+      constructor() {
+        // Delegate to GoSocket if the jsbridge net polyfill is loaded
+        if (globalThis.GoSocket) {
+          var gs = new globalThis.GoSocket();
+          // Copy methods from GoSocket instance
+          var proto = Object.getPrototypeOf(gs);
+          for (var key of Object.getOwnPropertyNames(proto)) {
+            if (key !== "constructor") this[key] = gs[key].bind ? gs[key].bind(gs) : gs[key];
+          }
+          this._gs = gs;
+          return;
+        }
+        this._events = {};
+      }
+      connect() { if (this._gs) return this._gs.connect.apply(this._gs, arguments); return this; }
+      write() { if (this._gs) return this._gs.write.apply(this._gs, arguments); return false; }
+      end() { if (this._gs) return this._gs.end.apply(this._gs, arguments); }
+      destroy() { if (this._gs) return this._gs.destroy.apply(this._gs, arguments); }
+      on(e, fn) { if (this._gs) { this._gs.on(e, fn); return this; } (this._events[e] = this._events[e] || []).push(fn); return this; }
+      once(e, fn) { if (this._gs) { this._gs.once(e, fn); return this; } return this.on(e, fn); }
+      removeListener(e, fn) { if (this._gs) { this._gs.removeListener(e, fn); return this; } return this; }
+      emit(e) { if (this._gs) return this._gs.emit.apply(this._gs, arguments); }
+      setNoDelay() { return this; }
+      setKeepAlive() { return this; }
+      setTimeout() { return this; }
+      ref() { return this; }
+      unref() { return this; }
+    }
+    export const createConnection = (...args) => { const s = new Socket(); s.connect(args[0], args[1]); return s; };
     export const connect = createConnection;
-    export const Socket = globalThis.GoSocket || class Socket {};
     export const Server = class Server {};
     export const isIP = (input) => { try { return input.includes(":") ? 6 : input.match(/^\\d+\\.\\d+\\.\\d+\\.\\d+$/) ? 4 : 0; } catch(e) { return 0; } };
     export const isIPv4 = (input) => isIP(input) === 4;
@@ -665,9 +728,9 @@ const result = await esbuild.build({
   treeShaking: true,
   plugins: [nodeStubPlugin],
   external: [
-    // Database drivers — handled by Go, not JS
-    "pg",
-    "mongodb",
+    // Database drivers — bundled with TCP socket polyfill via jsbridge/net.go
+    // "pg" — bundled
+    // "mongodb" — bundled
     // "@libsql/client", — bundled: HTTP-based, works through fetch
     "better-sqlite3",
     // Native modules that can't run in QuickJS
