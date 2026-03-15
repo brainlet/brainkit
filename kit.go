@@ -154,6 +154,25 @@ func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, er
 	return result.String(), nil
 }
 
+// RegisterTool is a convenience method for registering typed Go tools.
+// The JSON Schema is generated automatically from T's struct tags.
+//
+// Example:
+//
+//	type AddInput struct {
+//	    A float64 `json:"a" desc:"First number"`
+//	    B float64 `json:"b" desc:"Second number"`
+//	}
+//	kit.RegisterTool("platform.math.add", registry.TypedTool[AddInput]{
+//	    Description: "Adds two numbers",
+//	    Execute: func(ctx context.Context, input AddInput) (any, error) {
+//	        return map[string]any{"result": input.A + input.B}, nil
+//	    },
+//	})
+func RegisterTool[T any](k *Kit, name string, tool registry.TypedTool[T]) error {
+	return registry.Register(k.Tools, name, tool)
+}
+
 // ResumeWorkflow resumes a suspended workflow run from the Go side.
 // runId: the workflow run's ID
 // stepId: which step to resume (empty string for auto-detect)

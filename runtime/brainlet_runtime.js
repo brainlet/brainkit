@@ -56,6 +56,7 @@
   function wrapGenerateResult(result) {
     return {
       text: result.text || "",
+      object: result.object || undefined,
       reasoning: result.reasoningText || "",
       usage: {
         promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
@@ -80,6 +81,9 @@
         timestamp: result.response?.timestamp?.toISOString?.() || "",
       },
       traceId: result.traceId || undefined,
+      runId: result.runId || undefined,
+      providerMetadata: result.providerMetadata || undefined,
+      suspendPayload: result.suspendPayload || undefined,
     };
   }
 
@@ -90,14 +94,24 @@
       textStream: rawStream.textStream,
       fullStream: rawStream.fullStream,
       text: rawStream.text,
+      object: rawStream.object,
       usage: rawStream.usage,
+      totalUsage: rawStream.totalUsage,
       finishReason: rawStream.finishReason,
       reasoning: rawStream.reasoning || rawStream.reasoningText,
       toolCalls: rawStream.toolCalls,
       toolResults: rawStream.toolResults,
       steps: rawStream.steps,
       sources: rawStream.sources,
+      files: rawStream.files,
+      warnings: rawStream.warnings,
       response: rawStream.response,
+      traceId: rawStream.traceId,
+      runId: rawStream.runId,
+      error: rawStream.error,
+      tripwire: rawStream.tripwire,
+      scoringData: rawStream.scoringData,
+      providerMetadata: rawStream.providerMetadata,
     };
   }
 
@@ -291,13 +305,14 @@
   }
 
   // createTool() — define a tool in THIS sandbox
-  // Field names match Mastra: id, inputSchema, description, execute
+  // Spread passthrough: forwards ALL Mastra fields (outputSchema, suspendSchema, resumeSchema,
+  // requireApproval, toModelOutput, providerOptions, lifecycle hooks, etc.)
+  // Backward-compat: accepts `name` as alias for `id`, `schema` as alias for `inputSchema`.
   function createTool(config) {
     return embed.createTool({
+      ...config,
       id: config.id || config.name,
-      description: config.description || "",
       inputSchema: config.inputSchema || config.schema || embed.z.object({}),
-      execute: config.execute,
     });
   }
 

@@ -806,6 +806,123 @@ func TestFixture_TS_WorkflowState(t *testing.T) {
 	t.Logf("fixture workflow-state: status=%s items=%v", out.Status, out.Items)
 }
 
+func TestFixture_TS_WorkflowParallel(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-parallel.js")
+	result, err := kit.EvalModule(context.Background(), "workflow-parallel.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Status  string `json:"status"`
+		Result  any    `json:"result"`
+		Correct bool   `json:"correct"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.Correct {
+		t.Errorf("parallel incorrect: status=%s result=%v raw=%s", out.Status, out.Result, result)
+	}
+	t.Logf("workflow-parallel: status=%s result=%v correct=%v", out.Status, out.Result, out.Correct)
+}
+
+func TestFixture_TS_WorkflowBranch(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-branch.js")
+	result, err := kit.EvalModule(context.Background(), "workflow-branch.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		High    struct{ Status, Label string } `json:"high"`
+		Low     struct{ Status, Label string } `json:"low"`
+		Correct bool                           `json:"correct"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.Correct {
+		t.Errorf("branch incorrect: high=%v low=%v raw=%s", out.High, out.Low, result)
+	}
+	t.Logf("workflow-branch: high=%s low=%s correct=%v", out.High.Label, out.Low.Label, out.Correct)
+}
+
+func TestFixture_TS_WorkflowForeach(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-foreach.js")
+	result, err := kit.EvalModule(context.Background(), "workflow-foreach.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Status  string `json:"status"`
+		Result  any    `json:"result"`
+		IsArray bool   `json:"isArray"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if out.Status != "success" {
+		t.Errorf("foreach: status=%s result=%v raw=%s", out.Status, out.Result, result)
+	}
+	t.Logf("workflow-foreach: status=%s isArray=%v result=%v", out.Status, out.IsArray, out.Result)
+}
+
+func TestFixture_TS_WorkflowLoop(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-loop.js")
+	result, err := kit.EvalModule(context.Background(), "workflow-loop.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Status          string `json:"status"`
+		Result          any    `json:"result"`
+		LoopedCorrectly bool   `json:"loopedCorrectly"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.LoopedCorrectly {
+		t.Errorf("loop incorrect: status=%s result=%v raw=%s", out.Status, out.Result, result)
+	}
+	t.Logf("workflow-loop: status=%s loopedCorrectly=%v result=%v", out.Status, out.Result, out.LoopedCorrectly)
+}
+
+func TestFixture_TS_WorkflowSleep(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-sleep.js")
+	result, err := kit.EvalModule(context.Background(), "workflow-sleep.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Status      string `json:"status"`
+		Elapsed     int    `json:"elapsed"`
+		SleptEnough bool   `json:"sleptEnough"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.SleptEnough {
+		t.Errorf("sleep too short: elapsed=%dms raw=%s", out.Elapsed, result)
+	}
+	t.Logf("workflow-sleep: status=%s elapsed=%dms sleptEnough=%v", out.Status, out.Elapsed, out.SleptEnough)
+}
+
+func TestFixture_TS_ToolFullConfig(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/tool-full-config.js")
+	result, err := kit.EvalModule(context.Background(), "tool-full-config.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Text      string `json:"text"`
+		HasAnswer bool   `json:"hasAnswer"`
+		ToolCalls int    `json:"toolCalls"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.HasAnswer {
+		t.Errorf("tool didn't compute 42: %q", out.Text)
+	}
+	if out.ToolCalls < 1 {
+		t.Error("expected at least 1 tool call")
+	}
+	t.Logf("fixture tool-full-config: text=%q toolCalls=%d", out.Text, out.ToolCalls)
+}
+
 func TestKit_ResumeWorkflow(t *testing.T) {
 	kit := newTestKitNoKey(t)
 

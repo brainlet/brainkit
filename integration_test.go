@@ -337,3 +337,40 @@ func TestIntegration_FullTSModule(t *testing.T) {
 	t.Logf("Full .ts module: sandbox=%+v ai=%q reversed=%q localTool=%v",
 		out.Sandbox, out.AIText, out.Reversed, out.HasLocalTool)
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Typed Go tool registration — clean DX with auto-generated JSON Schema
+// ═══════════════════════════════════════════════════════════════
+
+func TestIntegration_TypedGoTool(t *testing.T) {
+	kit := newTestKitNoKey(t)
+
+	type AddInput struct {
+		A float64 `json:"a" desc:"First number"`
+		B float64 `json:"b" desc:"Second number"`
+	}
+
+	RegisterTool(kit, "platform.add", registry.TypedTool[AddInput]{
+		Description: "Adds two numbers",
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
+			return map[string]any{"result": input.A + input.B}, nil
+		},
+	})
+
+	result, err := kit.EvalModule(context.Background(), "typed-tool-test.js", `
+		import { tools, output } from "brainlet";
+		const result = await tools.call("add", { a: 17, b: 25 });
+		output(result);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct{ Result float64 }
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Result != 42 {
+		t.Errorf("expected 42, got %v", out.Result)
+	}
+	t.Logf("typed Go tool: math.add(17, 25) = %v", out.Result)
+}
