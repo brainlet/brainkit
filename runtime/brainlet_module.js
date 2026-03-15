@@ -24,3 +24,5 @@ export const generateText = globalThis.__brainlet.generateText;
 export const streamText = globalThis.__brainlet.streamText;
 export const generateObject = globalThis.__brainlet.generateObject;
 export const streamObject = globalThis.__brainlet.streamObject;
+export const createWorkflowRun = globalThis.__brainlet.createWorkflowRun;
+export const resumeWorkflow = globalThis.__brainlet.resumeWorkflow;

@@ -327,6 +327,41 @@ declare module "brainlet" {
    */
   export function output(value: any): void;
 
+  /**
+   * Create a workflow run with suspend/resume support.
+   * Injects storage for snapshot persistence and tracks the run for later resume.
+   * Use this instead of workflow.createRun() when you need suspend/resume.
+   *
+   * @example
+   * ```ts
+   * const workflow = createWorkflow({...}).then(step1).then(step2).commit();
+   * const run = await createWorkflowRun(workflow);
+   * const result = await run.start({ inputData: { ... } });
+   * ```
+   */
+  export function createWorkflowRun(workflow: Workflow, opts?: { runId?: string; resourceId?: string }): Promise<WorkflowRun>;
+
+  /**
+   * Resume a suspended workflow run.
+   * Use after a workflow step called `suspend()` and returned status "suspended".
+   *
+   * @example
+   * ```ts
+   * const run = await createWorkflowRun(workflow);
+   * const result = await run.start({ inputData: { ... } });
+   * if (result.status === "suspended") {
+   *   const final = await resumeWorkflow(run.runId, "approval-step", {
+   *     approved: true,
+   *   });
+   * }
+   * ```
+   */
+  export function resumeWorkflow(
+    runId: string,
+    stepId: string | undefined,
+    resumeData: any
+  ): Promise<WorkflowResult>;
+
   // ═══════════════════════════════════════════════════════════════
   // Types
   // ═══════════════════════════════════════════════════════════════

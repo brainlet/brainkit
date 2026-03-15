@@ -127,7 +127,7 @@ func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error)
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject } = globalThis.__brainlet;
+		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow } = globalThis.__brainlet;
 		%s
 	})()`, code)
 	return k.agents.Eval(ctx, filename, wrapped)
@@ -147,6 +147,37 @@ func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, er
 
 	result, err := k.bridge.Eval("__get_result.js",
 		`typeof globalThis.__module_result !== 'undefined' ? String(globalThis.__module_result) : ""`)
+	if err != nil {
+		return "", err
+	}
+	defer result.Free()
+	return result.String(), nil
+}
+
+// ResumeWorkflow resumes a suspended workflow run from the Go side.
+// runId: the workflow run's ID
+// stepId: which step to resume (empty string for auto-detect)
+// resumeDataJSON: JSON-encoded resume data to pass to the step
+func (k *Kit) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJSON string) (string, error) {
+	stepArg := "undefined"
+	if stepId != "" {
+		stepArg = fmt.Sprintf("%q", stepId)
+	}
+
+	code := fmt.Sprintf(`(async () => {
+		var result = await globalThis.__brainlet.resumeWorkflow(%q, %s, %s);
+		globalThis.__module_result = JSON.stringify(result);
+	})()`, runId, stepArg, resumeDataJSON)
+
+	val, err := k.bridge.EvalAsync("__resume_workflow.js", code)
+	if err != nil {
+		return "", fmt.Errorf("resume workflow %s: %w", runId, err)
+	}
+	if val != nil {
+		val.Free()
+	}
+
+	result, err := k.bridge.Eval("__get_resume_result.js", `typeof globalThis.__module_result !== 'undefined' ? String(globalThis.__module_result) : ""`)
 	if err != nil {
 		return "", err
 	}

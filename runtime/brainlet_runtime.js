@@ -104,6 +104,77 @@
   // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
 
+  // Storage shim for workflow snapshot persistence (suspend/resume).
+  // The workflow engine calls mastra.getStorage().getStore('workflows') to persist snapshots.
+  // Our _defaultStore (InMemoryStore) already implements getStore(). We just need a wrapper
+  // that provides getStorage(). No Mastra instance needed — this is our own abstraction.
+  var _workflowStorageShim = {
+    getStorage: function() { return _defaultStore; },
+    getLogger: function() { return undefined; },
+    generateId: function() { return undefined; },
+  };
+
+  // Registry of active workflow runs — needed for resume after suspend.
+  // Key: runId, Value: { run, workflow }
+  var _pendingRuns = {};
+
+  // Wrap createWorkflow to inject storage for snapshot persistence and track runs.
+  // Without this, workflow suspend/resume cannot persist snapshots.
+  // wrappedCreateWorkflow — direct pass-through of createWorkflow.
+  // Storage injection for suspend/resume happens via createWorkflowRun() wrapper below.
+  function wrappedCreateWorkflow(config) {
+    return embed.createWorkflow(config);
+  }
+
+  // createWorkflowRun — create a run from a committed workflow, with storage + tracking.
+  // This is our own API that wraps workflow.createRun() to enable suspend/resume.
+  async function createWorkflowRun(workflow, opts) {
+    // Inject storage shim for snapshot persistence
+    if (typeof workflow.__registerMastra === "function") {
+      try { workflow.__registerMastra(_workflowStorageShim); } catch(e) {}
+    }
+    var run = await workflow.createRun(opts);
+    var origRunId = run.runId;
+    _pendingRuns[origRunId] = { run: run, workflow: workflow };
+
+    // Wrap start to track suspension
+    var _origStart = run.start.bind(run);
+    run.start = async function(params) {
+      var result = await _origStart(params);
+      if (result.status !== "suspended") {
+        delete _pendingRuns[origRunId];
+      }
+      return result;
+    };
+
+    return run;
+  }
+
+  // resumeWorkflow — resume a suspended workflow run.
+  // runId: the run's ID (from run.runId)
+  // stepId: (optional) which step to resume, auto-detected if omitted
+  // resumeData: the data to pass to the resumed step
+  async function resumeWorkflow(runId, stepId, resumeData) {
+    var entry = _pendingRuns[runId];
+    if (!entry) {
+      throw new Error("brainlet: no pending workflow run with id " + runId);
+    }
+
+    var resumeOpts = { resumeData: resumeData };
+    if (stepId) {
+      resumeOpts.step = stepId;
+    }
+
+    var result = await entry.run.resume(resumeOpts);
+
+    // Clean up if completed
+    if (result.status !== "suspended") {
+      delete _pendingRuns[runId];
+    }
+
+    return result;
+  }
+
   // createMemory() — create a Memory instance using @mastra/memory
   // Developers can pass their own storage or use the Kit's default in-memory store.
   // Supports vector store + embedder for semantic recall.
@@ -468,7 +539,7 @@
     // LOCAL
     agent: agent,
     createTool: createTool,
-    createWorkflow: embed.createWorkflow,
+    createWorkflow: wrappedCreateWorkflow,
     createStep: embed.createStep,
     createMemory: createMemory,
     z: z,
@@ -501,6 +572,10 @@
 
     // CONTEXT
     sandbox: sandboxCtx,
+
+    // WORKFLOWS
+    createWorkflowRun: createWorkflowRun,
+    resumeWorkflow: resumeWorkflow,
 
     // MODULE
     output: output,

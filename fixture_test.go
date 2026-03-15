@@ -732,6 +732,114 @@ func TestFixture_TS_WorkflowWithAgent(t *testing.T) {
 	t.Logf("workflow-with-agent: status=%s hasAnswer=%v result=%v", out.Status, out.HasAnswer, out.Result)
 }
 
+func TestFixture_TS_WorkflowSuspendResume(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-suspend-resume.js")
+
+	result, err := kit.EvalModule(context.Background(), "workflow-suspend-resume.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Phase          string `json:"phase"`
+		Status         string `json:"status"`
+		Result         any    `json:"result"`
+		SuspendPayload any    `json:"suspendPayload"`
+		RunId          string `json:"runId"`
+		Approved       bool   `json:"approved"`
+		Error          string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Error != "" {
+		t.Logf("full output: %s", result)
+		t.Fatalf("fixture error: %s", out.Error)
+	}
+	if out.Phase != "complete" {
+		t.Errorf("expected phase=complete, got %s", out.Phase)
+	}
+	if out.Status != "success" {
+		t.Errorf("expected status=success, got %s", out.Status)
+	}
+	if !out.Approved {
+		t.Errorf("result should contain approver David: %v", out.Result)
+	}
+	if out.RunId == "" {
+		t.Error("expected non-empty runId")
+	}
+	t.Logf("fixture workflow-suspend-resume: phase=%s status=%s runId=%s result=%v suspendPayload=%v",
+		out.Phase, out.Status, out.RunId, out.Result, out.SuspendPayload)
+}
+
+func TestKit_ResumeWorkflow(t *testing.T) {
+	kit := newTestKitNoKey(t)
+
+	// Create a workflow with a suspend step via EvalTS
+	// Note: EvalTS already destructures __brainlet, so we use those names directly
+	setupCode := `
+var step1 = createStep({
+  id: "greet",
+  inputSchema: z.object({ name: z.string() }),
+  outputSchema: z.object({ greeting: z.string() }),
+  execute: async ({ inputData, resumeData, suspend }) => {
+    if (!resumeData) {
+      return suspend({ draft: "Hello " + inputData.name });
+    }
+    if (resumeData.confirmed) {
+      return { greeting: "Hello " + inputData.name + "!" };
+    }
+    return { greeting: "Cancelled" };
+  },
+});
+
+var wf = createWorkflow({
+  id: "greet-wf",
+  inputSchema: z.object({ name: z.string() }),
+  outputSchema: z.object({ greeting: z.string() }),
+}).then(step1).commit();
+
+var run = await createWorkflowRun(wf);
+var result = await run.start({ inputData: { name: "Alice" } });
+globalThis.__test_runId = run.runId;
+globalThis.__test_status = result.status;
+`
+	_, err := kit.EvalTS(context.Background(), "setup.js", setupCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check it's suspended
+	statusVal, _ := kit.bridge.Eval("check.js", `globalThis.__test_status`)
+	defer statusVal.Free()
+	if statusVal.String() != "suspended" {
+		t.Fatalf("expected suspended, got %s", statusVal.String())
+	}
+
+	runIdVal, _ := kit.bridge.Eval("get-runid.js", `globalThis.__test_runId`)
+	defer runIdVal.Free()
+	runId := runIdVal.String()
+	t.Logf("Workflow suspended, runId=%s", runId)
+
+	// Resume from Go
+	result, err := kit.ResumeWorkflow(context.Background(), runId, "greet", `{"confirmed": true}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Resume result: %s", result)
+
+	var out struct {
+		Status string `json:"status"`
+		Result any    `json:"result"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Status != "success" {
+		t.Errorf("expected success, got %s", out.Status)
+	}
+}
+
 func TestFixture_TS_AIEmbed(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/ai-embed.js")
