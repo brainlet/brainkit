@@ -530,6 +530,81 @@ func TestFixture_TS_MemoryPostgresSCRAM(t *testing.T) {
 	t.Logf("fixture memory-postgres-scram: %q remembers=%v auth=%s", out.Text, out.Remembers, out.Auth)
 }
 
+func TestFixture_TS_VectorMethods(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "ghcr.io/tursodatabase/libsql-server:latest",
+			ExposedPorts: []string{"8080/tcp"},
+			WaitingFor:   wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start LibSQL container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "8080")
+	libsqlURL := fmt.Sprintf("http://%s:%s", host, port.Port())
+
+	kit, err := New(Config{
+		Namespace: "test",
+		EnvVars: map[string]string{
+			"LIBSQL_URL": libsqlURL,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/vector-methods.js")
+	result, err := kit.EvalModule(context.Background(), "vector-methods.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("raw: %s", result)
+
+	var out struct {
+		ListIndexes struct {
+			HasA  bool `json:"hasA"`
+			HasB  bool `json:"hasB"`
+			Count int  `json:"count"`
+		} `json:"listIndexes"`
+		DescribeIndex any `json:"describeIndex"`
+		Query         struct {
+			TopId string `json:"topId"`
+			Count int    `json:"count"`
+		} `json:"query"`
+		AfterDelete struct {
+			Count int      `json:"count"`
+			Ids   []string `json:"ids"`
+		} `json:"afterDelete"`
+		IndexesAfter []string `json:"indexesAfter"`
+		AllPassed    bool     `json:"allPassed"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.ListIndexes.HasA || !out.ListIndexes.HasB {
+		t.Errorf("listIndexes missing: hasA=%v hasB=%v", out.ListIndexes.HasA, out.ListIndexes.HasB)
+	}
+	if out.Query.TopId != "v1" {
+		t.Errorf("query top: expected v1, got %s", out.Query.TopId)
+	}
+	if out.AfterDelete.Count != 1 {
+		t.Errorf("after delete: expected 1, got %d (%v)", out.AfterDelete.Count, out.AfterDelete.Ids)
+	}
+	t.Logf("vector-methods: listIndexes=%v describe=%v query=%v afterDelete=%v indexesAfter=%v",
+		out.ListIndexes, out.DescribeIndex, out.Query, out.AfterDelete, out.IndexesAfter)
+}
+
 func TestFixture_TS_VectorPgVector(t *testing.T) {
 	ensurePodmanSocket(t)
 
@@ -921,6 +996,74 @@ func TestFixture_TS_ToolFullConfig(t *testing.T) {
 		t.Error("expected at least 1 tool call")
 	}
 	t.Logf("fixture tool-full-config: text=%q toolCalls=%d", out.Text, out.ToolCalls)
+}
+
+func TestFixture_TS_AgentDynamicModel(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-dynamic-model.js")
+	result, err := kit.EvalModule(context.Background(), "agent-dynamic-model.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Text  string `json:"text"`
+		Works bool   `json:"works"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.Works {
+		t.Errorf("dynamic model failed: %q", out.Text)
+	}
+	t.Logf("agent-dynamic-model: text=%q works=%v", out.Text, out.Works)
+}
+
+func TestFixture_TS_AgentDynamicInstructions(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-dynamic-instructions.js")
+	result, err := kit.EvalModule(context.Background(), "agent-dynamic-instructions.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Text1     string `json:"text1"`
+		Text2     string `json:"text2"`
+		HasAlpha  bool   `json:"hasAlpha"`
+		HasBeta   bool   `json:"hasBeta"`
+		Different bool   `json:"different"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.HasAlpha {
+		t.Errorf("expected ALPHA: %q", out.Text1)
+	}
+	if !out.HasBeta {
+		t.Errorf("expected BETA: %q", out.Text2)
+	}
+	if !out.Different {
+		t.Error("expected different responses for different contexts")
+	}
+	t.Logf("agent-dynamic-instructions: text1=%q text2=%q", out.Text1, out.Text2)
+}
+
+func TestFixture_TS_AgentDynamicTools(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-dynamic-tools.js")
+	result, err := kit.EvalModule(context.Background(), "agent-dynamic-tools.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		AddResult       string `json:"addResult"`
+		MultiplyResult  string `json:"multiplyResult"`
+		AddCorrect      bool   `json:"addCorrect"`
+		MultiplyCorrect bool   `json:"multiplyCorrect"`
+	}
+	json.Unmarshal([]byte(result), &out)
+	if !out.AddCorrect {
+		t.Errorf("add should be 7: %q", out.AddResult)
+	}
+	if !out.MultiplyCorrect {
+		t.Errorf("multiply should be 12: %q", out.MultiplyResult)
+	}
+	t.Logf("agent-dynamic-tools: add=%q multiply=%q", out.AddResult, out.MultiplyResult)
 }
 
 func TestKit_ResumeWorkflow(t *testing.T) {

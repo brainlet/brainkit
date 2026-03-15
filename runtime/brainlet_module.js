@@ -29,3 +29,4 @@ export const resumeWorkflow = globalThis.__brainlet.resumeWorkflow;
 export const createScorer = globalThis.__brainlet.createScorer;
 export const runEvals = globalThis.__brainlet.runEvals;
 export const scorers = globalThis.__brainlet.scorers;
+export const RequestContext = globalThis.__brainlet.RequestContext;

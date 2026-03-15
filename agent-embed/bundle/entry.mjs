@@ -16,6 +16,7 @@ import { MongoDBStore, MongoDBVector } from '@mastra/mongodb';
 import { z } from 'zod';
 import { embed, embedMany, generateText, streamText, generateObject, streamObject } from 'ai';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
+import { RequestContext } from '@mastra/core/request-context';
 
 // Evals — scorer infrastructure from core + pre-built rule-based scorers
 import { createScorer, runEvals } from '@mastra/core/evals';
@@ -67,6 +68,7 @@ globalThis.__agent_embed = {
   generateObject,
   streamObject,
   ModelRouterEmbeddingModel,
+  RequestContext,
 
   // Evals
   createScorer,

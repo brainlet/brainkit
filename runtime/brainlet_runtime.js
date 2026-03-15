@@ -667,6 +667,7 @@
 
     // CONTEXT
     sandbox: sandboxCtx,
+    RequestContext: embed.RequestContext,
 
     // WORKFLOWS
     createWorkflowRun: createWorkflowRun,
