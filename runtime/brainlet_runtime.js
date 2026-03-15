@@ -55,6 +55,7 @@
 
   // createMemory() — create a Memory instance using @mastra/memory
   // Developers can pass their own storage or use the Kit's default in-memory store.
+  // Supports vector store + embedder for semantic recall.
   function createMemory(memoryConfig) {
     var storage = memoryConfig.storage || _defaultStore;
     var opts = {};
@@ -63,11 +64,24 @@
     if (memoryConfig.workingMemory !== undefined) opts.workingMemory = memoryConfig.workingMemory;
     if (memoryConfig.generateTitle !== undefined) opts.generateTitle = memoryConfig.generateTitle;
 
-    return new embed.Memory({
+    var memConfig = {
       storage: storage,
-      vector: false,
       options: opts,
-    });
+    };
+
+    // Vector store for semantic recall
+    if (memoryConfig.vector) {
+      memConfig.vector = memoryConfig.vector;
+    } else {
+      memConfig.vector = false;
+    }
+
+    // Embedder model for semantic recall (string like "openai/text-embedding-3-small")
+    if (memoryConfig.embedder) {
+      memConfig.embedder = memoryConfig.embedder;
+    }
+
+    return new embed.Memory(memConfig);
   }
 
   // agent() — create a persistent agent in THIS Kit
@@ -81,22 +95,23 @@
       tools: config.tools || {},
     };
 
-    // If memory is configured, create a Memory instance and set on the agent
+    // Memory: accept a Memory instance directly (Mastra-style) or a config object
+    var memoryOpts = null;
     if (config.memory) {
-      var memory = createMemory(config.memory);
-      agentOpts.memory = memory;
+      if (config.memory instanceof embed.Memory || (config.memory.constructor && config.memory.constructor.name === "Memory")) {
+        // Already a Memory instance — pass through (Mastra API)
+        agentOpts.memory = config.memory;
+      } else {
+        // Config object — create Memory from it
+        agentOpts.memory = createMemory(config.memory);
+        memoryOpts = {
+          thread: typeof config.memory.thread === "string" ? { id: config.memory.thread } : config.memory.thread || { id: "default" },
+          resource: config.memory.resource || "default",
+        };
+      }
     }
 
     var a = new embed.Agent(agentOpts);
-
-    // Build memory options for generate/stream calls
-    var memoryOpts = null;
-    if (config.memory) {
-      memoryOpts = {
-        thread: typeof config.memory.thread === "string" ? { id: config.memory.thread } : config.memory.thread || { id: "default" },
-        resource: config.memory.resource || "default",
-      };
-    }
 
     return {
       _mastraAgent: a,
@@ -391,6 +406,11 @@
     UpstashStore: embed.UpstashStore,
     PostgresStore: embed.PostgresStore,
     MongoDBStore: embed.MongoDBStore,
+
+    // VECTOR STORES (for semantic recall)
+    LibSQLVector: embed.LibSQLVector,
+    PgVector: embed.PgVector,
+    MongoDBVector: embed.MongoDBVector,
 
     // PLATFORM
     ai: ai,

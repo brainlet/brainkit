@@ -127,7 +127,7 @@ func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error)
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore } = globalThis.__brainlet;
+		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector } = globalThis.__brainlet;
 		%s
 	})()`, code)
 	return k.agents.Eval(ctx, filename, wrapped)

@@ -17,3 +17,6 @@ export const LibSQLStore = globalThis.__brainlet.LibSQLStore;
 export const UpstashStore = globalThis.__brainlet.UpstashStore;
 export const PostgresStore = globalThis.__brainlet.PostgresStore;
 export const MongoDBStore = globalThis.__brainlet.MongoDBStore;
+export const LibSQLVector = globalThis.__brainlet.LibSQLVector;
+export const PgVector = globalThis.__brainlet.PgVector;
+export const MongoDBVector = globalThis.__brainlet.MongoDBVector;

@@ -8,11 +8,11 @@ import { Mastra } from '@mastra/core/mastra';
 import { Memory } from '@mastra/memory';
 import { MockMemory } from '@mastra/core/memory';
 import { InMemoryStore } from '@mastra/core/storage';
-import { LibSQLStore } from '@mastra/libsql';
+import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { UpstashStore } from '@mastra/upstash';
 // TCP-based stores — require jsbridge/net.go polyfill at runtime
-import { PostgresStore } from '@mastra/pg';
-import { MongoDBStore } from '@mastra/mongodb';
+import { PostgresStore, PgVector } from '@mastra/pg';
+import { MongoDBStore, MongoDBVector } from '@mastra/mongodb';
 import { z } from 'zod';
 import { embed, embedMany } from 'ai';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
@@ -43,9 +43,12 @@ globalThis.__agent_embed = {
   MockMemory,
   InMemoryStore,
   LibSQLStore,
+  LibSQLVector,
   UpstashStore,
   PostgresStore,
+  PgVector,
   MongoDBStore,
+  MongoDBVector,
   z,
   embed,
   embedMany,
