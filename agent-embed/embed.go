@@ -38,6 +38,53 @@ if (typeof global === "undefined") {
   globalThis.global = globalThis;
 }
 
+// ─── require shim ───────────────────────────────────────────────────────
+// The AI SDK bundle has dynamic require("@opentelemetry/api") that can't
+// be resolved at build time. Provide a no-op shim with OpenTelemetry stubs.
+if (typeof require === "undefined") {
+  var _noopSpan = {
+    setAttribute: function() { return this; },
+    setAttributes: function() { return this; },
+    addEvent: function() { return this; },
+    setStatus: function() { return this; },
+    end: function() {},
+    isRecording: function() { return false; },
+    recordException: function() {},
+    updateName: function() { return this; },
+    spanContext: function() { return { traceId: "", spanId: "", traceFlags: 0 }; },
+  };
+  var _noopTracer = {
+    startSpan: function() { return _noopSpan; },
+    startActiveSpan: function(name, optionsOrFn, fnOrUndef) {
+      var fn = typeof optionsOrFn === "function" ? optionsOrFn : fnOrUndef;
+      if (typeof fn === "function") return fn(_noopSpan);
+      return _noopSpan;
+    },
+  };
+  var _otelStub = {
+    trace: {
+      getTracer: function() { return _noopTracer; },
+      setSpan: function(ctx) { return ctx; },
+      getSpan: function() { return _noopSpan; },
+      getActiveSpan: function() { return undefined; },
+    },
+    context: {
+      active: function() { return {}; },
+      with: function(ctx, fn) { return fn(); },
+      bind: function(ctx, fn) { return fn; },
+    },
+    SpanStatusCode: { UNSET: 0, OK: 1, ERROR: 2 },
+    SpanKind: { INTERNAL: 0, SERVER: 1, CLIENT: 2 },
+    diag: { debug: function() {}, info: function() {}, warn: function() {}, error: function() {} },
+    propagation: {},
+    metrics: { getMeter: function() { return {}; } },
+  };
+  globalThis.require = function(mod) {
+    if (mod === "@opentelemetry/api") return _otelStub;
+    return {};
+  };
+}
+
 // ─── Error.captureStackTrace ────────────────────────────────────────────
 // V8-specific API used by pg-pool and other Node.js libraries.
 // QuickJS doesn't have it — provide a no-op shim.

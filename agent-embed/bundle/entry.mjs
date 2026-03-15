@@ -14,6 +14,8 @@ import { UpstashStore } from '@mastra/upstash';
 import { PostgresStore } from '@mastra/pg';
 import { MongoDBStore } from '@mastra/mongodb';
 import { z } from 'zod';
+import { embed, embedMany } from 'ai';
+import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
 
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
@@ -45,6 +47,9 @@ globalThis.__agent_embed = {
   PostgresStore,
   MongoDBStore,
   z,
+  embed,
+  embedMany,
+  ModelRouterEmbeddingModel,
 
   // AI SDK providers
   createOpenAI,

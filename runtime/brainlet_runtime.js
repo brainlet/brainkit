@@ -216,13 +216,29 @@
       return await a.stream(params.prompt || "", {});
     },
     embed: async function(params) {
-      // Embedding still routes through Go bridge (not available directly in Mastra bundle)
-      var raw = bridgeRequest("ai.embed", params);
-      return parseBridgeResponse(raw);
+      // LOCAL: uses AI SDK embed() + Mastra's ModelRouterEmbeddingModel
+      var embeddingModel = new embed.ModelRouterEmbeddingModel(params.model);
+      var result = await embed.embed({ model: embeddingModel, value: params.value });
+      return {
+        embedding: result.embedding,
+        usage: {
+          promptTokens: result.usage?.tokens || 0,
+          completionTokens: 0,
+          totalTokens: result.usage?.tokens || 0,
+        },
+      };
     },
     embedMany: async function(params) {
-      var raw = bridgeRequest("ai.embedMany", params);
-      return parseBridgeResponse(raw);
+      var embeddingModel = new embed.ModelRouterEmbeddingModel(params.model);
+      var result = await embed.embedMany({ model: embeddingModel, values: params.values });
+      return {
+        embeddings: result.embeddings,
+        usage: {
+          promptTokens: result.usage?.tokens || 0,
+          completionTokens: 0,
+          totalTokens: result.usage?.tokens || 0,
+        },
+      };
     },
   };
 

@@ -457,6 +457,37 @@ func TestFixture_TS_WorkflowWithAgent(t *testing.T) {
 	t.Logf("workflow-with-agent: status=%s hasAnswer=%v result=%v", out.Status, out.HasAnswer, out.Result)
 }
 
+func TestFixture_TS_AIEmbed(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/ai-embed.js")
+
+	result, err := kit.EvalModule(context.Background(), "ai-embed.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Single struct {
+			Dimensions int  `json:"dimensions"`
+			HasValues  bool `json:"hasValues"`
+		} `json:"single"`
+		Multi struct {
+			Count      int  `json:"count"`
+			Dimensions int  `json:"dimensions"`
+			AllVectors bool `json:"allVectors"`
+		} `json:"multi"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Single.HasValues || out.Single.Dimensions == 0 {
+		t.Errorf("single embed failed: dims=%d hasValues=%v", out.Single.Dimensions, out.Single.HasValues)
+	}
+	if out.Multi.Count != 3 || !out.Multi.AllVectors {
+		t.Errorf("multi embed failed: count=%d allVectors=%v", out.Multi.Count, out.Multi.AllVectors)
+	}
+	t.Logf("ai-embed: single=%d dims, multi=%d vectors × %d dims", out.Single.Dimensions, out.Multi.Count, out.Multi.Dimensions)
+}
+
 func TestFixture_TS_ToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 

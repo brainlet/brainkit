@@ -44,6 +44,9 @@ func newTestKit(t *testing.T) *Kit {
 		Providers: map[string]ProviderConfig{
 			"openai": {APIKey: key},
 		},
+		EnvVars: map[string]string{
+			"OPENAI_API_KEY": key,
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
