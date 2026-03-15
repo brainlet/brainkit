@@ -71,6 +71,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.Events(),
 		jsbridge.StructuredClone(),
 		jsbridge.Net(),
+		jsbridge.WebAssembly(),
 		jsbridge.Fetch(fetchOpts...),
 	)
 	if err != nil {

@@ -452,6 +452,138 @@ func TestFixture_TS_MemoryPostgresSCRAM(t *testing.T) {
 	t.Logf("fixture memory-postgres-scram: %q remembers=%v auth=%s", out.Text, out.Remembers, out.Auth)
 }
 
+func TestFixture_TS_VectorPgVector(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// pgvector/pgvector image has the vector extension pre-installed
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "pgvector/pgvector:pg16",
+			ExposedPorts: []string{"5432/tcp"},
+			Env: map[string]string{
+				"POSTGRES_USER":             "test",
+				"POSTGRES_PASSWORD":         "test",
+				"POSTGRES_DB":               "brainlet_test",
+				"POSTGRES_HOST_AUTH_METHOD": "trust",
+			},
+			WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start pgvector container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "5432")
+	pgURL := fmt.Sprintf("postgresql://test:test@%s:%s/brainlet_test", host, port.Port())
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"POSTGRES_URL":   pgURL,
+			"OPENAI_API_KEY": key,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/vector-pgvector.js")
+	result, err := kit.EvalModule(context.Background(), "vector-pgvector.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		ResultCount int    `json:"resultCount"`
+		TopID       string `json:"topId"`
+		TopLabel    string `json:"topLabel"`
+		SecondID    string `json:"secondId"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.ResultCount < 2 {
+		t.Errorf("expected 2+ results, got %d", out.ResultCount)
+	}
+	if out.TopLabel != "x" && out.TopLabel != "xy" {
+		t.Errorf("expected top result to be x or xy, got %q", out.TopLabel)
+	}
+	t.Logf("pgvector: %d results, top=%s(%s) second=%s", out.ResultCount, out.TopID, out.TopLabel, out.SecondID)
+}
+
+func TestFixture_TS_VectorMongoDB(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "mongo:7",
+			ExposedPorts: []string{"27017/tcp"},
+			WaitingFor:   wait.ForListeningPort("27017/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start MongoDB container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "27017")
+	mongoURL := fmt.Sprintf("mongodb://%s:%s/?directConnection=true", host, port.Port())
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"MONGODB_URL":    mongoURL,
+			"OPENAI_API_KEY": key,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/vector-mongodb.js")
+	result, err := kit.EvalModule(context.Background(), "vector-mongodb.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Created  bool   `json:"created"`
+		Atlas    bool   `json:"atlas"`
+		Upserted int    `json:"upserted"`
+		Reason   string `json:"reason"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	// On Community Edition: createIndex fails (no Atlas Search), but upsert works
+	if out.Atlas {
+		t.Logf("vector-mongodb: Atlas Search available, index created")
+	} else if out.Upserted == 2 {
+		t.Logf("vector-mongodb: community edition, upsert works, reason=%s", out.Reason)
+	} else {
+		t.Errorf("vector-mongodb: unexpected result: %+v", out)
+	}
+}
+
 func TestFixture_TS_AIStream(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/ai-stream.js")

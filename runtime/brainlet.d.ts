@@ -168,7 +168,23 @@ declare module "brainlet" {
   export const tools: {
     /** Call a tool by name. Namespace resolution: caller → user → platform → plugin. */
     call(name: string, input?: any): Promise<any>;
+
+    /**
+     * Register a tool on the platform. Visible to other Kits sharing the same ToolRegistry.
+     * The tool is registered under the caller's namespace.
+     */
+    register(name: string, config: { description?: string; inputSchema?: any }): Promise<void>;
+
+    /** List all tools visible to this Kit. */
+    list(namespace?: string): Promise<ToolInfo[]>;
   };
+
+  interface ToolInfo {
+    name: string;
+    shortName: string;
+    namespace: string;
+    description: string;
+  }
 
   /**
    * Look up a registered tool by name and return a tool object for agent use.
@@ -234,6 +250,19 @@ declare module "brainlet" {
    * const result = await wasm.run(mod, {});
    * ```
    */
+  /**
+   * Direct AI SDK generateText — for advanced use.
+   * Most developers should use ai.generate() instead.
+   * Accepts an AI SDK model object (from resolving "provider/model-id").
+   */
+  export function generateText(params: any): Promise<any>;
+
+  /**
+   * Direct AI SDK streamText — for advanced use.
+   * Most developers should use ai.stream() instead.
+   */
+  export function streamText(params: any): any;
+
   export const wasm: {
     /** Compile AssemblyScript source to WASM. */
     compile(source: string, opts?: WASMCompileOpts): Promise<WASMModule>;
