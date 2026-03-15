@@ -243,6 +243,9 @@
     if (config.outputProcessors) agentOpts.outputProcessors = config.outputProcessors;
     if (config.maxProcessorRetries !== undefined) agentOpts.maxProcessorRetries = config.maxProcessorRetries;
 
+    // Scorers — auto-evaluate agent responses (fire-and-forget via hook system)
+    if (config.scorers) agentOpts.scorers = config.scorers;
+
     // Memory: accept a Memory instance directly (Mastra-style) or a config object
     var memoryOpts = null;
     if (config.memory) {

@@ -430,6 +430,8 @@ declare module "brainlet" {
     outputProcessors?: OutputProcessor[];
     /** Max retries when a processor requests retry via tripwire. Default: 3. */
     maxProcessorRetries?: number;
+    /** Scorers — auto-evaluate responses after each generate()/stream() call (fire-and-forget). */
+    scorers?: Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>;
   }
 
   interface AgentMemoryConfig {

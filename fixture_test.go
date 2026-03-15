@@ -772,6 +772,40 @@ func TestFixture_TS_WorkflowSuspendResume(t *testing.T) {
 		out.Phase, out.Status, out.RunId, out.Result, out.SuspendPayload)
 }
 
+func TestFixture_TS_WorkflowState(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-state.js")
+
+	result, err := kit.EvalModule(context.Background(), "workflow-state.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Status    string   `json:"status"`
+		Result    any      `json:"result"`
+		HasItems  bool     `json:"hasItems"`
+		HasCount  bool     `json:"hasCount"`
+		Items     []string `json:"items"`
+		FirstItem bool     `json:"firstItem"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Status != "success" {
+		t.Errorf("expected success, got %s: %s", out.Status, result)
+	}
+	if !out.HasItems {
+		t.Errorf("expected 3 items, got %v", out.Items)
+	}
+	if !out.HasCount {
+		t.Errorf("expected count=3, got %v", out.Result)
+	}
+	if !out.FirstItem {
+		t.Errorf("first item should be 'test-first', got %v", out.Items)
+	}
+	t.Logf("fixture workflow-state: status=%s items=%v", out.Status, out.Items)
+}
+
 func TestKit_ResumeWorkflow(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
