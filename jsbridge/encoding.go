@@ -63,10 +63,21 @@ globalThis.TextEncoder = class TextEncoder {
   encode(s) { return new Uint8Array(__go_text_encode(String(s || ''))); }
 };
 globalThis.TextDecoder = class TextDecoder {
-  constructor(enc) { this._enc = enc || 'utf-8'; }
+  constructor(enc, opts) { this._enc = enc || 'utf-8'; this._fatal = opts && opts.fatal; }
   get encoding() { return this._enc; }
   decode(input) {
     if (!input) return '';
+    // Handle typed array views (e.g. Uint8Array.subarray) — must use the view's
+    // byteOffset and byteLength, NOT the entire underlying ArrayBuffer.
+    if (input instanceof Uint8Array || ArrayBuffer.isView(input)) {
+      if (input.byteOffset === 0 && input.byteLength === (input.buffer ? input.buffer.byteLength : input.byteLength)) {
+        return __go_text_decode(input.buffer || input);
+      }
+      // Create a copy of just the viewed portion
+      var copy = new Uint8Array(input.byteLength);
+      for (var i = 0; i < input.byteLength; i++) copy[i] = input[i];
+      return __go_text_decode(copy.buffer);
+    }
     return __go_text_decode(input.buffer || input);
   }
 };

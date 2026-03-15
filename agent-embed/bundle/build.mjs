@@ -95,11 +95,11 @@ const moduleStubs = {
       constructor() { this._events = {}; }
       on(ev, fn) { (this._events[ev] = this._events[ev] || []).push(fn); return this; }
       addListener(ev, fn) { return this.on(ev, fn); }
-      once(ev, fn) { const w = (...a) => { this.removeListener(ev, w); fn(...a); }; return this.on(ev, w); }
+      once(ev, fn) { const self = this; const w = function(...a) { self.removeListener(ev, w); fn.call(self, ...a); }; return this.on(ev, w); }
       removeListener(ev, fn) { const a = this._events[ev]; if (a) this._events[ev] = a.filter(f => f !== fn); return this; }
       off(ev, fn) { return this.removeListener(ev, fn); }
       removeAllListeners(ev) { if (ev) delete this._events[ev]; else this._events = {}; return this; }
-      emit(ev, ...args) { const fns = this._events[ev]; if (!fns || !fns.length) return false; fns.slice().forEach(fn => fn(...args)); return true; }
+      emit(ev, ...args) { const fns = this._events[ev]; if (!fns || !fns.length) return false; const self = this; fns.slice().forEach(fn => fn.call(self, ...args)); return true; }
       listeners(ev) { return (this._events[ev] || []).slice(); }
       listenerCount(ev) { return (this._events[ev] || []).length; }
       eventNames() { return Object.keys(this._events); }
@@ -291,9 +291,9 @@ const moduleStubs = {
       prependListener(e, fn) { (this._events[e] = this._events[e] || []).unshift(fn); return this; }
       off(e, fn) { const a = this._events[e]; if (a) this._events[e] = a.filter(f => f !== fn); return this; }
       removeListener(e, fn) { return this.off(e, fn); }
-      emit(e, ...args) { for (const fn of this._events[e] || []) fn(...args); return true; }
-      once(e, fn) { const w = (...a) => { this.off(e, w); fn(...a); }; return this.on(e, w); }
-      prependOnceListener(e, fn) { const w = (...a) => { this.off(e, w); fn(...a); }; return this.prependListener(e, w); }
+      emit(e, ...args) { const self = this; for (const fn of (this._events[e] || []).slice()) fn.call(self, ...args); return true; }
+      once(e, fn) { const self = this; const w = function(...a) { self.off(e, w); fn.call(self, ...a); }; return this.on(e, w); }
+      prependOnceListener(e, fn) { const self = this; const w = function(...a) { self.off(e, w); fn.call(self, ...a); }; return this.prependListener(e, w); }
       removeAllListeners(e) { if (e) delete this._events[e]; else this._events = {}; return this; }
       listeners(e) { return (this._events[e] || []).slice(); }
       rawListeners(e) { return (this._events[e] || []).slice(); }
@@ -831,7 +831,7 @@ const result = await esbuild.build({
   format: "iife",
   platform: "browser",
   target: "es2020",
-  minify: false,
+  minify: true,
   treeShaking: true,
   plugins: [nodeStubPlugin],
   external: [

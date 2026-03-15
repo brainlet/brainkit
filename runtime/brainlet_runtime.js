@@ -93,7 +93,7 @@
     var memoryOpts = null;
     if (config.memory) {
       memoryOpts = {
-        thread: typeof config.memory.thread === "string" ? config.memory.thread : config.memory.thread?.id || "default",
+        thread: typeof config.memory.thread === "string" ? { id: config.memory.thread } : config.memory.thread || { id: "default" },
         resource: config.memory.resource || "default",
       };
     }

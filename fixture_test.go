@@ -282,7 +282,7 @@ func TestFixture_TS_MemoryMongoDB(t *testing.T) {
 
 	host, _ := container.Host(ctx)
 	port, _ := container.MappedPort(ctx, "27017")
-	mongoURL := fmt.Sprintf("mongodb://%s:%s", host, port.Port())
+	mongoURL := fmt.Sprintf("mongodb://%s:%s/?directConnection=true", host, port.Port())
 	t.Logf("MongoDB container running at %s", mongoURL)
 
 	key := requireKey(t)
@@ -292,7 +292,8 @@ func TestFixture_TS_MemoryMongoDB(t *testing.T) {
 			"openai": {APIKey: key},
 		},
 		EnvVars: map[string]string{
-			"MONGODB_URL": mongoURL,
+			"MONGODB_URL":    mongoURL,
+			"OPENAI_API_KEY": key,
 		},
 	})
 	if err != nil {
