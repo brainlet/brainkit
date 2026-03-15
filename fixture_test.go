@@ -321,6 +321,72 @@ func TestFixture_TS_MemoryMongoDB(t *testing.T) {
 	t.Logf("fixture memory-mongodb: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
 }
 
+func TestFixture_TS_MemoryPostgres(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "postgres:16-alpine",
+			ExposedPorts: []string{"5432/tcp"},
+			Env: map[string]string{
+				"POSTGRES_USER":      "test",
+				"POSTGRES_PASSWORD":  "test",
+				"POSTGRES_DB":        "brainlet_test",
+				"POSTGRES_HOST_AUTH_METHOD": "trust",
+			},
+			WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start Postgres container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "5432")
+	pgURL := fmt.Sprintf("postgresql://test:test@%s:%s/brainlet_test", host, port.Port())
+	t.Logf("Postgres container running at %s", pgURL)
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"POSTGRES_URL":   pgURL,
+			"OPENAI_API_KEY": key,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-postgres.js")
+	result, err := kit.EvalModule(context.Background(), "memory-postgres.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+		Store     string `json:"store"`
+		URL       string `json:"url"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("didn't remember: %q", out.Text)
+	}
+	t.Logf("fixture memory-postgres: %q remembers=%v store=%s", out.Text, out.Remembers, out.Store)
+}
+
 func TestFixture_TS_AIStream(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/ai-stream.js")

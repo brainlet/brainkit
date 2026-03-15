@@ -3,6 +3,7 @@ package jsbridge
 import (
 	"crypto/hmac"
 	"crypto/md5"
+	crand "crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -166,9 +167,41 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewString(base64.StdEncoding.EncodeToString(derived))
 	}))
 
+	// __go_crypto_getRandomValues fills a buffer with random bytes and returns base64
+	ctx.Globals().Set("__go_crypto_getRandomValues", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("getRandomValues: requires size"))
+		}
+		size := int(args[0].ToInt64())
+		if size <= 0 {
+			return ctx.NewString("")
+		}
+		buf := make([]byte, size)
+		_, _ = crand.Read(buf)
+		return ctx.NewString(base64.StdEncoding.EncodeToString(buf))
+	}))
+
 	return evalJS(ctx, `
 globalThis.crypto = globalThis.crypto || {};
 globalThis.crypto.randomUUID = () => __go_crypto_randomUUID();
+globalThis.crypto.getRandomValues = function(arr) {
+  var b64 = __go_crypto_getRandomValues(arr.length);
+  // Decode base64 to fill the typed array
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var lookup = {};
+  for (var i = 0; i < chars.length; i++) lookup[chars[i]] = i;
+  var p = 0;
+  for (var i = 0; i < b64.length && p < arr.length; i += 4) {
+    var a = lookup[b64[i]] || 0;
+    var b = lookup[b64[i+1]] || 0;
+    var c = lookup[b64[i+2]] || 0;
+    var d = lookup[b64[i+3]] || 0;
+    if (p < arr.length) arr[p++] = (a << 2) | (b >> 4);
+    if (p < arr.length && b64[i+2] !== "=") arr[p++] = ((b << 4) | (c >> 2)) & 0xff;
+    if (p < arr.length && b64[i+3] !== "=") arr[p++] = ((c << 6) | d) & 0xff;
+  }
+  return arr;
+};
 
 // SubtleCrypto — required by pg's crypto/utils-webcrypto.js
 // All methods return Promises (WebCrypto spec). Data is passed as base64.

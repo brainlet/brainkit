@@ -32,6 +32,23 @@ func LoadBundle(b *jsbridge.Bridge) error {
 }
 
 const runtimeGlobalsJS = `
+// ─── global ─────────────────────────────────────────────────────────────
+// Node.js "global" — alias for globalThis. Required by the pg npm package.
+if (typeof global === "undefined") {
+  globalThis.global = globalThis;
+}
+
+// ─── Error.captureStackTrace ────────────────────────────────────────────
+// V8-specific API used by pg-pool and other Node.js libraries.
+// QuickJS doesn't have it — provide a no-op shim.
+if (!Error.captureStackTrace) {
+  Error.captureStackTrace = function(err, constructorOpt) {
+    if (err && !err.stack) {
+      err.stack = new Error().stack || "";
+    }
+  };
+}
+
 // ─── process ────────────────────────────────────────────────────────────
 // Node.js process global. The jsbridge Process() polyfill provides a Proxy-based
 // process.env backed by real Go os.Getenv/Setenv; here we ensure the rest of the
@@ -480,6 +497,10 @@ if (typeof Buffer === "undefined") {
         return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
       },
     };
+    // Support "x instanceof Buffer" — pg uses this check
+    Object.defineProperty(_Buffer, Symbol.hasInstance, {
+      value: function(obj) { return !!(obj && obj._isBuffer); }
+    });
     globalThis.Buffer = _Buffer;
   })();
 }
