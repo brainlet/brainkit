@@ -691,6 +691,15 @@
       tone: wrapPrebuiltScorer(embed.createToneScorer),
     },
 
+    // RAG
+    MDocument: embed.MDocument,
+    GraphRAG: embed.GraphRAG,
+    createVectorQueryTool: embed.createVectorQueryTool,
+    createDocumentChunkerTool: embed.createDocumentChunkerTool,
+    createGraphRAGTool: embed.createGraphRAGTool,
+    rerank: embed.rerank,
+    rerankWithScorer: embed.rerankWithScorer,
+
     // MODULE
     output: output,
   };

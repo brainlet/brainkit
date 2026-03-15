@@ -28,6 +28,11 @@ import {
   createToneScorer,
 } from '@mastra/evals/scorers/prebuilt';
 
+// RAG — document chunking, vector query tools, graph RAG, reranking
+import { MDocument, GraphRAG } from '@mastra/rag';
+import { createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool } from '@mastra/rag';
+import { rerank, rerankWithScorer } from '@mastra/rag';
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -78,6 +83,15 @@ globalThis.__agent_embed = {
   createKeywordCoverageScorer,
   createContentSimilarityScorer,
   createToneScorer,
+
+  // RAG
+  MDocument,
+  GraphRAG,
+  createVectorQueryTool,
+  createDocumentChunkerTool,
+  createGraphRAGTool,
+  rerank,
+  rerankWithScorer,
 
   // AI SDK providers
   createOpenAI,
