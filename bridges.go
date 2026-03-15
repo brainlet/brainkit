@@ -66,6 +66,27 @@ func (k *Kit) registerBridges() {
 			})
 		}))
 
+	// __go_brainkit_bus_send(topic, payloadJSON) → void
+	// Sends a fire-and-forget message on the bus. Used by bus.publish/bus.send.
+	qctx.Globals().Set("__go_brainkit_bus_send",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 2 {
+				return qctx.ThrowError(fmt.Errorf("brainkit_bus_send: expected 2 args (topic, payload)"))
+			}
+			topic := args[0].String()
+			payload := json.RawMessage(args[1].String())
+
+			err := k.Bus.Send(context.Background(), bus.Message{
+				Topic:    topic,
+				CallerID: k.callerID,
+				Payload:  payload,
+			})
+			if err != nil {
+				return qctx.ThrowError(fmt.Errorf("bus.send %s: %w", topic, err))
+			}
+			return qctx.NewUndefined()
+		}))
+
 	// __go_brainkit_subscribe(topic) → subscriptionID (STRING)
 	// Registers a bus subscription. When messages arrive matching the topic pattern,
 	// the JS callback stored at globalThis.__bus_subs[subId] is invoked via Schedule.

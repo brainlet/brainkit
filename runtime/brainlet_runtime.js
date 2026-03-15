@@ -340,11 +340,11 @@
   globalThis.__bus_subs = {};
 
   var busMod = {
-    send: async function(topic, payload) {
-      await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
+    send: function(topic, payload) {
+      __go_brainkit_bus_send(topic, JSON.stringify(payload || null));
     },
-    publish: async function(topic, payload) {
-      await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
+    publish: function(topic, payload) {
+      __go_brainkit_bus_send(topic, JSON.stringify(payload || null));
     },
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);

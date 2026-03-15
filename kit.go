@@ -38,9 +38,18 @@ func New(cfg Config) (*Kit, error) {
 		cfg.CallerID = cfg.Namespace
 	}
 
+	sharedBus := cfg.SharedBus
+	if sharedBus == nil {
+		sharedBus = bus.New()
+	}
+	sharedTools := cfg.SharedTools
+	if sharedTools == nil {
+		sharedTools = registry.New()
+	}
+
 	k := &Kit{
-		Bus:       bus.New(),
-		Tools:     registry.New(),
+		Bus:       sharedBus,
+		Tools:     sharedTools,
 		config:    cfg,
 		namespace: cfg.Namespace,
 		callerID:  cfg.CallerID,
@@ -98,7 +107,10 @@ func (k *Kit) Close() {
 	if k.agents != nil {
 		k.agents.Close()
 	}
-	k.Bus.Close()
+	// Only close the bus if we own it (not shared)
+	if k.config.SharedBus == nil {
+		k.Bus.Close()
+	}
 }
 
 // Namespace returns the Kit's namespace.
@@ -156,31 +168,6 @@ func (k *Kit) registerHandlers() {
 		}
 	})
 
-	k.Bus.Handle("bus.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
-		switch msg.Topic {
-		case "bus.send":
-			// Extract the inner topic and payload from the request payload
-			var req struct {
-				Topic   string          `json:"topic"`
-				Payload json.RawMessage `json:"payload"`
-			}
-			if err := json.Unmarshal(msg.Payload, &req); err != nil {
-				return nil, fmt.Errorf("bus.send: invalid request: %w", err)
-			}
-			payloadBytes, _ := json.Marshal(req.Payload)
-			err := k.Bus.Send(ctx, bus.Message{
-				Topic:    req.Topic,
-				CallerID: msg.CallerID,
-				Payload:  payloadBytes,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return &bus.Message{Payload: json.RawMessage(`"ok"`)}, nil
-		default:
-			return nil, fmt.Errorf("bus: unknown topic %q", msg.Topic)
-		}
-	})
 }
 
 func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {
