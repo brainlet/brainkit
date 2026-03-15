@@ -691,6 +691,22 @@
       tone: wrapPrebuiltScorer(embed.createToneScorer),
     },
 
+    // MCP
+    mcp: {
+      listTools: async function(serverName) {
+        var raw = bridgeRequest("mcp.listTools", { server: serverName || "" });
+        return JSON.parse(raw);
+      },
+      callTool: async function(serverName, toolName, args) {
+        var raw = await bridgeRequestAsync("mcp.callTool", {
+          server: serverName,
+          tool: toolName,
+          args: args || {},
+        });
+        return parseBridgeResponse(raw);
+      },
+    },
+
     // RAG
     MDocument: embed.MDocument,
     GraphRAG: embed.GraphRAG,

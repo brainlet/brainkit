@@ -2,6 +2,7 @@ package brainkit
 
 import (
 	"github.com/brainlet/brainkit/bus"
+	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 )
 
@@ -31,6 +32,10 @@ type Config struct {
 	// SharedTools — if set, this Kit uses the provided ToolRegistry instead of creating its own.
 	// Tools registered in one Kit are visible to all Kits sharing the registry.
 	SharedTools *registry.ToolRegistry
+
+	// MCPServers — external MCP servers to connect to on Kit creation.
+	// Tools from these servers are auto-registered in the ToolRegistry.
+	MCPServers map[string]mcppkg.ServerConfig
 }
 
 // ProviderConfig configures an AI provider.

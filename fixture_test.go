@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
+	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -1192,6 +1194,49 @@ func TestFixture_TS_RAGChunkToken(t *testing.T) {
 		t.Errorf("expected multiple token chunks, got %d: %s", out.ChunkCount, result)
 	}
 	t.Logf("rag-chunk-token: %d chunks from %d chars", out.ChunkCount, out.TotalTextLength)
+}
+
+func TestFixture_TS_MCPTools(t *testing.T) {
+	if _, err := exec.LookPath("npx"); err != nil {
+		t.Skip("npx not found — needed for MCP server test")
+	}
+
+	kit, err := New(Config{
+		Namespace: "test",
+		MCPServers: map[string]mcppkg.ServerConfig{
+			"test": {
+				Command: "npx",
+				Args:    []string{"-y", "@modelcontextprotocol/server-everything"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/mcp-tools.js")
+	result, err := kit.EvalModule(context.Background(), "mcp-tools.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		ToolCount  int      `json:"toolCount"`
+		ToolNames  []string `json:"toolNames"`
+		EchoResult any      `json:"echoResult"`
+		HasTools   bool     `json:"hasTools"`
+		Error      string   `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Error != "" {
+		t.Fatalf("MCP error: %s", out.Error)
+	}
+	if !out.HasTools {
+		t.Error("expected MCP tools")
+	}
+	t.Logf("mcp-tools: %d tools, names=%v echo=%v", out.ToolCount, out.ToolNames, out.EchoResult)
 }
 
 func TestKit_ResumeWorkflow(t *testing.T) {

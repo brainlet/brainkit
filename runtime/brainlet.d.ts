@@ -327,6 +327,138 @@ declare module "brainlet" {
    */
   export function output(value: any): void;
 
+  // ── RequestContext ──────────────────────────────────────────
+
+  /**
+   * RequestContext — key-value context for dynamic config resolvers.
+   * Pass to generate()/stream() to provide runtime state to resolver functions.
+   *
+   * @example
+   * ```ts
+   * const ctx = new RequestContext([["model", "openai/gpt-4o"], ["persona", "coding"]]);
+   * const result = await myAgent.generate("hello", { requestContext: ctx });
+   * ```
+   */
+  export const RequestContext: RequestContextConstructor;
+
+  interface RequestContextConstructor {
+    new (entries?: Iterable<[string, unknown]> | Record<string, unknown>): RequestContextInstance;
+  }
+
+  interface RequestContextInstance {
+    get(key: string): unknown;
+    set(key: string, value: unknown): void;
+    has(key: string): boolean;
+    delete(key: string): boolean;
+    clear(): void;
+    readonly all: Record<string, unknown>;
+  }
+
+  // ── RAG ─────────────────────────────────────────────────────
+
+  /**
+   * MDocument — document ingestion and chunking.
+   *
+   * @example
+   * ```ts
+   * const doc = MDocument.fromText("long text...");
+   * const chunks = await doc.chunk({ strategy: "recursive", maxSize: 500, overlap: 50 });
+   * ```
+   */
+  export const MDocument: MDocumentConstructor;
+
+  interface MDocumentConstructor {
+    fromText(text: string, metadata?: Record<string, any>): MDocumentInstance;
+    fromHTML(html: string, metadata?: Record<string, any>): MDocumentInstance;
+    fromMarkdown(markdown: string, metadata?: Record<string, any>): MDocumentInstance;
+    fromJSON(json: string, metadata?: Record<string, any>): MDocumentInstance;
+  }
+
+  interface MDocumentInstance {
+    chunk(params?: ChunkParams): Promise<Chunk[]>;
+    getDocs(): Chunk[];
+    getText(): string[];
+    getMetadata(): Record<string, any>[];
+  }
+
+  interface Chunk {
+    text: string;
+    metadata: Record<string, any>;
+  }
+
+  type ChunkStrategy =
+    | "recursive" | "character" | "token" | "markdown"
+    | "html" | "json" | "latex" | "sentence" | "semantic-markdown";
+
+  interface ChunkParams {
+    strategy?: ChunkStrategy;
+    maxSize?: number;
+    overlap?: number;
+    separator?: string;
+    separators?: string[];
+    headers?: [string, string][];
+    sections?: [string, string][];
+    language?: string;
+    encodingName?: string;
+    modelName?: string;
+    minSize?: number;
+    joinThreshold?: number;
+    sentenceEnders?: string[];
+    returnEachLine?: boolean;
+    stripHeaders?: boolean;
+    ensureAscii?: boolean;
+    convertLists?: boolean;
+  }
+
+  /** Create a vector query tool for agent use. */
+  export function createVectorQueryTool(options: VectorQueryToolOptions): Tool;
+  /** Create a document chunker tool for agent use. */
+  export function createDocumentChunkerTool(options: { doc: MDocumentInstance; params?: ChunkParams }): Tool;
+  /** Create a graph RAG tool for agent use. */
+  export function createGraphRAGTool(options: GraphRAGToolOptions): Tool;
+
+  interface VectorQueryToolOptions {
+    vectorStore: any;
+    indexName: string;
+    model: string;
+    enableFilter?: boolean;
+    includeVectors?: boolean;
+    includeSources?: boolean;
+    reranker?: any;
+  }
+
+  interface GraphRAGToolOptions extends VectorQueryToolOptions {
+    graphOptions?: {
+      dimension?: number;
+      randomWalkSteps?: number;
+      restartProb?: number;
+      threshold?: number;
+    };
+  }
+
+  /** GraphRAG — knowledge graph from vector embeddings. */
+  export const GraphRAG: GraphRAGConstructor;
+
+  interface GraphRAGConstructor {
+    new (dimension?: number, threshold?: number): GraphRAGInstance;
+  }
+
+  interface GraphRAGInstance {
+    createGraph(chunks: { text: string; metadata: Record<string, any> }[], embeddings: { vector: number[] }[]): void;
+    query(params: { query: number[]; topK?: number; randomWalkSteps?: number; restartProb?: number }): any[];
+  }
+
+  /** Rerank results using LLM scoring. */
+  export function rerank(results: any[], query: string, model: any, options?: RerankOptions): Promise<any[]>;
+  /** Rerank results using a custom relevance scorer. */
+  export function rerankWithScorer(params: { results: any[]; query: string; scorer: any; options?: RerankOptions }): Promise<any[]>;
+
+  interface RerankOptions {
+    weights?: { semantic?: number; vector?: number; position?: number };
+    queryEmbedding?: number[];
+    topK?: number;
+  }
+
   /**
    * Create a workflow run with suspend/resume support.
    * Injects storage for snapshot persistence and tracks the run for later resume.
@@ -413,14 +545,23 @@ declare module "brainlet" {
 
   // ── Agent Types ────────────────────────────────────────────────
 
+  /** Resolver context passed to dynamic config functions. */
+  interface ResolverContext {
+    requestContext: RequestContextInstance;
+  }
+
+  /** A value or a function that computes it at generate/stream time. */
+  type DynamicArg<T> = T | ((ctx: ResolverContext) => T | Promise<T>);
+
   interface AgentConfig {
     name?: string;
-    /** Model identifier: "provider/model-id" (e.g., "openai/gpt-4o-mini"). */
-    model: string;
-    instructions?: string;
+    /** Model: static string or dynamic resolver. */
+    model: DynamicArg<string>;
+    /** Instructions: static string or dynamic resolver. */
+    instructions?: DynamicArg<string>;
     description?: string;
-    /** Tools available to the agent. Keys are tool names. */
-    tools?: Record<string, Tool>;
+    /** Tools: static map or dynamic resolver. */
+    tools?: DynamicArg<Record<string, Tool>>;
     /** Memory config — enables conversation persistence. */
     memory?: AgentMemoryConfig;
     maxSteps?: number;
@@ -467,12 +608,44 @@ declare module "brainlet" {
   interface GenerateOptions {
     maxSteps?: number;
     memory?: { threadId?: string; resourceId?: string };
+    /** RequestContext for dynamic config resolvers. */
+    requestContext?: RequestContextInstance;
+    /** Model settings — temperature, maxTokens, etc. */
+    modelSettings?: {
+      temperature?: number;
+      maxTokens?: number;
+      topP?: number;
+      topK?: number;
+      presencePenalty?: number;
+      frequencyPenalty?: number;
+      stopSequences?: string[];
+      seed?: number;
+    };
+    /** Filter which tools are active for this call. */
+    activeTools?: string[];
+    /** Tool selection strategy. */
+    toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
+    /** Require human approval before tool calls. */
+    requireToolApproval?: boolean;
+    /** Concurrent tool call limit. */
+    toolCallConcurrency?: number;
+    /** Abort signal for cancellation. */
+    abortSignal?: AbortSignal;
+    /** Structured output schema. */
+    structuredOutput?: { schema: ZodType; schemaName?: string; schemaDescription?: string };
+    /** Callbacks. */
+    onStepFinish?: (step: any) => void;
+    onFinish?: (result: any) => void;
+    onChunk?: (chunk: any) => void;
+    onError?: (error: any) => void;
+    /** Per-call input/output processors. */
+    inputProcessors?: InputProcessor[];
+    outputProcessors?: OutputProcessor[];
+    /** Per-call scorers. */
+    scorers?: Record<string, any>;
   }
 
-  interface StreamOptions {
-    maxSteps?: number;
-    memory?: { threadId?: string; resourceId?: string };
-  }
+  interface StreamOptions extends GenerateOptions {}
 
   interface GenerateResult {
     text: string;

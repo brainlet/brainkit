@@ -9,6 +9,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/agent-embed"
 	"github.com/brainlet/brainkit/bus"
 	"github.com/brainlet/brainkit/jsbridge"
+	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 )
 
@@ -18,6 +19,7 @@ import (
 type Kit struct {
 	Bus       *bus.Bus
 	Tools     *registry.ToolRegistry
+	MCP       *mcppkg.MCPManager
 	config    Config
 	namespace string
 	callerID  string
@@ -88,6 +90,34 @@ func New(cfg Config) (*Kit, error) {
 	// Register bus handlers
 	k.registerHandlers()
 
+	// Connect to MCP servers and auto-register their tools
+	if len(cfg.MCPServers) > 0 {
+		k.MCP = mcppkg.New()
+		for name, serverCfg := range cfg.MCPServers {
+			if err := k.MCP.Connect(context.Background(), name, serverCfg); err != nil {
+				// Log but don't fail — MCP servers may be unavailable
+				continue
+			}
+			// Register each MCP tool in the ToolRegistry
+			for _, tool := range k.MCP.ListToolsForServer(name) {
+				toolCopy := tool // capture loop variable
+				fullName := "mcp." + toolCopy.ServerName + "." + toolCopy.Name
+				k.Tools.Register(registry.RegisteredTool{
+					Name:        fullName,
+					ShortName:   toolCopy.Name,
+					Namespace:   "mcp." + toolCopy.ServerName,
+					Description: toolCopy.Description,
+					InputSchema: toolCopy.InputSchema,
+					Executor: &registry.GoFuncExecutor{
+						Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+							return k.MCP.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
+						},
+					},
+				})
+			}
+		}
+	}
+
 	return k, nil
 }
 
@@ -101,6 +131,9 @@ func (k *Kit) Close() {
 	k.closed = true
 	k.mu.Unlock()
 
+	if k.MCP != nil {
+		k.MCP.Close()
+	}
 	if k.wasm != nil {
 		k.wasm.close()
 	}
@@ -127,7 +160,7 @@ func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error)
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer } = globalThis.__brainlet;
+		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer } = globalThis.__brainlet;
 		%s
 	})()`, code)
 	return k.agents.Eval(ctx, filename, wrapped)
@@ -222,6 +255,33 @@ func (k *Kit) registerHandlers() {
 		}
 	})
 
+	k.Bus.Handle("mcp.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+		if k.MCP == nil {
+			return nil, fmt.Errorf("mcp: no MCP servers configured")
+		}
+		switch msg.Topic {
+		case "mcp.listTools":
+			tools := k.MCP.ListTools()
+			data, _ := json.Marshal(tools)
+			return &bus.Message{Payload: data}, nil
+		case "mcp.callTool":
+			var params struct {
+				Server string          `json:"server"`
+				Tool   string          `json:"tool"`
+				Args   json.RawMessage `json:"args"`
+			}
+			if err := json.Unmarshal(msg.Payload, &params); err != nil {
+				return nil, fmt.Errorf("mcp.callTool: %w", err)
+			}
+			result, err := k.MCP.CallTool(ctx, params.Server, params.Tool, params.Args)
+			if err != nil {
+				return nil, err
+			}
+			return &bus.Message{Payload: result}, nil
+		default:
+			return nil, fmt.Errorf("mcp: unknown topic %q", msg.Topic)
+		}
+	})
 }
 
 func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {

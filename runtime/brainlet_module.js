@@ -30,6 +30,7 @@ export const createScorer = globalThis.__brainlet.createScorer;
 export const runEvals = globalThis.__brainlet.runEvals;
 export const scorers = globalThis.__brainlet.scorers;
 export const RequestContext = globalThis.__brainlet.RequestContext;
+export const mcp = globalThis.__brainlet.mcp;
 export const MDocument = globalThis.__brainlet.MDocument;
 export const GraphRAG = globalThis.__brainlet.GraphRAG;
 export const createVectorQueryTool = globalThis.__brainlet.createVectorQueryTool;
