@@ -155,6 +155,32 @@ func (k *Kit) registerHandlers() {
 			return nil, fmt.Errorf("tools: unknown topic %q", msg.Topic)
 		}
 	})
+
+	k.Bus.Handle("bus.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+		switch msg.Topic {
+		case "bus.send":
+			// Extract the inner topic and payload from the request payload
+			var req struct {
+				Topic   string          `json:"topic"`
+				Payload json.RawMessage `json:"payload"`
+			}
+			if err := json.Unmarshal(msg.Payload, &req); err != nil {
+				return nil, fmt.Errorf("bus.send: invalid request: %w", err)
+			}
+			payloadBytes, _ := json.Marshal(req.Payload)
+			err := k.Bus.Send(ctx, bus.Message{
+				Topic:    req.Topic,
+				CallerID: msg.CallerID,
+				Payload:  payloadBytes,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &bus.Message{Payload: json.RawMessage(`"ok"`)}, nil
+		default:
+			return nil, fmt.Errorf("bus: unknown topic %q", msg.Topic)
+		}
+	})
 }
 
 func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {

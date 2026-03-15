@@ -200,7 +200,30 @@ declare module "brainlet" {
     publish(topic: string, payload?: any): Promise<void>;
     /** Send a request and wait for a response. */
     request(topic: string, payload?: any): Promise<any>;
+    /**
+     * Subscribe to messages matching a topic pattern.
+     * Returns a subscription ID for unsubscribing.
+     *
+     * @example
+     * ```ts
+     * const subId = bus.subscribe("data.*", (msg) => {
+     *   console.log(msg.topic, msg.payload);
+     * });
+     * // later:
+     * bus.unsubscribe(subId);
+     * ```
+     */
+    subscribe(topic: string, handler: (msg: BusMessage) => void): string;
+    /** Remove a subscription. */
+    unsubscribe(subscriptionId: string): void;
   };
+
+  interface BusMessage {
+    topic: string;
+    callerID: string;
+    payload: any;
+    traceID?: string;
+  }
 
   /**
    * WASM operations — compile AssemblyScript and execute WASM modules.

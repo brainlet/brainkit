@@ -336,12 +336,24 @@
   }
 
   // bus.* — platform bus
+  // __bus_subs stores JS callback functions keyed by subscription ID
+  globalThis.__bus_subs = {};
+
   var busMod = {
     send: async function(topic, payload) {
       await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
     },
     publish: async function(topic, payload) {
       await bridgeRequestAsync("bus.send", { topic: topic, payload: payload });
+    },
+    subscribe: function(topic, handler) {
+      var subId = __go_brainkit_subscribe(topic);
+      globalThis.__bus_subs[subId] = handler;
+      return subId;
+    },
+    unsubscribe: function(subId) {
+      __go_brainkit_unsubscribe(subId);
+      delete globalThis.__bus_subs[subId];
     },
     request: async function(topic, payload) {
       var raw = await bridgeRequestAsync(topic, payload);

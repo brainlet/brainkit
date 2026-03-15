@@ -488,6 +488,32 @@ func TestFixture_TS_AIEmbed(t *testing.T) {
 	t.Logf("ai-embed: single=%d dims, multi=%d vectors × %d dims", out.Single.Dimensions, out.Multi.Count, out.Multi.Dimensions)
 }
 
+func TestFixture_TS_BusSubscribe(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/bus-subscribe.js")
+
+	result, err := kit.EvalModule(context.Background(), "bus-subscribe.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		SubID  bool  `json:"subId"`
+		Count  int   `json:"count"`
+		Values []int `json:"values"`
+		Topics []string `json:"topics"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.SubID {
+		t.Error("no subscription ID returned")
+	}
+	if out.Count != 2 {
+		t.Errorf("expected 2 messages, got %d (values: %v)", out.Count, out.Values)
+	}
+	t.Logf("bus-subscribe: subId=%v count=%d values=%v topics=%v", out.SubID, out.Count, out.Values, out.Topics)
+}
+
 func TestFixture_TS_ToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
