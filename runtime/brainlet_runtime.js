@@ -351,6 +351,8 @@
     // LOCAL
     agent: agent,
     createTool: createTool,
+    createWorkflow: embed.createWorkflow,
+    createStep: embed.createStep,
     createMemory: createMemory,
     z: z,
 

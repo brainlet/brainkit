@@ -412,6 +412,51 @@ func TestFixture_TS_AIStream(t *testing.T) {
 	t.Logf("fixture ai-stream: %d chunks, text=%q", out.Chunks, out.Text)
 }
 
+func TestFixture_TS_WorkflowBasic(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/workflow-basic.js")
+
+	result, err := kit.EvalModule(context.Background(), "workflow-basic.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Status   string `json:"status"`
+		Result   any    `json:"result"`
+		Expected string `json:"expected"`
+		Match    bool   `json:"match"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Match {
+		t.Errorf("workflow result mismatch: status=%s result=%v expected=%s", out.Status, out.Result, out.Expected)
+	}
+	t.Logf("workflow-basic: status=%s match=%v", out.Status, out.Match)
+}
+
+func TestFixture_TS_WorkflowWithAgent(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/workflow-with-agent.js")
+
+	result, err := kit.EvalModule(context.Background(), "workflow-with-agent.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Status    string `json:"status"`
+		Result    any    `json:"result"`
+		HasAnswer bool   `json:"hasAnswer"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.HasAnswer {
+		t.Errorf("workflow+agent: status=%s result=%v", out.Status, out.Result)
+	}
+	t.Logf("workflow-with-agent: status=%s hasAnswer=%v result=%v", out.Status, out.HasAnswer, out.Result)
+}
+
 func TestFixture_TS_ToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 

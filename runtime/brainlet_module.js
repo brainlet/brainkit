@@ -1,5 +1,7 @@
 export const agent = globalThis.__brainlet.agent;
 export const createTool = globalThis.__brainlet.createTool;
+export const createWorkflow = globalThis.__brainlet.createWorkflow;
+export const createStep = globalThis.__brainlet.createStep;
 export const createMemory = globalThis.__brainlet.createMemory;
 export const z = globalThis.__brainlet.z;
 export const ai = globalThis.__brainlet.ai;

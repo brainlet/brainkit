@@ -3,6 +3,7 @@
 
 import { Agent } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
+import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { Mastra } from '@mastra/core/mastra';
 import { Memory } from '@mastra/memory';
 import { MockMemory } from '@mastra/core/memory';
@@ -33,6 +34,8 @@ globalThis.__agent_embed = {
   // Mastra core
   Agent,
   createTool,
+  createWorkflow,
+  createStep,
   Mastra,
   Memory,
   MockMemory,
