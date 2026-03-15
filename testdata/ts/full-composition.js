@@ -16,9 +16,9 @@ const reversed = await tools.call("reverse", { text: "brainlet" });
 
 // 4. Create a local tool with Zod schema
 const concatTool = createTool({
-  name: "concat",
+  id: "concat",
   description: "Concatenates two strings",
-  schema: z.object({
+  inputSchema: z.object({
     a: z.string().describe("first string"),
     b: z.string().describe("second string"),
   }),

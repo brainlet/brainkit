@@ -50,6 +50,57 @@
     return embed[factoryName](opts)(modelId);
   }
 
+  // ─── Shared result wrappers ─────────────────────────────────────
+  // THE brainlet response contract. Maps from Mastra/AI SDK internals to our stable shape.
+  // Both agent().generate() and ai.generate() return this exact shape.
+  function wrapGenerateResult(result) {
+    return {
+      text: result.text || "",
+      reasoning: result.reasoningText || "",
+      usage: {
+        promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
+        completionTokens: result.usage?.outputTokens || result.usage?.completionTokens || 0,
+        totalTokens: result.usage?.totalTokens || 0,
+      },
+      totalUsage: {
+        promptTokens: result.totalUsage?.inputTokens || 0,
+        completionTokens: result.totalUsage?.outputTokens || 0,
+        totalTokens: result.totalUsage?.totalTokens || 0,
+      },
+      finishReason: result.finishReason || "stop",
+      toolCalls: result.toolCalls || [],
+      toolResults: result.toolResults || [],
+      steps: result.steps || [],
+      sources: result.sources || [],
+      files: result.files || [],
+      warnings: result.warnings || [],
+      response: {
+        id: result.response?.id || "",
+        modelId: result.response?.modelId || "",
+        timestamp: result.response?.timestamp?.toISOString?.() || "",
+      },
+      traceId: result.traceId || undefined,
+    };
+  }
+
+  // Both agent().stream() and ai.stream() return this exact shape.
+  // Wraps the internal stream object with stable field names.
+  function wrapStreamResult(rawStream) {
+    return {
+      textStream: rawStream.textStream,
+      fullStream: rawStream.fullStream,
+      text: rawStream.text,
+      usage: rawStream.usage,
+      finishReason: rawStream.finishReason,
+      reasoning: rawStream.reasoning || rawStream.reasoningText,
+      toolCalls: rawStream.toolCalls,
+      toolResults: rawStream.toolResults,
+      steps: rawStream.steps,
+      sources: rawStream.sources,
+      response: rawStream.response,
+    };
+  }
+
   // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
 
@@ -114,50 +165,38 @@
     var a = new embed.Agent(agentOpts);
 
     return {
-      _mastraAgent: a,
       generate: async function(promptOrMessages, options) {
         var opts = options || {};
         if (memoryOpts && !opts.memory) {
           opts.memory = memoryOpts;
         }
-
         var result = await a.generate(
           typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
           opts
         );
-        return {
-          text: result.text || "",
-          reasoning: result.reasoningText || "",
-          usage: {
-            promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
-            completionTokens: result.usage?.outputTokens || result.usage?.completionTokens || 0,
-            totalTokens: result.usage?.totalTokens || 0,
-          },
-          finishReason: result.finishReason || "stop",
-          toolCalls: result.toolCalls || [],
-          toolResults: result.toolResults || [],
-          steps: result.steps || [],
-        };
+        return wrapGenerateResult(result);
       },
       stream: async function(promptOrMessages, options) {
         var opts = options || {};
         if (memoryOpts && !opts.memory) {
           opts.memory = memoryOpts;
         }
-        return await a.stream(
+        var result = await a.stream(
           typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
           opts
         );
+        return wrapStreamResult(result);
       },
     };
   }
 
   // createTool() — define a tool in THIS sandbox
+  // Field names match Mastra: id, inputSchema, description, execute
   function createTool(config) {
     return embed.createTool({
-      id: config.name || config.id,
+      id: config.id || config.name,
       description: config.description || "",
-      inputSchema: config.schema || embed.z.object({}),
+      inputSchema: config.inputSchema || config.schema || embed.z.object({}),
       execute: config.execute,
     });
   }
@@ -193,42 +232,26 @@
     return result;
   }
 
-  // ai.* — LOCAL: direct LLM calls via AI SDK in the same runtime.
-  // Uses a temporary Mastra Agent as a thin wrapper around the AI SDK.
-  // No bus round-trip, no separate QuickJS runtime.
+  // ai.* — LOCAL: direct LLM calls via AI SDK (generateText/streamText).
+  // No Agent creation, no bus round-trip.
   var ai = {
     generate: async function(params) {
       var model = resolveModel(params.model);
-      var a = new embed.Agent({
-        name: "__ai_generate",
-        model: model,
-        instructions: params.system || "",
-      });
-      var result = await a.generate(params.prompt || "", {});
-      return {
-        text: result.text || "",
-        reasoning: result.reasoningText || "",
-        usage: {
-          promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
-          completionTokens: result.usage?.outputTokens || result.usage?.completionTokens || 0,
-          totalTokens: result.usage?.totalTokens || 0,
-        },
-        finishReason: result.finishReason || "stop",
-        response: {
-          id: result.response?.id || "",
-          modelId: result.response?.modelId || "",
-          timestamp: result.response?.timestamp?.toISOString?.() || "",
-        },
-      };
+      var opts = { model: model };
+      if (params.prompt) opts.prompt = params.prompt;
+      if (params.system) opts.system = params.system;
+      if (params.messages) opts.messages = params.messages;
+      var result = await embed.generateText(opts);
+      return wrapGenerateResult(result);
     },
-    stream: async function(params) {
+    stream: function(params) {
       var model = resolveModel(params.model);
-      var a = new embed.Agent({
-        name: "__ai_stream",
-        model: model,
-        instructions: params.system || "",
-      });
-      return await a.stream(params.prompt || "", {});
+      var opts = { model: model };
+      if (params.prompt) opts.prompt = params.prompt;
+      if (params.system) opts.system = params.system;
+      if (params.messages) opts.messages = params.messages;
+      var result = embed.streamText(opts);
+      return wrapStreamResult(result);
     },
     embed: async function(params) {
       // LOCAL: uses AI SDK embed() + Mastra's ModelRouterEmbeddingModel
@@ -411,6 +434,10 @@
     LibSQLVector: embed.LibSQLVector,
     PgVector: embed.PgVector,
     MongoDBVector: embed.MongoDBVector,
+
+    // AI SDK (for advanced use — most developers use ai.generate/ai.stream instead)
+    generateText: embed.generateText,
+    streamText: embed.streamText,
 
     // PLATFORM
     ai: ai,

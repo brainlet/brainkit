@@ -54,7 +54,7 @@ declare module "brainlet" {
    * });
    * ```
    */
-  export function createTool(config: ToolConfig): MastraTool;
+  export function createTool(config: ToolConfig): Tool;
 
   /** Zod schema builder — use for tool schemas, workflow schemas, etc. */
   export const z: Zod;
@@ -133,7 +133,7 @@ declare module "brainlet" {
    */
   export function createMemory(config: MemoryConfig): MemoryInstance;
 
-  /** The Memory class from @mastra/memory. */
+  /** Memory class — create instances for agent conversation persistence. */
   export const Memory: MemoryConstructor;
 
   // ── Storage Providers ──────────────────────────────────────────
@@ -171,7 +171,7 @@ declare module "brainlet" {
   };
 
   /**
-   * Look up a registered tool by name and return a Mastra-compatible tool object.
+   * Look up a registered tool by name and return a tool object for agent use.
    * Use to pass platform/plugin tools to an agent's tool config.
    *
    * @example
@@ -182,7 +182,7 @@ declare module "brainlet" {
    * });
    * ```
    */
-  export function tool(name: string): MastraTool;
+  export function tool(name: string): Tool;
 
   /**
    * Platform bus — pub/sub events and request/response.
@@ -267,7 +267,7 @@ declare module "brainlet" {
     instructions?: string;
     description?: string;
     /** Tools available to the agent. Keys are tool names. */
-    tools?: Record<string, MastraTool>;
+    tools?: Record<string, Tool>;
     /** Memory config — enables conversation persistence. */
     memory?: AgentMemoryConfig;
     maxSteps?: number;
@@ -317,10 +317,16 @@ declare module "brainlet" {
     text: string;
     reasoning: string;
     usage: Usage;
+    totalUsage: Usage;
     finishReason: FinishReason;
     toolCalls: ToolCall[];
     toolResults: ToolResult[];
     steps: AgentStepResult[];
+    sources: any[];
+    files: any[];
+    warnings: any[];
+    response: ResponseMeta;
+    traceId?: string;
   }
 
   interface StreamResult {
@@ -329,6 +335,12 @@ declare module "brainlet" {
     text: Promise<string>;
     usage: Promise<Usage>;
     finishReason: Promise<FinishReason>;
+    reasoning: Promise<string | undefined>;
+    toolCalls: Promise<ToolCall[]>;
+    toolResults: Promise<ToolResult[]>;
+    steps: Promise<AgentStepResult[]>;
+    sources: Promise<any[]>;
+    response: Promise<ResponseMeta>;
   }
 
   // ── Workflow Types ─────────────────────────────────────────────
@@ -358,7 +370,7 @@ declare module "brainlet" {
     resumeData?: any;
     suspendData?: any;
     abortSignal?: AbortSignal;
-    mastra?: any;
+    runtime?: any;
     bail?: (payload: any) => any;
   }
 
@@ -433,13 +445,15 @@ declare module "brainlet" {
   // ── Tool Types ─────────────────────────────────────────────────
 
   interface ToolConfig {
-    name: string;
+    /** Tool identifier. */
+    id: string;
     description?: string;
-    schema?: ZodObject;
+    /** Zod schema for the tool's input parameters. */
+    inputSchema?: ZodObject;
     execute: (input: any) => Promise<any> | any;
   }
 
-  interface MastraTool {
+  interface Tool {
     readonly _registryTool?: boolean;
   }
 

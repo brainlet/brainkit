@@ -29,9 +29,9 @@ func TestIntegration_ZodViaImport(t *testing.T) {
 
 		// Can we create a tool with that schema?
 		const greetTool = createTool({
-			name: "greet",
+			id: "greet",
 			description: "Greets a person",
-			schema: schema,
+			inputSchema: schema,
 			execute: async (input) => {
 				return { greeting: "Hello " + input.name + ", age " + input.age };
 			},
@@ -293,9 +293,9 @@ func TestIntegration_FullTSModule(t *testing.T) {
 
 		// 4. Create a local tool with z schema
 		const localTool = createTool({
-			name: "concat",
+			id: "concat",
 			description: "Concatenates strings",
-			schema: z.object({ a: z.string(), b: z.string() }),
+			inputSchema: z.object({ a: z.string(), b: z.string() }),
 			execute: async ({ a, b }) => ({ result: a + b }),
 		});
 

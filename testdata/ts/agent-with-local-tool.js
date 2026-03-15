@@ -2,9 +2,9 @@
 import { agent, createTool, z, output } from "brainlet";
 
 const addTool = createTool({
-  name: "add",
+  id: "add",
   description: "Adds two numbers together",
-  schema: z.object({
+  inputSchema: z.object({
     a: z.number().describe("first number"),
     b: z.number().describe("second number"),
   }),
