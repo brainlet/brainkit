@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -81,22 +82,28 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onConnect()`, id))
 			})
 
-			// Read loop
+			// Read loop — use short read deadline so we can check for cancellation
 			buf := make([]byte, 16384)
 			for {
-				select {
-				case <-goCtx.Done():
+				// Set a short read deadline so Read() doesn't block forever
+				conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+				n, readErr := conn.Read(buf)
+
+				// Check cancellation
+				if goCtx.Err() != nil {
 					conn.Close()
 					return
+				}
+				select {
 				case <-gc.done:
 					conn.Close()
 					return
 				default:
 				}
 
-				n, readErr := conn.Read(buf)
-				if goCtx.Err() != nil {
-					return
+				// Timeout is expected — just retry
+				if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
+					continue
 				}
 
 				if n > 0 {
@@ -182,10 +189,23 @@ class GoSocket {
     this._pendingWrites = [];
   }
 
-  connect(port, host) {
+  connect(portOrOpts, host) {
     var self = this;
-    this._id = __go_net_connect(host || "127.0.0.1", port, false);
+    var port, useTLS = false;
+    if (typeof portOrOpts === "object" && portOrOpts !== null) {
+      host = portOrOpts.host || "127.0.0.1";
+      port = portOrOpts.port || 27017;
+      useTLS = !!portOrOpts.tls || !!portOrOpts.ssl;
+    } else {
+      port = portOrOpts;
+      host = host || "127.0.0.1";
+    }
+    this._id = __go_net_connect(host, port, useTLS);
     globalThis.__net_sockets[this._id] = this;
+
+    // Store connection details for remoteAddress/remotePort
+    this._remoteHost = host;
+    this._remotePort = port;
 
     this._onConnect = function() {
       self._connected = true;
@@ -197,21 +217,27 @@ class GoSocket {
       self._emit("connect");
     };
     this._onData = function(b64) {
-      var binary = atob(b64);
-      var bytes = new Uint8Array(binary.length);
-      for (var j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
-      // pg expects Buffer-like objects
-      bytes.toString = function(enc) {
-        if (enc === "utf8" || enc === "utf-8" || !enc) return new TextDecoder().decode(this);
-        return "[binary " + this.length + " bytes]";
-      };
-      bytes.slice = function(start, end) {
-        var sliced = Uint8Array.prototype.slice.call(this, start, end);
-        sliced.toString = bytes.toString;
-        sliced.slice = bytes.slice;
-        return sliced;
-      };
-      self._emit("data", bytes);
+      // Pure JS base64 decode — cannot use atob() because it goes through Go's
+      // ToString() which truncates at null bytes in the decoded binary data.
+      var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      var lookup = {};
+      for (var ci = 0; ci < chars.length; ci++) lookup[chars[ci]] = ci;
+      var bufLen = Math.floor(b64.length * 3 / 4);
+      if (b64.length > 1 && b64[b64.length - 1] === "=") bufLen--;
+      if (b64.length > 2 && b64[b64.length - 2] === "=") bufLen--;
+      var bytes = new Uint8Array(bufLen);
+      var p = 0;
+      for (var ci = 0; ci < b64.length; ci += 4) {
+        var a = lookup[b64[ci]] || 0;
+        var b = lookup[b64[ci+1]] || 0;
+        var c = lookup[b64[ci+2]] || 0;
+        var d = lookup[b64[ci+3]] || 0;
+        bytes[p++] = (a << 2) | (b >> 4);
+        if (b64[ci+2] !== "=") bytes[p++] = ((b << 4) | (c >> 2)) & 0xff;
+        if (b64[ci+3] !== "=") bytes[p++] = ((c << 6) | d) & 0xff;
+      }
+      var buf = globalThis.Buffer ? globalThis.Buffer.from(bytes) : bytes;
+      self._emit("data", buf);
     };
     this._onError = function(msg) {
       self._emit("error", new Error(msg));
@@ -237,16 +263,37 @@ class GoSocket {
   }
 
   _doWrite(data, cb) {
-    var b64;
+    // Encode binary data to base64 for Go bridge.
+    // Cannot use btoa() because it goes through Go's ToString() which truncates at null bytes.
+    // Must use pure-JS base64 encoding that handles all byte values including 0x00.
+    var bytes;
     if (typeof data === "string") {
-      b64 = btoa(data);
-    } else if (data instanceof Uint8Array) {
-      var bin = "";
-      for (var i = 0; i < data.length; i++) bin += String.fromCharCode(data[i]);
-      b64 = btoa(bin);
+      bytes = [];
+      for (var i = 0; i < data.length; i++) bytes.push(data.charCodeAt(i) & 0xff);
+    } else if (data instanceof Uint8Array || (data && data._isBuffer)) {
+      bytes = data;
+    } else if (data && typeof data.length === "number") {
+      bytes = data;
     } else {
-      b64 = btoa(String(data));
+      var s = String(data);
+      bytes = [];
+      for (var i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 0xff);
     }
+
+    // Pure JS base64 encode (handles null bytes correctly)
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var b64 = "";
+    var len = bytes.length;
+    for (var i = 0; i < len; i += 3) {
+      var b0 = bytes[i];
+      var b1 = i + 1 < len ? bytes[i + 1] : 0;
+      var b2 = i + 2 < len ? bytes[i + 2] : 0;
+      b64 += chars[(b0 >> 2) & 0x3f];
+      b64 += chars[((b0 << 4) | (b1 >> 4)) & 0x3f];
+      b64 += (i + 1 < len) ? chars[((b1 << 2) | (b2 >> 6)) & 0x3f] : "=";
+      b64 += (i + 2 < len) ? chars[b2 & 0x3f] : "=";
+    }
+
     var ok = __go_net_write(this._id, b64);
     if (cb) cb(ok ? null : new Error("write failed"));
     return ok;
@@ -266,13 +313,58 @@ class GoSocket {
     this._emit("close");
   }
 
-  destroy() {
-    this.end();
+  destroy(err) {
+    if (this._destroyed) return this;
+    this._destroyed = true;
+    this._connected = false;
+    if (this._timeoutId) { clearTimeout(this._timeoutId); this._timeoutId = null; }
+    if (this._id) {
+      __go_net_end(this._id);
+      delete globalThis.__net_sockets[this._id];
+    }
+    if (err) this._emit("error", err);
+    this._emit("close");
+    return this;
   }
+
+  // pipe — Node.js Readable.pipe(). Forward data events to a Writable/Transform.
+  pipe(dest, opts) {
+    var self = this;
+    this.on("data", function(chunk) {
+      var ok = dest.write(chunk);
+      if (ok === false && self.pause) self.pause();
+    });
+    if (!opts || opts.end !== false) {
+      this.on("end", function() { if (dest.end) dest.end(); });
+      this.on("close", function() { if (dest.end) dest.end(); });
+    }
+    if (dest.on) {
+      dest.on("drain", function() { if (self.resume) self.resume(); });
+    }
+    dest.emit && dest.emit("pipe", this);
+    return dest;
+  }
+
+  unpipe(dest) { return this; }
+  pause() { this._paused = true; return this; }
+  resume() { this._paused = false; return this; }
+
+  get remoteAddress() { return this._remoteHost || ""; }
+  get remotePort() { return this._remotePort || 0; }
+  get writable() { return this._connected && !this._destroyed; }
 
   setNoDelay() { return this; }
   setKeepAlive() { return this; }
-  setTimeout(ms, cb) { if (cb) this.on("timeout", cb); return this; }
+  setTimeout(ms, cb) {
+    if (cb) this.once("timeout", cb);
+    // Clear existing timeout
+    if (this._timeoutId) { clearTimeout(this._timeoutId); this._timeoutId = null; }
+    if (ms > 0) {
+      var self = this;
+      this._timeoutId = setTimeout(function() { self._emit("timeout"); }, ms);
+    }
+    return this;
+  }
   ref() { return this; }
   unref() { return this; }
 
@@ -299,7 +391,7 @@ class GoSocket {
   }
   _emit(event) {
     var args = Array.prototype.slice.call(arguments, 1);
-    var fns = this._events[event] || [];
+    var fns = (this._events[event] || []).slice();
     for (var i = 0; i < fns.length; i++) fns[i].apply(this, args);
     return fns.length > 0;
   }
@@ -308,8 +400,6 @@ class GoSocket {
   get writable() { return this._connected; }
 }
 
-// Override the net stub so pg picks up our real implementation
-if (typeof globalThis.__net_override === "undefined") {
-  globalThis.__net_override = true;
-}
+// Expose GoSocket globally so the esbuild net stub can delegate to it
+globalThis.GoSocket = GoSocket;
 `

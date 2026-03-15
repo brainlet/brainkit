@@ -261,6 +261,65 @@ func TestFixture_TS_MemoryLibSQL(t *testing.T) {
 	t.Logf("fixture memory-libsql: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
 }
 
+func TestFixture_TS_MemoryMongoDB(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "mongo:7",
+			ExposedPorts: []string{"27017/tcp"},
+			WaitingFor:   wait.ForListeningPort("27017/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start MongoDB container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "27017")
+	mongoURL := fmt.Sprintf("mongodb://%s:%s", host, port.Port())
+	t.Logf("MongoDB container running at %s", mongoURL)
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"MONGODB_URL": mongoURL,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-mongodb.js")
+	result, err := kit.EvalModule(context.Background(), "memory-mongodb.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+		Store     string `json:"store"`
+		URL       string `json:"url"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("didn't remember: %q", out.Text)
+	}
+	t.Logf("fixture memory-mongodb: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
+}
+
 func TestFixture_TS_AIStream(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/ai-stream.js")

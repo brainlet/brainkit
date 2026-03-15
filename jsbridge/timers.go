@@ -1,6 +1,7 @@
 package jsbridge
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"time"
@@ -14,9 +15,11 @@ type timerEntry struct {
 	cleared bool
 }
 
-// TimersPolyfill provides setTimeout and clearTimeout with a drain mechanism.
-// QuickJS is single-threaded, so timers are stored and executed via Drain().
+// TimersPolyfill provides setTimeout and clearTimeout.
+// delay=0 fires via queueMicrotask (processed during Await's JS_ExecutePendingJob).
+// delay>0 fires via Bridge.Go() + ctx.Schedule() (processed during Await's polling loop).
 type TimersPolyfill struct {
+	bridge *Bridge
 	mu     sync.Mutex
 	timers map[int32]*timerEntry
 	nextID int32
@@ -29,6 +32,8 @@ func Timers() *TimersPolyfill {
 }
 
 func (p *TimersPolyfill) Name() string { return "timers" }
+
+func (p *TimersPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
 // Drain executes all pending timers in delay order.
 // Call after Eval() to fire setTimeout callbacks.
@@ -114,37 +119,71 @@ func (p *TimersPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewUndefined()
 	}))
 
-	// Initialize the JS-side callback storage map and setTimeout/clearTimeout wrappers.
-	// For delay <= 0 (nextTick-style scheduling), use queueMicrotask so callbacks
-	// fire during the Await loop's JS_ExecutePendingJob processing. This is critical
-	// for Mastra's internal workflow step scheduling which uses setTimeout(fn, 0).
-	// Delayed timers still use the Go-side Drain() mechanism.
+	// __go_schedule_timeout(id, delay) — schedules a Go-side timer that fires the JS callback
+	// via ctx.Schedule(). This is used for non-zero delays so they actually wait.
+	ctx.Globals().Set("__go_schedule_timeout", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 || p.bridge == nil {
+			return qctx.NewUndefined()
+		}
+		id := args[0].ToInt32()
+		delayMs := args[1].ToInt32()
+
+		p.bridge.Go(func(goCtx context.Context) {
+			select {
+			case <-time.After(time.Duration(delayMs) * time.Millisecond):
+			case <-goCtx.Done():
+				return
+			}
+			ids := strconv.FormatInt(int64(id), 10)
+			qctx.Schedule(func(qctx *quickjs.Context) {
+				qctx.Eval(`(function() {
+					if (!__timer_cleared.has(` + ids + `)) {
+						var cb = __timer_cbs.get(` + ids + `);
+						if (cb) cb();
+					}
+					__timer_cbs.delete(` + ids + `);
+					__timer_cleared.delete(` + ids + `);
+				})()`)
+			})
+		})
+		return qctx.NewUndefined()
+	}))
+
+	// setTimeout/clearTimeout JS wrappers.
+	// delay=0: use queueMicrotask (fires during Await's JS_ExecutePendingJob).
+	// delay>0: use Go-side timer via __go_schedule_timeout (fires during Await's polling loop).
 	return evalJS(ctx, `
 if (typeof queueMicrotask === "undefined") {
   globalThis.queueMicrotask = function(fn) { Promise.resolve().then(fn); };
 }
 var __timer_cleared = new Set();
+var __timer_cbs = new Map();
 var __timer_next_id = 0;
 globalThis.setTimeout = function(fn, delay) {
   __timer_next_id++;
   var id = __timer_next_id;
   var args = [];
   for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
-  // ALL setTimeout calls use queueMicrotask so they fire during the Await loop.
-  // Go-side Drain() is never called during EvalAsync, so timers sent to Go
-  // would never fire. queueMicrotask ensures callbacks run via JS_ExecutePendingJob.
-  // The delay is ignored — in our single-threaded QuickJS, there's no real
-  // async scheduling, just microtask ordering.
-  queueMicrotask(function() {
-    if (!__timer_cleared.has(id)) {
-      fn.apply(null, args);
-    }
-    __timer_cleared.delete(id);
-  });
+  var wrapped = function() { fn.apply(null, args); };
+
+  if (!delay || delay <= 0) {
+    // Zero delay: fire as microtask (Mastra workflow step scheduling)
+    queueMicrotask(function() {
+      if (!__timer_cleared.has(id)) {
+        wrapped();
+      }
+      __timer_cleared.delete(id);
+    });
+  } else {
+    // Non-zero delay: Go-side timer via Bridge.Go() + ctx.Schedule()
+    __timer_cbs.set(id, wrapped);
+    __go_schedule_timeout(id, delay);
+  }
   return id;
 };
 globalThis.clearTimeout = function(id) {
   __timer_cleared.add(id);
+  __timer_cbs.delete(id);
 };
 `)
 }

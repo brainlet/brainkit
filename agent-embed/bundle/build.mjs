@@ -88,42 +88,146 @@ const moduleStubs = {
       scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers };
   `,
   "stream": `
-    export class Readable {
-      constructor(opts) { this._events = {}; this.readable = true; this.destroyed = false; }
-      pipe(dest) { return dest; }
+    // Minimal but functional Node.js stream stubs for MongoDB driver compatibility.
+    // Key requirement: socket.pipe(transform) must work end-to-end:
+    //   socket data events → transform.write() → _transform() → push() → data events
+    class EventEmitterBase {
+      constructor() { this._events = {}; }
       on(ev, fn) { (this._events[ev] = this._events[ev] || []).push(fn); return this; }
+      addListener(ev, fn) { return this.on(ev, fn); }
       once(ev, fn) { const w = (...a) => { this.removeListener(ev, w); fn(...a); }; return this.on(ev, w); }
       removeListener(ev, fn) { const a = this._events[ev]; if (a) this._events[ev] = a.filter(f => f !== fn); return this; }
-      emit(ev, ...args) { (this._events[ev] || []).forEach(fn => fn(...args)); return true; }
-      read() { return null; }
-      push() { return true; }
-      unshift() {}
-      resume() { return this; }
-      pause() { return this; }
-      isPaused() { return false; }
-      destroy() { this.destroyed = true; return this; }
-      [Symbol.asyncIterator]() { return { next: () => Promise.resolve({ done: true }) }; }
-      static from(iterable) { return new Readable(); }
+      off(ev, fn) { return this.removeListener(ev, fn); }
+      removeAllListeners(ev) { if (ev) delete this._events[ev]; else this._events = {}; return this; }
+      emit(ev, ...args) { const fns = this._events[ev]; if (!fns || !fns.length) return false; fns.slice().forEach(fn => fn(...args)); return true; }
+      listeners(ev) { return (this._events[ev] || []).slice(); }
+      listenerCount(ev) { return (this._events[ev] || []).length; }
+      eventNames() { return Object.keys(this._events); }
+      setMaxListeners() { return this; }
+      getMaxListeners() { return 10; }
+      prependListener(ev, fn) { (this._events[ev] = this._events[ev] || []).unshift(fn); return this; }
+      prependOnceListener(ev, fn) { const w = (...a) => { this.removeListener(ev, w); fn(...a); }; return this.prependListener(ev, w); }
+      rawListeners(ev) { return this.listeners(ev); }
     }
-    export class Writable {
-      constructor(opts) { this._events = {}; this.writable = true; this.destroyed = false; }
-      write(chunk, enc, cb) { if (cb) cb(); return true; }
-      end(chunk, enc, cb) { if (typeof chunk === "function") { chunk(); } else if (cb) cb(); }
-      on(ev, fn) { (this._events[ev] = this._events[ev] || []).push(fn); return this; }
-      once(ev, fn) { return this.on(ev, fn); }
-      emit(ev, ...args) { (this._events[ev] || []).forEach(fn => fn(...args)); return true; }
-      destroy() { this.destroyed = true; return this; }
+
+    export class Readable extends EventEmitterBase {
+      constructor(opts) {
+        super();
+        this.readable = true;
+        this.destroyed = false;
+        this._paused = true;
+        this._readableObjectMode = opts && opts.readableObjectMode;
+        this._buffer = [];
+      }
+      pipe(dest, opts) {
+        var self = this;
+        this.on("data", function(chunk) {
+          if (dest.write) {
+            var ok = dest.write(chunk);
+            if (ok === false && self.pause) self.pause();
+          }
+        });
+        if (!opts || opts.end !== false) {
+          this.on("end", function() { if (dest.end) dest.end(); });
+        }
+        if (dest.on) {
+          dest.on("drain", function() { if (self.resume) self.resume(); });
+        }
+        if (dest.emit) dest.emit("pipe", this);
+        return dest;
+      }
+      push(chunk) {
+        if (chunk === null) { this.emit("end"); return false; }
+        if (this._paused) { this._buffer.push(chunk); return true; }
+        this.emit("data", chunk);
+        return true;
+      }
+      read() { return this._buffer.length ? this._buffer.shift() : null; }
+      unshift(chunk) { this._buffer.unshift(chunk); }
+      resume() { this._paused = false; while (this._buffer.length) this.emit("data", this._buffer.shift()); return this; }
+      pause() { this._paused = true; return this; }
+      isPaused() { return this._paused; }
+      destroy(err) { if (this.destroyed) return this; this.destroyed = true; if (err) this.emit("error", err); this.emit("close"); return this; }
+      [Symbol.asyncIterator]() {
+        var self = this; var done = false; var queue = []; var waiting = null;
+        self.on("data", function(chunk) { if (waiting) { var r = waiting; waiting = null; r({value:chunk,done:false}); } else queue.push({value:chunk,done:false}); });
+        self.on("end", function() { done = true; if (waiting) { var r = waiting; waiting = null; r({value:undefined,done:true}); } });
+        self.on("error", function(err) { done = true; if (waiting) { var r = waiting; waiting = null; r(Promise.reject(err)); } });
+        self.resume();
+        return { next: function() { if (queue.length) return Promise.resolve(queue.shift()); if (done) return Promise.resolve({value:undefined,done:true}); return new Promise(function(r) { waiting = r; }); },
+          return: function() { done = true; self.pause(); return Promise.resolve({value:undefined,done:true}); },
+          [Symbol.asyncIterator]: function() { return this; } };
+      }
+      static from(iterable) { var r = new Readable(); if (iterable && iterable[Symbol.iterator]) { for (var v of iterable) r.push(v); r.push(null); } return r; }
     }
+
+    export class Writable extends EventEmitterBase {
+      constructor(opts) {
+        super();
+        this.writable = true;
+        this.destroyed = false;
+        this._writableObjectMode = opts && opts.writableObjectMode;
+      }
+      write(chunk, enc, cb) {
+        if (typeof enc === "function") { cb = enc; enc = undefined; }
+        if (this._write) { this._write(chunk, enc || "utf8", cb || function(){}); }
+        else { if (cb) cb(); }
+        return true;
+      }
+      end(chunk, enc, cb) {
+        if (typeof chunk === "function") { cb = chunk; chunk = undefined; }
+        if (typeof enc === "function") { cb = enc; enc = undefined; }
+        if (chunk !== undefined && chunk !== null) this.write(chunk, enc);
+        this.writable = false;
+        if (this._final) this._final(function() { if (cb) cb(); });
+        else if (cb) cb();
+        this.emit("finish");
+      }
+      destroy(err) { if (this.destroyed) return this; this.destroyed = true; if (err) this.emit("error", err); this.emit("close"); return this; }
+      cork() {}
+      uncork() {}
+    }
+
     export class Duplex extends Readable {
-      constructor(opts) { super(opts); this.writable = true; }
-      write(chunk, enc, cb) { if (cb) cb(); return true; }
-      end(chunk, enc, cb) { if (typeof chunk === "function") { chunk(); } else if (cb) cb(); }
+      constructor(opts) {
+        super(opts);
+        this.writable = true;
+        this._writableObjectMode = opts && opts.writableObjectMode;
+      }
+      write(chunk, enc, cb) {
+        if (typeof enc === "function") { cb = enc; enc = undefined; }
+        if (this._write) { this._write(chunk, enc || "utf8", cb || function(){}); }
+        else { if (cb) cb(); }
+        return true;
+      }
+      end(chunk, enc, cb) {
+        if (typeof chunk === "function") { cb = chunk; chunk = undefined; }
+        if (typeof enc === "function") { cb = enc; enc = undefined; }
+        if (chunk !== undefined && chunk !== null) this.write(chunk, enc);
+        this.writable = false;
+        if (this._final) this._final(function() { if (cb) cb(); });
+        else if (cb) cb();
+        this.emit("finish");
+      }
+      destroy(err) { if (this.destroyed) return this; this.destroyed = true; if (err) this.emit("error", err); this.emit("close"); return this; }
+      cork() {}
+      uncork() {}
     }
+
     export class Transform extends Duplex {
-      constructor(opts) { super(opts); }
+      constructor(opts) {
+        super(opts);
+        this._readableObjectMode = opts && opts.readableObjectMode;
+        this._writableObjectMode = opts && (opts.writableObjectMode !== undefined ? opts.writableObjectMode : false);
+      }
+      // write() → _transform() → push() → data events
+      _write(chunk, enc, cb) {
+        this._transform(chunk, enc, cb);
+      }
       _transform(chunk, enc, cb) { this.push(chunk); cb(); }
       _flush(cb) { cb(); }
     }
+
     export class PassThrough extends Transform {}
     export const pipeline = (...args) => { const cb = args.pop(); if (typeof cb === "function") cb(); };
     export const finished = (stream, cb) => { if (cb) cb(); };
@@ -555,32 +659,35 @@ const moduleStubs = {
     export const createServer = notAvailable("net.createServer");
     export class Socket {
       constructor() {
-        // Delegate to GoSocket if the jsbridge net polyfill is loaded
         if (globalThis.GoSocket) {
-          var gs = new globalThis.GoSocket();
-          // Copy methods from GoSocket instance
-          var proto = Object.getPrototypeOf(gs);
-          for (var key of Object.getOwnPropertyNames(proto)) {
-            if (key !== "constructor") this[key] = gs[key].bind ? gs[key].bind(gs) : gs[key];
-          }
-          this._gs = gs;
-          return;
+          this._gs = new globalThis.GoSocket();
+        } else {
+          this._events = {};
         }
-        this._events = {};
       }
       connect() { if (this._gs) return this._gs.connect.apply(this._gs, arguments); return this; }
       write() { if (this._gs) return this._gs.write.apply(this._gs, arguments); return false; }
       end() { if (this._gs) return this._gs.end.apply(this._gs, arguments); }
-      destroy() { if (this._gs) return this._gs.destroy.apply(this._gs, arguments); }
+      destroy() { if (this._gs) return this._gs.destroy.apply(this._gs, arguments); return this; }
+      pipe() { if (this._gs) return this._gs.pipe.apply(this._gs, arguments); return arguments[0]; }
       on(e, fn) { if (this._gs) { this._gs.on(e, fn); return this; } (this._events[e] = this._events[e] || []).push(fn); return this; }
       once(e, fn) { if (this._gs) { this._gs.once(e, fn); return this; } return this.on(e, fn); }
       removeListener(e, fn) { if (this._gs) { this._gs.removeListener(e, fn); return this; } return this; }
-      emit(e) { if (this._gs) return this._gs.emit.apply(this._gs, arguments); }
+      removeAllListeners(e) { if (this._gs) { this._gs.removeAllListeners && this._gs.removeAllListeners(e); return this; } return this; }
+      off(e, fn) { return this.removeListener(e, fn); }
+      emit() { if (this._gs) return this._gs.emit.apply(this._gs, arguments); return false; }
+      pause() { if (this._gs && this._gs.pause) this._gs.pause(); return this; }
+      resume() { if (this._gs && this._gs.resume) this._gs.resume(); return this; }
       setNoDelay() { return this; }
       setKeepAlive() { return this; }
-      setTimeout() { return this; }
+      setTimeout() { if (this._gs) return this._gs.setTimeout.apply(this._gs, arguments); return this; }
       ref() { return this; }
       unref() { return this; }
+      cork() {}
+      uncork() {}
+      get remoteAddress() { return this._gs ? this._gs.remoteAddress : undefined; }
+      get remotePort() { return this._gs ? this._gs.remotePort : undefined; }
+      get writable() { return this._gs ? this._gs.writable : false; }
     }
     export const createConnection = (...args) => { const s = new Socket(); s.connect(args[0], args[1]); return s; };
     export const connect = createConnection;
@@ -724,7 +831,7 @@ const result = await esbuild.build({
   format: "iife",
   platform: "browser",
   target: "es2020",
-  minify: true,
+  minify: false,
   treeShaking: true,
   plugins: [nodeStubPlugin],
   external: [

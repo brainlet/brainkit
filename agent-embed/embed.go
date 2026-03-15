@@ -249,6 +249,78 @@ if (typeof Buffer === "undefined") {
         return (buf[offset] << 8) | buf[offset+1];
       };
 
+      // Little-endian methods (used by MongoDB/BSON)
+      buf.readInt32LE = function(offset) {
+        offset = offset || 0;
+        return buf[offset] | (buf[offset+1] << 8) | (buf[offset+2] << 16) | (buf[offset+3] << 24);
+      };
+
+      buf.readUInt32LE = function(offset) {
+        offset = offset || 0;
+        return (buf[offset] | (buf[offset+1] << 8) | (buf[offset+2] << 16) | (buf[offset+3] << 24)) >>> 0;
+      };
+
+      buf.readInt16LE = function(offset) {
+        offset = offset || 0;
+        var val = buf[offset] | (buf[offset+1] << 8);
+        return val > 0x7FFF ? val - 0x10000 : val;
+      };
+
+      buf.readUInt16LE = function(offset) {
+        offset = offset || 0;
+        return buf[offset] | (buf[offset+1] << 8);
+      };
+
+      buf.writeInt32LE = function(value, offset) {
+        offset = offset || 0;
+        buf[offset] = value & 0xff;
+        buf[offset + 1] = (value >>> 8) & 0xff;
+        buf[offset + 2] = (value >>> 16) & 0xff;
+        buf[offset + 3] = (value >>> 24) & 0xff;
+        return offset + 4;
+      };
+
+      buf.writeUInt32LE = buf.writeInt32LE;
+
+      buf.writeInt16LE = function(value, offset) {
+        offset = offset || 0;
+        buf[offset] = value & 0xff;
+        buf[offset + 1] = (value >>> 8) & 0xff;
+        return offset + 2;
+      };
+
+      buf.writeUInt16LE = buf.writeInt16LE;
+
+      buf.readFloatLE = function(offset) {
+        offset = offset || 0;
+        var tmp = new Uint8Array(4);
+        for (var i = 0; i < 4; i++) tmp[i] = buf[offset + i];
+        return new DataView(tmp.buffer).getFloat32(0, true);
+      };
+
+      buf.readDoubleLE = function(offset) {
+        offset = offset || 0;
+        var tmp = new Uint8Array(8);
+        for (var i = 0; i < 8; i++) tmp[i] = buf[offset + i];
+        return new DataView(tmp.buffer).getFloat64(0, true);
+      };
+
+      buf.writeFloatLE = function(value, offset) {
+        offset = offset || 0;
+        var tmp = new Uint8Array(4);
+        new DataView(tmp.buffer).setFloat32(0, value, true);
+        for (var i = 0; i < 4; i++) buf[offset + i] = tmp[i];
+        return offset + 4;
+      };
+
+      buf.writeDoubleLE = function(value, offset) {
+        offset = offset || 0;
+        var tmp = new Uint8Array(8);
+        new DataView(tmp.buffer).setFloat64(0, value, true);
+        for (var i = 0; i < 8; i++) buf[offset + i] = tmp[i];
+        return offset + 8;
+      };
+
       buf.readUInt8 = function(offset) { return buf[offset || 0]; };
       buf.writeUInt8 = function(value, offset) { buf[offset || 0] = value & 0xff; return (offset || 0) + 1; };
 
