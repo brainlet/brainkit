@@ -50,23 +50,65 @@
     return embed[factoryName](opts)(modelId);
   }
 
-  // agent() — create a persistent agent in THIS sandbox
+  // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
+  var _defaultStore = new embed.InMemoryStore();
+
+  // createMemory() — create a Memory instance using @mastra/memory
+  // Developers can pass their own storage or use the Kit's default in-memory store.
+  function createMemory(memoryConfig) {
+    var storage = memoryConfig.storage || _defaultStore;
+    var opts = {};
+    if (typeof memoryConfig.lastMessages === "number") opts.lastMessages = memoryConfig.lastMessages;
+    if (memoryConfig.semanticRecall !== undefined) opts.semanticRecall = memoryConfig.semanticRecall;
+    if (memoryConfig.workingMemory !== undefined) opts.workingMemory = memoryConfig.workingMemory;
+    if (memoryConfig.generateTitle !== undefined) opts.generateTitle = memoryConfig.generateTitle;
+
+    return new embed.Memory({
+      storage: storage,
+      vector: false,
+      options: opts,
+    });
+  }
+
+  // agent() — create a persistent agent in THIS Kit
   function agent(config) {
-    var a = new embed.Agent({
+    var agentOpts = {
       name: config.name || "unnamed",
       id: config.id || undefined,
       description: config.description || "",
       instructions: config.instructions || "",
       model: resolveModel(config.model),
       tools: config.tools || {},
-    });
+    };
+
+    // If memory is configured, create a Memory instance and set on the agent
+    if (config.memory) {
+      var memory = createMemory(config.memory);
+      agentOpts.memory = memory;
+    }
+
+    var a = new embed.Agent(agentOpts);
+
+    // Build memory options for generate/stream calls
+    var memoryOpts = null;
+    if (config.memory) {
+      memoryOpts = {
+        thread: typeof config.memory.thread === "string" ? config.memory.thread : config.memory.thread?.id || "default",
+        resource: config.memory.resource || "default",
+      };
+    }
 
     return {
       _mastraAgent: a,
       generate: async function(promptOrMessages, options) {
+        var opts = options || {};
+        if (memoryOpts && !opts.memory) {
+          opts.memory = memoryOpts;
+        }
+
         var result = await a.generate(
           typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
-          options || {}
+          opts
         );
         return {
           text: result.text || "",
@@ -83,11 +125,14 @@
         };
       },
       stream: async function(promptOrMessages, options) {
-        var result = await a.stream(
+        var opts = options || {};
+        if (memoryOpts && !opts.memory) {
+          opts.memory = memoryOpts;
+        }
+        return await a.stream(
           typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
-          options || {}
+          opts
         );
-        return result;
       },
     };
   }
@@ -306,7 +351,14 @@
     // LOCAL
     agent: agent,
     createTool: createTool,
+    createMemory: createMemory,
     z: z,
+
+    // STORAGE (for custom memory configs)
+    InMemoryStore: embed.InMemoryStore,
+    LibSQLStore: embed.LibSQLStore,
+    UpstashStore: embed.UpstashStore,
+    Memory: embed.Memory,
 
     // PLATFORM
     ai: ai,

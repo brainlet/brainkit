@@ -4,6 +4,11 @@
 import { Agent } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
 import { Mastra } from '@mastra/core/mastra';
+import { Memory } from '@mastra/memory';
+import { MockMemory } from '@mastra/core/memory';
+import { InMemoryStore } from '@mastra/core/storage';
+import { LibSQLStore } from '@mastra/libsql';
+import { UpstashStore } from '@mastra/upstash';
 import { z } from 'zod';
 
 // AI SDK providers
@@ -26,6 +31,11 @@ globalThis.__agent_embed = {
   Agent,
   createTool,
   Mastra,
+  Memory,
+  MockMemory,
+  InMemoryStore,
+  LibSQLStore,
+  UpstashStore,
   z,
 
   // AI SDK providers

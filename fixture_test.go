@@ -153,6 +153,104 @@ func TestFixture_TS_AIGenerate(t *testing.T) {
 	t.Logf("fixture ai-generate: %q", out.Text)
 }
 
+func TestFixture_TS_AgentWithMemory(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-with-memory.js")
+
+	result, err := kit.EvalModule(context.Background(), "agent-with-memory.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("agent didn't remember: %q", out.Text)
+	}
+	t.Logf("fixture agent-with-memory: %q remembers=%v", out.Text, out.Remembers)
+}
+
+func TestFixture_TS_MemoryInMemory(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/memory-inmemory.js")
+
+	result, err := kit.EvalModule(context.Background(), "memory-inmemory.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text          string `json:"text"`
+		RemembersName bool   `json:"remembersName"`
+		RemembersWork bool   `json:"remembersWork"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.RemembersName {
+		t.Errorf("didn't remember name: %q", out.Text)
+	}
+	if !out.RemembersWork {
+		t.Errorf("didn't remember work: %q", out.Text)
+	}
+	t.Logf("fixture memory-inmemory: %q name=%v work=%v", out.Text, out.RemembersName, out.RemembersWork)
+}
+
+func TestFixture_TS_MemoryLibSQL(t *testing.T) {
+	if os.Getenv("LIBSQL_URL") == "" {
+		t.Skip("LIBSQL_URL not set — need a LibSQL HTTP endpoint (testcontainer or Turso)")
+	}
+
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/memory-libsql.js")
+
+	result, err := kit.EvalModule(context.Background(), "memory-libsql.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+		Store     string `json:"store"`
+		URL       string `json:"url"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("didn't remember: %q", out.Text)
+	}
+	t.Logf("fixture memory-libsql: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
+}
+
+func TestFixture_TS_AIStream(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/ai-stream.js")
+
+	result, err := kit.EvalModule(context.Background(), "ai-stream.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text              string `json:"text"`
+		Chunks            int    `json:"chunks"`
+		HasRealTimeTokens bool   `json:"hasRealTimeTokens"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Text == "" {
+		t.Error("expected non-empty text")
+	}
+	if !out.HasRealTimeTokens {
+		t.Error("expected real-time token chunks")
+	}
+	t.Logf("fixture ai-stream: %d chunks, text=%q", out.Chunks, out.Text)
+}
+
 func TestFixture_TS_ToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 

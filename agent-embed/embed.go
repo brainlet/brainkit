@@ -263,9 +263,28 @@ if (typeof clearImmediate === "undefined") {
   globalThis.clearImmediate = function() {};
 }
 if (typeof setInterval === "undefined") {
-  // Mastra doesn't use setInterval, but some SDK code may reference it.
-  globalThis.setInterval = function() { return 0; };
-  globalThis.clearInterval = function() {};
+  // setInterval — repeated execution. For QuickJS, we simulate via recursive setTimeout.
+  var __intervals = {};
+  var __intervalId = 0;
+  globalThis.setInterval = function(fn, delay) {
+    var args = [];
+    for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+    __intervalId++;
+    var id = __intervalId;
+    function tick() {
+      if (!__intervals[id]) return;
+      fn.apply(null, args);
+      __intervals[id] = setTimeout(tick, delay || 0);
+    }
+    __intervals[id] = setTimeout(tick, delay || 0);
+    return id;
+  };
+  globalThis.clearInterval = function(id) {
+    if (__intervals[id]) {
+      clearTimeout(__intervals[id]);
+      delete __intervals[id];
+    }
+  };
 }
 
 // ─── Event utilities ────────────────────────────────────────────────────

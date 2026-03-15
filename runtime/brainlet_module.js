@@ -1,5 +1,6 @@
 export const agent = globalThis.__brainlet.agent;
 export const createTool = globalThis.__brainlet.createTool;
+export const createMemory = globalThis.__brainlet.createMemory;
 export const z = globalThis.__brainlet.z;
 export const ai = globalThis.__brainlet.ai;
 export const wasm = globalThis.__brainlet.wasm;
@@ -8,3 +9,7 @@ export const tool = globalThis.__brainlet.tool;
 export const bus = globalThis.__brainlet.bus;
 export const sandbox = globalThis.__brainlet.sandbox;
 export const output = globalThis.__brainlet.output;
+export const Memory = globalThis.__brainlet.Memory;
+export const InMemoryStore = globalThis.__brainlet.InMemoryStore;
+export const LibSQLStore = globalThis.__brainlet.LibSQLStore;
+export const UpstashStore = globalThis.__brainlet.UpstashStore;

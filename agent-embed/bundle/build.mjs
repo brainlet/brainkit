@@ -514,9 +514,13 @@ const moduleStubs = {
   "net": `
     const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
     export const createServer = notAvailable("net.createServer");
-    export const createConnection = notAvailable("net.createConnection");
-    export const connect = notAvailable("net.connect");
-    export const Socket = class Socket {};
+    export const createConnection = (...args) => {
+      const s = new (globalThis.GoSocket || class{})();
+      if (args.length > 0) s.connect(args[0]?.port || args[0], args[0]?.host || args[1]);
+      return s;
+    };
+    export const connect = createConnection;
+    export const Socket = globalThis.GoSocket || class Socket {};
     export const Server = class Server {};
     export const isIP = (input) => { try { return input.includes(":") ? 6 : input.match(/^\\d+\\.\\d+\\.\\d+\\.\\d+$/) ? 4 : 0; } catch(e) { return 0; } };
     export const isIPv4 = (input) => isIP(input) === 4;
@@ -664,7 +668,7 @@ const result = await esbuild.build({
     // Database drivers — handled by Go, not JS
     "pg",
     "mongodb",
-    "@libsql/client",
+    // "@libsql/client", — bundled: HTTP-based, works through fetch
     "better-sqlite3",
     // Native modules that can't run in QuickJS
     "@ast-grep/napi",

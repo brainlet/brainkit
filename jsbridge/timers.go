@@ -115,15 +115,27 @@ func (p *TimersPolyfill) Setup(ctx *quickjs.Context) error {
 	}))
 
 	// Initialize the JS-side callback storage map and setTimeout/clearTimeout wrappers.
-	// Callbacks are stored in __timer_cbs to keep JS references alive until Drain().
+	// For delay <= 0 (nextTick-style scheduling), use queueMicrotask so callbacks
+	// fire during the Await loop's JS_ExecutePendingJob processing. This is critical
+	// for Mastra's internal workflow step scheduling which uses setTimeout(fn, 0).
+	// Delayed timers still use the Go-side Drain() mechanism.
 	return evalJS(ctx, `
 var __timer_cbs = new Map();
-globalThis.setTimeout = (fn, delay) => {
-  var id = __go_set_timeout(fn, delay || 0);
-  __timer_cbs.set(id, fn);
+var __timer_next_id = 0;
+globalThis.setTimeout = function(fn, delay) {
+  __timer_next_id++;
+  var id = __timer_next_id;
+  var args = [];
+  for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+  // ALL setTimeout calls use queueMicrotask so they fire during the Await loop.
+  // Go-side Drain() is never called during EvalAsync, so timers sent to Go
+  // would never fire. queueMicrotask ensures callbacks run via JS_ExecutePendingJob.
+  // The delay is ignored — in our single-threaded QuickJS, there's no real
+  // async scheduling, just microtask ordering.
+  queueMicrotask(function() { fn.apply(null, args); });
   return id;
 };
-globalThis.clearTimeout = (id) => {
+globalThis.clearTimeout = function(id) {
   __go_clear_timeout(id);
   __timer_cbs.delete(id);
 };
