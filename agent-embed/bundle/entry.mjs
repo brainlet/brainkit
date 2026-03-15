@@ -17,6 +17,16 @@ import { z } from 'zod';
 import { embed, embedMany, generateText, streamText, generateObject, streamObject } from 'ai';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
 
+// Evals — scorer infrastructure from core + pre-built rule-based scorers
+import { createScorer, runEvals } from '@mastra/core/evals';
+import {
+  createCompletenessScorer,
+  createTextualDifferenceScorer,
+  createKeywordCoverageScorer,
+  createContentSimilarityScorer,
+  createToneScorer,
+} from '@mastra/evals/scorers/prebuilt';
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -57,6 +67,15 @@ globalThis.__agent_embed = {
   generateObject,
   streamObject,
   ModelRouterEmbeddingModel,
+
+  // Evals
+  createScorer,
+  runEvals,
+  createCompletenessScorer,
+  createTextualDifferenceScorer,
+  createKeywordCoverageScorer,
+  createContentSimilarityScorer,
+  createToneScorer,
 
   // AI SDK providers
   createOpenAI,

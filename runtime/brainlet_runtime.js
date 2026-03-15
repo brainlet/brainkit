@@ -120,8 +120,29 @@
 
   // Wrap createWorkflow to inject storage for snapshot persistence and track runs.
   // Without this, workflow suspend/resume cannot persist snapshots.
-  // wrappedCreateWorkflow — direct pass-through of createWorkflow.
-  // Storage injection for suspend/resume happens via createWorkflowRun() wrapper below.
+  // QuickJS bug workaround: obj?.method() does NOT short-circuit when method is undefined.
+  // Mastra workflows call this.#mastra?.generateId() in createRun(). Without a mastra instance,
+  // QuickJS calls undefined() instead of returning undefined.
+  //
+  // Fix: patch the Workflow class prototype to inject our storage shim into every workflow
+  // instance via __registerMastra. This catches ALL workflows — user-created, scorer internals,
+  // processor workflows — regardless of how they're constructed.
+  (function() {
+    var probe = embed.createWorkflow({ id: "__probe", inputSchema: embed.z.any(), outputSchema: embed.z.any() });
+    var WorkflowProto = Object.getPrototypeOf(probe);
+    var _origCommitProto = WorkflowProto.commit;
+    if (_origCommitProto) {
+      WorkflowProto.commit = function() {
+        // Inject storage shim before commit so createRun() has a valid #mastra
+        if (typeof this.__registerMastra === "function") {
+          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
+        }
+        return _origCommitProto.apply(this, arguments);
+      };
+    }
+  })();
+
+  // wrappedCreateWorkflow — the public API that developers use.
   function wrappedCreateWorkflow(config) {
     return embed.createWorkflow(config);
   }
@@ -216,6 +237,11 @@
       model: resolveModel(config.model),
       tools: config.tools || {},
     };
+
+    // Processors — middleware for input/output transformation and safety guardrails
+    if (config.inputProcessors) agentOpts.inputProcessors = config.inputProcessors;
+    if (config.outputProcessors) agentOpts.outputProcessors = config.outputProcessors;
+    if (config.maxProcessorRetries !== undefined) agentOpts.maxProcessorRetries = config.maxProcessorRetries;
 
     // Memory: accept a Memory instance directly (Mastra-style) or a config object
     var memoryOpts = null;
@@ -533,6 +559,57 @@
     globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
   }
 
+  // Helper: convert a plain string to a MastraDBMessage (format used by type:'agent' scorers)
+  function toMastraDBMessage(text, role) {
+    return {
+      id: "msg-" + Math.random().toString(36).slice(2),
+      role: role || "user",
+      content: {
+        format: 2,
+        parts: [{ type: "text", text: text }],
+        content: text,
+      },
+      createdAt: new Date(),
+    };
+  }
+
+  // Wrap a pre-built scorer factory so .run() accepts plain strings
+  // Pre-built scorers use type:'agent' and expect MastraDBMessage arrays.
+  // We wrap .run() to convert plain string input/output to the agent format.
+  function wrapPrebuiltScorer(factoryFn) {
+    return function(opts) {
+      var scorer = factoryFn(opts);
+      // Inject storage shim (scorer creates workflow internally)
+      if (typeof scorer.__registerMastra === "function") {
+        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
+      }
+      var origRun = scorer.run.bind(scorer);
+      scorer.run = async function(input) {
+        // If input/output are plain strings, convert to MastraDBMessage format
+        var converted = {};
+        if (typeof input.input === "string") {
+          converted.input = {
+            inputMessages: [toMastraDBMessage(input.input, "user")],
+            rememberedMessages: [],
+            systemMessages: [],
+            taggedSystemMessages: {},
+          };
+        } else {
+          converted.input = input.input;
+        }
+        if (typeof input.output === "string") {
+          converted.output = [toMastraDBMessage(input.output, "assistant")];
+        } else {
+          converted.output = input.output;
+        }
+        if (input.runId) converted.runId = input.runId;
+        if (input.groundTruth !== undefined) converted.groundTruth = input.groundTruth;
+        return origRun(converted);
+      };
+      return scorer;
+    };
+  }
+
   // ─── EXPORT ────────────────────────────────────────────────────
 
   globalThis.__brainlet = {
@@ -576,6 +653,24 @@
     // WORKFLOWS
     createWorkflowRun: createWorkflowRun,
     resumeWorkflow: resumeWorkflow,
+
+    // EVALS
+    createScorer: function(config) {
+      var scorer = embed.createScorer(config);
+      // Inject storage shim — scorers internally create workflows that need storage
+      if (typeof scorer.__registerMastra === "function") {
+        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
+      }
+      return scorer;
+    },
+    runEvals: embed.runEvals,
+    scorers: {
+      completeness: wrapPrebuiltScorer(embed.createCompletenessScorer),
+      textualDifference: wrapPrebuiltScorer(embed.createTextualDifferenceScorer),
+      keywordCoverage: wrapPrebuiltScorer(embed.createKeywordCoverageScorer),
+      contentSimilarity: wrapPrebuiltScorer(embed.createContentSimilarityScorer),
+      tone: wrapPrebuiltScorer(embed.createToneScorer),
+    },
 
     // MODULE
     output: output,

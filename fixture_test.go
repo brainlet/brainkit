@@ -840,6 +840,83 @@ globalThis.__test_status = result.status;
 	}
 }
 
+func TestFixture_TS_AgentWithProcessor(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-with-processor.js")
+
+	result, err := kit.EvalModule(context.Background(), "agent-with-processor.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text            string `json:"text"`
+		ProcessorCalled bool   `json:"processorCalled"`
+		Works           bool   `json:"works"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.ProcessorCalled {
+		t.Error("processor was not called")
+	}
+	if !out.Works {
+		t.Errorf("processor test failed: text=%q processorCalled=%v", out.Text, out.ProcessorCalled)
+	}
+	t.Logf("fixture agent-with-processor: text=%q processorCalled=%v works=%v", out.Text, out.ProcessorCalled, out.Works)
+}
+
+func TestFixture_TS_AgentWithTripwire(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/agent-with-tripwire.js")
+
+	result, err := kit.EvalModule(context.Background(), "agent-with-tripwire.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text         string `json:"text"`
+		FinishReason string `json:"finishReason"`
+		Tripped      bool   `json:"tripped"`
+		Error        string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Tripped {
+		// tripwire may manifest as finishReason != "stop", or as a caught error
+		t.Errorf("tripwire didn't fire: text=%q finishReason=%s error=%q", out.Text, out.FinishReason, out.Error)
+	}
+	t.Logf("fixture agent-with-tripwire: tripped=%v finishReason=%s text=%q error=%q",
+		out.Tripped, out.FinishReason, out.Text, out.Error)
+}
+
+func TestFixture_TS_EvalCustomScorer(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/eval-custom-scorer.js")
+
+	result, err := kit.EvalModule(context.Background(), "eval-custom-scorer.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("raw: %s", result)
+
+	var out struct {
+		CustomScore         float64 `json:"customScore"`
+		CustomReason        string  `json:"customReason"`
+		SimilarityExact     float64 `json:"similarityExact"`
+		SimilarityDifferent float64 `json:"similarityDifferent"`
+		AllCorrect          bool    `json:"allCorrect"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.AllCorrect {
+		t.Errorf("scores incorrect: custom=%.2f exact=%.2f diff=%.2f", out.CustomScore, out.SimilarityExact, out.SimilarityDifferent)
+	}
+	t.Logf("fixture eval-custom-scorer: custom=%.2f(%s) exactSimilarity=%.2f diffSimilarity=%.2f",
+		out.CustomScore, out.CustomReason, out.SimilarityExact, out.SimilarityDifferent)
+}
+
 func TestFixture_TS_AIEmbed(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/ai-embed.js")

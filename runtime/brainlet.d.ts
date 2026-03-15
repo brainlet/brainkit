@@ -362,6 +362,51 @@ declare module "brainlet" {
     resumeData: any
   ): Promise<WorkflowResult>;
 
+  // ── Evals / Scorers ──────────────────────────────────────────
+
+  /**
+   * Create a custom scorer using a pipeline pattern.
+   * Scorer context: `{ run: { input, output, groundTruth }, results: {} }`
+   * generateReason context: `{ run, results, score }`
+   *
+   * @example
+   * ```ts
+   * const scorer = createScorer({ id: "my-scorer", description: "..." })
+   *   .generateScore(({ run }) => run.output.includes("hello") ? 1.0 : 0.0)
+   *   .generateReason(({ score }) => score === 1 ? "Found" : "Missing");
+   * const result = await scorer.run({ input: "...", output: "..." });
+   * ```
+   */
+  export function createScorer(config: { id: string; description: string }): ScorerBuilder;
+
+  interface ScorerBuilder {
+    /** Add the score generation step — must return a number (0.0-1.0 by convention). */
+    generateScore(fn: (context: { run: ScorerRun; results: Record<string, any> }) => number | Promise<number>): ScorerBuilder;
+    /** Add a reason generation step — explain the score. */
+    generateReason(fn: (context: { run: ScorerRun; results: Record<string, any>; score: number }) => string | Promise<string>): ScorerBuilder;
+    /** Add a preprocessing step. */
+    preprocess(fn: (context: { run: ScorerRun; results: Record<string, any> }) => any): ScorerBuilder;
+    /** Add an analysis step. */
+    analyze(fn: (context: { run: ScorerRun; results: Record<string, any> }) => any): ScorerBuilder;
+    /** Execute the scorer pipeline. */
+    run(input: ScorerRun): Promise<ScorerResult>;
+  }
+
+  interface ScorerRun {
+    input?: any;
+    output: any;
+    groundTruth?: any;
+    runId?: string;
+  }
+
+  interface ScorerResult {
+    runId: string;
+    score: number;
+    reason?: string;
+    input?: any;
+    output: any;
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Types
   // ═══════════════════════════════════════════════════════════════
@@ -379,6 +424,12 @@ declare module "brainlet" {
     /** Memory config — enables conversation persistence. */
     memory?: AgentMemoryConfig;
     maxSteps?: number;
+    /** Input processors — middleware that transforms messages before the LLM. */
+    inputProcessors?: InputProcessor[];
+    /** Output processors — middleware that transforms or blocks LLM output. */
+    outputProcessors?: OutputProcessor[];
+    /** Max retries when a processor requests retry via tripwire. Default: 3. */
+    maxProcessorRetries?: number;
   }
 
   interface AgentMemoryConfig {
@@ -774,6 +825,31 @@ declare module "brainlet" {
     readonly namespace: string;
     readonly callerID: string;
   }
+
+  // ── Processor Types ──────────────────────────────────────────
+
+  /** Input processor — transforms messages before the LLM sees them. */
+  interface InputProcessor {
+    readonly id: string;
+    /** Transform input messages before the first LLM call. */
+    processInput?(args: { messages: any[]; abort: AbortFn; [key: string]: any }): any;
+    /** Transform messages before each step in the agentic loop. */
+    processInputStep?(args: { messages: any[]; abort: AbortFn; [key: string]: any }): any;
+  }
+
+  /** Output processor — transforms or blocks LLM output. */
+  interface OutputProcessor {
+    readonly id: string;
+    /** Transform individual stream chunks. */
+    processOutputStream?(args: { chunk: any; abort: AbortFn; [key: string]: any }): any;
+    /** Transform or block output after each LLM step. */
+    processOutputStep?(args: { messages: any[]; abort: AbortFn; [key: string]: any }): any;
+    /** Transform final output messages. */
+    processOutputResult?(args: { messages: any[]; abort: AbortFn; [key: string]: any }): any;
+  }
+
+  /** Abort function — throws a TripWire to halt processing. */
+  type AbortFn = (reason?: string, options?: { retry?: boolean; metadata?: any }) => never;
 
   // ── Zod Types ──────────────────────────────────────────────────
 

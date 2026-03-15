@@ -26,3 +26,6 @@ export const generateObject = globalThis.__brainlet.generateObject;
 export const streamObject = globalThis.__brainlet.streamObject;
 export const createWorkflowRun = globalThis.__brainlet.createWorkflowRun;
 export const resumeWorkflow = globalThis.__brainlet.resumeWorkflow;
+export const createScorer = globalThis.__brainlet.createScorer;
+export const runEvals = globalThis.__brainlet.runEvals;
+export const scorers = globalThis.__brainlet.scorers;
