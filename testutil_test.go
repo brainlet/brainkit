@@ -19,6 +19,10 @@ func loadEnv(t *testing.T) {
 				continue
 			}
 			if k, v, ok := strings.Cut(line, "="); ok {
+				// Strip surrounding quotes from value
+				if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
+					v = v[1 : len(v)-1]
+				}
 				os.Setenv(k, v)
 			}
 		}

@@ -156,6 +156,40 @@ func TestFixture_TS_AIGenerate(t *testing.T) {
 	t.Logf("fixture ai-generate: %q", out.Text)
 }
 
+func TestFixture_TS_AIGenerateObject(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/ai-generate-object.js")
+
+	result, err := kit.EvalModule(context.Background(), "ai-generate-object.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Object       map[string]interface{} `json:"object"`
+		HasName      bool                   `json:"hasName"`
+		HasAge       bool                   `json:"hasAge"`
+		HasHobbies   bool                   `json:"hasHobbies"`
+		HasUsage     bool                   `json:"hasUsage"`
+		FinishReason string                 `json:"finishReason"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.HasName {
+		t.Errorf("object missing name: %v", out.Object)
+	}
+	if !out.HasAge {
+		t.Errorf("object missing age: %v", out.Object)
+	}
+	if !out.HasHobbies {
+		t.Errorf("object missing hobbies: %v", out.Object)
+	}
+	if !out.HasUsage {
+		t.Error("expected usage")
+	}
+	t.Logf("fixture ai-generate-object: %v finish=%s", out.Object, out.FinishReason)
+}
+
 func TestFixture_TS_AgentWithMemory(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/agent-with-memory.js")
@@ -319,6 +353,50 @@ func TestFixture_TS_MemoryMongoDB(t *testing.T) {
 		t.Errorf("didn't remember: %q", out.Text)
 	}
 	t.Logf("fixture memory-mongodb: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
+}
+
+func TestFixture_TS_MemoryUpstash(t *testing.T) {
+	loadEnv(t)
+	upstashURL := os.Getenv("UPSTASH_REDIS_REST_URL")
+	upstashToken := os.Getenv("UPSTASH_REDIS_REST_TOKEN")
+	if upstashURL == "" || upstashToken == "" {
+		t.Skip("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN not set")
+	}
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"UPSTASH_REDIS_REST_URL":   upstashURL,
+			"UPSTASH_REDIS_REST_TOKEN": upstashToken,
+			"OPENAI_API_KEY":           key,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-upstash.js")
+	result, err := kit.EvalModule(context.Background(), "memory-upstash.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+		Store     string `json:"store"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("didn't remember: %q", out.Text)
+	}
+	t.Logf("fixture memory-upstash: %q remembers=%v store=%s", out.Text, out.Remembers, out.Store)
 }
 
 func TestFixture_TS_MemoryPostgres(t *testing.T) {

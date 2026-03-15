@@ -22,3 +22,5 @@ export const PgVector = globalThis.__brainlet.PgVector;
 export const MongoDBVector = globalThis.__brainlet.MongoDBVector;
 export const generateText = globalThis.__brainlet.generateText;
 export const streamText = globalThis.__brainlet.streamText;
+export const generateObject = globalThis.__brainlet.generateObject;
+export const streamObject = globalThis.__brainlet.streamObject;

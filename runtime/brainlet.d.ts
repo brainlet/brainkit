@@ -84,6 +84,38 @@ declare module "brainlet" {
 
     /** Generate embedding vectors for multiple values. */
     embedMany(params: AIEmbedManyParams): Promise<AIEmbedManyResult>;
+
+    /**
+     * Generate a structured object from a prompt using a schema.
+     *
+     * @example
+     * ```ts
+     * const result = await ai.generateObject({
+     *   model: "openai/gpt-4o-mini",
+     *   schema: z.object({ name: z.string(), age: z.number() }),
+     *   prompt: "Generate a fictional person",
+     * });
+     * console.log(result.object); // { name: "Alice", age: 30 }
+     * ```
+     */
+    generateObject(params: AIGenerateObjectParams): Promise<AIGenerateObjectResult>;
+
+    /**
+     * Stream a structured object with partial updates.
+     *
+     * @example
+     * ```ts
+     * const result = ai.streamObject({
+     *   model: "openai/gpt-4o-mini",
+     *   schema: z.object({ items: z.array(z.string()) }),
+     *   prompt: "List 5 programming languages",
+     * });
+     * for await (const partial of result.partialObjectStream) {
+     *   console.log(partial); // { items: ["Python"] }, { items: ["Python", "Go"] }, ...
+     * }
+     * ```
+     */
+    streamObject(params: AIStreamObjectParams): AIStreamObjectResult;
   };
 
   // ── Workflows ──────────────────────────────────────────────────
@@ -262,6 +294,18 @@ declare module "brainlet" {
    * Most developers should use ai.stream() instead.
    */
   export function streamText(params: any): any;
+
+  /**
+   * Direct AI SDK generateObject — for advanced use.
+   * Most developers should use ai.generateObject() instead.
+   */
+  export function generateObject(params: any): Promise<any>;
+
+  /**
+   * Direct AI SDK streamObject — for advanced use.
+   * Most developers should use ai.streamObject() instead.
+   */
+  export function streamObject(params: any): any;
 
   export const wasm: {
     /** Compile AssemblyScript source to WASM. */
@@ -502,6 +546,45 @@ declare module "brainlet" {
     usage: Usage;
     finishReason: FinishReason;
     response: ResponseMeta;
+  }
+
+  interface AIGenerateObjectParams {
+    model: string;
+    prompt?: string;
+    system?: string;
+    messages?: Message[];
+    /** Zod schema or JSON schema defining the output structure. */
+    schema: ZodType | any;
+    schemaName?: string;
+    schemaDescription?: string;
+    /** Generation mode: "auto" (default), "json", or "tool". */
+    mode?: "auto" | "json" | "tool";
+    /** Output type: "object" (default), "array", "enum", or "no-schema". */
+    output?: "object" | "array" | "enum" | "no-schema";
+    /** For output: "enum" — the list of allowed values. */
+    enum?: string[];
+  }
+
+  interface AIGenerateObjectResult {
+    /** The generated object matching the schema. */
+    object: any;
+    usage: Usage;
+    finishReason: FinishReason;
+    warnings: any[];
+    response: ResponseMeta;
+  }
+
+  interface AIStreamObjectParams extends AIGenerateObjectParams {}
+
+  interface AIStreamObjectResult {
+    /** Async iterable of partial objects as they're generated. */
+    partialObjectStream: AsyncIterable<any>;
+    /** Promise resolving to the final complete object. */
+    object: Promise<any>;
+    usage: Promise<Usage>;
+    finishReason: Promise<FinishReason>;
+    warnings: Promise<any[]>;
+    response: Promise<ResponseMeta>;
   }
 
   interface AIEmbedParams {

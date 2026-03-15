@@ -278,6 +278,57 @@
         },
       };
     },
+    generateObject: async function(params) {
+      var model = resolveModel(params.model);
+      var opts = { model: model };
+      if (params.prompt) opts.prompt = params.prompt;
+      if (params.system) opts.system = params.system;
+      if (params.messages) opts.messages = params.messages;
+      if (params.schema) opts.schema = params.schema;
+      if (params.schemaName) opts.schemaName = params.schemaName;
+      if (params.schemaDescription) opts.schemaDescription = params.schemaDescription;
+      if (params.mode) opts.mode = params.mode;
+      if (params.output) opts.output = params.output;
+      if (params.enum) opts.enum = params.enum;
+      var result = await embed.generateObject(opts);
+      return {
+        object: result.object,
+        usage: {
+          promptTokens: result.usage?.promptTokens || 0,
+          completionTokens: result.usage?.completionTokens || 0,
+          totalTokens: result.usage?.totalTokens || 0,
+        },
+        finishReason: result.finishReason || "stop",
+        warnings: result.warnings || [],
+        response: {
+          id: result.response?.id || "",
+          modelId: result.response?.modelId || "",
+          timestamp: result.response?.timestamp?.toISOString?.() || "",
+        },
+      };
+    },
+    streamObject: function(params) {
+      var model = resolveModel(params.model);
+      var opts = { model: model };
+      if (params.prompt) opts.prompt = params.prompt;
+      if (params.system) opts.system = params.system;
+      if (params.messages) opts.messages = params.messages;
+      if (params.schema) opts.schema = params.schema;
+      if (params.schemaName) opts.schemaName = params.schemaName;
+      if (params.schemaDescription) opts.schemaDescription = params.schemaDescription;
+      if (params.mode) opts.mode = params.mode;
+      if (params.output) opts.output = params.output;
+      if (params.enum) opts.enum = params.enum;
+      var result = embed.streamObject(opts);
+      return {
+        partialObjectStream: result.partialObjectStream,
+        object: result.object,
+        usage: result.usage,
+        finishReason: result.finishReason,
+        warnings: result.warnings,
+        response: result.response,
+      };
+    },
   };
 
   // wasm.* — compile/run via as-embed + wazero
@@ -438,6 +489,8 @@
     // AI SDK (for advanced use — most developers use ai.generate/ai.stream instead)
     generateText: embed.generateText,
     streamText: embed.streamText,
+    generateObject: embed.generateObject,
+    streamObject: embed.streamObject,
 
     // PLATFORM
     ai: ai,
