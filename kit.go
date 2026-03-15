@@ -163,6 +163,10 @@ func (k *Kit) registerHandlers() {
 			return k.handleToolsResolve(ctx, msg)
 		case "tools.call":
 			return k.handleToolsCall(ctx, msg)
+		case "tools.register":
+			return k.handleToolsRegister(ctx, msg)
+		case "tools.list":
+			return k.handleToolsList(ctx, msg)
 		default:
 			return nil, fmt.Errorf("tools: unknown topic %q", msg.Topic)
 		}
@@ -189,6 +193,53 @@ func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Messag
 		return nil, err
 	}
 
+	return &bus.Message{Payload: result}, nil
+}
+
+func (k *Kit) handleToolsRegister(_ context.Context, msg bus.Message) (*bus.Message, error) {
+	var req struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		InputSchema json.RawMessage `json:"inputSchema"`
+	}
+	if err := json.Unmarshal(msg.Payload, &req); err != nil {
+		return nil, fmt.Errorf("tools.register: invalid request: %w", err)
+	}
+
+	ns := msg.CallerID
+	shortName := req.Name
+	fullName := ns + "." + req.Name
+
+	k.Tools.Register(registry.RegisteredTool{
+		Name:        fullName,
+		ShortName:   shortName,
+		Namespace:   ns,
+		Description: req.Description,
+		InputSchema: req.InputSchema,
+	})
+
+	result, _ := json.Marshal(map[string]string{"registered": fullName})
+	return &bus.Message{Payload: result}, nil
+}
+
+func (k *Kit) handleToolsList(_ context.Context, msg bus.Message) (*bus.Message, error) {
+	var req struct {
+		Namespace string `json:"namespace"`
+	}
+	json.Unmarshal(msg.Payload, &req)
+
+	toolList := k.Tools.List(req.Namespace)
+	var infos []map[string]any
+	for _, t := range toolList {
+		infos = append(infos, map[string]any{
+			"name":        t.Name,
+			"shortName":   t.ShortName,
+			"namespace":   t.Namespace,
+			"description": t.Description,
+		})
+	}
+
+	result, _ := json.Marshal(infos)
 	return &bus.Message{Payload: result}, nil
 }
 

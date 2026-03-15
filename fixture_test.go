@@ -332,9 +332,9 @@ func TestFixture_TS_MemoryPostgres(t *testing.T) {
 			Image:        "postgres:16-alpine",
 			ExposedPorts: []string{"5432/tcp"},
 			Env: map[string]string{
-				"POSTGRES_USER":      "test",
-				"POSTGRES_PASSWORD":  "test",
-				"POSTGRES_DB":        "brainlet_test",
+				"POSTGRES_USER":             "test",
+				"POSTGRES_PASSWORD":         "test",
+				"POSTGRES_DB":               "brainlet_test",
 				"POSTGRES_HOST_AUTH_METHOD": "trust",
 			},
 			WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
@@ -385,6 +385,71 @@ func TestFixture_TS_MemoryPostgres(t *testing.T) {
 		t.Errorf("didn't remember: %q", out.Text)
 	}
 	t.Logf("fixture memory-postgres: %q remembers=%v store=%s", out.Text, out.Remembers, out.Store)
+}
+
+func TestFixture_TS_MemoryPostgresSCRAM(t *testing.T) {
+	ensurePodmanSocket(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// No POSTGRES_HOST_AUTH_METHOD — defaults to scram-sha-256
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "postgres:16-alpine",
+			ExposedPorts: []string{"5432/tcp"},
+			Env: map[string]string{
+				"POSTGRES_USER":     "test",
+				"POSTGRES_PASSWORD": "testpass123",
+				"POSTGRES_DB":       "brainlet_test",
+			},
+			WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("could not start Postgres container: %v", err)
+	}
+	defer container.Terminate(ctx)
+
+	host, _ := container.Host(ctx)
+	port, _ := container.MappedPort(ctx, "5432")
+	pgURL := fmt.Sprintf("postgresql://test:testpass123@%s:%s/brainlet_test", host, port.Port())
+	t.Logf("Postgres SCRAM container at %s", pgURL)
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		EnvVars: map[string]string{
+			"POSTGRES_URL":   pgURL,
+			"OPENAI_API_KEY": key,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-postgres-scram.js")
+	result, err := kit.EvalModule(context.Background(), "memory-postgres-scram.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Text      string `json:"text"`
+		Remembers bool   `json:"remembers"`
+		Auth      string `json:"auth"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Remembers {
+		t.Errorf("SCRAM auth memory failed: %q", out.Text)
+	}
+	t.Logf("fixture memory-postgres-scram: %q remembers=%v auth=%s", out.Text, out.Remembers, out.Auth)
 }
 
 func TestFixture_TS_AIStream(t *testing.T) {
@@ -634,6 +699,29 @@ func TestFixture_TS_BusSubscribe(t *testing.T) {
 		t.Errorf("expected 2 messages, got %d (values: %v)", out.Count, out.Values)
 	}
 	t.Logf("bus-subscribe: subId=%v count=%d values=%v topics=%v", out.SubID, out.Count, out.Values, out.Topics)
+}
+
+func TestFixture_TS_ToolsRegisterList(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	code := loadFixture(t, "testdata/ts/tools-register-list.js")
+
+	result, err := kit.EvalModule(context.Background(), "tools-register-list.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out struct {
+		Registered bool     `json:"registered"`
+		ToolCount  int      `json:"toolCount"`
+		Found      bool     `json:"found"`
+		Names      []string `json:"names"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.Found {
+		t.Errorf("registered tool not found in list: count=%d names=%v", out.ToolCount, out.Names)
+	}
+	t.Logf("tools-register-list: registered=%v found=%v count=%d names=%v", out.Registered, out.Found, out.ToolCount, out.Names)
 }
 
 func TestFixture_TS_ToolsCall(t *testing.T) {

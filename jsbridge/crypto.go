@@ -206,6 +206,12 @@ globalThis.crypto.getRandomValues = function(arr) {
 // SubtleCrypto — required by pg's crypto/utils-webcrypto.js
 // All methods return Promises (WebCrypto spec). Data is passed as base64.
 (function() {
+  // Pure-JS base64 — cannot use btoa/atob because they go through Go's ToString()
+  // which truncates at null bytes. Crypto data (HMAC, PBKDF2) contains null bytes.
+  var _b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var _b64lookup = {};
+  for (var _bi = 0; _bi < _b64chars.length; _bi++) _b64lookup[_b64chars[_bi]] = _bi;
+
   function toBase64(data) {
     var bytes;
     if (typeof data === 'string') {
@@ -219,15 +225,34 @@ globalThis.crypto.getRandomValues = function(arr) {
     } else {
       bytes = new Uint8Array(0);
     }
-    var binary = '';
-    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary);
+    var b64 = '';
+    for (var i = 0; i < bytes.length; i += 3) {
+      var b0 = bytes[i];
+      var b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+      var b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+      b64 += _b64chars[(b0 >> 2) & 0x3f];
+      b64 += _b64chars[((b0 << 4) | (b1 >> 4)) & 0x3f];
+      b64 += (i + 1 < bytes.length) ? _b64chars[((b1 << 2) | (b2 >> 6)) & 0x3f] : '=';
+      b64 += (i + 2 < bytes.length) ? _b64chars[b2 & 0x3f] : '=';
+    }
+    return b64;
   }
 
   function fromBase64(b64) {
-    var binary = atob(b64);
-    var bytes = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    var bufLen = Math.floor(b64.length * 3 / 4);
+    if (b64.length > 1 && b64[b64.length - 1] === '=') bufLen--;
+    if (b64.length > 2 && b64[b64.length - 2] === '=') bufLen--;
+    var bytes = new Uint8Array(bufLen);
+    var p = 0;
+    for (var i = 0; i < b64.length; i += 4) {
+      var a = _b64lookup[b64[i]] || 0;
+      var b = _b64lookup[b64[i+1]] || 0;
+      var c = _b64lookup[b64[i+2]] || 0;
+      var d = _b64lookup[b64[i+3]] || 0;
+      bytes[p++] = (a << 2) | (b >> 4);
+      if (b64[i+2] !== '=') bytes[p++] = ((b << 4) | (c >> 2)) & 0xff;
+      if (b64[i+3] !== '=') bytes[p++] = ((c << 6) | d) & 0xff;
+    }
     return bytes.buffer;
   }
 

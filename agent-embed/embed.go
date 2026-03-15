@@ -411,9 +411,16 @@ if (typeof Buffer === "undefined") {
           return hex;
         }
         if (encoding === 'base64') {
-          var binary = '';
-          for (var i = 0; i < sub.length; i++) binary += String.fromCharCode(sub[i]);
-          return btoa(binary);
+          // Pure-JS base64 — btoa goes through Go which truncates at null bytes
+          var _c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+          var b64 = '';
+          for (var i = 0; i < sub.length; i += 3) {
+            var a0 = sub[i], a1 = i+1 < sub.length ? sub[i+1] : 0, a2 = i+2 < sub.length ? sub[i+2] : 0;
+            b64 += _c[(a0>>2)&0x3f] + _c[((a0<<4)|(a1>>4))&0x3f];
+            b64 += (i+1 < sub.length) ? _c[((a1<<2)|(a2>>6))&0x3f] : '=';
+            b64 += (i+2 < sub.length) ? _c[a2&0x3f] : '=';
+          }
+          return b64;
         }
         if (encoding === 'ascii' || encoding === 'latin1' || encoding === 'binary') {
           var str = '';
@@ -482,9 +489,21 @@ if (typeof Buffer === "undefined") {
         if (typeof v === 'string') {
           var enc = encOrOffset;
           if (enc === 'base64') {
-            var bin = atob(v);
-            var arr = new Uint8Array(bin.length);
-            for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            // Pure-JS base64 decode — atob goes through Go which truncates at null bytes
+            var _c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+            var _lk = {};
+            for (var ci = 0; ci < _c.length; ci++) _lk[_c[ci]] = ci;
+            var bLen = Math.floor(v.length * 3 / 4);
+            if (v.length > 1 && v[v.length-1] === '=') bLen--;
+            if (v.length > 2 && v[v.length-2] === '=') bLen--;
+            var arr = new Uint8Array(bLen);
+            var p = 0;
+            for (var ci = 0; ci < v.length; ci += 4) {
+              var a0 = _lk[v[ci]] || 0, b0 = _lk[v[ci+1]] || 0, c0 = _lk[v[ci+2]] || 0, d0 = _lk[v[ci+3]] || 0;
+              arr[p++] = (a0 << 2) | (b0 >> 4);
+              if (v[ci+2] !== '=') arr[p++] = ((b0 << 4) | (c0 >> 2)) & 0xff;
+              if (v[ci+3] !== '=') arr[p++] = ((c0 << 6) | d0) & 0xff;
+            }
             return _addBufferMethods(arr);
           }
           if (enc === 'hex') {
