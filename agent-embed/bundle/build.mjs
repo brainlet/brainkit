@@ -466,7 +466,15 @@ const moduleStubs = {
     export default { URL, URLSearchParams, pathToFileURL, fileURLToPath, format, parse, resolve };
   `,
   "module": `
-    export const createRequire = () => { const r = () => ({}); r.resolve = () => ""; return r; };
+    export const createRequire = () => {
+      const r = (mod) => {
+        // Delegate to globalThis.require which handles zod/v4, @opentelemetry/api, etc.
+        if (typeof globalThis.require === "function") return globalThis.require(mod);
+        return {};
+      };
+      r.resolve = () => "";
+      return r;
+    };
     export const builtinModules = [];
     export const isBuiltin = () => false;
     export default { createRequire, builtinModules, isBuiltin };
@@ -833,7 +841,27 @@ const result = await esbuild.build({
   target: "es2020",
   minify: true,
   treeShaking: true,
-  plugins: [nodeStubPlugin],
+  plugins: [
+    nodeStubPlugin,
+    // Redirect EXACT 'zod' imports to 'zod/v4' so all code uses ONE Zod version.
+    // Without this, `import { z } from 'zod'` gives v3 (no toJSONSchema)
+    // while `import { z } from 'zod/v4'` gives v4 (has toJSONSchema).
+    // Mixing them causes "cannot read property 'def' of undefined" when passing
+    // v3 schemas to v4's toJSONSchema.
+    {
+      name: "zod-unify",
+      setup(build) {
+        // Only redirect EXACT 'zod' — not 'zod/v4', 'zod/v4/core', etc.
+        build.onResolve({ filter: /^zod$/ }, (args) => {
+          return build.resolve("zod/v4", {
+            resolveDir: args.resolveDir,
+            kind: args.kind,
+            importer: args.importer,
+          });
+        });
+      },
+    },
+  ],
   external: [
     // Database drivers — bundled with TCP socket polyfill via jsbridge/net.go
     // "pg" — bundled
@@ -847,6 +875,11 @@ const result = await esbuild.build({
     // Server framework — not needed
     "hono",
   ],
+  banner: {
+    // Runs BEFORE any bundled module code — needed for dynamic require("zod/v4")
+    // in the AI SDK's toJSONSchema resolution (S1A function).
+    js: `var __zod_v4_deferred = null;`,
+  },
   define: {
     "process.env.NODE_ENV": '"production"',
   },

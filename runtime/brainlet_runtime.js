@@ -159,6 +159,7 @@
     addWorkspace: function() {},
     getWorkspace: function() { return undefined; },
     getScorerById: function() { return undefined; },
+    listGateways: function() { return undefined; },
   };
 
   // Initialize observability exporters — they need the storage shim to persist spans.
@@ -678,6 +679,45 @@
     };
   }
 
+  // Wrap an LLM-based pre-built scorer factory.
+  // Same as wrapPrebuiltScorer but also resolves the model string for the judge.
+  function wrapLLMScorer(factoryFn) {
+    return function(opts) {
+      // Resolve model string for the judge
+      if (opts && typeof opts.model === "string") {
+        opts = { ...opts, model: resolveModel(opts.model) };
+      }
+      var scorer = factoryFn(opts);
+      if (typeof scorer.__registerMastra === "function") {
+        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
+      }
+      // Wrap .run() to convert plain strings to MastraDBMessage format
+      var origRun = scorer.run.bind(scorer);
+      scorer.run = async function(input) {
+        var converted = {};
+        if (typeof input.input === "string") {
+          converted.input = {
+            inputMessages: [toMastraDBMessage(input.input, "user")],
+            rememberedMessages: [],
+            systemMessages: [],
+            taggedSystemMessages: {},
+          };
+        } else {
+          converted.input = input.input;
+        }
+        if (typeof input.output === "string") {
+          converted.output = [toMastraDBMessage(input.output, "assistant")];
+        } else {
+          converted.output = input.output;
+        }
+        if (input.runId) converted.runId = input.runId;
+        if (input.groundTruth !== undefined) converted.groundTruth = input.groundTruth;
+        return origRun(converted);
+      };
+      return scorer;
+    };
+  }
+
   // ─── EXPORT ────────────────────────────────────────────────────
 
   globalThis.__brainlet = {
@@ -725,7 +765,15 @@
 
     // EVALS
     createScorer: function(config) {
-      var scorer = embed.createScorer(config);
+      // Pre-resolve judge model string to a real model instance
+      var resolvedConfig = config;
+      if (config.judge && typeof config.judge.model === "string") {
+        var resolved = resolveModel(config.judge.model);
+        if (resolved !== config.judge.model) {
+          resolvedConfig = { ...config, judge: { ...config.judge, model: resolved } };
+        }
+      }
+      var scorer = embed.createScorer(resolvedConfig);
       // Inject storage shim — scorers internally create workflows that need storage
       if (typeof scorer.__registerMastra === "function") {
         try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
@@ -734,11 +782,24 @@
     },
     runEvals: embed.runEvals,
     scorers: {
+      // Rule-based (no LLM)
       completeness: wrapPrebuiltScorer(embed.createCompletenessScorer),
       textualDifference: wrapPrebuiltScorer(embed.createTextualDifferenceScorer),
       keywordCoverage: wrapPrebuiltScorer(embed.createKeywordCoverageScorer),
       contentSimilarity: wrapPrebuiltScorer(embed.createContentSimilarityScorer),
       tone: wrapPrebuiltScorer(embed.createToneScorer),
+      // LLM-based (require judge model)
+      hallucination: wrapLLMScorer(embed.createHallucinationScorer),
+      faithfulness: wrapLLMScorer(embed.createFaithfulnessScorer),
+      answerRelevancy: wrapLLMScorer(embed.createAnswerRelevancyScorer),
+      answerSimilarity: wrapLLMScorer(embed.createAnswerSimilarityScorer),
+      bias: wrapLLMScorer(embed.createBiasScorer),
+      toxicity: wrapLLMScorer(embed.createToxicityScorer),
+      contextPrecision: wrapLLMScorer(embed.createContextPrecisionScorer),
+      contextRelevance: wrapLLMScorer(embed.createContextRelevanceScorerLLM),
+      noiseSensitivity: wrapLLMScorer(embed.createNoiseSensitivityScorerLLM),
+      promptAlignment: wrapLLMScorer(embed.createPromptAlignmentScorerLLM),
+      toolCallAccuracy: wrapLLMScorer(embed.createToolCallAccuracyScorerLLM),
     },
 
     // MCP

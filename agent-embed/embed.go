@@ -79,8 +79,29 @@ if (typeof require === "undefined") {
     propagation: {},
     metrics: { getMeter: function() { return {}; } },
   };
+  // IMPORTANT: This require is captured by esbuild's internal _I at bundle start.
+  // Any dynamic require("zod/v4") from the AI SDK goes through this function.
+  // The AI SDK's toJSONSchema resolver caches on first call, so we use a Proxy
+  // that defers to globalThis.__zod_v4_module (set by entry.mjs) on property access.
+  // The AI SDK resolves toJSONSchema via dynamic require("zod/v4").
+  // It caches the result on first call. We return a wrapper that defers
+  // to entry.mjs's real zodV4 module. The toJSONSchema function itself
+  // is a deferred thunk that calls the real one when invoked.
+  var _zodV4Wrapper = {
+    toJSONSchema: function() {
+      var real = globalThis.__zod_v4_module;
+      if (real && typeof real.toJSONSchema === "function") {
+        return real.toJSONSchema.apply(real, arguments);
+      }
+      throw new Error("toJSONSchema not yet available");
+    },
+  };
   globalThis.require = function(mod) {
     if (mod === "@opentelemetry/api") return _otelStub;
+    if (mod === "zod/v4" || mod === "zod") {
+      // Return real module if available, otherwise the deferred wrapper
+      return globalThis.__zod_v4_module || _zodV4Wrapper;
+    }
     return {};
   };
 }

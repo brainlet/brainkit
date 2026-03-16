@@ -1196,6 +1196,35 @@ func TestFixture_TS_RAGChunkToken(t *testing.T) {
 	t.Logf("rag-chunk-token: %d chunks from %d chars", out.ChunkCount, out.TotalTextLength)
 }
 
+func TestFixture_TS_EvalLLMScorer(t *testing.T) {
+	kit := newTestKit(t)
+	code := loadFixture(t, "testdata/ts/eval-llm-scorer.js")
+	result, err := kit.EvalModule(context.Background(), "eval-llm-scorer.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Score     float64 `json:"score"`
+		Reason    string  `json:"reason"`
+		HasScore  bool    `json:"hasScore"`
+		HasReason bool    `json:"hasReason"`
+		Error     string  `json:"error"`
+		Stack     string  `json:"stack"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if out.Error != "" {
+		t.Fatalf("LLM scorer error: %s\n%s", out.Error, out.Stack)
+	}
+	if !out.HasScore {
+		t.Errorf("expected score 0-1, got %v: %s", out.Score, result)
+	}
+	if !out.HasReason {
+		t.Errorf("expected reason: %s", result)
+	}
+	t.Logf("eval-llm-scorer: score=%.2f reason=%q", out.Score, out.Reason)
+}
+
 func TestFixture_TS_ObservabilityTrace(t *testing.T) {
 	kit := newTestKit(t)
 	code := loadFixture(t, "testdata/ts/observability-trace.js")
