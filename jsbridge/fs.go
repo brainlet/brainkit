@@ -25,14 +25,24 @@ func (p *FSPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
 // fsErrCode maps Go os errors to Node.js errno codes.
 // Mastra's LocalFilesystem checks error.code === 'ENOENT' etc.
+// Must unwrap errors because fmt.Errorf("%w", err) breaks os.IsNotExist.
 func fsErrCode(err error) string {
-	if os.IsNotExist(err) {
+	// Unwrap to find the root cause
+	root := err
+	for {
+		if u, ok := root.(interface{ Unwrap() error }); ok {
+			root = u.Unwrap()
+		} else {
+			break
+		}
+	}
+	if os.IsNotExist(root) {
 		return "ENOENT"
 	}
-	if os.IsExist(err) {
+	if os.IsExist(root) {
 		return "EEXIST"
 	}
-	if os.IsPermission(err) {
+	if os.IsPermission(root) {
 		return "EACCES"
 	}
 	return ""
@@ -50,13 +60,15 @@ func (p *FSPolyfill) fsAsync(ctx *quickjs.Context, work func() (string, error)) 
 			}
 			if err != nil {
 				code := fsErrCode(err)
+				// Encode errno code in a prefix so JS-side can parse it.
+				// Format: "ERRNO:ENOENT:actual error message"
+				// The fs/promises stub strips the prefix and sets .code on the Error.
+				msg := err.Error()
+				if code != "" {
+					msg = "ERRNO:" + code + ":" + msg
+				}
 				ctx.Schedule(func(ctx *quickjs.Context) {
-					errVal := ctx.NewError(err)
-					if code != "" {
-						codeVal := ctx.NewString(code)
-						errVal.Set("code", codeVal)
-						codeVal.Free()
-					}
+					errVal := ctx.NewError(fmt.Errorf("%s", msg))
 					defer errVal.Free()
 					reject(errVal)
 				})

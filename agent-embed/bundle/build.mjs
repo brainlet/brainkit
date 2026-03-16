@@ -454,6 +454,18 @@ const moduleStubs = {
   "fs/promises": `
     // fs/promises — backed by Go bridges (__go_fs_*) registered by jsbridge/fs.go.
     // All bridges return Promises via ctx.NewPromise + Bridge.Go().
+    // Go bridges encode errno codes as "ERRNO:CODE:message" prefix in error messages.
+    // This helper strips the prefix and sets .code on the Error for Node.js compat.
+    function _wrapFsCall(promise) {
+      return promise.catch(function(e) {
+        if (e && e.message && e.message.startsWith("ERRNO:")) {
+          var parts = e.message.split(":");
+          e.code = parts[1];
+          e.message = parts.slice(2).join(":");
+        }
+        throw e;
+      });
+    }
     function _parseStat(json) {
       var raw = JSON.parse(json);
       return {
@@ -465,26 +477,26 @@ const moduleStubs = {
         isSymbolicLink: function() { return !!raw.isSymbolicLink; },
       };
     }
-    export async function readFile(path, options) {
-      return await __go_fs_readFile(String(path), typeof options === "string" ? options : "utf8");
+    export function readFile(path, options) {
+      return _wrapFsCall(__go_fs_readFile(String(path), typeof options === "string" ? options : "utf8"));
     }
-    export async function writeFile(path, data) {
-      await __go_fs_writeFile(String(path), typeof data === "string" ? data : String(data));
+    export function writeFile(path, data) {
+      return _wrapFsCall(__go_fs_writeFile(String(path), typeof data === "string" ? data : String(data)));
     }
-    export async function appendFile(path, data) {
-      await __go_fs_appendFile(String(path), String(data));
+    export function appendFile(path, data) {
+      return _wrapFsCall(__go_fs_appendFile(String(path), String(data)));
     }
     export async function stat(path) {
-      var json = await __go_fs_stat(String(path));
+      var json = await _wrapFsCall(__go_fs_stat(String(path)));
       return _parseStat(json);
     }
     export async function lstat(path) {
-      var json = await __go_fs_lstat(String(path));
+      var json = await _wrapFsCall(__go_fs_lstat(String(path)));
       return _parseStat(json);
     }
     export async function readdir(path, options) {
       var withFileTypes = options && options.withFileTypes;
-      var json = await __go_fs_readdir(String(path));
+      var json = await _wrapFsCall(__go_fs_readdir(String(path)));
       var entries = JSON.parse(json);
       if (withFileTypes) {
         return entries.map(function(e) {
@@ -498,36 +510,36 @@ const moduleStubs = {
       }
       return entries.map(function(e) { return e.name; });
     }
-    export async function mkdir(path, options) {
-      await __go_fs_mkdir(String(path), !!(options && options.recursive));
+    export function mkdir(path, options) {
+      return _wrapFsCall(__go_fs_mkdir(String(path), !!(options && options.recursive)));
     }
     export async function rm(path, options) {
       if (options && options.recursive) {
-        await __go_fs_rm(String(path));
+        return _wrapFsCall(__go_fs_rm(String(path)));
       } else {
-        await __go_fs_unlink(String(path));
+        return _wrapFsCall(__go_fs_unlink(String(path)));
       }
     }
-    export async function unlink(path) {
-      await __go_fs_unlink(String(path));
+    export function unlink(path) {
+      return _wrapFsCall(__go_fs_unlink(String(path)));
     }
-    export async function rename(oldPath, newPath) {
-      await __go_fs_rename(String(oldPath), String(newPath));
+    export function rename(oldPath, newPath) {
+      return _wrapFsCall(__go_fs_rename(String(oldPath), String(newPath)));
     }
-    export async function copyFile(src, dest) {
-      await __go_fs_copyFile(String(src), String(dest));
+    export function copyFile(src, dest) {
+      return _wrapFsCall(__go_fs_copyFile(String(src), String(dest)));
     }
-    export async function realpath(path) {
-      return await __go_fs_realpath(String(path));
+    export function realpath(path) {
+      return _wrapFsCall(__go_fs_realpath(String(path)));
     }
-    export async function access(path) {
-      await __go_fs_access(String(path));
+    export function access(path) {
+      return _wrapFsCall(__go_fs_access(String(path)));
     }
-    export async function symlink(target, path) {
-      await __go_fs_symlink(String(target), String(path));
+    export function symlink(target, path) {
+      return _wrapFsCall(__go_fs_symlink(String(target), String(path)));
     }
-    export async function readlink(path) {
-      return await __go_fs_readlink(String(path));
+    export function readlink(path) {
+      return _wrapFsCall(__go_fs_readlink(String(path)));
     }
     export async function open() { throw new Error("fs.open: use readFile/writeFile instead"); }
     export async function mkdtemp() { throw new Error("fs.mkdtemp: not implemented"); }
