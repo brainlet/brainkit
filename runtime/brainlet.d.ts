@@ -185,6 +185,31 @@ declare module "brainlet" {
   /** MongoDB storage — TCP-based via jsbridge/net.go. */
   export const MongoDBStore: MongoDBStoreConstructor;
 
+  // ── Vector Stores ───────────────────────────────────────────────
+
+  /** LibSQL vector store — for semantic recall and RAG. */
+  export const LibSQLVector: VectorStoreConstructor;
+
+  /** PostgreSQL pgvector store — for semantic recall and RAG. */
+  export const PgVector: VectorStoreConstructor;
+
+  /** MongoDB Atlas vector store — for semantic recall and RAG. */
+  export const MongoDBVector: VectorStoreConstructor;
+
+  interface VectorStoreConstructor {
+    new (config: { id?: string; url?: string; connectionString?: string; [key: string]: any }): VectorStore;
+  }
+
+  interface VectorStore {
+    createIndex(opts: { indexName: string; dimension: number; metric?: "cosine" | "euclidean" | "dotProduct" }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<{ dimension: number; metric: string; count: number }>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: number[][]; metadata?: Record<string, any>[]; ids?: string[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any; includeVector?: boolean }): Promise<{ id: string; score: number; metadata?: any; vector?: number[] }[]>;
+    deleteVectors(opts: { indexName: string; ids?: string[]; filter?: any }): Promise<void>;
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // PLATFORM — through bus, Go bridges, interceptors apply
   // ═══════════════════════════════════════════════════════════════
@@ -509,13 +534,51 @@ declare module "brainlet" {
    * const result = await scorer.run({ input: "...", output: "..." });
    * ```
    */
-  export function createScorer(config: { id: string; description: string }): ScorerBuilder;
+  /**
+   * Create a custom scorer using a pipeline pattern.
+   *
+   * @example Simple function scorer
+   * ```ts
+   * const scorer = createScorer({ id: "my-scorer", description: "..." })
+   *   .generateScore(({ run }) => run.output.includes("hello") ? 1.0 : 0.0)
+   *   .generateReason(({ score }) => score === 1 ? "Found" : "Missing");
+   * ```
+   *
+   * @example LLM-based judge scorer
+   * ```ts
+   * const scorer = createScorer({
+   *   id: "helpfulness",
+   *   description: "Rate helpfulness",
+   *   judge: { model: "openai/gpt-4o-mini", instructions: "You evaluate helpfulness." },
+   * })
+   *   .generateScore({
+   *     description: "Rate from 0 to 1",
+   *     createPrompt: ({ run }) => `Rate: "${run.output}" for "${run.input}"`,
+   *   })
+   *   .generateReason({
+   *     description: "Explain rating",
+   *     createPrompt: ({ run, score }) => `Explain why score=${score}`,
+   *   });
+   * ```
+   */
+  export function createScorer(config: ScorerConfig): ScorerBuilder;
+
+  interface ScorerConfig {
+    id: string;
+    description: string;
+    /** LLM judge — creates an internal agent for prompt-based scoring. */
+    judge?: { model: string; instructions?: string };
+  }
 
   interface ScorerBuilder {
-    /** Add the score generation step — must return a number (0.0-1.0 by convention). */
+    /** Function-based score step. */
     generateScore(fn: (context: { run: ScorerRun; results: Record<string, any> }) => number | Promise<number>): ScorerBuilder;
-    /** Add a reason generation step — explain the score. */
+    /** Prompt-based score step (requires judge config). */
+    generateScore(config: { description: string; createPrompt: (context: { run: ScorerRun; results: Record<string, any> }) => string }): ScorerBuilder;
+    /** Function-based reason step. */
     generateReason(fn: (context: { run: ScorerRun; results: Record<string, any>; score: number }) => string | Promise<string>): ScorerBuilder;
+    /** Prompt-based reason step (requires judge config). */
+    generateReason(config: { description: string; createPrompt: (context: { run: ScorerRun; results: Record<string, any>; score: number }) => string }): ScorerBuilder;
     /** Add a preprocessing step. */
     preprocess(fn: (context: { run: ScorerRun; results: Record<string, any> }) => any): ScorerBuilder;
     /** Add an analysis step. */
@@ -539,6 +602,41 @@ declare module "brainlet" {
     output: any;
   }
 
+  /** Batch evaluation — run scorers against datasets. */
+  export function runEvals(config: any): Promise<any>;
+
+  /** Pre-built scorers — rule-based and LLM-based. */
+  export const scorers: {
+    // Rule-based (no LLM needed)
+    completeness(opts?: any): ScorerBuilder;
+    textualDifference(opts?: any): ScorerBuilder;
+    keywordCoverage(opts?: any): ScorerBuilder;
+    contentSimilarity(opts?: any): ScorerBuilder;
+    tone(opts?: any): ScorerBuilder;
+    // LLM-based (require model)
+    hallucination(opts: { model: string }): ScorerBuilder;
+    faithfulness(opts: { model: string }): ScorerBuilder;
+    answerRelevancy(opts: { model: string }): ScorerBuilder;
+    answerSimilarity(opts: { model: string }): ScorerBuilder;
+    bias(opts: { model: string }): ScorerBuilder;
+    toxicity(opts: { model: string }): ScorerBuilder;
+    contextPrecision(opts: { model: string }): ScorerBuilder;
+    contextRelevance(opts: { model: string }): ScorerBuilder;
+    noiseSensitivity(opts: { model: string }): ScorerBuilder;
+    promptAlignment(opts: { model: string }): ScorerBuilder;
+    toolCallAccuracy(opts: { model: string }): ScorerBuilder;
+  };
+
+  // ── MCP ─────────────────────────────────────────────────────────
+
+  /** MCP Client — access tools from external MCP servers. */
+  export const mcp: {
+    /** List tools from an MCP server (or all servers if no name given). */
+    listTools(serverName?: string): Promise<any[]>;
+    /** Call a tool on an MCP server. */
+    callTool(serverName: string, toolName: string, args?: any): Promise<any>;
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // Types
   // ═══════════════════════════════════════════════════════════════
@@ -555,6 +653,7 @@ declare module "brainlet" {
 
   interface AgentConfig {
     name?: string;
+    id?: string;
     /** Model: static string or dynamic resolver. */
     model: DynamicArg<string>;
     /** Instructions: static string or dynamic resolver. */
@@ -562,17 +661,22 @@ declare module "brainlet" {
     description?: string;
     /** Tools: static map or dynamic resolver. */
     tools?: DynamicArg<Record<string, Tool>>;
-    /** Memory config — enables conversation persistence. */
-    memory?: AgentMemoryConfig;
+    /** Memory config — enables conversation persistence. Can be a config object or a Memory instance. */
+    memory?: AgentMemoryConfig | MemoryInstance;
+    /** Maximum agentic loop steps (tool call rounds). */
     maxSteps?: number;
+    /** Default options applied to every generate()/stream() call. */
+    defaultOptions?: Partial<GenerateOptions>;
+    /** Zod schema for validating requestContext entries. */
+    requestContextSchema?: ZodType;
     /** Input processors — middleware that transforms messages before the LLM. */
-    inputProcessors?: InputProcessor[];
+    inputProcessors?: DynamicArg<InputProcessor[]>;
     /** Output processors — middleware that transforms or blocks LLM output. */
-    outputProcessors?: OutputProcessor[];
+    outputProcessors?: DynamicArg<OutputProcessor[]>;
     /** Max retries when a processor requests retry via tripwire. Default: 3. */
     maxProcessorRetries?: number;
     /** Scorers — auto-evaluate responses after each generate()/stream() call (fire-and-forget). */
-    scorers?: Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>;
+    scorers?: DynamicArg<Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>>;
   }
 
   interface AgentMemoryConfig {
@@ -595,11 +699,20 @@ declare module "brainlet" {
   interface SemanticRecallConfig {
     topK?: number;
     messageRange?: number;
+    /** Scope: "thread" (default) or "resource". */
+    scope?: "thread" | "resource";
+    /** Minimum similarity threshold (0-1). */
+    threshold?: number;
   }
 
   interface WorkingMemoryConfig {
     enabled?: boolean;
+    /** Scope: "thread" (per-conversation) or "resource" (per-user, default). */
     scope?: "thread" | "resource";
+    /** Markdown template for working memory structure. */
+    template?: string;
+    /** Read-only — agent can read but not update. */
+    readOnly?: boolean;
   }
 
   /** Observational memory config — 3-tier compression (messages → observations → reflections). */
@@ -656,7 +769,8 @@ declare module "brainlet" {
 
   interface GenerateOptions {
     maxSteps?: number;
-    memory?: { threadId?: string; resourceId?: string };
+    /** Memory thread/resource for this call. */
+    memory?: { thread?: string | { id: string }; resource?: string; threadId?: string; resourceId?: string; options?: { readOnly?: boolean } };
     /** RequestContext for dynamic config resolvers. */
     requestContext?: RequestContextInstance;
     /** Model settings — temperature, maxTokens, etc. */
@@ -669,9 +783,14 @@ declare module "brainlet" {
       frequencyPenalty?: number;
       stopSequences?: string[];
       seed?: number;
+      maxRetries?: number;
     };
     /** Filter which tools are active for this call. */
     activeTools?: string[];
+    /** Additional tool sets for this call. */
+    toolsets?: Record<string, Record<string, Tool>>;
+    /** Client-side tools. */
+    clientTools?: Record<string, Tool>;
     /** Tool selection strategy. */
     toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
     /** Require human approval before tool calls. */
@@ -680,8 +799,36 @@ declare module "brainlet" {
     toolCallConcurrency?: number;
     /** Abort signal for cancellation. */
     abortSignal?: AbortSignal;
+    /** Stop condition — e.g. stepCountIs(3) from 'ai'. */
+    stopWhen?: any;
+    /** Called before each agentic loop step — can override model, toolChoice per step. */
+    prepareStep?: (ctx: { stepNumber: number; model: any }) => Promise<{ model?: any; toolChoice?: any } | void> | void;
     /** Structured output schema. */
-    structuredOutput?: { schema: ZodType; schemaName?: string; schemaDescription?: string };
+    structuredOutput?: {
+      schema: ZodType;
+      schemaName?: string;
+      schemaDescription?: string;
+      /** Model override for structured output extraction. */
+      model?: string;
+      /** Custom instructions for extraction. */
+      instructions?: string;
+      /** Error handling: "throw" (default) or "warn". */
+      errorStrategy?: "throw" | "warn";
+    };
+    /** Additional context messages prepended to the conversation. */
+    context?: Message[];
+    /** Whether to return detailed scoring data. */
+    returnScorerData?: boolean;
+    /** Save messages after each step (not just at end). Default: false. */
+    savePerStep?: boolean;
+    /** Unique run ID for tracking. */
+    runId?: string;
+    /** Provider-specific options (e.g. { openai: { reasoningEffort: "high" } }). */
+    providerOptions?: Record<string, Record<string, any>>;
+    /** Telemetry settings. */
+    telemetry?: { isEnabled?: boolean; recordInputs?: boolean; recordOutputs?: boolean; functionId?: string };
+    /** Tracing options. */
+    tracingOptions?: { metadata?: Record<string, any>; requestContextKeys?: string[]; traceId?: string };
     /** Callbacks. */
     onStepFinish?: (step: any) => void;
     onFinish?: (result: any) => void;
@@ -699,6 +846,8 @@ declare module "brainlet" {
   interface GenerateResult {
     text: string;
     reasoning: string;
+    /** Structured output object (when using structuredOutput option). */
+    object?: any;
     usage: Usage;
     totalUsage: Usage;
     finishReason: FinishReason;
@@ -710,20 +859,37 @@ declare module "brainlet" {
     warnings: any[];
     response: ResponseMeta;
     traceId?: string;
+    runId?: string;
+    /** Provider-specific metadata. */
+    providerMetadata?: Record<string, any>;
+    /** Suspend payload (when a tool or workflow suspended). */
+    suspendPayload?: any;
   }
 
   interface StreamResult {
     textStream: AsyncIterable<string>;
     fullStream: AsyncIterable<StreamPart>;
     text: Promise<string>;
+    /** Structured output object (when using structuredOutput option). */
+    object?: Promise<any>;
     usage: Promise<Usage>;
+    totalUsage: Promise<Usage>;
     finishReason: Promise<FinishReason>;
     reasoning: Promise<string | undefined>;
     toolCalls: Promise<ToolCall[]>;
     toolResults: Promise<ToolResult[]>;
     steps: Promise<AgentStepResult[]>;
     sources: Promise<any[]>;
+    files: Promise<any[]>;
+    warnings: Promise<any[]>;
     response: Promise<ResponseMeta>;
+    traceId?: string;
+    runId?: string;
+    error?: Promise<any>;
+    /** Provider-specific metadata. */
+    providerMetadata?: Promise<Record<string, any>>;
+    /** Scoring data (when returnScorerData is true). */
+    scoringData?: Promise<any>;
   }
 
   // ── Workflow Types ─────────────────────────────────────────────
@@ -828,12 +994,51 @@ declare module "brainlet" {
   // ── Tool Types ─────────────────────────────────────────────────
 
   interface ToolConfig {
-    /** Tool identifier. */
-    id: string;
+    /** Tool identifier. Also accepts `name` as alias. */
+    id?: string;
+    /** Alias for id. */
+    name?: string;
     description?: string;
-    /** Zod schema for the tool's input parameters. */
-    inputSchema?: ZodObject;
-    execute: (input: any) => Promise<any> | any;
+    /** Zod schema for the tool's input parameters. Also accepts `schema` as alias. */
+    inputSchema?: ZodType;
+    /** Alias for inputSchema. */
+    schema?: ZodType;
+    /** Zod schema for the tool's output. */
+    outputSchema?: ZodType;
+    /** Schema for suspend payload (HITL tools). */
+    suspendSchema?: ZodType;
+    /** Schema for resume data (HITL tools). */
+    resumeSchema?: ZodType;
+    /** Require human approval before execution. Emits tool-call-approval in stream. */
+    requireApproval?: boolean | ((toolCallId: string, args: any) => boolean | Promise<boolean>);
+    /** Transform execute output before sending to the model. */
+    toModelOutput?: (output: any) => any;
+    /** Provider-specific options. */
+    providerOptions?: Record<string, any>;
+    /** MCP annotations. */
+    mcp?: { annotations?: { title?: string; readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean }; _meta?: any };
+    /** Schema for validating requestContext entries. */
+    requestContextSchema?: ZodType;
+    /** Lifecycle hooks. */
+    onInputStart?: (ctx: { toolCallId: string; messages: any[]; abortSignal?: AbortSignal }) => void;
+    onInputDelta?: (ctx: { toolCallId: string; delta: any; abortSignal?: AbortSignal }) => void;
+    onInputAvailable?: (ctx: { toolCallId: string; input: any; abortSignal?: AbortSignal }) => void;
+    onOutput?: (ctx: { toolCallId: string; output: any }) => void;
+    /** Execute the tool. */
+    execute: (input: any, context?: ToolExecuteContext) => Promise<any> | any;
+  }
+
+  interface ToolExecuteContext {
+    /** Request context (from generate options). */
+    requestContext?: RequestContextInstance;
+    /** Tracing context for spans. */
+    tracingContext?: any;
+    /** Abort signal. */
+    abortSignal?: AbortSignal;
+    /** Suspend execution (HITL tools in workflows). */
+    suspend?: (payload?: any) => Promise<never>;
+    /** Resume data (when resuming after suspend). */
+    resumeData?: any;
   }
 
   interface Tool {
@@ -936,15 +1141,59 @@ declare module "brainlet" {
     observationalMemory?: boolean | ObservationalMemoryConfig;
   }
 
+  interface MemoryThread {
+    id: string;
+    title?: string;
+    resourceId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    metadata?: Record<string, any>;
+  }
+
+  interface MemoryRecallResult {
+    messages: any[];
+    usage?: any;
+    total?: number;
+    page?: number;
+    perPage?: number;
+    hasMore?: boolean;
+  }
+
   interface MemoryInstance {
-    createThread(opts: { threadId: string; resourceId?: string }): Promise<any>;
-    getThreadById(opts: { threadId: string }): Promise<any>;
-    saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
-    getMessages(opts: { threadId: string; limit?: number }): Promise<Message[]>;
+    /** Get the memory configuration. */
+    getConfig(): any;
+    /** Retrieve messages + observations for a thread. */
+    recall(opts: { threadId: string; resourceId?: string; memoryConfig?: any }): Promise<MemoryRecallResult>;
+    /** Get a thread by ID. */
+    getThreadById(opts: { threadId: string }): Promise<MemoryThread | null>;
+    /** List threads with pagination. */
+    listThreads(opts?: { resourceId?: string; page?: number; perPage?: number }): Promise<{ threads: MemoryThread[]; total: number }>;
+    /** Create a new thread. */
+    saveThread(opts: { thread: { id?: string; title?: string; resourceId?: string; metadata?: any } }): Promise<MemoryThread>;
+    /** Update thread metadata. */
+    updateThread(opts: { threadId: string; title?: string; metadata?: any }): Promise<MemoryThread>;
+    /** Delete a thread and its messages. */
+    deleteThread(opts: { threadId: string }): Promise<void>;
+    /** Save messages to a thread. */
+    saveMessages(opts: { messages: any[] }): Promise<void>;
+    /** Update existing messages. */
+    updateMessages(opts: { messages: any[]; memoryConfig?: any }): Promise<any[]>;
+    /** Delete messages by ID. */
+    deleteMessages(messageIds: string[]): Promise<void>;
+    /** Get working memory for a thread/resource. */
+    getWorkingMemory(opts: { threadId: string; resourceId?: string }): Promise<string | null>;
+    /** Update working memory content. */
+    updateWorkingMemory(opts: { threadId: string; resourceId?: string; content: string }): Promise<void>;
+    /** Clone a thread (including messages, working memory, and observations). */
+    cloneThread(opts: { sourceThreadId: string; destinationThreadId?: string; resourceId?: string }): Promise<any>;
+    /** Get the input processors (includes OM processor if configured). */
+    getInputProcessors(configured?: InputProcessor[], context?: any): Promise<InputProcessor[]>;
+    /** Get the output processors (includes OM processor if configured). */
+    getOutputProcessors(configured?: OutputProcessor[], context?: any): Promise<OutputProcessor[]>;
   }
 
   interface MemoryConstructor {
-    new (config: { storage?: StorageProvider; options?: any; vector?: boolean }): MemoryInstance;
+    new (config: { storage?: StorageProvider; options?: any; vector?: any; embedder?: string | any }): MemoryInstance;
   }
 
   // ── Storage Provider Types ─────────────────────────────────────
