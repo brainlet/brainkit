@@ -6,8 +6,11 @@ Brainkit is the execution engine for [Brainlet](https://github.com/brainlet/brai
 
 Conceptual documentation — what things are, when to use them, how to choose.
 
+- [Agents](guides/agents.md) — Agent config, generate/stream, sub-agents, supervisor pattern, delegation, dynamic config, memory access.
 - [Storage](guides/storage.md) — Storage providers, embedded SQLite, memory backends, vector stores. What's supported, what isn't, and why.
 - [Workspace](guides/workspace.md) — Filesystem, sandbox, search, skills, LSP, tool remapping, dynamic factories.
+- [Evals](guides/evals.md) — Scorers, batch evaluation with runEvals(), pre-built scorers (rule-based + LLM).
+- [Processors](guides/processors.md) — Built-in input/output middleware: security, PII, moderation, token limiting, tool search.
 
 ## API Reference
 

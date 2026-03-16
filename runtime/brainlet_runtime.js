@@ -350,6 +350,18 @@
     return mem;
   }
 
+  // unwrapAgents extracts raw Mastra Agent instances from our wrapped agent objects.
+  // If a value has _mastraAgent, use that. Otherwise pass through (might be raw Mastra Agent).
+  function unwrapAgents(agents) {
+    if (!agents || typeof agents !== "object") return agents;
+    var result = {};
+    for (var key in agents) {
+      var val = agents[key];
+      result[key] = (val && val._mastraAgent) ? val._mastraAgent : val;
+    }
+    return result;
+  }
+
   // resolveModelArg handles both static strings and dynamic resolver functions for model config.
   // Static: "openai/gpt-4o-mini" → resolved model instance
   // Dynamic: ({ requestContext }) => "openai/gpt-4o-mini" → function that resolves at call time
@@ -388,6 +400,25 @@
     if (config.scorers) agentOpts.scorers = config.scorers;
     if (config.workspace) agentOpts.workspace = config.workspace;
     if (config.voice) agentOpts.voice = config.voice;
+    if (config.workflows) agentOpts.workflows = config.workflows;
+
+    // Agents (subagents for delegation/supervisor pattern).
+    // Extract raw Mastra Agent instances from our wrapped agents.
+    if (config.agents) {
+      if (typeof config.agents === "function") {
+        // Dynamic resolver — wrap to extract _mastraAgent from resolved agents
+        var origAgentsFn = config.agents;
+        agentOpts.agents = function(ctx) {
+          var result = origAgentsFn(ctx);
+          if (result && typeof result.then === "function") {
+            return result.then(function(agents) { return unwrapAgents(agents); });
+          }
+          return unwrapAgents(result);
+        };
+      } else {
+        agentOpts.agents = unwrapAgents(config.agents);
+      }
+    }
 
     // Memory: accept a Memory instance directly (Mastra-style) or a config object
     var memoryInstance = null;
@@ -443,6 +474,19 @@
       // Direct access to the Memory instance — for thread/message management.
       // null if no memory configured.
       memory: memoryInstance,
+      // Supervisor/network mode — delegates to registered sub-agents.
+      // The routing agent sees sub-agents as tools (agent-<name>) and delegates.
+      network: async function(promptOrMessages, options) {
+        var opts = options || {};
+        if (memoryOpts && !opts.memory) {
+          opts.memory = memoryOpts;
+        }
+        var result = await a.network(
+          typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
+          opts
+        );
+        return wrapGenerateResult(result);
+      },
       // Internal: raw Mastra Agent instance (used by runEvals, not part of public API).
       _mastraAgent: a,
     };

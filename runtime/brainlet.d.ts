@@ -884,6 +884,38 @@ declare module "brainlet" {
     maxProcessorRetries?: number;
     /** Scorers — auto-evaluate responses after each generate()/stream() call (fire-and-forget). */
     scorers?: DynamicArg<Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>>;
+    /** Sub-agents for delegation/supervisor pattern.
+     * Each agent becomes a tool named `agent-<name>` that the LLM can call.
+     *
+     * @example
+     * ```ts
+     * const researcher = agent({ model: "openai/gpt-4o-mini", instructions: "Research topics." });
+     * const coder = agent({ model: "openai/gpt-4o-mini", instructions: "Write code." });
+     *
+     * const supervisor = agent({
+     *   model: "openai/gpt-4o",
+     *   instructions: "You are a tech lead. Delegate to your team.",
+     *   agents: { researcher, coder },
+     * });
+     *
+     * // Supervisor sees agent-researcher and agent-coder as tools
+     * await supervisor.generate("Research RLHF then implement it");
+     * // Or use network mode for multi-step delegation
+     * await supervisor.network("Build a REST API with tests");
+     * ```
+     */
+    agents?: DynamicArg<Record<string, Agent>>;
+    /** Workflows available as tools. Each becomes `workflow-<name>`. */
+    workflows?: Record<string, any>;
+    /** Delegation hooks for sub-agent calls. */
+    delegation?: {
+      /** Called before delegating to a sub-agent. Return { allowed: false } to reject. */
+      onDelegationStart?: (ctx: { agentId: string; input: any }) => { allowed?: boolean; modifiedInput?: any } | void;
+      /** Called after sub-agent completes. */
+      onDelegationComplete?: (ctx: { agentId: string; output: any }) => void;
+      /** Filter parent conversation before passing to sub-agent. */
+      messageFilter?: (messages: Message[]) => Message[];
+    };
     /** Workspace — auto-injects filesystem, sandbox, skills, search tools into the agent.
      * Can be a static Workspace instance or a dynamic factory resolved per-request.
      *
@@ -990,6 +1022,11 @@ declare module "brainlet" {
   interface Agent {
     generate(prompt: string | Message[], options?: GenerateOptions): Promise<GenerateResult>;
     stream(prompt: string | Message[], options?: StreamOptions): Promise<StreamResult>;
+    /** Supervisor/network mode — delegates to registered sub-agents.
+     * The routing agent sees sub-agents as tools and decides what to delegate.
+     * Continues until completion (LLM decides, or isTaskComplete scorer passes).
+     */
+    network(prompt: string | Message[], options?: GenerateOptions): Promise<GenerateResult>;
     /** Direct access to the Memory instance. null if no memory configured.
      * Use for thread management, message queries, working memory, etc.
      *

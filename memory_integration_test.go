@@ -678,3 +678,42 @@ func TestProcessorsBuiltin(t *testing.T) {
 	}
 	t.Logf("Available: %v", out["availableList"])
 }
+
+// TestAgentSubagents tests agent networks / sub-agent delegation.
+func TestAgentSubagents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/agent-subagents.js")
+	result, err := kit.EvalModule(context.Background(), "agent-subagents.js", code)
+	if err != nil {
+		t.Fatalf("EvalModule: %v", err)
+	}
+
+	var out map[string]any
+	json.Unmarshal([]byte(result), &out)
+	t.Logf("Subagents: %v", out)
+
+	if out["error"] != nil {
+		t.Fatalf("subagent error: %v\nstack: %v", out["error"], out["stack"])
+	}
+	if out["status"] != "ok" {
+		t.Errorf("status: %v", out["status"])
+	}
+	if out["hasAnswer"] != "ok" {
+		t.Errorf("should contain 105: %v", out["hasAnswer"])
+	}
+}
