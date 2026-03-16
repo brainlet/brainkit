@@ -99,8 +99,18 @@ if (typeof require === "undefined") {
   globalThis.require = function(mod) {
     if (mod === "@opentelemetry/api") return _otelStub;
     if (mod === "zod/v4" || mod === "zod") {
-      // Return real module if available, otherwise the deferred wrapper
       return globalThis.__zod_v4_module || _zodV4Wrapper;
+    }
+    // LSP dependencies — pre-loaded in entry.mjs
+    if (mod === "vscode-jsonrpc/node" || mod === "vscode-jsonrpc") {
+      return globalThis.__vscode_jsonrpc_node || {};
+    }
+    if (mod === "vscode-languageserver-protocol") {
+      return globalThis.__vscode_lsp_protocol || {};
+    }
+    // execa polyfill — backed by Go spawn bridge
+    if (mod === "execa") {
+      return { execa: globalThis.__execa_polyfill || function() { throw new Error("execa not available"); } };
     }
     return {};
   };

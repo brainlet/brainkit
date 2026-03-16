@@ -2310,3 +2310,56 @@ func TestFixture_TS_WorkspaceSkillsSearch(t *testing.T) {
 	t.Logf("search: %v", out["search"])
 }
 
+func TestFixture_TS_WorkspaceLSP(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	kit, err := New(Config{
+		Namespace: "test",
+		EnvVars: map[string]string{
+			"TEST_TMPDIR": tmpDir,
+			"PATH":        os.Getenv("PATH"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/workspace-lsp.js")
+	result, err := kit.EvalModule(context.Background(), "workspace-lsp.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("LSP: %s", result)
+}
+
+func TestFixture_TS_BidirectionalAsync(t *testing.T) {
+	tmpDir := t.TempDir()
+	key := requireKey(t)
+
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{"openai": {APIKey: key}},
+		EnvVars:   map[string]string{"TEST_TMPDIR": tmpDir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/bidirectional-async.js")
+	result, err := kit.EvalModule(context.Background(), "bidirectional-async.js", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]interface{}
+	json.Unmarshal([]byte(result), &out)
+	if errMsg, ok := out["error"]; ok && errMsg != nil {
+		t.Fatalf("fixture error: %v\nstack: %v", errMsg, out["stack"])
+	}
+	if out["success"] != true {
+		t.Errorf("expected success, got: %v", out)
+	}
+	t.Logf("bidirectional: generate=%v stream=%v", out["generate"], out["stream"])
+}
+

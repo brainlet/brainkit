@@ -60,6 +60,81 @@ import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace
 // and 'js-tiktoken/ranks/*' to full 'js-tiktoken'. getTiktoken() in
 // @mastra/core/utils/tiktoken.ts now resolves to the already-bundled module.
 
+// LSP dependencies — pre-loaded so Mastra's createRequire('vscode-jsonrpc/node') finds them.
+// The LSPClient uses dynamic require() to load these optional deps.
+import * as _vscodeJsonrpc from 'vscode-jsonrpc/node';
+import * as _vscodeProtocol from 'vscode-languageserver-protocol';
+globalThis.__vscode_jsonrpc_node = _vscodeJsonrpc;
+globalThis.__vscode_lsp_protocol = _vscodeProtocol;
+
+// execa polyfill — Mastra's LocalProcessManager uses execa to spawn LSP servers.
+// Minimal implementation backed by our Go spawn bridge (child_process.spawn).
+globalThis.__execa_polyfill = function execa(command, args, options) {
+  var shell = options?.shell !== false;
+  var cwd = options?.cwd || '';
+  var fullCommand = shell
+    ? (args?.length ? command + ' ' + args.join(' ') : command)
+    : command;
+
+  var proc = globalThis.child_process.spawn(
+    shell ? 'sh' : command,
+    shell ? ['-c', fullCommand] : (args || []),
+    cwd
+  );
+
+  var stdoutListeners = [];
+  var stderrListeners = [];
+  var closeListeners = [];
+  var errorListeners = [];
+
+  var result = {
+    pid: proc.pid,
+    stdout: {
+      on: function(ev, fn) { if (ev === 'data') stdoutListeners.push(fn); },
+      off: function(ev, fn) { stdoutListeners = stdoutListeners.filter(function(f) { return f !== fn; }); },
+    },
+    stderr: {
+      on: function(ev, fn) { if (ev === 'data') stderrListeners.push(fn); },
+      off: function(ev, fn) { stderrListeners = stderrListeners.filter(function(f) { return f !== fn; }); },
+    },
+    stdin: {
+      write: function(data, cb) {
+        proc.write(data).then(
+          function() { if (cb) cb(null); },
+          function(err) { if (cb) cb(err); }
+        );
+      },
+    },
+    on: function(ev, fn) {
+      if (ev === 'close') closeListeners.push(fn);
+      else if (ev === 'error') errorListeners.push(fn);
+    },
+    off: function(ev, fn) {
+      if (ev === 'close') closeListeners = closeListeners.filter(function(f) { return f !== fn; });
+      else if (ev === 'error') errorListeners = errorListeners.filter(function(f) { return f !== fn; });
+    },
+    kill: function() { proc.kill(); },
+  };
+
+  // Background: read stdout chunks and dispatch to listeners
+  (async function() {
+    try {
+      while (true) {
+        var chunk = await proc.readChunk();
+        if (chunk === null) break;
+        var buf = typeof Buffer !== 'undefined' ? Buffer.from(chunk) : chunk;
+        for (var i = 0; i < stdoutListeners.length; i++) stdoutListeners[i](buf);
+      }
+    } catch(e) {
+      for (var i = 0; i < errorListeners.length; i++) errorListeners[i](e);
+    }
+    var exitCode = await proc.wait();
+    for (var i = 0; i < closeListeners.length; i++) closeListeners[i](exitCode, null);
+  })();
+
+  return result;
+};
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';

@@ -118,6 +118,13 @@ const moduleStubs = {
         this._paused = true;
         this._readableObjectMode = opts && opts.readableObjectMode;
         this._buffer = [];
+        if (opts && typeof opts.read === "function") this._read = opts.read;
+      }
+      // Node.js: adding a 'data' listener switches to flowing mode
+      on(ev, fn) {
+        super.on(ev, fn);
+        if (ev === "data" && this._paused) this.resume();
+        return this;
       }
       pipe(dest, opts) {
         var self = this;
@@ -167,6 +174,8 @@ const moduleStubs = {
         this.writable = true;
         this.destroyed = false;
         this._writableObjectMode = opts && opts.writableObjectMode;
+        // Node.js: new Writable({ write(chunk, enc, cb) {...} }) sets _write
+        if (opts && typeof opts.write === "function") this._write = opts.write;
       }
       write(chunk, enc, cb) {
         if (typeof enc === "function") { cb = enc; enc = undefined; }
@@ -585,11 +594,15 @@ const moduleStubs = {
   "module": `
     export const createRequire = () => {
       const r = (mod) => {
-        // Delegate to globalThis.require which handles zod/v4, @opentelemetry/api, etc.
         if (typeof globalThis.require === "function") return globalThis.require(mod);
         return {};
       };
-      r.resolve = () => "";
+      r.resolve = (mod) => {
+        // LSP availability check — isLSPAvailable() calls req.resolve('vscode-jsonrpc/node')
+        if (mod === "vscode-jsonrpc/node" && globalThis.__vscode_jsonrpc_node) return mod;
+        if (mod === "vscode-languageserver-protocol" && globalThis.__vscode_lsp_protocol) return mod;
+        return "";
+      };
       return r;
     };
     export const builtinModules = [];
@@ -983,6 +996,21 @@ const result = await esbuild.build({
     // Note: js-tiktoken/lite and js-tiktoken/ranks/* are bundled normally.
     // The getTiktoken() function that uses them is patched post-build to use
     // encodingForModel() instead (see post-process section below).
+
+    // Force vscode-jsonrpc/node to use the Node.js version, not browser.
+    // Our platform is "browser" for the overall bundle, but vscode-jsonrpc has
+    // a "browser" field that maps lib/node/main.js → lib/browser/main.js.
+    // The browser version lacks StreamMessageReader/StreamMessageWriter.
+    {
+      name: "vscode-jsonrpc-node",
+      setup(build) {
+        build.onResolve({ filter: /^vscode-jsonrpc\/node$/ }, (args) => {
+          return {
+            path: import.meta.dirname + "/node_modules/vscode-jsonrpc/lib/node/main.js",
+          };
+        });
+      },
+    },
   ],
   external: [
     // Database drivers — bundled with TCP socket polyfill via jsbridge/net.go
@@ -1028,6 +1056,18 @@ import { readFileSync } from "node:fs";
     console.log(`Patched ${fname}: undefined → null in @libsql/client value serializer`);
   } else {
     console.warn("WARNING: Could not find @libsql/client value serializer to patch");
+  }
+
+  // Patch getExeca() to use our __execa_polyfill instead of dynamic import("execa").
+  // The dynamic import doesn't work in IIFE bundles. Our polyfill uses the Go spawn bridge.
+  const execaPattern = /try\{let (\w+)=\(await import\("execa"\)\)\.execa;return (\w+)=\1,\1\}/;
+  const execaMatch = bundle.match(execaPattern);
+  if (execaMatch) {
+    const v = execaMatch[1], cached = execaMatch[2];
+    const fix = `try{let ${v}=globalThis.__execa_polyfill;if(!${v})throw new Error("no execa");return ${cached}=${v},${v}}`;
+    bundle = bundle.replace(execaMatch[0], fix);
+    writeFileSync("../agent_embed_bundle.js", bundle);
+    console.log(`Patched getExeca: uses __execa_polyfill`);
   }
 
   // Patch @mastra/rag validation: z.optional(z.function()) → z.optional(z.any()).
