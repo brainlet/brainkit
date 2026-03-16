@@ -1814,6 +1814,98 @@ declare module "brainlet" {
     optional(): ZodType<T | undefined>;
   }
 
+  // === HARNESS ===
+
+  /** Create a Harness orchestrator (called from Go via Kit.InitHarness). */
+  export function createHarness(config: string | HarnessJSConfig): boolean;
+
+  interface HarnessJSConfig {
+    id: string;
+    resourceId?: string;
+    modes: HarnessModeConfig[];
+    stateSchema?: Record<string, any>;
+    initialState?: Record<string, any>;
+    subagents?: HarnessSubagentJSConfig[];
+    omConfig?: HarnessOMJSConfig;
+    defaultPermissions?: Record<string, string>;
+  }
+
+  interface HarnessModeConfig {
+    id: string;
+    name?: string;
+    default?: boolean;
+    defaultModelId?: string;
+    color?: string;
+    agentName?: string;
+  }
+
+  interface HarnessSubagentJSConfig {
+    id: string;
+    allowedTools?: string[];
+    defaultModelId?: string;
+    instructions?: string;
+  }
+
+  interface HarnessOMJSConfig {
+    defaultObserverModel?: string;
+    defaultReflectorModel?: string;
+    observationThreshold?: number;
+    reflectionThreshold?: number;
+  }
+
+  /** Event types emitted by the Harness (41 total). */
+  type HarnessEventType =
+    | "agent_start" | "agent_end"
+    | "mode_changed" | "model_changed"
+    | "thread_changed" | "thread_created" | "thread_deleted"
+    | "message_start" | "message_update" | "message_end"
+    | "tool_start" | "tool_approval_required" | "tool_input_start" | "tool_input_delta" | "tool_input_end" | "tool_update" | "tool_end" | "shell_output"
+    | "ask_question" | "plan_approval_required" | "plan_approved"
+    | "subagent_start" | "subagent_text_delta" | "subagent_tool_start" | "subagent_tool_end" | "subagent_end" | "subagent_model_changed"
+    | "om_status" | "om_observation_start" | "om_observation_end" | "om_observation_failed"
+    | "om_reflection_start" | "om_reflection_end" | "om_reflection_failed"
+    | "om_buffering_start" | "om_buffering_end" | "om_buffering_failed"
+    | "om_activation" | "om_model_changed"
+    | "workspace_status_changed" | "workspace_ready" | "workspace_error"
+    | "state_changed" | "display_state_changed" | "task_updated" | "usage_update" | "follow_up_queued" | "info" | "error";
+
+  interface HarnessEvent {
+    type: HarnessEventType;
+    threadId?: string;
+    runId?: string;
+    toolCallId?: string;
+    toolName?: string;
+    messageId?: string;
+    questionId?: string;
+    planId?: string;
+    modeId?: string;
+    modelId?: string;
+    agentType?: string;
+    text?: string;
+    content?: string;
+    question?: string;
+    plan?: string;
+    error?: string;
+    message?: string;
+    delta?: string;
+    title?: string;
+    args?: Record<string, any>;
+    result?: any;
+    usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+    tasks?: Array<{ title: string; description?: string; status: string }>;
+    options?: string[];
+    changedKeys?: string[];
+    isError?: boolean;
+    fatal?: boolean;
+    status?: string;
+    category?: string;
+    finishReason?: string;
+    stream?: string;
+    data?: string;
+    duration?: number;
+    [key: string]: any;
+  }
+
   interface Zod {
     string(): ZodString;
     number(): ZodNumber;

@@ -246,7 +246,7 @@ func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer } = globalThis.__brainlet;
+		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__brainlet;
 		%s
 	})()`, code)
 

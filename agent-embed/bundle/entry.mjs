@@ -71,6 +71,10 @@ import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/obs
 // Workspace — filesystem, sandbox, skills, search
 import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
 
+// Harness — orchestration layer for agent execution, threads, modes, tool approval
+import { Harness } from '@mastra/core/harness';
+import { askUserTool, submitPlanTool, taskWriteTool, taskCheckTool } from '@mastra/core/harness';
+
 // tiktoken: the tiktoken-unify esbuild plugin redirects 'js-tiktoken/lite'
 // and 'js-tiktoken/ranks/*' to full 'js-tiktoken'. getTiktoken() in
 // @mastra/core/utils/tiktoken.ts now resolves to the already-bundled module.
@@ -243,6 +247,13 @@ globalThis.__agent_embed = {
   Workspace,
   LocalFilesystem,
   LocalSandbox,
+
+  // Harness
+  Harness,
+  askUserTool,
+  submitPlanTool,
+  taskWriteTool,
+  taskCheckTool,
 
   // AI SDK providers
   createOpenAI,

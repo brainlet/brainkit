@@ -510,6 +510,11 @@
     });
   }
 
+  // Agent registry — tracks named agents for Harness mode resolution.
+  // When agent() is called with a name, the wrapped agent is stored here.
+  // The Harness looks up agents by name when resolving mode.agent.
+  var _agentRegistry = {};
+
   // agent() — create a persistent agent in THIS Kit
   function agent(config) {
     var agentOpts = {
@@ -589,7 +594,7 @@
       } catch(e) {}
     }
 
-    return {
+    var wrapped = {
       generate: async function(promptOrMessages, options) {
         var opts = options || {};
         if (memoryOpts && !opts.memory) {
@@ -631,6 +636,13 @@
       // Internal: raw Mastra Agent instance (used by runEvals, not part of public API).
       _mastraAgent: a,
     };
+
+    // Register named agents for Harness mode resolution
+    if (config.name) {
+      _agentRegistry[config.name] = wrapped;
+    }
+
+    return wrapped;
   }
 
   // createTool() — define a tool in THIS sandbox
@@ -996,6 +1008,175 @@
     };
   }
 
+  // ─── HARNESS ──────────────────────────────────────────────────
+
+  // createHarness() — called from Go via Kit.InitHarness().
+  // Creates a Mastra Harness instance, bridges events to Go,
+  // and exposes all methods on globalThis.__brainkit_harness.
+  function createHarness(configJSON) {
+    var config = typeof configJSON === "string" ? JSON.parse(configJSON) : configJSON;
+
+    if (!embed.Harness) {
+      throw new Error("Harness not available in bundle — rebuild with @mastra/core/harness import");
+    }
+
+    // Resolve agent references from the registry
+    var modes = (config.modes || []).map(function(m) {
+      var agentRef = m.agentName ? _agentRegistry[m.agentName] : null;
+      if (m.agentName && !agentRef) {
+        throw new Error("Harness mode '" + m.id + "': agent '" + m.agentName + "' not found. Create the agent before InitHarness().");
+      }
+      return {
+        id: m.id,
+        name: m.name || m.id,
+        default: m["default"] || false,
+        defaultModelId: m.defaultModelId || "",
+        color: m.color || "",
+        agent: agentRef ? agentRef._mastraAgent : undefined,
+      };
+    });
+
+    // Build subagent definitions
+    var subagents = (config.subagents || []).map(function(s) {
+      return {
+        id: s.id,
+        allowedTools: s.allowedTools || [],
+        defaultModelId: s.defaultModelId || "",
+        instructions: s.instructions || "",
+      };
+    });
+
+    // Build Harness config
+    // Use the real InMemoryStore as storage (not the shim).
+    // The Harness creates a real Mastra instance with this storage for
+    // thread persistence and tool approval snapshots.
+    var harnessConfig = {
+      id: config.id,
+      modes: modes,
+      storage: _defaultStore,
+      resolveModel: function(modelId) { return resolveModel(modelId); },
+      heartbeatHandlers: [], // Go handles heartbeats, not JS
+    };
+
+    if (config.resourceId) harnessConfig.resourceId = config.resourceId;
+    if (config.initialState) harnessConfig.initialState = config.initialState;
+    if (subagents.length > 0) harnessConfig.subagents = subagents;
+    if (config.omConfig) harnessConfig.omConfig = config.omConfig;
+    if (config.defaultPermissions) {
+      // Set up initial permission rules in initialState
+      if (!harnessConfig.initialState) harnessConfig.initialState = {};
+      if (!harnessConfig.initialState.permissionRules) {
+        harnessConfig.initialState.permissionRules = {
+          categories: config.defaultPermissions,
+          tools: {},
+        };
+      }
+    }
+
+    // Thread locking — delegated to Go bridges
+    harnessConfig.threadLock = {
+      acquire: async function(threadId) {
+        var err = __go_harness_lock_acquire(threadId);
+        if (err && err !== "null" && err !== null) throw new Error(err);
+      },
+      release: async function(threadId) {
+        var err = __go_harness_lock_release(threadId);
+        if (err && err !== "null" && err !== null) throw new Error(err);
+      },
+    };
+
+    var harness = new embed.Harness(harnessConfig);
+
+    // Event bridge: every JS event → Go
+    harness.subscribe(function(event) {
+      try {
+        __go_harness_event(JSON.stringify(event));
+      } catch(e) {
+        // Don't let bridge errors crash the harness
+      }
+    });
+
+    // Expose all methods for Go → JS calls
+    globalThis.__brainkit_harness = {
+      init: function() { return harness.init(); },
+
+      // Core messaging
+      sendMessage: function(args) { return harness.sendMessage(args); },
+      abort: function() { return harness.abort(); },
+      steer: function(args) { return harness.steer(args); },
+      followUp: function(args) { return harness.followUp(args); },
+      isRunning: function() { return harness.isRunning(); },
+      getCurrentRunId: function() { return harness.getCurrentRunId(); },
+
+      // Threads
+      createThread: function(args) { return harness.createThread(args || {}); },
+      switchThread: function(args) { return harness.switchThread(args); },
+      deleteThread: function(args) { return harness.deleteThread(args); },
+      listThreads: function(args) { return harness.listThreads(args); },
+      renameThread: function(args) { return harness.renameThread(args); },
+      cloneThread: function(args) { return harness.cloneThread(args); },
+      getCurrentThreadId: function() { return harness.getCurrentThreadId(); },
+      listMessages: function(args) { return harness.listMessages(args); },
+      listMessagesForThread: function(args) { return harness.listMessagesForThread(args); },
+
+      // Modes
+      switchMode: function(args) { return harness.switchMode(args); },
+      listModes: function() { return harness.listModes(); },
+      getCurrentMode: function() { return harness.getCurrentMode(); },
+      getCurrentModeId: function() { return harness.getCurrentModeId(); },
+
+      // Models
+      switchModel: function(args) { return harness.switchModel(args); },
+      listAvailableModels: function() { return harness.listAvailableModels(); },
+      getCurrentModelId: function() { return harness.getCurrentModelId(); },
+      hasModelSelected: function() { return harness.hasModelSelected(); },
+
+      // Approval
+      respondToToolApproval: function(args) { return harness.respondToToolApproval(args); },
+      respondToQuestion: function(args) { return harness.respondToQuestion(args); },
+      respondToPlanApproval: function(args) { return harness.respondToPlanApproval(args); },
+
+      // Permissions
+      grantSessionCategory: function(args) { return harness.grantSessionCategory(args); },
+      grantSessionTool: function(args) { return harness.grantSessionTool(args); },
+      getSessionGrants: function() { return harness.getSessionGrants(); },
+      setPermissionForCategory: function(args) { return harness.setPermissionForCategory(args); },
+      setPermissionForTool: function(args) { return harness.setPermissionForTool(args); },
+      getPermissionRules: function() { return harness.getPermissionRules(); },
+
+      // State
+      getState: function() { return harness.getState(); },
+      setState: function(args) { return harness.setState(args); },
+      getDisplayState: function() { return harness.getDisplayState(); },
+
+      // OM
+      switchObserverModel: function(args) { return harness.switchObserverModel(args); },
+      switchReflectorModel: function(args) { return harness.switchReflectorModel(args); },
+      getObserverModelId: function() { return harness.getObserverModelId(); },
+      getReflectorModelId: function() { return harness.getReflectorModelId(); },
+
+      // Subagents
+      setSubagentModelId: function(args) { return harness.setSubagentModelId(args); },
+      getSubagentModelId: function(args) { return harness.getSubagentModelId(args); },
+
+      // Workspace
+      hasWorkspace: function() { return harness.hasWorkspace(); },
+      isWorkspaceReady: function() { return harness.isWorkspaceReady(); },
+      destroyWorkspace: function() { return harness.destroyWorkspace(); },
+
+      // Session
+      getSession: function() { return harness.getSession(); },
+      getTokenUsage: function() { return harness.getTokenUsage(); },
+
+      // Resource
+      setResourceId: function(args) { return harness.setResourceId(args); },
+      getResourceId: function() { return harness.getResourceId(); },
+      getKnownResourceIds: function() { return harness.getKnownResourceIds(); },
+    };
+
+    return true; // signal success to Go
+  }
+
   // ─── EXPORT ────────────────────────────────────────────────────
 
   globalThis.__brainlet = {
@@ -1185,6 +1366,9 @@
     createGraphRAGTool: embed.createGraphRAGTool,
     rerank: embed.rerank,
     rerankWithScorer: embed.rerankWithScorer,
+
+    // HARNESS
+    createHarness: createHarness,
 
     // MODULE
     output: output,

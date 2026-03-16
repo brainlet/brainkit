@@ -43,3 +43,4 @@ export const processors = globalThis.__brainlet.processors;
 export const Workspace = globalThis.__brainlet.Workspace;
 export const LocalFilesystem = globalThis.__brainlet.LocalFilesystem;
 export const LocalSandbox = globalThis.__brainlet.LocalSandbox;
+export const createHarness = globalThis.__brainlet.createHarness;

@@ -11,6 +11,7 @@ Conceptual documentation — what things are, when to use them, how to choose.
 - [Workspace](guides/workspace.md) — Filesystem, sandbox, search, skills, LSP, tool remapping, dynamic factories.
 - [Evals](guides/evals.md) — Scorers, batch evaluation with runEvals(), pre-built scorers (rule-based + LLM).
 - [Processors](guides/processors.md) — Built-in input/output middleware: security, PII, moderation, token limiting, tool search.
+- [Harness](guides/harness.md) — Orchestrator for agent execution, threads, modes, tool approval, events, display state.
 
 ## API Reference
 
@@ -18,3 +19,4 @@ Technical reference — Go config structs, TypeScript constructors, method signa
 
 - [Storage API](api/storage/README.md) — `StorageConfig`, `LibSQLStore`, `LibSQLVector`, `AddStorage`/`RemoveStorage`
 - [Workspace API](api/workspace/README.md) — `Workspace`, `LocalFilesystem`, `LocalSandbox`, search, tools config, LSP
+- [Harness API](api/harness/README.md) — `HarnessConfig`, `InitHarness`, 48 methods, 41 events, display state, permissions
