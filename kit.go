@@ -178,6 +178,17 @@ func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error)
 		const { agent, createTool, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer } = globalThis.__brainlet;
 		%s
 	})()`, code)
+
+	// If the Bridge is currently in an eval/await loop (e.g., we're being called
+	// from a Go tool callback during agent.generate/stream), use EvalOnJSThread.
+	// This handles two cases:
+	//   1. Direct tool callback (same goroutine) → calls ctx.Eval directly
+	//   2. Bus handler (different goroutine) → schedules via ctx.Schedule + channel
+	// Both avoid the mutex deadlock.
+	if k.bridge.IsEvalBusy() {
+		return k.bridge.EvalOnJSThread(filename, wrapped)
+	}
+
 	return k.agents.Eval(ctx, filename, wrapped)
 }
 

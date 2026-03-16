@@ -5,10 +5,24 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 
 	quickjs "github.com/buke/quickjs-go"
 )
+
+// goid returns the current goroutine's ID.
+func goid() int64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	s := strings.TrimPrefix(string(buf[:n]), "goroutine ")
+	s = s[:strings.IndexByte(s, ' ')]
+	id, _ := strconv.ParseInt(s, 10, 64)
+	return id
+}
 
 // Config configures a Bridge.
 type Config struct {
@@ -31,7 +45,9 @@ type Bridge struct {
 	ctx     *quickjs.Context
 	stdout  io.Writer
 	stderr  io.Writer
-	mu      sync.Mutex // serializes Eval/EvalBytecode calls
+	mu      sync.Mutex // serializes Eval/EvalBytecode calls from different goroutines
+	depth   int32      // >0 when an eval is active
+	jsGorID int64      // goroutine ID of the JS thread (set during eval)
 
 	// Goroutine lifecycle control
 	goCtx    context.Context    // cancelled on Close — all goroutines stop
@@ -149,6 +165,101 @@ func (b *Bridge) Runtime() *quickjs.Runtime { return b.runtime }
 // Global returns the global JavaScript object.
 func (b *Bridge) Global() *quickjs.Value { return b.ctx.Globals() }
 
+// IsEvalBusy returns true if the Bridge is currently in an eval/await loop (any goroutine).
+func (b *Bridge) IsEvalBusy() bool {
+	return atomic.LoadInt32(&b.depth) > 0
+}
+
+// IsEvalActive returns true if the caller is on the JS thread during an active eval.
+// Returns true only when called from the same goroutine that holds the Bridge mutex
+// (i.e., from within a tool callback running synchronously on the JS thread).
+// Returns false for calls from other goroutines (bus handlers, etc.) — those should
+// wait for the mutex normally.
+func (b *Bridge) IsEvalActive() bool {
+	return atomic.LoadInt32(&b.depth) > 0 && atomic.LoadInt64(&b.jsGorID) == goid()
+}
+
+// EvalOnJSThread evaluates JavaScript code during an active eval/await loop.
+// Handles two cases:
+//
+//  1. Called from the JS thread (direct tool callback, same goroutine):
+//     Calls ctx.Eval directly — safe because we're already on the JS thread.
+//
+//  2. Called from a different goroutine (bus handler, async tool):
+//     Uses ctx.Schedule to queue the eval on the JS thread, then waits
+//     for the result via a channel. The Await loop's ProcessJobs processes it.
+func (b *Bridge) EvalOnJSThread(file string, code string) (string, error) {
+	if atomic.LoadInt32(&b.depth) == 0 {
+		// No active eval — use normal path
+		val, err := b.EvalAsync(file, code)
+		if err != nil {
+			return "", err
+		}
+		result := val.ToString()
+		val.Free()
+		return result, nil
+	}
+
+	// Case 1: Same goroutine (direct tool callback on JS thread)
+	if atomic.LoadInt64(&b.jsGorID) == goid() {
+		val := b.ctx.Eval(code, quickjs.EvalFileName(file))
+		if val.IsException() {
+			e := b.ctx.Exception()
+			val.Free()
+			return "", e
+		}
+		if val.IsPromise() {
+			awaited := b.ctx.Await(val)
+			if awaited.IsException() {
+				e := b.ctx.Exception()
+				awaited.Free()
+				return "", e
+			}
+			result := awaited.ToString()
+			awaited.Free()
+			return result, nil
+		}
+		result := val.ToString()
+		val.Free()
+		return result, nil
+	}
+
+	// Case 2: Different goroutine (bus handler, async callback)
+	// Schedule the eval on the JS thread and wait for the result.
+	type evalResult struct {
+		result string
+		err    error
+	}
+	ch := make(chan evalResult, 1)
+
+	b.ctx.Schedule(func(ctx *quickjs.Context) {
+		val := ctx.Eval(code, quickjs.EvalFileName(file))
+		if val.IsException() {
+			e := ctx.Exception()
+			val.Free()
+			ch <- evalResult{err: e}
+			return
+		}
+		if val.IsPromise() {
+			awaited := ctx.Await(val)
+			if awaited.IsException() {
+				e := ctx.Exception()
+				awaited.Free()
+				ch <- evalResult{err: e}
+				return
+			}
+			ch <- evalResult{result: awaited.ToString()}
+			awaited.Free()
+			return
+		}
+		ch <- evalResult{result: val.ToString()}
+		val.Free()
+	})
+
+	r := <-ch
+	return r.result, r.err
+}
+
 // Eval evaluates JavaScript code and returns the result.
 // Safe for concurrent use — calls are serialized via mutex.
 // Panics from Go bridge functions are caught and returned as errors.
@@ -201,7 +312,13 @@ func (b *Bridge) EvalAsyncModule(file string, code string) (result *quickjs.Valu
 
 func (b *Bridge) evalAsync(file string, code string, module bool) (result *quickjs.Value, err error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	atomic.StoreInt64(&b.jsGorID, goid())
+	atomic.AddInt32(&b.depth, 1)
+	defer func() {
+		atomic.AddInt32(&b.depth, -1)
+		atomic.StoreInt64(&b.jsGorID, 0)
+		b.mu.Unlock()
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			result = nil

@@ -11,6 +11,15 @@
     return;
   }
 
+  // Suppress "Invalid target: draft-07" warnings from Zod v4's toJSONSchema.
+  // The AI SDK converts tool schemas with draft-07 target, which Zod v4 doesn't support.
+  // The schemas work correctly — just the warning is noisy.
+  var _origConsoleWarn = console.warn;
+  console.warn = function() {
+    if (arguments[0] && typeof arguments[0] === "string" && arguments[0].startsWith("Invalid target:")) return;
+    return _origConsoleWarn.apply(console, arguments);
+  };
+
   // ─── LOCAL (intra-sandbox, direct JS, no bus) ──────────────────
 
   // resolveModel converts "provider/model-id" to an AI SDK model instance
