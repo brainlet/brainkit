@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -99,4 +100,51 @@ func TestMemoryIntegration_LibSQL(t *testing.T) {
 		t.Errorf("agent didn't remember with LibSQL: %q", out.Text)
 	}
 	t.Logf("LibSQL integration: %q remembers=%v store=%s url=%s", out.Text, out.Remembers, out.Store, out.URL)
+}
+
+// TestMemoryIntegration_LibSQLLocal uses the Kit's embedded storage (pure Go SQLite).
+// No Docker/Podman needed. No URL needed in JS — LibSQLStore auto-connects.
+func TestMemoryIntegration_LibSQLLocal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	key := requireKey(t)
+	dbPath := filepath.Join(t.TempDir(), "brainkit-test.db")
+
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		Storages: map[string]StorageConfig{
+			"default": {Path: dbPath},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-libsql-local.js")
+	result, err := kit.EvalModule(context.Background(), "memory-libsql-local.js", code)
+	if err != nil {
+		t.Fatalf("EvalModule: %v", err)
+	}
+
+	var out struct {
+		Text           string `json:"text"`
+		RemembersColor bool   `json:"remembersColor"`
+		RemembersDog   bool   `json:"remembersDog"`
+		Store          string `json:"store"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	if !out.RemembersColor {
+		t.Errorf("agent didn't remember color: %q", out.Text)
+	}
+	if !out.RemembersDog {
+		t.Errorf("agent didn't remember dog: %q", out.Text)
+	}
+	t.Logf("Local SQLite: %q color=%v dog=%v", out.Text, out.RemembersColor, out.RemembersDog)
 }

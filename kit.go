@@ -9,6 +9,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/agent-embed"
 	"github.com/brainlet/brainkit/bus"
 	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/libsql"
 	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 )
@@ -23,9 +24,10 @@ type Kit struct {
 	config    Config
 	namespace string
 	callerID  string
-	bridge    *jsbridge.Bridge
-	agents    *agentembed.Sandbox
-	wasm      *WASMService
+	bridge   *jsbridge.Bridge
+	agents   *agentembed.Sandbox
+	wasm     *WASMService
+	storages map[string]*libsql.Server // named embedded SQLite bridges
 
 	mu     sync.Mutex
 	closed bool
@@ -55,6 +57,7 @@ func New(cfg Config) (*Kit, error) {
 		config:    cfg,
 		namespace: cfg.Namespace,
 		callerID:  cfg.CallerID,
+		storages:  make(map[string]*libsql.Server),
 	}
 
 	// Build provider config for agent-embed
@@ -77,6 +80,18 @@ func New(cfg Config) (*Kit, error) {
 
 	// Register Go bridges for PLATFORM operations
 	k.registerBridges()
+
+	// Start embedded LibSQL bridges for configured storages
+	for name, scfg := range cfg.Storages {
+		if err := k.addStorageInternal(name, scfg); err != nil {
+			// Clean up already-started storages
+			for _, srv := range k.storages {
+				srv.Close()
+			}
+			agentSandbox.Close()
+			return nil, fmt.Errorf("brainkit: start storage %q: %w", name, err)
+		}
+	}
 
 	// Inject observability config for brainlet-runtime.js to read
 	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
@@ -155,6 +170,9 @@ func (k *Kit) Close() {
 	if k.agents != nil {
 		k.agents.Close()
 	}
+	for _, srv := range k.storages {
+		srv.Close()
+	}
 	// Only close the bus if we own it (not shared)
 	if k.config.SharedBus == nil {
 		k.Bus.Close()
@@ -170,6 +188,59 @@ func (k *Kit) CallerID() string { return k.callerID }
 // CreateAgent creates a persistent agent in the Kit's runtime.
 func (k *Kit) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error) {
 	return k.agents.CreateAgent(cfg)
+}
+
+// AddStorage starts a new named embedded SQLite storage and makes it available to JS.
+// JS code can then use `new LibSQLStore({ id: "x", storage: "name" })`.
+func (k *Kit) AddStorage(name string, cfg StorageConfig) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if _, exists := k.storages[name]; exists {
+		return fmt.Errorf("brainkit: storage %q already exists", name)
+	}
+	return k.addStorageInternal(name, cfg)
+}
+
+// RemoveStorage stops and removes a named storage.
+func (k *Kit) RemoveStorage(name string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	srv, ok := k.storages[name]
+	if !ok {
+		return fmt.Errorf("brainkit: storage %q not found", name)
+	}
+	srv.Close()
+	delete(k.storages, name)
+	// Update JS-side storage map
+	k.bridge.Eval("__storage_remove.js", fmt.Sprintf(
+		`delete globalThis.__brainkit_storages[%q]`, name,
+	))
+	return nil
+}
+
+// StorageURL returns the HTTP URL for a named storage bridge.
+// Returns "" if the storage doesn't exist.
+func (k *Kit) StorageURL(name string) string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if srv, ok := k.storages[name]; ok {
+		return srv.URL()
+	}
+	return ""
+}
+
+func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
+	srv, err := libsql.NewServer(cfg.Path)
+	if err != nil {
+		return err
+	}
+	k.storages[name] = srv
+	// Register in JS-side storage map
+	k.bridge.Eval("__storage_add.js", fmt.Sprintf(
+		`if (!globalThis.__brainkit_storages) globalThis.__brainkit_storages = {};
+		 globalThis.__brainkit_storages[%q] = %q;`, name, srv.URL(),
+	))
+	return nil
 }
 
 // EvalTS runs .ts-style code with brainlet imports destructured.

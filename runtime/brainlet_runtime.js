@@ -804,13 +804,61 @@
     // STORAGE (for custom memory configs)
     Memory: embed.Memory,
     InMemoryStore: embed.InMemoryStore,
-    LibSQLStore: embed.LibSQLStore,
+    // Wrapped LibSQLStore: if no url is provided, auto-connects to Kit's embedded SQLite bridge.
+    //   new LibSQLStore({ id: "x" })                  → "default" storage (brainkit way)
+    //   new LibSQLStore({ id: "x", storage: "vecs" }) → named storage (brainkit way)
+    //   new LibSQLStore({ id: "x", url: "..." })      → explicit URL (mastra way, passthrough)
+    LibSQLStore: (function() {
+      var _Real = embed.LibSQLStore;
+      function BrainletLibSQLStore(config) {
+        if (config && !config.url && !config.client) {
+          var storages = globalThis.__brainkit_storages || {};
+          var name = config.storage || "default";
+          var resolved = storages[name];
+          // If named storage not found, try the first available
+          if (!resolved && !config.storage) {
+            var keys = Object.keys(storages);
+            if (keys.length > 0) resolved = storages[keys[0]];
+          }
+          if (resolved) {
+            config = Object.assign({}, config, { url: resolved });
+            delete config.storage; // don't pass brainkit-only field to Mastra
+          } else {
+            throw new Error("LibSQLStore: no url provided and no Kit storage '" + name + "' configured. Either pass { url } or add Storages to Kit config.");
+          }
+        }
+        return new _Real(config);
+      }
+      BrainletLibSQLStore.prototype = _Real.prototype;
+      return BrainletLibSQLStore;
+    })(),
     UpstashStore: embed.UpstashStore,
     PostgresStore: embed.PostgresStore,
     MongoDBStore: embed.MongoDBStore,
 
     // VECTOR STORES (for semantic recall)
-    LibSQLVector: embed.LibSQLVector,
+    // Wrapped LibSQLVector: same auto-URL pattern as LibSQLStore
+    LibSQLVector: (function() {
+      var _Real = embed.LibSQLVector;
+      function BrainletLibSQLVector(config) {
+        if (config && !config.url) {
+          var storages = globalThis.__brainkit_storages || {};
+          var name = config.storage || "default";
+          var resolved = storages[name];
+          if (!resolved && !config.storage) {
+            var keys = Object.keys(storages);
+            if (keys.length > 0) resolved = storages[keys[0]];
+          }
+          if (resolved) {
+            config = Object.assign({}, config, { url: resolved });
+            delete config.storage;
+          }
+        }
+        return new _Real(config);
+      }
+      BrainletLibSQLVector.prototype = _Real.prototype;
+      return BrainletLibSQLVector;
+    })(),
     PgVector: embed.PgVector,
     MongoDBVector: embed.MongoDBVector,
 

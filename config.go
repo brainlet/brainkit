@@ -40,12 +40,32 @@ type Config struct {
 	// Observability configures tracing for agents, tools, workflows, and LLM calls.
 	// Default: enabled with realtime strategy and InMemoryStore.
 	Observability ObservabilityConfig
+
+	// Storages configures named storage backends started with the Kit.
+	// Each entry starts an embedded SQLite-backed LibSQL bridge.
+	// JS code uses `new LibSQLStore({ id: "x", storage: "name" })` to connect.
+	// The first entry (or one named "default") is used when no storage name is given.
+	//
+	// Example:
+	//   Storages: map[string]StorageConfig{
+	//       "default": { Path: "./data.db" },
+	//       "vectors": { Path: "./vectors.db" },
+	//   }
+	Storages map[string]StorageConfig
 }
 
 // ProviderConfig configures an AI provider.
 type ProviderConfig struct {
 	APIKey  string
 	BaseURL string
+}
+
+// StorageConfig configures an embedded SQLite storage backend.
+// Backed by modernc.org/sqlite (pure Go) with a Hrana HTTP bridge.
+type StorageConfig struct {
+	// Path to the SQLite database file. Created if it doesn't exist.
+	// Use ":memory:" for an in-memory database (lost on close).
+	Path string
 }
 
 // ObservabilityConfig configures the tracing/observability system.
