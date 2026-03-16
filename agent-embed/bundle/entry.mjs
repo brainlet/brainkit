@@ -33,6 +33,9 @@ import { MDocument, GraphRAG } from '@mastra/rag';
 import { createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool } from '@mastra/rag';
 import { rerank, rerankWithScorer } from '@mastra/rag';
 
+// Observability — tracing, spans, exporters
+import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -92,6 +95,11 @@ globalThis.__agent_embed = {
   createGraphRAGTool,
   rerank,
   rerankWithScorer,
+
+  // Observability
+  Observability,
+  DefaultExporter,
+  SensitiveDataFilter,
 
   // AI SDK providers
   createOpenAI,

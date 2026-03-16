@@ -117,16 +117,55 @@
 
   // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
+  // Expose for observability span queries (internal — not part of public API)
+  globalThis.__brainlet_internal_store = _defaultStore;
+  globalThis.__brainlet_internal_observability = null; // set after creation
 
-  // Storage shim for workflow snapshot persistence (suspend/resume).
-  // The workflow engine calls mastra.getStorage().getStore('workflows') to persist snapshots.
-  // Our _defaultStore (InMemoryStore) already implements getStore(). We just need a wrapper
-  // that provides getStorage(). No Mastra instance needed — this is our own abstraction.
+  // Observability — auto-tracing for agents, tools, workflows, LLM calls.
+  // Config comes from Kit.Config.Observability (injected as globalThis.__brainkit_obs_config).
+  var _obsConfig = globalThis.__brainkit_obs_config || { enabled: true, strategy: "realtime", serviceName: "brainkit" };
+  var _observability = null;
+  if (_obsConfig.enabled !== false) {
+    try {
+      if (embed.Observability && embed.DefaultExporter) {
+        _observability = new embed.Observability({
+          configs: {
+            default: {
+              serviceName: _obsConfig.serviceName || "brainkit",
+              exporters: [new embed.DefaultExporter({
+                storage: _defaultStore,
+                strategy: _obsConfig.strategy || "realtime",
+              })],
+            },
+          },
+        });
+        globalThis.__brainlet_internal_observability = _observability;
+      }
+    } catch(e) {
+      // Observability init failed — continue without tracing
+    }
+  }
+
+  // Storage shim — injected into workflows, scorers, and agents via __registerMastra().
+  // Provides getStorage() for snapshot persistence and observability for auto-tracing.
+  // Satisfies the Mastra interface without creating a full Mastra instance.
   var _workflowStorageShim = {
     getStorage: function() { return _defaultStore; },
     getLogger: function() { return undefined; },
     generateId: function() { return undefined; },
+    get observability() { return _observability; },
+    // Agent-specific: methods accessed via this.#mastra?.method()
+    // Must exist as functions (even no-ops) due to QuickJS optional chaining bug
+    addWorkspace: function() {},
+    getWorkspace: function() { return undefined; },
+    getScorerById: function() { return undefined; },
   };
+
+  // Initialize observability exporters — they need the storage shim to persist spans.
+  // This replicates what Mastra.constructor does: this.#observability.setMastraContext({ mastra: this })
+  if (_observability && typeof _observability.setMastraContext === "function") {
+    try { _observability.setMastraContext({ mastra: _workflowStorageShim }); } catch(e) {}
+  }
 
   // Registry of active workflow runs — needed for resume after suspend.
   // Key: runId, Value: { run, workflow }
@@ -277,6 +316,17 @@
     }
 
     var a = new embed.Agent(agentOpts);
+
+    // Inject storage shim (includes observability) for auto-tracing.
+    // Wrapped in try-catch: if the shim is missing methods that Agent needs,
+    // the agent still works (just without tracing).
+    if (typeof a.__registerMastra === "function") {
+      try {
+        a.__registerMastra(_workflowStorageShim);
+      } catch(e) {
+        // Agent's __registerMastra may need more than workflows — fall back silently
+      }
+    }
 
     return {
       generate: async function(promptOrMessages, options) {

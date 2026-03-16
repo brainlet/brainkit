@@ -36,10 +36,29 @@ type Config struct {
 	// MCPServers — external MCP servers to connect to on Kit creation.
 	// Tools from these servers are auto-registered in the ToolRegistry.
 	MCPServers map[string]mcppkg.ServerConfig
+
+	// Observability configures tracing for agents, tools, workflows, and LLM calls.
+	// Default: enabled with realtime strategy and InMemoryStore.
+	Observability ObservabilityConfig
 }
 
 // ProviderConfig configures an AI provider.
 type ProviderConfig struct {
 	APIKey  string
 	BaseURL string
+}
+
+// ObservabilityConfig configures the tracing/observability system.
+type ObservabilityConfig struct {
+	// Enabled controls whether observability is active. Default: true.
+	Enabled *bool
+
+	// Strategy controls how spans are exported to storage.
+	// "realtime" — writes immediately per span event (default, best for debugging)
+	// "insert-only" — batches writes, flushes on timer (better for high-throughput production)
+	// "batch-with-updates" — batches creates + updates (most efficient for SQL stores)
+	Strategy string
+
+	// ServiceName identifies this service in traces. Default: "brainkit".
+	ServiceName string
 }

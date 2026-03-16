@@ -78,6 +78,21 @@ func New(cfg Config) (*Kit, error) {
 	// Register Go bridges for PLATFORM operations
 	k.registerBridges()
 
+	// Inject observability config for brainlet-runtime.js to read
+	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
+	obsStrategy := cfg.Observability.Strategy
+	if obsStrategy == "" {
+		obsStrategy = "realtime"
+	}
+	obsServiceName := cfg.Observability.ServiceName
+	if obsServiceName == "" {
+		obsServiceName = "brainkit"
+	}
+	k.bridge.Eval("__obs_config.js", fmt.Sprintf(
+		`globalThis.__brainkit_obs_config = { enabled: %v, strategy: %q, serviceName: %q }`,
+		obsEnabled, obsStrategy, obsServiceName,
+	))
+
 	// Load brainlet-runtime.js + register "brainlet" ES module
 	if err := k.loadRuntime(); err != nil {
 		agentSandbox.Close()
