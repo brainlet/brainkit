@@ -313,15 +313,54 @@ const moduleStubs = {
     export const sep = "/";
     export const delimiter = ":";
     export const join = (...parts) => parts.filter(Boolean).join("/").replace(/\\/\\/+/g, "/");
-    export const resolve = (...parts) => "/" + join(...parts).replace(/^\\/+/, "");
-    export const dirname = (p) => { const i = (p||"").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : "."; };
+    export const resolve = (...parts) => {
+      var result = "";
+      for (var i = parts.length - 1; i >= 0; i--) {
+        var p = String(parts[i] || "");
+        if (!p) continue;
+        result = result ? p + "/" + result : p;
+        if (p.charAt(0) === "/") break;
+      }
+      if (result.charAt(0) !== "/") {
+        var cwd = (typeof process !== "undefined" && typeof process.cwd === "function") ? process.cwd() : "/";
+        result = cwd + "/" + result;
+      }
+      var segs = result.split("/").filter(Boolean);
+      var stack = [];
+      for (var j = 0; j < segs.length; j++) {
+        if (segs[j] === "..") { stack.pop(); }
+        else if (segs[j] !== ".") { stack.push(segs[j]); }
+      }
+      return "/" + stack.join("/");
+    };
+    export const dirname = (p) => { const i = (p||"").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : i === 0 ? "/" : "."; };
     export const basename = (p, ext) => { const b = (p||"").split("/").pop() || ""; return ext && b.endsWith(ext) ? b.slice(0, -ext.length) : b; };
     export const extname = (p) => { const b = basename(p); const i = b.lastIndexOf("."); return i > 0 ? b.slice(i) : ""; };
-    export const normalize = (p) => (p||"").replace(/\\/\\/+/g, "/").replace(/\\/$/, "") || ".";
-    export const parse = (p) => { const b = basename(p); const e = extname(p); return { root: "", dir: dirname(p), base: b, ext: e, name: e ? b.slice(0, -e.length) : b }; };
-    export const relative = (from, to) => to;
+    export const normalize = (p) => {
+      if (!p) return ".";
+      var isAbs = p.charAt(0) === "/";
+      var segs = p.split("/").filter(Boolean);
+      var stack = [];
+      for (var i = 0; i < segs.length; i++) {
+        if (segs[i] === "..") { if (stack.length && stack[stack.length-1] !== "..") stack.pop(); else if (!isAbs) stack.push(".."); }
+        else if (segs[i] !== ".") stack.push(segs[i]);
+      }
+      var result = stack.join("/") || (isAbs ? "" : ".");
+      return isAbs ? "/" + result : result;
+    };
+    export const parse = (p) => { const b = basename(p); const e = extname(p); return { root: isAbsolute(p) ? "/" : "", dir: dirname(p), base: b, ext: e, name: e ? b.slice(0, -e.length) : b }; };
+    export const relative = (from, to) => {
+      var fromParts = resolve(from).split("/").filter(Boolean);
+      var toParts = resolve(to).split("/").filter(Boolean);
+      var common = 0;
+      while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) common++;
+      var result = [];
+      for (var i = common; i < fromParts.length; i++) result.push("..");
+      for (var j = common; j < toParts.length; j++) result.push(toParts[j]);
+      return result.join("/") || ".";
+    };
     export const isAbsolute = (p) => (p||"").startsWith("/");
-    export const format = (o) => (o.dir || o.root || "") + "/" + (o.base || o.name + (o.ext || ""));
+    export const format = (o) => (o.dir || o.root || "") + (o.dir && !o.dir.endsWith("/") ? "/" : "") + (o.base || o.name + (o.ext || ""));
     export const toNamespacedPath = (p) => p;
     const posix = { sep, delimiter, join, resolve, dirname, basename, extname, normalize, parse, relative, isAbsolute, format, toNamespacedPath };
     export { posix };
@@ -356,7 +395,9 @@ const moduleStubs = {
       O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024,
       S_IFMT: 61440, S_IFREG: 32768, S_IFDIR: 16384, S_IFLNK: 40960,
     };
-    export const existsSync = () => false;
+    // Sync fs stubs — not all can work synchronously with async Go bridges.
+    // The critical ones for LocalFilesystem's fs-utils.ts are existsSync and realpathSync.
+    export const existsSync = (p) => { try { __go_fs_access(String(p)); return true; } catch { return false; } };
     export const readFileSync = notAvailableSync("readFileSync");
     export const writeFileSync = notAvailableSync("writeFileSync");
     export const appendFileSync = notAvailableSync("appendFileSync");
@@ -411,30 +452,94 @@ const moduleStubs = {
       readFile, writeFile, access, stat, lstat, mkdir, readdir, unlink, rename, copyFile, promises };
   `,
   "fs/promises": `
-    const notAvailable = (name) => async () => { throw new Error(name + ": not available in QuickJS"); };
-    export const readFile = notAvailable("readFile");
-    export const writeFile = notAvailable("writeFile");
-    export const mkdir = notAvailable("mkdir");
-    export const readdir = notAvailable("readdir");
-    export const stat = notAvailable("stat");
-    export const lstat = notAvailable("lstat");
-    export const access = notAvailable("access");
-    export const unlink = notAvailable("unlink");
-    export const rename = notAvailable("rename");
-    export const copyFile = notAvailable("copyFile");
-    export const rm = notAvailable("rm");
-    export const realpath = async (p) => p;
-    export const open = notAvailable("open");
-    export const mkdtemp = notAvailable("mkdtemp");
-    export const chmod = notAvailable("chmod");
-    export const chown = notAvailable("chown");
-    export const symlink = notAvailable("symlink");
-    export const readlink = notAvailable("readlink");
-    export const appendFile = notAvailable("appendFile");
-    export const truncate = notAvailable("truncate");
-    export const watch = notAvailable("watch");
-    export default { readFile, writeFile, mkdir, readdir, stat, lstat, access, unlink, rename,
-      copyFile, rm, realpath, open, mkdtemp, chmod, chown, symlink, readlink, appendFile, truncate, watch };
+    // fs/promises — backed by Go bridges (__go_fs_*) registered by jsbridge/fs.go.
+    // All bridges return Promises via ctx.NewPromise + Bridge.Go().
+    function _parseStat(json) {
+      var raw = JSON.parse(json);
+      return {
+        size: raw.size, mode: raw.mode,
+        mtimeMs: raw.mtimeMs, atimeMs: raw.mtimeMs, birthtimeMs: raw.mtimeMs,
+        mtime: new Date(raw.mtimeMs), atime: new Date(raw.mtimeMs), birthtime: new Date(raw.mtimeMs),
+        isFile: function() { return raw.isFile; },
+        isDirectory: function() { return raw.isDirectory; },
+        isSymbolicLink: function() { return !!raw.isSymbolicLink; },
+      };
+    }
+    export async function readFile(path, options) {
+      return await __go_fs_readFile(String(path), typeof options === "string" ? options : "utf8");
+    }
+    export async function writeFile(path, data) {
+      await __go_fs_writeFile(String(path), typeof data === "string" ? data : String(data));
+    }
+    export async function appendFile(path, data) {
+      await __go_fs_appendFile(String(path), String(data));
+    }
+    export async function stat(path) {
+      var json = await __go_fs_stat(String(path));
+      return _parseStat(json);
+    }
+    export async function lstat(path) {
+      var json = await __go_fs_lstat(String(path));
+      return _parseStat(json);
+    }
+    export async function readdir(path, options) {
+      var withFileTypes = options && options.withFileTypes;
+      var json = await __go_fs_readdir(String(path));
+      var entries = JSON.parse(json);
+      if (withFileTypes) {
+        return entries.map(function(e) {
+          return {
+            name: e.name,
+            isFile: function() { return !e.isDirectory; },
+            isDirectory: function() { return e.isDirectory; },
+            isSymbolicLink: function() { return false; },
+          };
+        });
+      }
+      return entries.map(function(e) { return e.name; });
+    }
+    export async function mkdir(path, options) {
+      await __go_fs_mkdir(String(path), !!(options && options.recursive));
+    }
+    export async function rm(path, options) {
+      if (options && options.recursive) {
+        await __go_fs_rm(String(path));
+      } else {
+        await __go_fs_unlink(String(path));
+      }
+    }
+    export async function unlink(path) {
+      await __go_fs_unlink(String(path));
+    }
+    export async function rename(oldPath, newPath) {
+      await __go_fs_rename(String(oldPath), String(newPath));
+    }
+    export async function copyFile(src, dest) {
+      await __go_fs_copyFile(String(src), String(dest));
+    }
+    export async function realpath(path) {
+      return await __go_fs_realpath(String(path));
+    }
+    export async function access(path) {
+      await __go_fs_access(String(path));
+    }
+    export async function symlink(target, path) {
+      await __go_fs_symlink(String(target), String(path));
+    }
+    export async function readlink(path) {
+      return await __go_fs_readlink(String(path));
+    }
+    export async function open() { throw new Error("fs.open: use readFile/writeFile instead"); }
+    export async function mkdtemp() { throw new Error("fs.mkdtemp: not implemented"); }
+    export async function chmod() { /* no-op */ }
+    export async function chown() { /* no-op */ }
+    export async function truncate(path, len) {
+      var data = await readFile(path);
+      await writeFile(path, data.substring(0, len || 0));
+    }
+    export async function watch() { throw new Error("fs.watch: not implemented"); }
+    export default { readFile, writeFile, appendFile, stat, lstat, readdir, mkdir, rm, unlink,
+      rename, copyFile, realpath, access, symlink, readlink, open, mkdtemp, chmod, chown, truncate, watch };
   `,
   "child_process": `
     const notAvailable = (name) => (...args) => {
@@ -895,7 +1000,7 @@ const result = await esbuild.build({
 import { readFileSync } from "node:fs";
 {
   let bundle = readFileSync("../agent_embed_bundle.js", "utf8");
-  const oldPattern = /function (\w+)\(e\)\{if\(e===null\)return null;if\(typeof e==="string"\)return e;/;
+  const oldPattern = /function (\w+)\(e\)\{if\(e===null\)return null;if\(typeof e==.?"string"\)return e;/;
   const match = bundle.match(oldPattern);
   if (match) {
     const fname = match[1];

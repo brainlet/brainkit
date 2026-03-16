@@ -53,6 +53,9 @@ import { rerank, rerankWithScorer } from '@mastra/rag';
 // Observability — tracing, spans, exporters
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
 
+// Workspace — filesystem, sandbox, skills, search
+import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -128,6 +131,11 @@ globalThis.__agent_embed = {
   Observability,
   DefaultExporter,
   SensitiveDataFilter,
+
+  // Workspace
+  Workspace,
+  LocalFilesystem,
+  LocalSandbox,
 
   // AI SDK providers
   createOpenAI,

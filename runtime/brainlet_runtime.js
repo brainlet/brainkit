@@ -360,6 +360,9 @@
     // Scorers — auto-evaluate agent responses (fire-and-forget via hook system)
     if (config.scorers) agentOpts.scorers = config.scorers;
 
+    // Workspace — auto-injects filesystem/sandbox/skill tools into the agent
+    if (config.workspace) agentOpts.workspace = config.workspace;
+
     // Memory: accept a Memory instance directly (Mastra-style) or a config object
     var memoryOpts = null;
     if (config.memory) {
@@ -877,6 +880,11 @@
         return parseBridgeResponse(raw);
       },
     },
+
+    // Workspace
+    Workspace: embed.Workspace,
+    LocalFilesystem: embed.LocalFilesystem,
+    LocalSandbox: embed.LocalSandbox,
 
     // RAG
     MDocument: embed.MDocument,

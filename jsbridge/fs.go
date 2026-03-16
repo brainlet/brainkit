@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -109,10 +110,13 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 				return "", fmt.Errorf("stat: %w", err)
 			}
 			b, err := json.Marshal(map[string]interface{}{
-				"size":        info.Size(),
-				"isFile":      info.Mode().IsRegular(),
-				"isDirectory": info.IsDir(),
-				"modTime":     info.ModTime().Unix(),
+				"size":           info.Size(),
+				"isFile":         info.Mode().IsRegular(),
+				"isDirectory":    info.IsDir(),
+				"isSymbolicLink": false,
+				"mode":           int(info.Mode()),
+				"mtimeMs":        info.ModTime().UnixMilli(),
+				"modTime":        info.ModTime().Unix(),
 			})
 			if err != nil {
 				return "", fmt.Errorf("stat: json marshal: %w", err)
@@ -157,6 +161,155 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 				return "", fmt.Errorf("rm: %w", err)
 			}
 			return "true", nil
+		})
+	}))
+
+	// lstat — like stat but doesn't follow symlinks
+	ctx.Globals().Set("__go_fs_lstat", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("lstat: path argument required"))
+		}
+		path := args[0].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			info, err := os.Lstat(path)
+			if err != nil {
+				return "", fmt.Errorf("lstat: %w", err)
+			}
+			isSymlink := info.Mode()&os.ModeSymlink != 0
+			b, err := json.Marshal(map[string]interface{}{
+				"size":           info.Size(),
+				"isFile":         info.Mode().IsRegular(),
+				"isDirectory":    info.IsDir(),
+				"isSymbolicLink": isSymlink,
+				"mode":           int(info.Mode()),
+				"mtimeMs":        info.ModTime().UnixMilli(),
+			})
+			if err != nil {
+				return "", fmt.Errorf("lstat: json: %w", err)
+			}
+			return string(b), nil
+		})
+	}))
+
+	// copyFile — copy src to dest
+	ctx.Globals().Set("__go_fs_copyFile", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return ctx.ThrowError(fmt.Errorf("copyFile: src and dest required"))
+		}
+		src := args[0].ToString()
+		dest := args[1].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			data, err := os.ReadFile(src)
+			if err != nil {
+				return "", fmt.Errorf("copyFile: read: %w", err)
+			}
+			srcInfo, _ := os.Stat(src)
+			perm := os.FileMode(0644)
+			if srcInfo != nil {
+				perm = srcInfo.Mode().Perm()
+			}
+			if err := os.WriteFile(dest, data, perm); err != nil {
+				return "", fmt.Errorf("copyFile: write: %w", err)
+			}
+			return "true", nil
+		})
+	}))
+
+	// rename — move/rename a file
+	ctx.Globals().Set("__go_fs_rename", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return ctx.ThrowError(fmt.Errorf("rename: old and new path required"))
+		}
+		oldPath := args[0].ToString()
+		newPath := args[1].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return "", fmt.Errorf("rename: %w", err)
+			}
+			return "true", nil
+		})
+	}))
+
+	// realpath — resolve symlinks to real path
+	ctx.Globals().Set("__go_fs_realpath", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("realpath: path argument required"))
+		}
+		path := args[0].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				return "", fmt.Errorf("realpath: %w", err)
+			}
+			abs, err := filepath.Abs(resolved)
+			if err != nil {
+				return "", fmt.Errorf("realpath: abs: %w", err)
+			}
+			return abs, nil
+		})
+	}))
+
+	// access — check if path is accessible (throws if not)
+	ctx.Globals().Set("__go_fs_access", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("access: path argument required"))
+		}
+		path := args[0].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			if _, err := os.Stat(path); err != nil {
+				return "", fmt.Errorf("access: %w", err)
+			}
+			return "true", nil
+		})
+	}))
+
+	// appendFile — append data to a file
+	ctx.Globals().Set("__go_fs_appendFile", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return ctx.ThrowError(fmt.Errorf("appendFile: path and data required"))
+		}
+		path := args[0].ToString()
+		data := args[1].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return "", fmt.Errorf("appendFile: %w", err)
+			}
+			defer f.Close()
+			if _, err := f.WriteString(data); err != nil {
+				return "", fmt.Errorf("appendFile: write: %w", err)
+			}
+			return "true", nil
+		})
+	}))
+
+	// symlink — create a symbolic link
+	ctx.Globals().Set("__go_fs_symlink", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return ctx.ThrowError(fmt.Errorf("symlink: target and path required"))
+		}
+		target := args[0].ToString()
+		linkPath := args[1].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			if err := os.Symlink(target, linkPath); err != nil {
+				return "", fmt.Errorf("symlink: %w", err)
+			}
+			return "true", nil
+		})
+	}))
+
+	// readlink — read symlink target
+	ctx.Globals().Set("__go_fs_readlink", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("readlink: path argument required"))
+		}
+		path := args[0].ToString()
+		return p.fsAsync(ctx, func() (string, error) {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return "", fmt.Errorf("readlink: %w", err)
+			}
+			return target, nil
 		})
 	}))
 
