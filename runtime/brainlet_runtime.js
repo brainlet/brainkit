@@ -379,6 +379,137 @@
     return resolveModel(modelArg);
   }
 
+  // ─── Constrained Subagents ───────────────────────────────────
+  // createSubagent() defines a subagent type with constrained tools.
+  // When used with the `subagents` config on agent(), a meta-tool is created
+  // that spawns fresh agents per invocation with filtered tool sets.
+
+  function createSubagent(def) {
+    return {
+      _isSubagentDef: true,
+      id: def.id,
+      name: def.name || def.id,
+      instructions: def.instructions || "",
+      allowedTools: def.allowedTools || [],
+      model: def.model || undefined,
+      maxSteps: def.maxSteps || 50,
+    };
+  }
+
+  // Builds the internal "subagent" meta-tool from subagent definitions + parent tools.
+  // The LLM sees one tool: subagent({ agentType, task }) which spawns a constrained agent.
+  function buildSubagentTool(subagentDefs, parentTools, onEvent) {
+    var defMap = {};
+    var validTypes = [];
+    for (var i = 0; i < subagentDefs.length; i++) {
+      defMap[subagentDefs[i].id] = subagentDefs[i];
+      validTypes.push(subagentDefs[i].id);
+    }
+
+    return embed.createTool({
+      id: "subagent",
+      description: "Delegate a task to a specialized sub-agent. Available types: " + validTypes.join(", ") + ".",
+      inputSchema: embed.z.object({
+        agentType: embed.z.enum(validTypes).describe("Which sub-agent type to use"),
+        task: embed.z.string().describe("Self-contained task description for the sub-agent"),
+      }),
+      execute: async function(input, context) {
+        var def = defMap[input.agentType];
+        if (!def) return { content: "Unknown agent type: " + input.agentType, isError: true };
+
+        var startTime = Date.now();
+        var toolCallLog = [];
+
+        // Filter tools by allowedTools
+        var filteredTools = {};
+        for (var t = 0; t < def.allowedTools.length; t++) {
+          var toolId = def.allowedTools[t];
+          if (parentTools[toolId]) filteredTools[toolId] = parentTools[toolId];
+        }
+
+        // Resolve model
+        var model = def.model ? resolveModel(def.model) : resolveModel(config?.model || "openai/gpt-4o-mini");
+
+        // Create fresh agent
+        var subAgent = new embed.Agent({
+          id: "subagent-" + def.id,
+          name: def.name + " Subagent",
+          instructions: def.instructions,
+          model: model,
+          tools: filteredTools,
+        });
+
+        // Inject storage shim for tracing
+        if (typeof subAgent.__registerMastra === "function") {
+          try { subAgent.__registerMastra(_workflowStorageShim); } catch(e) {}
+        }
+
+        // Emit start event
+        if (onEvent) {
+          onEvent({ type: "start", agentType: input.agentType, task: input.task });
+        }
+
+        try {
+          // Stream the sub-agent
+          var response = await subAgent.stream(input.task, {
+            maxSteps: def.maxSteps,
+            requestContext: context?.requestContext,
+          });
+
+          // Consume fullStream, forward events
+          var partialText = "";
+          var reader = response.fullStream.getReader();
+          while (true) {
+            var read = await reader.read();
+            if (read.done) break;
+            var chunk = read.value;
+            if (!chunk) continue;
+
+            if (chunk.type === "text-delta") {
+              partialText += (chunk.textDelta || chunk.payload?.text || "");
+              if (onEvent) onEvent({ type: "text_delta", agentType: input.agentType, text: chunk.textDelta || chunk.payload?.text || "" });
+            } else if (chunk.type === "tool-call") {
+              var toolName = chunk.toolName || chunk.payload?.toolName || "";
+              toolCallLog.push({ name: toolName });
+              if (onEvent) onEvent({ type: "tool_start", agentType: input.agentType, toolName: toolName, args: chunk.args || chunk.payload?.args });
+            } else if (chunk.type === "tool-result") {
+              var trName = chunk.toolName || chunk.payload?.toolName || "";
+              var isErr = chunk.isError || chunk.payload?.isError || false;
+              for (var j = toolCallLog.length - 1; j >= 0; j--) {
+                if (toolCallLog[j].name === trName && toolCallLog[j].isError === undefined) {
+                  toolCallLog[j].isError = isErr;
+                  break;
+                }
+              }
+              if (onEvent) onEvent({ type: "tool_end", agentType: input.agentType, toolName: trName, isError: isErr });
+            }
+          }
+
+          var fullText = "";
+          try { fullText = await response.text; } catch(e) { fullText = partialText; }
+          if (!fullText) fullText = partialText;
+
+          var durationMs = Date.now() - startTime;
+          var toolsStr = toolCallLog.map(function(tc) { return tc.name + ":" + (tc.isError ? "err" : "ok"); }).join(",");
+
+          if (onEvent) onEvent({ type: "end", agentType: input.agentType, durationMs: durationMs, isError: false });
+
+          return {
+            content: fullText + "\n<subagent-meta modelId=\"" + (def.model || "default") + "\" durationMs=\"" + durationMs + "\" tools=\"" + toolsStr + "\" />",
+            isError: false,
+          };
+        } catch(e) {
+          var durationMs = Date.now() - startTime;
+          if (onEvent) onEvent({ type: "end", agentType: input.agentType, durationMs: durationMs, isError: true });
+          return {
+            content: "Subagent \"" + def.name + "\" failed: " + (e.message || String(e)),
+            isError: true,
+          };
+        }
+      },
+    });
+  }
+
   // agent() — create a persistent agent in THIS Kit
   function agent(config) {
     var agentOpts = {
@@ -417,6 +548,16 @@
         };
       } else {
         agentOpts.agents = unwrapAgents(config.agents);
+      }
+    }
+
+    // Constrained subagents — creates a meta-tool that spawns typed sub-agents
+    // with filtered tool sets. Different from `agents` config (which is raw Mastra).
+    if (config.subagents && Array.isArray(config.subagents)) {
+      var subagentDefs = config.subagents.filter(function(s) { return s && s._isSubagentDef; });
+      if (subagentDefs.length > 0) {
+        var subagentMetaTool = buildSubagentTool(subagentDefs, config.tools || {}, config.onSubagentEvent || null);
+        agentOpts.tools = Object.assign({}, agentOpts.tools, { subagent: subagentMetaTool });
       }
     }
 
@@ -861,6 +1002,7 @@
     // LOCAL
     agent: agent,
     createTool: createTool,
+    createSubagent: createSubagent,
     createWorkflow: wrappedCreateWorkflow,
     createStep: embed.createStep,
     createMemory: createMemory,

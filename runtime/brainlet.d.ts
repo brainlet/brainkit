@@ -56,6 +56,68 @@ declare module "brainlet" {
    */
   export function createTool(config: ToolConfig): Tool;
 
+  /**
+   * Define a constrained subagent type for the supervisor pattern.
+   * Used with `subagents` config on agent() — creates a meta-tool that spawns
+   * fresh agents per invocation with filtered tool sets.
+   *
+   * @example
+   * ```ts
+   * const explorer = createSubagent({
+   *   id: "explore",
+   *   instructions: "You explore codebases. Read files, search, but never write.",
+   *   allowedTools: ["view", "search", "find_files"],
+   *   model: "openai/gpt-4o-mini",
+   * });
+   *
+   * const coder = createSubagent({
+   *   id: "execute",
+   *   instructions: "You write code. Read, edit, and run commands.",
+   *   allowedTools: ["view", "search", "find_files", "edit", "write", "run"],
+   *   model: "openai/gpt-4o",
+   * });
+   *
+   * const lead = agent({
+   *   model: "openai/gpt-4o",
+   *   instructions: "Delegate tasks to your team.",
+   *   tools: { view: viewTool, search: searchTool, edit: editTool, write: writeTool, run: runTool, find_files: findTool },
+   *   subagents: [explorer, coder],
+   * });
+   * ```
+   */
+  export function createSubagent(def: SubagentDefinition): SubagentDef;
+
+  interface SubagentDefinition {
+    /** Unique ID — used as the agentType in the meta-tool. */
+    id: string;
+    /** Display name. Default: same as id. */
+    name?: string;
+    /** System instructions for this subagent type. */
+    instructions: string;
+    /** Tool IDs this subagent can use (filtered from parent's tools). */
+    allowedTools: string[];
+    /** Model for this subagent type. Default: parent's model. */
+    model?: string;
+    /** Max tool-call rounds. Default: 50. */
+    maxSteps?: number;
+  }
+
+  interface SubagentDef {
+    readonly id: string;
+    readonly name: string;
+    readonly instructions: string;
+    readonly allowedTools: string[];
+    readonly model?: string;
+    readonly maxSteps: number;
+  }
+
+  type SubagentEvent =
+    | { type: "start"; agentType: string; task: string }
+    | { type: "text_delta"; agentType: string; text: string }
+    | { type: "tool_start"; agentType: string; toolName: string; args?: any }
+    | { type: "tool_end"; agentType: string; toolName: string; isError: boolean }
+    | { type: "end"; agentType: string; durationMs: number; isError: boolean };
+
   /** Zod schema builder — use for tool schemas, workflow schemas, etc. */
   export const z: Zod;
 
@@ -905,6 +967,14 @@ declare module "brainlet" {
      * ```
      */
     agents?: DynamicArg<Record<string, Agent>>;
+    /** Constrained subagent types — creates a `subagent` meta-tool.
+     * Each type defines instructions + allowedTools. The LLM calls
+     * `subagent({ agentType, task })` which spawns a fresh agent per invocation
+     * with filtered tools from the parent's tool set.
+     */
+    subagents?: SubagentDef[];
+    /** Callback for subagent lifecycle events (for UI rendering). */
+    onSubagentEvent?: (event: SubagentEvent) => void;
     /** Workflows available as tools. Each becomes `workflow-<name>`. */
     workflows?: Record<string, any>;
     /** Delegation hooks for sub-agent calls. */

@@ -717,3 +717,52 @@ func TestAgentSubagents(t *testing.T) {
 		t.Errorf("should contain 105: %v", out["hasAnswer"])
 	}
 }
+
+// TestAgentConstrainedSubagents tests the createSubagent() + subagents config pattern.
+func TestAgentConstrainedSubagents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	key := requireKey(t)
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/agent-constrained-subagents.js")
+	result, err := kit.EvalModule(context.Background(), "agent-constrained-subagents.js", code)
+	if err != nil {
+		t.Fatalf("EvalModule: %v", err)
+	}
+
+	var out map[string]any
+	json.Unmarshal([]byte(result), &out)
+	t.Logf("Constrained subagents: %v", out)
+
+	if out["error"] != nil {
+		t.Fatalf("error: %v\nstack: %v", out["error"], out["stack"])
+	}
+	if out["status"] != "ok" {
+		t.Errorf("status: %v", out["status"])
+	}
+	if out["hasResponse"] != "ok" {
+		t.Errorf("hasResponse: %v", out["hasResponse"])
+	}
+	if out["hasStartEvent"] != "ok" {
+		t.Errorf("should have start event: %v", out["hasStartEvent"])
+	}
+	if out["hasEndEvent"] != "ok" {
+		t.Errorf("should have end event: %v", out["hasEndEvent"])
+	}
+	if out["explorerUsed"] != "ok" {
+		t.Errorf("explorer subagent should have been used: %v", out["explorerUsed"])
+	}
+	t.Logf("Events: %v", out["eventCount"])
+}
