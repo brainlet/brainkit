@@ -350,6 +350,23 @@
     return mem;
   }
 
+  // resolveModelArg handles both static strings and dynamic resolver functions for model config.
+  // Static: "openai/gpt-4o-mini" → resolved model instance
+  // Dynamic: ({ requestContext }) => "openai/gpt-4o-mini" → function that resolves at call time
+  function resolveModelArg(modelArg) {
+    if (typeof modelArg === "function") {
+      // Dynamic resolver — wrap it to resolve the model string when called
+      return function(ctx) {
+        var result = modelArg(ctx);
+        if (result && typeof result.then === "function") {
+          return result.then(function(str) { return resolveModel(str); });
+        }
+        return resolveModel(result);
+      };
+    }
+    return resolveModel(modelArg);
+  }
+
   // agent() — create a persistent agent in THIS Kit
   function agent(config) {
     var agentOpts = {
@@ -357,30 +374,33 @@
       id: config.id || undefined,
       description: config.description || "",
       instructions: config.instructions || "",
-      model: resolveModel(config.model),
+      model: resolveModelArg(config.model),
       tools: config.tools || {},
     };
 
-    // Processors — middleware for input/output transformation and safety guardrails
+    // Forward all Mastra Agent config fields
+    if (config.maxSteps !== undefined) agentOpts.maxSteps = config.maxSteps;
+    if (config.defaultOptions) agentOpts.defaultOptions = config.defaultOptions;
+    if (config.requestContextSchema) agentOpts.requestContextSchema = config.requestContextSchema;
     if (config.inputProcessors) agentOpts.inputProcessors = config.inputProcessors;
     if (config.outputProcessors) agentOpts.outputProcessors = config.outputProcessors;
     if (config.maxProcessorRetries !== undefined) agentOpts.maxProcessorRetries = config.maxProcessorRetries;
-
-    // Scorers — auto-evaluate agent responses (fire-and-forget via hook system)
     if (config.scorers) agentOpts.scorers = config.scorers;
-
-    // Workspace — auto-injects filesystem/sandbox/skill tools into the agent
     if (config.workspace) agentOpts.workspace = config.workspace;
+    if (config.voice) agentOpts.voice = config.voice;
 
     // Memory: accept a Memory instance directly (Mastra-style) or a config object
+    var memoryInstance = null;
     var memoryOpts = null;
     if (config.memory) {
       if (config.memory instanceof embed.Memory || (config.memory.constructor && config.memory.constructor.name === "Memory")) {
         // Already a Memory instance — pass through (Mastra API)
         agentOpts.memory = config.memory;
+        memoryInstance = config.memory;
       } else {
         // Config object — create Memory from it
-        agentOpts.memory = createMemory(config.memory);
+        memoryInstance = createMemory(config.memory);
+        agentOpts.memory = memoryInstance;
         memoryOpts = {
           thread: typeof config.memory.thread === "string" ? { id: config.memory.thread } : config.memory.thread || { id: "default" },
           resource: config.memory.resource || "default",
@@ -391,14 +411,10 @@
     var a = new embed.Agent(agentOpts);
 
     // Inject storage shim (includes observability) for auto-tracing.
-    // Wrapped in try-catch: if the shim is missing methods that Agent needs,
-    // the agent still works (just without tracing).
     if (typeof a.__registerMastra === "function") {
       try {
         a.__registerMastra(_workflowStorageShim);
-      } catch(e) {
-        // Agent's __registerMastra may need more than workflows — fall back silently
-      }
+      } catch(e) {}
     }
 
     return {
@@ -424,6 +440,9 @@
         );
         return wrapStreamResult(result);
       },
+      // Direct access to the Memory instance — for thread/message management.
+      // null if no memory configured.
+      memory: memoryInstance,
     };
   }
 

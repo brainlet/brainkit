@@ -148,3 +148,50 @@ func TestMemoryIntegration_LibSQLLocal(t *testing.T) {
 	}
 	t.Logf("Local SQLite: %q color=%v dog=%v", out.Text, out.RemembersColor, out.RemembersDog)
 }
+
+// TestMemoryIntegration_ThreadManagement tests the Memory thread management API
+// accessible via agent.memory (getThreadById, listThreads, saveThread, updateThread, deleteThread).
+func TestMemoryIntegration_ThreadManagement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	key := requireKey(t)
+	dbPath := filepath.Join(t.TempDir(), "thread-mgmt.db")
+
+	kit, err := New(Config{
+		Namespace: "test",
+		Providers: map[string]ProviderConfig{
+			"openai": {APIKey: key},
+		},
+		Storages: map[string]StorageConfig{
+			"default": {Path: dbPath},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kit.Close()
+
+	code := loadFixture(t, "testdata/ts/memory-thread-management.js")
+	result, err := kit.EvalModule(context.Background(), "memory-thread-management.js", code)
+	if err != nil {
+		t.Fatalf("EvalModule: %v", err)
+	}
+
+	var out struct {
+		SaveThread    string `json:"saveThread"`
+		GetThreadById string `json:"getThreadById"`
+		ListThreads   any    `json:"listThreads"`
+	}
+	json.Unmarshal([]byte(result), &out)
+
+	t.Logf("Thread management: save=%v get=%v list=%v", out.SaveThread, out.GetThreadById, out.ListThreads)
+
+	if out.SaveThread != "ok" {
+		t.Errorf("saveThread: got %v, want ok", out.SaveThread)
+	}
+	if out.GetThreadById != "t1" {
+		t.Errorf("getThreadById: got %v, want t1", out.GetThreadById)
+	}
+}

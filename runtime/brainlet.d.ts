@@ -188,13 +188,20 @@ declare module "brainlet" {
   // ── Vector Stores ───────────────────────────────────────────────
 
   /** LibSQL vector store — for semantic recall and RAG. */
-  export const LibSQLVector: VectorStoreConstructor;
+  export const LibSQLVector: LibSQLVectorConstructor;
 
   /** PostgreSQL pgvector store — for semantic recall and RAG. */
   export const PgVector: VectorStoreConstructor;
 
   /** MongoDB Atlas vector store — for semantic recall and RAG. */
   export const MongoDBVector: VectorStoreConstructor;
+
+  interface LibSQLVectorConstructor {
+    /** Brainkit mode — auto-connects to Kit's embedded storage. */
+    new (config: { id?: string; storage?: string }): VectorStore;
+    /** Mastra mode — explicit URL (passthrough). */
+    new (config: { id?: string; url: string; authToken?: string }): VectorStore;
+  }
 
   interface VectorStoreConstructor {
     new (config: { id?: string; url?: string; connectionString?: string; [key: string]: any }): VectorStore;
@@ -677,6 +684,10 @@ declare module "brainlet" {
     maxProcessorRetries?: number;
     /** Scorers — auto-evaluate responses after each generate()/stream() call (fire-and-forget). */
     scorers?: DynamicArg<Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>>;
+    /** Workspace — auto-injects filesystem, sandbox, skills, search tools into the agent. */
+    workspace?: any;
+    /** Voice — TTS/STT provider for speak/listen capabilities. */
+    voice?: any;
   }
 
   interface AgentMemoryConfig {
@@ -765,6 +776,18 @@ declare module "brainlet" {
   interface Agent {
     generate(prompt: string | Message[], options?: GenerateOptions): Promise<GenerateResult>;
     stream(prompt: string | Message[], options?: StreamOptions): Promise<StreamResult>;
+    /** Direct access to the Memory instance. null if no memory configured.
+     * Use for thread management, message queries, working memory, etc.
+     *
+     * @example
+     * ```ts
+     * const a = agent({ model: "openai/gpt-4o-mini", memory: { thread: "t1", storage: store } });
+     * const threads = await a.memory.listThreads({ resourceId: "user-1" });
+     * const thread = await a.memory.getThreadById({ threadId: "t1" });
+     * await a.memory.deleteMessages(["msg-1", "msg-2"]);
+     * ```
+     */
+    memory: MemoryInstance | null;
   }
 
   interface GenerateOptions {
@@ -829,16 +852,39 @@ declare module "brainlet" {
     telemetry?: { isEnabled?: boolean; recordInputs?: boolean; recordOutputs?: boolean; functionId?: string };
     /** Tracing options. */
     tracingOptions?: { metadata?: Record<string, any>; requestContextKeys?: string[]; traceId?: string };
+    /** Override instructions for this call. */
+    instructions?: string;
+    /** System message for this call. */
+    system?: string;
+    /** Automatically resume suspended tools without human approval. */
+    autoResumeSuspendedTools?: boolean;
+    /** Include raw provider chunks in stream output. */
+    includeRawChunks?: boolean;
     /** Callbacks. */
-    onStepFinish?: (step: any) => void;
-    onFinish?: (result: any) => void;
-    onChunk?: (chunk: any) => void;
-    onError?: (error: any) => void;
+    onStepFinish?: (step: any) => void | Promise<void>;
+    onFinish?: (result: any) => void | Promise<void>;
+    onChunk?: (chunk: any) => void | Promise<void>;
+    onError?: (error: { error: Error | string }) => void | Promise<void>;
+    onAbort?: () => void | Promise<void>;
+    /** Called after each LLM iteration. Return { continue: false } to stop. */
+    onIterationComplete?: (ctx: any) => { continue?: boolean; feedback?: string } | void;
     /** Per-call input/output processors. */
     inputProcessors?: InputProcessor[];
     outputProcessors?: OutputProcessor[];
+    /** Max processor retries (overrides agent config). */
+    maxProcessorRetries?: number;
     /** Per-call scorers. */
     scorers?: Record<string, any>;
+    /** Task completion pattern (supervisor). Scorers check if the task is done. */
+    isTaskComplete?: {
+      scorers: Array<{ scorer: any; threshold?: number }>;
+      strategy?: "all" | "any";
+    };
+    /** Delegation hooks — intercept sub-agent and workflow calls. */
+    delegation?: {
+      onDelegationStart?: (ctx: { agentId: string; input: any }) => { allowed?: boolean; modifiedInput?: any } | void;
+      onDelegationComplete?: (ctx: { agentId: string; output: any }) => void;
+    };
   }
 
   interface StreamOptions extends GenerateOptions {}
@@ -1160,36 +1206,79 @@ declare module "brainlet" {
   }
 
   interface MemoryInstance {
-    /** Get the memory configuration. */
-    getConfig(): any;
-    /** Retrieve messages + observations for a thread. */
-    recall(opts: { threadId: string; resourceId?: string; memoryConfig?: any }): Promise<MemoryRecallResult>;
+    // ── Thread Management ────────────────────────────────────────
+
+    /** Create a new thread. */
+    createThread(opts: { resourceId: string; threadId?: string; title?: string; metadata?: any }): Promise<MemoryThread>;
     /** Get a thread by ID. */
     getThreadById(opts: { threadId: string }): Promise<MemoryThread | null>;
-    /** List threads with pagination. */
+    /** List threads with pagination and filtering. */
     listThreads(opts?: { resourceId?: string; page?: number; perPage?: number }): Promise<{ threads: MemoryThread[]; total: number }>;
-    /** Create a new thread. */
-    saveThread(opts: { thread: { id?: string; title?: string; resourceId?: string; metadata?: any } }): Promise<MemoryThread>;
-    /** Update thread metadata. */
+    /** Save/upsert a thread. */
+    saveThread(opts: { thread: { id?: string; title?: string; resourceId?: string; metadata?: any; createdAt?: string; updatedAt?: string } }): Promise<MemoryThread>;
+    /** Update thread title or metadata. */
     updateThread(opts: { threadId: string; title?: string; metadata?: any }): Promise<MemoryThread>;
-    /** Delete a thread and its messages. */
+    /** Delete a thread and all its messages. */
     deleteThread(opts: { threadId: string }): Promise<void>;
+
+    // ── Thread Cloning ───────────────────────────────────────────
+
+    /** Clone a thread (messages, working memory, observations). */
+    cloneThread(opts: { sourceThreadId: string; newThreadId?: string; resourceId?: string; title?: string; metadata?: any; options?: { filterMessages?: (msg: any) => boolean } }): Promise<{ thread: MemoryThread; clonedMessages: any[] }>;
+    /** Check if a thread is a clone. */
+    isClone(thread: MemoryThread): boolean;
+    /** Get the source thread for a clone. */
+    getSourceThread(opts: { threadId: string }): Promise<MemoryThread | null>;
+    /** List all clones of a source thread. */
+    listClones(opts: { sourceThreadId: string }): Promise<MemoryThread[]>;
+    /** Get the full clone history chain (oldest → newest). */
+    getCloneHistory(threadId: string): Promise<MemoryThread[]>;
+
+    // ── Message Management ───────────────────────────────────────
+
+    /** Retrieve messages + observations for a thread (the main recall API). */
+    recall(opts: { threadId: string; resourceId?: string; vectorSearchString?: string; perPage?: number | false; page?: number; orderBy?: "asc" | "desc"; filter?: any }): Promise<MemoryRecallResult>;
     /** Save messages to a thread. */
     saveMessages(opts: { messages: any[] }): Promise<void>;
-    /** Update existing messages. */
-    updateMessages(opts: { messages: any[]; memoryConfig?: any }): Promise<any[]>;
+    /** Update existing messages. Auto-syncs vector embeddings if semantic recall is enabled. */
+    updateMessages(opts: { messages: Array<{ id: string } & Record<string, any>> }): Promise<any[]>;
     /** Delete messages by ID. */
-    deleteMessages(messageIds: string[]): Promise<void>;
+    deleteMessages(messageIds: string[] | Array<{ id: string }>): Promise<void>;
+    /** Get messages by their IDs. */
+    listMessagesById(opts: { messageIds: string[] }): Promise<any[]>;
+
+    // ── Working Memory ───────────────────────────────────────────
+
     /** Get working memory for a thread/resource. */
     getWorkingMemory(opts: { threadId: string; resourceId?: string }): Promise<string | null>;
     /** Update working memory content. */
     updateWorkingMemory(opts: { threadId: string; resourceId?: string; content: string }): Promise<void>;
-    /** Clone a thread (including messages, working memory, and observations). */
-    cloneThread(opts: { sourceThreadId: string; destinationThreadId?: string; resourceId?: string }): Promise<any>;
-    /** Get the input processors (includes OM processor if configured). */
+    /** Get the working memory template (markdown or JSON schema). */
+    getWorkingMemoryTemplate(opts?: { memoryConfig?: any }): Promise<{ format: "json" | "markdown"; content: string } | null>;
+    /** Build a formatted system message including working memory and tool instructions. */
+    getSystemMessage(opts: { threadId: string; resourceId?: string }): Promise<string | null>;
+
+    // ── Configuration & Introspection ────────────────────────────
+
+    /** Get the memory configuration. */
+    getConfig(): any;
+    /** Get the merged thread config with defaults applied. */
+    getMergedThreadConfig(config?: any): any;
+    /** List tools auto-provided by memory (e.g. updateWorkingMemory tool). */
+    listTools(): any[];
+    /** Get input processors (includes OM processor if configured). */
     getInputProcessors(configured?: InputProcessor[], context?: any): Promise<InputProcessor[]>;
-    /** Get the output processors (includes OM processor if configured). */
+    /** Get output processors (includes OM processor if configured). */
     getOutputProcessors(configured?: OutputProcessor[], context?: any): Promise<OutputProcessor[]>;
+
+    // ── Runtime Reconfiguration ──────────────────────────────────
+
+    /** Attach or change the storage adapter. */
+    setStorage(storage: StorageProvider): void;
+    /** Attach or change the vector store for semantic recall. */
+    setVector(vector: VectorStore): void;
+    /** Set the embedding model for semantic recall. */
+    setEmbedder(embedder: string | any): void;
   }
 
   interface MemoryConstructor {
@@ -1208,7 +1297,10 @@ declare module "brainlet" {
   }
 
   interface LibSQLStoreConstructor {
-    new (config: { id: string; url: string; authToken?: string }): StorageProvider;
+    /** Brainkit mode — auto-connects to Kit's embedded storage. */
+    new (config: { id: string; storage?: string }): StorageProvider;
+    /** Mastra mode — explicit URL (passthrough). */
+    new (config: { id: string; url: string; authToken?: string; maxRetries?: number; initialBackoffMs?: number; disableInit?: boolean }): StorageProvider;
   }
 
   interface UpstashStoreConstructor {
