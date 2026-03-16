@@ -443,6 +443,8 @@
       // Direct access to the Memory instance — for thread/message management.
       // null if no memory configured.
       memory: memoryInstance,
+      // Internal: raw Mastra Agent instance (used by runEvals, not part of public API).
+      _mastraAgent: a,
     };
   }
 
@@ -919,7 +921,15 @@
       }
       return scorer;
     },
-    runEvals: embed.runEvals,
+    // Wrapped runEvals: accepts our wrapped agent (extracts internal Mastra Agent for target).
+    runEvals: function(config) {
+      var cfg = Object.assign({}, config);
+      // If target is our wrapped agent, extract the raw Mastra Agent
+      if (cfg.target && cfg.target._mastraAgent) {
+        cfg.target = cfg.target._mastraAgent;
+      }
+      return embed.runEvals(cfg);
+    },
     scorers: {
       // Rule-based (no LLM)
       completeness: wrapPrebuiltScorer(embed.createCompletenessScorer),
@@ -939,6 +949,25 @@
       noiseSensitivity: wrapLLMScorer(embed.createNoiseSensitivityScorerLLM),
       promptAlignment: wrapLLMScorer(embed.createPromptAlignmentScorerLLM),
       toolCallAccuracy: wrapLLMScorer(embed.createToolCallAccuracyScorerLLM),
+    },
+
+    // PROCESSORS — built-in input/output middleware
+    processors: {
+      // Security & Safety
+      ModerationProcessor: embed.ModerationProcessor,
+      PromptInjectionDetector: embed.PromptInjectionDetector,
+      PIIDetector: embed.PIIDetector,
+      SystemPromptScrubber: embed.SystemPromptScrubber,
+      // Data Transformation
+      UnicodeNormalizer: embed.UnicodeNormalizer,
+      LanguageDetector: embed.LanguageDetector,
+      // Stream & Token
+      TokenLimiterProcessor: embed.TokenLimiterProcessor,
+      BatchPartsProcessor: embed.BatchPartsProcessor,
+      StructuredOutputProcessor: embed.StructuredOutputProcessor,
+      // Tool Management
+      ToolCallFilter: embed.ToolCallFilter,
+      ToolSearchProcessor: embed.ToolSearchProcessor,
     },
 
     // MCP

@@ -38,6 +38,7 @@ export const createDocumentChunkerTool = globalThis.__brainlet.createDocumentChu
 export const createGraphRAGTool = globalThis.__brainlet.createGraphRAGTool;
 export const rerank = globalThis.__brainlet.rerank;
 export const rerankWithScorer = globalThis.__brainlet.rerankWithScorer;
+export const processors = globalThis.__brainlet.processors;
 export const Workspace = globalThis.__brainlet.Workspace;
 export const LocalFilesystem = globalThis.__brainlet.LocalFilesystem;
 export const LocalSandbox = globalThis.__brainlet.LocalSandbox;

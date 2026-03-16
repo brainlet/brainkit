@@ -762,8 +762,55 @@ declare module "brainlet" {
     output: any;
   }
 
-  /** Batch evaluation — run scorers against datasets. */
-  export function runEvals(config: any): Promise<any>;
+  /**
+   * Batch evaluation — run scorers against a dataset.
+   *
+   * @example
+   * ```ts
+   * const results = await runEvals({
+   *   target: myAgent,
+   *   data: [
+   *     { input: "What is 2+2?", groundTruth: "4" },
+   *     { input: "Capital of France?", groundTruth: "Paris" },
+   *   ],
+   *   scorers: [relevanceScorer, accuracyScorer],
+   *   concurrency: 3,
+   * });
+   * console.log(results.scores); // { relevance: { average: 0.85 }, accuracy: { average: 0.9 } }
+   * ```
+   */
+  export function runEvals(config: RunEvalsConfig): Promise<RunEvalsResult>;
+
+  interface RunEvalsConfig {
+    /** Agent to evaluate. Accepts brainkit wrapped agents or raw Mastra agents. */
+    target: Agent;
+    /** Dataset items — each has input (prompt) and optional groundTruth. */
+    data: RunEvalsDataItem[];
+    /** Scorers to run against each item's output. */
+    scorers: ScorerBuilder[];
+    /** Options passed to every target.generate() call. */
+    targetOptions?: Partial<GenerateOptions>;
+    /** Called after each item is scored. */
+    onItemComplete?: (params: { item: RunEvalsDataItem; targetResult: any; scorerResults: Record<string, any> }) => void | Promise<void>;
+    /** Max concurrent evaluations. Default: 1. */
+    concurrency?: number;
+  }
+
+  interface RunEvalsDataItem {
+    /** Input prompt or messages for the agent. */
+    input: string | Message[];
+    /** Expected/reference output for comparison scorers. */
+    groundTruth?: string;
+    /** Request context for this item. */
+    requestContext?: Record<string, any>;
+  }
+
+  interface RunEvalsResult {
+    /** Per-scorer aggregated scores (averages across all items). */
+    scores: Record<string, { average: number; values: number[] }>;
+    /** Summary metadata. */
+    summary: { totalItems: number };
+  }
 
   /** Pre-built scorers — rule-based and LLM-based. */
   export const scorers: {

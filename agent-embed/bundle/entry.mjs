@@ -45,6 +45,21 @@ import {
   createToolCallAccuracyScorerLLM,
 } from '@mastra/evals/scorers/prebuilt';
 
+// Processors — built-in input/output middleware
+import {
+  ModerationProcessor,
+  PromptInjectionDetector,
+  PIIDetector,
+  SystemPromptScrubber,
+  UnicodeNormalizer,
+  LanguageDetector,
+  TokenLimiterProcessor,
+  BatchPartsProcessor,
+  StructuredOutputProcessor,
+  ToolCallFilter,
+  ToolSearchProcessor,
+} from '@mastra/core/processors';
+
 // RAG — document chunking, vector query tools, graph RAG, reranking
 import { MDocument, GraphRAG } from '@mastra/rag';
 import { createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool } from '@mastra/rag';
@@ -196,6 +211,19 @@ globalThis.__agent_embed = {
   createNoiseSensitivityScorerLLM,
   createPromptAlignmentScorerLLM,
   createToolCallAccuracyScorerLLM,
+
+  // Processors
+  ModerationProcessor,
+  PromptInjectionDetector,
+  PIIDetector,
+  SystemPromptScrubber,
+  UnicodeNormalizer,
+  LanguageDetector,
+  TokenLimiterProcessor,
+  BatchPartsProcessor,
+  StructuredOutputProcessor,
+  ToolCallFilter,
+  ToolSearchProcessor,
 
   // RAG
   MDocument,
