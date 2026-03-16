@@ -217,6 +217,159 @@ declare module "brainlet" {
     deleteVectors(opts: { indexName: string; ids?: string[]; filter?: any }): Promise<void>;
   }
 
+  // ── Workspace ───────────────────────────────────────────────
+
+  /**
+   * Workspace — auto-injects filesystem, sandbox, skills, and search tools into agents.
+   *
+   * @example
+   * ```ts
+   * const ws = new Workspace({
+   *   id: "my-workspace",
+   *   filesystem: new LocalFilesystem({ basePath: "./project" }),
+   *   sandbox: new LocalSandbox({ workingDirectory: "./project" }),
+   *   bm25: true,
+   *   vectorStore: new LibSQLVector({ id: "ws-vectors" }),
+   *   embedder: async (text) => { const r = await ai.embed({ model: "openai/text-embedding-3-small", value: text }); return r.embedding; },
+   * });
+   * const a = agent({ model: "openai/gpt-4o-mini", workspace: ws });
+   * ```
+   */
+  export const Workspace: WorkspaceConstructor;
+
+  /** Local filesystem provider backed by Go bridges (jsbridge/fs.go). */
+  export const LocalFilesystem: LocalFilesystemConstructor;
+
+  /** Local sandbox provider backed by Go bridges (jsbridge/exec.go). */
+  export const LocalSandbox: LocalSandboxConstructor;
+
+  interface WorkspaceConstructor {
+    new (config: WorkspaceConfig): WorkspaceInstance;
+  }
+
+  interface WorkspaceConfig {
+    id?: string;
+    name?: string;
+    /** Filesystem provider. */
+    filesystem: FilesystemInstance;
+    /** Sandbox provider for command execution. */
+    sandbox?: SandboxInstance;
+    /** Enable BM25 keyword search. */
+    bm25?: boolean | { k1?: number; b?: number };
+    /** Vector store for semantic search. Requires `embedder`. */
+    vectorStore?: VectorStore;
+    /** Embedding function for vector search. Required if `vectorStore` is set. */
+    embedder?: (text: string) => Promise<number[]>;
+    /** Custom index name for vector search. Default: auto-generated from workspace ID. */
+    searchIndexName?: string;
+    /** Per-tool configuration — rename, enable/disable, require approval. */
+    tools?: WorkspaceToolsConfig;
+    /** Skills directory paths for SKILL.md discovery. */
+    skills?: string[];
+    /** LSP configuration for post-edit diagnostics. */
+    lsp?: boolean | LSPConfig;
+  }
+
+  /** Per-tool configuration for workspace tools. */
+  type WorkspaceToolsConfig = {
+    /** Default enabled state for all tools. */
+    enabled?: boolean;
+    /** Default approval requirement for all tools. */
+    requireApproval?: boolean;
+  } & Record<string, WorkspaceToolConfig>;
+
+  interface WorkspaceToolConfig {
+    /** Whether this tool is enabled. Default: true. */
+    enabled?: boolean;
+    /** Custom name exposed to the LLM (e.g. rename "read_file" to "view"). */
+    name?: string;
+    /** Require user approval before execution. */
+    requireApproval?: boolean;
+    /** For write tools: require read_file before write_file. */
+    requireReadBeforeWrite?: boolean;
+    /** Max output tokens for this tool's response. */
+    maxOutputTokens?: number;
+  }
+
+  interface LSPConfig {
+    /** Diagnostic timeout in ms. Default: 5000. */
+    diagnosticTimeout?: number;
+    /** Server init timeout in ms. Default: 15000. */
+    initTimeout?: number;
+    /** Disable specific LSP servers. */
+    disableServers?: string[];
+    /** Custom binary paths. */
+    binaryOverrides?: Record<string, string>;
+    /** Package runner for missing binaries. */
+    packageRunner?: string;
+  }
+
+  interface WorkspaceInstance {
+    /** Initialize the workspace (creates indexes, starts LSP servers). */
+    init(): Promise<void>;
+    /** Destroy the workspace (stops LSP servers, cleans up). */
+    destroy(): Promise<void>;
+    /** Search workspace content. Mode auto-detected based on config. */
+    search(query: string, options?: WorkspaceSearchOptions): Promise<WorkspaceSearchResult[]>;
+    /** Index a file for search. */
+    index(filePath: string, content: string): Promise<void>;
+    /** Get workspace info (id, name, base path). */
+    getInfo(): any;
+    /** Get workspace instructions for agent context. */
+    getInstructions(): string;
+    /** Get the current tools configuration. */
+    getToolsConfig(): WorkspaceToolsConfig | undefined;
+    /** Update tools configuration at runtime (e.g. switch modes). */
+    setToolsConfig(config: WorkspaceToolsConfig | undefined): void;
+    /** The filesystem provider. */
+    filesystem: FilesystemInstance;
+  }
+
+  interface WorkspaceSearchOptions {
+    /** Number of results to return. Default: 10. */
+    topK?: number;
+    /** Minimum score threshold. */
+    minScore?: number;
+    /** Search mode. Auto-detected if omitted (hybrid if both BM25+vector, else whichever is available). */
+    mode?: "bm25" | "vector" | "hybrid";
+    /** Weight for vector scores in hybrid mode (0-1). Default: 0.5. */
+    vectorWeight?: number;
+    /** Metadata filter (vector search only). */
+    filter?: Record<string, any>;
+  }
+
+  interface WorkspaceSearchResult {
+    id: string;
+    content: string;
+    score: number;
+    scoreDetails?: { vector?: number; bm25?: number };
+    metadata?: Record<string, any>;
+    lineRange?: { start: number; end: number };
+  }
+
+  interface LocalFilesystemConstructor {
+    new (config: { basePath: string; allowedPaths?: string[]; contained?: boolean }): FilesystemInstance;
+  }
+
+  interface LocalSandboxConstructor {
+    new (config: { workingDirectory?: string; env?: Record<string, string>; defaultShell?: string }): SandboxInstance;
+  }
+
+  interface FilesystemInstance {
+    readFile(path: string): Promise<string>;
+    writeFile(path: string, content: string): Promise<void>;
+    stat(path: string): Promise<any>;
+    readdir(path: string): Promise<string[]>;
+    mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+    rm(path: string, options?: { recursive?: boolean }): Promise<void>;
+    /** Update allowed paths at runtime. */
+    setAllowedPaths?(paths: string[]): void;
+  }
+
+  interface SandboxInstance {
+    exec(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // PLATFORM — through bus, Go bridges, interceptors apply
   // ═══════════════════════════════════════════════════════════════
@@ -684,8 +837,22 @@ declare module "brainlet" {
     maxProcessorRetries?: number;
     /** Scorers — auto-evaluate responses after each generate()/stream() call (fire-and-forget). */
     scorers?: DynamicArg<Record<string, { scorer: ScorerBuilder; sampling?: { type: "none" } | { type: "ratio"; rate: number } }>>;
-    /** Workspace — auto-injects filesystem, sandbox, skills, search tools into the agent. */
-    workspace?: any;
+    /** Workspace — auto-injects filesystem, sandbox, skills, search tools into the agent.
+     * Can be a static Workspace instance or a dynamic factory resolved per-request.
+     *
+     * @example
+     * ```ts
+     * // Static workspace
+     * workspace: new Workspace({ filesystem: new LocalFilesystem({ basePath: "./project" }) })
+     *
+     * // Dynamic workspace (resolved per generate/stream call)
+     * workspace: ({ requestContext }) => {
+     *   const path = requestContext.get("projectPath");
+     *   return new Workspace({ filesystem: new LocalFilesystem({ basePath: path }) });
+     * }
+     * ```
+     */
+    workspace?: WorkspaceInstance | DynamicArg<WorkspaceInstance | undefined>;
     /** Voice — TTS/STT provider for speak/listen capabilities. */
     voice?: any;
   }
@@ -1217,9 +1384,9 @@ declare module "brainlet" {
     /** Save/upsert a thread. */
     saveThread(opts: { thread: { id?: string; title?: string; resourceId?: string; metadata?: any; createdAt?: string; updatedAt?: string } }): Promise<MemoryThread>;
     /** Update thread title or metadata. */
-    updateThread(opts: { threadId: string; title?: string; metadata?: any }): Promise<MemoryThread>;
+    updateThread(opts: { id: string; title: string; metadata: Record<string, any>; memoryConfig?: any }): Promise<MemoryThread>;
     /** Delete a thread and all its messages. */
-    deleteThread(opts: { threadId: string }): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
 
     // ── Thread Cloning ───────────────────────────────────────────
 
