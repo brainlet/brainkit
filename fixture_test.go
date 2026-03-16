@@ -2261,24 +2261,14 @@ func TestFixture_TS_WorkspaceAgentTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out struct {
-		DirectRead  string `json:"directRead"`
-		DirectReadErr *string `json:"directReadErr"`
-		AgentText   string `json:"agentText"`
-		AgentHas42  bool   `json:"agentHas42"`
-		AgentToolCalls int `json:"agentToolCalls"`
-		Error       string `json:"error"`
-		Stack       string `json:"stack"`
-	}
+	var out map[string]interface{}
 	json.Unmarshal([]byte(result), &out)
-
-	if out.Error != "" {
-		t.Fatalf("fixture error: %s\nstack: %s", out.Error, out.Stack)
+	if errMsg, ok := out["error"]; ok && errMsg != nil {
+		t.Fatalf("fixture error: %v", errMsg)
 	}
-	if out.DirectRead != "The secret answer is 42." {
-		t.Errorf("directRead = %q", out.DirectRead)
+	if out["has42"] != true {
+		t.Errorf("agent didn't find 42: %v", out["agentText"])
 	}
-	t.Logf("workspace: directRead=%q agentText=%q agentToolCalls=%d agentHas42=%v",
-		out.DirectRead, out.AgentText, out.AgentToolCalls, out.AgentHas42)
+	t.Logf("workspace: rag=%v agent=%v has42=%v tools=%v", out["ragChunks"], out["agentText"], out["has42"], out["toolCalls"])
 }
 

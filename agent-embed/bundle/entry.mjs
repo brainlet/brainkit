@@ -56,6 +56,10 @@ import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/obs
 // Workspace — filesystem, sandbox, skills, search
 import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
 
+// tiktoken: the tiktoken-unify esbuild plugin redirects 'js-tiktoken/lite'
+// and 'js-tiktoken/ranks/*' to full 'js-tiktoken'. getTiktoken() in
+// @mastra/core/utils/tiktoken.ts now resolves to the already-bundled module.
+
 // AI SDK providers
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';

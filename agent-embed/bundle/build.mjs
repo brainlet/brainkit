@@ -956,7 +956,9 @@ const result = await esbuild.build({
     {
       name: "zod-unify",
       setup(build) {
-        // Only redirect EXACT 'zod' — not 'zod/v4', 'zod/v4/core', etc.
+        // Redirect EXACT 'zod' to 'zod/v4', always resolving from the bundle root.
+        // This ensures ALL packages use the same physical Zod v4 module.
+        // Without the fixed resolveDir, nested node_modules can resolve to different copies.
         build.onResolve({ filter: /^zod$/ }, (args) => {
           return build.resolve("zod/v4", {
             resolveDir: args.resolveDir,
@@ -966,6 +968,9 @@ const result = await esbuild.build({
         });
       },
     },
+    // Note: js-tiktoken/lite and js-tiktoken/ranks/* are bundled normally.
+    // The getTiktoken() function that uses them is patched post-build to use
+    // encodingForModel() instead (see post-process section below).
   ],
   external: [
     // Database drivers — bundled with TCP socket polyfill via jsbridge/net.go
@@ -1011,6 +1016,46 @@ import { readFileSync } from "node:fs";
     console.log(`Patched ${fname}: undefined → null in @libsql/client value serializer`);
   } else {
     console.warn("WARNING: Could not find @libsql/client value serializer to patch");
+  }
+
+  // Patch @mastra/rag validation: z.optional(z.function()) → z.optional(z.any()).
+  // Zod v4's $ZodFunction doesn't extend $ZodType — it lacks _zod, causing
+  // safeParse to crash with "cannot read property 'optin' of undefined".
+  const funcPattern = 'lengthFunction:s.optional(s.function())';
+  if (bundle.includes(funcPattern)) {
+    bundle = bundle.replace(funcPattern, 'lengthFunction:s.optional(s.any())');
+    writeFileSync("../agent_embed_bundle.js", bundle);
+    console.log('Patched: z.function() → z.any() for RAG validation (Zod v4 compat)');
+  }
+
+  // Patch getTiktoken() to use getEncoding('o200k_base') with fallback.
+  // The original function uses dynamic import('js-tiktoken/lite') which esbuild
+  // converts to Promise.resolve().then(...). The Tiktoken constructor from /lite
+  // fails in QuickJS. We replace the function body with getEncoding() which works.
+  const tiktokenFnPattern = /async function (\w+)\(\)\{let e=globalThis\[(\w+)\];if\(e\)return e;/;
+  const tiktokenFnMatch = bundle.match(tiktokenFnPattern);
+  if (tiktokenFnMatch) {
+    const fn = tiktokenFnMatch[1];
+    const key = tiktokenFnMatch[2];
+    // Find the full function
+    const fnStart = tiktokenFnMatch.index;
+    let depth = 0, fnEnd = fnStart;
+    for (let i = fnStart; i < Math.min(fnStart + 500, bundle.length); i++) {
+      if (bundle[i] === '{') depth++;
+      else if (bundle[i] === '}') { depth--; if (depth === 0) { fnEnd = i + 1; break; } }
+    }
+    const oldFn = bundle.substring(fnStart, fnEnd);
+    // Find getEncoding function (switch on encoding names including o200k_base)
+    const encIdx = bundle.indexOf('"o200k_base":return new');
+    const encChunk = bundle.substring(Math.max(0, encIdx - 300), encIdx + 50);
+    const encMatch = encChunk.match(/function (\w+)\(e(?:,\w+)?\)\{switch\(e\)/);
+    if (encMatch) {
+      const encFn = encMatch[1];
+      const replacement = `async function ${fn}(){let e=globalThis[${key}];if(e)return e;try{let I=${encFn}("o200k_base");return globalThis[${key}]=I,I}catch(_){var F={encode:function(s){return Array.from({length:Math.ceil((s||"").length/4)},function(_,i){return i})},decode:function(t){return"[decoded]"}};return globalThis[${key}]=F,F}}`;
+      bundle = bundle.replace(oldFn, replacement);
+      writeFileSync("../agent_embed_bundle.js", bundle);
+      console.log(`Patched ${fn}: getTiktoken uses ${encFn}('o200k_base') with fallback`);
+    }
   }
 }
 

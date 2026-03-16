@@ -23,15 +23,40 @@ func (p *FSPolyfill) Name() string { return "fs" }
 
 func (p *FSPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
+// fsErrCode maps Go os errors to Node.js errno codes.
+// Mastra's LocalFilesystem checks error.code === 'ENOENT' etc.
+func fsErrCode(err error) string {
+	if os.IsNotExist(err) {
+		return "ENOENT"
+	}
+	if os.IsExist(err) {
+		return "EEXIST"
+	}
+	if os.IsPermission(err) {
+		return "EACCES"
+	}
+	return ""
+}
+
 // fsAsync runs a function in a tracked goroutine and resolves/rejects a Promise.
+// The rejected error has a .code property matching Node.js errno codes (ENOENT, EEXIST, etc.)
+// so Mastra's error checks like isEnoentError(err) work correctly.
 func (p *FSPolyfill) fsAsync(ctx *quickjs.Context, work func() (string, error)) *quickjs.Value {
 	return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 		p.bridge.Go(func(goCtx context.Context) {
 			result, err := work()
-			if goCtx.Err() != nil { return }
+			if goCtx.Err() != nil {
+				return
+			}
 			if err != nil {
+				code := fsErrCode(err)
 				ctx.Schedule(func(ctx *quickjs.Context) {
 					errVal := ctx.NewError(err)
+					if code != "" {
+						codeVal := ctx.NewString(code)
+						errVal.Set("code", codeVal)
+						codeVal.Free()
+					}
 					defer errVal.Free()
 					reject(errVal)
 				})
