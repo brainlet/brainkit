@@ -634,6 +634,32 @@ if (typeof setInterval === "undefined") {
   };
 }
 
+// ─── Intl polyfill ──────────────────────────────────────────────────────
+// Observational memory uses Intl.DateTimeFormat for timestamp formatting.
+// QuickJS doesn't have Intl. Minimal stub that formats dates as ISO strings.
+if (typeof Intl === "undefined") {
+  // Observational memory calls Intl.DateTimeFormat() WITHOUT new — must return an object either way.
+  function _DateTimeFormat(locale, opts) {
+    if (!(this instanceof _DateTimeFormat)) return new _DateTimeFormat(locale, opts);
+    this._opts = opts || {};
+  }
+  _DateTimeFormat.prototype.format = function(date) {
+    var d = date || new Date();
+    if (!(d instanceof Date)) d = new Date(d);
+    var Y = d.getFullYear();
+    var M = String(d.getMonth() + 1).padStart(2, "0");
+    var D = String(d.getDate()).padStart(2, "0");
+    var h = String(d.getHours()).padStart(2, "0");
+    var m = String(d.getMinutes()).padStart(2, "0");
+    return Y + "-" + M + "-" + D + " " + h + ":" + m;
+  };
+  _DateTimeFormat.prototype.resolvedOptions = function() {
+    return { locale: "en-US", timeZone: "UTC" };
+  };
+  _DateTimeFormat.supportedLocalesOf = function() { return ["en-US"]; };
+  globalThis.Intl = { DateTimeFormat: _DateTimeFormat };
+}
+
 // ─── Event utilities ────────────────────────────────────────────────────
 // EventTarget — used by AbortSignal inheritance in some SDK code.
 if (typeof EventTarget === "undefined") {

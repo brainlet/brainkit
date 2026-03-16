@@ -888,6 +888,27 @@ const result = await esbuild.build({
   outfile: "../agent_embed_bundle.js",
 });
 
+// Post-process: patch @libsql/client value serializer to handle `undefined`.
+// The serializer function checks null, string, number, bigint, boolean, ArrayBuffer,
+// Uint8Array, Date, object — but NOT undefined. The OM processor stores message metadata
+// with undefined fields that reach the serializer. Fix: coerce undefined to null.
+import { readFileSync } from "node:fs";
+{
+  let bundle = readFileSync("../agent_embed_bundle.js", "utf8");
+  const oldPattern = /function (\w+)\(e\)\{if\(e===null\)return null;if\(typeof e==="string"\)return e;/;
+  const match = bundle.match(oldPattern);
+  if (match) {
+    const fname = match[1];
+    const old = `function ${fname}(e){if(e===null)return null;`;
+    const fix = `function ${fname}(e){if(e===void 0||e===null)return null;`;
+    bundle = bundle.replace(old, fix);
+    writeFileSync("../agent_embed_bundle.js", bundle);
+    console.log(`Patched ${fname}: undefined → null in @libsql/client value serializer`);
+  } else {
+    console.warn("WARNING: Could not find @libsql/client value serializer to patch");
+  }
+}
+
 // Report size
 const stats = statSync("../agent_embed_bundle.js");
 console.log(`Bundle size: ${(stats.size / 1024).toFixed(1)} KB`);

@@ -152,7 +152,7 @@
   var _workflowStorageShim = {
     getStorage: function() { return _defaultStore; },
     getLogger: function() { return undefined; },
-    generateId: function() { return undefined; },
+    generateId: function() { return crypto.randomUUID(); },
     get observability() { return _observability; },
     // Agent-specific: methods accessed via this.#mastra?.method()
     // Must exist as functions (even no-ops) due to QuickJS optional chaining bug
@@ -192,6 +192,32 @@
           try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
         }
         return _origCommitProto.apply(this, arguments);
+      };
+    }
+  })();
+
+  // Patch Agent constructor to auto-inject storage shim on every new Agent.
+  // This catches internally-created Agents (like observational memory's observer/reflector)
+  // that bypass our agent() wrapper. Without this, the internal agents hit QuickJS's
+  // optional chaining bug on this.#mastra?.generateId() etc.
+  (function() {
+    var AgentProto = embed.Agent.prototype;
+    var _origGenerate = AgentProto.generate;
+    if (_origGenerate) {
+      AgentProto.generate = function() {
+        if (typeof this.__registerMastra === "function") {
+          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
+        }
+        return _origGenerate.apply(this, arguments);
+      };
+    }
+    var _origStream = AgentProto.stream;
+    if (_origStream) {
+      AgentProto.stream = function() {
+        if (typeof this.__registerMastra === "function") {
+          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
+        }
+        return _origStream.apply(this, arguments);
       };
     }
   })();
@@ -253,6 +279,7 @@
   // createMemory() — create a Memory instance using @mastra/memory
   // Developers can pass their own storage or use the Kit's default in-memory store.
   // Supports vector store + embedder for semantic recall.
+  // Supports observationalMemory for 3-tier memory compression.
   function createMemory(memoryConfig) {
     var storage = memoryConfig.storage || _defaultStore;
     var opts = {};
@@ -260,6 +287,33 @@
     if (memoryConfig.semanticRecall !== undefined) opts.semanticRecall = memoryConfig.semanticRecall;
     if (memoryConfig.workingMemory !== undefined) opts.workingMemory = memoryConfig.workingMemory;
     if (memoryConfig.generateTitle !== undefined) opts.generateTitle = memoryConfig.generateTitle;
+
+    // Observational memory — 3-tier compression (messages → observations → reflections)
+    if (memoryConfig.observationalMemory !== undefined) {
+      if (memoryConfig.observationalMemory === true) {
+        // Simple mode: use defaults (google/gemini-2.5-flash, 30K/40K thresholds)
+        opts.observationalMemory = true;
+      } else if (typeof memoryConfig.observationalMemory === "object") {
+        // Detailed config: resolve model strings to real model instances
+        var omCfg = { ...memoryConfig.observationalMemory };
+        if (omCfg.model && typeof omCfg.model === "string") {
+          omCfg.model = resolveModel(omCfg.model);
+        }
+        if (omCfg.observation && typeof omCfg.observation === "object") {
+          omCfg.observation = { ...omCfg.observation };
+          if (omCfg.observation.model && typeof omCfg.observation.model === "string") {
+            omCfg.observation.model = resolveModel(omCfg.observation.model);
+          }
+        }
+        if (omCfg.reflection && typeof omCfg.reflection === "object") {
+          omCfg.reflection = { ...omCfg.reflection };
+          if (omCfg.reflection.model && typeof omCfg.reflection.model === "string") {
+            omCfg.reflection.model = resolveModel(omCfg.reflection.model);
+          }
+        }
+        opts.observationalMemory = omCfg;
+      }
+    }
 
     var memConfig = {
       storage: storage,
@@ -278,7 +332,13 @@
       memConfig.embedder = memoryConfig.embedder;
     }
 
-    return new embed.Memory(memConfig);
+    var mem = new embed.Memory(memConfig);
+    // Inject storage shim into Memory — needed for observational memory's observer/reflector
+    // agents which access this.#mastra internally.
+    if (typeof mem.__registerMastra === "function") {
+      try { mem.__registerMastra(_workflowStorageShim); } catch(e) {}
+    }
+    return mem;
   }
 
   // agent() — create a persistent agent in THIS Kit

@@ -588,6 +588,8 @@ declare module "brainlet" {
     semanticRecall?: boolean | SemanticRecallConfig;
     /** Enable working memory. */
     workingMemory?: boolean | WorkingMemoryConfig;
+    /** Observational memory — 3-tier compression for infinite context. */
+    observationalMemory?: boolean | ObservationalMemoryConfig;
   }
 
   interface SemanticRecallConfig {
@@ -598,6 +600,53 @@ declare module "brainlet" {
   interface WorkingMemoryConfig {
     enabled?: boolean;
     scope?: "thread" | "resource";
+  }
+
+  /** Observational memory config — 3-tier compression (messages → observations → reflections). */
+  interface ObservationalMemoryConfig {
+    /** Model for both observer and reflector. Default: "google/gemini-2.5-flash". */
+    model?: string;
+    /** Observation config (messages → observations). */
+    observation?: {
+      /** Model override for observer agent. */
+      model?: string;
+      /** Token threshold before observer triggers. Default: 30000. */
+      messageTokens?: number;
+      /** Model settings for observer. */
+      modelSettings?: { temperature?: number; maxOutputTokens?: number };
+      /** Max tokens per observation batch. Default: 10000. */
+      maxTokensPerBatch?: number;
+      /**
+       * Async buffer interval as fraction of messageTokens. Default: 0.2 (20%).
+       * Set to `false` to disable async buffering (synchronous observation only).
+       */
+      bufferTokens?: number | false;
+      /** Fraction of messages to keep after activation. Default: 0.8 (keep 20%). */
+      bufferActivation?: number;
+      /** Emergency sync threshold multiplier. Default: 1.2x messageTokens. */
+      blockAfter?: number;
+      /** Custom instruction appended to observer system prompt. */
+      instruction?: string;
+    };
+    /** Reflection config (observations → reflections). */
+    reflection?: {
+      /** Model override for reflector agent. */
+      model?: string;
+      /** Token threshold before reflector triggers. Default: 40000. */
+      observationTokens?: number;
+      /** Model settings for reflector. */
+      modelSettings?: { temperature?: number; maxOutputTokens?: number };
+      /** Buffer activation fraction. Default: 0.5. */
+      bufferActivation?: number;
+      /** Emergency sync threshold multiplier. Default: 1.2x observationTokens. */
+      blockAfter?: number;
+      /** Custom instruction appended to reflector system prompt. */
+      instruction?: string;
+    };
+    /** Scope: "thread" (per-conversation) or "resource" (per-user, experimental). Default: "thread". */
+    scope?: "thread" | "resource";
+    /** Allow flexible token allocation between observations and messages. Default: false. */
+    shareTokenBudget?: boolean;
   }
 
   interface Agent {
@@ -883,6 +932,8 @@ declare module "brainlet" {
     semanticRecall?: boolean | SemanticRecallConfig;
     workingMemory?: boolean | WorkingMemoryConfig;
     generateTitle?: boolean;
+    /** Observational memory — 3-tier compression for infinite context. */
+    observationalMemory?: boolean | ObservationalMemoryConfig;
   }
 
   interface MemoryInstance {

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	crand "crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -39,6 +40,8 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 
 		var h hash.Hash
 		switch alg {
+		case "sha1":
+			h = sha1.New()
 		case "sha256":
 			h = sha256.New()
 		case "sha512":
@@ -87,6 +90,8 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 
 		var h hash.Hash
 		switch alg {
+		case "SHA-1":
+			h = sha1.New()
 		case "SHA-256":
 			h = sha256.New()
 		case "SHA-512":
