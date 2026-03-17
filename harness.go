@@ -190,9 +190,15 @@ func (h *Harness) CreateThread(opts ...ThreadOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var id string
-	json.Unmarshal([]byte(r), &id)
-	return id, nil
+	// createThread returns a HarnessThread object { id, title, ... }
+	var thread HarnessThread
+	if err := json.Unmarshal([]byte(r), &thread); err != nil {
+		// Fallback: try as plain string
+		var id string
+		json.Unmarshal([]byte(r), &id)
+		return id, nil
+	}
+	return thread.ID, nil
 }
 
 // SwitchThread switches to a different thread.
@@ -254,9 +260,13 @@ func (h *Harness) CloneThread(opts ...CloneOption) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var id string
-	json.Unmarshal([]byte(r), &id)
-	return id, nil
+	var thread HarnessThread
+	if err := json.Unmarshal([]byte(r), &thread); err != nil {
+		var id string
+		json.Unmarshal([]byte(r), &id)
+		return id, nil
+	}
+	return thread.ID, nil
 }
 
 // GetCurrentThreadID returns the current thread ID.
@@ -377,9 +387,19 @@ func (h *Harness) HasModelSelected() bool {
 // ---------------------------------------------------------------------------
 
 // RespondToToolApproval responds to a tool approval request.
+// Uses direct bridge eval to avoid nested async issues during agent stream.
 func (h *Harness) RespondToToolApproval(decision ToolApprovalDecision) error {
 	b, _ := json.Marshal(map[string]string{"decision": string(decision)})
-	return h.callJSVoid("respondToToolApproval", string(b))
+	code := fmt.Sprintf(`__brainkit_harness.respondToToolApproval(JSON.parse(%s))`, quoteJSString(string(b)))
+	if h.kit.bridge.IsEvalBusy() {
+		_, err := h.kit.bridge.EvalOnJSThread("harness-respond-approval.js", code)
+		return err
+	}
+	_, err := h.kit.bridge.Eval("harness-respond-approval.js", code)
+	if err != nil {
+		return fmt.Errorf("respondToToolApproval: %w", err)
+	}
+	return nil
 }
 
 // SetPermissionForCategory sets the default policy for a tool category.
@@ -419,15 +439,36 @@ func (h *Harness) GrantSessionTool(toolName string) error {
 // ---------------------------------------------------------------------------
 
 // RespondToQuestion answers an ask_user tool invocation.
+// Uses direct bridge eval (not EvalTS) to avoid nested async wrapper issues
+// when called while SendMessage is awaiting the agent stream.
 func (h *Harness) RespondToQuestion(questionID, answer string) error {
 	b, _ := json.Marshal(map[string]string{"questionId": questionID, "answer": answer})
-	return h.callJSVoid("respondToQuestion", string(b))
+	code := fmt.Sprintf(`__brainkit_harness.respondToQuestion(JSON.parse(%s))`, quoteJSString(string(b)))
+	if h.kit.bridge.IsEvalBusy() {
+		_, err := h.kit.bridge.EvalOnJSThread("harness-respond-question.js", code)
+		return err
+	}
+	_, err := h.kit.bridge.Eval("harness-respond-question.js", code)
+	if err != nil {
+		return fmt.Errorf("respondToQuestion: %w", err)
+	}
+	return nil
 }
 
 // RespondToPlanApproval responds to a plan approval request.
+// Uses direct bridge eval to avoid nested async issues during agent stream.
 func (h *Harness) RespondToPlanApproval(planID string, resp PlanResponse) error {
 	b, _ := json.Marshal(map[string]any{"planId": planID, "response": resp})
-	return h.callJSVoid("respondToPlanApproval", string(b))
+	code := fmt.Sprintf(`__brainkit_harness.respondToPlanApproval(JSON.parse(%s))`, quoteJSString(string(b)))
+	if h.kit.bridge.IsEvalBusy() {
+		_, err := h.kit.bridge.EvalOnJSThread("harness-respond-plan.js", code)
+		return err
+	}
+	_, err := h.kit.bridge.Eval("harness-respond-plan.js", code)
+	if err != nil {
+		return fmt.Errorf("respondToPlanApproval: %w", err)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

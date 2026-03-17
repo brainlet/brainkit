@@ -15,6 +15,16 @@ func (p *AbortPolyfill) Setup(ctx *quickjs.Context) error {
 }
 
 const abortJS = `
+// DOMException — used by AbortSignal, fetch abort, Mastra tool suspension.
+// Standard in browsers and Node.js, missing in QuickJS.
+globalThis.DOMException = class DOMException extends Error {
+  constructor(message, name) {
+    super(message || '');
+    this.name = name || 'DOMException';
+    this.code = 0;
+  }
+};
+
 globalThis.AbortSignal = class AbortSignal {
   constructor() {
     this.aborted = false;
@@ -30,7 +40,7 @@ globalThis.AbortSignal = class AbortSignal {
   _abort(reason) {
     if (this.aborted) return;
     this.aborted = true;
-    this.reason = reason || new Error('AbortError');
+    this.reason = reason || new DOMException('The operation was aborted', 'AbortError');
     if (this.onabort) this.onabort({ type: 'abort', target: this });
     this._listeners.forEach(l => l({ type: 'abort', target: this }));
   }
@@ -44,7 +54,7 @@ globalThis.AbortSignal = class AbortSignal {
   }
   static timeout(ms) {
     const s = new AbortSignal();
-    setTimeout(() => s._abort(new Error('TimeoutError')), ms);
+    setTimeout(() => s._abort(new DOMException('The operation timed out', 'TimeoutError')), ms);
     return s;
   }
 };
