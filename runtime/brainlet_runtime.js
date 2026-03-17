@@ -1010,6 +1010,56 @@
 
   // ─── HARNESS ──────────────────────────────────────────────────
 
+  // buildZodFromJsonSchema converts a JSON Schema object to a Zod schema.
+  // Used by createHarness() to translate Go's JSON Schema stateSchema to the
+  // Zod schema that Mastra's Harness expects for state validation.
+  function buildZodFromJsonSchema(schema) {
+    if (!schema || typeof schema !== "object") return z.any();
+
+    if (schema.type === "string") {
+      var s = z.string();
+      if (schema["default"] !== undefined) s = s.default(schema["default"]);
+      return schema.optional ? s.optional() : s;
+    }
+    if (schema.type === "number" || schema.type === "integer") {
+      var n = z.number();
+      if (schema["default"] !== undefined) n = n.default(schema["default"]);
+      return schema.optional ? n.optional() : n;
+    }
+    if (schema.type === "boolean") {
+      var b = z.boolean();
+      if (schema["default"] !== undefined) b = b.default(schema["default"]);
+      return schema.optional ? b.optional() : b;
+    }
+    if (schema.type === "array") {
+      var items = schema.items ? buildZodFromJsonSchema(schema.items) : z.any();
+      var a = z.array(items);
+      if (schema["default"] !== undefined) a = a.default(schema["default"]);
+      return schema.optional ? a.optional() : a;
+    }
+    if (schema.type === "object") {
+      if (schema.properties) {
+        var shape = {};
+        var required = schema.required || [];
+        for (var key in schema.properties) {
+          var prop = schema.properties[key];
+          var field = buildZodFromJsonSchema(prop);
+          if (required.indexOf(key) < 0 && !prop.optional) field = field.optional();
+          shape[key] = field;
+        }
+        var obj = z.object(shape);
+        if (schema["default"] !== undefined) obj = obj.default(schema["default"]);
+        return schema.optional ? obj.optional() : obj;
+      }
+      // Object without properties — accept any object shape
+      return z.record(z.string(), z.any());
+    }
+    if (schema["enum"]) {
+      return z.enum(schema["enum"]);
+    }
+    return z.any();
+  }
+
   // createHarness() — called from Go via Kit.InitHarness().
   // Creates a Mastra Harness instance, bridges events to Go,
   // and exposes all methods on globalThis.__brainkit_harness.
@@ -1059,6 +1109,7 @@
     };
 
     if (config.resourceId) harnessConfig.resourceId = config.resourceId;
+    if (config.stateSchema) harnessConfig.stateSchema = buildZodFromJsonSchema(config.stateSchema);
     if (config.initialState) harnessConfig.initialState = config.initialState;
     if (subagents.length > 0) harnessConfig.subagents = subagents;
     if (config.omConfig) harnessConfig.omConfig = config.omConfig;

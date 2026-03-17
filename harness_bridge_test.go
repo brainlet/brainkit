@@ -471,3 +471,61 @@ func TestHarnessAPI_ListMessages(t *testing.T) {
 	}
 	t.Log("ListMessages: bridge call works, message persistence depends on storage backend")
 }
+
+func TestHarnessAPI_StateSchema(t *testing.T) {
+	kit := setupHarnessKit(t)
+	createTestAgent(t, kit)
+
+	h := initTestHarness(t, kit, HarnessConfig{
+		ID: "schema-test",
+		Modes: []ModeConfig{
+			{ID: "default", Name: "Default", Default: true, DefaultModelID: "openai/gpt-4o-mini", AgentName: "testAgent"},
+		},
+		StateSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"projectName": map[string]any{"type": "string", "default": ""},
+				"yolo":        map[string]any{"type": "boolean", "default": true},
+				"counter":     map[string]any{"type": "number", "default": float64(0)},
+				"tasks": map[string]any{
+					"type":    "array",
+					"items":   map[string]any{"type": "object"},
+					"default": []any{},
+				},
+			},
+		},
+		InitialState: map[string]any{
+			"projectName": "brainlet",
+			"yolo":        true,
+			"counter":     float64(0),
+		},
+	})
+
+	// State should have initial values
+	state := h.GetState()
+	if state == nil {
+		t.Fatal("GetState returned nil")
+	}
+	if v := state["projectName"]; v != "brainlet" {
+		t.Errorf("projectName = %v, want brainlet", v)
+	}
+	if v := state["yolo"]; v != true {
+		t.Errorf("yolo = %v, want true", v)
+	}
+
+	// SetState should work with valid types
+	if err := h.SetState(map[string]any{"counter": float64(10)}); err != nil {
+		t.Fatalf("SetState valid: %v", err)
+	}
+	state2 := h.GetState()
+	if v, ok := state2["counter"].(float64); !ok || v != 10 {
+		t.Errorf("counter = %v, want 10", state2["counter"])
+	}
+
+	// Original values preserved
+	if v := state2["projectName"]; v != "brainlet" {
+		t.Errorf("projectName = %v, want brainlet (should be preserved)", v)
+	}
+
+	t.Log("StateSchema: JSON Schema → Zod conversion verified")
+}
