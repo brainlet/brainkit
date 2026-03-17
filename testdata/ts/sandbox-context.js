@@ -1,5 +1,5 @@
 // Test: sandbox context is available
-import { sandbox, output } from "brainlet";
+import { sandbox, output } from "kit";
 
 output({
   id: sandbox.id,

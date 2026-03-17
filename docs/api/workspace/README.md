@@ -5,7 +5,7 @@
 ### Workspace
 
 ```ts
-import { Workspace, LocalFilesystem, LocalSandbox } from "brainlet";
+import { Workspace, LocalFilesystem, LocalSandbox } from "kit";
 ```
 
 #### Constructor
@@ -136,7 +136,7 @@ const ws = new Workspace({
 ### LocalFilesystem
 
 ```ts
-import { LocalFilesystem } from "brainlet";
+import { LocalFilesystem } from "kit";
 
 const fs = new LocalFilesystem({
   basePath: "./project",
@@ -168,7 +168,7 @@ fs.setAllowedPaths(paths);  // Update at runtime
 ### LocalSandbox
 
 ```ts
-import { LocalSandbox } from "brainlet";
+import { LocalSandbox } from "kit";
 
 const sandbox = new LocalSandbox({
   workingDirectory: "./project",

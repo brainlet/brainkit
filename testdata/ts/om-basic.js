@@ -1,5 +1,5 @@
 // Test: Observational memory creates observations after threshold
-import { agent, output } from "brainlet";
+import { agent, output } from "kit";
 
 try {
   const a = agent({

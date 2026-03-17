@@ -58,7 +58,7 @@ func TestContract_ImportFromBrainlet(t *testing.T) {
 	kit := newTestKit(t)
 
 	result, err := kit.EvalModule(context.Background(), "test-import.js", `
-		import { agent, sandbox, output } from "brainlet";
+		import { agent, sandbox, output } from "kit";
 
 		const a = agent({
 			model: "openai/gpt-4o-mini",
@@ -83,14 +83,14 @@ func TestContract_ImportFromBrainlet(t *testing.T) {
 	if out.SandboxNs != "test" {
 		t.Errorf("sandbox.namespace = %q, want test", out.SandboxNs)
 	}
-	t.Logf("Contract import { agent, sandbox } from 'brainlet': text=%q ns=%q", out.Text, out.SandboxNs)
+	t.Logf("Contract import { agent, sandbox } from 'kit': text=%q ns=%q", out.Text, out.SandboxNs)
 }
 
 func TestContract_ImportAIFromBrainlet(t *testing.T) {
 	kit := newTestKit(t)
 
 	result, err := kit.EvalModule(context.Background(), "test-ai-import.js", `
-		import { ai, output } from "brainlet";
+		import { ai, output } from "kit";
 
 		const r = await ai.generate({
 			model: "openai/gpt-4o-mini",
@@ -107,5 +107,5 @@ func TestContract_ImportAIFromBrainlet(t *testing.T) {
 	if !strings.Contains(strings.ToUpper(out.Text), "IMPORTED_AI") {
 		t.Errorf("unexpected: %q", out.Text)
 	}
-	t.Logf("Contract import { ai } from 'brainlet': %q", out.Text)
+	t.Logf("Contract import { ai } from 'kit': %q", out.Text)
 }

@@ -1,5 +1,5 @@
 // Test: direct AI streaming without an agent (LOCAL)
-import { ai, output } from "brainlet";
+import { ai, output } from "kit";
 
 const stream = await ai.stream({
   model: "openai/gpt-4o-mini",

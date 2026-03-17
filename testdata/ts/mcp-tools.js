@@ -1,5 +1,5 @@
 // Test: MCP client — list tools + call a tool from an MCP server
-import { mcp, output } from "brainlet";
+import { mcp, output } from "kit";
 
 // List tools from all connected MCP servers
 const tools = await mcp.listTools();

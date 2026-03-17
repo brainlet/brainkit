@@ -1,6 +1,6 @@
 // Test: Agent generate options passthrough
 // Verifies: temperature, maxSteps, onStepFinish, onFinish, structuredOutput, activeTools
-import { agent, createTool, z, output } from "brainlet";
+import { agent, createTool, z, output } from "kit";
 
 const results = {};
 

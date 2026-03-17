@@ -1,6 +1,6 @@
 // Test: agent memory with LibSQL storage (real database)
 // The LIBSQL_URL env var is set by the test (points to testcontainer or in-memory)
-import { agent, Memory, LibSQLStore, output } from "brainlet";
+import { agent, Memory, LibSQLStore, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set — need a LibSQL HTTP endpoint (testcontainer or Turso)");

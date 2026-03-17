@@ -1,5 +1,5 @@
 // Test: dynamic model resolver — model is a function that reads from RequestContext
-import { agent, RequestContext, output } from "brainlet";
+import { agent, RequestContext, output } from "kit";
 
 const a = agent({
   model: ({ requestContext }) => {

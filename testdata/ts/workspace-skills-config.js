@@ -1,6 +1,6 @@
 // Test: Workspace skills directory config + skill discovery
 // Verifies: skills paths passed via workspace config, skill tool discovers SKILL.md files
-import { Workspace, LocalFilesystem, output } from "brainlet";
+import { Workspace, LocalFilesystem, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 if (!basePath) throw new Error("WORKSPACE_PATH not set");

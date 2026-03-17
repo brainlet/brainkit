@@ -1,5 +1,5 @@
 // Test: Vector store management methods — createIndex, listIndexes, describeIndex, deleteIndex
-import { LibSQLVector, output } from "brainlet";
+import { LibSQLVector, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set, process.env keys: " + Object.keys(globalThis.process?.env || {}).join(","));

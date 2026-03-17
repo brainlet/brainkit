@@ -47,11 +47,11 @@ Memory storage handles conversation threads, messages, working memory, and obser
 
 | Provider | Import | Embedded | Full OM | Use Case |
 |----------|--------|----------|---------|----------|
-| **InMemoryStore** | `from "brainlet"` | N/A | no | Development, testing. Data lost on restart. |
-| **LibSQLStore** | `from "brainlet"` | **yes** | **yes** | Default choice. Local SQLite file or remote Turso. |
-| **PostgresStore** | `from "brainlet"` | no | **yes** | Production with existing Postgres infrastructure. |
-| **MongoDBStore** | `from "brainlet"` | no | **yes** | Production with existing MongoDB infrastructure. |
-| **UpstashStore** | `from "brainlet"` | no | no | Serverless Redis. HTTP-only, no TCP needed. |
+| **InMemoryStore** | `from "kit"` | N/A | no | Development, testing. Data lost on restart. |
+| **LibSQLStore** | `from "kit"` | **yes** | **yes** | Default choice. Local SQLite file or remote Turso. |
+| **PostgresStore** | `from "kit"` | no | **yes** | Production with existing Postgres infrastructure. |
+| **MongoDBStore** | `from "kit"` | no | **yes** | Production with existing MongoDB infrastructure. |
+| **UpstashStore** | `from "kit"` | no | no | Serverless Redis. HTTP-only, no TCP needed. |
 
 **Full OM** = supports observational memory (3-tier compression: messages → observations → reflections). Requires resource-scoped message listing, which only LibSQL, Postgres, and MongoDB implement.
 
@@ -81,9 +81,9 @@ Vector storage handles embeddings for semantic recall, RAG, and similarity searc
 
 | Provider | Import | Embedded | Use Case |
 |----------|--------|----------|----------|
-| **LibSQLVector** | `from "brainlet"` | **yes** | Default choice. Same SQLite file as memory storage. |
-| **PgVector** | `from "brainlet"` | no | Production Postgres with pgvector extension. |
-| **MongoDBVector** | `from "brainlet"` | no | MongoDB Atlas Vector Search (Atlas-only feature). |
+| **LibSQLVector** | `from "kit"` | **yes** | Default choice. Same SQLite file as memory storage. |
+| **PgVector** | `from "kit"` | no | Production Postgres with pgvector extension. |
+| **MongoDBVector** | `from "kit"` | no | MongoDB Atlas Vector Search (Atlas-only feature). |
 
 ### Not Yet Supported
 

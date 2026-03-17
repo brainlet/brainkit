@@ -1,6 +1,6 @@
 // Test: agent memory with Upstash Redis storage (real cloud service)
 // Requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars.
-import { agent, UpstashStore, output } from "brainlet";
+import { agent, UpstashStore, output } from "kit";
 
 const url = globalThis.process?.env?.UPSTASH_REDIS_REST_URL;
 const token = globalThis.process?.env?.UPSTASH_REDIS_REST_TOKEN;

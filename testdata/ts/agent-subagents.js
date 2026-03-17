@@ -1,6 +1,6 @@
 // Test: Agent networks / subagent delegation
 // Verifies: agents config, sub-agents become tools, supervisor delegates to sub-agents
-import { agent, createTool, z, output } from "brainlet";
+import { agent, createTool, z, output } from "kit";
 
 const results = {};
 

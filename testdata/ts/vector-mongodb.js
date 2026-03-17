@@ -1,7 +1,7 @@
 // Test: MongoDBVector — MongoDB Atlas-style vector search
 // Note: MongoDB Community doesn't support Atlas Search indexes,
 // so we test basic vector upsert and retrieval via the MongoDBVector API.
-import { MongoDBVector, output } from "brainlet";
+import { MongoDBVector, output } from "kit";
 
 const url = globalThis.process?.env?.MONGODB_URL;
 if (!url) throw new Error("MONGODB_URL not set");

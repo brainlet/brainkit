@@ -1,5 +1,5 @@
 // Test: workflow suspend and resume — HITL approval pattern
-import { createWorkflow, createStep, createWorkflowRun, resumeWorkflow, z, output } from "brainlet";
+import { createWorkflow, createStep, createWorkflowRun, resumeWorkflow, z, output } from "kit";
 
 var log = [];
 try {

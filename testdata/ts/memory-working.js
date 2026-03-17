@@ -1,5 +1,5 @@
 // Test: working memory — agent maintains a structured profile across calls
-import { agent, Memory, LibSQLStore, LibSQLVector, output } from "brainlet";
+import { agent, Memory, LibSQLStore, LibSQLVector, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");

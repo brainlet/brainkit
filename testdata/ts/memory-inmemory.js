@@ -1,5 +1,5 @@
 // Test: agent memory with InMemoryStore (no external database)
-import { agent, Memory, InMemoryStore, output } from "brainlet";
+import { agent, Memory, InMemoryStore, output } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

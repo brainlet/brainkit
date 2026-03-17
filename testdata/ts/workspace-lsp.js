@@ -1,5 +1,5 @@
 // Test: LSP diagnostics — create a TS file with a type error, verify diagnostics
-import { Workspace, LocalFilesystem, LocalSandbox, output } from "brainlet";
+import { Workspace, LocalFilesystem, LocalSandbox, output } from "kit";
 
 try {
   var results = {};

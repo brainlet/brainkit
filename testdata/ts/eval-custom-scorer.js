@@ -1,5 +1,5 @@
 // Test: custom scorer + pre-built rule-based scorer with plain strings
-import { createScorer, scorers, output } from "brainlet";
+import { createScorer, scorers, output } from "kit";
 
 // Test 1: custom scorer with bare function API
 const keywordScorer = createScorer({

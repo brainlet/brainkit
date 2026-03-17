@@ -1,5 +1,5 @@
 // Test: agent with memory — remembers across calls
-import { agent, output } from "brainlet";
+import { agent, output } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

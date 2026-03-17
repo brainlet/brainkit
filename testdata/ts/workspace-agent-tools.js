@@ -1,5 +1,5 @@
 // Test: All workspace auto-tools
-import { agent, Workspace, LocalFilesystem, LocalSandbox, MDocument, output } from "brainlet";
+import { agent, Workspace, LocalFilesystem, LocalSandbox, MDocument, output } from "kit";
 
 try {
   var results = {};

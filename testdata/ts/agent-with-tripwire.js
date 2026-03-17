@@ -1,5 +1,5 @@
 // Test: agent with tripwire — output processor always aborts
-import { agent, output } from "brainlet";
+import { agent, output } from "kit";
 
 // Output processor that ALWAYS blocks the response
 const blockAllProcessor = {

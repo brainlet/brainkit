@@ -1,6 +1,6 @@
 // Test: Built-in processors — pure logic (no LLM needed)
 // Verifies: UnicodeNormalizer, TokenLimiterProcessor, ToolCallFilter are importable and constructible
-import { agent, createTool, z, processors, output } from "brainlet";
+import { agent, createTool, z, processors, output } from "kit";
 
 const results = {};
 

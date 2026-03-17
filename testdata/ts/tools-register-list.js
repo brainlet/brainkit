@@ -1,5 +1,5 @@
 // Test: tools.register() and tools.list() from JS
-import { tools, output } from "brainlet";
+import { tools, output } from "kit";
 
 // Register a tool
 await tools.register("my_calculator", {

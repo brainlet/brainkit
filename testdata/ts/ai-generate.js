@@ -1,5 +1,5 @@
 // Test: direct AI call without an agent (LOCAL, no Mastra overhead)
-import { ai, output } from "brainlet";
+import { ai, output } from "kit";
 
 const result = await ai.generate({
   model: "openai/gpt-4o-mini",

@@ -1,6 +1,6 @@
 // Test: Observational memory retrieval — agent recalls facts from observations.
 // Uses LibSQLStore because InMemoryStore has a threadId=null issue with message persistence.
-import { agent, output, Memory, LibSQLStore } from "brainlet";
+import { agent, output, Memory, LibSQLStore } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;

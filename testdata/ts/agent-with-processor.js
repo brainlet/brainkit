@@ -1,5 +1,5 @@
 // Test: agent with input processor — adds context before LLM sees the messages
-import { agent, z, output } from "brainlet";
+import { agent, z, output } from "kit";
 
 // Track whether the processor was called
 let processorCalled = false;

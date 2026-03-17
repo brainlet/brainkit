@@ -1,5 +1,5 @@
 // Test: ai.embed() and ai.embedMany() — embedding generation
-import { ai, output } from "brainlet";
+import { ai, output } from "kit";
 
 // Single embedding
 const single = await ai.embed({

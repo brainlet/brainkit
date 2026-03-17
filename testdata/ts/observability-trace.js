@@ -1,5 +1,5 @@
 // Test: observability — verify agent.generate() creates trace spans
-import { agent, output } from "brainlet";
+import { agent, output } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

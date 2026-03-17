@@ -9,7 +9,7 @@ Brainkit supports two evaluation modes: **live scoring** (per-call, fire-and-for
 ### Live Scoring (per-call)
 
 ```ts
-import { agent, createScorer } from "brainlet";
+import { agent, createScorer } from "kit";
 
 const qualityScorer = createScorer({ id: "quality" })
   .generateScore(({ run }) => {
@@ -28,7 +28,7 @@ await a.generate("Hello");
 ### Batch Evaluation
 
 ```ts
-import { agent, createScorer, runEvals } from "brainlet";
+import { agent, createScorer, runEvals } from "kit";
 
 const a = agent({ model: "openai/gpt-4o-mini" });
 
@@ -103,7 +103,7 @@ const scorer = createScorer({
 ### Rule-Based (no LLM needed)
 
 ```ts
-import { scorers } from "brainlet";
+import { scorers } from "kit";
 
 scorers.completeness()        // Checks output completeness vs input
 scorers.contentSimilarity()   // String similarity between output and ground truth

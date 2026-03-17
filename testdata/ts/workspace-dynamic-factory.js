@@ -1,5 +1,5 @@
 // Test: Dynamic workspace factory — workspace resolved per generate() call via requestContext
-import { agent, Workspace, LocalFilesystem, RequestContext, output } from "brainlet";
+import { agent, Workspace, LocalFilesystem, RequestContext, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 if (!basePath) throw new Error("WORKSPACE_PATH not set");

@@ -1,5 +1,5 @@
 // Test: compile AssemblyScript to WASM and execute it
-import { wasm, output } from "brainlet";
+import { wasm, output } from "kit";
 
 // Compile
 const compiled = await wasm.compile(

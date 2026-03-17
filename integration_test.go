@@ -11,14 +11,14 @@ import (
 )
 
 // ═══════════════════════════════════════════════════════════════
-// 1. Zod via import — can a .ts module use z from "brainlet"?
+// 1. Zod via import — can a .ts module use z from "kit"?
 // ═══════════════════════════════════════════════════════════════
 
 func TestIntegration_ZodViaImport(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	result, err := kit.EvalModule(context.Background(), "test-zod.js", `
-		import { z, createTool, output } from "brainlet";
+		import { z, createTool, output } from "kit";
 
 		// Can we use z to define schemas?
 		const schema = z.object({
@@ -91,7 +91,7 @@ func TestIntegration_GoToolFromTSModule(t *testing.T) {
 
 	// Call it from a .ts module using import
 	result, err := kit.EvalModule(context.Background(), "test-go-tool.js", `
-		import { tools, output } from "brainlet";
+		import { tools, output } from "kit";
 
 		const result = await tools.call("uppercase", { text: "hello brainlet" });
 		output(result);
@@ -128,7 +128,7 @@ func TestIntegration_GoToolViaAgentFromTSModule(t *testing.T) {
 
 	// Agent uses the Go tool via tool() + import
 	result, err := kit.EvalModule(context.Background(), "test-agent-go-tool.js", `
-		import { agent, tool, output } from "brainlet";
+		import { agent, tool, output } from "kit";
 
 		const doubleTool = tool("double");
 		const a = agent({
@@ -277,7 +277,7 @@ func TestIntegration_FullTSModule(t *testing.T) {
 	})
 
 	result, err := kit.EvalModule(context.Background(), "full-module.js", `
-		import { agent, ai, tools, tool, sandbox, z, createTool, output } from "brainlet";
+		import { agent, ai, tools, tool, sandbox, z, createTool, output } from "kit";
 
 		// 1. Check sandbox context
 		const ctx = { ns: sandbox.namespace, id: sandbox.id };
@@ -358,7 +358,7 @@ func TestIntegration_TypedGoTool(t *testing.T) {
 	})
 
 	result, err := kit.EvalModule(context.Background(), "typed-tool-test.js", `
-		import { tools, output } from "brainlet";
+		import { tools, output } from "kit";
 		const result = await tools.call("add", { a: 17, b: 25 });
 		output(result);
 	`)

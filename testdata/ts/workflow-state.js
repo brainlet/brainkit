@@ -1,5 +1,5 @@
 // Test: workflow shared state via setState/state across steps
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 // Shared state schema — accumulates data across steps
 const stateSchema = z.object({

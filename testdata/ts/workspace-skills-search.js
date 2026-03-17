@@ -1,5 +1,5 @@
 // Test: Workspace skills (SKILL.md) + BM25 search
-import { agent, Workspace, LocalFilesystem, output } from "brainlet";
+import { agent, Workspace, LocalFilesystem, output } from "kit";
 
 try {
   var results = {};

@@ -1,5 +1,5 @@
 // Test: PostgreSQL memory with SCRAM-SHA-256 authentication (password-based)
-import { agent, PostgresStore, output } from "brainlet";
+import { agent, PostgresStore, output } from "kit";
 
 const url = globalThis.process?.env?.POSTGRES_URL;
 if (!url) throw new Error("POSTGRES_URL not set");

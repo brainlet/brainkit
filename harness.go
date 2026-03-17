@@ -66,7 +66,7 @@ func (k *Kit) InitHarness(cfg HarnessConfig) (*Harness, error) {
 	}
 
 	// Create JS Harness via createHarness(configJSON)
-	createCode := fmt.Sprintf(`await __brainlet.createHarness(%s)`, quoteJSString(string(configJSON)))
+	createCode := fmt.Sprintf(`await __kit.createHarness(%s)`, quoteJSString(string(configJSON)))
 	if _, err := k.EvalTS(context.Background(), "harness-create.ts", createCode); err != nil {
 		return nil, fmt.Errorf("harness: create JS harness: %w", err)
 	}

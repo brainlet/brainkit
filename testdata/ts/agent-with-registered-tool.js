@@ -1,6 +1,6 @@
 // Test: agent uses a platform-registered tool (e.g., from a plugin)
 // The "multiply" tool is registered in Go before this runs.
-import { agent, tool, output } from "brainlet";
+import { agent, tool, output } from "kit";
 
 const multiplyTool = tool("multiply");
 

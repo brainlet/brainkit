@@ -1,5 +1,5 @@
 // Test: .sleep() — pause workflow execution
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 const beforeStep = createStep({
   id: "before",

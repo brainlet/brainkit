@@ -1,6 +1,6 @@
 // Test: agent memory with MongoDB storage (real database)
 // The MONGODB_URL env var is set by the test (points to testcontainer)
-import { agent, MongoDBStore, output } from "brainlet";
+import { agent, MongoDBStore, output } from "kit";
 
 const url = globalThis.process?.env?.MONGODB_URL;
 if (!url) throw new Error("MONGODB_URL not set");

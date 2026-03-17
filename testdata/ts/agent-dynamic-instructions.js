@@ -1,5 +1,5 @@
 // Test: dynamic instructions resolver — instructions computed per-request
-import { agent, RequestContext, output } from "brainlet";
+import { agent, RequestContext, output } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

@@ -1,5 +1,5 @@
 // Test: Two threads have separate observations — Thread B doesn't see Thread A's facts.
-import { agent, output, Memory, LibSQLStore } from "brainlet";
+import { agent, output, Memory, LibSQLStore } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;

@@ -1,5 +1,5 @@
 // Test: workflow with an agent step — combines workflows + AI
-import { createWorkflow, createStep, agent, z, output } from "brainlet";
+import { createWorkflow, createStep, agent, z, output } from "kit";
 
 // Step 1: prepare prompt
 const prepareStep = createStep({

@@ -1,5 +1,5 @@
 // Test: basic workflow with createWorkflow + createStep
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 // Step 1: format a message
 const formatStep = createStep({

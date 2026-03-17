@@ -1,6 +1,6 @@
 // Test: semantic recall — Mastra Memory with vector store
 // Uses the same pattern as Mastra docs: create Memory, pass to agent
-import { agent, Memory, LibSQLStore, LibSQLVector, output } from "brainlet";
+import { agent, Memory, LibSQLStore, LibSQLVector, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");

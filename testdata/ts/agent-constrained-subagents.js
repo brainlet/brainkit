@@ -1,6 +1,6 @@
 // Test: Constrained subagents via createSubagent() + subagents config
 // Verifies: tool filtering, fresh agent per invocation, event forwarding, metadata
-import { agent, createSubagent, createTool, z, output } from "brainlet";
+import { agent, createSubagent, createTool, z, output } from "kit";
 
 const results = {};
 

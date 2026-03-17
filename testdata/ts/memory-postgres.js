@@ -1,6 +1,6 @@
 // Test: agent memory with PostgreSQL storage (real database)
 // The POSTGRES_URL env var is set by the test (points to testcontainer)
-import { agent, PostgresStore, output } from "brainlet";
+import { agent, PostgresStore, output } from "kit";
 
 const url = globalThis.process?.env?.POSTGRES_URL;
 if (!url) throw new Error("POSTGRES_URL not set");

@@ -1348,7 +1348,7 @@ func TestKit_ResumeWorkflow(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	// Create a workflow with a suspend step via EvalTS
-	// Note: EvalTS already destructures __brainlet, so we use those names directly
+	// Note: EvalTS already destructures __kit, so we use those names directly
 	setupCode := `
 var step1 = createStep({
   id: "greet",

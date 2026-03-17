@@ -1,5 +1,5 @@
 // Test: createVectorQueryTool — end-to-end RAG pipeline
-import { MDocument, createVectorQueryTool, LibSQLVector, ai, output } from "brainlet";
+import { MDocument, createVectorQueryTool, LibSQLVector, ai, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");

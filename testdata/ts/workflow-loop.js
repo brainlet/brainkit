@@ -1,5 +1,5 @@
 // Test: .dountil() — loop until condition is met
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 const stateSchema = z.object({ counter: z.number().optional() });
 

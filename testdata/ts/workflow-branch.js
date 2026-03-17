@@ -1,5 +1,5 @@
 // Test: .branch() — conditional routing based on input
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 const highStep = createStep({
   id: "high",

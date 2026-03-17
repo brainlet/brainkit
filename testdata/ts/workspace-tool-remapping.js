@@ -1,6 +1,6 @@
 // Test: Workspace tool name remapping and enable/disable
 // Verifies: custom tool names via tools config, disabled tools, setToolsConfig()
-import { Workspace, LocalFilesystem, LocalSandbox, output } from "brainlet";
+import { Workspace, LocalFilesystem, LocalSandbox, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 if (!basePath) throw new Error("WORKSPACE_PATH not set");

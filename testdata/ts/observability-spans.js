@@ -1,5 +1,5 @@
 // Test: observability — verify spans are persisted in storage with span hierarchy
-import { agent, createTool, z, output } from "brainlet";
+import { agent, createTool, z, output } from "kit";
 
 const addTool = createTool({
   id: "add",
@@ -20,7 +20,7 @@ const result = await a.generate("What is 10 + 32?");
 await new Promise(r => setTimeout(r, 500));
 
 // Query persisted spans from storage
-const store = globalThis.__brainlet_internal_store;
+const store = globalThis.__kit_internal_store;
 const obsStore = await store.getStore("observability");
 const trace = result.traceId ? await obsStore.getTrace({ traceId: result.traceId }) : null;
 

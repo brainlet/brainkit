@@ -1,6 +1,6 @@
 // Test: runEvals() batch evaluation
 // Verifies: batch scoring against a dataset with a custom scorer
-import { agent, createScorer, runEvals, output } from "brainlet";
+import { agent, createScorer, runEvals, output } from "kit";
 
 const results = {};
 

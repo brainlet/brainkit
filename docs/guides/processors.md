@@ -7,7 +7,7 @@ Processors are middleware that transform agent input/output. They run before the
 ## Quick Start
 
 ```ts
-import { agent, processors } from "brainlet";
+import { agent, processors } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

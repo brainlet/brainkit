@@ -1,5 +1,5 @@
 // Test: agent uses a locally-defined tool with Zod schema
-import { agent, createTool, z, output } from "brainlet";
+import { agent, createTool, z, output } from "kit";
 
 const addTool = createTool({
   id: "add",

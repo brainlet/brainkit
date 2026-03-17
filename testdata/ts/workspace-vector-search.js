@@ -1,7 +1,7 @@
 // Test: Workspace vector + hybrid search
 // Requires: real libsql-server (testcontainer) with vector extensions + OpenAI API key
 // The LIBSQL_URL env var is set by the test to point to a real libsql-server with vector32() support.
-import { Workspace, LocalFilesystem, LibSQLVector, ai, output } from "brainlet";
+import { Workspace, LocalFilesystem, LibSQLVector, ai, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 const libsqlUrl = globalThis.process?.env?.LIBSQL_URL;

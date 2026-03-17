@@ -1,4 +1,4 @@
-// brainlet-runtime.js — The "brainlet" module.
+// kit_runtime.js — The "kit" module.
 // Loaded into every sandbox before user code.
 // LOCAL imports wrap Mastra directly. PLATFORM imports call Go bridges.
 
@@ -47,7 +47,7 @@
     var providerName = modelStr.substring(0, slashIdx);
     var modelId = modelStr.substring(slashIdx + 1);
 
-    var providers = globalThis.__brainlet_providers || {};
+    var providers = globalThis.__kit_providers || {};
     var pc = providers[providerName];
     if (!pc) return modelStr;
 
@@ -127,8 +127,8 @@
   // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
   // Expose for observability span queries (internal — not part of public API)
-  globalThis.__brainlet_internal_store = _defaultStore;
-  globalThis.__brainlet_internal_observability = null; // set after creation
+  globalThis.__kit_internal_store = _defaultStore;
+  globalThis.__kit_internal_observability = null; // set after creation
 
   // Observability — auto-tracing for agents, tools, workflows, LLM calls.
   // Config comes from Kit.Config.Observability (injected as globalThis.__brainkit_obs_config).
@@ -148,7 +148,7 @@
             },
           },
         });
-        globalThis.__brainlet_internal_observability = _observability;
+        globalThis.__kit_internal_observability = _observability;
       }
     } catch(e) {
       // Observability init failed — continue without tracing
@@ -1230,7 +1230,7 @@
 
   // ─── EXPORT ────────────────────────────────────────────────────
 
-  globalThis.__brainlet = {
+  globalThis.__kit = {
     // LOCAL
     agent: agent,
     createTool: createTool,

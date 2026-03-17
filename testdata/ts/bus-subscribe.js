@@ -1,5 +1,5 @@
 // Test: bus.subscribe() — receive messages from the platform bus
-import { bus, output } from "brainlet";
+import { bus, output } from "kit";
 
 const received = [];
 

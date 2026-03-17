@@ -128,7 +128,7 @@ func (s *Sandbox) injectConfig() error {
 	if len(s.providers) > 0 {
 		providersJSON, _ := json.Marshal(s.providers)
 		_, err := s.bridge.Eval("providers.js", fmt.Sprintf(
-			`globalThis.__brainlet_providers = %s`, string(providersJSON),
+			`globalThis.__kit_providers = %s`, string(providersJSON),
 		))
 		if err != nil {
 			return fmt.Errorf("agent-embed: inject providers: %w", err)

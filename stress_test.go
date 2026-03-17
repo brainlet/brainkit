@@ -31,7 +31,7 @@ func TestStress_ConcurrentEvalTS(t *testing.T) {
 			defer wg.Done()
 
 			code := fmt.Sprintf(`
-				import { output } from "brainlet";
+				import { output } from "kit";
 				try {
 					await __go_fs_mkdir("%s/worker-%d", true);
 					await __go_fs_writeFile("%s/worker-%d/data.txt", "Worker %d at " + Date.now());
@@ -90,7 +90,7 @@ func TestStress_EvalTSWithAgent(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		code := `
-			import { agent, output } from "brainlet";
+			import { agent, output } from "kit";
 			var a = agent({ model: "openai/gpt-4o-mini", instructions: "Count from 1 to 5." });
 			var result = await a.generate("Count from 1 to 5");
 			output({ text: result.text.substring(0, 50), done: true });
@@ -102,7 +102,7 @@ func TestStress_EvalTSWithAgent(t *testing.T) {
 		defer wg.Done()
 		time.Sleep(100 * time.Millisecond)
 		code := `
-			import { output } from "brainlet";
+			import { output } from "kit";
 			output({ simple: true, timestamp: Date.now() });
 		`
 		evalResult, evalErr = kit.EvalModule(context.Background(), "simple.js", code)
@@ -238,7 +238,7 @@ func TestStress_ReentrantEvalTS(t *testing.T) {
 
 	// Agent uses the Go tool — during generate, the tool calls EvalTS on the same Bridge
 	code := fmt.Sprintf(`
-		import { agent, tool, output } from "brainlet";
+		import { agent, tool, output } from "kit";
 		var a = agent({
 			model: "openai/gpt-4o-mini",
 			instructions: "Use the eval_code tool when asked to evaluate code. Be concise.",
@@ -278,7 +278,7 @@ func TestStress_ToolCallbackWithGoIO(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	code := fmt.Sprintf(`
-		import { agent, createTool, z, output } from "brainlet";
+		import { agent, createTool, z, output } from "kit";
 
 		var heavy = createTool({
 			id: "heavy-io",

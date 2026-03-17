@@ -1,6 +1,6 @@
 // Test: Long conversation where agent proves it remembers facts from the very beginning.
 // This is the ultimate empirical proof that observational memory works end-to-end.
-import { agent, output, Memory, LibSQLStore } from "brainlet";
+import { agent, output, Memory, LibSQLStore } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;

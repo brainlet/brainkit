@@ -1,18 +1,18 @@
 /**
- * Brainlet Runtime Type Definitions
+ * Kit Runtime Type Definitions
  *
  * These types define the developer-facing API for `.ts` files running
- * on the brainlet platform. Everything is imported from "brainlet".
+ * on the brainlet platform. Everything is imported from "kit".
  *
  * @example
  * ```ts
- * import { agent, createWorkflow, createStep, z, output } from "brainlet";
+ * import { agent, createWorkflow, createStep, z, output } from "kit";
  * ```
  *
  * @see brainkit-maps/brainkit/DESIGN.md for the full architecture
  * @see brainkit-maps/references/sdk/DESIGN.md for the API surface design
  */
-declare module "brainlet" {
+declare module "kit" {
 
   // ═══════════════════════════════════════════════════════════════
   // LOCAL — direct JS in the Kit's runtime, no bus, no RBAC

@@ -108,7 +108,7 @@ func New(cfg Config) (*Kit, error) {
 		obsEnabled, obsStrategy, obsServiceName,
 	))
 
-	// Load brainlet-runtime.js + register "brainlet" ES module
+	// Load kit_runtime.js + register "kit" ES module
 	if err := k.loadRuntime(); err != nil {
 		agentSandbox.Close()
 		return nil, err
@@ -246,7 +246,7 @@ func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
-		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__brainlet;
+		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__kit;
 		%s
 	})()`, code)
 
@@ -263,7 +263,7 @@ func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error)
 	return k.agents.Eval(ctx, filename, wrapped)
 }
 
-// EvalModule runs code as an ES module with import { ... } from "brainlet".
+// EvalModule runs code as an ES module with import { ... } from "kit".
 func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, error) {
 	k.bridge.Eval("__clear_result.js", `delete globalThis.__module_result`)
 
@@ -314,7 +314,7 @@ func (k *Kit) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJSON 
 	}
 
 	code := fmt.Sprintf(`(async () => {
-		var result = await globalThis.__brainlet.resumeWorkflow(%q, %s, %s);
+		var result = await globalThis.__kit.resumeWorkflow(%q, %s, %s);
 		globalThis.__module_result = JSON.stringify(result);
 	})()`, runId, stepArg, resumeDataJSON)
 

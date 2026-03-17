@@ -1,5 +1,5 @@
 // Debug: test LibSQLStore directly — create, save thread, save messages, recall
-import { agent, Memory, LibSQLStore, output } from "brainlet";
+import { agent, Memory, LibSQLStore, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");

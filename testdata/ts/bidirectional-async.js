@@ -1,6 +1,6 @@
 // Stress test: Heavy concurrent async I/O during agent tool calls
 // Tests: file I/O, exec, timers, multiple tool calls, streaming — all interleaved
-import { agent, createTool, z, Workspace, LocalFilesystem, LocalSandbox, output } from "brainlet";
+import { agent, createTool, z, Workspace, LocalFilesystem, LocalSandbox, output } from "kit";
 
 try {
   var results = {};

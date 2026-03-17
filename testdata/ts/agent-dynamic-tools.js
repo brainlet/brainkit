@@ -1,5 +1,5 @@
 // Test: dynamic tools resolver — tools computed per-request from RequestContext
-import { agent, createTool, RequestContext, z, output } from "brainlet";
+import { agent, createTool, RequestContext, z, output } from "kit";
 
 const addTool = createTool({
   id: "add",

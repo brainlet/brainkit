@@ -1,5 +1,5 @@
 // Test: createTool with extended config fields (outputSchema passthrough)
-import { agent, createTool, z, output } from "brainlet";
+import { agent, createTool, z, output } from "kit";
 
 // Tool with outputSchema — Mastra validates the return value
 const calculator = createTool({

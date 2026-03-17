@@ -1,6 +1,6 @@
 // Test: full composition — uses agent, ai, tools, wasm, sandbox, z, createTool
 // This is what a real developer .ts file looks like.
-import { agent, ai, tools, wasm, sandbox, z, createTool, output } from "brainlet";
+import { agent, ai, tools, wasm, sandbox, z, createTool, output } from "kit";
 
 // 1. Check sandbox context
 const ctx = { ns: sandbox.namespace, id: sandbox.id };

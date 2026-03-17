@@ -7,7 +7,7 @@ Agents are the core unit of AI execution. An agent wraps a language model with i
 ## Quick Start
 
 ```ts
-import { agent } from "brainlet";
+import { agent } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",
@@ -206,7 +206,7 @@ const supervisor = agent({
 For more control than the raw `agents` config, use `createSubagent()` to define typed subagents with constrained tool sets. This is the pattern mastracode uses for its explore/plan/execute agents.
 
 ```ts
-import { agent, createSubagent, createTool, z } from "brainlet";
+import { agent, createSubagent, createTool, z } from "kit";
 
 // Define subagent types with specific tool permissions
 const explorer = createSubagent({

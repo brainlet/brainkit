@@ -1,5 +1,5 @@
 // Test: .parallel() — run two steps concurrently
-import { createWorkflow, createStep, z, output } from "brainlet";
+import { createWorkflow, createStep, z, output } from "kit";
 
 const stepA = createStep({
   id: "step-a",

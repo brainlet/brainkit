@@ -1,5 +1,5 @@
 // Test: Basic filesystem operations via Go bridge (globalThis.fs from jsbridge/fs.go)
-import { output } from "brainlet";
+import { output } from "kit";
 
 try {
   // globalThis.fs is set by jsbridge/fs.go

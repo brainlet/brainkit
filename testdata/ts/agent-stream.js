@@ -1,5 +1,5 @@
 // Test: agent streams a response with real-time tokens
-import { agent, output } from "brainlet";
+import { agent, output } from "kit";
 
 const a = agent({
   model: "openai/gpt-4o-mini",

@@ -1,6 +1,6 @@
 // Test: agent memory with local SQLite via Kit's embedded bridge.
 // No URL needed — LibSQLStore auto-connects to the Kit's embedded bridge.
-import { agent, Memory, LibSQLStore, output } from "brainlet";
+import { agent, Memory, LibSQLStore, output } from "kit";
 
 const store = new LibSQLStore({ id: "local-store" });
 

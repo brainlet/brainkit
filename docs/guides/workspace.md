@@ -7,7 +7,7 @@ Workspaces give agents filesystem access, command execution, skill discovery, an
 ## Quick Start
 
 ```ts
-import { agent, Workspace, LocalFilesystem, LocalSandbox } from "brainlet";
+import { agent, Workspace, LocalFilesystem, LocalSandbox } from "kit";
 
 const ws = new Workspace({
   id: "my-project",

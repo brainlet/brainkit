@@ -18,7 +18,7 @@ defer kit.Close() // stops all storage bridges
 ### TypeScript — Use storage in agents
 
 ```ts
-import { agent, LibSQLStore } from "brainlet";
+import { agent, LibSQLStore } from "kit";
 
 // Connects to Kit's "default" storage automatically
 const store = new LibSQLStore({ id: "my-store" });
@@ -91,7 +91,7 @@ All storages are closed automatically when `kit.Close()` is called. The SQLite f
 ### LibSQLStore
 
 ```ts
-import { LibSQLStore } from "brainlet";
+import { LibSQLStore } from "kit";
 ```
 
 #### Brainkit mode — auto-connects to Kit's embedded storage
@@ -133,7 +133,7 @@ When `url` is provided, the config is passed directly to Mastra's `LibSQLStore` 
 Same pattern as `LibSQLStore`:
 
 ```ts
-import { LibSQLVector } from "brainlet";
+import { LibSQLVector } from "kit";
 
 // Brainkit mode
 const vectors = new LibSQLVector({ id: "my-vectors" });
@@ -160,7 +160,7 @@ kit, err := brainkit.New(brainkit.Config{
 ```
 
 ```ts
-import { agent, LibSQLStore, LibSQLVector } from "brainlet";
+import { agent, LibSQLStore, LibSQLVector } from "kit";
 
 const memory = new LibSQLStore({ id: "mem" });                        // → data.db
 const vectors = new LibSQLVector({ id: "vecs", storage: "vectors" }); // → vectors.db

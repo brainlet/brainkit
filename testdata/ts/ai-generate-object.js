@@ -1,5 +1,5 @@
 // Test: ai.generateObject — structured output with schema
-import { ai, z, output } from "brainlet";
+import { ai, z, output } from "kit";
 
 const result = await ai.generateObject({
   model: "openai/gpt-4o-mini",
