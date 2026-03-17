@@ -6,7 +6,8 @@ import (
 )
 
 // StructToJSONSchema converts a Go struct to a JSON Schema object.
-// Uses struct tags: `json:"fieldName"` for the property name, `desc:"..."` for description.
+// Uses struct tags: `json:"fieldName"` for the property name, `desc:"..."` for description,
+// `default:"value"` for default values, `optional:"true"` for optional fields.
 // Supports: string, int/float → number, bool, slices → array, nested structs → object.
 func StructToJSONSchema(v any) json.RawMessage {
 	t := reflect.TypeOf(v)
@@ -53,6 +54,11 @@ func buildObjectSchema(t reflect.Type) map[string]any {
 			prop["description"] = desc
 		}
 
+		// Parse default tag — coerce to the field's type for JSON Schema
+		if def := field.Tag.Get("default"); def != "" {
+			prop["default"] = coerceDefault(def, field.Type)
+		}
+
 		properties[name] = prop
 
 		// Fields without `optional:"true"` tag are required
@@ -69,6 +75,37 @@ func buildObjectSchema(t reflect.Type) map[string]any {
 		schema["required"] = required
 	}
 	return schema
+}
+
+// coerceDefault converts a string default tag value to the appropriate Go type
+// for JSON Schema. "true"/"false" → bool, numeric strings → float64, "[]" → empty slice.
+func coerceDefault(s string, t reflect.Type) any {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Bool:
+		return s == "true"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		var n float64
+		if err := json.Unmarshal([]byte(s), &n); err == nil {
+			return n
+		}
+		return s
+	case reflect.Slice, reflect.Array:
+		if s == "[]" {
+			return []any{}
+		}
+		var v any
+		if err := json.Unmarshal([]byte(s), &v); err == nil {
+			return v
+		}
+		return s
+	default:
+		return s
+	}
 }
 
 func fieldSchema(t reflect.Type) map[string]any {

@@ -201,6 +201,62 @@ func TestValidateHarnessConfig_SubagentNoTools(t *testing.T) {
 	}
 }
 
+func TestStateSchemaOf_Defaults(t *testing.T) {
+	type TestState struct {
+		Name    string  `json:"name" default:"unnamed"`
+		Enabled bool    `json:"enabled" default:"true"`
+		Count   float64 `json:"count" default:"42"`
+		Tags    []string `json:"tags" default:"[]"`
+	}
+
+	schema := StateSchemaOf[TestState]()
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties not a map: %+v", schema)
+	}
+
+	// Check each field has the correct default
+	nameP := props["name"].(map[string]any)
+	if nameP["default"] != "unnamed" {
+		t.Errorf("name default = %v, want 'unnamed'", nameP["default"])
+	}
+	if nameP["type"] != "string" {
+		t.Errorf("name type = %v, want string", nameP["type"])
+	}
+
+	enabledP := props["enabled"].(map[string]any)
+	if enabledP["default"] != true {
+		t.Errorf("enabled default = %v, want true", enabledP["default"])
+	}
+
+	countP := props["count"].(map[string]any)
+	if countP["default"] != float64(42) {
+		t.Errorf("count default = %v, want 42", countP["default"])
+	}
+
+	tagsP := props["tags"].(map[string]any)
+	if tagsP["type"] != "array" {
+		t.Errorf("tags type = %v, want array", tagsP["type"])
+	}
+}
+
+func TestTypedPermissionConstants(t *testing.T) {
+	// Verify typed constants work in map
+	perms := DefaultPermissions()
+	if perms[CategoryRead] != PolicyAllow {
+		t.Errorf("read = %q, want allow", perms[CategoryRead])
+	}
+	if perms[CategoryEdit] != PolicyAsk {
+		t.Errorf("edit = %q, want ask", perms[CategoryEdit])
+	}
+	if perms[CategoryExecute] != PolicyAsk {
+		t.Errorf("execute = %q, want ask", perms[CategoryExecute])
+	}
+	if perms[CategoryMCP] != PolicyAsk {
+		t.Errorf("mcp = %q, want ask", perms[CategoryMCP])
+	}
+}
+
 func TestValidateHarnessConfig_ValidWithSubagents(t *testing.T) {
 	err := validateHarnessConfig(HarnessConfig{
 		ID:    "test",

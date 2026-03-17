@@ -394,10 +394,10 @@ func TestHarnessAPI_Permissions(t *testing.T) {
 			{ID: "default", Name: "Default", Default: true, DefaultModelID: "openai/gpt-4o-mini", AgentName: "testAgent"},
 		},
 		InitialState: map[string]any{"yolo": false},
-		DefaultPermissions: map[string]string{
-			"read":    "allow",
-			"edit":    "ask",
-			"execute": "ask",
+		Permissions: map[ToolCategory]PermissionPolicy{
+			CategoryRead:    PolicyAllow,
+			CategoryEdit:    PolicyAsk,
+			CategoryExecute: PolicyAsk,
 		},
 	})
 

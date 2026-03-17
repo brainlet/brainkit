@@ -5,6 +5,44 @@ import (
 	"sync"
 )
 
+// ---------------------------------------------------------------------------
+// Typed constants — prevent typos, enable IDE autocomplete
+// ---------------------------------------------------------------------------
+
+// PermissionPolicy determines how a tool category is handled during approval.
+type PermissionPolicy string
+
+const (
+	PolicyAllow PermissionPolicy = "allow" // auto-approve, no user interaction
+	PolicyAsk   PermissionPolicy = "ask"   // pause, emit tool_approval_required, wait
+	PolicyDeny  PermissionPolicy = "deny"  // auto-decline
+)
+
+// ToolCategory groups tools by risk level for permission resolution.
+type ToolCategory string
+
+const (
+	CategoryRead    ToolCategory = "read"    // view, search, find_files
+	CategoryEdit    ToolCategory = "edit"    // write_file, string_replace
+	CategoryExecute ToolCategory = "execute" // execute_command
+	CategoryMCP     ToolCategory = "mcp"     // all MCP server tools
+)
+
+// DefaultPermissions returns the standard permission set:
+// read=allow, edit=ask, execute=ask, mcp=ask.
+func DefaultPermissions() map[ToolCategory]PermissionPolicy {
+	return map[ToolCategory]PermissionPolicy{
+		CategoryRead:    PolicyAllow,
+		CategoryEdit:    PolicyAsk,
+		CategoryExecute: PolicyAsk,
+		CategoryMCP:     PolicyAsk,
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HarnessConfig
+// ---------------------------------------------------------------------------
+
 // HarnessConfig configures a Harness instance.
 type HarnessConfig struct {
 	// ID identifies this Harness instance.
@@ -17,10 +55,18 @@ type HarnessConfig struct {
 	Modes []ModeConfig
 
 	// StateSchema as JSON Schema object (validated by Zod in JS). Optional.
+	// Use StateSchemaOf[T]() to generate from a Go struct:
+	//
+	//   type MyState struct {
+	//       ProjectName string `json:"projectName" default:""`
+	//       Yolo        bool   `json:"yolo" default:"true"`
+	//   }
+	//   StateSchema: brainkit.StateSchemaOf[MyState](),
 	StateSchema map[string]any
 
 	// InitialState values for the state schema. Optional.
-	InitialState map[string]any
+	// Accepts a struct (matching StateSchema) or map[string]any.
+	InitialState any
 
 	// Subagents — constrained subagent definitions. Optional.
 	Subagents []HarnessSubagentConfig
@@ -41,14 +87,22 @@ type HarnessConfig struct {
 	// If nil, a default in-process mutex-based lock is used.
 	ThreadLock *ThreadLock
 
-	// DefaultPermissions — category -> policy. Optional.
-	// Defaults: read=allow, edit=ask, execute=ask, mcp=ask
-	DefaultPermissions map[string]string
+	// Permissions — per-category permission policies. Optional.
+	// Use DefaultPermissions() for the standard set (read=allow, rest=ask).
+	Permissions map[ToolCategory]PermissionPolicy
 
-	// ToolCategoryResolver maps tool names to categories. Optional.
-	ToolCategoryResolver func(toolName string) string
+	// ToolCategories — static map of tool name → category. Optional.
+	// Used for permission resolution: tool → category → policy.
+	//
+	//   ToolCategories: map[string]brainkit.ToolCategory{
+	//       "view":            brainkit.CategoryRead,
+	//       "write_file":      brainkit.CategoryEdit,
+	//       "execute_command":  brainkit.CategoryExecute,
+	//   }
+	ToolCategories map[string]ToolCategory
 
 	// AlwaysAllowTools — additional tools that never need approval. Optional.
+	// Built-in always-allowed: ask_user, task_write, task_check, submit_plan.
 	AlwaysAllowTools []string
 
 	// ModelAuthChecker checks if a provider's API key is available. Optional.

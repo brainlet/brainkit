@@ -654,8 +654,21 @@ func (h *Harness) buildJSConfig() map[string]any {
 			"reflectionThreshold":   h.config.OMConfig.ReflectionThreshold,
 		}
 	}
-	if h.config.DefaultPermissions != nil {
-		cfg["defaultPermissions"] = h.config.DefaultPermissions
+	if len(h.config.Permissions) > 0 {
+		// Convert typed map to string map for JS
+		perms := make(map[string]string, len(h.config.Permissions))
+		for cat, pol := range h.config.Permissions {
+			perms[string(cat)] = string(pol)
+		}
+		cfg["defaultPermissions"] = perms
+	}
+	if len(h.config.ToolCategories) > 0 {
+		// Convert typed map to string map for JS
+		cats := make(map[string]string, len(h.config.ToolCategories))
+		for tool, cat := range h.config.ToolCategories {
+			cats[tool] = string(cat)
+		}
+		cfg["toolCategories"] = cats
 	}
 
 	return cfg
