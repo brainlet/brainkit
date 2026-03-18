@@ -62,6 +62,13 @@ type Config struct {
 	//       "vectors": { Path: "./vectors.db" },
 	//   }
 	Storages map[string]StorageConfig
+
+	// Plugins configures external plugin processes.
+	// Each plugin is started as a subprocess communicating via gRPC.
+	Plugins []PluginConfig
+
+	// Network configures Kit-to-Kit networking (deferred — types defined, not wired).
+	Network NetworkConfig
 }
 
 // ProviderConfig configures an AI provider.

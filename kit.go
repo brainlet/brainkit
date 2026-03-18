@@ -29,6 +29,7 @@ type Kit struct {
 	bridge   *jsbridge.Bridge
 	agents   *agentembed.Sandbox
 	wasm     *WASMService
+	plugins  *pluginManager
 	storages map[string]*libsql.Server // named embedded SQLite bridges
 
 	mu     sync.Mutex
@@ -162,6 +163,12 @@ func New(cfg Config) (*Kit, error) {
 		}
 	}
 
+	// Start plugin manager
+	if len(cfg.Plugins) > 0 {
+		k.plugins = newPluginManager(k)
+		k.plugins.startAll(cfg.Plugins)
+	}
+
 	return k, nil
 }
 
@@ -175,6 +182,9 @@ func (k *Kit) Close() {
 	k.closed = true
 	k.mu.Unlock()
 
+	if k.plugins != nil {
+		k.plugins.stopAll()
+	}
 	if k.MCP != nil {
 		k.MCP.Close()
 	}
