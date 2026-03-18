@@ -3,6 +3,7 @@ package brainkit
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 	"github.com/brainlet/brainkit/bus"
 	"github.com/tetratelabs/wazero"
 )
+
+//go:embed runtime/wasm_bundle.ts
+var wasmBundleSource string
 
 // WASMModule holds a compiled WASM module with metadata.
 type WASMModule struct {
@@ -133,6 +137,11 @@ func (s *WASMService) handleCompile(ctx context.Context, msg bus.Message) (*bus.
 	}
 
 	sources := map[string]string{"input.ts": req.Source}
+	// Auto-inject wasm library for `import { ... } from "wasm"` resolution.
+	// AS resolves bare "wasm" → ~lib/wasm, which nextFile finds in onDemandSources.
+	if wasmBundleSource != "" {
+		sources["~lib/wasm"] = wasmBundleSource
+	}
 	compileOpts := req.Options.CompileOptions
 	// Always export runtime — needed for host function string interop (__new, memory)
 	compileOpts.ExportRuntime = true

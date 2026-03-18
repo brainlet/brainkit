@@ -12,5 +12,9 @@ export function fib(n: i32): i32 {
 }
 
 export function run(): i32 {
-  return fib(10); // 55
+  if (fib(10) != 55) return 1;
+  if (fib(0) != 0) return 2;
+  if (fib(1) != 1) return 3;
+  if (fib(20) != 6765) return 4;
+  return 0;
 }

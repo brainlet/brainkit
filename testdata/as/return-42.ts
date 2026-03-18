@@ -1,4 +1,6 @@
-// Simplest WASM module — returns 42
+// Simplest WASM module — verifies basic compilation + execution
 export function run(): i32 {
-  return 42;
+  const x: i32 = 42;
+  if (x != 42) return 1;
+  return 0;
 }

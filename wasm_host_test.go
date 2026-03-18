@@ -151,3 +151,83 @@ export function run(): i32 {
 
 	t.Logf("WASM host bus_send: exit=%d", runResult.ExitCode)
 }
+
+func TestWASMImport_Resolution(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	ctx := context.Background()
+
+	// This source imports from "wasm" — should resolve via ~lib/wasm injection
+	source := `
+import { wasmLibVersion } from "wasm";
+
+export function run(): i32 {
+  return wasmLibVersion();
+}
+`
+	_, err := kit.EvalTS(ctx, "compile.ts", `
+		await wasm.compile(`+"`"+source+"`"+`, { name: "import-test", runtime: "stub" });
+	`)
+	if err != nil {
+		t.Fatalf("compile with import: %v", err)
+	}
+
+	result, err := kit.EvalTS(ctx, "run.ts", `
+		var r = await wasm.run("import-test");
+		return JSON.stringify(r);
+	`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	var rr struct{ ExitCode int `json:"exitCode"` }
+	json.Unmarshal([]byte(result), &rr)
+	if rr.ExitCode != 1 {
+		t.Errorf("exitCode = %d, want 1 (wasmLibVersion)", rr.ExitCode)
+	}
+	t.Logf("import resolution: exitCode=%d", rr.ExitCode)
+}
+
+func TestWASMHost_HasState(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	ctx := context.Background()
+
+	source := hostTestSource(`
+@external("host", "has_state")
+declare function host_has_state(key: string): i32;
+
+export function run(): i32 {
+  // 1. has_state for non-existent key -> 0
+  if (host_has_state("missing") != 0) return 1;
+
+  // 2. Set a key, then has_state -> 1
+  host_set_state("exists", "val");
+  if (host_has_state("exists") != 1) return 2;
+
+  // 3. Set to empty string, has_state still -> 1
+  host_set_state("empty", "");
+  if (host_has_state("empty") != 1) return 3;
+
+  return 0;
+}
+`)
+	_, err := kit.EvalTS(ctx, "compile.ts", `
+		await wasm.compile(`+"`"+source+"`"+`, { name: "has-state-test", runtime: "incremental" });
+	`)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	result, err := kit.EvalTS(ctx, "run.ts", `
+		var r = await wasm.run("has-state-test");
+		return JSON.stringify(r);
+	`)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	var runResult struct{ ExitCode int `json:"exitCode"` }
+	json.Unmarshal([]byte(result), &runResult)
+	if runResult.ExitCode != 0 {
+		t.Errorf("exitCode = %d, want 0 (subtest %d failed)", runResult.ExitCode, runResult.ExitCode)
+	}
+}

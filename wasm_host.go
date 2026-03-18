@@ -153,7 +153,7 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			argsJSON := readASString(m, argsPtr)
 
 			resp, err := hs.kit.Bus.Request(ctx, "tools.call", hs.kit.callerID, json.RawMessage(fmt.Sprintf(
-				`{"name":%q,"args":%s}`, name, argsJSON,
+				`{"name":%q,"input":%s}`, name, argsJSON,
 			)))
 			if err != nil {
 				hs.lastResult = fmt.Sprintf(`{"error":%q}`, err.Error())
@@ -169,7 +169,7 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			return ptr
 		}).Export("call_tool").
 
-		// call_agent(name: string, prompt: string) → string
+		// call_agent(name: string, prompt: string) → string (JSON: {"text":"..."} or {"error":"..."})
 		NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, m api.Module, namePtr, promptPtr uint32) uint32 {
 			name := readASString(m, namePtr)
@@ -177,25 +177,17 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 
 			code := fmt.Sprintf(`
 				var _agent = globalThis.__kit_registry.get("agent", %q);
-				if (!_agent || !_agent.ref) return JSON.stringify({error: "agent not found"});
+				if (!_agent || !_agent.ref) return JSON.stringify({error: "agent " + %q + " not found"});
 				var _result = await _agent.ref.generate(%q);
 				return JSON.stringify({text: _result.text});
-			`, name, prompt)
+			`, name, name, prompt)
 
 			result, err := hs.kit.EvalTS(ctx, "__wasm_call_agent.ts", code)
 			if err != nil {
-				hs.lastResult = err.Error()
+				hs.lastResult = fmt.Sprintf(`{"error":%q}`, err.Error())
 			} else {
-				var parsed struct {
-					Text  string `json:"text"`
-					Error string `json:"error"`
-				}
-				json.Unmarshal([]byte(result), &parsed)
-				if parsed.Error != "" {
-					hs.lastResult = parsed.Error
-				} else {
-					hs.lastResult = parsed.Text
-				}
+				// Pass through the JSON directly — it's already {"text":"..."} or {"error":"..."}
+				hs.lastResult = result
 			}
 
 			ptr, werr := writeASString(ctx, m, hs.lastResult)
@@ -225,6 +217,17 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			val := readASString(m, valPtr)
 			hs.state[key] = val
 		}).Export("set_state").
+
+		// has_state(key: string) → i32 (0 = not found, 1 = found)
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, keyPtr uint32) uint32 {
+			key := readASString(m, keyPtr)
+			_, exists := hs.state[key]
+			if exists {
+				return 1
+			}
+			return 0
+		}).Export("has_state").
 
 		// bus_send(topic: string, payloadJSON: string)
 		NewFunctionBuilder().
