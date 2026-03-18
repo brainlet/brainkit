@@ -21,13 +21,20 @@ type hostState struct {
 	lastResult string            // buffer for host→WASM result passing
 	state      map[string]string // per-execution key-value state
 	logs       []string          // captured log messages (for testing)
+
+	// Shard registration (populated during init phase only)
+	initPhase     bool
+	shardMode     string
+	shardStateKey string
+	shardHandlers map[string]string // topic → exported function name
 }
 
 func newHostState(kit *Kit, module *WASMModule) *hostState {
 	return &hostState{
-		kit:    kit,
-		module: module,
-		state:  make(map[string]string),
+		kit:           kit,
+		module:        module,
+		state:         make(map[string]string),
+		shardHandlers: make(map[string]string),
 	}
 }
 
@@ -228,6 +235,36 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			}
 			return 0
 		}).Export("has_state").
+
+		// set_mode(mode: string) — shard init only
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, modePtr uint32) {
+			if !hs.initPhase {
+				return
+			}
+			hs.shardMode = readASString(m, modePtr)
+		}).Export("set_mode").
+
+		// set_mode_key(keyField: string) — implies keyed mode, init only
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, keyPtr uint32) {
+			if !hs.initPhase {
+				return
+			}
+			hs.shardMode = "keyed"
+			hs.shardStateKey = readASString(m, keyPtr)
+		}).Export("set_mode_key").
+
+		// on_event(topic: string, funcName: string) — register handler, init only
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, topicPtr, funcPtr uint32) {
+			if !hs.initPhase {
+				return
+			}
+			topic := readASString(m, topicPtr)
+			funcName := readASString(m, funcPtr)
+			hs.shardHandlers[topic] = funcName
+		}).Export("on_event").
 
 		// bus_send(topic: string, payloadJSON: string)
 		NewFunctionBuilder().

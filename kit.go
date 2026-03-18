@@ -332,17 +332,74 @@ func (k *Kit) GetWASMModule(name string) (*WASMModuleInfo, error) {
 }
 
 // RemoveWASMModule unloads a compiled module by name.
+// Fails if a shard is deployed from this module (undeploy first).
 func (k *Kit) RemoveWASMModule(name string) error {
-	k.wasm.mu.Lock()
-	_, ok := k.wasm.modules[name]
-	if ok {
-		delete(k.wasm.modules, name)
+	resp, err := k.Bus.Request(context.Background(), "wasm.remove", k.callerID,
+		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	if err != nil {
+		return err
 	}
-	k.wasm.mu.Unlock()
-	if !ok {
+	// Check for error in response payload (bus wraps handler errors as {"error":"..."})
+	var result struct {
+		Error   string `json:"error"`
+		Removed bool   `json:"removed"`
+	}
+	json.Unmarshal(resp.Payload, &result)
+	if result.Error != "" {
+		return fmt.Errorf("%s", result.Error)
+	}
+	if !result.Removed {
 		return fmt.Errorf("wasm module %q not found", name)
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Shard API — deploy/undeploy event-reactive WASM modules
+// ---------------------------------------------------------------------------
+
+// DeployWASM activates a compiled shard — calls init(), registers event handlers.
+func (k *Kit) DeployWASM(name string) (*ShardDescriptor, error) {
+	resp, err := k.Bus.Request(context.Background(), "wasm.deploy", k.callerID,
+		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	if err != nil {
+		return nil, err
+	}
+	var desc ShardDescriptor
+	json.Unmarshal(resp.Payload, &desc)
+	return &desc, nil
+}
+
+// UndeployWASM removes all event subscriptions for a deployed shard.
+func (k *Kit) UndeployWASM(name string) error {
+	_, err := k.Bus.Request(context.Background(), "wasm.undeploy", k.callerID,
+		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	return err
+}
+
+// DescribeWASM returns the shard's registrations (mode, handlers, state key).
+func (k *Kit) DescribeWASM(name string) (*ShardDescriptor, error) {
+	resp, err := k.Bus.Request(context.Background(), "wasm.describe", k.callerID,
+		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	if err != nil {
+		return nil, err
+	}
+	var desc ShardDescriptor
+	json.Unmarshal(resp.Payload, &desc)
+	if desc.Module == "" {
+		return nil, nil
+	}
+	return &desc, nil
+}
+
+// ListDeployedWASM returns all active shard descriptors.
+func (k *Kit) ListDeployedWASM() []ShardDescriptor {
+	return k.wasm.listDeployedShards()
+}
+
+// InjectWASMEvent manually triggers a shard handler (for testing and SDK use).
+func (k *Kit) InjectWASMEvent(shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
+	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload)
 }
 
 func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {

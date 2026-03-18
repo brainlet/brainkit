@@ -904,20 +904,20 @@
     },
     validate: async function(module) {
       var raw = bridgeRequest("wasm.validate", { module: module });
-      return JSON.parse(raw);
+      return parseBridgeResponse(raw);
     },
     list: function() {
       var raw = bridgeRequest("wasm.list", {});
-      return JSON.parse(raw);
+      return parseBridgeResponse(raw);
     },
     get: function(name) {
       var raw = bridgeRequest("wasm.get", { name: name });
-      var result = JSON.parse(raw);
+      var result = parseBridgeResponse(raw);
       return result || null;
     },
     remove: function(name) {
       var raw = bridgeRequest("wasm.remove", { name: name });
-      var result = JSON.parse(raw);
+      var result = parseBridgeResponse(raw);
       if (result && result.removed) {
         _resourceRegistry.unregister("wasm", name);
       }
@@ -925,8 +925,20 @@
     },
     exists: function(name) {
       var raw = bridgeRequest("wasm.get", { name: name });
-      var result = JSON.parse(raw);
+      var result = parseBridgeResponse(raw);
       return result !== null && result !== undefined;
+    },
+    deploy: async function(name) {
+      var raw = await bridgeRequestAsync("wasm.deploy", { name: name });
+      return parseBridgeResponse(raw);
+    },
+    undeploy: async function(name) {
+      var raw = await bridgeRequestAsync("wasm.undeploy", { name: name });
+      return parseBridgeResponse(raw);
+    },
+    describe: function(name) {
+      var raw = bridgeRequest("wasm.describe", { name: name });
+      return parseBridgeResponse(raw);
     },
   };
 
@@ -939,7 +951,7 @@
     },
     list: async function(namespace) {
       var raw = bridgeRequest("tools.list", { namespace: namespace || "" });
-      return JSON.parse(raw);
+      return parseBridgeResponse(raw);
     },
     register: async function(name, config) {
       bridgeRequest("tools.register", { name: name, description: config.description, inputSchema: config.inputSchema });
@@ -1521,7 +1533,7 @@
     mcp: {
       listTools: async function(serverName) {
         var raw = bridgeRequest("mcp.listTools", { server: serverName || "" });
-        return JSON.parse(raw);
+        return parseBridgeResponse(raw);
       },
       callTool: async function(serverName, toolName, args) {
         var raw = await bridgeRequestAsync("mcp.callTool", {

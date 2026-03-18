@@ -21,3 +21,12 @@ export declare function _host_has_state(key: string): i32;
 
 @external("host", "bus_send")
 export declare function _host_bus_send(topic: string, payloadJSON: string): void;
+
+@external("host", "set_mode")
+export declare function _host_set_mode(mode: string): void;
+
+@external("host", "set_mode_key")
+export declare function _host_set_mode_key(key: string): void;
+
+@external("host", "on_event")
+export declare function _host_on_event(topic: string, funcName: string): void;

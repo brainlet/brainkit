@@ -21,6 +21,15 @@ export declare function _host_has_state(key: string): i32;
 
 @external("host", "bus_send")
 export declare function _host_bus_send(topic: string, payloadJSON: string): void;
+
+@external("host", "set_mode")
+export declare function _host_set_mode(mode: string): void;
+
+@external("host", "set_mode_key")
+export declare function _host_set_mode_key(key: string): void;
+
+@external("host", "on_event")
+export declare function _host_on_event(topic: string, funcName: string): void;
 // runtime/wasm/json.ts — Pure AssemblyScript JSON library.
 // Provides typed JSON building, parsing, and serialization.
 // No host functions required — everything runs in WASM.
@@ -681,6 +690,24 @@ export function busSend(topic: string, payload: JSONObject): void {
 export function busSendRaw(topic: string, payloadJSON: string): void {
   _host_bus_send(topic, payloadJSON);
 }
+
+// ── Shard Registration (init phase only) ─────────────────────
+
+/** Set shard state mode: "stateless" or "shared" */
+export function setMode(mode: string): void {
+  _host_set_mode(mode);
+}
+
+/** Set keyed mode with the payload field name used as state key */
+export function setModeKeyed(keyField: string): void {
+  _host_set_mode_key(keyField);
+}
+
+/** Register an event handler: topic pattern -> exported function name */
+export function onEvent(topic: string, handlerName: string): void {
+  _host_on_event(topic, handlerName);
+}
+
 // runtime/wasm/index.ts — public API surface.
 // In the concatenated bundle, all exports come from json.ts and api.ts directly.
 // This file exists as the logical entry point for the 4-file development layout.

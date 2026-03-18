@@ -109,7 +109,7 @@ func (b *Bus) Send(ctx context.Context, msg Message) error {
 	b.mu.RLock()
 	var matchedSubs []func(Message)
 	for _, sub := range b.subs {
-		if topicMatches(sub.pattern, msg.Topic) {
+		if TopicMatches(sub.pattern, msg.Topic) {
 			matchedSubs = append(matchedSubs, sub.handler)
 		}
 	}
@@ -124,7 +124,7 @@ func (b *Bus) Send(ctx context.Context, msg Message) error {
 		b.mu.RLock()
 		var matchedHandler Handler
 		for prefix, handler := range b.handlers {
-			if topicMatches(prefix, msg.Topic) {
+			if TopicMatches(prefix, msg.Topic) {
 				matchedHandler = handler
 				break
 			}
@@ -190,10 +190,10 @@ func (b *Bus) Request(ctx context.Context, topic, callerID string, payload json.
 	}
 }
 
-// topicMatches checks if a topic matches a pattern.
+// TopicMatches checks if a topic matches a pattern.
 // "test.*" matches "test.foo", "test.foo.bar".
 // "test.foo" matches only "test.foo".
-func topicMatches(pattern, topic string) bool {
+func TopicMatches(pattern, topic string) bool {
 	if pattern == topic {
 		return true
 	}

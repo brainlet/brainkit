@@ -158,10 +158,13 @@ func TestWASMImport_Resolution(t *testing.T) {
 
 	// This source imports from "wasm" — should resolve via ~lib/wasm injection
 	source := `
-import { wasmLibVersion } from "wasm";
+import { log, setState, getState } from "wasm";
 
 export function run(): i32 {
-  return wasmLibVersion();
+  log("import resolution works");
+  setState("test", "ok");
+  if (getState("test") != "ok") return 1;
+  return 0;
 }
 `
 	_, err := kit.EvalTS(ctx, "compile.ts", `
@@ -181,10 +184,9 @@ export function run(): i32 {
 
 	var rr struct{ ExitCode int `json:"exitCode"` }
 	json.Unmarshal([]byte(result), &rr)
-	if rr.ExitCode != 1 {
-		t.Errorf("exitCode = %d, want 1 (wasmLibVersion)", rr.ExitCode)
+	if rr.ExitCode != 0 {
+		t.Errorf("exitCode = %d, want 0", rr.ExitCode)
 	}
-	t.Logf("import resolution: exitCode=%d", rr.ExitCode)
 }
 
 func TestWASMHost_HasState(t *testing.T) {

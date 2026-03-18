@@ -46,14 +46,16 @@ type WASMService struct {
 	compiler *asembed.Compiler
 
 	mu      sync.Mutex
-	modules map[string]*WASMModule // name → module
-	counter int                    // for auto-naming unnamed modules
+	modules map[string]*WASMModule   // name → module
+	shards  map[string]*deployedShard // name → active shard
+	counter int                       // for auto-naming unnamed modules
 }
 
 func newWASMService(kit *Kit) *WASMService {
 	return &WASMService{
 		kit:     kit,
 		modules: make(map[string]*WASMModule),
+		shards:  make(map[string]*deployedShard),
 	}
 }
 
@@ -98,6 +100,12 @@ func (s *WASMService) handleBusMessage(ctx context.Context, msg bus.Message) (*b
 		return s.handleGet(ctx, msg)
 	case "wasm.remove":
 		return s.handleRemove(ctx, msg)
+	case "wasm.deploy":
+		return s.handleDeploy(ctx, msg)
+	case "wasm.undeploy":
+		return s.handleUndeploy(ctx, msg)
+	case "wasm.describe":
+		return s.handleDescribe(ctx, msg)
 	default:
 		return nil, fmt.Errorf("wasm: unknown topic %q", msg.Topic)
 	}
@@ -354,6 +362,10 @@ func (s *WASMService) handleRemove(ctx context.Context, msg bus.Message) (*bus.M
 	json.Unmarshal(msg.Payload, &req)
 
 	s.mu.Lock()
+	if _, deployed := s.shards[req.Name]; deployed {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("wasm.remove: cannot remove module %q: shard is deployed (undeploy first)", req.Name)
+	}
 	_, ok := s.modules[req.Name]
 	if ok {
 		delete(s.modules, req.Name)
