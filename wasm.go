@@ -94,7 +94,7 @@ func (s *WASMService) loadFromStore(store KitStore) error {
 			shardName := name
 			fn := funcName
 			tp := topic
-			subID, subErr := s.kit.Bus.Subscribe(topic, func(m bus.Message) {
+			subID := s.kit.Bus.On(topic, func(m bus.Message, _ bus.ReplyFunc) {
 				result, err := s.invokeShardHandler(context.Background(), shardName, tp, m.Payload)
 				if err != nil {
 					log.Printf("[shard:%s] handler %s error: %v", shardName, fn, err)
@@ -102,10 +102,6 @@ func (s *WASMService) loadFromStore(store KitStore) error {
 					log.Printf("[shard:%s] handler %s returned exit code %d", shardName, fn, result.ExitCode)
 				}
 			})
-			if subErr != nil {
-				log.Printf("[brainkit] shard %q: subscribe to %q failed: %v", name, topic, subErr)
-				continue
-			}
 			subscriptions = append(subscriptions, subID)
 		}
 

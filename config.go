@@ -8,6 +8,11 @@ import (
 
 // Config configures a Kit.
 type Config struct {
+	// Name is an optional unique name for this Kit on the bus.
+	// When set, the bus enforces uniqueness — no two Kits can share the same name.
+	// Used for addressing: "kit:<name>/agent:X".
+	Name string
+
 	// Namespace for this Kit (e.g., "user", "agent.team-1").
 	Namespace string
 

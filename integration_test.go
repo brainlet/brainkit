@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/bus"
 	"github.com/brainlet/brainkit/registry"
 )
 
@@ -232,7 +233,7 @@ func TestIntegration_WASMCompileViaBus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := kit.Bus.Request(ctx, "wasm.compile", kit.callerID, payload)
+	resp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.compile", CallerID: kit.callerID, Payload: payload})
 	if err != nil {
 		// as-embed might not be fully set up — that's OK, we're testing the bus routing
 		t.Logf("wasm.compile via bus: %v (expected if as-embed not ready)", err)

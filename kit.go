@@ -46,7 +46,12 @@ func New(cfg Config) (*Kit, error) {
 
 	sharedBus := cfg.SharedBus
 	if sharedBus == nil {
-		sharedBus = bus.New()
+		sharedBus = bus.NewBus(bus.NewInProcessTransport())
+	}
+	if cfg.Name != "" {
+		if err := sharedBus.RegisterName(cfg.Name); err != nil {
+			return nil, fmt.Errorf("brainkit: %w", err)
+		}
 	}
 	sharedTools := cfg.SharedTools
 	if sharedTools == nil {
@@ -184,6 +189,9 @@ func (k *Kit) Close() {
 	}
 	for _, srv := range k.storages {
 		srv.Close()
+	}
+	if k.config.Name != "" {
+		k.Bus.UnregisterName(k.config.Name)
 	}
 	// Only close the bus if we own it (not shared)
 	if k.config.SharedBus == nil {
@@ -345,8 +353,11 @@ func (k *Kit) GetWASMModule(name string) (*WASMModuleInfo, error) {
 // RemoveWASMModule unloads a compiled module by name.
 // Fails if a shard is deployed from this module (undeploy first).
 func (k *Kit) RemoveWASMModule(name string) error {
-	resp, err := k.Bus.Request(context.Background(), "wasm.remove", k.callerID,
-		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	resp, err := bus.AskSync(k.Bus, context.Background(), bus.Message{
+		Topic:    "wasm.remove",
+		CallerID: k.callerID,
+		Payload:  json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)),
+	})
 	if err != nil {
 		return err
 	}
@@ -371,8 +382,11 @@ func (k *Kit) RemoveWASMModule(name string) error {
 
 // DeployWASM activates a compiled shard — calls init(), registers event handlers.
 func (k *Kit) DeployWASM(name string) (*ShardDescriptor, error) {
-	resp, err := k.Bus.Request(context.Background(), "wasm.deploy", k.callerID,
-		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	resp, err := bus.AskSync(k.Bus, context.Background(), bus.Message{
+		Topic:    "wasm.deploy",
+		CallerID: k.callerID,
+		Payload:  json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -383,15 +397,21 @@ func (k *Kit) DeployWASM(name string) (*ShardDescriptor, error) {
 
 // UndeployWASM removes all event subscriptions for a deployed shard.
 func (k *Kit) UndeployWASM(name string) error {
-	_, err := k.Bus.Request(context.Background(), "wasm.undeploy", k.callerID,
-		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	_, err := bus.AskSync(k.Bus, context.Background(), bus.Message{
+		Topic:    "wasm.undeploy",
+		CallerID: k.callerID,
+		Payload:  json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)),
+	})
 	return err
 }
 
 // DescribeWASM returns the shard's registrations (mode, handlers, state key).
 func (k *Kit) DescribeWASM(name string) (*ShardDescriptor, error) {
-	resp, err := k.Bus.Request(context.Background(), "wasm.describe", k.callerID,
-		json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)))
+	resp, err := bus.AskSync(k.Bus, context.Background(), bus.Message{
+		Topic:    "wasm.describe",
+		CallerID: k.callerID,
+		Payload:  json.RawMessage(fmt.Sprintf(`{"name":%q}`, name)),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -520,9 +540,24 @@ func (k *Kit) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJSON 
 }
 
 func (k *Kit) registerHandlers() {
-	k.Bus.Handle("wasm.*", k.wasm.handleBusMessage)
+	// wrapHandler adapts the old Handler signature to the new On/ReplyFunc pattern.
+	wrapHandler := func(h func(ctx context.Context, msg bus.Message) (*bus.Message, error)) func(bus.Message, bus.ReplyFunc) {
+		return func(msg bus.Message, reply bus.ReplyFunc) {
+			resp, err := h(context.Background(), msg)
+			if err != nil {
+				errPayload, _ := json.Marshal(map[string]string{"error": err.Error()})
+				reply(errPayload)
+				return
+			}
+			if resp != nil {
+				reply(resp.Payload)
+			}
+		}
+	}
 
-	k.Bus.Handle("tools.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+	k.Bus.On("wasm.*", wrapHandler(k.wasm.handleBusMessage))
+
+	k.Bus.On("tools.*", wrapHandler(func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
 		switch msg.Topic {
 		case "tools.resolve":
 			return k.handleToolsResolve(ctx, msg)
@@ -535,9 +570,9 @@ func (k *Kit) registerHandlers() {
 		default:
 			return nil, fmt.Errorf("tools: unknown topic %q", msg.Topic)
 		}
-	})
+	}))
 
-	k.Bus.Handle("mcp.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
+	k.Bus.On("mcp.*", wrapHandler(func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
 		if k.MCP == nil {
 			return nil, fmt.Errorf("mcp: no MCP servers configured")
 		}
@@ -563,7 +598,7 @@ func (k *Kit) registerHandlers() {
 		default:
 			return nil, fmt.Errorf("mcp: unknown topic %q", msg.Topic)
 		}
-	})
+	}))
 }
 
 func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {

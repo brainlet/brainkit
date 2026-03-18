@@ -50,11 +50,11 @@ func TestKitBusPubSub(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	received := make(chan bool, 1)
-	kit.Bus.Subscribe("test.event", func(msg bus.Message) {
+	kit.Bus.On("test.event", func(msg bus.Message, _ bus.ReplyFunc) {
 		received <- true
 	})
 
-	kit.Bus.Send(context.Background(), bus.Message{
+	kit.Bus.Send(bus.Message{
 		Topic:    "test.event",
 		CallerID: "test",
 	})

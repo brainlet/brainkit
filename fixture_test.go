@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/bus"
 	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 	"github.com/testcontainers/testcontainers-go"
@@ -1762,7 +1763,7 @@ func TestFixture_AS_Return42(t *testing.T) {
 
 	// Compile
 	compilePayload, _ := json.Marshal(map[string]string{"source": source})
-	compileResp, err := kit.Bus.Request(ctx, "wasm.compile", kit.callerID, compilePayload)
+	compileResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.compile", CallerID: kit.callerID, Payload: compilePayload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1772,7 +1773,7 @@ func TestFixture_AS_Return42(t *testing.T) {
 
 	// Run
 	runPayload, _ := json.Marshal(map[string]string{"moduleId": compiled.ModuleID})
-	runResp, err := kit.Bus.Request(ctx, "wasm.run", kit.callerID, runPayload)
+	runResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.run", CallerID: kit.callerID, Payload: runPayload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1794,7 +1795,7 @@ func TestFixture_AS_Fibonacci(t *testing.T) {
 	defer cancel()
 
 	compilePayload, _ := json.Marshal(map[string]string{"source": source})
-	compileResp, err := kit.Bus.Request(ctx, "wasm.compile", kit.callerID, compilePayload)
+	compileResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.compile", CallerID: kit.callerID, Payload: compilePayload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1803,7 +1804,7 @@ func TestFixture_AS_Fibonacci(t *testing.T) {
 	json.Unmarshal(compileResp.Payload, &compiled)
 
 	runPayload, _ := json.Marshal(map[string]string{"moduleId": compiled.ModuleID})
-	runResp, err := kit.Bus.Request(ctx, "wasm.run", kit.callerID, runPayload)
+	runResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.run", CallerID: kit.callerID, Payload: runPayload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1825,7 +1826,7 @@ func TestFixture_AS_Arithmetic(t *testing.T) {
 	defer cancel()
 
 	compilePayload, _ := json.Marshal(map[string]string{"source": source})
-	compileResp, err := kit.Bus.Request(ctx, "wasm.compile", kit.callerID, compilePayload)
+	compileResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.compile", CallerID: kit.callerID, Payload: compilePayload})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1834,7 +1835,7 @@ func TestFixture_AS_Arithmetic(t *testing.T) {
 	json.Unmarshal(compileResp.Payload, &compiled)
 
 	runPayload, _ := json.Marshal(map[string]string{"moduleId": compiled.ModuleID})
-	runResp, err := kit.Bus.Request(ctx, "wasm.run", kit.callerID, runPayload)
+	runResp, err := bus.AskSync(kit.Bus, ctx, bus.Message{Topic: "wasm.run", CallerID: kit.callerID, Payload: runPayload})
 	if err != nil {
 		t.Fatal(err)
 	}

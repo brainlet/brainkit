@@ -110,7 +110,7 @@ func TestWASMHost_BusSend(t *testing.T) {
 	ctx := context.Background()
 
 	received := make(chan string, 1)
-	kit.Bus.Subscribe("wasm.test.*", func(msg bus.Message) {
+	kit.Bus.On("wasm.test.*", func(msg bus.Message, _ bus.ReplyFunc) {
 		received <- string(msg.Payload)
 	})
 

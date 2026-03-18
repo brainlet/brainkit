@@ -368,11 +368,11 @@ func TestContract_BusPubSub(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	received := make(chan string, 1)
-	kit.Bus.Subscribe("test.event", func(msg bus.Message) {
+	kit.Bus.On("test.event", func(msg bus.Message, _ bus.ReplyFunc) {
 		received <- string(msg.Payload)
 	})
 
-	kit.Bus.Send(context.Background(), bus.Message{
+	kit.Bus.Send(bus.Message{
 		Topic:    "test.event",
 		CallerID: "test",
 		Payload:  json.RawMessage(`"hello"`),
@@ -391,11 +391,11 @@ func TestContract_BusPubSub(t *testing.T) {
 func TestContract_BusRequestResponse(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
-	kit.Bus.Handle("echo.*", func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
-		return &bus.Message{Payload: msg.Payload}, nil
+	kit.Bus.On("echo.*", func(msg bus.Message, reply bus.ReplyFunc) {
+		reply(msg.Payload)
 	})
 
-	resp, err := kit.Bus.Request(context.Background(), "echo.test", "test", json.RawMessage(`{"ping":true}`))
+	resp, err := bus.AskSync(kit.Bus, context.Background(), bus.Message{Topic: "echo.test", CallerID: "test", Payload: json.RawMessage(`{"ping":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

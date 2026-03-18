@@ -25,7 +25,7 @@ func (k *Kit) registerBridges() {
 			payload := json.RawMessage(args[1].String())
 
 			goCtx := context.Background()
-			resp, err := k.Bus.Request(goCtx, topic, k.callerID, payload)
+			resp, err := bus.AskSync(k.Bus, goCtx, bus.Message{Topic: topic, CallerID: k.callerID, Payload: payload})
 			if err != nil {
 				return qctx.ThrowError(fmt.Errorf("brainkit_request %s: %w", topic, err))
 			}
@@ -46,7 +46,7 @@ func (k *Kit) registerBridges() {
 
 			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 				k.bridge.Go(func(goCtx context.Context) {
-					resp, err := k.Bus.Request(goCtx, topic, k.callerID, payload)
+					resp, err := bus.AskSync(k.Bus, goCtx, bus.Message{Topic: topic, CallerID: k.callerID, Payload: payload})
 					if err != nil {
 						if goCtx.Err() != nil {
 							return // bridge closing
@@ -76,7 +76,7 @@ func (k *Kit) registerBridges() {
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
-			err := k.Bus.Send(context.Background(), bus.Message{
+			err := k.Bus.Send(bus.Message{
 				Topic:    topic,
 				CallerID: k.callerID,
 				Payload:  payload,
@@ -97,10 +97,10 @@ func (k *Kit) registerBridges() {
 			}
 			pattern := args[0].String()
 
-			// Use a pointer so the callback can reference the ID after Subscribe returns
+			// Use a pointer so the callback can reference the ID after On returns
 			var subIDStr string
 
-			subID, err := k.Bus.Subscribe(pattern, func(msg bus.Message) {
+			subID := k.Bus.On(pattern, func(msg bus.Message, _ bus.ReplyFunc) {
 				payloadJSON, _ := json.Marshal(map[string]any{
 					"topic":    msg.Topic,
 					"callerID": msg.CallerID,
@@ -116,9 +116,6 @@ func (k *Kit) registerBridges() {
 					))
 				})
 			})
-			if err != nil {
-				return qctx.ThrowError(fmt.Errorf("brainkit_subscribe: %w", err))
-			}
 			subIDStr = string(subID)
 
 			return qctx.NewString(subIDStr)
@@ -131,7 +128,7 @@ func (k *Kit) registerBridges() {
 				return qctx.NewUndefined()
 			}
 			subID := bus.SubscriptionID(args[0].String())
-			k.Bus.Unsubscribe(subID)
+			k.Bus.Off(subID)
 			return qctx.NewUndefined()
 		}))
 

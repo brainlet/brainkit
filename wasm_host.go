@@ -159,9 +159,11 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			name := readASString(m, namePtr)
 			argsJSON := readASString(m, argsPtr)
 
-			resp, err := hs.kit.Bus.Request(ctx, "tools.call", hs.kit.callerID, json.RawMessage(fmt.Sprintf(
-				`{"name":%q,"input":%s}`, name, argsJSON,
-			)))
+			resp, err := bus.AskSync(hs.kit.Bus, ctx, bus.Message{
+				Topic:    "tools.call",
+				CallerID: hs.kit.callerID,
+				Payload:  json.RawMessage(fmt.Sprintf(`{"name":%q,"input":%s}`, name, argsJSON)),
+			})
 			if err != nil {
 				hs.lastResult = fmt.Sprintf(`{"error":%q}`, err.Error())
 			} else {
@@ -271,7 +273,7 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 		WithFunc(func(ctx context.Context, m api.Module, topicPtr, payloadPtr uint32) {
 			topic := readASString(m, topicPtr)
 			payload := readASString(m, payloadPtr)
-			hs.kit.Bus.Send(ctx, bus.Message{
+			hs.kit.Bus.Send(bus.Message{
 				Topic:    topic,
 				CallerID: hs.kit.callerID,
 				Payload:  json.RawMessage(payload),

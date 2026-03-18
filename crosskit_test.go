@@ -55,7 +55,7 @@ func splitToolName(name string) toolNameParts {
 // TestCrossKit_BusPubSub tests two Kits communicating via a shared bus.
 // Kit A subscribes to "events.*", Kit B publishes to "events.hello".
 func TestCrossKit_BusPubSub(t *testing.T) {
-	sharedBus := bus.New()
+	sharedBus := bus.NewBus(bus.NewInProcessTransport())
 	defer sharedBus.Close()
 
 	kitA, err := New(Config{
@@ -141,7 +141,7 @@ func TestCrossKit_BusPubSub(t *testing.T) {
 // Kit A registers a Go tool, Kit B calls it from JS.
 func TestCrossKit_SharedTools(t *testing.T) {
 	key := requireKey(t)
-	sharedBus := bus.New()
+	sharedBus := bus.NewBus(bus.NewInProcessTransport())
 	sharedTools := newSharedTools()
 	defer sharedBus.Close()
 

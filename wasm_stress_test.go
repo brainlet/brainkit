@@ -115,7 +115,7 @@ export function run(): i32 {
 
 			// Subscribe to bus topics before run
 			received := make(chan bus.Message, 10)
-			kit.Bus.Subscribe("stress.test.*", func(msg bus.Message) {
+			kit.Bus.On("stress.test.*", func(msg bus.Message, _ bus.ReplyFunc) {
 				received <- msg
 			})
 
@@ -551,7 +551,7 @@ func TestWASMStress_BusOrdering(t *testing.T) {
 
 	var mu sync.Mutex
 	var received []string
-	kit.Bus.Subscribe("stress.order.*", func(msg bus.Message) {
+	kit.Bus.On("stress.order.*", func(msg bus.Message, _ bus.ReplyFunc) {
 		mu.Lock()
 		received = append(received, msg.Topic)
 		mu.Unlock()
@@ -662,7 +662,7 @@ export function run(): i32 {
 }
 `)
 	received := make(chan bus.Message, 1)
-	kit.Bus.Subscribe("stress.large", func(msg bus.Message) {
+	kit.Bus.On("stress.large", func(msg bus.Message, _ bus.ReplyFunc) {
 		received <- msg
 	})
 
