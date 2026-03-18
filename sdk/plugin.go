@@ -11,7 +11,7 @@ type Plugin interface {
 	Manifest() PluginManifest
 
 	// OnStart is called after handshake + manifest processing.
-	OnStart(client BrainletClient) error
+	OnStart(client BrainkitClient) error
 
 	// OnStop is called before shutdown.
 	OnStop() error
@@ -26,8 +26,8 @@ type Plugin interface {
 	HandleIntercept(ctx context.Context, msg InterceptMessage) (*InterceptMessage, error)
 }
 
-// BrainletClient is the Kit API available to plugins via gRPC.
-type BrainletClient interface {
+// BrainkitClient is the Kit API available to plugins via gRPC.
+type BrainkitClient interface {
 	// Bus operations
 	Send(ctx context.Context, topic string, payload json.RawMessage) error
 	Ask(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error)

@@ -943,12 +943,12 @@ const file_proto_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage2\xf2\x02\n" +
-	"\x15BrainletPluginService\x12X\n" +
+	"\x15BrainkitPluginService\x12X\n" +
 	"\tHandshake\x12$.brainkit.plugin.v1.HandshakeRequest\x1a%.brainkit.plugin.v1.HandshakeResponse\x12S\n" +
 	"\bManifest\x12#.brainkit.plugin.v1.ManifestRequest\x1a\".brainkit.plugin.v1.PluginManifest\x12Y\n" +
 	"\rMessageStream\x12!.brainkit.plugin.v1.PluginMessage\x1a!.brainkit.plugin.v1.PluginMessage(\x010\x01\x12O\n" +
 	"\x06Health\x12!.brainkit.plugin.v1.HealthRequest\x1a\".brainkit.plugin.v1.HealthResponse2\xca\x01\n" +
-	"\x13BrainletHostService\x12X\n" +
+	"\x13BrainkitHostService\x12X\n" +
 	"\tHandshake\x12$.brainkit.plugin.v1.HandshakeRequest\x1a%.brainkit.plugin.v1.HandshakeResponse\x12Y\n" +
 	"\rMessageStream\x12!.brainkit.plugin.v1.PluginMessage\x1a!.brainkit.plugin.v1.PluginMessage(\x010\x01B7Z5github.com/brainlet/brainkit/proto/plugin/v1;pluginv1b\x06proto3"
 
@@ -989,18 +989,18 @@ var file_proto_plugin_v1_plugin_proto_depIdxs = []int32{
 	8,  // 4: brainkit.plugin.v1.PluginManifest.agents:type_name -> brainkit.plugin.v1.AgentDefinition
 	9,  // 5: brainkit.plugin.v1.PluginManifest.files:type_name -> brainkit.plugin.v1.FileDefinition
 	13, // 6: brainkit.plugin.v1.PluginMessage.metadata:type_name -> brainkit.plugin.v1.PluginMessage.MetadataEntry
-	0,  // 7: brainkit.plugin.v1.BrainletPluginService.Handshake:input_type -> brainkit.plugin.v1.HandshakeRequest
-	2,  // 8: brainkit.plugin.v1.BrainletPluginService.Manifest:input_type -> brainkit.plugin.v1.ManifestRequest
-	10, // 9: brainkit.plugin.v1.BrainletPluginService.MessageStream:input_type -> brainkit.plugin.v1.PluginMessage
-	11, // 10: brainkit.plugin.v1.BrainletPluginService.Health:input_type -> brainkit.plugin.v1.HealthRequest
-	0,  // 11: brainkit.plugin.v1.BrainletHostService.Handshake:input_type -> brainkit.plugin.v1.HandshakeRequest
-	10, // 12: brainkit.plugin.v1.BrainletHostService.MessageStream:input_type -> brainkit.plugin.v1.PluginMessage
-	1,  // 13: brainkit.plugin.v1.BrainletPluginService.Handshake:output_type -> brainkit.plugin.v1.HandshakeResponse
-	3,  // 14: brainkit.plugin.v1.BrainletPluginService.Manifest:output_type -> brainkit.plugin.v1.PluginManifest
-	10, // 15: brainkit.plugin.v1.BrainletPluginService.MessageStream:output_type -> brainkit.plugin.v1.PluginMessage
-	12, // 16: brainkit.plugin.v1.BrainletPluginService.Health:output_type -> brainkit.plugin.v1.HealthResponse
-	1,  // 17: brainkit.plugin.v1.BrainletHostService.Handshake:output_type -> brainkit.plugin.v1.HandshakeResponse
-	10, // 18: brainkit.plugin.v1.BrainletHostService.MessageStream:output_type -> brainkit.plugin.v1.PluginMessage
+	0,  // 7: brainkit.plugin.v1.BrainkitPluginService.Handshake:input_type -> brainkit.plugin.v1.HandshakeRequest
+	2,  // 8: brainkit.plugin.v1.BrainkitPluginService.Manifest:input_type -> brainkit.plugin.v1.ManifestRequest
+	10, // 9: brainkit.plugin.v1.BrainkitPluginService.MessageStream:input_type -> brainkit.plugin.v1.PluginMessage
+	11, // 10: brainkit.plugin.v1.BrainkitPluginService.Health:input_type -> brainkit.plugin.v1.HealthRequest
+	0,  // 11: brainkit.plugin.v1.BrainkitHostService.Handshake:input_type -> brainkit.plugin.v1.HandshakeRequest
+	10, // 12: brainkit.plugin.v1.BrainkitHostService.MessageStream:input_type -> brainkit.plugin.v1.PluginMessage
+	1,  // 13: brainkit.plugin.v1.BrainkitPluginService.Handshake:output_type -> brainkit.plugin.v1.HandshakeResponse
+	3,  // 14: brainkit.plugin.v1.BrainkitPluginService.Manifest:output_type -> brainkit.plugin.v1.PluginManifest
+	10, // 15: brainkit.plugin.v1.BrainkitPluginService.MessageStream:output_type -> brainkit.plugin.v1.PluginMessage
+	12, // 16: brainkit.plugin.v1.BrainkitPluginService.Health:output_type -> brainkit.plugin.v1.HealthResponse
+	1,  // 17: brainkit.plugin.v1.BrainkitHostService.Handshake:output_type -> brainkit.plugin.v1.HandshakeResponse
+	10, // 18: brainkit.plugin.v1.BrainkitHostService.MessageStream:output_type -> brainkit.plugin.v1.PluginMessage
 	13, // [13:19] is the sub-list for method output_type
 	7,  // [7:13] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name

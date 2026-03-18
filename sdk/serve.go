@@ -27,7 +27,7 @@ func Serve(plugin Plugin) error {
 
 	srv := grpc.NewServer()
 	handler := &pluginServer{plugin: plugin}
-	pluginv1.RegisterBrainletPluginServiceServer(srv, handler)
+	pluginv1.RegisterBrainkitPluginServiceServer(srv, handler)
 
 	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)
@@ -40,11 +40,11 @@ func Serve(plugin Plugin) error {
 	return srv.Serve(lis)
 }
 
-// pluginServer implements BrainletPluginServiceServer.
+// pluginServer implements BrainkitPluginServiceServer.
 type pluginServer struct {
-	pluginv1.UnimplementedBrainletPluginServiceServer
+	pluginv1.UnimplementedBrainkitPluginServiceServer
 	plugin Plugin
-	client *brainletClient
+	client *brainkitClient
 }
 
 func (s *pluginServer) Handshake(_ context.Context, req *pluginv1.HandshakeRequest) (*pluginv1.HandshakeResponse, error) {
@@ -116,7 +116,7 @@ func (s *pluginServer) Manifest(_ context.Context, _ *pluginv1.ManifestRequest) 
 	return pm, nil
 }
 
-func (s *pluginServer) MessageStream(stream pluginv1.BrainletPluginService_MessageStreamServer) error {
+func (s *pluginServer) MessageStream(stream pluginv1.BrainkitPluginService_MessageStreamServer) error {
 	// Thread-safe stream sender (gRPC Send is NOT thread-safe)
 	sendMu := &sync.Mutex{}
 	safeSend := func(msg *pluginv1.PluginMessage) error {
@@ -125,7 +125,7 @@ func (s *pluginServer) MessageStream(stream pluginv1.BrainletPluginService_Messa
 		return stream.Send(msg)
 	}
 
-	client := newBrainletClient(safeSend)
+	client := newBrainkitClient(safeSend)
 	s.client = client
 
 	for {

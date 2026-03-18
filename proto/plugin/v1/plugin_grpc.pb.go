@@ -19,55 +19,55 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BrainletPluginService_Handshake_FullMethodName     = "/brainkit.plugin.v1.BrainletPluginService/Handshake"
-	BrainletPluginService_Manifest_FullMethodName      = "/brainkit.plugin.v1.BrainletPluginService/Manifest"
-	BrainletPluginService_MessageStream_FullMethodName = "/brainkit.plugin.v1.BrainletPluginService/MessageStream"
-	BrainletPluginService_Health_FullMethodName        = "/brainkit.plugin.v1.BrainletPluginService/Health"
+	BrainkitPluginService_Handshake_FullMethodName     = "/brainkit.plugin.v1.BrainkitPluginService/Handshake"
+	BrainkitPluginService_Manifest_FullMethodName      = "/brainkit.plugin.v1.BrainkitPluginService/Manifest"
+	BrainkitPluginService_MessageStream_FullMethodName = "/brainkit.plugin.v1.BrainkitPluginService/MessageStream"
+	BrainkitPluginService_Health_FullMethodName        = "/brainkit.plugin.v1.BrainkitPluginService/Health"
 )
 
-// BrainletPluginServiceClient is the client API for BrainletPluginService service.
+// BrainkitPluginServiceClient is the client API for BrainkitPluginService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// BrainletPluginService is implemented by the PLUGIN process.
-type BrainletPluginServiceClient interface {
+// BrainkitPluginService is implemented by the PLUGIN process.
+type BrainkitPluginServiceClient interface {
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	Manifest(ctx context.Context, in *ManifestRequest, opts ...grpc.CallOption) (*PluginManifest, error)
 	MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error)
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 }
 
-type brainletPluginServiceClient struct {
+type brainkitPluginServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewBrainletPluginServiceClient(cc grpc.ClientConnInterface) BrainletPluginServiceClient {
-	return &brainletPluginServiceClient{cc}
+func NewBrainkitPluginServiceClient(cc grpc.ClientConnInterface) BrainkitPluginServiceClient {
+	return &brainkitPluginServiceClient{cc}
 }
 
-func (c *brainletPluginServiceClient) Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
+func (c *brainkitPluginServiceClient) Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HandshakeResponse)
-	err := c.cc.Invoke(ctx, BrainletPluginService_Handshake_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BrainkitPluginService_Handshake_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *brainletPluginServiceClient) Manifest(ctx context.Context, in *ManifestRequest, opts ...grpc.CallOption) (*PluginManifest, error) {
+func (c *brainkitPluginServiceClient) Manifest(ctx context.Context, in *ManifestRequest, opts ...grpc.CallOption) (*PluginManifest, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PluginManifest)
-	err := c.cc.Invoke(ctx, BrainletPluginService_Manifest_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BrainkitPluginService_Manifest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *brainletPluginServiceClient) MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error) {
+func (c *brainkitPluginServiceClient) MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BrainletPluginService_ServiceDesc.Streams[0], BrainletPluginService_MessageStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BrainkitPluginService_ServiceDesc.Streams[0], BrainkitPluginService_MessageStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,156 +76,156 @@ func (c *brainletPluginServiceClient) MessageStream(ctx context.Context, opts ..
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrainletPluginService_MessageStreamClient = grpc.BidiStreamingClient[PluginMessage, PluginMessage]
+type BrainkitPluginService_MessageStreamClient = grpc.BidiStreamingClient[PluginMessage, PluginMessage]
 
-func (c *brainletPluginServiceClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
+func (c *brainkitPluginServiceClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthResponse)
-	err := c.cc.Invoke(ctx, BrainletPluginService_Health_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BrainkitPluginService_Health_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// BrainletPluginServiceServer is the server API for BrainletPluginService service.
-// All implementations must embed UnimplementedBrainletPluginServiceServer
+// BrainkitPluginServiceServer is the server API for BrainkitPluginService service.
+// All implementations must embed UnimplementedBrainkitPluginServiceServer
 // for forward compatibility.
 //
-// BrainletPluginService is implemented by the PLUGIN process.
-type BrainletPluginServiceServer interface {
+// BrainkitPluginService is implemented by the PLUGIN process.
+type BrainkitPluginServiceServer interface {
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	Manifest(context.Context, *ManifestRequest) (*PluginManifest, error)
 	MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
-	mustEmbedUnimplementedBrainletPluginServiceServer()
+	mustEmbedUnimplementedBrainkitPluginServiceServer()
 }
 
-// UnimplementedBrainletPluginServiceServer must be embedded to have
+// UnimplementedBrainkitPluginServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedBrainletPluginServiceServer struct{}
+type UnimplementedBrainkitPluginServiceServer struct{}
 
-func (UnimplementedBrainletPluginServiceServer) Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
+func (UnimplementedBrainkitPluginServiceServer) Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handshake not implemented")
 }
-func (UnimplementedBrainletPluginServiceServer) Manifest(context.Context, *ManifestRequest) (*PluginManifest, error) {
+func (UnimplementedBrainkitPluginServiceServer) Manifest(context.Context, *ManifestRequest) (*PluginManifest, error) {
 	return nil, status.Error(codes.Unimplemented, "method Manifest not implemented")
 }
-func (UnimplementedBrainletPluginServiceServer) MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error {
+func (UnimplementedBrainkitPluginServiceServer) MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error {
 	return status.Error(codes.Unimplemented, "method MessageStream not implemented")
 }
-func (UnimplementedBrainletPluginServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
+func (UnimplementedBrainkitPluginServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Health not implemented")
 }
-func (UnimplementedBrainletPluginServiceServer) mustEmbedUnimplementedBrainletPluginServiceServer() {}
-func (UnimplementedBrainletPluginServiceServer) testEmbeddedByValue()                               {}
+func (UnimplementedBrainkitPluginServiceServer) mustEmbedUnimplementedBrainkitPluginServiceServer() {}
+func (UnimplementedBrainkitPluginServiceServer) testEmbeddedByValue()                               {}
 
-// UnsafeBrainletPluginServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to BrainletPluginServiceServer will
+// UnsafeBrainkitPluginServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to BrainkitPluginServiceServer will
 // result in compilation errors.
-type UnsafeBrainletPluginServiceServer interface {
-	mustEmbedUnimplementedBrainletPluginServiceServer()
+type UnsafeBrainkitPluginServiceServer interface {
+	mustEmbedUnimplementedBrainkitPluginServiceServer()
 }
 
-func RegisterBrainletPluginServiceServer(s grpc.ServiceRegistrar, srv BrainletPluginServiceServer) {
-	// If the following call panics, it indicates UnimplementedBrainletPluginServiceServer was
+func RegisterBrainkitPluginServiceServer(s grpc.ServiceRegistrar, srv BrainkitPluginServiceServer) {
+	// If the following call panics, it indicates UnimplementedBrainkitPluginServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&BrainletPluginService_ServiceDesc, srv)
+	s.RegisterService(&BrainkitPluginService_ServiceDesc, srv)
 }
 
-func _BrainletPluginService_Handshake_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BrainkitPluginService_Handshake_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HandshakeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BrainletPluginServiceServer).Handshake(ctx, in)
+		return srv.(BrainkitPluginServiceServer).Handshake(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BrainletPluginService_Handshake_FullMethodName,
+		FullMethod: BrainkitPluginService_Handshake_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrainletPluginServiceServer).Handshake(ctx, req.(*HandshakeRequest))
+		return srv.(BrainkitPluginServiceServer).Handshake(ctx, req.(*HandshakeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BrainletPluginService_Manifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BrainkitPluginService_Manifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ManifestRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BrainletPluginServiceServer).Manifest(ctx, in)
+		return srv.(BrainkitPluginServiceServer).Manifest(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BrainletPluginService_Manifest_FullMethodName,
+		FullMethod: BrainkitPluginService_Manifest_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrainletPluginServiceServer).Manifest(ctx, req.(*ManifestRequest))
+		return srv.(BrainkitPluginServiceServer).Manifest(ctx, req.(*ManifestRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BrainletPluginService_MessageStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BrainletPluginServiceServer).MessageStream(&grpc.GenericServerStream[PluginMessage, PluginMessage]{ServerStream: stream})
+func _BrainkitPluginService_MessageStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BrainkitPluginServiceServer).MessageStream(&grpc.GenericServerStream[PluginMessage, PluginMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrainletPluginService_MessageStreamServer = grpc.BidiStreamingServer[PluginMessage, PluginMessage]
+type BrainkitPluginService_MessageStreamServer = grpc.BidiStreamingServer[PluginMessage, PluginMessage]
 
-func _BrainletPluginService_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BrainkitPluginService_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BrainletPluginServiceServer).Health(ctx, in)
+		return srv.(BrainkitPluginServiceServer).Health(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BrainletPluginService_Health_FullMethodName,
+		FullMethod: BrainkitPluginService_Health_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrainletPluginServiceServer).Health(ctx, req.(*HealthRequest))
+		return srv.(BrainkitPluginServiceServer).Health(ctx, req.(*HealthRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// BrainletPluginService_ServiceDesc is the grpc.ServiceDesc for BrainletPluginService service.
+// BrainkitPluginService_ServiceDesc is the grpc.ServiceDesc for BrainkitPluginService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var BrainletPluginService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "brainkit.plugin.v1.BrainletPluginService",
-	HandlerType: (*BrainletPluginServiceServer)(nil),
+var BrainkitPluginService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "brainkit.plugin.v1.BrainkitPluginService",
+	HandlerType: (*BrainkitPluginServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Handshake",
-			Handler:    _BrainletPluginService_Handshake_Handler,
+			Handler:    _BrainkitPluginService_Handshake_Handler,
 		},
 		{
 			MethodName: "Manifest",
-			Handler:    _BrainletPluginService_Manifest_Handler,
+			Handler:    _BrainkitPluginService_Manifest_Handler,
 		},
 		{
 			MethodName: "Health",
-			Handler:    _BrainletPluginService_Health_Handler,
+			Handler:    _BrainkitPluginService_Health_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "MessageStream",
-			Handler:       _BrainletPluginService_MessageStream_Handler,
+			Handler:       _BrainkitPluginService_MessageStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
@@ -234,41 +234,41 @@ var BrainletPluginService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	BrainletHostService_Handshake_FullMethodName     = "/brainkit.plugin.v1.BrainletHostService/Handshake"
-	BrainletHostService_MessageStream_FullMethodName = "/brainkit.plugin.v1.BrainletHostService/MessageStream"
+	BrainkitHostService_Handshake_FullMethodName     = "/brainkit.plugin.v1.BrainkitHostService/Handshake"
+	BrainkitHostService_MessageStream_FullMethodName = "/brainkit.plugin.v1.BrainkitHostService/MessageStream"
 )
 
-// BrainletHostServiceClient is the client API for BrainletHostService service.
+// BrainkitHostServiceClient is the client API for BrainkitHostService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// BrainletHostService is implemented by the KIT process.
-type BrainletHostServiceClient interface {
+// BrainkitHostService is implemented by the KIT process.
+type BrainkitHostServiceClient interface {
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error)
 }
 
-type brainletHostServiceClient struct {
+type brainkitHostServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewBrainletHostServiceClient(cc grpc.ClientConnInterface) BrainletHostServiceClient {
-	return &brainletHostServiceClient{cc}
+func NewBrainkitHostServiceClient(cc grpc.ClientConnInterface) BrainkitHostServiceClient {
+	return &brainkitHostServiceClient{cc}
 }
 
-func (c *brainletHostServiceClient) Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
+func (c *brainkitHostServiceClient) Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HandshakeResponse)
-	err := c.cc.Invoke(ctx, BrainletHostService_Handshake_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, BrainkitHostService_Handshake_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *brainletHostServiceClient) MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error) {
+func (c *brainkitHostServiceClient) MessageStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PluginMessage, PluginMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &BrainletHostService_ServiceDesc.Streams[0], BrainletHostService_MessageStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &BrainkitHostService_ServiceDesc.Streams[0], BrainkitHostService_MessageStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -277,94 +277,94 @@ func (c *brainletHostServiceClient) MessageStream(ctx context.Context, opts ...g
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrainletHostService_MessageStreamClient = grpc.BidiStreamingClient[PluginMessage, PluginMessage]
+type BrainkitHostService_MessageStreamClient = grpc.BidiStreamingClient[PluginMessage, PluginMessage]
 
-// BrainletHostServiceServer is the server API for BrainletHostService service.
-// All implementations must embed UnimplementedBrainletHostServiceServer
+// BrainkitHostServiceServer is the server API for BrainkitHostService service.
+// All implementations must embed UnimplementedBrainkitHostServiceServer
 // for forward compatibility.
 //
-// BrainletHostService is implemented by the KIT process.
-type BrainletHostServiceServer interface {
+// BrainkitHostService is implemented by the KIT process.
+type BrainkitHostServiceServer interface {
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error
-	mustEmbedUnimplementedBrainletHostServiceServer()
+	mustEmbedUnimplementedBrainkitHostServiceServer()
 }
 
-// UnimplementedBrainletHostServiceServer must be embedded to have
+// UnimplementedBrainkitHostServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedBrainletHostServiceServer struct{}
+type UnimplementedBrainkitHostServiceServer struct{}
 
-func (UnimplementedBrainletHostServiceServer) Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
+func (UnimplementedBrainkitHostServiceServer) Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Handshake not implemented")
 }
-func (UnimplementedBrainletHostServiceServer) MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error {
+func (UnimplementedBrainkitHostServiceServer) MessageStream(grpc.BidiStreamingServer[PluginMessage, PluginMessage]) error {
 	return status.Error(codes.Unimplemented, "method MessageStream not implemented")
 }
-func (UnimplementedBrainletHostServiceServer) mustEmbedUnimplementedBrainletHostServiceServer() {}
-func (UnimplementedBrainletHostServiceServer) testEmbeddedByValue()                             {}
+func (UnimplementedBrainkitHostServiceServer) mustEmbedUnimplementedBrainkitHostServiceServer() {}
+func (UnimplementedBrainkitHostServiceServer) testEmbeddedByValue()                             {}
 
-// UnsafeBrainletHostServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to BrainletHostServiceServer will
+// UnsafeBrainkitHostServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to BrainkitHostServiceServer will
 // result in compilation errors.
-type UnsafeBrainletHostServiceServer interface {
-	mustEmbedUnimplementedBrainletHostServiceServer()
+type UnsafeBrainkitHostServiceServer interface {
+	mustEmbedUnimplementedBrainkitHostServiceServer()
 }
 
-func RegisterBrainletHostServiceServer(s grpc.ServiceRegistrar, srv BrainletHostServiceServer) {
-	// If the following call panics, it indicates UnimplementedBrainletHostServiceServer was
+func RegisterBrainkitHostServiceServer(s grpc.ServiceRegistrar, srv BrainkitHostServiceServer) {
+	// If the following call panics, it indicates UnimplementedBrainkitHostServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&BrainletHostService_ServiceDesc, srv)
+	s.RegisterService(&BrainkitHostService_ServiceDesc, srv)
 }
 
-func _BrainletHostService_Handshake_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _BrainkitHostService_Handshake_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HandshakeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BrainletHostServiceServer).Handshake(ctx, in)
+		return srv.(BrainkitHostServiceServer).Handshake(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BrainletHostService_Handshake_FullMethodName,
+		FullMethod: BrainkitHostService_Handshake_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BrainletHostServiceServer).Handshake(ctx, req.(*HandshakeRequest))
+		return srv.(BrainkitHostServiceServer).Handshake(ctx, req.(*HandshakeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BrainletHostService_MessageStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BrainletHostServiceServer).MessageStream(&grpc.GenericServerStream[PluginMessage, PluginMessage]{ServerStream: stream})
+func _BrainkitHostService_MessageStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BrainkitHostServiceServer).MessageStream(&grpc.GenericServerStream[PluginMessage, PluginMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type BrainletHostService_MessageStreamServer = grpc.BidiStreamingServer[PluginMessage, PluginMessage]
+type BrainkitHostService_MessageStreamServer = grpc.BidiStreamingServer[PluginMessage, PluginMessage]
 
-// BrainletHostService_ServiceDesc is the grpc.ServiceDesc for BrainletHostService service.
+// BrainkitHostService_ServiceDesc is the grpc.ServiceDesc for BrainkitHostService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var BrainletHostService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "brainkit.plugin.v1.BrainletHostService",
-	HandlerType: (*BrainletHostServiceServer)(nil),
+var BrainkitHostService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "brainkit.plugin.v1.BrainkitHostService",
+	HandlerType: (*BrainkitHostServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Handshake",
-			Handler:    _BrainletHostService_Handshake_Handler,
+			Handler:    _BrainkitHostService_Handshake_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "MessageStream",
-			Handler:       _BrainletHostService_MessageStream_Handler,
+			Handler:       _BrainkitHostService_MessageStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// brainletClient implements BrainletClient over a gRPC stream.
-type brainletClient struct {
+// brainkitClient implements BrainkitClient over a gRPC stream.
+type brainkitClient struct {
 	safeSend func(*pluginv1.PluginMessage) error // thread-safe sender
 
 	replyMu sync.Mutex
@@ -20,8 +20,8 @@ type brainletClient struct {
 	timeout time.Duration
 }
 
-func newBrainletClient(safeSend func(*pluginv1.PluginMessage) error) *brainletClient {
-	return &brainletClient{
+func newBrainkitClient(safeSend func(*pluginv1.PluginMessage) error) *brainkitClient {
+	return &brainkitClient{
 		safeSend: safeSend,
 		replies:  make(map[string]chan *pluginv1.PluginMessage),
 		timeout:  30 * time.Second,
@@ -29,7 +29,7 @@ func newBrainletClient(safeSend func(*pluginv1.PluginMessage) error) *brainletCl
 }
 
 // handleReply routes a bus.ask.reply message to the waiting Ask caller.
-func (c *brainletClient) handleReply(msg *pluginv1.PluginMessage) {
+func (c *brainkitClient) handleReply(msg *pluginv1.PluginMessage) {
 	c.replyMu.Lock()
 	ch, ok := c.replies[msg.ReplyTo]
 	if ok {
@@ -42,7 +42,7 @@ func (c *brainletClient) handleReply(msg *pluginv1.PluginMessage) {
 	}
 }
 
-func (c *brainletClient) Send(ctx context.Context, topic string, payload json.RawMessage) error {
+func (c *brainkitClient) Send(ctx context.Context, topic string, payload json.RawMessage) error {
 	return c.safeSend(&pluginv1.PluginMessage{
 		Id:      uuid.NewString(),
 		Type:    "bus.send",
@@ -51,7 +51,7 @@ func (c *brainletClient) Send(ctx context.Context, topic string, payload json.Ra
 	})
 }
 
-func (c *brainletClient) Ask(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
+func (c *brainkitClient) Ask(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
 	replyTo := "_plugin_reply." + uuid.NewString()
 	ch := make(chan *pluginv1.PluginMessage, 1)
 
@@ -89,12 +89,12 @@ func (c *brainletClient) Ask(ctx context.Context, topic string, payload json.Raw
 	}
 }
 
-func (c *brainletClient) CallTool(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
+func (c *brainkitClient) CallTool(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error) {
 	payload, _ := json.Marshal(map[string]any{"name": name, "input": json.RawMessage(input)})
 	return c.Ask(ctx, "tools.call", payload)
 }
 
-func (c *brainletClient) CallAgent(ctx context.Context, name string, prompt string) (string, error) {
+func (c *brainkitClient) CallAgent(ctx context.Context, name string, prompt string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{"name": name, "prompt": prompt})
 	result, err := c.Ask(ctx, "agent.generate", payload)
 	if err != nil {
@@ -107,7 +107,7 @@ func (c *brainletClient) CallAgent(ctx context.Context, name string, prompt stri
 	return resp.Text, nil
 }
 
-func (c *brainletClient) CompileWASM(ctx context.Context, source string, opts WASMCompileOpts) (*WASMModule, error) {
+func (c *brainkitClient) CompileWASM(ctx context.Context, source string, opts WASMCompileOpts) (*WASMModule, error) {
 	payload, _ := json.Marshal(map[string]any{"source": source, "options": map[string]string{"name": opts.Name}})
 	result, err := c.Ask(ctx, "wasm.compile", payload)
 	if err != nil {
@@ -118,7 +118,7 @@ func (c *brainletClient) CompileWASM(ctx context.Context, source string, opts WA
 	return &mod, nil
 }
 
-func (c *brainletClient) DeployWASM(ctx context.Context, name string) (*ShardDescriptor, error) {
+func (c *brainkitClient) DeployWASM(ctx context.Context, name string) (*ShardDescriptor, error) {
 	payload, _ := json.Marshal(map[string]string{"name": name})
 	result, err := c.Ask(ctx, "wasm.deploy", payload)
 	if err != nil {
@@ -129,7 +129,7 @@ func (c *brainletClient) DeployWASM(ctx context.Context, name string) (*ShardDes
 	return &desc, nil
 }
 
-func (c *brainletClient) GetState(ctx context.Context, key string) (string, error) {
+func (c *brainkitClient) GetState(ctx context.Context, key string) (string, error) {
 	payload, _ := json.Marshal(map[string]string{"key": key})
 	result, err := c.Ask(ctx, "plugin.state.get", payload)
 	if err != nil {
@@ -142,7 +142,7 @@ func (c *brainletClient) GetState(ctx context.Context, key string) (string, erro
 	return resp.Value, nil
 }
 
-func (c *brainletClient) SetState(ctx context.Context, key, value string) error {
+func (c *brainkitClient) SetState(ctx context.Context, key, value string) error {
 	payload, _ := json.Marshal(map[string]string{"key": key, "value": value})
 	_, err := c.Ask(ctx, "plugin.state.set", payload)
 	return err

@@ -31,8 +31,8 @@ type pluginConn struct {
 	config   PluginConfig
 	cmd      *exec.Cmd
 	conn     *grpc.ClientConn
-	client   pluginv1.BrainletPluginServiceClient
-	stream   pluginv1.BrainletPluginService_MessageStreamClient
+	client   pluginv1.BrainkitPluginServiceClient
+	stream   pluginv1.BrainkitPluginService_MessageStreamClient
 	manifest *pluginv1.PluginManifest
 	subs     []bus.SubscriptionID
 	sendMu   sync.Mutex
@@ -121,7 +121,7 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 		return fmt.Errorf("grpc connect: %w", err)
 	}
 
-	client := pluginv1.NewBrainletPluginServiceClient(conn)
+	client := pluginv1.NewBrainkitPluginServiceClient(conn)
 
 	// Handshake
 	hsCtx, hsCancel := context.WithTimeout(ctx, 10*time.Second)

@@ -8,7 +8,7 @@ import (
 )
 
 type TestPlugin struct {
-	client sdk.BrainletClient
+	client sdk.BrainkitClient
 }
 
 func (p *TestPlugin) Manifest() sdk.PluginManifest {
@@ -25,7 +25,7 @@ func (p *TestPlugin) Manifest() sdk.PluginManifest {
 	}
 }
 
-func (p *TestPlugin) OnStart(client sdk.BrainletClient) error {
+func (p *TestPlugin) OnStart(client sdk.BrainkitClient) error {
 	p.client = client
 	return nil
 }

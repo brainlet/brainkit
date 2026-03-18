@@ -3,16 +3,16 @@ package brainkit.plugin.v1;
 
 option go_package = "github.com/brainlet/brainkit/proto/plugin/v1;pluginv1";
 
-// BrainletPluginService is implemented by the PLUGIN process.
-service BrainletPluginService {
+// BrainkitPluginService is implemented by the PLUGIN process.
+service BrainkitPluginService {
     rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
     rpc Manifest(ManifestRequest) returns (PluginManifest);
     rpc MessageStream(stream PluginMessage) returns (stream PluginMessage);
     rpc Health(HealthRequest) returns (HealthResponse);
 }
 
-// BrainletHostService is implemented by the KIT process.
-service BrainletHostService {
+// BrainkitHostService is implemented by the KIT process.
+service BrainkitHostService {
     rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
     rpc MessageStream(stream PluginMessage) returns (stream PluginMessage);
 }
