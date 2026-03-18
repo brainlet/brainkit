@@ -382,7 +382,12 @@ func registerMemoryImpls(ctx *quickjs.Context, lm *LinearMemory) {
 		initial := argU32(a, 1)
 		maximum := argU32(a, 2)
 		exportNamePtr := argI(a, 3)
-		// segments not used in basic compilation, pass 0
+		// arg 4 = segment names array (always 0/NULL from AS compiler)
+		cSegsPtr := argI(a, 5)     // pointer to array of segment data pointers
+		cPassivePtr := argI(a, 6)  // pointer to array of passive flags (u8)
+		cOffsetsPtr := argI(a, 7)  // pointer to array of offset ExpressionRefs
+		cSizesPtr := argI(a, 8)    // pointer to array of segment sizes (u32)
+		numSegments := argI(a, 9)
 		shared := argBool(a, 10)
 		memory64 := argBool(a, 11)
 		memNamePtr := argI(a, 12)
@@ -396,7 +401,26 @@ func registerMemoryImpls(ctx *quickjs.Context, lm *LinearMemory) {
 			memName = cgoCString(lm.ReadString(memNamePtr))
 			defer cgoFree(unsafe.Pointer(memName))
 		}
+		// Set memory properties (initial/max/shared/name) without segments.
 		cgoSetMemory(module, initial, maximum, exportName, nil, nil, nil, nil, nil, 0, shared, memory64, memName)
+		// Add data segments individually. The segment data was allocated by the AS
+		// compiler via _malloc + __i32_store8 into LinearMemory. We read it back
+		// and pass each segment to BinaryenAddDataSegment via CGo.
+		if numSegments > 0 && cSegsPtr != 0 && cOffsetsPtr != 0 && cSizesPtr != 0 {
+			for i := 0; i < numSegments; i++ {
+				segDataAddr := int(lm.I32LoadPtr(cSegsPtr + i*4))
+				size := int(lm.I32LoadPtr(cSizesPtr + i*4))
+				offsetRef := lm.I32LoadPtr(cOffsetsPtr + i*4)
+				passive := false
+				if cPassivePtr != 0 {
+					passive = lm.I32Load8U(cPassivePtr+i) != 0
+				}
+				if segDataAddr != 0 && size > 0 {
+					data := lm.ReadBytes(segDataAddr, size)
+					cgoAddDataSegment(module, nil, memName, passive, uintptr(offsetRef), data)
+				}
+			}
+		}
 		return retVoid(c)
 	})
 	setFunc(ctx, "_BinaryenAddDataSegment", func(c *quickjs.Context, args []*quickjs.Value) *quickjs.Value {

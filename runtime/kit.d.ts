@@ -557,9 +557,25 @@ declare module "kit" {
   export const wasm: {
     /** Compile AssemblyScript source to WASM. */
     compile(source: string, opts?: WASMCompileOpts): Promise<WASMModule>;
-    /** Execute a compiled WASM module. */
-    run(module: WASMModule, input?: any): Promise<WASMRunResult>;
+    /** Execute a compiled WASM module (by object or name string). */
+    run(module: WASMModule | string, input?: any): Promise<WASMRunResult>;
+    /** List all compiled WASM modules. */
+    list(): WASMModuleInfo[];
+    /** Get a compiled module's metadata by name. Returns null if not found. */
+    get(name: string): WASMModuleInfo | null;
+    /** Remove a compiled module by name. Returns true if found and removed. */
+    remove(name: string): boolean;
+    /** Check if a module exists by name. */
+    exists(name: string): boolean;
   };
+
+  interface WASMModuleInfo {
+    name: string;
+    size: number;
+    exports: string[];
+    compiledAt: string;
+    sourceHash: string;
+  }
 
   /** Sandbox context — identity and namespace of this Kit. */
   export const sandbox: SandboxContext;
@@ -1639,6 +1655,7 @@ declare module "kit" {
   // ── WASM Types ─────────────────────────────────────────────────
 
   interface WASMCompileOpts {
+    name?: string;
     optimizeLevel?: number;
     shrinkLevel?: number;
     debug?: boolean;
@@ -1647,6 +1664,9 @@ declare module "kit" {
 
   interface WASMModule {
     moduleId: string;
+    name: string;
+    size: number;
+    exports: string[];
   }
 
   interface WASMRunResult {

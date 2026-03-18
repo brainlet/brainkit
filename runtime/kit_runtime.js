@@ -233,7 +233,11 @@
 
   // wrappedCreateWorkflow — the public API that developers use.
   function wrappedCreateWorkflow(config) {
-    return embed.createWorkflow(config);
+    var wf = embed.createWorkflow(config);
+    if (config && config.id) {
+      _resourceRegistry.register("workflow", config.id, config.id, wf);
+    }
+    return wf;
   }
 
   // createWorkflowRun — create a run from a committed workflow, with storage + tracking.
@@ -347,6 +351,10 @@
     if (typeof mem.__registerMastra === "function") {
       try { mem.__registerMastra(_workflowStorageShim); } catch(e) {}
     }
+
+    var memId = memoryConfig.id || (memoryConfig.thread && memoryConfig.thread.id) || ("mem_" + Date.now());
+    _resourceRegistry.register("memory", memId, memId, mem);
+
     return mem;
   }
 
@@ -515,6 +523,79 @@
   // The Harness looks up agents by name when resolving mode.agent.
   var _agentRegistry = {};
 
+  // Resource registry — tracks every resource created in this Kit.
+  // Keyed by "type:id". Used by Kit.ListResources(), Kit.TeardownFile(), etc.
+  var _resourceRegistry = {
+    entries: {},
+
+    register: function(type, id, name, ref) {
+      var key = type + ":" + id;
+      this.entries[key] = {
+        type: type,
+        id: id,
+        name: name || id,
+        source: globalThis.__kit_current_source || "unknown",
+        createdAt: Date.now(),
+        ref: ref,
+      };
+    },
+
+    unregister: function(type, id) {
+      var key = type + ":" + id;
+      var entry = this.entries[key];
+      if (entry) {
+        delete this.entries[key];
+        return entry;
+      }
+      return null;
+    },
+
+    list: function(type) {
+      var result = [];
+      for (var key in this.entries) {
+        var entry = this.entries[key];
+        if (!type || entry.type === type) {
+          result.push({
+            type: entry.type,
+            id: entry.id,
+            name: entry.name,
+            source: entry.source,
+            createdAt: entry.createdAt,
+          });
+        }
+      }
+      return result;
+    },
+
+    listBySource: function(source) {
+      var result = [];
+      for (var key in this.entries) {
+        var entry = this.entries[key];
+        if (entry.source === source) {
+          result.push({
+            type: entry.type,
+            id: entry.id,
+            name: entry.name,
+            source: entry.source,
+            createdAt: entry.createdAt,
+          });
+        }
+      }
+      return result;
+    },
+
+    get: function(type, id) {
+      return this.entries[type + ":" + id] || null;
+    },
+
+    clear: function() {
+      this.entries = {};
+    },
+  };
+
+  // Expose registry for Go API access
+  globalThis.__kit_registry = _resourceRegistry;
+
   // agent() — create a persistent agent in THIS Kit
   function agent(config) {
     var agentOpts = {
@@ -642,6 +723,9 @@
       _agentRegistry[config.name] = wrapped;
     }
 
+    // Track in resource registry
+    _resourceRegistry.register("agent", config.name || config.id || ("agent_" + Date.now()), config.name || "unnamed", wrapped);
+
     return wrapped;
   }
 
@@ -650,11 +734,16 @@
   // requireApproval, toModelOutput, providerOptions, lifecycle hooks, etc.)
   // Backward-compat: accepts `name` as alias for `id`, `schema` as alias for `inputSchema`.
   function createTool(config) {
-    return embed.createTool({
+    var tool = embed.createTool({
       ...config,
       id: config.id || config.name,
       inputSchema: config.inputSchema || config.schema || embed.z.object({}),
     });
+    var toolId = config.id || config.name;
+    if (toolId) {
+      _resourceRegistry.register("tool", toolId, toolId, tool);
+    }
+    return tool;
   }
 
   // z — Zod schemas
@@ -791,15 +880,53 @@
   var wasm = {
     compile: async function(source, opts) {
       var raw = bridgeRequest("wasm.compile", { source: source, options: opts || {} });
-      return JSON.parse(raw);
+      var result = parseBridgeResponse(raw);
+      if (result && result.moduleId) {
+        var name = (opts && opts.name) || result.moduleId;
+        _resourceRegistry.register("wasm", name, name, result);
+      }
+      return result;
     },
     run: async function(module, input) {
-      var raw = bridgeRequest("wasm.run", { module: module, input: input });
-      return JSON.parse(raw);
+      // Accept module object OR module name string
+      var payload;
+      if (typeof module === "string") {
+        payload = { moduleId: module, input: input };
+      } else {
+        payload = { module: module, input: input };
+      }
+      // MUST use async bridge — host functions (call_agent, call_tool) need
+      // the JS thread free to process EvalOnJSThread calls during WASM execution.
+      // Sync bridgeRequest would deadlock: JS blocked waiting for wasm.run,
+      // wasm.run blocked waiting for JS to process the scheduled eval.
+      var raw = await bridgeRequestAsync("wasm.run", payload);
+      return parseBridgeResponse(raw);
     },
     validate: async function(module) {
       var raw = bridgeRequest("wasm.validate", { module: module });
       return JSON.parse(raw);
+    },
+    list: function() {
+      var raw = bridgeRequest("wasm.list", {});
+      return JSON.parse(raw);
+    },
+    get: function(name) {
+      var raw = bridgeRequest("wasm.get", { name: name });
+      var result = JSON.parse(raw);
+      return result || null;
+    },
+    remove: function(name) {
+      var raw = bridgeRequest("wasm.remove", { name: name });
+      var result = JSON.parse(raw);
+      if (result && result.removed) {
+        _resourceRegistry.unregister("wasm", name);
+      }
+      return result ? result.removed : false;
+    },
+    exists: function(name) {
+      var raw = bridgeRequest("wasm.get", { name: name });
+      var result = JSON.parse(raw);
+      return result !== null && result !== undefined;
     },
   };
 
@@ -1224,6 +1351,8 @@
       getResourceId: function() { return harness.getResourceId(); },
       getKnownResourceIds: function() { return harness.getKnownResourceIds(); },
     };
+
+    _resourceRegistry.register("harness", config.id, config.id, harness);
 
     return true; // signal success to Go
   }

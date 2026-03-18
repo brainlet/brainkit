@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	agentembed "github.com/brainlet/brainkit/agent-embed"
 	"github.com/brainlet/brainkit/bus"
@@ -229,6 +230,121 @@ func (k *Kit) StorageURL(name string) string {
 	return ""
 }
 
+// ListResources returns all tracked resources, optionally filtered by type.
+// Types: "agent", "tool", "workflow", "wasm", "memory", "harness"
+func (k *Kit) ListResources(resourceType ...string) ([]ResourceInfo, error) {
+	filter := ""
+	if len(resourceType) > 0 {
+		filter = resourceType[0]
+	}
+	code := fmt.Sprintf(`return JSON.stringify(globalThis.__kit_registry.list(%q))`, filter)
+	result, err := k.EvalTS(context.Background(), "__list_resources.ts", code)
+	if err != nil {
+		return nil, err
+	}
+	var resources []ResourceInfo
+	if err := json.Unmarshal([]byte(result), &resources); err != nil {
+		return nil, fmt.Errorf("list resources: %w", err)
+	}
+	return resources, nil
+}
+
+// ResourcesFrom returns all resources created by a specific .ts file.
+func (k *Kit) ResourcesFrom(filename string) ([]ResourceInfo, error) {
+	code := fmt.Sprintf(`return JSON.stringify(globalThis.__kit_registry.listBySource(%q))`, filename)
+	result, err := k.EvalTS(context.Background(), "__resources_from.ts", code)
+	if err != nil {
+		return nil, err
+	}
+	var resources []ResourceInfo
+	if err := json.Unmarshal([]byte(result), &resources); err != nil {
+		return nil, fmt.Errorf("resources from: %w", err)
+	}
+	return resources, nil
+}
+
+// TeardownFile removes all resources created by a specific .ts file.
+// Returns the number of resources removed.
+func (k *Kit) TeardownFile(filename string) (int, error) {
+	code := fmt.Sprintf(`
+		var resources = globalThis.__kit_registry.listBySource(%q);
+		var count = 0;
+		for (var i = 0; i < resources.length; i++) {
+			globalThis.__kit_registry.unregister(resources[i].type, resources[i].id);
+			count++;
+		}
+		return JSON.stringify(count);
+	`, filename)
+	result, err := k.EvalTS(context.Background(), "__teardown_file.ts", code)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	if err := json.Unmarshal([]byte(result), &count); err != nil {
+		return 0, nil
+	}
+	return count, nil
+}
+
+// RemoveResource removes a specific resource by type and ID.
+func (k *Kit) RemoveResource(resourceType, id string) error {
+	code := fmt.Sprintf(`
+		var entry = globalThis.__kit_registry.unregister(%q, %q);
+		return JSON.stringify(entry !== null);
+	`, resourceType, id)
+	_, err := k.EvalTS(context.Background(), "__remove_resource.ts", code)
+	return err
+}
+
+// ListWASMModules returns metadata for all compiled WASM modules.
+func (k *Kit) ListWASMModules() ([]WASMModuleInfo, error) {
+	k.wasm.mu.Lock()
+	defer k.wasm.mu.Unlock()
+
+	infos := make([]WASMModuleInfo, 0, len(k.wasm.modules))
+	for _, mod := range k.wasm.modules {
+		infos = append(infos, WASMModuleInfo{
+			Name:       mod.Name,
+			Size:       mod.Size,
+			Exports:    mod.Exports,
+			CompiledAt: mod.CompiledAt.Format(time.RFC3339),
+			SourceHash: mod.SourceHash,
+		})
+	}
+	return infos, nil
+}
+
+// GetWASMModule returns metadata for a specific module by name.
+func (k *Kit) GetWASMModule(name string) (*WASMModuleInfo, error) {
+	k.wasm.mu.Lock()
+	mod, ok := k.wasm.modules[name]
+	k.wasm.mu.Unlock()
+	if !ok {
+		return nil, nil
+	}
+	return &WASMModuleInfo{
+		Name:       mod.Name,
+		Size:       mod.Size,
+		Exports:    mod.Exports,
+		CompiledAt: mod.CompiledAt.Format(time.RFC3339),
+		SourceHash: mod.SourceHash,
+	}, nil
+}
+
+// RemoveWASMModule unloads a compiled module by name.
+func (k *Kit) RemoveWASMModule(name string) error {
+	k.wasm.mu.Lock()
+	_, ok := k.wasm.modules[name]
+	if ok {
+		delete(k.wasm.modules, name)
+	}
+	k.wasm.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("wasm module %q not found", name)
+	}
+	return nil
+}
+
 func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
 	srv, err := libsql.NewServer(cfg.Path)
 	if err != nil {
@@ -246,9 +362,10 @@ func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
 // EvalTS runs .ts-style code with brainlet imports destructured.
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
+		globalThis.__kit_current_source = %q;
 		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__kit;
 		%s
-	})()`, code)
+	})()`, filename, code)
 
 	// If the Bridge is currently in an eval/await loop (e.g., we're being called
 	// from a Go tool callback during agent.generate/stream), use EvalOnJSThread.

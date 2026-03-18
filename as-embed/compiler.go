@@ -40,6 +40,7 @@ type CompileOptions struct {
 	Debug         bool
 	Runtime       string        // "stub", "incremental", or "minimal" (default: "incremental")
 	Timeout       time.Duration // per-compilation timeout; 0 means no timeout
+	ExportRuntime bool          // export __new, __pin, __unpin, __collect, memory (needed for host string interop)
 }
 
 // CompileResult holds the output of a successful compilation.
@@ -251,6 +252,11 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 			asc.setTarget(options, 0);
 			asc.setOptimizeLevelHints(options, %d, %d);
 			if (%v) asc.setDebugInfo(options, true);
+			if (%v) {
+				options.exportRuntime = true;
+				options.exportMemory = true;
+				options.exportStart = "_start";
+			}
 
 			// Match CLI defaults: runtime selection
 			var runtimeId = {"stub": 0, "minimal": 1, "incremental": 2}[%s] || 0;
@@ -420,7 +426,7 @@ func (c *Compiler) doCompile(sources map[string]string, opts CompileOptions) (*C
 		})()
 	`, string(topLevelJSON), string(onDemandJSON), string(userSourcesJSON), string(entryFileJSON),
 		string(runtimeTextJSON), string(runtimePathJSON),
-		opts.OptimizeLevel, opts.ShrinkLevel, opts.Debug,
+		opts.OptimizeLevel, opts.ShrinkLevel, opts.Debug, opts.ExportRuntime,
 		fmt.Sprintf("%q", runtime))
 
 	val, err := c.bridge.Eval("compile.js", js)
