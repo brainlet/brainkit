@@ -127,8 +127,13 @@
   // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
   // Expose for observability span queries (internal — not part of public API)
-  globalThis.__kit_internal_store = _defaultStore;
-  globalThis.__kit_internal_observability = null; // set after creation
+  // Non-enumerable: hidden from user code iteration. Non-configurable: can't be deleted.
+  Object.defineProperty(globalThis, '__kit_internal_store', {
+    value: _defaultStore, writable: false, enumerable: false, configurable: false
+  });
+  Object.defineProperty(globalThis, '__kit_internal_observability', {
+    value: null, writable: true, enumerable: false, configurable: false
+  });
 
   // Observability — auto-tracing for agents, tools, workflows, LLM calls.
   // Config comes from Kit.Config.Observability (injected as globalThis.__brainkit_obs_config).
@@ -594,7 +599,9 @@
   };
 
   // Expose registry for Go API access
-  globalThis.__kit_registry = _resourceRegistry;
+  Object.defineProperty(globalThis, '__kit_registry', {
+    value: _resourceRegistry, writable: false, enumerable: false, configurable: false
+  });
 
   // agent() — create a persistent agent in THIS Kit
   function agent(config) {
@@ -1020,8 +1027,11 @@
   }
 
   // bus.* — platform bus
-  // __bus_subs stores JS callback functions keyed by subscription ID
-  globalThis.__bus_subs = {};
+  // __bus_subs stores JS callback functions keyed by subscription ID.
+  // Non-enumerable: hidden from user code. Object contents are mutable (add/delete keys).
+  Object.defineProperty(globalThis, '__bus_subs', {
+    value: {}, writable: false, enumerable: false, configurable: false
+  });
 
   var busMod = {
     send: function(topic, payload) {
@@ -1053,6 +1063,10 @@
   };
 
   // output() — set the module's output value (read by Go after execution)
+  // Initialize as non-enumerable (hidden from user iteration) but writable.
+  Object.defineProperty(globalThis, '__module_result', {
+    value: undefined, writable: true, enumerable: false, configurable: false
+  });
   function output(value) {
     globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
   }
@@ -1287,7 +1301,7 @@
     });
 
     // Expose all methods for Go → JS calls
-    globalThis.__brainkit_harness = {
+    var _harnessAPI = {
       init: function() { return harness.init(); },
 
       // Core messaging
@@ -1363,6 +1377,10 @@
       getResourceId: function() { return harness.getResourceId(); },
       getKnownResourceIds: function() { return harness.getKnownResourceIds(); },
     };
+    // Non-enumerable: hidden from user code. Non-configurable: can't be deleted.
+    Object.defineProperty(globalThis, '__brainkit_harness', {
+      value: _harnessAPI, writable: false, enumerable: false, configurable: false
+    });
 
     _resourceRegistry.register("harness", config.id, config.id, harness);
 

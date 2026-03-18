@@ -40,24 +40,29 @@ type deployedShard struct {
 // ---------------------------------------------------------------------------
 
 type shardStateStore struct {
-	mode string
+	mode      string
+	shardName string
+	store     KitStore // nil if no persistence
 
 	// shared mode: one state map, serialized access
-	sharedMu sync.Mutex
-	shared   map[string]string
+	sharedMu     sync.Mutex
+	shared       map[string]string
+	sharedLoaded bool
 
 	// keyed mode: per-key state maps with per-key locks
-	keyedMu  sync.Mutex
-	keyLocks map[string]*sync.Mutex
-	keyed    map[string]map[string]string
+	keyedMu     sync.Mutex
+	keyLocks    map[string]*sync.Mutex
+	keyed       map[string]map[string]string
+	keyedLoaded map[string]bool
 }
 
 func newShardStateStore(mode string) *shardStateStore {
 	return &shardStateStore{
-		mode:     mode,
-		shared:   make(map[string]string),
-		keyLocks: make(map[string]*sync.Mutex),
-		keyed:    make(map[string]map[string]string),
+		mode:        mode,
+		shared:      make(map[string]string),
+		keyLocks:    make(map[string]*sync.Mutex),
+		keyed:       make(map[string]map[string]string),
+		keyedLoaded: make(map[string]bool),
 	}
 }
 
@@ -69,6 +74,14 @@ func (s *shardStateStore) acquireState(key string) map[string]string {
 		return make(map[string]string)
 	case "shared":
 		s.sharedMu.Lock()
+		// Load from store on first access
+		if !s.sharedLoaded && s.store != nil {
+			persisted, err := s.store.LoadState(s.shardName, "")
+			if err == nil && persisted != nil {
+				s.shared = persisted
+			}
+			s.sharedLoaded = true
+		}
 		cp := make(map[string]string, len(s.shared))
 		for k, v := range s.shared {
 			cp[k] = v
@@ -83,6 +96,16 @@ func (s *shardStateStore) acquireState(key string) map[string]string {
 		}
 		s.keyedMu.Unlock()
 		mu.Lock()
+		// Load from store on first access per key
+		if !s.keyedLoaded[key] && s.store != nil {
+			persisted, err := s.store.LoadState(s.shardName, key)
+			if err == nil && persisted != nil {
+				s.keyed[key] = persisted
+			}
+			s.keyedMu.Lock()
+			s.keyedLoaded[key] = true
+			s.keyedMu.Unlock()
+		}
 		state := s.keyed[key]
 		cp := make(map[string]string, len(state))
 		for k, v := range state {
@@ -101,9 +124,17 @@ func (s *shardStateStore) releaseState(key string, state map[string]string) {
 		// discard
 	case "shared":
 		s.shared = state
+		// Save to store BEFORE unlocking (consistency)
+		if s.store != nil {
+			s.store.SaveState(s.shardName, "", state)
+		}
 		s.sharedMu.Unlock()
 	case "keyed":
 		s.keyed[key] = state
+		// Save to store BEFORE unlocking (consistency)
+		if s.store != nil {
+			s.store.SaveState(s.shardName, key, state)
+		}
 		s.keyedMu.Lock()
 		mu := s.keyLocks[key]
 		s.keyedMu.Unlock()
@@ -352,7 +383,15 @@ func (s *WASMService) handleDeploy(ctx context.Context, msg bus.Message) (*bus.M
 		Subscriptions: subscriptions,
 		State:         newShardStateStore(mode),
 	}
+	// Set store reference for persistence
+	s.shards[req.Name].State.shardName = req.Name
+	s.shards[req.Name].State.store = s.kit.config.Store
 	s.mu.Unlock()
+
+	// Persist shard descriptor
+	if s.kit.config.Store != nil {
+		s.kit.config.Store.SaveShard(req.Name, desc)
+	}
 
 	payload, _ := json.Marshal(desc)
 	return &bus.Message{Payload: payload}, nil
@@ -377,6 +416,12 @@ func (s *WASMService) handleUndeploy(ctx context.Context, msg bus.Message) (*bus
 	}
 	delete(s.shards, req.Name)
 	s.mu.Unlock()
+
+	// Delete shard + state from store
+	if s.kit.config.Store != nil {
+		s.kit.config.Store.DeleteShard(req.Name)
+		s.kit.config.Store.DeleteState(req.Name)
+	}
 
 	payload, _ := json.Marshal(map[string]bool{"undeployed": true})
 	return &bus.Message{Payload: payload}, nil

@@ -41,6 +41,11 @@ type Config struct {
 	// Default: enabled with realtime strategy and InMemoryStore.
 	Observability ObservabilityConfig
 
+	// Store provides optional persistence for WASM modules, shard descriptors, and shard state.
+	// When set, data survives Kit restarts. Use NewSQLiteStore(path) for the default implementation.
+	// nil = no persistence (everything in-memory, current behavior).
+	Store KitStore
+
 	// Storages configures named storage backends started with the Kit.
 	// Each entry starts an embedded SQLite-backed LibSQL bridge.
 	// JS code uses `new LibSQLStore({ id: "x", storage: "name" })` to connect.

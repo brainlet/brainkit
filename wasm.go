@@ -59,6 +59,73 @@ func newWASMService(kit *Kit) *WASMService {
 	}
 }
 
+// loadFromStore restores modules and shards from persistent storage.
+// Called during Kit.New() if a store is configured.
+func (s *WASMService) loadFromStore(store KitStore) error {
+	// Load compiled modules
+	modules, err := store.LoadModules()
+	if err != nil {
+		return fmt.Errorf("load modules: %w", err)
+	}
+	s.mu.Lock()
+	for name, mod := range modules {
+		s.modules[name] = mod
+	}
+	s.mu.Unlock()
+
+	// Load and auto-redeploy shards
+	shards, err := store.LoadShards()
+	if err != nil {
+		return fmt.Errorf("load shards: %w", err)
+	}
+	for name, desc := range shards {
+		// Verify module binary exists
+		s.mu.Lock()
+		mod, ok := s.modules[desc.Module]
+		s.mu.Unlock()
+		if !ok {
+			log.Printf("[brainkit] skipping shard %q: module %q not found", name, desc.Module)
+			continue
+		}
+
+		// Subscribe to bus topics (skip init — descriptor already has registrations)
+		var subscriptions []bus.SubscriptionID
+		for topic, funcName := range desc.Handlers {
+			shardName := name
+			fn := funcName
+			tp := topic
+			subID, subErr := s.kit.Bus.Subscribe(topic, func(m bus.Message) {
+				result, err := s.invokeShardHandler(context.Background(), shardName, tp, m.Payload)
+				if err != nil {
+					log.Printf("[shard:%s] handler %s error: %v", shardName, fn, err)
+				} else if result.ExitCode != 0 {
+					log.Printf("[shard:%s] handler %s returned exit code %d", shardName, fn, result.ExitCode)
+				}
+			})
+			if subErr != nil {
+				log.Printf("[brainkit] shard %q: subscribe to %q failed: %v", name, topic, subErr)
+				continue
+			}
+			subscriptions = append(subscriptions, subID)
+		}
+
+		stateStore := newShardStateStore(desc.Mode)
+		stateStore.shardName = name
+		stateStore.store = store
+		s.mu.Lock()
+		s.shards[name] = &deployedShard{
+			Descriptor:    desc,
+			Binary:        mod.Binary,
+			Subscriptions: subscriptions,
+			State:         stateStore,
+		}
+		s.mu.Unlock()
+		log.Printf("[brainkit] restored shard %q (%s mode, %d handlers)", name, desc.Mode, len(desc.Handlers))
+	}
+
+	return nil
+}
+
 func (s *WASMService) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -186,6 +253,17 @@ func (s *WASMService) handleCompile(ctx context.Context, msg bus.Message) (*bus.
 	}
 	s.modules[name] = mod
 	s.mu.Unlock()
+
+	// Persist module if store configured
+	if s.kit.config.Store != nil {
+		s.kit.config.Store.SaveModule(name, mod.Binary, WASMModuleInfo{
+			Name:       mod.Name,
+			Size:       mod.Size,
+			Exports:    mod.Exports,
+			CompiledAt: mod.CompiledAt.Format(time.RFC3339),
+			SourceHash: mod.SourceHash,
+		})
+	}
 
 	resp := wasmCompileResponse{
 		ModuleID: name,
@@ -371,6 +449,11 @@ func (s *WASMService) handleRemove(ctx context.Context, msg bus.Message) (*bus.M
 		delete(s.modules, req.Name)
 	}
 	s.mu.Unlock()
+
+	// Delete from store
+	if ok && s.kit.config.Store != nil {
+		s.kit.config.Store.DeleteModule(req.Name)
+	}
 
 	payload, _ := json.Marshal(map[string]bool{"removed": ok})
 	return &bus.Message{Payload: payload}, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -121,6 +122,13 @@ func New(cfg Config) (*Kit, error) {
 	// Register bus handlers
 	k.registerHandlers()
 
+	// Load persisted modules + shards from store (if configured)
+	if cfg.Store != nil {
+		if err := k.wasm.loadFromStore(cfg.Store); err != nil {
+			log.Printf("[brainkit] warning: failed to load persisted data: %v", err)
+		}
+	}
+
 	// Connect to MCP servers and auto-register their tools
 	if len(cfg.MCPServers) > 0 {
 		k.MCP = mcppkg.New()
@@ -167,6 +175,9 @@ func (k *Kit) Close() {
 	}
 	if k.wasm != nil {
 		k.wasm.close()
+	}
+	if k.config.Store != nil {
+		k.config.Store.Close()
 	}
 	if k.agents != nil {
 		k.agents.Close()

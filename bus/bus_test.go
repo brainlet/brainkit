@@ -229,3 +229,87 @@ func (i *testInterceptor) Name() string                                    { ret
 func (i *testInterceptor) Priority() int                                   { return i.pri }
 func (i *testInterceptor) Match(topic string) bool                         { return i.matchFn(topic) }
 func (i *testInterceptor) Process(ctx context.Context, msg *Message) error { return i.processFn(ctx, msg) }
+
+func TestHandlerTimeout(t *testing.T) {
+	b := NewWithTimeout(100 * time.Millisecond) // very short timeout for testing
+	defer b.Close()
+
+	// Register a handler that takes too long
+	b.Handle("slow.*", func(ctx context.Context, msg Message) (*Message, error) {
+		select {
+		case <-time.After(5 * time.Second): // way longer than timeout
+			return &Message{Payload: json.RawMessage(`{"ok":true}`)}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	reply, err := b.Request(ctx, "slow.op", "test", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("Request: %v", err)
+	}
+
+	// Should get a timeout error in the response payload
+	var result struct {
+		Error string `json:"error"`
+	}
+	json.Unmarshal(reply.Payload, &result)
+	if result.Error == "" {
+		t.Fatal("expected timeout error in reply")
+	}
+	if !strings.Contains(result.Error, "timeout") {
+		t.Errorf("expected 'timeout' in error, got: %s", result.Error)
+	}
+	t.Logf("timeout error: %s", result.Error)
+}
+
+func TestHandlerTimeout_FastHandler(t *testing.T) {
+	b := NewWithTimeout(5 * time.Second)
+	defer b.Close()
+
+	// Fast handler — should NOT timeout
+	b.Handle("fast.*", func(ctx context.Context, msg Message) (*Message, error) {
+		return &Message{Payload: json.RawMessage(`{"fast":true}`)}, nil
+	})
+
+	ctx := context.Background()
+	reply, err := b.Request(ctx, "fast.op", "test", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("Request: %v", err)
+	}
+
+	var result struct {
+		Fast  bool   `json:"fast"`
+		Error string `json:"error"`
+	}
+	json.Unmarshal(reply.Payload, &result)
+	if result.Error != "" {
+		t.Errorf("expected no error, got: %s", result.Error)
+	}
+	if !result.Fast {
+		t.Error("expected fast=true")
+	}
+}
+
+func TestHandlerTimeout_Configurable(t *testing.T) {
+	// Default timeout
+	b1 := New()
+	if b1.HandlerTimeout != DefaultHandlerTimeout {
+		t.Errorf("default timeout = %v, want %v", b1.HandlerTimeout, DefaultHandlerTimeout)
+	}
+
+	// Custom timeout
+	b2 := NewWithTimeout(10 * time.Second)
+	if b2.HandlerTimeout != 10*time.Second {
+		t.Errorf("custom timeout = %v, want 10s", b2.HandlerTimeout)
+	}
+
+	// Can change at runtime
+	b1.HandlerTimeout = 5 * time.Second
+	if b1.HandlerTimeout != 5*time.Second {
+		t.Error("runtime change failed")
+	}
+}

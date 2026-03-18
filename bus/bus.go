@@ -7,9 +7,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+// DefaultHandlerTimeout is the maximum time a handler can take to respond.
+// After this, the request receives a timeout error reply.
+const DefaultHandlerTimeout = 30 * time.Second
 
 // Handler processes a message and optionally returns a reply.
 type Handler func(ctx context.Context, msg Message) (*Message, error)
@@ -25,18 +30,29 @@ type subscription struct {
 
 // Bus handles topic routing, pub/sub, and the interceptor pipeline.
 type Bus struct {
-	mu           sync.RWMutex
-	handlers     map[string]Handler
-	subs         map[SubscriptionID]*subscription
-	interceptors []interceptorEntry
-	closed       bool
+	mu             sync.RWMutex
+	handlers       map[string]Handler
+	subs           map[SubscriptionID]*subscription
+	interceptors   []interceptorEntry
+	closed         bool
+	HandlerTimeout time.Duration // max time for a handler to respond; 0 = use DefaultHandlerTimeout
 }
 
-// New creates a new Bus.
+// New creates a new Bus with default settings.
 func New() *Bus {
 	return &Bus{
-		handlers: make(map[string]Handler),
-		subs:     make(map[SubscriptionID]*subscription),
+		handlers:       make(map[string]Handler),
+		subs:           make(map[SubscriptionID]*subscription),
+		HandlerTimeout: DefaultHandlerTimeout,
+	}
+}
+
+// NewWithTimeout creates a Bus with a custom handler timeout.
+func NewWithTimeout(timeout time.Duration) *Bus {
+	return &Bus{
+		handlers:       make(map[string]Handler),
+		subs:           make(map[SubscriptionID]*subscription),
+		HandlerTimeout: timeout,
 	}
 }
 
@@ -133,7 +149,35 @@ func (b *Bus) Send(ctx context.Context, msg Message) error {
 
 		if matchedHandler != nil {
 			go func() {
-				reply, err := matchedHandler(ctx, msg)
+				// Apply handler timeout — prevents hung handlers from blocking forever
+				timeout := b.HandlerTimeout
+				if timeout == 0 {
+					timeout = DefaultHandlerTimeout
+				}
+				handlerCtx, cancel := context.WithTimeout(ctx, timeout)
+				defer cancel()
+
+				// Run handler with timeout context
+				type handlerResult struct {
+					reply *Message
+					err   error
+				}
+				done := make(chan handlerResult, 1)
+				go func() {
+					reply, err := matchedHandler(handlerCtx, msg)
+					done <- handlerResult{reply, err}
+				}()
+
+				var reply *Message
+				var err error
+				select {
+				case result := <-done:
+					reply = result.reply
+					err = result.err
+				case <-handlerCtx.Done():
+					err = fmt.Errorf("handler timeout after %v for topic %q", timeout, msg.Topic)
+				}
+
 				if err != nil {
 					errPayload, _ := json.Marshal(map[string]string{"error": err.Error()})
 					b.Send(ctx, Message{
