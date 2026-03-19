@@ -1,4 +1,4 @@
-import { hasState, setState } from "wasm";
+import { hasState, setState } from "brainkit";
 
 export function run(): i32 {
   // 1. Missing key returns false

@@ -9,17 +9,20 @@ import (
 )
 
 // hostTestSource prepends the @external declarations to AS user code.
-// AS passes strings natively — no manual encoding needed.
+// These match the 10 host functions from the module protocol.
 func hostTestSource(userCode string) string {
 	return `
 @external("host", "log")
 declare function host_log(msg: string, level: i32): void;
 
-@external("host", "call_tool")
-declare function host_call_tool(name: string, argsJSON: string): string;
+@external("host", "send")
+declare function host_send(topic: string, payloadJSON: string): void;
 
-@external("host", "call_agent")
-declare function host_call_agent(name: string, prompt: string): string;
+@external("host", "askAsync")
+declare function host_askAsync(topic: string, payloadJSON: string, callbackFuncName: string): void;
+
+@external("host", "reply")
+declare function host_reply(payload: string): void;
 
 @external("host", "get_state")
 declare function host_get_state(key: string): string;
@@ -27,8 +30,8 @@ declare function host_get_state(key: string): string;
 @external("host", "set_state")
 declare function host_set_state(key: string, value: string): void;
 
-@external("host", "bus_send")
-declare function host_bus_send(topic: string, payloadJSON: string): void;
+@external("host", "has_state")
+declare function host_has_state(key: string): i32;
 
 ` + userCode
 }
@@ -105,7 +108,7 @@ export function run(): i32 {
 	t.Logf("WASM host state: exit=%d", runResult.ExitCode)
 }
 
-func TestWASMHost_BusSend(t *testing.T) {
+func TestWASMHost_Send(t *testing.T) {
 	kit := newTestKitNoKey(t)
 	ctx := context.Background()
 
@@ -116,20 +119,20 @@ func TestWASMHost_BusSend(t *testing.T) {
 
 	source := hostTestSource(`
 export function run(): i32 {
-  host_bus_send("wasm.test.ping", '{"message":"hello"}');
+  host_send("wasm.test.ping", '{"message":"hello"}');
   return 0;
 }
 `)
 
 	_, err := kit.EvalTS(ctx, "compile.ts", `
-		await wasm.compile(`+"`"+source+"`"+`, { name: "bus-test", runtime: "incremental" });
+		await wasm.compile(`+"`"+source+"`"+`, { name: "send-test", runtime: "incremental" });
 	`)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 
 	result, err := kit.EvalTS(ctx, "run.ts", `
-		var r = await wasm.run("bus-test");
+		var r = await wasm.run("send-test");
 		return JSON.stringify(r);
 	`)
 	if err != nil {
@@ -149,16 +152,16 @@ export function run(): i32 {
 		t.Log("Bus message not received synchronously")
 	}
 
-	t.Logf("WASM host bus_send: exit=%d", runResult.ExitCode)
+	t.Logf("WASM host send: exit=%d", runResult.ExitCode)
 }
 
 func TestWASMImport_Resolution(t *testing.T) {
 	kit := newTestKitNoKey(t)
 	ctx := context.Background()
 
-	// This source imports from "wasm" — should resolve via ~lib/wasm injection
+	// This source imports from "brainkit" — should resolve via ~lib/brainkit injection
 	source := `
-import { log, setState, getState } from "wasm";
+import { log, setState, getState } from "brainkit";
 
 export function run(): i32 {
   log("import resolution works");
@@ -194,9 +197,6 @@ func TestWASMHost_HasState(t *testing.T) {
 	ctx := context.Background()
 
 	source := hostTestSource(`
-@external("host", "has_state")
-declare function host_has_state(key: string): i32;
-
 export function run(): i32 {
   // 1. has_state for non-existent key -> 0
   if (host_has_state("missing") != 0) return 1;

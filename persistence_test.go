@@ -66,16 +66,16 @@ func TestPersistence_ShardAutoRedeploy(t *testing.T) {
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, log, setState, getState } from "wasm";
+import { setMode, on, log, reply } from "brainkit";
 
 export function init(): void {
   setMode("stateless");
-  onEvent("test.ping", "handlePing");
+  on("test.ping", "handlePing");
 }
 
-export function handlePing(payload: string): i32 {
+export function handlePing(topic: string, payload: string): void {
   log("ping received");
-  return 0;
+  reply('{"ok":true}');
 }
 `
 
@@ -103,36 +103,35 @@ export function handlePing(payload: string): i32 {
 	// Inject event — should work
 	result, err := kit2.InjectWASMEvent("pinger", "test.ping", json.RawMessage(`{"msg":"hello"}`))
 	require.NoError(t, err)
-	require.Equal(t, 0, result.ExitCode)
+	require.Empty(t, result.Error)
 }
 
-func TestPersistence_SharedState(t *testing.T) {
+func TestPersistence_PersistentState(t *testing.T) {
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "test.db")
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, setState, getState } from "wasm";
+import { setMode, on, setState, getState, reply } from "brainkit";
 
 export function init(): void {
-  setMode("shared");
-  onEvent("counter.inc", "handleInc");
-  onEvent("counter.get", "handleGet");
+  setMode("persistent");
+  on("counter.inc", "handleInc");
+  on("counter.get", "handleGet");
 }
 
-export function handleInc(payload: string): i32 {
+export function handleInc(topic: string, payload: string): void {
   var c: i32 = 0;
   var raw = getState("count");
   if (raw.length > 0) c = I32.parseInt(raw);
   c++;
   setState("count", c.toString());
-  return 0;
+  reply('{"ok":true}');
 }
 
-export function handleGet(payload: string): i32 {
+export function handleGet(topic: string, payload: string): void {
   var raw = getState("count");
-  if (raw.length == 0) return 0;
-  return I32.parseInt(raw);
+  reply('{"count":' + (raw.length > 0 ? raw : '0') + '}');
 }
 `
 
@@ -157,63 +156,7 @@ export function handleGet(payload: string): i32 {
 
 	result, err := kit2.InjectWASMEvent("counter", "counter.get", json.RawMessage(`{}`))
 	require.NoError(t, err)
-	require.Equal(t, 3, result.ExitCode, "shared state should survive restart")
-}
-
-func TestPersistence_KeyedState(t *testing.T) {
-	dir := t.TempDir()
-	storePath := filepath.Join(dir, "test.db")
-	ctx := context.Background()
-
-	source := `
-import { setModeKeyed, onEvent, setState, getState } from "wasm";
-
-export function init(): void {
-  setModeKeyed("userId");
-  onEvent("user.visit", "handleVisit");
-  onEvent("user.check", "handleCheck");
-}
-
-export function handleVisit(payload: string): i32 {
-  var c: i32 = 0;
-  var raw = getState("visits");
-  if (raw.length > 0) c = I32.parseInt(raw);
-  c++;
-  setState("visits", c.toString());
-  return 0;
-}
-
-export function handleCheck(payload: string): i32 {
-  var raw = getState("visits");
-  if (raw.length == 0) return 0;
-  return I32.parseInt(raw);
-}
-`
-
-	// Kit 1: compile + deploy + alice visits 2x, bob visits 1x
-	kit1 := newPersistentKit(t, storePath)
-	_, err := kit1.EvalTS(ctx, "compile.ts", fmt.Sprintf(
-		"await wasm.compile(%s, { name: \"visitor\" });",
-		"`"+source+"`",
-	))
-	require.NoError(t, err)
-	kit1.DeployWASM("visitor")
-	kit1.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"alice"}`))
-	kit1.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"alice"}`))
-	kit1.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"bob"}`))
-	kit1.Close()
-
-	// Kit 2: keyed state should survive
-	store2, _ := NewSQLiteStore(storePath)
-	kit2, err := New(Config{Store: store2})
-	require.NoError(t, err)
-	defer kit2.Close()
-
-	r1, _ := kit2.InjectWASMEvent("visitor", "user.check", json.RawMessage(`{"userId":"alice"}`))
-	require.Equal(t, 2, r1.ExitCode, "alice should have 2 visits after restart")
-
-	r2, _ := kit2.InjectWASMEvent("visitor", "user.check", json.RawMessage(`{"userId":"bob"}`))
-	require.Equal(t, 1, r2.ExitCode, "bob should have 1 visit after restart")
+	require.Contains(t, result.ReplyPayload, `"count":3`, "persistent state should survive restart")
 }
 
 func TestPersistence_UndeployClears(t *testing.T) {
@@ -222,12 +165,12 @@ func TestPersistence_UndeployClears(t *testing.T) {
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, log } from "wasm";
+import { setMode, on, log } from "brainkit";
 export function init(): void {
   setMode("stateless");
-  onEvent("test.x", "handle");
+  on("test.x", "handle");
 }
-export function handle(payload: string): i32 { return 0; }
+export function handle(topic: string, payload: string): void { log("handled"); }
 `
 
 	// Kit 1: compile + deploy + undeploy

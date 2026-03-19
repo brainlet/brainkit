@@ -1,4 +1,4 @@
-import { JSONObject, setState, getState } from "wasm";
+import { JSONObject, setState, getState } from "brainkit";
 
 export function run(): i32 {
   // Use ASCII-safe multi-byte-like strings to avoid escape sequence issues

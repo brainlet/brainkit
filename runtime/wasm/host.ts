@@ -1,32 +1,32 @@
-// runtime/wasm/host.ts — raw host function bindings.
-// These are NOT exported to developers. api.ts wraps them with typed interfaces.
+// runtime/wasm/host.ts — Raw host function bindings (INTERNAL).
+// Developers never import this file directly. Namespace files use these.
+
+@external("host", "send")
+export declare function _send(topic: string, payload: string): void
+
+@external("host", "askAsync")
+export declare function _askAsync(topic: string, payload: string, callbackFuncName: string): void
+
+@external("host", "on")
+export declare function _on(topic: string, funcName: string): void
+
+@external("host", "tool")
+export declare function _tool(name: string, funcName: string): void
+
+@external("host", "reply")
+export declare function _reply(payload: string): void
 
 @external("host", "log")
-export declare function _host_log(message: string, level: i32): void;
-
-@external("host", "call_tool")
-export declare function _host_call_tool(name: string, argsJSON: string): string;
-
-@external("host", "call_agent")
-export declare function _host_call_agent(name: string, prompt: string): string;
+export declare function _log(message: string, level: i32): void
 
 @external("host", "get_state")
-export declare function _host_get_state(key: string): string;
+export declare function _getState(key: string): string
 
 @external("host", "set_state")
-export declare function _host_set_state(key: string, value: string): void;
+export declare function _setState(key: string, value: string): void
 
 @external("host", "has_state")
-export declare function _host_has_state(key: string): i32;
-
-@external("host", "bus_send")
-export declare function _host_bus_send(topic: string, payloadJSON: string): void;
+export declare function _hasState(key: string): i32
 
 @external("host", "set_mode")
-export declare function _host_set_mode(mode: string): void;
-
-@external("host", "set_mode_key")
-export declare function _host_set_mode_key(key: string): void;
-
-@external("host", "on_event")
-export declare function _host_on_event(topic: string, funcName: string): void;
+export declare function _setMode(mode: string): void

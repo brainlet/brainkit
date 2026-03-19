@@ -1,4 +1,4 @@
-import { JSONValue } from "wasm";
+import { JSONValue } from "brainkit";
 
 export function run(): i32 {
   // 1. Parse empty object

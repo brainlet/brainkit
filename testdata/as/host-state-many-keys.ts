@@ -1,4 +1,4 @@
-import { setState, getState } from "wasm";
+import { setState, getState } from "brainkit";
 
 export function run(): i32 {
   // Set 100 keys

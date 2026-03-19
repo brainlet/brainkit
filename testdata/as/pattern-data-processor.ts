@@ -1,4 +1,4 @@
-import { callTool, parseResult, log, busSend, JSONObject } from "wasm";
+import { bus, setState, log, JSONObject } from "brainkit";
 
 export function run(): i32 {
   // 1. Build input data
@@ -7,19 +7,27 @@ export function run(): i32 {
     .setInt("value", 100);
 
   // 2. Call echo tool with the input
-  const raw = callTool("echo", input);
-  if (raw.length == 0) return 1;
-
-  // 3. Parse the tool result
-  const parsed = parseResult(raw);
-  if (parsed.isNull()) return 2;
-
-  // 4. Log the result
-  log("processed: " + raw);
-
-  // 5. Forward result via bus
-  const output = new JSONObject().setString("status", "processed").setString("raw", raw);
-  busSend("data.processed", output);
-
+  const payload = new JSONObject()
+    .setString("name", "echo")
+    .set("input", input);
+  bus.askAsyncRaw("tools.call", payload.toString(), "onToolResult");
   return 0;
+}
+
+export function onToolResult(topic: string, payload: string): void {
+  if (payload.length == 0) {
+    setState("error", "empty");
+    return;
+  }
+
+  // 3. Log the result
+  log("processed: " + payload);
+
+  // 4. Forward result via bus
+  const output = new JSONObject()
+    .setString("status", "processed")
+    .setString("raw", payload);
+  bus.sendRaw("data.processed", output.toString());
+
+  setState("ok", "true");
 }

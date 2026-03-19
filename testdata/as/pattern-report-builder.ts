@@ -1,4 +1,4 @@
-import { setState, getState, busSend, log, JSONObject, JSONArray } from "wasm";
+import { setState, getState, bus, log, JSONObject, JSONArray } from "brainkit";
 
 export function run(): i32 {
   // 1. Seed state with data points
@@ -36,7 +36,7 @@ export function run(): i32 {
   if (!json.includes("healthy")) return 5;
 
   // 5. Publish the report
-  busSend("report.generated", report);
+  bus.sendRaw("report.generated", report.toString());
 
   return 0;
 }

@@ -171,13 +171,13 @@ func (s *SQLiteStore) SaveShard(name string, desc ShardDescriptor) error {
 	_, err := s.db.Exec(
 		`INSERT OR REPLACE INTO wasm_shards (name, mode, state_key, handlers, deployed_at)
 		 VALUES (?, ?, ?, ?, ?)`,
-		name, desc.Mode, desc.StateKey, string(handlersJSON), desc.DeployedAt.Format(time.RFC3339),
+		name, desc.Mode, "", string(handlersJSON), desc.DeployedAt.Format(time.RFC3339),
 	)
 	return err
 }
 
 func (s *SQLiteStore) LoadShards() (map[string]ShardDescriptor, error) {
-	rows, err := s.db.Query("SELECT name, mode, state_key, handlers, deployed_at FROM wasm_shards")
+	rows, err := s.db.Query("SELECT name, mode, handlers, deployed_at FROM wasm_shards")
 	if err != nil {
 		return nil, err
 	}
@@ -185,8 +185,8 @@ func (s *SQLiteStore) LoadShards() (map[string]ShardDescriptor, error) {
 
 	shards := make(map[string]ShardDescriptor)
 	for rows.Next() {
-		var name, mode, stateKey, handlersStr, deployedAtStr string
-		if err := rows.Scan(&name, &mode, &stateKey, &handlersStr, &deployedAtStr); err != nil {
+		var name, mode, handlersStr, deployedAtStr string
+		if err := rows.Scan(&name, &mode, &handlersStr, &deployedAtStr); err != nil {
 			return nil, err
 		}
 
@@ -198,7 +198,6 @@ func (s *SQLiteStore) LoadShards() (map[string]ShardDescriptor, error) {
 		shards[name] = ShardDescriptor{
 			Module:     name,
 			Mode:       mode,
-			StateKey:   stateKey,
 			Handlers:   handlers,
 			DeployedAt: deployedAt,
 		}

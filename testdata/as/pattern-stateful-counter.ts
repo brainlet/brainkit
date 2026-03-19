@@ -1,4 +1,4 @@
-import { getState, setState, log } from "wasm";
+import { getState, setState, log } from "brainkit";
 
 export function run(): i32 {
   // 1. Read counter state (should be empty on first run)

@@ -1,4 +1,4 @@
-import { setState, getState, log } from "wasm";
+import { setState, getState, log } from "brainkit";
 
 export function run(): i32 {
   // 1. Set the mode

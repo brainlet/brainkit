@@ -52,8 +52,7 @@ func TestSQLiteStore_ShardRoundTrip(t *testing.T) {
 
 	desc := ShardDescriptor{
 		Module:     "processor",
-		Mode:       "keyed",
-		StateKey:   "orderId",
+		Mode:       "persistent",
 		Handlers:   map[string]string{"order.new": "onNew", "order.done": "onDone"},
 		DeployedAt: time.Now(),
 	}
@@ -66,8 +65,7 @@ func TestSQLiteStore_ShardRoundTrip(t *testing.T) {
 	require.Len(t, shards, 1)
 
 	loaded := shards["processor"]
-	require.Equal(t, "keyed", loaded.Mode)
-	require.Equal(t, "orderId", loaded.StateKey)
+	require.Equal(t, "persistent", loaded.Mode)
 	require.Equal(t, "onNew", loaded.Handlers["order.new"])
 	require.Equal(t, "onDone", loaded.Handlers["order.done"])
 }

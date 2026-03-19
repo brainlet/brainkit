@@ -1,5 +1,9 @@
-// runtime/wasm/index.ts — public API surface.
-// In the concatenated bundle, all exports come from json.ts and api.ts directly.
-// This file exists as the logical entry point for the 4-file development layout.
-// When building the bundle, this file is included but adds no new exports
-// (json.ts and api.ts already export everything developers need).
+// runtime/wasm/index.ts — Re-exports everything as the "brainkit" module.
+// This file is concatenated LAST in the bundle.
+// All exports from the namespace files are already in scope due to concatenation.
+
+// Domain namespaces: ai, tools, agents, wasm_ops, memory, workflows, vectors, fs_ops, bus
+// Shard functions: on, tool, reply, setMode, setModeKey
+// State functions: getState, setState, hasState
+// Log functions: log, logAt, debug, warn, error
+// JSON library: JSONValue, JSONObject, JSONArray

@@ -1,4 +1,4 @@
-import { JSONArray } from "wasm";
+import { JSONArray } from "brainkit";
 
 export function run(): i32 {
   const arr = new JSONArray()

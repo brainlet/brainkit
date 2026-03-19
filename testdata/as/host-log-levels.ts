@@ -1,4 +1,4 @@
-import { logAt, debug, warn, error } from "wasm";
+import { logAt, debug, warn, error } from "brainkit";
 
 export function run(): i32 {
   // logAt with explicit levels 0-3

@@ -1,10 +1,10 @@
-import { busSendRaw } from "wasm";
+import { bus } from "brainkit";
 
 export function run(): i32 {
   for (let i: i32 = 1; i <= 5; i++) {
     const topic = "as.test." + i.toString();
     const payload = '{"seq":' + i.toString() + '}';
-    busSendRaw(topic, payload);
+    bus.sendRaw(topic, payload);
   }
   return 0;
 }

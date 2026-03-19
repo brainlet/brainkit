@@ -1,6 +1,6 @@
-import { busSendRaw } from "wasm";
+import { bus } from "brainkit";
 
 export function run(): i32 {
-  busSendRaw("as.test.raw", '{"msg":"raw"}');
+  bus.sendRaw("as.test.raw", '{"msg":"raw"}');
   return 0;
 }

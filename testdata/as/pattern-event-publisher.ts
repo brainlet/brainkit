@@ -1,4 +1,4 @@
-import { busSend, JSONObject, log } from "wasm";
+import { bus, JSONObject, log } from "brainkit";
 
 export function run(): i32 {
   // Publish 5 events with incrementing index
@@ -6,7 +6,7 @@ export function run(): i32 {
     const payload = new JSONObject()
       .setInt("index", i)
       .setString("ts", "now");
-    busSend("event." + i.toString(), payload);
+    bus.sendRaw("event." + i.toString(), payload.toString());
     log("published event." + i.toString());
   }
 

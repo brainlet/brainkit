@@ -1,4 +1,4 @@
-import { setState, getState, log, busSendRaw } from "wasm";
+import { setState, getState, log, bus } from "brainkit";
 
 export function run(): i32 {
   // 1. setState with empty string value
@@ -11,8 +11,8 @@ export function run(): i32 {
   // 3. log with empty string — should not crash
   log("");
 
-  // 4. busSendRaw with empty string payload — should not crash
-  busSendRaw("test.empty", "");
+  // 4. bus.sendRaw with empty string payload — should not crash
+  bus.sendRaw("test.empty", "");
 
   return 0;
 }

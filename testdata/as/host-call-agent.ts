@@ -1,16 +1,26 @@
-import { callAgent, parseResult } from "wasm";
+import { bus, setState, JSONValue } from "brainkit";
 
 export function run(): i32 {
-  const raw = callAgent("test-helper", "say hello");
-  if (raw.length == 0) return 1;
-
-  const parsed = parseResult(raw);
-  if (parsed.isNull()) return 2;
-
-  // Verify the result has a "text" field
-  const obj = parsed.asObject();
-  const text = obj.getString("text");
-  if (text.length == 0) return 3;
-
+  bus.askAsyncRaw("agents.request", '{"name":"test-helper","prompt":"say hello"}', "onAgentResult");
   return 0;
+}
+
+export function onAgentResult(topic: string, payload: string): void {
+  if (payload.length == 0) {
+    setState("error", "empty");
+    return;
+  }
+  const parsed = JSONValue.parse(payload);
+  if (parsed.isNull()) {
+    setState("error", "null");
+    return;
+  }
+  const obj = parsed.toObject();
+  const text = obj.getString("text");
+  if (text.length == 0) {
+    setState("error", "no text");
+    return;
+  }
+  setState("ok", "true");
+  setState("text", text);
 }

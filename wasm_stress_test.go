@@ -86,13 +86,13 @@ export function run(): i32 {
   if (v4 != "") return 16;
 
   // 17. Bus send with JSON
-  host_bus_send("stress.test.json", '{"key":"value","num":42}');
+  host_send("stress.test.json", '{"key":"value","num":42}');
 
   // 18. Bus send with unicode topic
-  host_bus_send("stress.test.unicode", '{"emoji":"\uD83D\uDE00"}');
+  host_send("stress.test.unicode", '{"emoji":"\uD83D\uDE00"}');
 
   // 19. Bus send with empty payload
-  host_bus_send("stress.test.empty", '{}');
+  host_send("stress.test.empty", '{}');
 
   // 20. Many state operations
   for (let i = 0; i < 100; i++) {
@@ -468,7 +468,7 @@ export function run(): i32 {
   host_log(s, 0);
 
   // Bus send with large payload
-  host_bus_send("stress.long", '{"len":' + s.length.toString() + '}');
+  host_send("stress.long", '{"len":' + s.length.toString() + '}');
 
   return 0;
 }
@@ -559,11 +559,11 @@ func TestWASMStress_BusOrdering(t *testing.T) {
 
 	source := hostTestSource(`
 export function run(): i32 {
-  host_bus_send("stress.order.1", '{}');
-  host_bus_send("stress.order.2", '{}');
-  host_bus_send("stress.order.3", '{}');
-  host_bus_send("stress.order.4", '{}');
-  host_bus_send("stress.order.5", '{}');
+  host_send("stress.order.1", '{}');
+  host_send("stress.order.2", '{}');
+  host_send("stress.order.3", '{}');
+  host_send("stress.order.4", '{}');
+  host_send("stress.order.5", '{}');
   return 0;
 }
 `)
@@ -642,7 +642,7 @@ export function run(): i32 {
 }
 
 // ---------------------------------------------------------------------------
-// Large JSON in bus_send
+// Large JSON in send
 // ---------------------------------------------------------------------------
 
 func TestWASMStress_LargePayload(t *testing.T) {
@@ -657,7 +657,7 @@ export function run(): i32 {
     json += "A";
   }
   json += '"}';
-  host_bus_send("stress.large", json);
+  host_send("stress.large", json);
   return 0;
 }
 `)

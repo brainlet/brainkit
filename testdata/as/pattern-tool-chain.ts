@@ -1,27 +1,44 @@
-import { callToolRaw, parseResult, JSONObject, log } from "wasm";
+import { bus, setState, log, JSONObject, JSONValue } from "brainkit";
 
 export function run(): i32 {
   // Step 1: call echo with step=1
-  const raw1 = callToolRaw("echo", '{"step":1}');
-  if (raw1.length == 0) return 1;
-  log("step1 result: " + raw1);
+  bus.askAsyncRaw("tools.call", '{"name":"echo","input":{"step":1}}', "onStep1");
+  return 0;
+}
 
-  const parsed1 = parseResult(raw1);
-  if (parsed1.isNull()) return 2;
+export function onStep1(topic: string, payload: string): void {
+  if (payload.length == 0) {
+    setState("error", "step1 empty");
+    return;
+  }
+  log("step1 result: " + payload);
 
-  // Step 2: build new payload with step=2 and chain from step 1
+  const parsed = JSONValue.parse(payload);
+  if (parsed.isNull()) {
+    setState("error", "step1 null");
+    return;
+  }
+
+  // Step 2: chain from step 1 result
   const step2Input = new JSONObject()
     .setInt("step", 2)
-    .setString("prev", raw1);
-  const raw2 = callToolRaw("echo", step2Input.toString());
-  if (raw2.length == 0) return 3;
-  log("step2 result: " + raw2);
+    .setString("prev", payload);
+  const step2Payload = new JSONObject()
+    .setString("name", "echo")
+    .set("input", step2Input);
+  bus.askAsyncRaw("tools.call", step2Payload.toString(), "onStep2");
+}
 
-  const parsed2 = parseResult(raw2);
-  if (parsed2.isNull()) return 4;
+export function onStep2(topic: string, payload: string): void {
+  if (payload.length == 0) {
+    setState("error", "step2 empty");
+    return;
+  }
+  log("step2 result: " + payload);
 
-  // Verify step 2 is present in the final result
-  if (!raw2.includes("2")) return 5;
-
-  return 0;
+  if (!payload.includes("2")) {
+    setState("error", "step2 missing '2'");
+    return;
+  }
+  setState("ok", "true");
 }

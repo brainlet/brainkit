@@ -14,17 +14,17 @@ func TestShard_Deploy_Stateless(t *testing.T) {
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, log, setState, getState } from "wasm";
+import { setMode, on, log, setState, reply } from "brainkit";
 
 export function init(): void {
   setMode("stateless");
-  onEvent("test.ping", "handlePing");
+  on("test.ping", "handlePing");
 }
 
-export function handlePing(payload: string): i32 {
+export function handlePing(topic: string, payload: string): void {
   log("got ping: " + payload);
   setState("seen", "yes");
-  return 0;
+  reply('{"status":"ok"}');
 }
 `
 	// Compile
@@ -43,7 +43,7 @@ export function handlePing(payload: string): i32 {
 	// Inject event
 	result, err := kit.InjectWASMEvent("pinger", "test.ping", json.RawMessage(`{"msg":"hello"}`))
 	require.NoError(t, err, "inject")
-	require.Equal(t, 0, result.ExitCode)
+	require.Empty(t, result.Error)
 
 	// Undeploy
 	err = kit.UndeployWASM("pinger")
@@ -54,20 +54,20 @@ export function handlePing(payload: string): i32 {
 	require.Empty(t, deployed)
 }
 
-func TestShard_Deploy_Shared(t *testing.T) {
+func TestShard_Deploy_Persistent(t *testing.T) {
 	kit := newTestKitNoKey(t)
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, setState, getState } from "wasm";
+import { setMode, on, setState, getState, reply } from "brainkit";
 
 export function init(): void {
-  setMode("shared");
-  onEvent("counter.increment", "handleIncrement");
-  onEvent("counter.get", "handleGet");
+  setMode("persistent");
+  on("counter.increment", "handleIncrement");
+  on("counter.get", "handleGet");
 }
 
-export function handleIncrement(payload: string): i32 {
+export function handleIncrement(topic: string, payload: string): void {
   var count: i32 = 0;
   var raw = getState("count");
   if (raw.length > 0) {
@@ -75,13 +75,12 @@ export function handleIncrement(payload: string): i32 {
   }
   count++;
   setState("count", count.toString());
-  return 0;
+  reply('{"ok":true}');
 }
 
-export function handleGet(payload: string): i32 {
+export function handleGet(topic: string, payload: string): void {
   var raw = getState("count");
-  if (raw.length == 0) return 1;
-  return I32.parseInt(raw);
+  reply('{"count":' + (raw.length > 0 ? raw : '0') + '}');
 }
 `
 	_, err := kit.EvalTS(ctx, "compile.ts", fmt.Sprintf(
@@ -91,83 +90,21 @@ export function handleGet(payload: string): i32 {
 
 	desc, err := kit.DeployWASM("counter")
 	require.NoError(t, err)
-	require.Equal(t, "shared", desc.Mode)
+	require.Equal(t, "persistent", desc.Mode)
 
 	// Increment 3 times
 	for i := 0; i < 3; i++ {
 		result, err := kit.InjectWASMEvent("counter", "counter.increment", json.RawMessage(`{}`))
 		require.NoError(t, err)
-		require.Equal(t, 0, result.ExitCode)
+		require.Empty(t, result.Error)
 	}
 
 	// Get should return 3
 	result, err := kit.InjectWASMEvent("counter", "counter.get", json.RawMessage(`{}`))
 	require.NoError(t, err)
-	require.Equal(t, 3, result.ExitCode, "expected count=3")
+	require.Contains(t, result.ReplyPayload, `"count":3`)
 
 	kit.UndeployWASM("counter")
-}
-
-func TestShard_Deploy_Keyed(t *testing.T) {
-	kit := newTestKitNoKey(t)
-	ctx := context.Background()
-
-	source := `
-import { setModeKeyed, onEvent, setState, getState } from "wasm";
-
-export function init(): void {
-  setModeKeyed("userId");
-  onEvent("user.visit", "handleVisit");
-  onEvent("user.check", "handleCheck");
-}
-
-export function handleVisit(payload: string): i32 {
-  var count: i32 = 0;
-  var raw = getState("visits");
-  if (raw.length > 0) {
-    count = I32.parseInt(raw);
-  }
-  count++;
-  setState("visits", count.toString());
-  return 0;
-}
-
-export function handleCheck(payload: string): i32 {
-  var raw = getState("visits");
-  if (raw.length == 0) return 0;
-  return I32.parseInt(raw);
-}
-`
-	_, err := kit.EvalTS(ctx, "compile.ts", fmt.Sprintf(
-		"await wasm.compile(%s, { name: \"visitor\" });",
-		"`"+source+"`"))
-	require.NoError(t, err)
-
-	desc, err := kit.DeployWASM("visitor")
-	require.NoError(t, err)
-	require.Equal(t, "keyed", desc.Mode)
-	require.Equal(t, "userId", desc.StateKey)
-
-	// Alice visits 2 times
-	kit.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"alice"}`))
-	kit.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"alice"}`))
-
-	// Bob visits 1 time
-	kit.InjectWASMEvent("visitor", "user.visit", json.RawMessage(`{"userId":"bob"}`))
-
-	// Check Alice = 2
-	r1, _ := kit.InjectWASMEvent("visitor", "user.check", json.RawMessage(`{"userId":"alice"}`))
-	require.Equal(t, 2, r1.ExitCode, "alice should have 2 visits")
-
-	// Check Bob = 1
-	r2, _ := kit.InjectWASMEvent("visitor", "user.check", json.RawMessage(`{"userId":"bob"}`))
-	require.Equal(t, 1, r2.ExitCode, "bob should have 1 visit")
-
-	// Check unknown user = 0
-	r3, _ := kit.InjectWASMEvent("visitor", "user.check", json.RawMessage(`{"userId":"charlie"}`))
-	require.Equal(t, 0, r3.ExitCode, "charlie should have 0 visits")
-
-	kit.UndeployWASM("visitor")
 }
 
 func TestShard_Validation(t *testing.T) {
@@ -180,16 +117,6 @@ func TestShard_Validation(t *testing.T) {
 		require.Contains(t, err.Error(), "invalid shard mode")
 	})
 
-	t.Run("keyed_no_key", func(t *testing.T) {
-		err := validateShardDescriptor(&ShardDescriptor{
-			Mode:     "keyed",
-			StateKey: "",
-			Handlers: map[string]string{},
-		}, []string{})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "state key field")
-	})
-
 	t.Run("missing_export", func(t *testing.T) {
 		err := validateShardDescriptor(&ShardDescriptor{
 			Mode:     "stateless",
@@ -199,10 +126,17 @@ func TestShard_Validation(t *testing.T) {
 		require.Contains(t, err.Error(), "not found in module exports")
 	})
 
-	t.Run("valid", func(t *testing.T) {
+	t.Run("valid_stateless", func(t *testing.T) {
 		err := validateShardDescriptor(&ShardDescriptor{
-			Mode:     "keyed",
-			StateKey: "id",
+			Mode:     "stateless",
+			Handlers: map[string]string{"topic": "handleIt"},
+		}, []string{"init", "handleIt"})
+		require.NoError(t, err)
+	})
+
+	t.Run("valid_persistent", func(t *testing.T) {
+		err := validateShardDescriptor(&ShardDescriptor{
+			Mode:     "persistent",
 			Handlers: map[string]string{"topic": "handleIt"},
 		}, []string{"init", "handleIt"})
 		require.NoError(t, err)
@@ -214,13 +148,12 @@ func TestShard_RemoveInterlock(t *testing.T) {
 	ctx := context.Background()
 
 	source := `
-import { setMode, onEvent, log } from "wasm";
+import { setMode, on, log } from "brainkit";
 export function init(): void {
   setMode("stateless");
-  onEvent("test.x", "handle");
+  on("test.x", "handle");
 }
-export function handlePing(payload: string): i32 { return 0; }
-export function handle(payload: string): i32 { return 0; }
+export function handle(topic: string, payload: string): void { log("handled"); }
 `
 	_, err := kit.EvalTS(ctx, "compile.ts", fmt.Sprintf(
 		"await wasm.compile(%s, { name: \"guarded\" });",

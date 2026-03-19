@@ -1,4 +1,4 @@
-import { log, debug, warn, error, logAt } from "wasm";
+import { log, debug, warn, error, logAt } from "brainkit";
 
 export function run(): i32 {
   log("info message");

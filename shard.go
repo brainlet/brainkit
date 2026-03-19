@@ -10,21 +10,22 @@ import (
 
 	"github.com/brainlet/brainkit/bus"
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
 )
 
 // ShardDescriptor describes a deployed shard's registrations.
 type ShardDescriptor struct {
 	Module     string            `json:"module"`
-	Mode       string            `json:"mode"`     // stateless | shared | keyed
-	StateKey   string            `json:"stateKey"`  // "" if not keyed
-	Handlers   map[string]string `json:"handlers"`  // topic pattern → exported function name
+	Mode       string            `json:"mode"`     // "stateless" | "persistent"
+	Handlers   map[string]string `json:"handlers"` // topic pattern → exported function name
 	DeployedAt time.Time         `json:"deployedAt"`
 }
 
 // WASMEventResult is the outcome of a shard handler invocation.
 type WASMEventResult struct {
-	ExitCode int    `json:"exitCode"`
-	Error    string `json:"error,omitempty"`
+	ExitCode     int    `json:"exitCode"`               // kept for wasm.run compatibility (run() returns i32)
+	ReplyPayload string `json:"replyPayload,omitempty"` // captured from reply() host function (shard handlers)
+	Error        string `json:"error,omitempty"`
 }
 
 // deployedShard is an active shard with bus subscriptions and state.
@@ -33,6 +34,12 @@ type deployedShard struct {
 	Binary        []byte // compiled WASM binary
 	Subscriptions []bus.SubscriptionID
 	State         *shardStateStore
+
+	// Persistent mode: living instance (stays alive between events)
+	persistRT   wazero.Runtime // nil for stateless
+	persistInst api.Module     // nil for stateless
+	persistHS   *hostState     // nil for stateless
+	persistMu   sync.Mutex     // serialize handler calls on persistent instance
 }
 
 // ---------------------------------------------------------------------------
@@ -44,71 +51,37 @@ type shardStateStore struct {
 	shardName string
 	store     KitStore // nil if no persistence
 
-	// shared mode: one state map, serialized access
-	sharedMu     sync.Mutex
-	shared       map[string]string
-	sharedLoaded bool
-
-	// keyed mode: per-key state maps with per-key locks
-	keyedMu     sync.Mutex
-	keyLocks    map[string]*sync.Mutex
-	keyed       map[string]map[string]string
-	keyedLoaded map[string]bool
+	// persistent mode: one state map, serialized access
+	mu     sync.Mutex
+	state  map[string]string
+	loaded bool
 }
 
 func newShardStateStore(mode string) *shardStateStore {
 	return &shardStateStore{
-		mode:        mode,
-		shared:      make(map[string]string),
-		keyLocks:    make(map[string]*sync.Mutex),
-		keyed:       make(map[string]map[string]string),
-		keyedLoaded: make(map[string]bool),
+		mode:  mode,
+		state: make(map[string]string),
 	}
 }
 
-// acquireState returns a copy of the state for the given key and acquires
-// the appropriate lock. Caller MUST call releaseState when done.
-func (s *shardStateStore) acquireState(key string) map[string]string {
+// acquireState returns a copy of the state and acquires the lock.
+// Caller MUST call releaseState when done.
+func (s *shardStateStore) acquireState() map[string]string {
 	switch s.mode {
 	case "stateless":
 		return make(map[string]string)
-	case "shared":
-		s.sharedMu.Lock()
+	case "persistent":
+		s.mu.Lock()
 		// Load from store on first access
-		if !s.sharedLoaded && s.store != nil {
+		if !s.loaded && s.store != nil {
 			persisted, err := s.store.LoadState(s.shardName, "")
 			if err == nil && persisted != nil {
-				s.shared = persisted
+				s.state = persisted
 			}
-			s.sharedLoaded = true
+			s.loaded = true
 		}
-		cp := make(map[string]string, len(s.shared))
-		for k, v := range s.shared {
-			cp[k] = v
-		}
-		return cp
-	case "keyed":
-		s.keyedMu.Lock()
-		mu, ok := s.keyLocks[key]
-		if !ok {
-			mu = &sync.Mutex{}
-			s.keyLocks[key] = mu
-		}
-		s.keyedMu.Unlock()
-		mu.Lock()
-		// Load from store on first access per key
-		if !s.keyedLoaded[key] && s.store != nil {
-			persisted, err := s.store.LoadState(s.shardName, key)
-			if err == nil && persisted != nil {
-				s.keyed[key] = persisted
-			}
-			s.keyedMu.Lock()
-			s.keyedLoaded[key] = true
-			s.keyedMu.Unlock()
-		}
-		state := s.keyed[key]
-		cp := make(map[string]string, len(state))
-		for k, v := range state {
+		cp := make(map[string]string, len(s.state))
+		for k, v := range s.state {
 			cp[k] = v
 		}
 		return cp
@@ -118,54 +91,18 @@ func (s *shardStateStore) acquireState(key string) map[string]string {
 }
 
 // releaseState persists the state and releases the lock.
-func (s *shardStateStore) releaseState(key string, state map[string]string) {
+func (s *shardStateStore) releaseState(state map[string]string) {
 	switch s.mode {
 	case "stateless":
 		// discard
-	case "shared":
-		s.shared = state
+	case "persistent":
+		s.state = state
 		// Save to store BEFORE unlocking (consistency)
 		if s.store != nil {
 			s.store.SaveState(s.shardName, "", state)
 		}
-		s.sharedMu.Unlock()
-	case "keyed":
-		s.keyed[key] = state
-		// Save to store BEFORE unlocking (consistency)
-		if s.store != nil {
-			s.store.SaveState(s.shardName, key, state)
-		}
-		s.keyedMu.Lock()
-		mu := s.keyLocks[key]
-		s.keyedMu.Unlock()
-		if mu != nil {
-			mu.Unlock()
-		}
+		s.mu.Unlock()
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Key Extraction
-// ---------------------------------------------------------------------------
-
-func extractShardKey(payload json.RawMessage, keyField string) string {
-	if keyField == "" {
-		return ""
-	}
-	var payloadMap map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &payloadMap); err != nil {
-		return ""
-	}
-	raw, ok := payloadMap[keyField]
-	if !ok {
-		return ""
-	}
-	var keyValue string
-	if err := json.Unmarshal(raw, &keyValue); err != nil {
-		// Coerce non-string to string
-		keyValue = string(raw)
-	}
-	return keyValue
 }
 
 // ---------------------------------------------------------------------------
@@ -173,11 +110,8 @@ func extractShardKey(payload json.RawMessage, keyField string) string {
 // ---------------------------------------------------------------------------
 
 func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
-	if desc.Mode != "stateless" && desc.Mode != "shared" && desc.Mode != "keyed" {
-		return fmt.Errorf("invalid shard mode: %q", desc.Mode)
-	}
-	if desc.Mode == "keyed" && desc.StateKey == "" {
-		return fmt.Errorf("keyed mode requires a state key field")
+	if desc.Mode != "stateless" && desc.Mode != "persistent" {
+		return fmt.Errorf("invalid shard mode: %q (must be \"stateless\" or \"persistent\")", desc.Mode)
 	}
 	exportSet := make(map[string]bool, len(exports))
 	for _, e := range exports {
@@ -196,7 +130,9 @@ func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
 // ---------------------------------------------------------------------------
 
 // invokeShardHandler runs a single shard handler with the given payload.
-// This is used both by bus subscription callbacks and by InjectWASMEvent.
+// Handler signature: (topicPtr: u32, payloadPtr: u32) → void
+// Reply via reply() host function. askAsync callbacks run after handler returns.
+// (module-protocol §12.1)
 func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
 	s.mu.Lock()
 	shard, ok := s.shards[shardName]
@@ -220,8 +156,7 @@ func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic s
 	s.mu.Unlock()
 
 	// Resolve state
-	key := extractShardKey(payload, shard.Descriptor.StateKey)
-	state := shard.State.acquireState(key)
+	state := shard.State.acquireState()
 
 	// Create wazero runtime
 	rt := wazero.NewRuntime(ctx)
@@ -230,53 +165,72 @@ func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic s
 	// Register host functions
 	hs := newHostState(s.kit, nil)
 	hs.state = state
+
+	// Set up askAsync context for cancellation
+	askCtx, askCancel := context.WithCancel(ctx)
+	defer askCancel()
+	hs.askCtx = askCtx
+	hs.askCancel = askCancel
+
 	if err := hs.registerHostFunctions(ctx, rt); err != nil {
-		shard.State.releaseState(key, state)
+		shard.State.releaseState(state)
 		return nil, fmt.Errorf("shard %q: register host functions: %w", shardName, err)
 	}
 
 	// Compile + instantiate
 	compiled, err := rt.CompileModule(ctx, binary)
 	if err != nil {
-		shard.State.releaseState(key, state)
+		shard.State.releaseState(state)
 		return nil, fmt.Errorf("shard %q: compile: %w", shardName, err)
 	}
 
 	inst, err := rt.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
 	if err != nil {
-		shard.State.releaseState(key, state)
+		shard.State.releaseState(state)
 		return nil, fmt.Errorf("shard %q: instantiate: %w", shardName, err)
 	}
 	defer inst.Close(ctx)
 
-	// Write payload to WASM memory
+	// Store instance reference for askAsync callbacks
+	hs.inst = inst
+
+	// Write topic + payload to WASM memory
+	topicPtr, err := writeASString(ctx, inst, topic)
+	if err != nil {
+		shard.State.releaseState(hs.state)
+		return nil, fmt.Errorf("shard %q: write topic: %w", shardName, err)
+	}
 	payloadPtr, err := writeASString(ctx, inst, string(payload))
 	if err != nil {
-		shard.State.releaseState(key, hs.state)
+		shard.State.releaseState(hs.state)
 		return nil, fmt.Errorf("shard %q: write payload: %w", shardName, err)
 	}
 
-	// Call the handler function
+	// Call the handler function with (topicPtr, payloadPtr) → void
 	fn := inst.ExportedFunction(funcName)
 	if fn == nil {
-		shard.State.releaseState(key, hs.state)
+		shard.State.releaseState(hs.state)
 		return nil, fmt.Errorf("shard %q: function %q not exported", shardName, funcName)
 	}
 
-	results, err := fn.Call(ctx, uint64(payloadPtr))
-	exitCode := 0
+	_, err = fn.Call(ctx, uint64(topicPtr), uint64(payloadPtr))
 	if err != nil {
-		shard.State.releaseState(key, hs.state)
-		return &WASMEventResult{ExitCode: -1, Error: err.Error()}, nil
+		shard.State.releaseState(hs.state)
+		return &WASMEventResult{Error: err.Error()}, nil
 	}
-	if len(results) > 0 {
-		exitCode = int(results[0])
-	}
+
+	// Wait for all pending askAsync callbacks to complete
+	hs.pendingAsks.Wait()
+
+	// Clear instance reference (no more callbacks allowed)
+	hs.askMu.Lock()
+	hs.inst = nil
+	hs.askMu.Unlock()
 
 	// Save state back
-	shard.State.releaseState(key, hs.state)
+	shard.State.releaseState(hs.state)
 
-	return &WASMEventResult{ExitCode: exitCode}, nil
+	return &WASMEventResult{ReplyPayload: hs.replyPayload}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +295,6 @@ func (s *WASMService) handleDeploy(ctx context.Context, msg bus.Message) (*bus.M
 	desc := ShardDescriptor{
 		Module:     req.Name,
 		Mode:       mode,
-		StateKey:   hs.shardStateKey,
 		Handlers:   hs.shardHandlers,
 		DeployedAt: time.Now(),
 	}
@@ -361,8 +314,8 @@ func (s *WASMService) handleDeploy(ctx context.Context, msg bus.Message) (*bus.M
 			result, err := s.invokeShardHandler(context.Background(), shardName, tp, m.Payload)
 			if err != nil {
 				log.Printf("[shard:%s] handler %s error: %v", shardName, fn, err)
-			} else if result.ExitCode != 0 {
-				log.Printf("[shard:%s] handler %s returned exit code %d", shardName, fn, result.ExitCode)
+			} else if result.Error != "" {
+				log.Printf("[shard:%s] handler %s error: %s", shardName, fn, result.Error)
 			}
 		})
 		subscriptions = append(subscriptions, subID)

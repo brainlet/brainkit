@@ -1,4 +1,4 @@
-import { JSONObject, JSONArray } from "wasm";
+import { JSONObject, JSONArray } from "brainkit";
 
 export function run(): i32 {
   const obj = new JSONObject()

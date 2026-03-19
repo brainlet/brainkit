@@ -1,7 +1,7 @@
-import { busSend, JSONObject } from "wasm";
+import { bus, JSONObject } from "brainkit";
 
 export function run(): i32 {
   const payload = new JSONObject().setString("msg", "hello");
-  busSend("as.test.hello", payload);
+  bus.sendRaw("as.test.hello", payload.toString());
   return 0;
 }

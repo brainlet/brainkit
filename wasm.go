@@ -98,8 +98,8 @@ func (s *WASMService) loadFromStore(store KitStore) error {
 				result, err := s.invokeShardHandler(context.Background(), shardName, tp, m.Payload)
 				if err != nil {
 					log.Printf("[shard:%s] handler %s error: %v", shardName, fn, err)
-				} else if result.ExitCode != 0 {
-					log.Printf("[shard:%s] handler %s returned exit code %d", shardName, fn, result.ExitCode)
+				} else if result.Error != "" {
+					log.Printf("[shard:%s] handler %s error: %s", shardName, fn, result.Error)
 				}
 			})
 			subscriptions = append(subscriptions, subID)
@@ -209,9 +209,9 @@ func (s *WASMService) handleCompile(ctx context.Context, msg bus.Message) (*bus.
 
 	sources := map[string]string{"input.ts": req.Source}
 	// Auto-inject wasm library for `import { ... } from "wasm"` resolution.
-	// AS resolves bare "wasm" → ~lib/wasm, which nextFile finds in onDemandSources.
+	// AS resolves bare "brainkit" → ~lib/brainkit, which nextFile finds in onDemandSources.
 	if wasmBundleSource != "" {
-		sources["~lib/wasm"] = wasmBundleSource
+		sources["~lib/brainkit"] = wasmBundleSource
 	}
 	compileOpts := req.Options.CompileOptions
 	// Always export runtime — needed for host function string interop (__new, memory)
@@ -356,6 +356,13 @@ func (s *WASMService) handleRun(ctx context.Context, msg bus.Message) (*bus.Mess
 	}
 	defer inst.Close(ctx)
 
+	// Set up askAsync support for wasm.run
+	askCtx, askCancel := context.WithCancel(ctx)
+	defer askCancel()
+	hs.askCtx = askCtx
+	hs.askCancel = askCancel
+	hs.inst = inst
+
 	// Call the "run" export if it exists, otherwise call "_start"
 	var resultVal uint64
 	if fn := inst.ExportedFunction("run"); fn != nil {
@@ -372,6 +379,12 @@ func (s *WASMService) handleRun(ctx context.Context, msg bus.Message) (*bus.Mess
 			return nil, fmt.Errorf("wasm.run: call _start(): %w", err)
 		}
 	}
+
+	// Wait for any pending askAsync callbacks
+	hs.pendingAsks.Wait()
+	hs.askMu.Lock()
+	hs.inst = nil
+	hs.askMu.Unlock()
 
 	result := map[string]any{
 		"exitCode": resultVal,

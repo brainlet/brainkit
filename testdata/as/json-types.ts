@@ -1,4 +1,4 @@
-import { JSONValue, JSONObject, JSONArray } from "wasm";
+import { JSONValue, JSONObject, JSONArray } from "brainkit";
 
 export function run(): i32 {
   // Create one of each type

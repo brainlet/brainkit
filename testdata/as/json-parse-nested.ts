@@ -1,4 +1,4 @@
-import { JSONValue } from "wasm";
+import { JSONValue } from "brainkit";
 
 export function run(): i32 {
   const v = JSONValue.parse('{"user":{"name":"Alice","scores":[10,20,30]},"ok":true}');

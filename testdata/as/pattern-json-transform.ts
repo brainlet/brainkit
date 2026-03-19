@@ -1,4 +1,4 @@
-import { JSONValue, JSONObject, JSONArray, log } from "wasm";
+import { JSONValue, JSONObject, JSONArray, log } from "brainkit";
 
 export function run(): i32 {
   // 1. Build source object with a users array
