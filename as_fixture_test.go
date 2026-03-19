@@ -31,7 +31,8 @@ func TestASFixtures(t *testing.T) {
 
 	// Register echo tool once — available to all tool-calling fixtures
 	sharedKit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.echo", ShortName: "echo", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/echo", ShortName: "echo",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Returns its args as result",
 		InputSchema: json.RawMessage(`{"type":"object"}`),
 		Executor: &registry.GoFuncExecutor{
@@ -61,7 +62,8 @@ func TestASFixtures(t *testing.T) {
 				}
 				kit = newTestKit(t)
 				kit.Tools.Register(registry.RegisteredTool{
-					Name: "platform.echo", ShortName: "echo", Namespace: "platform",
+					Name: "brainlet/platform@1.0.0/echo", ShortName: "echo",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 					Description: "Returns its args as result",
 					InputSchema: json.RawMessage(`{"type":"object"}`),
 					Executor: &registry.GoFuncExecutor{

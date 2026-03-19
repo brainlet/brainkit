@@ -79,7 +79,8 @@ func TestIntegration_GoToolFromTSModule(t *testing.T) {
 
 	// Register a Go tool
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.uppercase", ShortName: "uppercase", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/uppercase", ShortName: "uppercase",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Converts text to uppercase",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"text to uppercase"}},"required":["text"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -116,7 +117,8 @@ func TestIntegration_GoToolViaAgentFromTSModule(t *testing.T) {
 
 	// Register a Go tool
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.double", ShortName: "double", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/double", ShortName: "double",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Doubles a number",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"n":{"type":"number","description":"number to double"}},"required":["n"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -262,7 +264,8 @@ func TestIntegration_FullTSModule(t *testing.T) {
 
 	// Register a platform tool
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.reverse", ShortName: "reverse", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/reverse", ShortName: "reverse",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Reverses a string",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"text to reverse"}},"required":["text"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -353,7 +356,7 @@ func TestIntegration_TypedGoTool(t *testing.T) {
 		B float64 `json:"b" desc:"Second number"`
 	}
 
-	RegisterTool(kit, "platform.add", registry.TypedTool[AddInput]{
+	RegisterTool(kit, "brainlet/platform@1.0.0/add", registry.TypedTool[AddInput]{
 		Description: "Adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]any{"result": input.A + input.B}, nil

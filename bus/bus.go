@@ -200,7 +200,28 @@ func (b *Bus) Ask(msg Message, callback func(Message)) (cancel func()) {
 		return func() {}
 	}
 
-	b.transport.Publish(msg)
+	// Address resolution: route non-local messages via Forward (matches Bus.Send)
+	if msg.Address != "" && !isLocalAddress(msg.Address) {
+		target := extractHost(msg.Address)
+		if err := b.transport.Forward(msg, target); err != nil {
+			entry.timer.Stop()
+			b.replyMu.Lock()
+			delete(b.replyOneshots, replyTopic)
+			b.replyMu.Unlock()
+			entry.once.Do(func() {
+				errPayload, _ := json.Marshal(map[string]string{"error": err.Error()})
+				b.jobs.decrementPending(msg.TraceID)
+				callback(Message{
+					Version: ProtocolVersion, Topic: replyTopic, CallerID: "bus",
+					Payload: errPayload, TraceID: msg.TraceID,
+				})
+			})
+			b.Off(subID)
+			return func() {}
+		}
+	} else {
+		b.transport.Publish(msg)
+	}
 
 	return func() {
 		// Cancel: stop timer, remove oneshot, unsubscribe

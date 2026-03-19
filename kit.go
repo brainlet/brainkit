@@ -13,7 +13,12 @@ import (
 	"github.com/brainlet/brainkit/jsbridge"
 	"github.com/brainlet/brainkit/libsql"
 	mcppkg "github.com/brainlet/brainkit/mcp"
+	pluginv1 "github.com/brainlet/brainkit/proto/plugin/v1"
 	"github.com/brainlet/brainkit/registry"
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Kit is the brainkit execution engine.
@@ -30,7 +35,11 @@ type Kit struct {
 	agents   *agentembed.Sandbox
 	wasm     *WASMService
 	plugins  *pluginManager
-	storages map[string]*libsql.Server // named embedded SQLite bridges
+	storages  map[string]*libsql.Server // named embedded SQLite bridges
+	agentReg  *agentRegistry
+	network   *hostServer     // gRPC server for incoming peer connections
+	transport *GRPCTransport  // transport with peer routing (nil if no network)
+	discovery Discovery       // optional peer discovery
 
 	mu     sync.Mutex
 	closed bool
@@ -45,9 +54,31 @@ func New(cfg Config) (*Kit, error) {
 		cfg.CallerID = cfg.Namespace
 	}
 
+	var grpcTransport *GRPCTransport
 	sharedBus := cfg.SharedBus
 	if sharedBus == nil {
-		sharedBus = bus.NewBus(bus.NewInProcessTransport())
+		switch cfg.Transport {
+		case "nats":
+			if cfg.NATS.URL == "" {
+				return nil, fmt.Errorf("brainkit: NATS transport requires NATS.URL")
+			}
+			natsName := cfg.NATS.Name
+			if natsName == "" {
+				natsName = cfg.Name
+			}
+			nt, err := NewNATSTransport(cfg.NATS.URL, nats.Name(natsName))
+			if err != nil {
+				return nil, fmt.Errorf("brainkit: %w", err)
+			}
+			sharedBus = bus.NewBus(nt)
+		default:
+			if cfg.Network.Listen != "" || len(cfg.Network.Peers) > 0 || cfg.Network.Discovery.Type != "" {
+				grpcTransport = NewGRPCTransport()
+				sharedBus = bus.NewBus(grpcTransport)
+			} else {
+				sharedBus = bus.NewBus(bus.NewInProcessTransport())
+			}
+		}
 	}
 	if cfg.Name != "" {
 		if err := sharedBus.RegisterName(cfg.Name); err != nil {
@@ -66,6 +97,51 @@ func New(cfg Config) (*Kit, error) {
 		namespace: cfg.Namespace,
 		callerID:  cfg.CallerID,
 		storages:  make(map[string]*libsql.Server),
+		agentReg:  newAgentRegistry(),
+		transport: grpcTransport,
+	}
+
+	// Start network listener if configured
+	if cfg.Network.Listen != "" {
+		k.network = newHostServer(k)
+		if err := k.network.Start(cfg.Network.Listen); err != nil {
+			return nil, fmt.Errorf("brainkit: %w", err)
+		}
+	}
+
+	// Connect to known peers
+	for name, addr := range cfg.Network.Peers {
+		if err := k.connectPeer(name, addr); err != nil {
+			log.Printf("[kit] failed to connect to peer %q at %s: %v", name, addr, err)
+		}
+	}
+
+	// Create discovery if configured
+	switch cfg.Network.Discovery.Type {
+	case "multicast":
+		disc, err := NewMulticastDiscovery(cfg.Network.Discovery.ServiceName)
+		if err != nil {
+			log.Printf("[kit] multicast discovery failed: %v", err)
+		} else {
+			k.discovery = disc
+		}
+	case "static":
+		if len(cfg.Network.Peers) > 0 {
+			k.discovery = NewStaticDiscovery(cfg.Network.Peers)
+		}
+	}
+
+	if k.discovery != nil && k.transport != nil {
+		k.transport.discovery = k.discovery
+		k.transport.ConnectFunc = k.connectPeer
+	}
+
+	// Register self with discovery
+	if k.discovery != nil && cfg.Network.Listen != "" && cfg.Name != "" {
+		k.discovery.Register(Peer{
+			Name:    cfg.Name,
+			Address: k.network.Addr(),
+		})
 	}
 
 	// Build provider config for agent-embed
@@ -146,11 +222,13 @@ func New(cfg Config) (*Kit, error) {
 			// Register each MCP tool in the ToolRegistry
 			for _, tool := range k.MCP.ListToolsForServer(name) {
 				toolCopy := tool // capture loop variable
-				fullName := "mcp." + toolCopy.ServerName + "." + toolCopy.Name
+				fullName := registry.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
 				k.Tools.Register(registry.RegisteredTool{
 					Name:        fullName,
 					ShortName:   toolCopy.Name,
-					Namespace:   "mcp." + toolCopy.ServerName,
+					Owner:       "mcp",
+					Package:     toolCopy.ServerName,
+					Version:     "1.0.0",
 					Description: toolCopy.Description,
 					InputSchema: toolCopy.InputSchema,
 					Executor: &registry.GoFuncExecutor{
@@ -182,6 +260,9 @@ func (k *Kit) Close() {
 	k.closed = true
 	k.mu.Unlock()
 
+	if k.agentReg != nil && k.agents != nil {
+		k.agentReg.unregisterAllForKit(k.agents.ID())
+	}
 	if k.plugins != nil {
 		k.plugins.stopAll()
 	}
@@ -200,12 +281,112 @@ func (k *Kit) Close() {
 	for _, srv := range k.storages {
 		srv.Close()
 	}
+	if k.discovery != nil {
+		k.discovery.Close()
+	}
+	if k.network != nil {
+		k.network.Stop()
+	}
 	if k.config.Name != "" {
 		k.Bus.UnregisterName(k.config.Name)
 	}
-	// Only close the bus if we own it (not shared)
 	if k.config.SharedBus == nil {
 		k.Bus.Close()
+	}
+}
+
+// connectPeer establishes a gRPC connection to a remote Kit.
+func (k *Kit) connectPeer(name, addr string) error {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("connect to peer %s at %s: %w", name, addr, err)
+	}
+
+	client := pluginv1.NewBrainkitHostServiceClient(conn)
+
+	resp, err := client.Handshake(context.Background(), &pluginv1.HandshakeRequest{
+		Name:    k.config.Name,
+		Version: "v1",
+		Type:    "kit",
+	})
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("handshake with %s: %w", name, err)
+	}
+	if !resp.Accepted {
+		conn.Close()
+		return fmt.Errorf("handshake with %s rejected: %s", name, resp.RejectionReason)
+	}
+
+	stream, err := client.MessageStream(context.Background())
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("open stream to %s: %w", name, err)
+	}
+
+	// Send identity message
+	stream.Send(&pluginv1.PluginMessage{
+		Id:       uuid.NewString(),
+		Type:     "identity",
+		CallerId: k.config.Name,
+	})
+
+	pc := &peerConn{
+		name:   name,
+		addr:   addr,
+		conn:   conn,
+		stream: stream,
+		done:   make(chan struct{}),
+	}
+
+	if k.transport != nil {
+		k.transport.addPeer(pc)
+	}
+
+	go k.readPeerStream(name, pc)
+
+	log.Printf("[kit] connected to peer %q at %s", name, addr)
+	return nil
+}
+
+// readPeerStream reads messages from a remote Kit.
+func (k *Kit) readPeerStream(name string, pc *peerConn) {
+	defer func() {
+		if k.transport != nil {
+			k.transport.removePeer(name)
+		}
+		pc.closeDone()
+		log.Printf("[kit] peer %q stream closed", name)
+	}()
+
+	for {
+		msg, err := pc.stream.Recv()
+		if err != nil {
+			log.Printf("[kit] peer %s recv: %v", name, err)
+			return
+		}
+
+		switch msg.Type {
+		case "ask.reply":
+			if msg.ReplyTo != "" {
+				k.Bus.Send(bus.Message{
+					Topic:    msg.ReplyTo,
+					CallerID: "peer/" + name,
+					Payload:  msg.Payload,
+					Metadata: msg.Metadata,
+				})
+			}
+		case "event":
+			k.Bus.Send(bus.Message{
+				Topic:    msg.Topic,
+				CallerID: "peer/" + name,
+				TraceID:  msg.TraceId,
+				Payload:  msg.Payload,
+				Metadata: msg.Metadata,
+			})
+		default:
+			log.Printf("[kit] peer %s: unknown message type %q", name, msg.Type)
+		}
 	}
 }
 
@@ -461,7 +642,7 @@ func (k *Kit) addStorageInternal(name string, cfg StorageConfig) error {
 func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
 		globalThis.__kit_current_source = %q;
-		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__kit;
+		const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, agents, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness } = globalThis.__kit;
 		%s
 	})()`, filename, code)
 
@@ -508,7 +689,7 @@ func (k *Kit) EvalModule(ctx context.Context, filename, code string) (string, er
 //	    A float64 `json:"a" desc:"First number"`
 //	    B float64 `json:"b" desc:"Second number"`
 //	}
-//	kit.RegisterTool("platform.math.add", registry.TypedTool[AddInput]{
+//	kit.RegisterTool("brainlet/math@1.0.0/add", registry.TypedTool[AddInput]{
 //	    Description: "Adds two numbers",
 //	    Execute: func(ctx context.Context, input AddInput) (any, error) {
 //	        return map[string]any{"result": input.A + input.B}, nil
@@ -550,6 +731,12 @@ func (k *Kit) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJSON 
 }
 
 func (k *Kit) registerHandlers() {
+	// If this Kit is part of a pool, use AsWorker for competing consumers
+	var subOpts []bus.SubscribeOption
+	if k.config.WorkerGroup != "" {
+		subOpts = append(subOpts, bus.AsWorker(k.config.WorkerGroup))
+	}
+
 	// wrapHandler adapts the old Handler signature to the new On/ReplyFunc pattern.
 	wrapHandler := func(h func(ctx context.Context, msg bus.Message) (*bus.Message, error)) func(bus.Message, bus.ReplyFunc) {
 		return func(msg bus.Message, reply bus.ReplyFunc) {
@@ -565,7 +752,7 @@ func (k *Kit) registerHandlers() {
 		}
 	}
 
-	k.Bus.On("wasm.*", wrapHandler(k.wasm.handleBusMessage))
+	k.Bus.On("wasm.*", wrapHandler(k.wasm.handleBusMessage), subOpts...)
 
 	k.Bus.On("tools.*", wrapHandler(func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
 		switch msg.Topic {
@@ -580,7 +767,7 @@ func (k *Kit) registerHandlers() {
 		default:
 			return nil, fmt.Errorf("tools: unknown topic %q", msg.Topic)
 		}
-	}))
+	}), subOpts...)
 
 	k.Bus.On("mcp.*", wrapHandler(func(ctx context.Context, msg bus.Message) (*bus.Message, error) {
 		if k.MCP == nil {
@@ -608,7 +795,40 @@ func (k *Kit) registerHandlers() {
 		default:
 			return nil, fmt.Errorf("mcp: unknown topic %q", msg.Topic)
 		}
-	}))
+	}), subOpts...)
+
+	k.Bus.On("agents.*", wrapHandler(k.handleAgents), subOpts...)
+	k.Bus.On("fs.*", wrapHandler(k.handleFs), subOpts...)
+	k.Bus.On("ai.*", wrapHandler(k.handleAI), subOpts...)
+
+	// Plugin state handlers — plugins call GetState/SetState via typed messages
+	pluginState := make(map[string]string)
+	var pluginStateMu sync.Mutex
+	k.Bus.On("plugin.state.*", wrapHandler(func(_ context.Context, msg bus.Message) (*bus.Message, error) {
+		switch msg.Topic {
+		case "plugin.state.get":
+			var req struct{ Key string `json:"key"` }
+			json.Unmarshal(msg.Payload, &req)
+			pluginStateMu.Lock()
+			val := pluginState[req.Key]
+			pluginStateMu.Unlock()
+			result, _ := json.Marshal(map[string]string{"value": val})
+			return &bus.Message{Payload: result}, nil
+		case "plugin.state.set":
+			var req struct {
+				Key   string `json:"key"`
+				Value string `json:"value"`
+			}
+			json.Unmarshal(msg.Payload, &req)
+			pluginStateMu.Lock()
+			pluginState[req.Key] = req.Value
+			pluginStateMu.Unlock()
+			result, _ := json.Marshal(map[string]bool{"ok": true})
+			return &bus.Message{Payload: result}, nil
+		default:
+			return nil, fmt.Errorf("plugin.state: unknown topic %q", msg.Topic)
+		}
+	}), subOpts...)
 }
 
 func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Message, error) {
@@ -620,7 +840,7 @@ func (k *Kit) handleToolsCall(ctx context.Context, msg bus.Message) (*bus.Messag
 		return nil, fmt.Errorf("tools.call: invalid request: %w", err)
 	}
 
-	tool, err := k.Tools.Resolve(req.Name, msg.CallerID)
+	tool, err := k.Tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -643,14 +863,19 @@ func (k *Kit) handleToolsRegister(_ context.Context, msg bus.Message) (*bus.Mess
 		return nil, fmt.Errorf("tools.register: invalid request: %w", err)
 	}
 
-	ns := msg.CallerID
-	shortName := req.Name
-	fullName := ns + "." + req.Name
+	// Compose new-format name from caller identity.
+	// CallerID is the owner context; req.Name is the short tool name.
+	callerID := msg.CallerID
+	var fullName string
+	if registry.IsNewFormat(req.Name) {
+		fullName = req.Name
+	} else {
+		fullName = registry.ComposeName(callerID, callerID, "0.0.0", req.Name)
+	}
 
 	k.Tools.Register(registry.RegisteredTool{
 		Name:        fullName,
-		ShortName:   shortName,
-		Namespace:   ns,
+		ShortName:   req.Name,
 		Description: req.Description,
 		InputSchema: req.InputSchema,
 	})
@@ -661,17 +886,16 @@ func (k *Kit) handleToolsRegister(_ context.Context, msg bus.Message) (*bus.Mess
 
 func (k *Kit) handleToolsList(_ context.Context, msg bus.Message) (*bus.Message, error) {
 	var req struct {
-		Namespace string `json:"namespace"`
+		Filter string `json:"filter"`
 	}
 	json.Unmarshal(msg.Payload, &req)
 
-	toolList := k.Tools.List(req.Namespace)
+	toolList := k.Tools.List(req.Filter)
 	var infos []map[string]any
 	for _, t := range toolList {
 		infos = append(infos, map[string]any{
 			"name":        t.Name,
 			"shortName":   t.ShortName,
-			"namespace":   t.Namespace,
 			"description": t.Description,
 		})
 	}
@@ -688,7 +912,7 @@ func (k *Kit) handleToolsResolve(ctx context.Context, msg bus.Message) (*bus.Mes
 		return nil, fmt.Errorf("tools.resolve: invalid request: %w", err)
 	}
 
-	tool, err := k.Tools.Resolve(req.Name, msg.CallerID)
+	tool, err := k.Tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
 	}

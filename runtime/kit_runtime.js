@@ -528,6 +528,12 @@
   // The Harness looks up agents by name when resolving mode.agent.
   var _agentRegistry = {};
 
+  // Expose agent registry as non-enumerable global for EvalTS access.
+  // agents.request handler looks up agents here by name.
+  Object.defineProperty(globalThis, '__kit_agent_registry', {
+    value: _agentRegistry, writable: false, enumerable: false, configurable: false
+  });
+
   // Resource registry — tracks every resource created in this Kit.
   // Keyed by "type:id". Used by Kit.ListResources(), Kit.TeardownFile(), etc.
   var _resourceRegistry = {
@@ -728,6 +734,28 @@
     // Register named agents for Harness mode resolution
     if (config.name) {
       _agentRegistry[config.name] = wrapped;
+
+      // Auto-register on the bus agent registry
+      try {
+        bridgeRequest("agents.register", {
+          name: config.name,
+          capabilities: (function() {
+            var caps = [];
+            if (config.tools && typeof config.tools === "object") {
+              var keys = Object.keys(config.tools);
+              for (var i = 0; i < keys.length; i++) {
+                caps.push(keys[i]);
+              }
+            }
+            return caps;
+          })(),
+          model: typeof config.model === "string" ? config.model : "",
+          kit: globalThis.__brainkit_sandbox_id || "",
+        });
+      } catch(e) {
+        console.error("[agent] bus registration failed for " + config.name + ": " + e);
+        throw e;
+      }
     }
 
     // Track in resource registry
@@ -1472,6 +1500,32 @@
     tools: tools,
     tool: tool,
     bus: busMod,
+    agents: {
+      list: function(filter) {
+        var raw = bridgeRequest("agents.list", { filter: filter || null });
+        return parseBridgeResponse(raw);
+      },
+      discover: function(query) {
+        var raw = bridgeRequest("agents.discover", query || {});
+        return parseBridgeResponse(raw);
+      },
+      message: function(target, payload) {
+        var raw = bridgeRequest("agents.message", { target: target, payload: payload });
+        return parseBridgeResponse(raw);
+      },
+      status: function(name) {
+        var raw = bridgeRequest("agents.get-status", { name: name });
+        return parseBridgeResponse(raw);
+      },
+      setStatus: function(name, status) {
+        var raw = bridgeRequest("agents.set-status", { name: name, status: status });
+        return parseBridgeResponse(raw);
+      },
+      request: async function(name, prompt) {
+        var raw = await bridgeRequestAsync("agents.request", { name: name, prompt: prompt });
+        return parseBridgeResponse(raw);
+      },
+    },
 
     // CONTEXT
     sandbox: sandboxCtx,

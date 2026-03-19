@@ -3,6 +3,7 @@ package brainkit
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -36,8 +37,25 @@ type pluginConn struct {
 	manifest *pluginv1.PluginManifest
 	subs     []bus.SubscriptionID
 	sendMu   sync.Mutex
-	cancel   context.CancelFunc
-	done     chan struct{}
+	cancel    context.CancelFunc
+	done      chan struct{} // closed when readStream exits
+	stopping  chan struct{} // closed when stopPlugin begins graceful shutdown
+
+	// Backpressure: buffered channel as event semaphore
+	eventSem chan struct{}
+
+	// Restart tracking
+	restarts int
+
+	// Intercept reply tracking
+	interceptMu      sync.Mutex
+	interceptReplies map[string]chan interceptResult
+}
+
+// interceptResult holds proto fields from the plugin's intercept.result message.
+type interceptResult struct {
+	Payload  json.RawMessage
+	Metadata map[string]string
 }
 
 // safeSend sends a message on the plugin stream with mutex protection.
@@ -45,6 +63,32 @@ func (pc *pluginConn) safeSend(msg *pluginv1.PluginMessage) error {
 	pc.sendMu.Lock()
 	defer pc.sendMu.Unlock()
 	return pc.stream.Send(msg)
+}
+
+// safeSendEvent sends an event message with backpressure control.
+// Returns true if sent, false if dropped. Critical messages bypass backpressure.
+// Uses a buffered channel as semaphore — blocks until slot available or drops if full.
+func (pc *pluginConn) safeSendEvent(msg *pluginv1.PluginMessage) bool {
+	if msg.Type != "event" {
+		pc.safeSend(msg)
+		return true
+	}
+
+	// Try to acquire a slot (non-blocking)
+	select {
+	case pc.eventSem <- struct{}{}:
+		// Got a slot — send the event
+		if err := pc.safeSend(msg); err != nil {
+			<-pc.eventSem // release slot on error
+			return false
+		}
+		return true
+	default:
+		// Semaphore full — drop the event
+		log.Printf("[plugin:%s] backpressure: dropping event (max=%d, topic=%s)",
+			pc.config.Name, pc.config.MaxPending, msg.Topic)
+		return false
+	}
 }
 
 func newPluginManager(kit *Kit) *pluginManager {
@@ -69,7 +113,6 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
 
-	// Set environment
 	var env []string
 	for k, v := range cfg.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
@@ -159,7 +202,7 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 		return fmt.Errorf("manifest: %w", err)
 	}
 
-	// Open bidirectional stream BEFORE processing manifest
+	// Open bidirectional stream
 	stream, err := client.MessageStream(ctx)
 	if err != nil {
 		conn.Close()
@@ -177,6 +220,9 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 		manifest: manifest,
 		cancel:   cancel,
 		done:     make(chan struct{}),
+		stopping: make(chan struct{}),
+		eventSem:         make(chan struct{}, cfg.MaxPending),
+		interceptReplies: make(map[string]chan interceptResult),
 	}
 
 	// Process manifest
@@ -196,54 +242,70 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 	pm.plugins[cfg.Name] = pc
 	pm.mu.Unlock()
 
-	log.Printf("[plugin:%s] started at %s (%d tools, %d subscriptions)",
-		cfg.Name, addr, len(manifest.Tools), len(manifest.Subscriptions))
+	log.Printf("[plugin:%s] started at %s (owner=%s, version=%s, %d tools, %d subs)",
+		cfg.Name, addr, manifest.Owner, manifest.Version,
+		len(manifest.Tools), len(manifest.Subscriptions))
 
 	return nil
 }
 
 // readStream processes messages from plugin → Kit.
+// On stream error, attempts recovery if process is alive.
 func (pm *pluginManager) readStream(name string, pc *pluginConn) {
 	defer close(pc.done)
 
 	for {
 		msg, err := pc.stream.Recv()
 		if err != nil {
-			log.Printf("[plugin:%s] stream closed: %v", name, err)
+			log.Printf("[plugin:%s] stream error: %v", name, err)
+
+			// Check if process is still alive
+			if pc.cmd.ProcessState == nil && pc.cmd.Process != nil {
+				if pm.recoverStream(name, pc) {
+					continue
+				}
+			}
+
 			return
 		}
 
+		// Release backpressure slot when plugin sends any response
+		select {
+		case <-pc.eventSem:
+		default:
+		}
+
 		switch msg.Type {
-		case "tool.result":
+		case "tool.result", "reply":
 			if msg.ReplyTo != "" {
 				pm.kit.Bus.Send(bus.Message{
 					Topic:    msg.ReplyTo,
-					CallerID: "plugin." + name,
+					CallerID: "plugin/" + name,
 					Payload:  msg.Payload,
 					TraceID:  msg.TraceId,
 				})
 			}
 
-		case "bus.send":
+		case "bus.send", "send":
 			pm.kit.Bus.Send(bus.Message{
 				Topic:    msg.Topic,
-				CallerID: "plugin." + name,
+				CallerID: "plugin/" + name,
 				Payload:  msg.Payload,
 				TraceID:  msg.TraceId,
 				Metadata: msg.Metadata,
 			})
 
-		case "bus.ask":
+		case "bus.ask", "ask":
 			go func(m *pluginv1.PluginMessage) {
 				pm.kit.Bus.Ask(bus.Message{
 					Topic:    m.Topic,
-					CallerID: "plugin." + name,
+					CallerID: "plugin/" + name,
 					Payload:  m.Payload,
 					TraceID:  m.TraceId,
 				}, func(reply bus.Message) {
 					pc.safeSend(&pluginv1.PluginMessage{
 						Id:      uuid.NewString(),
-						Type:    "bus.ask.reply",
+						Type:    "ask.reply",
 						ReplyTo: m.ReplyTo,
 						TraceId: reply.TraceID,
 						Payload: reply.Payload,
@@ -252,15 +314,80 @@ func (pm *pluginManager) readStream(name string, pc *pluginConn) {
 			}(msg)
 
 		case "intercept.result":
-			if msg.ReplyTo != "" {
-				pm.kit.Bus.Send(bus.Message{
-					Topic:    msg.ReplyTo,
-					CallerID: "plugin." + name,
-					Payload:  msg.Payload,
-					TraceID:  msg.TraceId,
-				})
+			replyTo := msg.ReplyTo
+			if replyTo == "" {
+				log.Printf("[plugin:%s] intercept.result missing reply_to", name)
+				continue
+			}
+			result := interceptResult{
+				Payload:  msg.Payload,
+				Metadata: msg.Metadata,
+			}
+			pc.interceptMu.Lock()
+			ch, ok := pc.interceptReplies[replyTo]
+			if ok {
+				delete(pc.interceptReplies, replyTo)
+			}
+			pc.interceptMu.Unlock()
+			if ok {
+				ch <- result
+			} else {
+				log.Printf("[plugin:%s] intercept.result for unknown reply %q", name, replyTo)
 			}
 		}
+	}
+}
+
+// recoverStream attempts to re-open the MessageStream on an existing gRPC connection.
+func (pm *pluginManager) recoverStream(name string, pc *pluginConn) bool {
+	log.Printf("[plugin:%s] attempting stream recovery", name)
+
+	// Use a long-lived context for the stream (not a timeout context)
+	stream, err := pc.client.MessageStream(context.Background())
+	if err != nil {
+		log.Printf("[plugin:%s] stream recovery failed: %v", name, err)
+		return false
+	}
+
+	pc.sendMu.Lock()
+	pc.stream = stream
+	pc.sendMu.Unlock()
+
+	// Re-send lifecycle.start
+	pc.safeSend(&pluginv1.PluginMessage{
+		Id:   uuid.NewString(),
+		Type: "lifecycle.start",
+	})
+
+	// Re-wire subscriptions to new stream
+	pm.reprocessSubscriptions(name, pc)
+
+	log.Printf("[plugin:%s] stream recovered", name)
+	return true
+}
+
+// reprocessSubscriptions re-wires subscription forwarding to the current stream.
+func (pm *pluginManager) reprocessSubscriptions(name string, pc *pluginConn) {
+	for _, subID := range pc.subs {
+		pm.kit.Bus.Off(subID)
+	}
+	pc.subs = pc.subs[:0]
+
+	m := pc.manifest
+	for _, sub := range m.Subscriptions {
+		topic := sub.Topic
+		subID := pm.kit.Bus.On(topic, func(msg bus.Message, _ bus.ReplyFunc) {
+			pc.safeSendEvent(&pluginv1.PluginMessage{
+				Id:       uuid.NewString(),
+				Type:     "event",
+				Topic:    msg.Topic,
+				CallerId: msg.CallerID,
+				TraceId:  msg.TraceID,
+				Payload:  msg.Payload,
+				Metadata: msg.Metadata,
+			})
+		})
+		pc.subs = append(pc.subs, subID)
 	}
 }
 
@@ -297,12 +424,12 @@ func (pm *pluginManager) callPluginTool(pluginName, toolName string, input []byt
 	}
 }
 
-// healthLoop periodically checks plugin health.
+// healthLoop periodically checks plugin health and auto-restarts on crash.
 func (pm *pluginManager) healthLoop(name string, pc *pluginConn) {
 	ticker := time.NewTicker(pc.config.HealthInterval)
 	defer ticker.Stop()
 
-	failures := 0
+	healthFailures := 0
 	for {
 		select {
 		case <-ticker.C:
@@ -311,21 +438,87 @@ func (pm *pluginManager) healthLoop(name string, pc *pluginConn) {
 			cancel()
 
 			if err != nil || !resp.Healthy {
-				failures++
-				log.Printf("[plugin:%s] health check failed (%d/%d): %v",
-					name, failures, pc.config.MaxRestarts, err)
-				if failures >= pc.config.MaxRestarts {
-					log.Printf("[plugin:%s] max health failures reached, stopping", name)
+				healthFailures++
+				log.Printf("[plugin:%s] health check failed (%d): %v",
+					name, healthFailures, err)
+				if healthFailures >= 3 {
+					log.Printf("[plugin:%s] too many health failures, stopping", name)
 					pm.stopPlugin(name, pc)
 					return
 				}
 			} else {
-				failures = 0
+				healthFailures = 0
 			}
+
+		case <-pc.stopping:
+			// Graceful shutdown initiated by stopPlugin — exit without restart
+			return
+
 		case <-pc.done:
+			// Process died or stream closed — attempt restart
+			if !pc.config.AutoRestart {
+				log.Printf("[plugin:%s] died, auto-restart disabled", name)
+				pm.cleanupPlugin(name, pc)
+				return
+			}
+			if pc.restarts >= pc.config.MaxRestarts {
+				log.Printf("[plugin:%s] died, max restarts reached (%d/%d)",
+					name, pc.restarts, pc.config.MaxRestarts)
+				pm.cleanupPlugin(name, pc)
+				return
+			}
+
+			pc.restarts++
+			log.Printf("[plugin:%s] crashed, restarting (%d/%d)",
+				name, pc.restarts, pc.config.MaxRestarts)
+
+			pm.cleanupPlugin(name, pc)
+
+			// Backoff: 500ms * restart count (max 5s)
+			backoff := time.Duration(pc.restarts) * 500 * time.Millisecond
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+			time.Sleep(backoff)
+
+			// Start fresh
+			cfg := pc.config
+			if err := pm.startPlugin(cfg); err != nil {
+				log.Printf("[plugin:%s] restart failed: %v", name, err)
+			} else {
+				// Transfer restart count to new pluginConn
+				pm.mu.Lock()
+				if newPC, ok := pm.plugins[name]; ok {
+					newPC.restarts = pc.restarts
+				}
+				pm.mu.Unlock()
+			}
 			return
 		}
 	}
+}
+
+// cleanupPlugin cleans up a dead plugin's resources without attempting graceful stop.
+func (pm *pluginManager) cleanupPlugin(name string, pc *pluginConn) {
+	for _, subID := range pc.subs {
+		pm.kit.Bus.Off(subID)
+	}
+
+	if pc.conn != nil {
+		pc.conn.Close()
+	}
+
+	pc.cancel()
+
+	if pc.cmd != nil && pc.cmd.Process != nil {
+		pc.cmd.Wait()
+	}
+
+	pm.mu.Lock()
+	delete(pm.plugins, name)
+	pm.mu.Unlock()
+
+	log.Printf("[plugin:%s] cleaned up", name)
 }
 
 func (pm *pluginManager) stopAll() {
@@ -342,6 +535,9 @@ func (pm *pluginManager) stopAll() {
 }
 
 func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
+	// Signal healthLoop to exit without triggering restart
+	close(pc.stopping)
+
 	for _, subID := range pc.subs {
 		pm.kit.Bus.Off(subID)
 	}

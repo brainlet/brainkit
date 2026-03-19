@@ -7,13 +7,18 @@ import (
 
 // RegisteredTool is a tool in the registry.
 type RegisteredTool struct {
-	Name        string          // full namespaced name: "plugin.postgres@1.0.0.db_query"
-	ShortName   string          // just the tool name: "db_query"
-	Description string
-	InputSchema json.RawMessage // JSON Schema
-	Owner       string          // CallerID of who registered it
-	Namespace   string          // "platform", "plugin.postgres@1.0.0", "user", "agent.coder-1"
-	Executor    ToolExecutor
+	// Name is the canonical registered key: "owner/pkg@version/tool".
+	Name        string          `json:"name"`
+	ShortName   string          `json:"shortName"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+
+	// Naming fields — always populated from the canonical name.
+	Owner   string `json:"owner,omitempty"`   // "brainlet", "acme-corp"
+	Package string `json:"package,omitempty"` // "cron", "postgres"
+	Version string `json:"version,omitempty"` // "1.0.0", "2.1.0-beta.1"
+
+	Executor ToolExecutor `json:"-"`
 }
 
 // ToolExecutor abstracts over different execution backends.

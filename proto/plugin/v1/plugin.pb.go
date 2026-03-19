@@ -187,15 +187,16 @@ func (*ManifestRequest) Descriptor() ([]byte, []int) {
 
 type PluginManifest struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
-	Name          string                    `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Version       string                    `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
-	Description   string                    `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Tools         []*ToolDefinition         `protobuf:"bytes,4,rep,name=tools,proto3" json:"tools,omitempty"`
-	Interceptors  []*InterceptorDefinition  `protobuf:"bytes,5,rep,name=interceptors,proto3" json:"interceptors,omitempty"`
-	Events        []*EventDefinition        `protobuf:"bytes,6,rep,name=events,proto3" json:"events,omitempty"`
-	Subscriptions []*SubscriptionDefinition `protobuf:"bytes,7,rep,name=subscriptions,proto3" json:"subscriptions,omitempty"`
-	Agents        []*AgentDefinition        `protobuf:"bytes,8,rep,name=agents,proto3" json:"agents,omitempty"`
-	Files         []*FileDefinition         `protobuf:"bytes,9,rep,name=files,proto3" json:"files,omitempty"`
+	Owner         string                    `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	Name          string                    `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Version       string                    `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	Description   string                    `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Tools         []*ToolDefinition         `protobuf:"bytes,5,rep,name=tools,proto3" json:"tools,omitempty"`
+	Interceptors  []*InterceptorDefinition  `protobuf:"bytes,6,rep,name=interceptors,proto3" json:"interceptors,omitempty"`
+	Events        []*EventDefinition        `protobuf:"bytes,7,rep,name=events,proto3" json:"events,omitempty"`
+	Subscriptions []*SubscriptionDefinition `protobuf:"bytes,8,rep,name=subscriptions,proto3" json:"subscriptions,omitempty"`
+	Agents        []*AgentDefinition        `protobuf:"bytes,9,rep,name=agents,proto3" json:"agents,omitempty"`
+	Files         []*FileDefinition         `protobuf:"bytes,10,rep,name=files,proto3" json:"files,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -228,6 +229,13 @@ func (x *PluginManifest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PluginManifest.ProtoReflect.Descriptor instead.
 func (*PluginManifest) Descriptor() ([]byte, []int) {
 	return file_proto_plugin_v1_plugin_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PluginManifest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
 }
 
 func (x *PluginManifest) GetName() string {
@@ -887,17 +895,19 @@ const file_proto_plugin_v1_plugin_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x1a\n" +
 	"\baccepted\x18\x03 \x01(\bR\baccepted\x12)\n" +
 	"\x10rejection_reason\x18\x04 \x01(\tR\x0frejectionReason\"\x11\n" +
-	"\x0fManifestRequest\"\xef\x03\n" +
-	"\x0ePluginManifest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\x128\n" +
-	"\x05tools\x18\x04 \x03(\v2\".brainkit.plugin.v1.ToolDefinitionR\x05tools\x12M\n" +
-	"\finterceptors\x18\x05 \x03(\v2).brainkit.plugin.v1.InterceptorDefinitionR\finterceptors\x12;\n" +
-	"\x06events\x18\x06 \x03(\v2#.brainkit.plugin.v1.EventDefinitionR\x06events\x12P\n" +
-	"\rsubscriptions\x18\a \x03(\v2*.brainkit.plugin.v1.SubscriptionDefinitionR\rsubscriptions\x12;\n" +
-	"\x06agents\x18\b \x03(\v2#.brainkit.plugin.v1.AgentDefinitionR\x06agents\x128\n" +
-	"\x05files\x18\t \x03(\v2\".brainkit.plugin.v1.FileDefinitionR\x05files\"\x94\x01\n" +
+	"\x0fManifestRequest\"\x85\x04\n" +
+	"\x0ePluginManifest\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x128\n" +
+	"\x05tools\x18\x05 \x03(\v2\".brainkit.plugin.v1.ToolDefinitionR\x05tools\x12M\n" +
+	"\finterceptors\x18\x06 \x03(\v2).brainkit.plugin.v1.InterceptorDefinitionR\finterceptors\x12;\n" +
+	"\x06events\x18\a \x03(\v2#.brainkit.plugin.v1.EventDefinitionR\x06events\x12P\n" +
+	"\rsubscriptions\x18\b \x03(\v2*.brainkit.plugin.v1.SubscriptionDefinitionR\rsubscriptions\x12;\n" +
+	"\x06agents\x18\t \x03(\v2#.brainkit.plugin.v1.AgentDefinitionR\x06agents\x128\n" +
+	"\x05files\x18\n" +
+	" \x03(\v2\".brainkit.plugin.v1.FileDefinitionR\x05files\"\x94\x01\n" +
 	"\x0eToolDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12!\n" +

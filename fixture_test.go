@@ -99,7 +99,8 @@ func TestFixture_TS_AgentWithRegisteredTool(t *testing.T) {
 
 	// Register the "multiply" tool that the fixture expects
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.multiply", ShortName: "multiply", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/multiply", ShortName: "multiply",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Multiplies two numbers",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"number","description":"first number"},"b":{"type":"number","description":"second number"}},"required":["a","b"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -1689,7 +1690,8 @@ func TestFixture_TS_ToolsCall(t *testing.T) {
 
 	// Register the "uppercase" tool that the fixture expects
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.uppercase", ShortName: "uppercase", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/uppercase", ShortName: "uppercase",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Converts text to uppercase",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -1850,7 +1852,8 @@ func TestFixture_TS_FullComposition(t *testing.T) {
 
 	// Register the "reverse" tool the fixture expects
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.reverse", ShortName: "reverse", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/reverse", ShortName: "reverse",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Reverses a string",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}`),
 		Executor: &registry.GoFuncExecutor{

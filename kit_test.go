@@ -70,9 +70,11 @@ func TestKitToolRegistry(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	kit.Tools.Register(registry.RegisteredTool{
-		Name:      "platform.echo",
+		Name:      "brainlet/platform@1.0.0/echo",
 		ShortName: "echo",
-		Namespace: "platform",
+		Owner:     "brainlet",
+		Package:   "platform",
+		Version:   "1.0.0",
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				return json.RawMessage(`{"echoed":true}`), nil
@@ -80,7 +82,7 @@ func TestKitToolRegistry(t *testing.T) {
 		},
 	})
 
-	tool, err := kit.Tools.Resolve("echo", "user")
+	tool, err := kit.Tools.Resolve("echo")
 	if err != nil {
 		t.Fatal(err)
 	}

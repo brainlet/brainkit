@@ -7,33 +7,20 @@ import (
 )
 
 // TypedTool defines a tool with a typed Go struct for input.
-// The JSON Schema is generated automatically from the Input struct's fields and tags.
-//
-// Example:
-//
-//	registry.TypedTool[MyInput]{
-//	    Description: "Does something useful",
-//	    Execute: func(ctx context.Context, input MyInput) (any, error) {
-//	        return map[string]any{"result": input.A + input.B}, nil
-//	    },
-//	}
 type TypedTool[T any] struct {
 	Description string
 	Execute     func(ctx context.Context, input T) (any, error)
 }
 
 // Register registers a typed tool on a ToolRegistry.
-// The name should be fully qualified: "namespace.toolName" (e.g., "platform.math.add").
-// JSON Schema is generated from the Input type parameter's struct tags.
+// The name should be new-format ("brainlet/cron@1.0.0/create") or a bare short name.
+// Fields are auto-populated from the name.
 func Register[T any](r *ToolRegistry, name string, tool TypedTool[T]) error {
 	var zero T
 	schema := StructToJSONSchema(zero)
-	ns, short := ParseNamespace(name)
 
-	return r.Register(RegisteredTool{
+	rt := RegisteredTool{
 		Name:        name,
-		ShortName:   short,
-		Namespace:   ns,
 		Description: tool.Description,
 		InputSchema: schema,
 		Executor: &GoFuncExecutor{
@@ -49,5 +36,18 @@ func Register[T any](r *ToolRegistry, name string, tool TypedTool[T]) error {
 				return json.Marshal(result)
 			},
 		},
-	})
+	}
+
+	if IsNewFormat(name) {
+		owner, pkg, version, short := ParseToolName(name)
+		rt.Owner = owner
+		rt.Package = pkg
+		rt.Version = version
+		rt.ShortName = short
+	} else {
+		// Bare short name — no owner/pkg/version.
+		rt.ShortName = name
+	}
+
+	return r.Register(rt)
 }

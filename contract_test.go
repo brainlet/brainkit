@@ -249,7 +249,8 @@ func TestContract_TSToolsCall(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.multiply", ShortName: "multiply", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/multiply", ShortName: "multiply",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				var args struct{ A, B float64 }
@@ -276,12 +277,12 @@ func TestContract_TSToolsCall(t *testing.T) {
 	t.Logf("Contract .ts tools.call: 6 * 7 = %v", out.Result)
 }
 
-func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
+func TestContract_TSToolsCallShortNameResolution(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "plugin.math@1.0.0.square", ShortName: "square",
-		Namespace: "plugin.math@1.0.0",
+		Name: "brainlet/math@1.0.0/square", ShortName: "square",
+		Owner: "brainlet", Package: "math", Version: "1.0.0",
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				var args struct{ N float64 }
@@ -305,7 +306,7 @@ func TestContract_TSToolsCallNamespaceResolution(t *testing.T) {
 	if out.Result != 81 {
 		t.Errorf("result = %v, want 81", out.Result)
 	}
-	t.Logf("Contract .ts tools.call (namespace): square(9) = %v", out.Result)
+	t.Logf("Contract .ts tools.call (short name): square(9) = %v", out.Result)
 }
 
 func TestContract_TSAgentUsesRegisteredTool(t *testing.T) {
@@ -313,7 +314,8 @@ func TestContract_TSAgentUsesRegisteredTool(t *testing.T) {
 
 	// Register a Go tool on the registry (simulates a plugin providing a tool)
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.multiply", ShortName: "multiply", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/multiply", ShortName: "multiply",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Multiplies two numbers",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"number","description":"first number"},"b":{"type":"number","description":"second number"}},"required":["a","b"]}`),
 		Executor: &registry.GoFuncExecutor{
@@ -408,7 +410,8 @@ func TestContract_ToolRegistryResolve(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
 	kit.Tools.Register(registry.RegisteredTool{
-		Name: "platform.echo", ShortName: "echo", Namespace: "platform",
+		Name: "brainlet/platform@1.0.0/echo", ShortName: "echo",
+		Owner: "brainlet", Package: "platform", Version: "1.0.0",
 		Description: "Echoes input",
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
@@ -417,7 +420,7 @@ func TestContract_ToolRegistryResolve(t *testing.T) {
 		},
 	})
 
-	tool, err := kit.Tools.Resolve("echo", "user")
+	tool, err := kit.Tools.Resolve("echo")
 	if err != nil {
 		t.Fatal(err)
 	}

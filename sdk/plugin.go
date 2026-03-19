@@ -3,42 +3,205 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+	"sync"
+
+	"github.com/brainlet/brainkit/registry"
+	"github.com/brainlet/brainkit/sdk/messages"
 )
 
-// Plugin is the interface plugin authors implement.
-type Plugin interface {
-	// Manifest returns the plugin's capability declaration.
-	Manifest() PluginManifest
+// Plugin is the builder returned by New(). Authors register capabilities on it.
+// The manifest is assembled automatically from registrations.
+type Plugin struct {
+	owner       string
+	name        string
+	version     string
+	description string
 
-	// OnStart is called after handshake + manifest processing.
-	OnStart(client BrainkitClient) error
+	mu            sync.Mutex
+	tools         []toolRegistration
+	subscriptions []subscriptionRegistration
+	events        []eventRegistration
+	interceptors  []interceptorRegistration
 
-	// OnStop is called before shutdown.
-	OnStop() error
-
-	// HandleToolCall processes a tool invocation.
-	HandleToolCall(ctx context.Context, tool string, input json.RawMessage) (json.RawMessage, error)
-
-	// HandleEvent processes a subscribed bus event.
-	HandleEvent(ctx context.Context, event Event) error
-
-	// HandleIntercept processes a message interception.
-	HandleIntercept(ctx context.Context, msg InterceptMessage) (*InterceptMessage, error)
+	onStartFn func(Client) error
+	onStopFn  func() error
 }
 
-// BrainkitClient is the Kit API available to plugins via gRPC.
-type BrainkitClient interface {
-	// Bus operations
-	Send(ctx context.Context, topic string, payload json.RawMessage) error
-	Ask(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error)
+// PluginOption configures optional Plugin settings.
+type PluginOption func(*Plugin)
 
-	// Convenience methods (route through bus internally)
-	CallTool(ctx context.Context, name string, input json.RawMessage) (json.RawMessage, error)
-	CallAgent(ctx context.Context, name string, prompt string) (string, error)
-	CompileWASM(ctx context.Context, source string, opts WASMCompileOpts) (*WASMModule, error)
-	DeployWASM(ctx context.Context, name string) (*ShardDescriptor, error)
+// WithDescription sets the plugin description.
+func WithDescription(desc string) PluginOption {
+	return func(p *Plugin) {
+		p.description = desc
+	}
+}
 
-	// State (per-plugin key-value, backed by Kit persistence)
-	GetState(ctx context.Context, key string) (string, error)
-	SetState(ctx context.Context, key string, value string) error
+// New creates a new plugin builder.
+func New(owner, name, version string, opts ...PluginOption) *Plugin {
+	p := &Plugin{
+		owner:   owner,
+		name:    name,
+		version: version,
+	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+// OnStart registers a callback invoked after handshake + manifest processing.
+func (p *Plugin) OnStart(fn func(Client) error) {
+	p.onStartFn = fn
+}
+
+// OnStop registers a callback invoked before shutdown.
+func (p *Plugin) OnStop(fn func() error) {
+	p.onStopFn = fn
+}
+
+// --- Internal registration types ---
+
+type toolRegistration struct {
+	name        string
+	description string
+	inputSchema string
+	handler     func(ctx context.Context, client Client, input json.RawMessage) (json.RawMessage, error)
+}
+
+type subscriptionRegistration struct {
+	topic   string
+	handler func(ctx context.Context, payload json.RawMessage, client Client, reply messages.ReplyFunc)
+}
+
+type eventRegistration struct {
+	name        string
+	description string
+	schema      string
+}
+
+type interceptorRegistration struct {
+	name        string
+	priority    int
+	topicFilter string
+	handler     func(ctx context.Context, msg InterceptMessage) (*InterceptMessage, error)
+}
+
+// --- Generic registration functions ---
+
+// Tool registers a typed tool handler. Schema is auto-generated from In.
+func Tool[In, Out any](p *Plugin, name, description string, handler func(ctx context.Context, client Client, in In) (Out, error)) {
+	var zero In
+	schema := string(registry.StructToJSONSchema(zero))
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.tools = append(p.tools, toolRegistration{
+		name:        name,
+		description: description,
+		inputSchema: schema,
+		handler: func(ctx context.Context, client Client, input json.RawMessage) (json.RawMessage, error) {
+			var in In
+			if err := json.Unmarshal(input, &in); err != nil {
+				return nil, err
+			}
+			out, err := handler(ctx, client, in)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(out)
+		},
+	})
+}
+
+// On registers a typed event subscription handler.
+func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event E, client Client, reply messages.ReplyFunc)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.subscriptions = append(p.subscriptions, subscriptionRegistration{
+		topic: topic,
+		handler: func(ctx context.Context, payload json.RawMessage, client Client, reply messages.ReplyFunc) {
+			var event E
+			if err := json.Unmarshal(payload, &event); err != nil {
+				return
+			}
+			handler(ctx, event, client, reply)
+		},
+	})
+}
+
+// Event declares an event type this plugin will publish.
+func Event[E messages.BusMessage](p *Plugin, description string) {
+	var zero E
+	schema := string(registry.StructToJSONSchema(zero))
+	topic := zero.BusTopic()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.events = append(p.events, eventRegistration{
+		name:        topic,
+		description: description,
+		schema:      schema,
+	})
+}
+
+// Intercept registers a message interceptor at the given priority.
+func Intercept(p *Plugin, name string, priority int, topicFilter string, handler func(ctx context.Context, msg InterceptMessage) (*InterceptMessage, error)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.interceptors = append(p.interceptors, interceptorRegistration{
+		name:        name,
+		priority:    priority,
+		topicFilter: topicFilter,
+		handler:     handler,
+	})
+}
+
+// buildManifest assembles a PluginManifest from all registrations.
+func (p *Plugin) buildManifest() PluginManifest {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	m := PluginManifest{
+		Owner:       p.owner,
+		Name:        p.name,
+		Version:     p.version,
+		Description: p.description,
+	}
+
+	for _, t := range p.tools {
+		m.Tools = append(m.Tools, ToolDefinition{
+			Name:        t.name,
+			Description: t.description,
+			InputSchema: t.inputSchema,
+		})
+	}
+
+	for _, s := range p.subscriptions {
+		m.Subscriptions = append(m.Subscriptions, SubscriptionDefinition{
+			Topic: s.topic,
+		})
+	}
+
+	for _, e := range p.events {
+		m.Events = append(m.Events, EventDefinition{
+			Name:        e.name,
+			Description: e.description,
+			Schema:      e.schema,
+		})
+	}
+
+	for _, i := range p.interceptors {
+		m.Interceptors = append(m.Interceptors, InterceptorDefinition{
+			Name:        i.name,
+			Priority:    i.priority,
+			TopicFilter: i.topicFilter,
+		})
+	}
+
+	return m
 }

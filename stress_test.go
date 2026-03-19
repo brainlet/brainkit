@@ -213,11 +213,13 @@ func TestStress_ReentrantEvalTS(t *testing.T) {
 
 	// Register a Go tool that calls EvalTS — the pattern that deadlocked before
 	kit.Tools.Register(registry.RegisteredTool{
-		Name:        "test.eval_code",
+		Name:        "brainlet/test@1.0.0/eval_code",
 		ShortName:   "eval_code",
+		Owner:       "brainlet",
+		Package:     "test",
+		Version:     "1.0.0",
 		Description: "Evaluate JavaScript code and return the result",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"code":{"type":"string"}},"required":["code"]}`),
-		Namespace:   "test",
 		Executor: &registry.GoFuncExecutor{
 			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				var args struct {

@@ -67,8 +67,28 @@ type Config struct {
 	// Each plugin is started as a subprocess communicating via gRPC.
 	Plugins []PluginConfig
 
-	// Network configures Kit-to-Kit networking (deferred — types defined, not wired).
+	// Network configures Kit-to-Kit networking.
 	Network NetworkConfig
+
+	// Transport selects the message transport: "" (default, in-process/grpc), "nats".
+	Transport string
+
+	// NATS configures the NATS transport. Only used when Transport is "nats".
+	NATS NATSConfig
+
+	// WorkerGroup, when set, causes registerHandlers to use AsWorker(WorkerGroup)
+	// for all Bus.On() calls. Set automatically by InstanceManager.spawnInstance.
+	WorkerGroup string
+
+	// WorkspaceDir is the root directory for fs.* operations.
+	// All file paths are sandboxed to this directory.
+	WorkspaceDir string
+}
+
+// NATSConfig configures the NATS transport.
+type NATSConfig struct {
+	URL  string // "nats://localhost:4222"
+	Name string // client name (defaults to Kit name)
 }
 
 // ProviderConfig configures an AI provider.

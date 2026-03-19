@@ -33,16 +33,17 @@ message HandshakeResponse {
 message ManifestRequest {}
 
 message PluginManifest {
-    string name = 1;
-    string version = 2;
-    string description = 3;
+    string owner = 1;
+    string name = 2;
+    string version = 3;
+    string description = 4;
 
-    repeated ToolDefinition tools = 4;
-    repeated InterceptorDefinition interceptors = 5;
-    repeated EventDefinition events = 6;
-    repeated SubscriptionDefinition subscriptions = 7;
-    repeated AgentDefinition agents = 8;
-    repeated FileDefinition files = 9;
+    repeated ToolDefinition tools = 5;
+    repeated InterceptorDefinition interceptors = 6;
+    repeated EventDefinition events = 7;
+    repeated SubscriptionDefinition subscriptions = 8;
+    repeated AgentDefinition agents = 9;
+    repeated FileDefinition files = 10;
 }
 
 message ToolDefinition {

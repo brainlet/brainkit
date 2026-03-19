@@ -17,12 +17,14 @@ type PluginConfig struct {
 	HealthInterval  time.Duration     // health check interval (default: 30s)
 	StartTimeout    time.Duration     // max time to wait for LISTEN line (default: 10s)
 	ShutdownTimeout time.Duration     // max time to wait for graceful stop (default: 5s)
+	MaxPending      int               // max pending events before backpressure drop (default: 1000)
 }
 
 // NetworkConfig configures Kit-to-Kit networking.
 type NetworkConfig struct {
-	Listen string            // ":9090" — listen for incoming connections
-	Peers  map[string]string // name → address: {"server-2": "10.0.1.5:9090"}
+	Listen    string            // ":9090" — listen for incoming connections
+	Peers     map[string]string // name → address: {"server-2": "10.0.1.5:9090"}
+	Discovery DiscoveryConfig   // optional discovery configuration
 }
 
 func pluginDefaults(cfg *PluginConfig) {
@@ -37,5 +39,8 @@ func pluginDefaults(cfg *PluginConfig) {
 	}
 	if cfg.ShutdownTimeout == 0 {
 		cfg.ShutdownTimeout = 5 * time.Second
+	}
+	if cfg.MaxPending == 0 {
+		cfg.MaxPending = 1000
 	}
 }
