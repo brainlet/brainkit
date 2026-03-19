@@ -19,7 +19,7 @@ export function onStage1(topic: string, payload: string): void {
     return;
   }
 
-  const obj = parsed.toObject();
+  const obj = parsed.asObject();
   const text1 = obj.getString("text");
   if (text1.length == 0) {
     setState("error", "stage1 no text");

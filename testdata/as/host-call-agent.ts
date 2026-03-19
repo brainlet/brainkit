@@ -15,7 +15,7 @@ export function onAgentResult(topic: string, payload: string): void {
     setState("error", "null");
     return;
   }
-  const obj = parsed.toObject();
+  const obj = parsed.asObject();
   const text = obj.getString("text");
   if (text.length == 0) {
     setState("error", "no text");

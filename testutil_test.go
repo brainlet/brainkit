@@ -68,3 +68,13 @@ func newTestKitNoKey(t *testing.T) *Kit {
 	t.Cleanup(func() { kit.Close() })
 	return kit
 }
+
+// loadFixture reads a test fixture file from testdata/.
+func loadFixture(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("load fixture %s: %v", path, err)
+	}
+	return string(data)
+}

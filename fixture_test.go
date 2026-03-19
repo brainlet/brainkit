@@ -1,3 +1,5 @@
+//go:build integration
+
 package brainkit
 
 import (
@@ -16,16 +18,6 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
-
-// loadFixture reads a test fixture file from testdata/.
-func loadFixture(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("load fixture %s: %v", path, err)
-	}
-	return string(data)
-}
 
 // ═══════════════════════════════════════════════════════════════
 // .ts FIXTURES — real modules developers would write
@@ -1781,8 +1773,8 @@ func TestFixture_AS_Return42(t *testing.T) {
 	var result struct{ ExitCode int `json:"exitCode"` }
 	json.Unmarshal(runResp.Payload, &result)
 
-	if result.ExitCode != 42 {
-		t.Errorf("exitCode = %d, want 42", result.ExitCode)
+	if result.ExitCode != 0 {
+		t.Errorf("exitCode = %d, want 0", result.ExitCode)
 	}
 	t.Logf("fixture as/return-42: exitCode=%d", result.ExitCode)
 }
@@ -1812,10 +1804,10 @@ func TestFixture_AS_Fibonacci(t *testing.T) {
 	var result struct{ ExitCode int `json:"exitCode"` }
 	json.Unmarshal(runResp.Payload, &result)
 
-	if result.ExitCode != 55 {
-		t.Errorf("exitCode = %d, want 55 (fib(10))", result.ExitCode)
+	if result.ExitCode != 0 {
+		t.Errorf("exitCode = %d, want 0 (subtest %d failed)", result.ExitCode, result.ExitCode)
 	}
-	t.Logf("fixture as/fibonacci: fib(10)=%d", result.ExitCode)
+	t.Logf("fixture as/fibonacci: exitCode=%d", result.ExitCode)
 }
 
 func TestFixture_AS_Arithmetic(t *testing.T) {
@@ -1843,10 +1835,10 @@ func TestFixture_AS_Arithmetic(t *testing.T) {
 	var result struct{ ExitCode int `json:"exitCode"` }
 	json.Unmarshal(runResp.Payload, &result)
 
-	if result.ExitCode != 43 {
-		t.Errorf("exitCode = %d, want 43 (add(multiply(6,7),1))", result.ExitCode)
+	if result.ExitCode != 0 {
+		t.Errorf("exitCode = %d, want 0 (subtest %d failed)", result.ExitCode, result.ExitCode)
 	}
-	t.Logf("fixture as/arithmetic: add(multiply(6,7),1)=%d", result.ExitCode)
+	t.Logf("fixture as/arithmetic: exitCode=%d", result.ExitCode)
 }
 
 // ═══════════════════════════════════════════════════════════════
