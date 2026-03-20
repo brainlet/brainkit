@@ -481,7 +481,8 @@ func (k *Kit) TeardownFile(filename string) (int, error) {
 	code := fmt.Sprintf(`
 		var resources = globalThis.__kit_registry.listBySource(%q);
 		var count = 0;
-		for (var i = 0; i < resources.length; i++) {
+		// Teardown in reverse order (LIFO — last created, first destroyed)
+		for (var i = resources.length - 1; i >= 0; i--) {
 			globalThis.__kit_registry.unregister(resources[i].type, resources[i].id);
 			count++;
 		}

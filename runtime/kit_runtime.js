@@ -538,9 +538,14 @@
   // Keyed by "type:id". Used by Kit.ListResources(), Kit.TeardownFile(), etc.
   var _resourceRegistry = {
     entries: {},
+    cleanups: {},
 
-    register: function(type, id, name, ref) {
+    register: function(type, id, name, ref, cleanupFn) {
       var key = type + ":" + id;
+      // Idempotent: if re-registering same id, run old cleanup first
+      if (this.cleanups[key]) {
+        try { this.cleanups[key](); } catch(e) {}
+      }
       this.entries[key] = {
         type: type,
         id: id,
@@ -549,12 +554,20 @@
         createdAt: Date.now(),
         ref: ref,
       };
+      if (typeof cleanupFn === "function") {
+        this.cleanups[key] = cleanupFn;
+      }
     },
 
     unregister: function(type, id) {
       var key = type + ":" + id;
       var entry = this.entries[key];
       if (entry) {
+        // Run cleanup hook if one exists
+        if (this.cleanups[key]) {
+          try { this.cleanups[key](); } catch(e) {}
+          delete this.cleanups[key];
+        }
         delete this.entries[key];
         return entry;
       }
@@ -758,8 +771,13 @@
       }
     }
 
-    // Track in resource registry
-    _resourceRegistry.register("agent", config.name || config.id || ("agent_" + Date.now()), config.name || "unnamed", wrapped);
+    // Track in resource registry with cleanup hook
+    var _agentId = config.name || config.id || ("agent_" + Date.now());
+    _resourceRegistry.register("agent", _agentId, config.name || "unnamed", wrapped, function() {
+      // Cleanup: remove from agent registry + unregister from bus
+      delete _agentRegistry[_agentId];
+      try { bridgeRequest("agents.unregister", { name: _agentId }); } catch(e) {}
+    });
 
     return wrapped;
   }
@@ -1071,11 +1089,17 @@
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);
       globalThis.__bus_subs[subId] = handler;
+      // Auto-register with cleanup for lifecycle management
+      _resourceRegistry.register("subscription", subId, null, function() {
+        __go_brainkit_unsubscribe(subId);
+        delete globalThis.__bus_subs[subId];
+      });
       return subId;
     },
     unsubscribe: function(subId) {
       __go_brainkit_unsubscribe(subId);
       delete globalThis.__bus_subs[subId];
+      _resourceRegistry.unregister("subscription", subId);
     },
     request: async function(topic, payload) {
       var raw = await bridgeRequestAsync(topic, payload);
