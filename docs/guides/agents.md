@@ -2,6 +2,34 @@
 
 Agents are the core unit of AI execution. An agent wraps a language model with instructions, tools, memory, and processors. Brainkit agents support delegation to sub-agents, dynamic configuration, and supervisor patterns.
 
+Agents are created exclusively via `.ts` deployment -- there is no `AgentRegisterMsg` bus message. Use `kit.Deploy()` to evaluate `.ts` code that calls `agent(...)`. The agent is registered in the Kit's agent registry and tracked as a resource of the deploying source file.
+
+---
+
+## Deployment
+
+Agents run inside SES Compartments with isolated globals and a hardened Kit API. Deploy from Go:
+
+```go
+resources, err := kit.Deploy(ctx, "my-agent.ts", `
+    agent({
+        name: "assistant",
+        model: "openai/gpt-4o-mini",
+        instructions: "You are a helpful assistant.",
+    });
+`)
+// resources: [{type:"agent", id:"assistant", source:"my-agent.ts"}]
+```
+
+On teardown, all resources created by that source file are cleaned up automatically -- the agent is unregistered from the agent registry, bus subscriptions are removed, and the Compartment reference is dropped:
+
+```go
+removed, err := kit.Teardown(ctx, "my-agent.ts")
+// removed = 1
+```
+
+See the [deploy guide](deploy.md) for full details on Deploy, Teardown, Redeploy, and resource tracking.
+
 ---
 
 ## Quick Start
@@ -378,12 +406,37 @@ await a.generate("Hello", {
 
 ---
 
+## Bus Topics
+
+Agents are managed through the `agents.*` bus topic domain. Registration happens internally when `.ts` code calls `agent(...)` during deployment -- there is no public `AgentRegisterMsg`.
+
+| Topic | Purpose |
+|-------|---------|
+| `agents.list` | List registered agents (with optional filter by capability/model/status) |
+| `agents.discover` | Find agents matching criteria |
+| `agents.request` | Send a prompt to a named agent, get a response |
+| `agents.message` | Fire-and-forget message to a named agent |
+| `agents.get-status` | Get agent status (idle/busy/error) |
+| `agents.set-status` | Set agent status |
+
+```go
+// Request an agent response via bus
+resp, _ := bus.AskSync(kit.Bus, ctx, bus.Message{
+    Topic:   "agents.request",
+    Payload: json.RawMessage(`{"name":"assistant","prompt":"Hello!"}`),
+})
+// resp.Payload: {"text":"Hi! How can I help?"}
+```
+
+---
+
 ## What's Not Supported
 
 | Feature | Notes |
 |---------|-------|
+| AgentRegisterMsg | Removed. Agents are created via `.ts` deployment (`kit.Deploy`), not via bus messages. |
 | Stored Agents CRUD | Create/Get/List/Update/Delete persistent agent definitions via storage |
-| Voice (TTS/STT) | 13 providers in Mastra — not yet bundled |
+| Voice (TTS/STT) | 13 providers in Mastra -- not yet bundled |
 | Agent.approveToolCall() | Tool suspension approval flow |
 | Agent.resumeStream() | Resume a suspended stream |
 | Harness orchestrator | Thread-level persistent state, modes, heartbeats (mastracode architecture) |
