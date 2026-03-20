@@ -10,19 +10,49 @@ import (
 //go:embed agent_embed_bundle.js
 var bundleSource string
 
+//go:embed ses_polyfills.js
+var sesPolyfillsSource string
+
+//go:embed ses.umd.js
+var sesSource string
+
+// sesLockdownJS calls lockdown() with QuickJS-compatible options.
+// Must run after ses.umd.js and before the Mastra bundle.
+const sesLockdownJS = `lockdown({ errorTaming: "unsafe", overrideTaming: "moderate", consoleTaming: "unsafe", evalTaming: "unsafe-eval" });`
+
 // LoadBundle evaluates the agent-embed bundle in the given bridge.
+// Loading order: globals → SES polyfills → SES → lockdown → Mastra bundle.
 // After loading, globalThis.__agent_embed is available with Agent, createTool, and Mastra.
 func LoadBundle(b *jsbridge.Bridge) error {
-	// The Mastra bundle and AI SDK providers reference Node.js and browser globals
-	// that don't exist in QuickJS. The esbuild node-stub plugin handles import-time
-	// resolution, but runtime code still accesses these globals directly.
-	// Set up everything before loading the bundle.
+	// 1. Node.js/browser global polyfills (process, Buffer, etc.)
 	setup, err := b.Eval("agent-embed-setup.js", runtimeGlobalsJS)
 	if err != nil {
 		return fmt.Errorf("agent-embed: setup globals: %w", err)
 	}
 	setup.Free()
 
+	// 2. SES polyfills (console stubs, Iterator prototype fix)
+	sp, err := b.Eval("ses-polyfills.js", sesPolyfillsSource)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES polyfills: %w", err)
+	}
+	sp.Free()
+
+	// 3. SES UMD (provides Compartment, harden, lockdown)
+	sv, err := b.Eval("ses.umd.js", sesSource)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES load: %w", err)
+	}
+	sv.Free()
+
+	// 4. Call lockdown() — freezes intrinsics, enables Compartment isolation
+	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
+	}
+	lv.Free()
+
+	// 5. Mastra bundle (Agent, createTool, AI SDK, etc.)
 	val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 	if err != nil {
 		return fmt.Errorf("agent-embed: load bundle: %w", err)

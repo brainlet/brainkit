@@ -21,13 +21,8 @@ type ToolResolveMsg struct {
 
 func (ToolResolveMsg) BusTopic() string { return "tools.resolve" }
 
-type ToolRegisterMsg struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	InputSchema any    `json:"inputSchema"`
-}
-
-func (ToolRegisterMsg) BusTopic() string { return "tools.register" }
+// ToolRegisterMsg removed — tools are created via .ts deployment (kit.Deploy),
+// not via bus messages. The internal bridgeRequest path still handles tool registration.
 
 // ── Responses ──
 
@@ -49,6 +44,4 @@ type ToolResolveResp struct {
 	InputSchema any    `json:"inputSchema,omitempty"`
 }
 
-type ToolRegisterResp struct {
-	Registered string `json:"registered"`
-}
+// ToolRegisterResp removed — see note above.

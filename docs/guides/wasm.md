@@ -5,6 +5,8 @@ WASM modules are AssemblyScript programs that run inside brainkit. Two execution
 1. **One-shot (`wasm.run`)** — compile and execute, returns exit code
 2. **Shard (`wasm.deploy`)** — event-reactive module with handlers, persists across events
 
+> **Note**: WASM shards are a separate execution model from SES Compartments. `.ts` orchestration code (agents, tools, workflows) runs in SES Compartments. WASM shards are for AssemblyScript automation modules. Both can coexist in the same Kit. A `.ts` file running in a Compartment can deploy and manage WASM shards via the `wasm.*` bus topics.
+
 ## Import
 
 All imports from `"brainkit"`:

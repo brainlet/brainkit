@@ -36,7 +36,8 @@ type Kit struct {
 	wasm     *WASMService
 	plugins  *pluginManager
 	storages  map[string]*libsql.Server // named embedded SQLite bridges
-	agentReg  *agentRegistry
+	agentReg    *agentRegistry
+	deployments map[string]*deploymentInfo
 	network   *hostServer     // gRPC server for incoming peer connections
 	transport *GRPCTransport  // transport with peer routing (nil if no network)
 	discovery Discovery       // optional peer discovery
@@ -97,7 +98,8 @@ func New(cfg Config) (*Kit, error) {
 		namespace: cfg.Namespace,
 		callerID:  cfg.CallerID,
 		storages:  make(map[string]*libsql.Server),
-		agentReg:  newAgentRegistry(),
+		agentReg:    newAgentRegistry(),
+		deployments: make(map[string]*deploymentInfo),
 		transport: grpcTransport,
 	}
 
@@ -806,6 +808,7 @@ func (k *Kit) registerHandlers() {
 	k.Bus.On("memory.*", wrapHandler(k.handleMemory), subOpts...)
 	k.Bus.On("workflows.*", wrapHandler(k.handleWorkflows), subOpts...)
 	k.Bus.On("vectors.*", wrapHandler(k.handleVectors), subOpts...)
+	k.Bus.On("kit.*", wrapHandler(k.handleDeploy), subOpts...)
 
 	// Plugin state handlers — plugins call GetState/SetState via typed messages
 	pluginState := make(map[string]string)

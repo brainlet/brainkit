@@ -550,6 +550,18 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 		pm.kit.Bus.Off(subID)
 	}
 
+	// Teardown deployed .ts files (agents and files from manifest)
+	if pc.manifest != nil {
+		for _, a := range pc.manifest.Agents {
+			source := fmt.Sprintf("__plugin_%s_agent_%s.ts", name, a.Name)
+			pm.kit.Teardown(context.Background(), source)
+		}
+		for _, f := range pc.manifest.Files {
+			source := fmt.Sprintf("__plugin_%s_%s", name, f.Path)
+			pm.kit.Teardown(context.Background(), source)
+		}
+	}
+
 	pc.safeSend(&pluginv1.PluginMessage{
 		Id:   uuid.NewString(),
 		Type: "lifecycle.stop",

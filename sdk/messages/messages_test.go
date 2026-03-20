@@ -19,7 +19,7 @@ func TestBusTopics(t *testing.T) {
 		{"ToolCallMsg", ToolCallMsg{}, "tools.call"},
 		{"ToolListMsg", ToolListMsg{}, "tools.list"},
 		{"ToolResolveMsg", ToolResolveMsg{}, "tools.resolve"},
-		{"ToolRegisterMsg", ToolRegisterMsg{}, "tools.register"},
+		// ToolRegisterMsg removed — tools created via .ts deployment
 
 		// Agents
 		{"AgentRequestMsg", AgentRequestMsg{}, "agents.request"},
@@ -27,8 +27,7 @@ func TestBusTopics(t *testing.T) {
 		{"AgentMessageMsg", AgentMessageMsg{}, "agents.message"},
 		{"AgentListMsg", AgentListMsg{}, "agents.list"},
 		{"AgentDiscoverMsg", AgentDiscoverMsg{}, "agents.discover"},
-		{"AgentRegisterMsg", AgentRegisterMsg{}, "agents.register"},
-		{"AgentUnregisterMsg", AgentUnregisterMsg{}, "agents.unregister"},
+		// AgentRegisterMsg/UnregisterMsg removed — agents created via .ts deployment
 		{"AgentGetStatusMsg", AgentGetStatusMsg{}, "agents.get-status"},
 		{"AgentSetStatusMsg", AgentSetStatusMsg{}, "agents.set-status"},
 
@@ -74,6 +73,12 @@ func TestBusTopics(t *testing.T) {
 		// MCP
 		{"McpListToolsMsg", McpListToolsMsg{}, "mcp.listTools"},
 		{"McpCallToolMsg", McpCallToolMsg{}, "mcp.callTool"},
+
+		// Kit lifecycle
+		{"KitDeployMsg", KitDeployMsg{}, "kit.deploy"},
+		{"KitTeardownMsg", KitTeardownMsg{}, "kit.teardown"},
+		{"KitListMsg", KitListMsg{}, "kit.list"},
+		{"KitRedeployMsg", KitRedeployMsg{}, "kit.redeploy"},
 	}
 
 	for _, tt := range tests {

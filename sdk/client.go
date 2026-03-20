@@ -20,6 +20,11 @@ type Client interface {
 	On(ctx context.Context, pattern string, handler func(messages.Message, messages.ReplyFunc)) (cancel func())
 	GetState(ctx context.Context, key string) (string, error)
 	SetState(ctx context.Context, key string, value string) error
+
+	// Deploy sends code to be evaluated in an isolated SES Compartment on the Kit.
+	Deploy(ctx context.Context, source, code string) error
+	// Teardown removes a previously deployed file and its resources.
+	Teardown(ctx context.Context, source string) error
 }
 
 // ReplyFunc is exported as a convenience alias for sdk.ReplyFunc in handler signatures.
@@ -210,6 +215,50 @@ func (c *grpcClient) SetState(ctx context.Context, key, value string) error {
 		resultErr = err
 		close(done)
 	})
+
+	select {
+	case <-done:
+		return resultErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *grpcClient) Deploy(ctx context.Context, source, code string) error {
+	var resultErr error
+	done := make(chan struct{})
+
+	cancel := c.Ask(ctx, messages.KitDeployMsg{Source: source, Code: code}, func(msg messages.Message) {
+		var errCheck struct{ Error string `json:"error"` }
+		json.Unmarshal(msg.Payload, &errCheck)
+		if errCheck.Error != "" {
+			resultErr = fmt.Errorf("deploy: %s", errCheck.Error)
+		}
+		close(done)
+	})
+	defer cancel()
+
+	select {
+	case <-done:
+		return resultErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *grpcClient) Teardown(ctx context.Context, source string) error {
+	var resultErr error
+	done := make(chan struct{})
+
+	cancel := c.Ask(ctx, messages.KitTeardownMsg{Source: source}, func(msg messages.Message) {
+		var errCheck struct{ Error string `json:"error"` }
+		json.Unmarshal(msg.Payload, &errCheck)
+		if errCheck.Error != "" {
+			resultErr = fmt.Errorf("teardown: %s", errCheck.Error)
+		}
+		close(done)
+	})
+	defer cancel()
 
 	select {
 	case <-done:

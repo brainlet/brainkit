@@ -1661,4 +1661,104 @@
     // MODULE
     output: output,
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // SES Compartment Endowments Factory
+  // Creates a per-source hardened API object for Compartment isolation.
+  // Resource-creating functions are wrapped to set __kit_current_source.
+  // ══════════════════════════════════════════════════════════════
+
+  globalThis.__kit_compartments = {};
+
+  function __withSource(fn, source) {
+    return function() {
+      var prev = globalThis.__kit_current_source;
+      globalThis.__kit_current_source = source;
+      try { return fn.apply(this, arguments); }
+      finally { globalThis.__kit_current_source = prev; }
+    };
+  }
+
+  var _kitObj = globalThis.__kit; // capture reference
+
+  globalThis.__kitEndowments = function(source) {
+    var ws = function(fn) { return __withSource(fn, source); };
+    var endowments = {
+      // Resource-creating (source-tracked)
+      agent: ws(_kitObj.agent),
+      createTool: ws(_kitObj.createTool),
+      createSubagent: ws(_kitObj.createSubagent),
+      createMemory: ws(_kitObj.createMemory),
+      createWorkflow: ws(_kitObj.createWorkflow),
+      createHarness: ws(_kitObj.createHarness),
+
+      // Schema & steps
+      createStep: _kitObj.createStep,
+      z: _kitObj.z,
+
+      // Runtime operations (pass-through)
+      ai: _kitObj.ai,
+      tools: _kitObj.tools,
+      tool: _kitObj.tool,
+      bus: _kitObj.bus,
+      wasm: _kitObj.wasm,
+      agents: _kitObj.agents,
+      mcp: _kitObj.mcp,
+
+      // Storage
+      Memory: _kitObj.Memory,
+      InMemoryStore: _kitObj.InMemoryStore,
+      LibSQLStore: _kitObj.LibSQLStore,
+      UpstashStore: _kitObj.UpstashStore,
+      PostgresStore: _kitObj.PostgresStore,
+      MongoDBStore: _kitObj.MongoDBStore,
+      LibSQLVector: _kitObj.LibSQLVector,
+      PgVector: _kitObj.PgVector,
+      MongoDBVector: _kitObj.MongoDBVector,
+
+      // AI SDK advanced
+      generateText: _kitObj.generateText,
+      streamText: _kitObj.streamText,
+      generateObject: _kitObj.generateObject,
+      streamObject: _kitObj.streamObject,
+
+      // Workflow execution
+      createWorkflowRun: _kitObj.createWorkflowRun,
+      resumeWorkflow: _kitObj.resumeWorkflow,
+
+      // Evals
+      createScorer: _kitObj.createScorer,
+      runEvals: _kitObj.runEvals,
+      scorers: _kitObj.scorers,
+      processors: _kitObj.processors,
+
+      // Context
+      sandbox: _kitObj.sandbox,
+      output: _kitObj.output,
+      RequestContext: _kitObj.RequestContext,
+
+      // RAG
+      MDocument: _kitObj.MDocument,
+      GraphRAG: _kitObj.GraphRAG,
+      createVectorQueryTool: _kitObj.createVectorQueryTool,
+      createDocumentChunkerTool: _kitObj.createDocumentChunkerTool,
+      createGraphRAGTool: _kitObj.createGraphRAGTool,
+      rerank: _kitObj.rerank,
+      rerankWithScorer: _kitObj.rerankWithScorer,
+
+      // Workspace
+      Workspace: _kitObj.Workspace,
+      LocalFilesystem: _kitObj.LocalFilesystem,
+      LocalSandbox: _kitObj.LocalSandbox,
+
+      // JS built-ins for compartment
+      console: console,
+      JSON: JSON,
+      setTimeout: ws(globalThis.setTimeout),
+      setInterval: ws(globalThis.setInterval),
+      clearTimeout: globalThis.clearTimeout,
+      clearInterval: globalThis.clearInterval,
+    };
+    return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
+  };
 })();

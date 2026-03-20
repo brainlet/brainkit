@@ -82,21 +82,21 @@ func (pm *pluginManager) processManifest(name string, pc *pluginConn) {
 		pc.subs = append(pc.subs, subID)
 	}
 
-	// 5. Load agents via EvalTS
+	// 5. Load agents via Deploy (each in its own SES Compartment)
 	for _, a := range m.Agents {
-		code := fmt.Sprintf(`const _a = agent({ name: %q, instructions: %q, model: %q }); return "ok";`,
+		code := fmt.Sprintf(`agent({ name: %q, instructions: %q, model: %q });`,
 			a.Name, a.Instructions, a.Model)
-		filename := fmt.Sprintf("__plugin_%s_agent_%s.ts", name, a.Name)
-		if _, err := pm.kit.EvalTS(context.Background(), filename, code); err != nil {
-			log.Printf("[plugin:%s] failed to load agent %q: %v", name, a.Name, err)
+		source := fmt.Sprintf("__plugin_%s_agent_%s.ts", name, a.Name)
+		if _, err := pm.kit.Deploy(context.Background(), source, code); err != nil {
+			log.Printf("[plugin:%s] failed to deploy agent %q: %v", name, a.Name, err)
 		}
 	}
 
-	// 6. Load files via EvalTS
+	// 6. Load files via Deploy (each in its own SES Compartment)
 	for _, f := range m.Files {
-		filename := fmt.Sprintf("__plugin_%s_%s", name, f.Path)
-		if _, err := pm.kit.EvalTS(context.Background(), filename, f.Content); err != nil {
-			log.Printf("[plugin:%s] failed to load file %q: %v", name, f.Path, err)
+		source := fmt.Sprintf("__plugin_%s_%s", name, f.Path)
+		if _, err := pm.kit.Deploy(context.Background(), source, f.Content); err != nil {
+			log.Printf("[plugin:%s] failed to deploy file %q: %v", name, f.Path, err)
 		}
 	}
 }
