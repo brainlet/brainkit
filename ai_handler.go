@@ -74,6 +74,31 @@ func (k *Kit) handleAiGenerateObject(ctx context.Context, msg bus.Message) (*bus
 
 	resultJSON, err := k.EvalTS(ctx, "__ai_generateobject.ts", `
 		var req = globalThis.__ai_pending_req;
+		// Convert JSON Schema to Zod if needed (bus messages send JSON Schema, Mastra needs Zod)
+		if (req.schema && typeof req.schema === "object" && !req.schema._def) {
+			// Plain JSON Schema object — convert using buildZodFromJsonSchema from kit_runtime
+			// We inline a minimal converter since buildZodFromJsonSchema is not on __kit
+			function jsonToZod(s) {
+				if (!s || typeof s !== "object") return z.any();
+				if (s.type === "string") return z.string();
+				if (s.type === "number" || s.type === "integer") return z.number();
+				if (s.type === "boolean") return z.boolean();
+				if (s.type === "array") return z.array(jsonToZod(s.items));
+				if (s.type === "object" && s.properties) {
+					var shape = {};
+					var required = s.required || [];
+					for (var key in s.properties) {
+						var field = jsonToZod(s.properties[key]);
+						if (s.properties[key].description) field = field.describe(s.properties[key].description);
+						if (required.indexOf(key) < 0) field = field.optional();
+						shape[key] = field;
+					}
+					return z.object(shape);
+				}
+				return z.any();
+			}
+			req.schema = jsonToZod(req.schema);
+		}
 		var result = await ai.generateObject(req);
 		return JSON.stringify(result);
 	`)

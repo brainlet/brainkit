@@ -142,6 +142,47 @@ func TestThresholdStrategy_ScaleUpOnHighPending(t *testing.T) {
 	}
 }
 
+func TestInstanceManager_WorkerGroupAssignment(t *testing.T) {
+	im := NewInstanceManager()
+
+	im.SpawnPool("wg-pool", PoolConfig{
+		Base:         Config{Namespace: "wg"},
+		InitialCount: 2,
+	})
+	defer im.KillPool("wg-pool")
+
+	// Each instance in the pool should have WorkerGroup set to pool name
+	im.mu.Lock()
+	pool, ok := im.pools["wg-pool"]
+	im.mu.Unlock()
+	if !ok {
+		t.Fatal("pool not found")
+	}
+
+	for i, inst := range pool.instances {
+		if inst.config.WorkerGroup != "wg-pool" {
+			t.Errorf("instance %d: WorkerGroup = %q, want %q", i, inst.config.WorkerGroup, "wg-pool")
+		}
+	}
+}
+
+func TestInstanceManager_ThresholdBoundsEnforced(t *testing.T) {
+	// ThresholdStrategy respects Min/Max bounds
+	strategy := NewThresholdStrategy(50, 5)
+
+	// At max — should not scale up even with high pending
+	decision := strategy.Evaluate(bus.BusMetrics{}, PoolInfo{Current: 10, Pending: 200, Min: 1, Max: 10})
+	if decision.Action != "none" {
+		t.Errorf("expected none at max, got %+v", decision)
+	}
+
+	// At min — should not scale down even with zero pending
+	decision = strategy.Evaluate(bus.BusMetrics{}, PoolInfo{Current: 2, Pending: 0, Min: 2, Max: 10})
+	if decision.Action != "none" {
+		t.Errorf("expected none at min, got %+v", decision)
+	}
+}
+
 func TestInstanceManager_EvaluateAndScale(t *testing.T) {
 	im := NewInstanceManager()
 

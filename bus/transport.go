@@ -131,7 +131,7 @@ func (t *InProcessTransport) Subscribe(info SubscriberInfo) error {
 				if !ok {
 					return
 				}
-				sub.info.Handler(msg)
+				go sub.info.Handler(msg)
 			case <-sub.done:
 				return
 			}

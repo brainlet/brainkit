@@ -109,7 +109,7 @@ func (s *hostServer) Stop() {
 	s.mu.Unlock()
 
 	if s.grpcServer != nil {
-		s.grpcServer.GracefulStop()
+		s.grpcServer.Stop() // Force stop — GracefulStop blocks forever on open bidirectional streams
 	}
 }
 

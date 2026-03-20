@@ -28,7 +28,7 @@ export function onDataFetched(topic: string, payload: string): void {
 
   // Stage 2: send fetched data to AI for analysis
   const aiPayload = new JSONObject()
-    .setString("model", "test-model")
+    .setString("model", "openai/gpt-4o-mini")
     .setString("prompt", "Analyze this data: " + payload);
   bus.askAsyncRaw("ai.generate", aiPayload.toString(), "onAnalysisComplete");
 }

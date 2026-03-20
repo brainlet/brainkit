@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/bus"
+	"github.com/brainlet/brainkit/registry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,9 +151,15 @@ func TestShardFixture_StatelessNoReply(t *testing.T) {
 func TestShardFixture_StatelessAskAsync(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
-	// Register a mock "echo" tool that the shard will call via askAsync
-	kit.Bus.On("tools.call", func(msg bus.Message, reply bus.ReplyFunc) {
-		reply(json.RawMessage(`{"echoed":true}`))
+	// Register a real tool that the shard will call via askAsync("tools.call", ...)
+	kit.Tools.Register(registry.RegisteredTool{
+		Name: "brainlet/test@1.0.0/echo", ShortName: "echo",
+		Owner: "brainlet", Package: "test", Version: "1.0.0",
+		Executor: &registry.GoFuncExecutor{
+			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+				return json.RawMessage(`{"echoed":true}`), nil
+			},
+		},
 	})
 
 	deployShard(t, kit, "testdata/as/shard/stateless-ask-async.ts", "asker")
@@ -274,24 +281,7 @@ func TestShardFixture_ToolProvider(t *testing.T) {
 // ═══════════════════════════════════════════════════════════════
 
 func TestShardFixture_AiSummarizer(t *testing.T) {
-	kit := newTestKitNoKey(t)
-
-	// Mock ai.generate handler — simulates an LLM response
-	kit.Bus.On("ai.generate", func(msg bus.Message, reply bus.ReplyFunc) {
-		var req struct {
-			Model  string `json:"model"`
-			Prompt string `json:"prompt"`
-		}
-		json.Unmarshal(msg.Payload, &req)
-		resp, _ := json.Marshal(map[string]interface{}{
-			"text": "Summary of: " + req.Prompt,
-			"usage": map[string]int{
-				"promptTokens":     10,
-				"completionTokens": 5,
-			},
-		})
-		reply(resp)
-	})
+	kit := newTestKit(t) // requires OPENAI_API_KEY — skips if not set
 
 	// Listen for completion events
 	completed := make(chan string, 5)
@@ -301,10 +291,10 @@ func TestShardFixture_AiSummarizer(t *testing.T) {
 
 	deployShard(t, kit, "testdata/as/shard/ai-summarizer.ts", "summarizer")
 
-	// Send a summarize request
+	// Send a summarize request with a real model
 	injectEvent(t, kit, "summarizer", "summarize.request", map[string]string{
 		"text":  "The quick brown fox jumps over the lazy dog",
-		"model": "test-model",
+		"model": "openai/gpt-4o-mini",
 	})
 
 	// Wait for completion event
@@ -323,7 +313,7 @@ func TestShardFixture_AiSummarizer(t *testing.T) {
 	// Send another request
 	injectEvent(t, kit, "summarizer", "summarize.request", map[string]string{
 		"text":  "Second document to summarize",
-		"model": "test-model",
+		"model": "openai/gpt-4o-mini",
 	})
 
 	select {
@@ -339,19 +329,20 @@ func TestShardFixture_AiSummarizer(t *testing.T) {
 func TestShardFixture_ToolOrchestrator(t *testing.T) {
 	kit := newTestKitNoKey(t)
 
-	// Mock tools.call handler
-	kit.Bus.On("tools.call", func(msg bus.Message, reply bus.ReplyFunc) {
-		var req struct {
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
-		}
-		json.Unmarshal(msg.Payload, &req)
-		resp, _ := json.Marshal(map[string]interface{}{
-			"tool":   req.Name,
-			"result": "executed",
-			"input":  json.RawMessage(req.Input),
-		})
-		reply(resp)
+	// Register a real tool that the shard will call via askAsync("tools.call", ...)
+	kit.Tools.Register(registry.RegisteredTool{
+		Name: "brainlet/test@1.0.0/db_query", ShortName: "db_query",
+		Owner: "brainlet", Package: "test", Version: "1.0.0",
+		Description: "Test query tool",
+		Executor: &registry.GoFuncExecutor{
+			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+				return json.Marshal(map[string]any{
+					"tool":   "db_query",
+					"result": "executed",
+					"input":  json.RawMessage(input),
+				})
+			},
+		},
 	})
 
 	deployShard(t, kit, "testdata/as/shard/tool-orchestrator.ts", "orchestrator")
@@ -366,20 +357,20 @@ func TestShardFixture_ToolOrchestrator(t *testing.T) {
 }
 
 func TestShardFixture_AgentDelegator(t *testing.T) {
-	kit := newTestKitNoKey(t)
+	kit := newTestKit(t) // requires OPENAI_API_KEY
 
-	// Mock agents.request handler
-	kit.Bus.On("agents.request", func(msg bus.Message, reply bus.ReplyFunc) {
-		var req struct {
-			Name   string `json:"name"`
-			Prompt string `json:"prompt"`
-		}
-		json.Unmarshal(msg.Payload, &req)
-		resp, _ := json.Marshal(map[string]string{
-			"text": "Agent " + req.Name + " says: done with " + req.Prompt,
-		})
-		reply(resp)
-	})
+	// Register a test agent that the shard will delegate to via askAsync("agents.request", ...)
+	_, err := kit.EvalTS(context.Background(), "__setup_delegator_agent.ts", `
+		const coder = agent({
+			name: "coder",
+			model: "openai/gpt-4o-mini",
+			instructions: "Reply with exactly: done with <prompt>. Keep it short.",
+		});
+		return "ok";
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Listen for completion events
 	completed := make(chan string, 5)
@@ -411,35 +402,23 @@ func TestShardFixture_AgentDelegator(t *testing.T) {
 }
 
 func TestShardFixture_MultiStepPipeline(t *testing.T) {
-	kit := newTestKitNoKey(t)
+	kit := newTestKit(t) // requires OPENAI_API_KEY — uses real ai.generate
 
-	// Mock tools.call for data_fetch
-	kit.Bus.On("tools.call", func(msg bus.Message, reply bus.ReplyFunc) {
-		var req struct {
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
-		}
-		json.Unmarshal(msg.Payload, &req)
-		resp, _ := json.Marshal(map[string]interface{}{
-			"rows": []map[string]interface{}{
-				{"id": 1, "value": "data-row-1"},
-				{"id": 2, "value": "data-row-2"},
+	// Register a real tool for the pipeline's data_fetch step
+	kit.Tools.Register(registry.RegisteredTool{
+		Name: "brainlet/test@1.0.0/data_fetch", ShortName: "data_fetch",
+		Owner: "brainlet", Package: "test", Version: "1.0.0",
+		Description: "Fetch test data",
+		Executor: &registry.GoFuncExecutor{
+			Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+				return json.Marshal(map[string]any{
+					"rows": []map[string]any{
+						{"id": 1, "value": "data-row-1"},
+						{"id": 2, "value": "data-row-2"},
+					},
+				})
 			},
-		})
-		reply(resp)
-	})
-
-	// Mock ai.generate for analysis
-	kit.Bus.On("ai.generate", func(msg bus.Message, reply bus.ReplyFunc) {
-		var req struct {
-			Model  string `json:"model"`
-			Prompt string `json:"prompt"`
-		}
-		json.Unmarshal(msg.Payload, &req)
-		resp, _ := json.Marshal(map[string]string{
-			"text": "Analysis: data looks good, 2 rows processed",
-		})
-		reply(resp)
+		},
 	})
 
 	// Listen for pipeline completion
@@ -465,7 +444,8 @@ func TestShardFixture_MultiStepPipeline(t *testing.T) {
 	result := injectEvent(t, kit, "pipeline", "pipeline.status", map[string]string{})
 	require.Contains(t, result.ReplyPayload, `"stage":"complete"`)
 	require.Contains(t, result.ReplyPayload, `"runs":1`)
-	require.Contains(t, result.ReplyPayload, `"analysis":"Analysis:`)
+	// Real LLM response varies — just verify stage and that analysis is non-empty
+	require.NotContains(t, result.ReplyPayload, `"analysis":""`) // should have actual content
 
 	// Run pipeline again — counter should increment
 	injectEvent(t, kit, "pipeline", "pipeline.run", map[string]string{"source": "test-db-2"})

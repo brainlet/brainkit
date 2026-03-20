@@ -259,8 +259,16 @@ func (pm *pluginManager) readStream(name string, pc *pluginConn) {
 		if err != nil {
 			log.Printf("[plugin:%s] stream error: %v", name, err)
 
-			// Check if process is still alive
-			if pc.cmd.ProcessState == nil && pc.cmd.Process != nil {
+			// Check if process is still alive (use channels, not cmd fields — avoids race with cmd.Wait)
+			select {
+			case <-pc.done:
+				// Process is dead, exit
+				return
+			case <-pc.stopping:
+				// Graceful shutdown in progress, exit
+				return
+			default:
+				// Process might still be alive — try stream recovery
 				if pm.recoverStream(name, pc) {
 					continue
 				}
@@ -556,7 +564,7 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 		}
 		select {
 		case <-pc.done:
-		case <-time.After(3 * time.Second):
+		case <-time.After(pc.config.SIGTERMTimeout):
 			log.Printf("[plugin:%s] SIGTERM timeout, sending SIGKILL", name)
 			if pc.cmd.Process != nil {
 				pc.cmd.Process.Kill()

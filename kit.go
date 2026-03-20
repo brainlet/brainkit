@@ -260,6 +260,14 @@ func (k *Kit) Close() {
 	k.closed = true
 	k.mu.Unlock()
 
+	// Shutdown order: network/transport FIRST (kills gRPC streams so goroutines can exit),
+	// then plugins, then bridge (waits for goroutines — now they can exit cleanly).
+	if k.network != nil {
+		k.network.Stop()
+	}
+	if k.discovery != nil {
+		k.discovery.Close()
+	}
 	if k.agentReg != nil && k.agents != nil {
 		k.agentReg.unregisterAllForKit(k.agents.ID())
 	}
@@ -280,12 +288,6 @@ func (k *Kit) Close() {
 	}
 	for _, srv := range k.storages {
 		srv.Close()
-	}
-	if k.discovery != nil {
-		k.discovery.Close()
-	}
-	if k.network != nil {
-		k.network.Stop()
 	}
 	if k.config.Name != "" {
 		k.Bus.UnregisterName(k.config.Name)
@@ -800,6 +802,9 @@ func (k *Kit) registerHandlers() {
 	k.Bus.On("agents.*", wrapHandler(k.handleAgents), subOpts...)
 	k.Bus.On("fs.*", wrapHandler(k.handleFs), subOpts...)
 	k.Bus.On("ai.*", wrapHandler(k.handleAI), subOpts...)
+	k.Bus.On("memory.*", wrapHandler(k.handleMemory), subOpts...)
+	k.Bus.On("workflows.*", wrapHandler(k.handleWorkflows), subOpts...)
+	k.Bus.On("vectors.*", wrapHandler(k.handleVectors), subOpts...)
 
 	// Plugin state handlers — plugins call GetState/SetState via typed messages
 	pluginState := make(map[string]string)

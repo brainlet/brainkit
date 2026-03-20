@@ -31,7 +31,7 @@ func TestPlugin_Lifecycle(t *testing.T) {
 		Name:      "test-kit-plugin",
 		Namespace: "test",
 		Plugins: []PluginConfig{
-			{Name: "echo", Binary: binary},
+			{Name: "echo", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond},
 		},
 	})
 	if err != nil {
@@ -56,7 +56,7 @@ func TestPlugin_ToolCall(t *testing.T) {
 		Name:      "test-kit-plugin-tool",
 		Namespace: "test",
 		Plugins: []PluginConfig{
-			{Name: "echo", Binary: binary},
+			{Name: "echo", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond},
 		},
 	})
 	if err != nil {
@@ -88,7 +88,7 @@ func TestPlugin_EventForwarding(t *testing.T) {
 		Name:      "test-kit-plugin-events",
 		Namespace: "test",
 		Plugins: []PluginConfig{
-			{Name: "echo", Binary: binary},
+			{Name: "echo", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond},
 		},
 	})
 	if err != nil {
@@ -129,7 +129,7 @@ func TestPlugin_ConcurrentToolCalls(t *testing.T) {
 	kit, err := New(Config{
 		Name:      "test-kit-concurrent",
 		Namespace: "test",
-		Plugins:   []PluginConfig{{Name: "echo", Binary: binary}},
+		Plugins:   []PluginConfig{{Name: "echo", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -190,8 +190,8 @@ func TestPlugin_TwoPluginsInteracting(t *testing.T) {
 		Name:      "test-kit-two-plugins",
 		Namespace: "test",
 		Plugins: []PluginConfig{
-			{Name: "alpha", Binary: binary},
-			{Name: "beta", Binary: binary},
+			{Name: "alpha", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond},
+			{Name: "beta", Binary: binary, ShutdownTimeout: 500 * time.Millisecond, SIGTERMTimeout: 500 * time.Millisecond},
 		},
 	})
 	if err != nil {
@@ -231,13 +231,15 @@ func TestPlugin_CrashRestart(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:           "echo",
-				Binary:         binary,
-				AutoRestart:    true,
-				MaxRestarts:    3,
-				HealthInterval: 500 * time.Millisecond,
-				StartTimeout:   5 * time.Second,
-				Env:            map[string]string{"TEST_PLUGIN_MODE": "crash"},
+				Name:            "echo",
+				Binary:          binary,
+				AutoRestart:     true,
+				MaxRestarts:     3,
+				HealthInterval:  500 * time.Millisecond,
+				StartTimeout:    5 * time.Second,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "crash"},
 			},
 		},
 	})
@@ -293,9 +295,11 @@ func TestPlugin_Timeout(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:   "echo",
-				Binary: binary,
-				Env:    map[string]string{"TEST_PLUGIN_MODE": "timeout"},
+				Name:            "echo",
+				Binary:          binary,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "timeout"},
 			},
 		},
 	})
@@ -335,9 +339,11 @@ func TestPlugin_Backpressure(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:       "echo",
-				Binary:     binary,
-				MaxPending: maxPending,
+				Name:            "echo",
+				Binary:          binary,
+				MaxPending:      maxPending,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
 			},
 		},
 	})
@@ -399,7 +405,6 @@ func TestPlugin_Backpressure(t *testing.T) {
 }
 
 func TestPlugin_KitAPIRoundTrip(t *testing.T) {
-	t.Skip("TODO: requires pending-reply preservation across stream recovery — tracked for Plan 7 (interceptor round-trip)")
 	binary := buildTestPlugin(t)
 
 	kit, err := New(Config{
@@ -407,9 +412,11 @@ func TestPlugin_KitAPIRoundTrip(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:   "asker",
-				Binary: binary,
-				Env:    map[string]string{"TEST_PLUGIN_MODE": "ask-kit"},
+				Name:            "asker",
+				Binary:          binary,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "ask-kit"},
 			},
 		},
 	})
@@ -457,10 +464,12 @@ func TestPlugin_StreamRecovery(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:           "echo",
-				Binary:         binary,
-				AutoRestart:    true,
-				HealthInterval: 1 * time.Second,
+				Name:            "echo",
+				Binary:          binary,
+				AutoRestart:     true,
+				HealthInterval:  1 * time.Second,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
 			},
 		},
 	})
@@ -520,9 +529,11 @@ func TestPlugin_InterceptorModifiesMetadata(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:   "echo",
-				Binary: binary,
-				Env:    map[string]string{"TEST_PLUGIN_MODE": "intercept"},
+				Name:            "echo",
+				Binary:          binary,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "intercept"},
 			},
 		},
 	})
@@ -563,9 +574,11 @@ func TestPlugin_InterceptorBlocks(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:   "blocker",
-				Binary: binary,
-				Env:    map[string]string{"TEST_PLUGIN_MODE": "intercept-block"},
+				Name:            "blocker",
+				Binary:          binary,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "intercept-block"},
 			},
 		},
 	})
@@ -607,9 +620,11 @@ func TestPlugin_InterceptorTimeout(t *testing.T) {
 		Namespace: "test",
 		Plugins: []PluginConfig{
 			{
-				Name:   "slow-interceptor",
-				Binary: binary,
-				Env:    map[string]string{"TEST_PLUGIN_MODE": "intercept-slow"},
+				Name:            "slow-interceptor",
+				Binary:          binary,
+				ShutdownTimeout: 500 * time.Millisecond,
+				SIGTERMTimeout:  500 * time.Millisecond,
+				Env:             map[string]string{"TEST_PLUGIN_MODE": "intercept-slow"},
 			},
 		},
 	})

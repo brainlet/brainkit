@@ -20,6 +20,7 @@ type hostState struct {
 	kit    *Kit
 	module *WASMModule
 	state  map[string]string
+	logsMu sync.Mutex
 	logs   []string
 
 	// Shard registration (init phase only)
@@ -134,7 +135,9 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 		NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, m api.Module, msgPtr, level uint32) {
 			msg := readASString(m, msgPtr)
+			hs.logsMu.Lock()
 			hs.logs = append(hs.logs, msg)
+			hs.logsMu.Unlock()
 			switch level {
 			case 0:
 				log.Printf("[wasm:debug] %s", msg)

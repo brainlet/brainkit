@@ -167,17 +167,112 @@ func TestFsHandler_MkdirAndDelete(t *testing.T) {
 func TestFsHandler_PathEscapePrevention(t *testing.T) {
 	kit := newFsTestKit(t)
 
-	// Try to escape workspace
+	escapeAttempts := []struct {
+		name string
+		path string
+	}{
+		{"relative dotdot", "../../etc/passwd"},
+		{"nested dotdot", "subdir/../../../etc/passwd"},
+		{"absolute path", "/etc/passwd"},
+		{"absolute with dotdot", "/tmp/../etc/passwd"},
+		{"empty then dotdot", "./../../../etc/hosts"},
+	}
+
+	for _, tc := range escapeAttempts {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, _ := json.Marshal(map[string]string{"path": tc.path})
+			resp, err := bus.AskSync(kit.Bus, context.Background(), bus.Message{
+				Topic:   "fs.read",
+				Payload: payload,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var errResult struct{ Error string `json:"error"` }
+			json.Unmarshal(resp.Payload, &errResult)
+			if errResult.Error == "" {
+				t.Fatalf("expected path escape error for %q, got: %s", tc.path, resp.Payload)
+			}
+		})
+	}
+}
+
+func TestFsHandler_WriteReadLargeFile(t *testing.T) {
+	kit := newFsTestKit(t)
+
+	// Write 100KB file
+	data := make([]byte, 100*1024)
+	for i := range data {
+		data[i] = byte('A' + (i % 26))
+	}
+	payload, _ := json.Marshal(map[string]string{"path": "large.txt", "data": string(data)})
 	resp, err := bus.AskSync(kit.Bus, context.Background(), bus.Message{
-		Topic:   "fs.read",
-		Payload: json.RawMessage(`{"path":"../../etc/passwd"}`),
+		Topic:   "fs.write",
+		Payload: payload,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var errResult struct{ Error string `json:"error"` }
-	json.Unmarshal(resp.Payload, &errResult)
-	if errResult.Error == "" {
-		t.Fatal("expected path escape error")
+	var writeResult struct{ OK bool `json:"ok"` }
+	json.Unmarshal(resp.Payload, &writeResult)
+	if !writeResult.OK {
+		t.Fatalf("write: %s", resp.Payload)
+	}
+
+	// Read back
+	resp, err = bus.AskSync(kit.Bus, context.Background(), bus.Message{
+		Topic:   "fs.read",
+		Payload: json.RawMessage(`{"path":"large.txt"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readResult struct{ Data string `json:"data"` }
+	json.Unmarshal(resp.Payload, &readResult)
+	if len(readResult.Data) != len(data) {
+		t.Fatalf("expected %d bytes, got %d", len(data), len(readResult.Data))
+	}
+}
+
+func TestFsHandler_NestedDirOperations(t *testing.T) {
+	kit := newFsTestKit(t)
+
+	// Create nested dirs
+	bus.AskSync(kit.Bus, context.Background(), bus.Message{
+		Topic:   "fs.mkdir",
+		Payload: json.RawMessage(`{"path":"a/b/c"}`),
+	})
+
+	// Write file in nested dir
+	bus.AskSync(kit.Bus, context.Background(), bus.Message{
+		Topic:   "fs.write",
+		Payload: json.RawMessage(`{"path":"a/b/c/deep.txt","data":"deep content"}`),
+	})
+
+	// Read it back
+	resp, err := bus.AskSync(kit.Bus, context.Background(), bus.Message{
+		Topic:   "fs.read",
+		Payload: json.RawMessage(`{"path":"a/b/c/deep.txt"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readResult struct{ Data string `json:"data"` }
+	json.Unmarshal(resp.Payload, &readResult)
+	if readResult.Data != "deep content" {
+		t.Errorf("data = %q", readResult.Data)
+	}
+
+	// List the nested dir
+	resp, _ = bus.AskSync(kit.Bus, context.Background(), bus.Message{
+		Topic:   "fs.list",
+		Payload: json.RawMessage(`{"path":"a/b/c"}`),
+	})
+	var listResult struct {
+		Files []struct{ Name string `json:"name"` } `json:"files"`
+	}
+	json.Unmarshal(resp.Payload, &listResult)
+	if len(listResult.Files) != 1 || listResult.Files[0].Name != "deep.txt" {
+		t.Errorf("expected [deep.txt], got: %s", resp.Payload)
 	}
 }
