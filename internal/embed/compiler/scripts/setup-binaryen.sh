@@ -30,6 +30,7 @@ cmake -B build \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
   -DBUILD_TESTS=OFF \
   -DBUILD_TOOLS=OFF \
+  -DBUILD_STATIC_LIB=ON \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
 cmake --install build

@@ -9,33 +9,33 @@ deps-go:
 
 # Install npm dependencies for all embed packages
 deps-npm:
-	cd ai-embed/bundle && npm install
-	cd agent-embed/bundle && npm install
-	cd as-embed/bundle && npm install
+	cd internal/embed/ai/bundle && npm install
+	cd internal/embed/agent/bundle && npm install
+	cd internal/embed/compiler/bundle && npm install
 
 # Build all JS bundles
 build:
-	cd ai-embed/bundle && node build.mjs
-	cd agent-embed/bundle && node build.mjs
-	cd as-embed/bundle && node build.mjs
+	cd internal/embed/ai/bundle && node build.mjs
+	cd internal/embed/agent/bundle && node build.mjs
+	cd internal/embed/compiler/bundle && node build.mjs
 
 # Run all tests
 test:
-	go test ./jsbridge/... ./ai-embed/... ./agent-embed/... ./as-embed/... -timeout 120s
+	go test ./jsbridge/... ./internal/embed/... -timeout 120s
 
 # Run tests with verbose output
 test-v:
-	go test -v ./jsbridge/... ./ai-embed/... ./agent-embed/... ./as-embed/... -timeout 120s
+	go test -v ./jsbridge/... ./internal/embed/... -timeout 120s
 
 # Run as-embed benchmarks (compilation performance)
 bench:
-	cd as-embed && go test -run='^$$' -bench=. -benchmem -benchtime=1x -timeout 10m
+	cd internal/embed/compiler && go test -run='^$$' -bench=. -benchmem -benchtime=1x -timeout 10m
 
 # Run as-embed benchmarks with 3 iterations for stable numbers
 bench-stable:
-	cd as-embed && go test -run='^$$' -bench=. -benchmem -benchtime=3x -timeout 30m
+	cd internal/embed/compiler && go test -run='^$$' -bench=. -benchmem -benchtime=3x -timeout 30m
 
 # Clean generated bundles and node_modules
 clean:
-	rm -rf ai-embed/bundle/node_modules agent-embed/bundle/node_modules as-embed/bundle/node_modules
-	rm -f ai-embed/bundle/meta.json agent-embed/bundle/meta.json as-embed/bundle/meta.json
+	rm -rf internal/embed/ai/bundle/node_modules internal/embed/agent/bundle/node_modules internal/embed/compiler/bundle/node_modules
+	rm -f internal/embed/ai/bundle/meta.json internal/embed/agent/bundle/meta.json internal/embed/compiler/bundle/meta.json

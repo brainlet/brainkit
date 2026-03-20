@@ -14,7 +14,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 
-	asembed "github.com/brainlet/brainkit/as-embed"
+	asembed "github.com/brainlet/brainkit/internal/embed/compiler"
 )
 
 func main() {

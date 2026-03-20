@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	asembed "github.com/brainlet/brainkit/as-embed"
+	asembed "github.com/brainlet/brainkit/internal/embed/compiler"
 	"github.com/brainlet/brainkit/bus"
 	"github.com/tetratelabs/wazero"
 )

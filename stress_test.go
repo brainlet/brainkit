@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agentembed "github.com/brainlet/brainkit/agent-embed"
+	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/registry"
 )
 
