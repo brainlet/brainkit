@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Multiple QuickJS Contexts for file isolation.
 //
 // Each deployed .ts file gets its own Context within the same Runtime.
@@ -93,13 +95,22 @@ func (r *GoRegistry) TeardownSource(source string) int {
 	defer r.mu.Unlock()
 	removed := 0
 	for k, v := range r.agents {
-		if v.Source == source { delete(r.agents, k); removed++ }
+		if v.Source == source {
+			delete(r.agents, k)
+			removed++
+		}
 	}
 	for k, v := range r.tools {
-		if v.Source == source { delete(r.tools, k); removed++ }
+		if v.Source == source {
+			delete(r.tools, k)
+			removed++
+		}
 	}
 	for k, v := range r.subs {
-		if v.Source == source { delete(r.subs, k); removed++ }
+		if v.Source == source {
+			delete(r.subs, k)
+			removed++
+		}
 	}
 	return removed
 }
@@ -283,20 +294,32 @@ func TestMultiCtx_TeardownIsContextClose(t *testing.T) {
 		subscribe("events.*");
 	`)
 
-	if reg.AgentCount() != 2 { t.Fatal("expected 2 agents") }
-	if reg.ToolCount() != 1 { t.Fatal("expected 1 tool") }
-	if reg.SubCount() != 1 { t.Fatal("expected 1 sub") }
+	if reg.AgentCount() != 2 {
+		t.Fatal("expected 2 agents")
+	}
+	if reg.ToolCount() != 1 {
+		t.Fatal("expected 1 tool")
+	}
+	if reg.SubCount() != 1 {
+		t.Fatal("expected 1 sub")
+	}
 
 	// Teardown = close context + cleanup Go registry
-	ctx.Close() // JS objects freed
+	ctx.Close()                              // JS objects freed
 	removed := reg.TeardownSource("team.ts") // Go registry cleaned
 
 	if removed != 4 {
 		t.Fatalf("expected 4 removed, got %d", removed)
 	}
-	if reg.AgentCount() != 0 { t.Fatal("agents should be gone") }
-	if reg.ToolCount() != 0 { t.Fatal("tools should be gone") }
-	if reg.SubCount() != 0 { t.Fatal("subs should be gone") }
+	if reg.AgentCount() != 0 {
+		t.Fatal("agents should be gone")
+	}
+	if reg.ToolCount() != 0 {
+		t.Fatal("tools should be gone")
+	}
+	if reg.SubCount() != 0 {
+		t.Fatal("subs should be gone")
+	}
 
 	// Runtime is still alive — can create new contexts
 	ctx2 := rt.NewContext()
@@ -331,20 +354,30 @@ func TestMultiCtx_IsolatedTeardown(t *testing.T) {
 	registerBridges(ctxC, reg, "team-c.ts")
 	eval(ctxC, `agent({ name: "c1" }); subscribe("events.*");`)
 
-	if reg.AgentCount() != 4 { t.Fatalf("expected 4 agents, got %d", reg.AgentCount()) }
+	if reg.AgentCount() != 4 {
+		t.Fatalf("expected 4 agents, got %d", reg.AgentCount())
+	}
 
 	// Teardown only B
 	ctxB.Close()
 	reg.TeardownSource("team-b.ts")
 
-	if reg.AgentCount() != 3 { t.Fatalf("expected 3 agents after B teardown, got %d", reg.AgentCount()) }
-	if reg.ToolCount() != 0 { t.Fatal("B's tool should be gone") }
+	if reg.AgentCount() != 3 {
+		t.Fatalf("expected 3 agents after B teardown, got %d", reg.AgentCount())
+	}
+	if reg.ToolCount() != 0 {
+		t.Fatal("B's tool should be gone")
+	}
 
 	// A and C still work — use simple eval (no bridge calls to avoid potential GC issues)
 	valA := evalStr(ctxA, `"a-alive"`)
 	valC := evalStr(ctxC, `"c-alive"`)
-	if valA != "a-alive" { t.Fatal("A should still work") }
-	if valC != "c-alive" { t.Fatal("C should still work") }
+	if valA != "a-alive" {
+		t.Fatal("A should still work")
+	}
+	if valC != "c-alive" {
+		t.Fatal("C should still work")
+	}
 
 	// Cleanup remaining (close in reverse creation order)
 	ctxC.Close()
@@ -352,7 +385,9 @@ func TestMultiCtx_IsolatedTeardown(t *testing.T) {
 	ctxA.Close()
 	reg.TeardownSource("team-a.ts")
 
-	if reg.AgentCount() != 0 { t.Fatal("all agents should be gone") }
+	if reg.AgentCount() != 0 {
+		t.Fatal("all agents should be gone")
+	}
 
 	t.Log("PASS: isolated teardown — close one context, others unaffected")
 }
@@ -448,8 +483,12 @@ func TestMultiCtx_ManySimultaneousContexts(t *testing.T) {
 		`, i, i))
 	}
 
-	if reg.AgentCount() != N { t.Fatalf("expected %d agents, got %d", N, reg.AgentCount()) }
-	if reg.ToolCount() != N { t.Fatalf("expected %d tools, got %d", N, reg.ToolCount()) }
+	if reg.AgentCount() != N {
+		t.Fatalf("expected %d agents, got %d", N, reg.AgentCount())
+	}
+	if reg.ToolCount() != N {
+		t.Fatalf("expected %d tools, got %d", N, reg.ToolCount())
+	}
 
 	// Each context still works independently
 	for i := range N {
@@ -499,8 +538,12 @@ func TestMultiCtx_ClosureIsolation(t *testing.T) {
 	aSecret := evalStr(ctxA, `getSecret()`)
 	bSecret := evalStr(ctxB, `getSecret()`)
 
-	if aSecret != "A-secret" { t.Fatalf("A's closure wrong: %s", aSecret) }
-	if bSecret != "B-secret" { t.Fatalf("B's closure wrong: %s", bSecret) }
+	if aSecret != "A-secret" {
+		t.Fatalf("A's closure wrong: %s", aSecret)
+	}
+	if bSecret != "B-secret" {
+		t.Fatalf("B's closure wrong: %s", bSecret)
+	}
 
 	t.Log("PASS: closures are isolated between contexts — each retains its own scope")
 }

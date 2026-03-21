@@ -8,10 +8,11 @@ import (
 
 	"github.com/brainlet/brainkit/bus"
 	"github.com/brainlet/brainkit/registry"
+	transportpkg "github.com/brainlet/brainkit/transport"
 )
 
 func TestStaticDiscovery_ResolveAndBrowse(t *testing.T) {
-	d := NewStaticDiscovery(map[string]string{
+	d := transportpkg.NewStaticDiscovery(map[string]string{
 		"server-1": "10.0.1.1:9090",
 		"server-2": "10.0.1.2:9090",
 	})
@@ -37,10 +38,10 @@ func TestStaticDiscovery_ResolveAndBrowse(t *testing.T) {
 }
 
 func TestStaticDiscovery_Register(t *testing.T) {
-	d := NewStaticDiscovery(nil)
+	d := transportpkg.NewStaticDiscovery(nil)
 	defer d.Close()
 
-	d.Register(Peer{Name: "new-peer", Address: "10.0.1.3:9090"})
+	d.Register(transportpkg.Peer{Name: "new-peer", Address: "10.0.1.3:9090"})
 
 	addr, err := d.Resolve("new-peer")
 	if err != nil {
@@ -52,19 +53,19 @@ func TestStaticDiscovery_Register(t *testing.T) {
 }
 
 func TestMulticastDiscovery_AnnounceAndDiscover(t *testing.T) {
-	d1, err := NewMulticastDiscovery("_test._tcp")
+	d1, err := transportpkg.NewMulticastDiscovery("_test._tcp")
 	if err != nil {
 		t.Skipf("multicast not available: %v", err)
 	}
 	defer d1.Close()
 
-	d2, err := NewMulticastDiscovery("_test._tcp")
+	d2, err := transportpkg.NewMulticastDiscovery("_test._tcp")
 	if err != nil {
 		t.Skipf("multicast not available: %v", err)
 	}
 	defer d2.Close()
 
-	d1.Register(Peer{Name: "kit-1", Address: "127.0.0.1:9001"})
+	d1.Register(transportpkg.Peer{Name: "kit-1", Address: "127.0.0.1:9001"})
 
 	time.Sleep(3 * time.Second)
 

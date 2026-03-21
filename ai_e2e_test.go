@@ -1,3 +1,5 @@
+//go:build e2e
+
 package brainkit
 
 import (
@@ -21,7 +23,9 @@ func TestAIHandler_Generate_RealLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var result struct{ Text string `json:"text"` }
+	var result struct {
+		Text string `json:"text"`
+	}
 	json.Unmarshal(resp.Payload, &result)
 	// Verify we got a non-empty response — content varies with LLM non-determinism
 	if result.Text == "" {

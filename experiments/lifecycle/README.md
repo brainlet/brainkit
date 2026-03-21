@@ -2,7 +2,15 @@
 
 **Date**: 2026-03-19
 **Status**: Research complete — SES Compartments proven as the production solution
-**Tests**: 79 passing across 6 test files
+**Tests**: 80 tagged tests across 10 test files
+
+## Running The Experiments
+
+These tests are exploratory and stay out of the default repository verification path. Run them explicitly with the `experiment` build tag:
+
+```bash
+go test -tags experiment ./experiments/lifecycle
+```
 
 ## The Question
 
@@ -211,7 +219,7 @@ This enables WASM automation modules to dynamically build agent teams — the in
 | `multicontext_bug2_test.go` | Exact pattern reproduction, confirmed no bug | 4 |
 | `ses_test.go` | **SES Compartments: lockdown, isolation, shared API, stress** | **10** |
 | `kit_lifecycle_test.go` | Real Kit integration: agents, tools, WASM, bus subs | 8 |
-| **Total** | | **79** |
+| **Total** | | **80** |
 
 ## Decision
 

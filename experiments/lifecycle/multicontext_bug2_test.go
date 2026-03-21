@@ -1,3 +1,5 @@
+//go:build experiment
+
 package lifecycle
 
 import (
@@ -25,7 +27,9 @@ func TestBug2_ExactIsolatedTeardownPattern(t *testing.T) {
 	registerBridges(ctxC, reg, "c.ts")
 	eval(ctxC, `agent({ name: "c1" }); subscribe("events.*");`)
 
-	if reg.AgentCount() != 4 { t.Fatalf("expected 4 agents, got %d", reg.AgentCount()) }
+	if reg.AgentCount() != 4 {
+		t.Fatalf("expected 4 agents, got %d", reg.AgentCount())
+	}
 
 	// Close B
 	ctxB.Close()

@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Full Kit lifecycle — testing with real Kit, real WASM, real bus.
 // These tests prove that the scoped lifecycle pattern works with actual brainkit
 // infrastructure, not just simulated JS.

@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Scoped Lifecycle with Automatic Cleanup Hooks
 //
 // Simulates the REAL kit_runtime.js patterns:
@@ -620,11 +622,19 @@ func TestScoped_MixedResources(t *testing.T) {
 	`)
 
 	// Verify all created
-	if evalInt(ctx, `Object.keys(__agents).length`) != 1 { t.Fatal("expected 1 agent") }
-	if evalInt(ctx, `Object.keys(__tools).length`) != 2 { t.Fatal("expected 2 tools") }
-	if evalInt(ctx, `Object.keys(__memories).length`) != 1 { t.Fatal("expected 1 memory") }
+	if evalInt(ctx, `Object.keys(__agents).length`) != 1 {
+		t.Fatal("expected 1 agent")
+	}
+	if evalInt(ctx, `Object.keys(__tools).length`) != 2 {
+		t.Fatal("expected 2 tools")
+	}
+	if evalInt(ctx, `Object.keys(__memories).length`) != 1 {
+		t.Fatal("expected 1 memory")
+	}
 	// 1 agent msg sub + 2 explicit subs = 3
-	if evalInt(ctx, `__bus.subCount()`) != 3 { t.Fatalf("expected 3 subs, got %d", evalInt(ctx, `__bus.subCount()`)) }
+	if evalInt(ctx, `__bus.subCount()`) != 3 {
+		t.Fatalf("expected 3 subs, got %d", evalInt(ctx, `__bus.subCount()`))
+	}
 
 	resources := evalInt(ctx, `app.resources().length`)
 	t.Logf("Total tracked resources: %d", resources)
@@ -633,10 +643,18 @@ func TestScoped_MixedResources(t *testing.T) {
 	removed := evalInt(ctx, `app.teardown()`)
 	t.Logf("Removed: %d", removed)
 
-	if evalInt(ctx, `Object.keys(__agents).length`) != 0 { t.Fatal("agents leak") }
-	if evalInt(ctx, `Object.keys(__tools).length`) != 0 { t.Fatal("tools leak") }
-	if evalInt(ctx, `Object.keys(__memories).length`) != 0 { t.Fatal("memories leak") }
-	if evalInt(ctx, `__bus.subCount()`) != 0 { t.Fatal("subs leak") }
+	if evalInt(ctx, `Object.keys(__agents).length`) != 0 {
+		t.Fatal("agents leak")
+	}
+	if evalInt(ctx, `Object.keys(__tools).length`) != 0 {
+		t.Fatal("tools leak")
+	}
+	if evalInt(ctx, `Object.keys(__memories).length`) != 0 {
+		t.Fatal("memories leak")
+	}
+	if evalInt(ctx, `__bus.subCount()`) != 0 {
+		t.Fatal("subs leak")
+	}
 
 	t.Log("PASS: mixed resources (agent + tools + memory + subs) — all cleaned in one teardown")
 }

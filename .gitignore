@@ -11,3 +11,15 @@ internal/embed/compiler/deps/
 .a*
 .s*
 .c*
+
+# Local build artifacts for in-repo plugin binaries
+/plugin
+/plugins/brainkit-plugin-cron/brainkit-plugin-cron
+
+# Local build artifacts for experiment submodules
+/experiments/quickjs-binaryen-bridge/quickjs-binaryen-bridge
+/experiments/quickjs-fetch-bridge/quickjs-fetch-bridge
+/experiments/quickjs-polyfills/quickjs-polyfills
+/experiments/quickjs-streaming/quickjs-streaming
+/experiments/quickjs-stress/quickjs-stress
+/experiments/quickjs-system-bridge/quickjs-system-bridge

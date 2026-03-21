@@ -2,9 +2,14 @@ package brainkit
 
 import (
 	"github.com/brainlet/brainkit/bus"
+	"github.com/brainlet/brainkit/internal/plugin"
 	mcppkg "github.com/brainlet/brainkit/mcp"
 	"github.com/brainlet/brainkit/registry"
 )
+
+// PluginConfig configures a single plugin.
+// Implementation moved to internal/plugin.
+type PluginConfig = plugin.Config
 
 // Config configures a Kit.
 type Config struct {
@@ -83,12 +88,6 @@ type Config struct {
 	// WorkspaceDir is the root directory for fs.* operations.
 	// All file paths are sandboxed to this directory.
 	WorkspaceDir string
-}
-
-// NATSConfig configures the NATS transport.
-type NATSConfig struct {
-	URL  string // "nats://localhost:4222"
-	Name string // client name (defaults to Kit name)
 }
 
 // ProviderConfig configures an AI provider.

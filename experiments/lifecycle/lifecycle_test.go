@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Package lifecycle experiments with QuickJS object lifecycle management from Go.
 //
 // The question: can we reliably create, track, and DESTROY JavaScript objects

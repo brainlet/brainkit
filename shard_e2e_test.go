@@ -1,3 +1,5 @@
+//go:build e2e
+
 package brainkit
 
 import (
@@ -120,5 +122,5 @@ func TestShardE2E_PersistentStateAccumulates(t *testing.T) {
 	require.Contains(t, result.ReplyPayload, `"count":20`)
 }
 
-// injectEvent is a test helper (defined in shard_fixture_test.go)
-// deployShard is a test helper (defined in shard_fixture_test.go)
+// injectEvent is a test helper defined in shard_fixture_helpers_test.go
+// deployShard is a test helper defined in shard_fixture_helpers_test.go

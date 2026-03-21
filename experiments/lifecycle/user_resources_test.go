@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: User-created resources
 //
 // Three approaches to handle resources the developer creates
@@ -428,8 +430,12 @@ func TestUserRes_IsolatedGlobalSnapshots(t *testing.T) {
 	`)
 
 	// Both exist
-	if evalStr(ctx, `stateA.from`) != "A" { t.Fatal("stateA missing") }
-	if evalStr(ctx, `stateB.from`) != "B" { t.Fatal("stateB missing") }
+	if evalStr(ctx, `stateA.from`) != "A" {
+		t.Fatal("stateA missing")
+	}
+	if evalStr(ctx, `stateB.from`) != "B" {
+		t.Fatal("stateB missing")
+	}
 
 	// Teardown only A
 	evalInt(ctx, `fileA.teardown()`)
