@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Scoped Lifecycle with Automatic Cleanup Hooks
 //
 // Simulates the REAL kit_runtime.js patterns:

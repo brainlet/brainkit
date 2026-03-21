@@ -8,7 +8,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 // ClientConfig configures an AI SDK client.

@@ -7,7 +7,7 @@ import (
 
 	"fmt"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 //go:embed ai_sdk_bundle.js

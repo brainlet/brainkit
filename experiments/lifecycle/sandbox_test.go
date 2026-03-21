@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Can we sandbox scripts within the same QuickJS runtime?
 //
 // Three approaches:

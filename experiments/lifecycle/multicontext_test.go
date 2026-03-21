@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Multiple QuickJS Contexts for file isolation.
 //
 // Each deployed .ts file gets its own Context within the same Runtime.

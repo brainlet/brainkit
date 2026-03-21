@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 func loadEnv(t *testing.T) {

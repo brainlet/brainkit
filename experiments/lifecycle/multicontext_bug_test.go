@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Minimal reproduction of the multi-context close crash.
 // Narrowing down exactly what causes the JS_FreeRuntime assertion failure.
 package lifecycle

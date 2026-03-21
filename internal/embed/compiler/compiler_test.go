@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 func newTestBridge(t *testing.T) *jsbridge.Bridge {

@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: SES (Secure ECMAScript) Compartments in QuickJS
 //
 // PROVEN: SES lockdown + Compartments work in QuickJS with two polyfills:

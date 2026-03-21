@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 // ErrCompilerDead is returned when a compilation timed out or panicked,

@@ -21,11 +21,11 @@ build:
 
 # Run all tests
 test:
-	go test ./jsbridge/... ./internal/embed/... -timeout 120s
+	go test ./kit/... ./internal/... -timeout 120s
 
 # Run tests with verbose output
 test-v:
-	go test -v ./jsbridge/... ./internal/embed/... -timeout 120s
+	go test -v ./kit/... ./internal/... -timeout 120s
 
 # Run as-embed benchmarks (compilation performance)
 bench:

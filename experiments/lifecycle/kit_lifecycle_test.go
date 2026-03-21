@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: Full Kit lifecycle — testing with real Kit, real WASM, real bus.
 // These tests prove that the scoped lifecycle pattern works with actual brainkit
 // infrastructure, not just simulated JS.
@@ -11,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	brainkit "github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/bus"
-	"github.com/brainlet/brainkit/registry"
+	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit/internal/bus"
+	"github.com/brainlet/brainkit/internal/registry"
 )
 
-func newKit(t *testing.T) *brainkit.Kit {
+func newKit(t *testing.T) *kit.Kit {
 	t.Helper()
-	kit, err := brainkit.New(brainkit.Config{Namespace: "lifecycle-test"})
+	kit, err := kit.New(kit.Config{Namespace: "lifecycle-test"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

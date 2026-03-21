@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/brainlet/brainkit/registry"
+	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 

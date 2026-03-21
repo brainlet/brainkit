@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Edge case experiments for the with(proxy) sandbox approach.
 // Testing everything that could go wrong.
 package lifecycle

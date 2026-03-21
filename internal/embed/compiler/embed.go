@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/brainlet/brainkit/jsbridge"
+	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
 //go:embed as_compiler_bundle.js

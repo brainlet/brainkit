@@ -1,3 +1,5 @@
+//go:build experiment
+
 // Experiment: User-created resources
 //
 // Three approaches to handle resources the developer creates

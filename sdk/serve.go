@@ -11,7 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/brainlet/brainkit/bus"
+	"github.com/brainlet/brainkit/internal/bus"
 	pluginv1 "github.com/brainlet/brainkit/proto/plugin/v1"
 	"google.golang.org/grpc"
 )
