@@ -2,7 +2,6 @@ package asembed
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/deps/binaryen/include
-#cgo LDFLAGS: -L${SRCDIR}/deps/binaryen/lib -lbinaryen -lstdc++ -lm
 #include "binaryen-c.h"
 #include <stdlib.h>
 */

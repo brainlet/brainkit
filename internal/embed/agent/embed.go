@@ -7,8 +7,13 @@ import (
 	"github.com/brainlet/brainkit/internal/jsbridge"
 )
 
+//go:generate go run ./cmd/compile-bundle
+
 //go:embed agent_embed_bundle.js
 var bundleSource string
+
+//go:embed agent_embed_bundle.bc
+var bundleBytecode []byte
 
 //go:embed ses_polyfills.js
 var sesPolyfillsSource string
@@ -53,11 +58,49 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	lv.Free()
 
 	// 5. Mastra bundle (Agent, createTool, AI SDK, etc.)
+	if len(bundleBytecode) > 0 {
+		val, err := b.EvalBytecode(bundleBytecode)
+		if err != nil {
+			return fmt.Errorf("agent-embed: load bytecode: %w", err)
+		}
+		val.Free()
+		return nil
+	}
+
 	val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 	if err != nil {
 		return fmt.Errorf("agent-embed: load bundle: %w", err)
 	}
 	val.Free()
+	return nil
+}
+
+
+// BundleSource returns the raw JS bundle source (for benchmarking/compilation).
+func BundleSource() string { return bundleSource }
+
+// LoadPrelude loads everything except the main bundle: globals, SES polyfills, SES UMD, lockdown.
+func LoadPrelude(b *jsbridge.Bridge) error {
+	setup, err := b.Eval("agent-embed-setup.js", runtimeGlobalsJS)
+	if err != nil {
+		return fmt.Errorf("agent-embed: setup globals: %w", err)
+	}
+	setup.Free()
+	sp, err := b.Eval("ses-polyfills.js", sesPolyfillsSource)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES polyfills: %w", err)
+	}
+	sp.Free()
+	sv, err := b.Eval("ses.umd.js", sesSource)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES load: %w", err)
+	}
+	sv.Free()
+	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
+	if err != nil {
+		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
+	}
+	lv.Free()
 	return nil
 }
 

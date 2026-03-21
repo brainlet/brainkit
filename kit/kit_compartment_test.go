@@ -197,3 +197,39 @@ func TestDeploy_DeployError_CleansUp(t *testing.T) {
 		}
 	}
 }
+
+func TestTeardown_NonExistentIsIdempotent(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	ctx := context.Background()
+
+	removed, err := kit.Teardown(ctx, "never-deployed.ts")
+	if err != nil {
+		t.Fatalf("teardown non-existent: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("expected 0 removed, got %d", removed)
+	}
+}
+
+func TestDeploy_DuplicateReturnsError(t *testing.T) {
+	kit := newTestKitNoKey(t)
+	ctx := context.Background()
+
+	_, err := kit.Deploy(ctx, "dup.ts", `
+		agent({ name: "dup-agent", model: "openai/gpt-4o-mini", instructions: "test" });
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Second deploy with same source should fail
+	_, err = kit.Deploy(ctx, "dup.ts", `
+		agent({ name: "dup-agent-2", model: "openai/gpt-4o-mini", instructions: "test" });
+	`)
+	if err == nil {
+		t.Fatal("expected error for duplicate deploy")
+	}
+	if fmt.Sprintf("%v", err) != "dup.ts is already deployed (use Redeploy)" {
+		t.Errorf("unexpected error: %v", err)
+	}
+}

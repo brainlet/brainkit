@@ -542,18 +542,19 @@ func TestWASMStress_RemoveAndRecompile(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Bus send ordering — verify messages arrive in send order
+// Bus send delivery — verify all messages arrive (order not guaranteed with
+// concurrent dispatch, see Plan 13: go sub.info.Handler(msg))
 // ---------------------------------------------------------------------------
 
-func TestWASMStress_BusOrdering(t *testing.T) {
+func TestWASMStress_BusDelivery(t *testing.T) {
 	kit := newTestKitNoKey(t)
 	ctx := context.Background()
 
 	var mu sync.Mutex
-	var received []string
+	received := make(map[string]bool)
 	kit.Bus.On("stress.order.*", func(msg bus.Message, _ bus.ReplyFunc) {
 		mu.Lock()
-		received = append(received, msg.Topic)
+		received[msg.Topic] = true
 		mu.Unlock()
 	})
 
@@ -592,10 +593,10 @@ export function run(): i32 {
 	if len(received) != 5 {
 		t.Fatalf("expected 5 bus messages, got %d", len(received))
 	}
-	for i, topic := range received {
-		expected := fmt.Sprintf("stress.order.%d", i+1)
-		if topic != expected {
-			t.Errorf("message %d: topic=%q, want %q", i, topic, expected)
+	for i := 1; i <= 5; i++ {
+		topic := fmt.Sprintf("stress.order.%d", i)
+		if !received[topic] {
+			t.Errorf("missing message: %s", topic)
 		}
 	}
 }

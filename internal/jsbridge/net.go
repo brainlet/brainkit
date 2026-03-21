@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -52,7 +53,7 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 		id := polyfill.nextID.Add(1)
 
 		polyfill.bridge.Go(func(goCtx context.Context) {
-			addr := fmt.Sprintf("%s:%d", host, port)
+			addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
 			var conn net.Conn
 			var err error
 

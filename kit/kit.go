@@ -254,14 +254,23 @@ func New(cfg Config) (*Kit, error) {
 }
 
 // Close shuts down the runtime and the bus.
-func (k *Kit) Close() {
+// Returns the first error encountered during shutdown; all subsystems are
+// closed regardless of individual failures.
+func (k *Kit) Close() error {
 	k.mu.Lock()
 	if k.closed {
 		k.mu.Unlock()
-		return
+		return nil
 	}
 	k.closed = true
 	k.mu.Unlock()
+
+	var firstErr error
+	collect := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 
 	// Shutdown order: network/transport FIRST (kills gRPC streams so goroutines can exit),
 	// then plugins, then bridge (waits for goroutines — now they can exit cleanly).
@@ -269,7 +278,7 @@ func (k *Kit) Close() {
 		k.network.Stop()
 	}
 	if k.discovery != nil {
-		k.discovery.Close()
+		collect(k.discovery.Close())
 	}
 	if k.agentReg != nil && k.agents != nil {
 		k.agentReg.unregisterAllForKit(k.agents.ID())
@@ -278,19 +287,21 @@ func (k *Kit) Close() {
 		k.plugins.stopAll()
 	}
 	if k.MCP != nil {
-		k.MCP.Close()
+		collect(k.MCP.Close())
 	}
 	if k.wasm != nil {
 		k.wasm.close()
 	}
 	if k.config.Store != nil {
-		k.config.Store.Close()
+		collect(k.config.Store.Close())
 	}
 	if k.agents != nil {
 		k.agents.Close()
 	}
-	for _, srv := range k.storages {
-		srv.Close()
+	for name, srv := range k.storages {
+		if err := srv.Close(); err != nil {
+			collect(fmt.Errorf("storage %q: %w", name, err))
+		}
 	}
 	if k.config.Name != "" {
 		k.Bus.UnregisterName(k.config.Name)
@@ -298,6 +309,8 @@ func (k *Kit) Close() {
 	if k.config.SharedBus == nil {
 		k.Bus.Close()
 	}
+
+	return firstErr
 }
 
 // connectPeer establishes a gRPC connection to a remote Kit.

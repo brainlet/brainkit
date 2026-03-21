@@ -49,7 +49,10 @@ func (k *Kit) Deploy(ctx context.Context, source, code string) ([]ResourceInfo, 
 		return nil, fmt.Errorf("deploy %s: %w", source, err)
 	}
 
-	resources, _ := k.ResourcesFrom(source)
+	resources, err := k.ResourcesFrom(source)
+	if err != nil {
+		log.Printf("[kit] deploy %s: failed to enumerate resources: %v", source, err)
+	}
 
 	k.mu.Lock()
 	if k.deployments == nil {
@@ -74,8 +77,10 @@ func (k *Kit) Teardown(ctx context.Context, source string) (int, error) {
 	}
 
 	// Drop compartment reference (uses EvalTS for proper Value.Free + reentrant safety)
-	k.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
-		`delete globalThis.__kit_compartments[%q]; return "ok";`, source))
+	if _, err := k.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
+		`delete globalThis.__kit_compartments[%q]; return "ok";`, source)); err != nil {
+		log.Printf("[kit] teardown %s: failed to drop compartment: %v", source, err)
+	}
 
 	k.mu.Lock()
 	delete(k.deployments, source)
@@ -104,7 +109,7 @@ func (k *Kit) ListDeployments() []deploymentInfo {
 
 	result := make([]deploymentInfo, 0, len(sources))
 	for _, s := range sources {
-		resources, _ := k.ResourcesFrom(s)
+		resources, _ := k.ResourcesFrom(s) // best-effort: deployment info still returned if this fails
 		k.mu.Lock()
 		d, ok := k.deployments[s]
 		k.mu.Unlock()

@@ -67,7 +67,7 @@ func (im *InstanceManager) SpawnPool(name string, cfg PoolConfig) error {
 		kit, err := im.spawnInstance(p, i)
 		if err != nil {
 			for _, k := range p.instances {
-				k.Close()
+				k.Close() // best-effort cleanup
 			}
 			sharedBus.Close()
 			return fmt.Errorf("scaling: spawn pool %q instance %d: %w", name, i, err)
@@ -134,7 +134,7 @@ func (im *InstanceManager) KillPool(name string) error {
 	defer p.mu.Unlock()
 
 	for _, kit := range p.instances {
-		kit.Close()
+		kit.Close() // best-effort cleanup
 	}
 	p.sharedBus.Close()
 	p.instances = nil

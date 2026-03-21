@@ -182,7 +182,9 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.NewString("")
 		}
 		buf := make([]byte, size)
-		_, _ = crand.Read(buf)
+		if _, err := crand.Read(buf); err != nil {
+			return ctx.ThrowError(fmt.Errorf("getRandomValues: %w", err))
+		}
 		return ctx.NewString(base64.StdEncoding.EncodeToString(buf))
 	}))
 
