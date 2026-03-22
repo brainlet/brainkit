@@ -8,7 +8,12 @@
 internal/embed/compiler/deps/
 
 
-.a*
+wasmgen
+
+decisions/
+docs/s*
+C*.md
+M*.md
+I*.md
 .s*
 .c*
-C*.mdwasmgen
