@@ -1,6 +1,6 @@
 // runtime/wasm/vectors.ts — Vectors domain typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 export class VectorQueryMsg {
     index: string
@@ -16,8 +16,8 @@ export class VectorQueryMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("index", this.index)
-        obj.setRaw("embedding", this.embeddingJSON)
-        obj.setInteger("topK", this.topK as i64)
+        obj.set("embedding", JSONValue.parse(this.embeddingJSON))
+        obj.setInt("topK", this.topK)
         return obj.toString()
     }
 }
@@ -34,17 +34,17 @@ export class VectorUpsertMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("index", this.index)
-        obj.setRaw("vectors", this.vectorsJSON)
+        obj.set("vectors", JSONValue.parse(this.vectorsJSON))
         return obj.toString()
     }
 }
 
 export namespace vectors {
     export function query(msg: VectorQueryMsg, callback: string): void {
-        _askAsync("vectors.query", msg.toJSON(), callback)
+        _invokeAsync("vectors.query", msg.toJSON(), callback)
     }
 
     export function upsert(msg: VectorUpsertMsg, callback: string): void {
-        _askAsync("vectors.upsert", msg.toJSON(), callback)
+        _invokeAsync("vectors.upsert", msg.toJSON(), callback)
     }
 }

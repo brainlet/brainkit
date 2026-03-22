@@ -1,7 +1,7 @@
-import { bus, setState, JSONValue } from "brainkit";
+import { agents, AgentRequestMsg, setState, JSONValue } from "brainkit";
 
 export function run(): i32 {
-  bus.askAsyncRaw("agents.request", '{"name":"test-helper","prompt":"say hello"}', "onAgentResult");
+  agents.request(new AgentRequestMsg("test-helper", "say hello"), "onAgentResult");
   return 0;
 }
 

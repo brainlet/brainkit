@@ -1,5 +1,7 @@
 package messages
 
+import "encoding/json"
+
 // ── Requests ──
 
 type WorkflowRunMsg struct {
@@ -31,7 +33,31 @@ func (WorkflowStatusMsg) BusTopic() string { return "workflows.status" }
 
 // ── Responses ──
 
+type WorkflowRunResp struct {
+	ResultMeta
+	Result json.RawMessage `json:"result"`
+}
+
+func (WorkflowRunResp) BusTopic() string { return "workflows.run.result" }
+
+type WorkflowResumeResp struct {
+	ResultMeta
+	Result json.RawMessage `json:"result"`
+}
+
+func (WorkflowResumeResp) BusTopic() string { return "workflows.resume.result" }
+
+type WorkflowCancelResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (WorkflowCancelResp) BusTopic() string { return "workflows.cancel.result" }
+
 type WorkflowStatusResp struct {
+	ResultMeta
 	Status string `json:"status"`
 	Step   string `json:"step"`
 }
+
+func (WorkflowStatusResp) BusTopic() string { return "workflows.status.result" }

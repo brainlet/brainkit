@@ -1,8 +1,8 @@
 // AUTO-GENERATED — do not edit. Run scripts/bundle_wasm.sh to regenerate.
-// Source files: 16 files from runtime/wasm/
+// Source files: 16 files from kit/runtime/wasm/
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/host.ts
+// Source: kit/runtime/wasm/host.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/host.ts — Raw host function bindings (INTERNAL).
@@ -11,8 +11,8 @@
 @external("host", "send")
 export declare function _send(topic: string, payload: string): void
 
-@external("host", "askAsync")
-export declare function _askAsync(topic: string, payload: string, callbackFuncName: string): void
+@external("host", "invokeAsync")
+export declare function _invokeAsync(topic: string, payload: string, callbackFuncName: string): void
 
 @external("host", "on")
 export declare function _on(topic: string, funcName: string): void
@@ -39,7 +39,7 @@ export declare function _hasState(key: string): i32
 export declare function _setMode(mode: string): void
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/json.ts
+// Source: kit/runtime/wasm/json.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/json.ts — Pure AssemblyScript JSON library.
@@ -623,7 +623,7 @@ class JSONParser {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/types.ts
+// Source: kit/runtime/wasm/types.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/types.ts — Base types for the brainkit WASM module.
@@ -635,7 +635,7 @@ export interface BusMsg {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/log.ts
+// Source: kit/runtime/wasm/log.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/log.ts — Logging functions.
@@ -667,7 +667,7 @@ export function error(message: string): void {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/state.ts
+// Source: kit/runtime/wasm/state.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/state.ts — State management functions.
@@ -689,7 +689,7 @@ export function hasState(key: string): bool {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/shard.ts
+// Source: kit/runtime/wasm/shard.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/shard.ts — Shard registration functions (init phase only).
@@ -716,7 +716,7 @@ export function setMode(mode: string): void {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/bus.ts
+// Source: kit/runtime/wasm/bus.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/bus.ts — Raw bus primitives for custom topics/events.
@@ -728,24 +728,14 @@ export namespace bus {
         _send(msg.topic(), msg.toJSON())
     }
 
-    /** Async ask with a typed custom message. Callback function called when response arrives. */
-    export function askAsync(msg: BusMsg, callbackFuncName: string): void {
-        _askAsync(msg.topic(), msg.toJSON(), callbackFuncName)
-    }
-
     /** Send raw topic + payload (fire-and-forget). For advanced use. */
     export function sendRaw(topic: string, payload: string): void {
         _send(topic, payload)
     }
-
-    /** Async ask with raw topic + payload. For advanced use. */
-    export function askAsyncRaw(topic: string, payload: string, callbackFuncName: string): void {
-        _askAsync(topic, payload, callbackFuncName)
-    }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/ai.ts
+// Source: kit/runtime/wasm/ai.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/ai.ts — AI domain typed messages + namespace functions.
@@ -840,16 +830,16 @@ export class AiEmbedResp {
 
 export namespace ai {
     export function generate(msg: AiGenerateMsg, callback: string): void {
-        _askAsync("ai.generate", msg.toJSON(), callback)
+        _invokeAsync("ai.generate", msg.toJSON(), callback)
     }
 
     export function embed(msg: AiEmbedMsg, callback: string): void {
-        _askAsync("ai.embed", msg.toJSON(), callback)
+        _invokeAsync("ai.embed", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/tools.ts
+// Source: kit/runtime/wasm/tools.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/tools.ts — Tools domain typed messages + namespace functions.
@@ -867,19 +857,19 @@ export class ToolCallMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("name", this.name)
-        obj.setRaw("input", this.input)
+        obj.set("input", JSONValue.parse(this.input))
         return obj.toString()
     }
 }
 
 export namespace tools {
     export function call(msg: ToolCallMsg, callback: string): void {
-        _askAsync("tools.call", msg.toJSON(), callback)
+        _invokeAsync("tools.call", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/agents.ts
+// Source: kit/runtime/wasm/agents.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/agents.ts — Agents domain typed messages + namespace functions.
@@ -929,14 +919,14 @@ export class AgentMessageMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("target", this.target)
-        obj.setRaw("payload", this.payload)
+        obj.set("payload", JSONValue.parse(this.payload))
         return obj.toString()
     }
 }
 
 export namespace agents {
     export function request(msg: AgentRequestMsg, callback: string): void {
-        _askAsync("agents.request", msg.toJSON(), callback)
+        _invokeAsync("agents.request", msg.toJSON(), callback)
     }
 
     export function message(msg: AgentMessageMsg): void {
@@ -945,7 +935,7 @@ export namespace agents {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/wasm_ops.ts
+// Source: kit/runtime/wasm/wasm_ops.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/wasm_ops.ts — WASM operations typed messages + namespace functions.
@@ -988,16 +978,16 @@ export class WasmDeployMsg {
 
 export namespace wasm_ops {
     export function compile(msg: WasmCompileMsg, callback: string): void {
-        _askAsync("wasm.compile", msg.toJSON(), callback)
+        _invokeAsync("wasm.compile", msg.toJSON(), callback)
     }
 
     export function deploy(msg: WasmDeployMsg, callback: string): void {
-        _askAsync("wasm.deploy", msg.toJSON(), callback)
+        _invokeAsync("wasm.deploy", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/memory.ts
+// Source: kit/runtime/wasm/memory.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/memory.ts — Memory domain typed messages + namespace functions.
@@ -1032,23 +1022,23 @@ export class MemorySaveMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("threadId", this.threadId)
-        obj.setRaw("messages", this.messagesJSON)
+        obj.set("messages", JSONValue.parse(this.messagesJSON))
         return obj.toString()
     }
 }
 
 export namespace memory {
     export function recall(msg: MemoryRecallMsg, callback: string): void {
-        _askAsync("memory.recall", msg.toJSON(), callback)
+        _invokeAsync("memory.recall", msg.toJSON(), callback)
     }
 
     export function save(msg: MemorySaveMsg, callback: string): void {
-        _askAsync("memory.save", msg.toJSON(), callback)
+        _invokeAsync("memory.save", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/workflows.ts
+// Source: kit/runtime/wasm/workflows.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/workflows.ts — Workflows domain typed messages + namespace functions.
@@ -1066,19 +1056,19 @@ export class WorkflowRunMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("name", this.name)
-        obj.setRaw("input", this.inputJSON)
+        obj.set("input", JSONValue.parse(this.inputJSON))
         return obj.toString()
     }
 }
 
 export namespace workflows {
     export function run(msg: WorkflowRunMsg, callback: string): void {
-        _askAsync("workflows.run", msg.toJSON(), callback)
+        _invokeAsync("workflows.run", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/vectors.ts
+// Source: kit/runtime/wasm/vectors.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/vectors.ts — Vectors domain typed messages + namespace functions.
@@ -1098,8 +1088,8 @@ export class VectorQueryMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("index", this.index)
-        obj.setRaw("embedding", this.embeddingJSON)
-        obj.setInteger("topK", this.topK as i64)
+        obj.set("embedding", JSONValue.parse(this.embeddingJSON))
+        obj.setInt("topK", this.topK)
         return obj.toString()
     }
 }
@@ -1116,23 +1106,23 @@ export class VectorUpsertMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("index", this.index)
-        obj.setRaw("vectors", this.vectorsJSON)
+        obj.set("vectors", JSONValue.parse(this.vectorsJSON))
         return obj.toString()
     }
 }
 
 export namespace vectors {
     export function query(msg: VectorQueryMsg, callback: string): void {
-        _askAsync("vectors.query", msg.toJSON(), callback)
+        _invokeAsync("vectors.query", msg.toJSON(), callback)
     }
 
     export function upsert(msg: VectorUpsertMsg, callback: string): void {
-        _askAsync("vectors.upsert", msg.toJSON(), callback)
+        _invokeAsync("vectors.upsert", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/fs.ts
+// Source: kit/runtime/wasm/fs.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/fs.ts — Filesystem domain typed messages + namespace functions.
@@ -1190,20 +1180,20 @@ export class FsListMsg {
 
 export namespace fs_ops {
     export function read(msg: FsReadMsg, callback: string): void {
-        _askAsync("fs.read", msg.toJSON(), callback)
+        _invokeAsync("fs.read", msg.toJSON(), callback)
     }
 
     export function write(msg: FsWriteMsg, callback: string): void {
-        _askAsync("fs.write", msg.toJSON(), callback)
+        _invokeAsync("fs.write", msg.toJSON(), callback)
     }
 
     export function list(msg: FsListMsg, callback: string): void {
-        _askAsync("fs.list", msg.toJSON(), callback)
+        _invokeAsync("fs.list", msg.toJSON(), callback)
     }
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: runtime/wasm/index.ts
+// Source: kit/runtime/wasm/index.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/index.ts — Re-exports everything as the "brainkit" module.

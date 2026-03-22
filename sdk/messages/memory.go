@@ -1,5 +1,7 @@
 package messages
 
+import "encoding/json"
+
 // ── Options/Filters ──
 
 type MemoryCreateThreadOpts struct {
@@ -55,12 +57,46 @@ func (MemoryDeleteThreadMsg) BusTopic() string { return "memory.deleteThread" }
 // ── Responses ──
 
 type MemoryCreateThreadResp struct {
+	ResultMeta
 	ThreadID string `json:"threadId"`
 }
 
+func (MemoryCreateThreadResp) BusTopic() string { return "memory.createThread.result" }
+
+type MemoryGetThreadResp struct {
+	ResultMeta
+	Thread json.RawMessage `json:"thread"`
+}
+
+func (MemoryGetThreadResp) BusTopic() string { return "memory.getThread.result" }
+
+type MemoryListThreadsResp struct {
+	ResultMeta
+	Threads json.RawMessage `json:"threads"`
+}
+
+func (MemoryListThreadsResp) BusTopic() string { return "memory.listThreads.result" }
+
+type MemorySaveResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (MemorySaveResp) BusTopic() string { return "memory.save.result" }
+
 type MemoryRecallResp struct {
+	ResultMeta
 	Messages []MemoryMessage `json:"messages"`
 }
+
+func (MemoryRecallResp) BusTopic() string { return "memory.recall.result" }
+
+type MemoryDeleteThreadResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (MemoryDeleteThreadResp) BusTopic() string { return "memory.deleteThread.result" }
 
 // ── Shared types ──
 

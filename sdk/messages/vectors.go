@@ -38,9 +38,40 @@ func (VectorListIndexesMsg) BusTopic() string { return "vectors.listIndexes" }
 
 // ── Responses ──
 
+type VectorUpsertResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (VectorUpsertResp) BusTopic() string { return "vectors.upsert.result" }
+
 type VectorQueryResp struct {
+	ResultMeta
 	Matches []VectorMatch `json:"matches"`
 }
+
+func (VectorQueryResp) BusTopic() string { return "vectors.query.result" }
+
+type VectorCreateIndexResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (VectorCreateIndexResp) BusTopic() string { return "vectors.createIndex.result" }
+
+type VectorDeleteIndexResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+func (VectorDeleteIndexResp) BusTopic() string { return "vectors.deleteIndex.result" }
+
+type VectorListIndexesResp struct {
+	ResultMeta
+	Indexes []VectorIndexInfo `json:"indexes"`
+}
+
+func (VectorListIndexesResp) BusTopic() string { return "vectors.listIndexes.result" }
 
 // ── Shared types ──
 

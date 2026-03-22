@@ -1,7 +1,7 @@
 // Persistent shard: multi-step pipeline — tool call → AI analysis → store.
-// Tests: chained askAsync calls (tool → AI), multi-callback flow,
+// Tests: chained typed async calls (tool → AI), multi-callback flow,
 //        persistent state tracking pipeline stages
-import { setMode, on, reply, setState, getState, log, JSONValue, JSONObject } from "brainkit";
+import { setMode, on, reply, setState, getState, log, JSONValue, tools, ToolCallMsg, ai, AiGenerateMsg } from "brainkit";
 import { bus } from "brainkit";
 
 export function init(): void {
@@ -15,10 +15,7 @@ export function handleRun(topic: string, payload: string): void {
   log("pipeline: stage 1 — fetching data");
 
   // Stage 1: call a tool to fetch data
-  const toolPayload = new JSONObject()
-    .setString("name", "data_fetch")
-    .set("input", JSONValue.parse(payload));
-  bus.askAsyncRaw("tools.call", toolPayload.toString(), "onDataFetched");
+  tools.call(new ToolCallMsg("data_fetch", JSONValue.parse(payload).toString()), "onDataFetched");
 }
 
 export function onDataFetched(topic: string, payload: string): void {
@@ -27,10 +24,7 @@ export function onDataFetched(topic: string, payload: string): void {
   log("pipeline: stage 2 — analyzing with AI");
 
   // Stage 2: send fetched data to AI for analysis
-  const aiPayload = new JSONObject()
-    .setString("model", "openai/gpt-4o-mini")
-    .setString("prompt", "Analyze this data: " + payload);
-  bus.askAsyncRaw("ai.generate", aiPayload.toString(), "onAnalysisComplete");
+  ai.generate(new AiGenerateMsg("openai/gpt-4o-mini", "Analyze this data: " + payload), "onAnalysisComplete");
 }
 
 export function onAnalysisComplete(topic: string, payload: string): void {

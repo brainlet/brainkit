@@ -71,7 +71,7 @@ type toolRegistration struct {
 
 type subscriptionRegistration struct {
 	topic   string
-	handler func(ctx context.Context, payload json.RawMessage, client Client, reply messages.ReplyFunc)
+	handler func(ctx context.Context, payload json.RawMessage, client Client)
 }
 
 type eventRegistration struct {
@@ -116,24 +116,24 @@ func Tool[In, Out any](p *Plugin, name, description string, handler func(ctx con
 }
 
 // On registers a typed event subscription handler.
-func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event E, client Client, reply messages.ReplyFunc)) {
+func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event E, client Client)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.subscriptions = append(p.subscriptions, subscriptionRegistration{
 		topic: topic,
-		handler: func(ctx context.Context, payload json.RawMessage, client Client, reply messages.ReplyFunc) {
+		handler: func(ctx context.Context, payload json.RawMessage, client Client) {
 			var event E
 			if err := json.Unmarshal(payload, &event); err != nil {
 				return
 			}
-			handler(ctx, event, client, reply)
+			handler(ctx, event, client)
 		},
 	})
 }
 
 // Event declares an event type this plugin will publish.
-func Event[E messages.BusMessage](p *Plugin, description string) {
+func Event[E messages.BrainkitMessage](p *Plugin, description string) {
 	var zero E
 	schema := string(registry.StructToJSONSchema(zero))
 	topic := zero.BusTopic()

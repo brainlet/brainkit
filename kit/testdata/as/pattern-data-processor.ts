@@ -1,4 +1,4 @@
-import { bus, setState, log, JSONObject } from "brainkit";
+import { bus, tools, ToolCallMsg, setState, log, JSONObject } from "brainkit";
 
 export function run(): i32 {
   // 1. Build input data
@@ -7,10 +7,7 @@ export function run(): i32 {
     .setInt("value", 100);
 
   // 2. Call echo tool with the input
-  const payload = new JSONObject()
-    .setString("name", "echo")
-    .set("input", input);
-  bus.askAsyncRaw("tools.call", payload.toString(), "onToolResult");
+  tools.call(new ToolCallMsg("echo", input.toString()), "onToolResult");
   return 0;
 }
 

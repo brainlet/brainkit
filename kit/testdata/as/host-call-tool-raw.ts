@@ -1,7 +1,7 @@
-import { bus, setState } from "brainkit";
+import { tools, ToolCallMsg, setState } from "brainkit";
 
 export function run(): i32 {
-  bus.askAsyncRaw("tools.call", '{"name":"echo","input":{"key":"val"}}', "onResult");
+  tools.call(new ToolCallMsg("echo", '{"key":"val"}'), "onResult");
   return 0;
 }
 

@@ -5,18 +5,31 @@ import (
 	"sync"
 )
 
-// Static resolves peers from a fixed configuration map.
+// Static resolves peers from a fixed configuration.
 type Static struct {
 	mu    sync.RWMutex
 	peers map[string]Peer
 }
 
+// NewStatic creates a provider from a map of name→address (legacy).
 func NewStatic(peers map[string]string) *Static {
-	sd := &Static{
-		peers: make(map[string]Peer),
-	}
+	sd := &Static{peers: make(map[string]Peer)}
 	for name, addr := range peers {
 		sd.peers[name] = Peer{Name: name, Address: addr}
+	}
+	return sd
+}
+
+// NewStaticFromConfig creates a provider from PeerConfig entries.
+func NewStaticFromConfig(configs []PeerConfig) *Static {
+	sd := &Static{peers: make(map[string]Peer)}
+	for _, cfg := range configs {
+		sd.peers[cfg.Name] = Peer{
+			Name:      cfg.Name,
+			Namespace: cfg.Namespace,
+			Address:   cfg.Address,
+			Meta:      cfg.Meta,
+		}
 	}
 	return sd
 }
@@ -27,6 +40,10 @@ func (d *Static) Resolve(name string) (string, error) {
 	peer, ok := d.peers[name]
 	if !ok {
 		return "", fmt.Errorf("discovery: peer %q not found", name)
+	}
+	// Return namespace if set, otherwise address (backward compat)
+	if peer.Namespace != "" {
+		return peer.Namespace, nil
 	}
 	return peer.Address, nil
 }

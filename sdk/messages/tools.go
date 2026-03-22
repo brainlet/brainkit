@@ -1,5 +1,7 @@
 package messages
 
+import "encoding/json"
+
 // ── Requests ──
 
 type ToolCallMsg struct {
@@ -27,8 +29,11 @@ func (ToolResolveMsg) BusTopic() string { return "tools.resolve" }
 // ── Responses ──
 
 type ToolListResp struct {
+	ResultMeta
 	Tools []ToolInfo `json:"tools"`
 }
+
+func (ToolListResp) BusTopic() string { return "tools.list.result" }
 
 type ToolInfo struct {
 	Name        string `json:"name"`
@@ -38,10 +43,20 @@ type ToolInfo struct {
 }
 
 type ToolResolveResp struct {
+	ResultMeta
 	Name        string `json:"name"`
 	ShortName   string `json:"shortName"`
 	Description string `json:"description"`
 	InputSchema any    `json:"inputSchema,omitempty"`
 }
 
+func (ToolResolveResp) BusTopic() string { return "tools.resolve.result" }
+
 // ToolRegisterResp removed — see note above.
+
+type ToolCallResp struct {
+	ResultMeta
+	Result json.RawMessage `json:"result"`
+}
+
+func (ToolCallResp) BusTopic() string { return "tools.call.result" }

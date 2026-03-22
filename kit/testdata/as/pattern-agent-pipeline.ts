@@ -1,8 +1,8 @@
-import { bus, setState, log, JSONValue } from "brainkit";
+import { agents, AgentRequestMsg, setState, log, JSONValue } from "brainkit";
 
 export function run(): i32 {
   // Stage 1: initial agent call
-  bus.askAsyncRaw("agents.request", '{"name":"test-helper","prompt":"first prompt"}', "onStage1");
+  agents.request(new AgentRequestMsg("test-helper", "first prompt"), "onStage1");
   return 0;
 }
 
@@ -28,8 +28,7 @@ export function onStage1(topic: string, payload: string): void {
 
   // Stage 2: follow-up call using first result
   const followUp = "based on: " + text1 + " - continue";
-  const stage2Payload = '{"name":"test-helper","prompt":"' + followUp + '"}';
-  bus.askAsyncRaw("agents.request", stage2Payload, "onStage2");
+  agents.request(new AgentRequestMsg("test-helper", followUp), "onStage2");
 }
 
 export function onStage2(topic: string, payload: string): void {

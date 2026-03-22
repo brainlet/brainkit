@@ -1,7 +1,6 @@
-// Stateless shard that uses askAsync inside a handler.
-// Tests: askAsync with named callback, callback receives response
-import { setMode, on, setState } from "brainkit";
-import { bus } from "brainkit";
+// Stateless shard that uses the typed async tool wrapper inside a handler.
+// Tests: async typed wrapper with named callback, callback receives result
+import { setMode, on, setState, tools, ToolCallMsg } from "brainkit";
 
 export function init(): void {
   setMode("stateless");
@@ -9,7 +8,7 @@ export function init(): void {
 }
 
 export function handleAsk(topic: string, payload: string): void {
-  bus.askAsyncRaw("tools.call", '{"name":"echo","input":{"value":"hello"}}', "onToolResult");
+  tools.call(new ToolCallMsg("echo", '{"value":"hello"}'), "onToolResult");
 }
 
 export function onToolResult(topic: string, payload: string): void {

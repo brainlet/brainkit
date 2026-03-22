@@ -1,8 +1,8 @@
-import { bus, setState, log } from "brainkit";
+import { tools, ToolCallMsg, setState, log } from "brainkit";
 
 export function run(): i32 {
   // Call a tool that does not exist
-  bus.askAsyncRaw("tools.call", '{"name":"nonexistent","input":{}}', "onResult");
+  tools.call(new ToolCallMsg("nonexistent", "{}"), "onResult");
   return 0;
 }
 

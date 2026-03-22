@@ -4,8 +4,8 @@
 @external("host", "send")
 export declare function _send(topic: string, payload: string): void
 
-@external("host", "askAsync")
-export declare function _askAsync(topic: string, payload: string, callbackFuncName: string): void
+@external("host", "invokeAsync")
+export declare function _invokeAsync(topic: string, payload: string, callbackFuncName: string): void
 
 @external("host", "on")
 export declare function _on(topic: string, funcName: string): void

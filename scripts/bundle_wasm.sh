@@ -1,5 +1,5 @@
 #!/bin/bash
-# Concatenates runtime/wasm/*.ts files into runtime/wasm_bundle.ts
+# Concatenates kit/runtime/wasm/*.ts files into kit/runtime/wasm_bundle.ts
 # Order matters: host.ts first (declares @external), json.ts second (classes used by all),
 # types.ts third, then domain files, then shard/state/log/bus, index.ts last.
 #
@@ -9,8 +9,8 @@
 set -e
 cd "$(dirname "$0")/.."
 
-WASM_DIR="runtime/wasm"
-OUT="runtime/wasm_bundle.ts"
+WASM_DIR="kit/runtime/wasm"
+OUT="kit/runtime/wasm_bundle.ts"
 
 # File order (dependency-safe)
 FILES=(
@@ -33,7 +33,7 @@ FILES=(
 )
 
 echo "// AUTO-GENERATED — do not edit. Run scripts/bundle_wasm.sh to regenerate." > "$OUT"
-echo "// Source files: ${#FILES[@]} files from runtime/wasm/" >> "$OUT"
+echo "// Source files: ${#FILES[@]} files from kit/runtime/wasm/" >> "$OUT"
 echo "" >> "$OUT"
 
 for f in "${FILES[@]}"; do

@@ -239,8 +239,9 @@
   // wrappedCreateWorkflow — the public API that developers use.
   function wrappedCreateWorkflow(config) {
     var wf = embed.createWorkflow(config);
-    if (config && config.id) {
-      _resourceRegistry.register("workflow", config.id, config.id, wf);
+    var workflowId = config && (config.id || config.name);
+    if (workflowId) {
+      _resourceRegistry.register("workflow", workflowId, workflowId, wf);
     }
     return wf;
   }
@@ -536,6 +537,7 @@
 
   // Resource registry — tracks every resource created in this Kit.
   // Keyed by "type:id". Used by Kit.ListResources(), Kit.TeardownFile(), etc.
+  var _currentSource = "";
   var _resourceRegistry = {
     entries: {},
     cleanups: {},
@@ -550,7 +552,7 @@
         type: type,
         id: id,
         name: name || id,
-        source: globalThis.__kit_current_source || "unknown",
+        source: _currentSource || "unknown",
         createdAt: Date.now(),
         ref: ref,
       };
@@ -750,7 +752,7 @@
 
       // Auto-register on the bus agent registry
       try {
-        bridgeRequest("agents.register", {
+        bridgeControl("agents.register", {
           name: config.name,
           capabilities: (function() {
             var caps = [];
@@ -776,7 +778,7 @@
     _resourceRegistry.register("agent", _agentId, config.name || "unnamed", wrapped, function() {
       // Cleanup: remove from agent registry + unregister from bus
       delete _agentRegistry[_agentId];
-      try { bridgeRequest("agents.unregister", { name: _agentId }); } catch(e) {}
+      try { bridgeControl("agents.unregister", { name: _agentId }); } catch(e) {}
     });
 
     return wrapped;
@@ -792,9 +794,24 @@
       id: config.id || config.name,
       inputSchema: config.inputSchema || config.schema || embed.z.object({}),
     });
+    if (typeof config.execute === "function") {
+      try { tool.__brainkit_execute = config.execute; } catch(e) {}
+    }
     var toolId = config.id || config.name;
     if (toolId) {
-      _resourceRegistry.register("tool", toolId, toolId, tool);
+      try {
+        bridgeControl("tools.register", {
+          name: toolId,
+          description: config.description || "",
+          inputSchema: config.inputSchema || config.schema || {},
+        });
+      } catch(e) {
+        console.error("[tool] registration failed for " + toolId + ": " + e);
+        throw e;
+      }
+      _resourceRegistry.register("tool", toolId, toolId, tool, function() {
+        try { bridgeControl("tools.unregister", { name: toolId }); } catch(e) {}
+      });
     }
     return tool;
   }
@@ -819,6 +836,13 @@
     }
     // Fallback to sync if async not available
     return Promise.resolve(bridgeRequest(topic, payload));
+  }
+
+  function bridgeControl(action, payload) {
+    if (typeof __go_brainkit_control === "function") {
+      return __go_brainkit_control(action, typeof payload === "string" ? payload : JSON.stringify(payload));
+    }
+    throw new Error("brainlet: platform control bridge not available (action: " + action + ")");
   }
 
   // Parse bridge response, throwing if it contains an error.
@@ -998,16 +1022,16 @@
   // tools.* — tool registry
   var tools = {
     call: async function(name, input) {
-      // ASYNC — may hit plugin gRPC, external APIs
       var raw = await bridgeRequestAsync("tools.call", { name: name, input: input });
-      return parseBridgeResponse(raw);
+      var resp = parseBridgeResponse(raw);
+      return resp.result;
     },
     list: async function(namespace) {
       var raw = bridgeRequest("tools.list", { namespace: namespace || "" });
-      return parseBridgeResponse(raw);
+      return parseBridgeResponse(raw).tools || [];
     },
     register: async function(name, config) {
-      bridgeRequest("tools.register", { name: name, description: config.description, inputSchema: config.inputSchema });
+      bridgeControl("tools.register", { name: name, description: config.description, inputSchema: config.inputSchema });
     },
   };
 
@@ -1090,7 +1114,7 @@
       var subId = __go_brainkit_subscribe(topic);
       globalThis.__bus_subs[subId] = handler;
       // Auto-register with cleanup for lifecycle management
-      _resourceRegistry.register("subscription", subId, null, function() {
+      _resourceRegistry.register("subscription", subId, subId, null, function() {
         __go_brainkit_unsubscribe(subId);
         delete globalThis.__bus_subs[subId];
       });
@@ -1100,10 +1124,6 @@
       __go_brainkit_unsubscribe(subId);
       delete globalThis.__bus_subs[subId];
       _resourceRegistry.unregister("subscription", subId);
-    },
-    request: async function(topic, payload) {
-      var raw = await bridgeRequestAsync(topic, payload);
-      return parseBridgeResponse(raw);
     },
   };
 
@@ -1527,11 +1547,11 @@
     agents: {
       list: function(filter) {
         var raw = bridgeRequest("agents.list", { filter: filter || null });
-        return parseBridgeResponse(raw);
+        return parseBridgeResponse(raw).agents || [];
       },
       discover: function(query) {
         var raw = bridgeRequest("agents.discover", query || {});
-        return parseBridgeResponse(raw);
+        return parseBridgeResponse(raw).agents || [];
       },
       message: function(target, payload) {
         var raw = bridgeRequest("agents.message", { target: target, payload: payload });
@@ -1629,7 +1649,7 @@
     mcp: {
       listTools: async function(serverName) {
         var raw = bridgeRequest("mcp.listTools", { server: serverName || "" });
-        return parseBridgeResponse(raw);
+        return parseBridgeResponse(raw).tools || [];
       },
       callTool: async function(serverName, toolName, args) {
         var raw = await bridgeRequestAsync("mcp.callTool", {
@@ -1672,12 +1692,19 @@
 
   function __withSource(fn, source) {
     return function() {
-      var prev = globalThis.__kit_current_source;
-      globalThis.__kit_current_source = source;
+      var prev = _currentSource;
+      _currentSource = source;
       try { return fn.apply(this, arguments); }
-      finally { globalThis.__kit_current_source = prev; }
+      finally { _currentSource = prev; }
     };
   }
+
+  globalThis.__kitRunWithSource = async function(source, fn) {
+    var prev = _currentSource;
+    _currentSource = source;
+    try { return await fn(); }
+    finally { _currentSource = prev; }
+  };
 
   var _kitObj = globalThis.__kit; // capture reference
 
@@ -1700,8 +1727,24 @@
       ai: _kitObj.ai,
       tools: _kitObj.tools,
       tool: _kitObj.tool,
-      bus: _kitObj.bus,
-      wasm: _kitObj.wasm,
+      bus: {
+        send: _kitObj.bus.send,
+        publish: _kitObj.bus.publish,
+        subscribe: ws(_kitObj.bus.subscribe),
+        unsubscribe: _kitObj.bus.unsubscribe,
+      },
+      wasm: {
+        compile: ws(_kitObj.wasm.compile),
+        run: _kitObj.wasm.run,
+        validate: _kitObj.wasm.validate,
+        list: _kitObj.wasm.list,
+        get: _kitObj.wasm.get,
+        remove: _kitObj.wasm.remove,
+        exists: _kitObj.wasm.exists,
+        deploy: _kitObj.wasm.deploy,
+        undeploy: _kitObj.wasm.undeploy,
+        describe: _kitObj.wasm.describe,
+      },
       agents: _kitObj.agents,
       mcp: _kitObj.mcp,
 

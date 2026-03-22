@@ -58,25 +58,54 @@ func (AgentSetStatusMsg) BusTopic() string { return "agents.set-status" }
 // ── Responses ──
 
 type AgentRequestResp struct {
+	ResultMeta
 	Text string `json:"text"`
 }
 
+func (AgentRequestResp) BusTopic() string { return "agents.request.result" }
+
 type AgentUnregisterResp struct {
+	ResultMeta
 	OK bool `json:"ok"`
 }
 
+func (AgentUnregisterResp) BusTopic() string { return "agents.unregister.result" }
+
 type AgentGetStatusResp struct {
+	ResultMeta
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
+func (AgentGetStatusResp) BusTopic() string { return "agents.get-status.result" }
+
 type AgentSetStatusResp struct {
+	ResultMeta
 	OK bool `json:"ok"`
 }
 
+func (AgentSetStatusResp) BusTopic() string { return "agents.set-status.result" }
+
 type AgentListResp struct {
+	ResultMeta
 	Agents []AgentInfo `json:"agents"`
 }
+
+func (AgentListResp) BusTopic() string { return "agents.list.result" }
+
+type AgentDiscoverResp struct {
+	ResultMeta
+	Agents []AgentInfo `json:"agents"`
+}
+
+func (AgentDiscoverResp) BusTopic() string { return "agents.discover.result" }
+
+type AgentMessageResp struct {
+	ResultMeta
+	Delivered bool `json:"delivered"`
+}
+
+func (AgentMessageResp) BusTopic() string { return "agents.message.result" }
 
 // ── Shared types ──
 

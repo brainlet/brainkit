@@ -60,6 +60,7 @@ func (WasmDescribeMsg) BusTopic() string { return "wasm.describe" }
 // ── Responses ──
 
 type WasmCompileResp struct {
+	ResultMeta
 	ModuleID string   `json:"moduleId"`
 	Name     string   `json:"name"`
 	Size     int      `json:"size"`
@@ -68,19 +69,60 @@ type WasmCompileResp struct {
 }
 
 type WasmRunResp struct {
+	ResultMeta
 	ExitCode int `json:"exitCode"`
 	Value    any `json:"value,omitempty"`
 }
 
 type WasmDeployResp struct {
+	ResultMeta
 	Module   string            `json:"module"`
 	Mode     string            `json:"mode"` // "stateless" | "persistent"
 	Handlers map[string]string `json:"handlers"`
 }
 
+func (WasmCompileResp) BusTopic() string { return "wasm.compile.result" }
+
+func (WasmRunResp) BusTopic() string { return "wasm.run.result" }
+
+func (WasmDeployResp) BusTopic() string { return "wasm.deploy.result" }
+
+type WasmUndeployResp struct {
+	ResultMeta
+	Undeployed bool `json:"undeployed"`
+}
+
+func (WasmUndeployResp) BusTopic() string { return "wasm.undeploy.result" }
+
 type WasmListResp struct {
+	ResultMeta
 	Modules []WasmModuleInfo `json:"modules"`
 }
+
+func (WasmListResp) BusTopic() string { return "wasm.list.result" }
+
+type WasmGetResp struct {
+	ResultMeta
+	Module *WasmModuleInfo `json:"module,omitempty"`
+}
+
+func (WasmGetResp) BusTopic() string { return "wasm.get.result" }
+
+type WasmRemoveResp struct {
+	ResultMeta
+	Removed bool `json:"removed"`
+}
+
+func (WasmRemoveResp) BusTopic() string { return "wasm.remove.result" }
+
+type WasmDescribeResp struct {
+	ResultMeta
+	Module   string            `json:"module"`
+	Mode     string            `json:"mode"`
+	Handlers map[string]string `json:"handlers"`
+}
+
+func (WasmDescribeResp) BusTopic() string { return "wasm.describe.result" }
 
 // ── Shared types ──
 

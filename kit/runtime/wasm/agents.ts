@@ -1,6 +1,6 @@
 // runtime/wasm/agents.ts — Agents domain typed messages + namespace functions.
 
-import { _askAsync, _send } from "./host"
+import { _invokeAsync, _send } from "./host"
 
 export class AgentRequestMsg {
     name: string
@@ -46,14 +46,14 @@ export class AgentMessageMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("target", this.target)
-        obj.setRaw("payload", this.payload)
+        obj.set("payload", JSONValue.parse(this.payload))
         return obj.toString()
     }
 }
 
 export namespace agents {
     export function request(msg: AgentRequestMsg, callback: string): void {
-        _askAsync("agents.request", msg.toJSON(), callback)
+        _invokeAsync("agents.request", msg.toJSON(), callback)
     }
 
     export function message(msg: AgentMessageMsg): void {

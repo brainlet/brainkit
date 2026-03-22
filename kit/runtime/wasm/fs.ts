@@ -1,6 +1,6 @@
 // runtime/wasm/fs.ts — Filesystem domain typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 export class FsReadMsg {
     path: string
@@ -54,14 +54,14 @@ export class FsListMsg {
 
 export namespace fs_ops {
     export function read(msg: FsReadMsg, callback: string): void {
-        _askAsync("fs.read", msg.toJSON(), callback)
+        _invokeAsync("fs.read", msg.toJSON(), callback)
     }
 
     export function write(msg: FsWriteMsg, callback: string): void {
-        _askAsync("fs.write", msg.toJSON(), callback)
+        _invokeAsync("fs.write", msg.toJSON(), callback)
     }
 
     export function list(msg: FsListMsg, callback: string): void {
-        _askAsync("fs.list", msg.toJSON(), callback)
+        _invokeAsync("fs.list", msg.toJSON(), callback)
     }
 }

@@ -1,8 +1,8 @@
-import { bus, setState, log, JSONObject, JSONValue } from "brainkit";
+import { tools, ToolCallMsg, setState, log, JSONObject, JSONValue } from "brainkit";
 
 export function run(): i32 {
   // Step 1: call echo with step=1
-  bus.askAsyncRaw("tools.call", '{"name":"echo","input":{"step":1}}', "onStep1");
+  tools.call(new ToolCallMsg("echo", '{"step":1}'), "onStep1");
   return 0;
 }
 
@@ -23,10 +23,7 @@ export function onStep1(topic: string, payload: string): void {
   const step2Input = new JSONObject()
     .setInt("step", 2)
     .setString("prev", payload);
-  const step2Payload = new JSONObject()
-    .setString("name", "echo")
-    .set("input", step2Input);
-  bus.askAsyncRaw("tools.call", step2Payload.toString(), "onStep2");
+  tools.call(new ToolCallMsg("echo", step2Input.toString()), "onStep2");
 }
 
 export function onStep2(topic: string, payload: string): void {

@@ -480,12 +480,11 @@ declare module "kit" {
   export function tool(name: string): Tool;
 
   /**
-   * Platform bus — pub/sub events and request/response.
+   * Platform bus — pub/sub events only.
    *
    * @example
    * ```ts
    * bus.publish("pipeline.complete", { result: output });
-   * const response = await bus.request("tools.resolve", { name: "db_query" });
    * ```
    */
   export const bus: {
@@ -493,8 +492,6 @@ declare module "kit" {
     send(topic: string, payload?: any): Promise<void>;
     /** Alias for send. */
     publish(topic: string, payload?: any): Promise<void>;
-    /** Send a request and wait for a response. */
-    request(topic: string, payload?: any): Promise<any>;
     /**
      * Subscribe to messages matching a topic pattern.
      * Returns a subscription ID for unsubscribing.

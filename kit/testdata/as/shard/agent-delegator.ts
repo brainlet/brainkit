@@ -1,7 +1,7 @@
 // Persistent shard: receives work, delegates to an agent, stores result.
-// Tests: agents.request via askAsync, callback with response parsing,
+// Tests: agents.request via typed async wrapper, callback with response parsing,
 //        persistent state accumulating completed task count
-import { setMode, on, reply, setState, getState, log, JSONValue, JSONObject } from "brainkit";
+import { setMode, on, reply, setState, getState, log, JSONValue, agents, AgentRequestMsg } from "brainkit";
 import { bus } from "brainkit";
 
 export function init(): void {
@@ -18,10 +18,7 @@ export function handleTask(topic: string, payload: string): void {
   const prompt = obj.getString("prompt");
 
   // Ask the agent
-  const agentPayload = new JSONObject()
-    .setString("name", agentName)
-    .setString("prompt", prompt);
-  bus.askAsyncRaw("agents.request", agentPayload.toString(), "onAgentResponse");
+  agents.request(new AgentRequestMsg(agentName, prompt), "onAgentResponse");
   log("delegated to agent: " + agentName);
 }
 

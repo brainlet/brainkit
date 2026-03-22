@@ -1,6 +1,6 @@
 // runtime/wasm/ai.ts — AI domain typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 // ── Typed Messages ──
 
@@ -91,10 +91,10 @@ export class AiEmbedResp {
 
 export namespace ai {
     export function generate(msg: AiGenerateMsg, callback: string): void {
-        _askAsync("ai.generate", msg.toJSON(), callback)
+        _invokeAsync("ai.generate", msg.toJSON(), callback)
     }
 
     export function embed(msg: AiEmbedMsg, callback: string): void {
-        _askAsync("ai.embed", msg.toJSON(), callback)
+        _invokeAsync("ai.embed", msg.toJSON(), callback)
     }
 }

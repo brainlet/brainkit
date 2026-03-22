@@ -75,7 +75,7 @@ p.Run()
 
 Plugin manifest files now deploy in SES Compartments. The Kit loads the manifest, deploys its `.ts` entry points into isolated compartments, and manages their lifecycle.
 
-Reference implementation: `plugins/brainkit-plugin-cron/` (5 tools, 1 event, state persistence).
+Reference implementation: `../plugins/brainkit-plugin-cron/` (5 tools, 1 event, state persistence).
 
 ## Bus Topics
 

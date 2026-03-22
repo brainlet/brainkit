@@ -1,6 +1,6 @@
 // runtime/wasm/tools.ts — Tools domain typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 export class ToolCallMsg {
     name: string
@@ -14,13 +14,13 @@ export class ToolCallMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("name", this.name)
-        obj.setRaw("input", this.input)
+        obj.set("input", JSONValue.parse(this.input))
         return obj.toString()
     }
 }
 
 export namespace tools {
     export function call(msg: ToolCallMsg, callback: string): void {
-        _askAsync("tools.call", msg.toJSON(), callback)
+        _invokeAsync("tools.call", msg.toJSON(), callback)
     }
 }

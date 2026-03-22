@@ -25,3 +25,51 @@ type KitRedeployMsg struct {
 }
 
 func (KitRedeployMsg) BusTopic() string { return "kit.redeploy" }
+
+// ── Responses ──
+
+type KitDeployResp struct {
+	ResultMeta
+	Deployed  bool           `json:"deployed"`
+	Resources []ResourceInfo `json:"resources,omitempty"`
+}
+
+func (KitDeployResp) BusTopic() string { return "kit.deploy.result" }
+
+type KitTeardownResp struct {
+	ResultMeta
+	Removed int `json:"removed"`
+}
+
+func (KitTeardownResp) BusTopic() string { return "kit.teardown.result" }
+
+type KitRedeployResp struct {
+	ResultMeta
+	Deployed  bool           `json:"deployed"`
+	Resources []ResourceInfo `json:"resources,omitempty"`
+}
+
+func (KitRedeployResp) BusTopic() string { return "kit.redeploy.result" }
+
+type KitListResp struct {
+	ResultMeta
+	Deployments []DeploymentInfo `json:"deployments"`
+}
+
+func (KitListResp) BusTopic() string { return "kit.list.result" }
+
+// ── Shared types ──
+
+type ResourceInfo struct {
+	Type      string `json:"type"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Source    string `json:"source"`
+	CreatedAt int64  `json:"createdAt"`
+}
+
+type DeploymentInfo struct {
+	Source    string         `json:"source"`
+	CreatedAt string         `json:"createdAt"`
+	Resources []ResourceInfo `json:"resources,omitempty"`
+}

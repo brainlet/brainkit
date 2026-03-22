@@ -10,13 +10,23 @@ type Provider interface {
 
 // Peer represents a discoverable Kit instance.
 type Peer struct {
-	Name    string            `json:"name"`
-	Address string            `json:"address"`
-	Meta    map[string]string `json:"meta,omitempty"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`          // Kit namespace for cross-Kit routing
+	Address   string            `json:"address"`            // network address (host:port) for future direct connections
+	Meta      map[string]string `json:"meta,omitempty"`
 }
 
 // Config configures the discovery mechanism.
 type Config struct {
-	Type        string // "static", "multicast", or "" (none)
-	ServiceName string // multicast service name (default: "_brainkit._tcp")
+	Type        string       // "static", "multicast", or "" (none)
+	ServiceName string       // multicast service name (default: "_brainkit._tcp")
+	StaticPeers []PeerConfig // for Type="static": list of known peers
+}
+
+// PeerConfig configures a known peer.
+type PeerConfig struct {
+	Name      string
+	Namespace string
+	Address   string
+	Meta      map[string]string
 }

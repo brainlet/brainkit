@@ -11,3 +11,4 @@ internal/embed/compiler/deps/
 .a*
 .s*
 .c*
+C*.mdwasmgen

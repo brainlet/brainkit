@@ -114,7 +114,7 @@ func main() {
 	}
 
 	// Subscribe to test.events.* (all modes)
-	sdk.On[TestEvent](p, "test.events.*", func(ctx context.Context, event TestEvent, client sdk.Client, reply messages.ReplyFunc) {
+	sdk.On[TestEvent](p, "test.events.*", func(ctx context.Context, event TestEvent, client sdk.Client) {
 		client.Send(ctx, testAckEvent{Data: event.Data})
 	})
 

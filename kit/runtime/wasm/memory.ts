@@ -1,6 +1,6 @@
 // runtime/wasm/memory.ts — Memory domain typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 export class MemoryRecallMsg {
     threadId: string
@@ -31,17 +31,17 @@ export class MemorySaveMsg {
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("threadId", this.threadId)
-        obj.setRaw("messages", this.messagesJSON)
+        obj.set("messages", JSONValue.parse(this.messagesJSON))
         return obj.toString()
     }
 }
 
 export namespace memory {
     export function recall(msg: MemoryRecallMsg, callback: string): void {
-        _askAsync("memory.recall", msg.toJSON(), callback)
+        _invokeAsync("memory.recall", msg.toJSON(), callback)
     }
 
     export function save(msg: MemorySaveMsg, callback: string): void {
-        _askAsync("memory.save", msg.toJSON(), callback)
+        _invokeAsync("memory.save", msg.toJSON(), callback)
     }
 }

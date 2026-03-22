@@ -1,7 +1,7 @@
 // Persistent shard: receives text, asks AI to summarize, stores result.
-// Tests: askAsync to ai.generate, callback processing AI response,
+// Tests: typed AI async wrapper, callback processing AI response,
 //        persistent state accumulating request count
-import { setMode, on, reply, setState, getState, log, JSONValue, JSONObject } from "brainkit";
+import { setMode, on, reply, setState, getState, log, JSONValue, ai, AiGenerateMsg } from "brainkit";
 import { bus } from "brainkit";
 
 export function init(): void {
@@ -21,10 +21,7 @@ export function handleRequest(topic: string, payload: string): void {
   const model = obj.getString("model");
 
   // Ask AI to generate a summary
-  const aiPayload = new JSONObject()
-    .setString("model", model)
-    .setString("prompt", "Summarize: " + text);
-  bus.askAsyncRaw("ai.generate", aiPayload.toString(), "onAiResponse");
+  ai.generate(new AiGenerateMsg(model, "Summarize: " + text), "onAiResponse");
 
   // Track request count
   var count: i32 = 0;

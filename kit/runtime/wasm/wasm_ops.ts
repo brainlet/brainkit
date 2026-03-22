@@ -1,6 +1,6 @@
 // runtime/wasm/wasm_ops.ts — WASM operations typed messages + namespace functions.
 
-import { _askAsync } from "./host"
+import { _invokeAsync } from "./host"
 
 export class WasmCompileMsg {
     source: string
@@ -39,10 +39,10 @@ export class WasmDeployMsg {
 
 export namespace wasm_ops {
     export function compile(msg: WasmCompileMsg, callback: string): void {
-        _askAsync("wasm.compile", msg.toJSON(), callback)
+        _invokeAsync("wasm.compile", msg.toJSON(), callback)
     }
 
     export function deploy(msg: WasmDeployMsg, callback: string): void {
-        _askAsync("wasm.deploy", msg.toJSON(), callback)
+        _invokeAsync("wasm.deploy", msg.toJSON(), callback)
     }
 }

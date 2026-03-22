@@ -46,22 +46,34 @@ func (AiGenerateObjectMsg) BusTopic() string { return "ai.generateObject" }
 // ── Responses ──
 
 type AiGenerateResp struct {
+	ResultMeta
 	Text      string       `json:"text"`
 	ToolCalls []AiToolCall `json:"toolCalls,omitempty"`
 	Usage     AiUsage      `json:"usage"`
 }
 
+func (AiGenerateResp) BusTopic() string { return "ai.generate.result" }
+
 type AiEmbedResp struct {
+	ResultMeta
 	Embedding []float64 `json:"embedding"`
 }
 
+func (AiEmbedResp) BusTopic() string { return "ai.embed.result" }
+
 type AiEmbedManyResp struct {
+	ResultMeta
 	Embeddings [][]float64 `json:"embeddings"`
 }
 
+func (AiEmbedManyResp) BusTopic() string { return "ai.embedMany.result" }
+
 type AiGenerateObjectResp struct {
+	ResultMeta
 	Object any `json:"object"`
 }
+
+func (AiGenerateObjectResp) BusTopic() string { return "ai.generateObject.result" }
 
 // ── Shared types ──
 
