@@ -25,10 +25,18 @@ func TestGoDirect_FS(t *testing.T) {
 			defer cancel()
 
 			t.Run("Write_Read_Roundtrip", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 					Path: "test.txt", Data: "hello fs",
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.FsWriteResp, 1)
+				_us1, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr1.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch1 <- r })
+				defer _us1()
+				select {
+				case <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr1, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "test.txt"})
 				require.NoError(t, err)

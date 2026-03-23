@@ -158,11 +158,21 @@ func TestPlugin_Subprocess(t *testing.T) {
 		toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer toolCancel()
 
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, toolCtx, messages.ToolCallMsg{
+		_pr1, err := sdk.Publish(node, toolCtx, messages.ToolCallMsg{
 			Name:  "echo",
 			Input: map[string]any{"message": "hello from host"},
 		})
 		require.NoError(t, err)
+		_ch1 := make(chan messages.ToolCallResp, 1)
+		_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+		require.NoError(t, err)
+		defer _us1()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch1:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 
 		var result map[string]string
 		json.Unmarshal(resp.Result, &result)
@@ -174,11 +184,21 @@ func TestPlugin_Subprocess(t *testing.T) {
 		toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer toolCancel()
 
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, toolCtx, messages.ToolCallMsg{
+		_pr2, err := sdk.Publish(node, toolCtx, messages.ToolCallMsg{
 			Name:  "concat",
 			Input: map[string]any{"a": "foo", "b": "bar"},
 		})
 		require.NoError(t, err)
+		_ch2 := make(chan messages.ToolCallResp, 1)
+		_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+		require.NoError(t, err)
+		defer _us2()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch2:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 
 		var result map[string]string
 		json.Unmarshal(resp.Result, &result)
@@ -189,11 +209,21 @@ func TestPlugin_Subprocess(t *testing.T) {
 		toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 		defer toolCancel()
 
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, toolCtx, messages.ToolCallMsg{
+		_pr3, err := sdk.Publish(node, toolCtx, messages.ToolCallMsg{
 			Name:  "host-add",
 			Input: map[string]any{"a": 10, "b": 20},
 		})
 		require.NoError(t, err)
+		_ch3 := make(chan messages.ToolCallResp, 1)
+		_us3, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch3 <- r })
+		require.NoError(t, err)
+		defer _us3()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch3:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 
 		var result map[string]int
 		json.Unmarshal(resp.Result, &result)

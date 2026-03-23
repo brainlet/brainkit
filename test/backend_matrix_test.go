@@ -26,11 +26,21 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- Tools domain ---
 			t.Run("tools_call", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "add",
 					Input: map[string]any{"a": 10, "b": 32},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolCallResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				var result map[string]int
 				json.Unmarshal(resp.Result, &result)
 				assert.Equal(t, 42, result["sum"])
@@ -70,10 +80,18 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- FS domain ---
 			t.Run("fs_write_read", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 					Path: "matrix-test.txt", Data: "backend:" + backend,
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.FsWriteResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr3, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "matrix-test.txt"})
 				require.NoError(t, err)
@@ -153,7 +171,7 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- Kit lifecycle ---
 			t.Run("kit_deploy_teardown", func(t *testing.T) {
-				deployResp, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "matrix-deploy.ts",
 					Code: `
 						const matrixTool = createTool({
@@ -164,13 +182,33 @@ func TestBackendMatrix(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.KitDeployResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+				require.NoError(t, err)
+				defer _us3()
+				var deployResp messages.KitDeployResp
+				select {
+				case deployResp = <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, deployResp.Deployed)
 
 				// Verify tool is callable
-				callResp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name: "matrix-tool", Input: map[string]any{},
 				})
 				require.NoError(t, err)
+				_ch4 := make(chan messages.ToolCallResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr4.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch4 <- r })
+				require.NoError(t, err)
+				defer _us4()
+				var callResp messages.ToolCallResp
+				select {
+				case callResp = <-_ch4:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				var result map[string]string
 				json.Unmarshal(callResp.Result, &result)
 				assert.Equal(t, "works", result["backend"])
@@ -193,17 +231,37 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- WASM ---
 			t.Run("wasm_compile_run", func(t *testing.T) {
-				compResp, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source:  `export function run(): i32 { return 99; }`,
 					Options: &messages.WasmCompileOpts{Name: "matrix-wasm-" + backend},
 				})
 				require.NoError(t, err)
+				_ch5 := make(chan messages.WasmCompileResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch5 <- r })
+				require.NoError(t, err)
+				defer _us5()
+				var compResp messages.WasmCompileResp
+				select {
+				case compResp = <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Greater(t, compResp.Size, 0)
 
-				runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{
+				_pr6, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{
 					ModuleID: "matrix-wasm-" + backend,
 				})
 				require.NoError(t, err)
+				_ch6 := make(chan messages.WasmRunResp, 1)
+				_us6, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr6.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch6 <- r })
+				require.NoError(t, err)
+				defer _us6()
+				var runResp messages.WasmRunResp
+				select {
+				case runResp = <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, 99, runResp.ExitCode)
 			})
 
@@ -216,20 +274,30 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- Kit redeploy ---
 			t.Run("kit_redeploy", func(t *testing.T) {
-				sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "matrix-redeploy.ts", Code: `var v = 1;`,
 				})
-				resp, err := sdk.PublishAwait[messages.KitRedeployMsg, messages.KitRedeployResp](rt, ctx, messages.KitRedeployMsg{
+				_pr7, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 					Source: "matrix-redeploy.ts", Code: `var v = 2;`,
 				})
 				require.NoError(t, err)
+				_ch7 := make(chan messages.KitRedeployResp, 1)
+				_us7, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr7.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch7 <- r })
+				require.NoError(t, err)
+				defer _us7()
+				var resp messages.KitRedeployResp
+				select {
+				case resp = <-_ch7:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, resp.Deployed)
 				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
 			})
 
 			// --- WASM deploy/undeploy/describe ---
 			t.Run("wasm_deploy_lifecycle", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode } from "brainkit";
 						export function init(): void { _setMode("stateless"); _on("matrix.ev", "h"); }
@@ -281,16 +349,36 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- Registry ---
 			t.Run("registry_has_list", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.RegistryHasMsg, messages.RegistryHasResp](rt, ctx, messages.RegistryHasMsg{
+				_pr8, err := sdk.Publish(rt, ctx, messages.RegistryHasMsg{
 					Category: "provider", Name: "nonexistent",
 				})
 				require.NoError(t, err)
+				_ch8 := make(chan messages.RegistryHasResp, 1)
+				_us8, err := sdk.SubscribeTo[messages.RegistryHasResp](rt, ctx, _pr8.ReplyTo, func(r messages.RegistryHasResp, m messages.Message) { _ch8 <- r })
+				require.NoError(t, err)
+				defer _us8()
+				var resp messages.RegistryHasResp
+				select {
+				case resp = <-_ch8:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.False(t, resp.Found)
 
-				listResp, err := sdk.PublishAwait[messages.RegistryListMsg, messages.RegistryListResp](rt, ctx, messages.RegistryListMsg{
+				_pr9, err := sdk.Publish(rt, ctx, messages.RegistryListMsg{
 					Category: "provider",
 				})
 				require.NoError(t, err)
+				_ch9 := make(chan messages.RegistryListResp, 1)
+				_us9, err := sdk.SubscribeTo[messages.RegistryListResp](rt, ctx, _pr9.ReplyTo, func(r messages.RegistryListResp, m messages.Message) { _ch9 <- r })
+				require.NoError(t, err)
+				defer _us9()
+				var listResp messages.RegistryListResp
+				select {
+				case listResp = <-_ch9:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotNil(t, listResp.Items)
 			})
 		})

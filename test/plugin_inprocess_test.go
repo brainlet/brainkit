@@ -13,7 +13,7 @@ import (
 )
 
 // TestPlugin_InProcess verifies that the unified sdk.Runtime interface works
-// the same way a plugin would use it — via PublishAwait over the transport.
+// the same way a plugin would use it — via Publish over the transport.
 // Uses a Node with memory transport to simulate the plugin side.
 //
 // In a real plugin, the sdk.Runtime is backed by a pluginClient connected
@@ -51,21 +51,39 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_CallTool", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+		_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 			Name:  "add",
 			Input: map[string]any{"a": 100, "b": 200},
 		})
 		require.NoError(t, err)
+		_ch1 := make(chan messages.ToolCallResp, 1)
+		_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+		require.NoError(t, err)
+		defer _us1()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch1:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]int
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, 300, result["sum"])
 	})
 
 	t.Run("Plugin_FS_WriteRead", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{
+		_pr2, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 			Path: "plugin-data.json", Data: `{"status":"ok"}`,
 		})
 		require.NoError(t, err)
+		_ch2 := make(chan messages.FsWriteResp, 1)
+		_us2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch2 <- r })
+		defer _us2()
+		select {
+		case <-_ch2:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 
 		_pr2, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "plugin-data.json"})
 		require.NoError(t, err)
@@ -83,11 +101,21 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_Deploy_Teardown", func(t *testing.T) {
-		deployResp, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+		_pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 			Source: "plugin-created.ts",
 			Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) });`,
 		})
 		require.NoError(t, err)
+		_ch3 := make(chan messages.KitDeployResp, 1)
+		_us3, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+		require.NoError(t, err)
+		defer _us3()
+		var deployResp messages.KitDeployResp
+		select {
+		case deployResp = <-_ch3:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, deployResp.Deployed)
 
 		_pr3, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-created.ts"})

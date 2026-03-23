@@ -123,11 +123,21 @@ func TestCross_Plugin_Go(t *testing.T) {
 				toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer toolCancel()
 
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, toolCtx, messages.ToolCallMsg{
+				_pr1, err := sdk.Publish(node, toolCtx, messages.ToolCallMsg{
 					Name:  "echo",
 					Input: map[string]any{"message": "plugin→go test"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolCallResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				var result map[string]string
 				json.Unmarshal(resp.Result, &result)
@@ -142,7 +152,7 @@ func TestCross_Plugin_Go(t *testing.T) {
 				_pr1, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
 				_ch1 := make(chan messages.ToolListResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				_us1, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
 				require.NoError(t, err)
 				defer _us1()
 				var resp messages.ToolListResp

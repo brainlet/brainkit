@@ -41,7 +41,7 @@ func TestGoDirect_Kit(t *testing.T) {
 			})
 
 			t.Run("Deploy_Teardown", func(t *testing.T) {
-				deployResp, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "kit-test-1.ts",
 					Code: `
 						const t = createTool({
@@ -52,6 +52,16 @@ func TestGoDirect_Kit(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.KitDeployResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var deployResp messages.KitDeployResp
+				select {
+				case deployResp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, deployResp.Deployed)
 
 				// List should show it
@@ -93,18 +103,36 @@ func TestGoDirect_Kit(t *testing.T) {
 
 			t.Run("Redeploy", func(t *testing.T) {
 				// Deploy v1
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "kit-redeploy.ts",
 					Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) });`,
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.KitDeployResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Redeploy v2
-				redeployResp, err := sdk.PublishAwait[messages.KitRedeployMsg, messages.KitRedeployResp](rt, ctx, messages.KitRedeployMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 					Source: "kit-redeploy.ts",
 					Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
 				})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.KitRedeployResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch3 <- r })
+				require.NoError(t, err)
+				defer _us3()
+				var redeployResp messages.KitRedeployResp
+				select {
+				case redeployResp = <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, redeployResp.Deployed)
 
 				// Teardown
@@ -112,7 +140,7 @@ func TestGoDirect_Kit(t *testing.T) {
 			})
 
 			t.Run("Deploy_InvalidCode", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "bad-code.ts",
 					Code:   `throw new Error("intentional failure");`,
 				})
@@ -120,14 +148,22 @@ func TestGoDirect_Kit(t *testing.T) {
 			})
 
 			t.Run("Deploy_Duplicate", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
 					Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) });`,
 				})
 				require.NoError(t, err)
+				_ch5 := make(chan messages.KitDeployResp, 1)
+				_us5, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch5 <- r })
+				defer _us5()
+				select {
+				case <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Deploy again with same source — should fail
-				_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr6, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
 					Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) });`,
 				})

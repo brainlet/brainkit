@@ -81,18 +81,36 @@ func TestGoDirect_Workflows(t *testing.T) {
 			defer cancel()
 
 			// Deploy the test workflow
-			_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+			_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 				Source: "test-workflow.ts",
 				Code:   testWorkflowCode,
 			})
 			require.NoError(t, err, "workflow deploy must succeed")
+			_ch1 := make(chan messages.KitDeployResp, 1)
+			_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+			defer _us1()
+			select {
+			case <-_ch1:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			t.Run("Run", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.WorkflowRunMsg{
 					Name:  "test-workflow",
 					Input: map[string]any{"value": "hello"},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.WorkflowRunResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.WorkflowRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WorkflowRunResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.WorkflowRunResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotNil(t, resp.Result, "should return workflow result")
 
 				var result map[string]any
@@ -113,19 +131,37 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 	defer cancel()
 
 	// Deploy the suspend workflow
-	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+	_pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 		Source: "suspend-workflow.ts",
 		Code:   testSuspendWorkflowCode,
 	})
 	require.NoError(t, err, "suspend workflow deploy must succeed")
+	_ch3 := make(chan messages.KitDeployResp, 1)
+	_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+	defer _us3()
+	select {
+	case <-_ch3:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	defer sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "suspend-workflow.ts"})
 
 	t.Run("Run_Suspends", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
+		_pr4, err := sdk.Publish(rt, ctx, messages.WorkflowRunMsg{
 			Name:  "suspend-workflow",
 			Input: map[string]any{"value": "test"},
 		})
 		require.NoError(t, err)
+		_ch4 := make(chan messages.WorkflowRunResp, 1)
+		_us4, err := sdk.SubscribeTo[messages.WorkflowRunResp](rt, ctx, _pr4.ReplyTo, func(r messages.WorkflowRunResp, m messages.Message) { _ch4 <- r })
+		require.NoError(t, err)
+		defer _us4()
+		var resp messages.WorkflowRunResp
+		select {
+		case resp = <-_ch4:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 
 		var result map[string]any
@@ -139,20 +175,40 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 			require.NotEmpty(t, runId, "suspended workflow should have runId")
 
 			t.Run("Status", func(t *testing.T) {
-				statusResp, err := sdk.PublishAwait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](rt, ctx, messages.WorkflowStatusMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
 					RunID: runId,
 				})
 				require.NoError(t, err)
+				_ch5 := make(chan messages.WorkflowStatusResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.WorkflowStatusResp](rt, ctx, _pr5.ReplyTo, func(r messages.WorkflowStatusResp, m messages.Message) { _ch5 <- r })
+				require.NoError(t, err)
+				defer _us5()
+				var statusResp messages.WorkflowStatusResp
+				select {
+				case statusResp = <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				t.Logf("Workflow status: %s, step: %s", statusResp.Status, statusResp.Step)
 			})
 
 			t.Run("Resume", func(t *testing.T) {
-				resumeResp, err := sdk.PublishAwait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](rt, ctx, messages.WorkflowResumeMsg{
+				_pr6, err := sdk.Publish(rt, ctx, messages.WorkflowResumeMsg{
 					RunID:  runId,
 					StepID: "suspend-step",
 					Data:   map[string]any{"approved": true},
 				})
 				require.NoError(t, err)
+				_ch6 := make(chan messages.WorkflowResumeResp, 1)
+				_us6, err := sdk.SubscribeTo[messages.WorkflowResumeResp](rt, ctx, _pr6.ReplyTo, func(r messages.WorkflowResumeResp, m messages.Message) { _ch6 <- r })
+				require.NoError(t, err)
+				defer _us6()
+				var resumeResp messages.WorkflowResumeResp
+				select {
+				case resumeResp = <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotNil(t, resumeResp.Result)
 
 				var resumeResult map[string]any
@@ -169,14 +225,14 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 	})
 
 	t.Run("Cancel_NotFound", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.WorkflowCancelMsg, messages.WorkflowCancelResp](rt, ctx, messages.WorkflowCancelMsg{
+		_pr7, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{
 			RunID: "nonexistent-run-id",
 		})
 		assert.Error(t, err, "cancel should fail for nonexistent run")
 	})
 
 	t.Run("Status_NotFound", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](rt, ctx, messages.WorkflowStatusMsg{
+		_pr8, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
 			RunID: "nonexistent-run-id",
 		})
 		assert.Error(t, err, "status should fail for nonexistent run")

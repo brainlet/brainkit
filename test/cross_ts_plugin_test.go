@@ -77,7 +77,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 
 			t.Run("TS_calls_plugin_tool", func(t *testing.T) {
 				// Deploy .ts that creates a wrapper tool calling the plugin's "concat" tool
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+				_pr1, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
 					Source: "ts-calls-plugin.ts",
 					Code: `
 						const pluginCaller = createTool({
@@ -91,15 +91,33 @@ func TestCross_TS_Plugin(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.KitDeployResp, 1)
+				_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+				defer _us1()
+				select {
+				case <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				callCtx, callCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer callCancel()
 
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, callCtx, messages.ToolCallMsg{
+				_pr2, err := sdk.Publish(node, callCtx, messages.ToolCallMsg{
 					Name:  "plugin-caller",
 					Input: map[string]any{"x": "foo", "y": "bar"},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolCallResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				var result map[string]any
 				json.Unmarshal(resp.Result, &result)
@@ -111,7 +129,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 
 			t.Run("TS_deployed_tool_visible_alongside_plugin", func(t *testing.T) {
 				// Deploy .ts tool
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+				_pr3, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
 					Source: "ts-alongside.ts",
 					Code: `
 						const tsTool = createTool({
@@ -122,6 +140,14 @@ func TestCross_TS_Plugin(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.KitDeployResp, 1)
+				_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+				defer _us3()
+				select {
+				case <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer listCancel()
@@ -129,7 +155,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				_pr1, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
 				_ch1 := make(chan messages.ToolListResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				_us1, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
 				require.NoError(t, err)
 				defer _us1()
 				var resp messages.ToolListResp

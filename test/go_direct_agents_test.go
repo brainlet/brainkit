@@ -41,29 +41,39 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("Discover_NoMatch", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.AgentDiscoverMsg, messages.AgentDiscoverResp](rt, ctx, messages.AgentDiscoverMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.AgentDiscoverMsg{
 					Capability: "teleportation",
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.AgentDiscoverResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.AgentDiscoverResp](rt, ctx, _pr1.ReplyTo, func(r messages.AgentDiscoverResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.AgentDiscoverResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Empty(t, resp.Agents)
 			})
 
 			t.Run("GetStatus_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.AgentGetStatusMsg, messages.AgentGetStatusResp](rt, ctx, messages.AgentGetStatusMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{
 					Name: "ghost-agent",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("SetStatus_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "ghost-agent", Status: "busy",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("SetStatus_InvalidStatus", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "any", Status: "flying",
 				})
 				assert.Error(t, err)
@@ -75,7 +85,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy .ts that creates an agent with string model reference
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "test-agent.ts",
 					Code: `
 						const a = agent({
@@ -127,10 +137,18 @@ func TestGoDirect_Agents(t *testing.T) {
 				assert.Equal(t, "idle", statusResp.Status)
 
 				// Set status
-				_, err = sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{
+				_pr6, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "test-helper", Status: "busy",
 				})
 				require.NoError(t, err)
+				_ch6 := make(chan messages.AgentSetStatusResp, 1)
+				_us6, _ := sdk.SubscribeTo[messages.AgentSetStatusResp](rt, ctx, _pr6.ReplyTo, func(r messages.AgentSetStatusResp, m messages.Message) { _ch6 <- r })
+				defer _us6()
+				select {
+				case <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr4, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{Name: "test-helper"})
 				require.NoError(t, err)
@@ -151,14 +169,14 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("Request_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.AgentRequestMsg, messages.AgentRequestResp](rt, ctx, messages.AgentRequestMsg{
+				_pr7, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{
 					Name: "ghost-agent", Prompt: "hello",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("Message_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{
+				_pr8, err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
 					Target: "ghost-agent", Payload: "hello",
 				})
 				assert.Error(t, err)
@@ -170,7 +188,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy an agent so it exists in the registry
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr9, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "msg-agent.ts",
 					Code: `
 						const a = agent({
@@ -186,10 +204,20 @@ func TestGoDirect_Agents(t *testing.T) {
 				defer sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "msg-agent.ts"})
 
 				// Send a message — fire-and-forget, should return delivered: true
-				resp, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{
+				_pr10, err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
 					Target: "msg-target", Payload: map[string]string{"text": "hello agent"},
 				})
 				require.NoError(t, err)
+				_ch10 := make(chan messages.AgentMessageResp, 1)
+				_us10, err := sdk.SubscribeTo[messages.AgentMessageResp](rt, ctx, _pr10.ReplyTo, func(r messages.AgentMessageResp, m messages.Message) { _ch10 <- r })
+				require.NoError(t, err)
+				defer _us10()
+				var resp messages.AgentMessageResp
+				select {
+				case resp = <-_ch10:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, resp.Delivered)
 			})
 		})

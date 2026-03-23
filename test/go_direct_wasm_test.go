@@ -25,11 +25,21 @@ func TestGoDirect_WASM(t *testing.T) {
 			defer cancel()
 
 			t.Run("Compile_Run", func(t *testing.T) {
-				compResp, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source:  `export function run(): i32 { return 42; }`,
 					Options: &messages.WasmCompileOpts{Name: "gd-run"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmCompileResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var compResp messages.WasmCompileResp
+				select {
+				case compResp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "gd-run", compResp.Name)
 				assert.Greater(t, compResp.Size, 0)
 
@@ -49,10 +59,10 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("List", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-list-a"},
 				})
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `export function run(): i32 { return 2; }`, Options: &messages.WasmCompileOpts{Name: "gd-list-b"},
 				})
 
@@ -77,7 +87,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Get", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-get"},
 				})
 
@@ -114,7 +124,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Remove", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-remove"},
 				})
 
@@ -132,12 +142,12 @@ func TestGoDirect_WASM(t *testing.T) {
 				}
 				assert.True(t, resp.Removed)
 
-				getResp, _ := sdk.PublishAwait[messages.WasmGetMsg, messages.WasmGetResp](rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
+				_pr2, _ := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
 				assert.Nil(t, getResp.Module)
 			})
 
 			t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode } from "brainkit";
 						export function init(): void {
@@ -195,7 +205,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Run_HostFunctions", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _log, _setState, _getState, _hasState } from "brainkit";
 						export function run(): i32 {
@@ -230,7 +240,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Remove_WhileDeployed", func(t *testing.T) {
-				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode } from "brainkit";
 						export function init(): void { _setMode("stateless"); _on("x.ev", "h"); }

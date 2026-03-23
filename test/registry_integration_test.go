@@ -181,7 +181,7 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 	defer cancel()
 
 	// Deploy .ts that uses registry.has
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+	_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 		Source: "registry-user.ts",
 		Code: `
 			const registryTool = createTool({
@@ -197,12 +197,30 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.KitDeployResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Call the tool — it uses registry from inside a Compartment
-	resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+	_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 		Name: "check-providers", Input: map[string]any{},
 	})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.ToolCallResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+	require.NoError(t, err)
+	defer _us2()
+	var resp messages.ToolCallResp
+	select {
+	case resp = <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	var result map[string]any
 	json.Unmarshal(resp.Result, &result)

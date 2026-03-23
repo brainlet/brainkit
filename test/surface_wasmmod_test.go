@@ -24,7 +24,7 @@ import (
 // Returns the run response. Verifies the callback was called (no panic/hang).
 func wasmDomainTest(t *testing.T, rt sdk.Runtime, ctx context.Context, name, topic, payload string) {
 	t.Helper()
-	_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+	_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _invokeAsync, _setState } from "brainkit";
 			export function onResult(topic: usize, payload: usize): void {
@@ -38,6 +38,14 @@ func wasmDomainTest(t *testing.T, rt sdk.Runtime, ctx context.Context, name, top
 		Options: &messages.WasmCompileOpts{Name: name},
 	})
 	require.NoError(t, err, "compile %s", name)
+	_ch1 := make(chan messages.WasmCompileResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: name})
 	require.NoError(t, err, "run %s", name)
@@ -117,7 +125,7 @@ func TestWASMSurface_Agents(t *testing.T) {
 	defer cancel()
 
 	// Deploy an agent from Go so WASM can query its status
-	sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+	sdk.Publish(tk, ctx, messages.KitDeployMsg{
 		Source: "wasm-agent-setup.ts",
 		Code:   `agent({ name: "wasm-target", instructions: "test", model: "openai/gpt-4o-mini" });`,
 	})
@@ -233,7 +241,7 @@ func TestWASMSurface_Workflows(t *testing.T) {
 	defer cancel()
 
 	// Deploy a workflow first
-	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+	_pr2, err := sdk.Publish(tk, ctx, messages.KitDeployMsg{
 		Source: "wasm-wf-setup.ts",
 		Code: `
 			const wf = createWorkflow({
@@ -251,6 +259,14 @@ func TestWASMSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.KitDeployResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
+	select {
+	case <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	t.Run("Run", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-wf-run", "workflows.run", `{"name":"wasm-test-wf","input":{"v":"test"}}`)

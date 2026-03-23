@@ -23,7 +23,7 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			// Chain: Go deploys .ts → .ts creates a tool → WASM calls that tool via invokeAsync
 
 			// Step 1: Go deploys .ts that creates a tool
-			_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+			_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 				Source: "chain-ts.ts",
 				Code: `
 					const chainTool = createTool({
@@ -36,9 +36,17 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 				`,
 			})
 			require.NoError(t, err)
+			_ch1 := make(chan messages.KitDeployResp, 1)
+			_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+			defer _us1()
+			select {
+			case <-_ch1:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			// Step 2: Compile WASM that calls the .ts tool
-			_, err = sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+			_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 				Source: `
 					import { _invokeAsync, _setState } from "brainkit";
 
@@ -54,6 +62,14 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 				Options: &messages.WasmCompileOpts{Name: "chain-wasm"},
 			})
 			require.NoError(t, err)
+			_ch2 := make(chan messages.WasmCompileResp, 1)
+			_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
+			defer _us2()
+			select {
+			case <-_ch2:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			// Step 3: Run WASM — it calls the .ts tool
 			_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "chain-wasm"})
@@ -71,11 +87,21 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			assert.Equal(t, 0, runResp.ExitCode)
 
 			// Verify the chain worked by calling the tool from Go too
-			toolResp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+			_pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 				Name:  "chain-doubler",
 				Input: map[string]any{"n": 21},
 			})
 			require.NoError(t, err)
+			_ch3 := make(chan messages.ToolCallResp, 1)
+			_us3, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch3 <- r })
+			require.NoError(t, err)
+			defer _us3()
+			var toolResp messages.ToolCallResp
+			select {
+			case toolResp = <-_ch3:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 			var result map[string]any
 			json.Unmarshal(toolResp.Result, &result)
 			assert.Equal(t, float64(42), result["doubled"])
@@ -98,7 +124,7 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			// WASM shard calls .ts tool via invokeAsync → shard replies with result
 
 			// Step 1: Deploy .ts tool
-			_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+			_pr4, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 				Source: "chain-reply-ts.ts",
 				Code: `
 					const adder = createTool({
@@ -111,9 +137,17 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 				`,
 			})
 			require.NoError(t, err)
+			_ch4 := make(chan messages.KitDeployResp, 1)
+			_us4, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch4 <- r })
+			defer _us4()
+			select {
+			case <-_ch4:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			// Step 2: Compile WASM shard that calls .ts tool and replies
-			_, err = sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+			_pr5, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 				Source: `
 					import { _on, _setMode, _invokeAsync, _reply, _setState, _getState, _hasState } from "brainkit";
 
@@ -134,6 +168,14 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 				Options: &messages.WasmCompileOpts{Name: "chain-reply-shard"},
 			})
 			require.NoError(t, err)
+			_ch5 := make(chan messages.WasmCompileResp, 1)
+			_us5, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch5 <- r })
+			defer _us5()
+			select {
+			case <-_ch5:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			// Step 3: Deploy shard
 			_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "chain-reply-shard"})

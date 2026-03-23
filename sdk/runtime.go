@@ -18,8 +18,8 @@ type Runtime interface {
 
 	// SubscribeRaw subscribes to a topic.
 	// The subscription MUST be active and ready to receive messages before this method returns.
-	// This is a contract, not an implementation detail — PublishAwait depends on it to avoid
-	// race conditions where a publish lands before the subscriber is listening.
+	// This is a contract, not an implementation detail — Publish + SubscribeTo depend on it
+	// to avoid race conditions where a publish lands before the subscriber is listening.
 	// Handler receives the full Message including payload and metadata (correlationID, callerID).
 	// Returns a cancel function to unsubscribe.
 	SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (cancel func(), err error)

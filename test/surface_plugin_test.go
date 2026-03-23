@@ -18,7 +18,7 @@ import (
 // TestPluginSurface tests every domain operation from the Plugin/Node surface.
 // Uses newTestNode(t) which creates a Node with memory transport — same sdk.Runtime
 // interface a real plugin subprocess would use over NATS.
-// This proves the full: Go → sdk.PublishAwait → transport → router → handler path
+// This proves the full: Go → sdk.Publish → transport → router → handler path
 // from the Node/plugin perspective.
 
 // --- Tools domain from Plugin ---
@@ -59,10 +59,20 @@ func TestPluginSurface_Tools(t *testing.T) {
 		assert.Equal(t, "echo", resp.ShortName)
 	})
 	t.Run("Call", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+		_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 			Name: "add", Input: map[string]any{"a": 3, "b": 7},
 		})
 		require.NoError(t, err)
+		_ch1 := make(chan messages.ToolCallResp, 1)
+		_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+		require.NoError(t, err)
+		defer _us1()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch1:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]int
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, 10, result["sum"])
@@ -185,7 +195,7 @@ func TestPluginSurface_Agents(t *testing.T) {
 	defer cancel()
 
 	// Deploy an agent so we can test all operations
-	sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+	sdk.Publish(node, ctx, messages.KitDeployMsg{
 		Source: "plugin-agent-setup.ts",
 		Code:   `agent({ name: "plugin-agent", instructions: "Reply ok", model: "openai/gpt-4o-mini" });`,
 	})
@@ -307,32 +317,72 @@ func TestPluginSurface_AI(t *testing.T) {
 	defer cancel()
 
 	t.Run("Generate", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AiGenerateMsg, messages.AiGenerateResp](rt, ctx, messages.AiGenerateMsg{
+		_pr2, err := sdk.Publish(rt, ctx, messages.AiGenerateMsg{
 			Model: "openai/gpt-4o-mini", Prompt: "Say exactly: pong",
 		})
 		require.NoError(t, err)
+		_ch2 := make(chan messages.AiGenerateResp, 1)
+		_us2, err := sdk.SubscribeTo[messages.AiGenerateResp](rt, ctx, _pr2.ReplyTo, func(r messages.AiGenerateResp, m messages.Message) { _ch2 <- r })
+		require.NoError(t, err)
+		defer _us2()
+		var resp messages.AiGenerateResp
+		select {
+		case resp = <-_ch2:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Text)
 	})
 	t.Run("Embed", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AiEmbedMsg, messages.AiEmbedResp](rt, ctx, messages.AiEmbedMsg{
+		_pr3, err := sdk.Publish(rt, ctx, messages.AiEmbedMsg{
 			Model: "openai/text-embedding-3-small", Value: "test",
 		})
 		require.NoError(t, err)
+		_ch3 := make(chan messages.AiEmbedResp, 1)
+		_us3, err := sdk.SubscribeTo[messages.AiEmbedResp](rt, ctx, _pr3.ReplyTo, func(r messages.AiEmbedResp, m messages.Message) { _ch3 <- r })
+		require.NoError(t, err)
+		defer _us3()
+		var resp messages.AiEmbedResp
+		select {
+		case resp = <-_ch3:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Embedding)
 	})
 	t.Run("EmbedMany", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AiEmbedManyMsg, messages.AiEmbedManyResp](rt, ctx, messages.AiEmbedManyMsg{
+		_pr4, err := sdk.Publish(rt, ctx, messages.AiEmbedManyMsg{
 			Model: "openai/text-embedding-3-small", Values: []string{"a", "b"},
 		})
 		require.NoError(t, err)
+		_ch4 := make(chan messages.AiEmbedManyResp, 1)
+		_us4, err := sdk.SubscribeTo[messages.AiEmbedManyResp](rt, ctx, _pr4.ReplyTo, func(r messages.AiEmbedManyResp, m messages.Message) { _ch4 <- r })
+		require.NoError(t, err)
+		defer _us4()
+		var resp messages.AiEmbedManyResp
+		select {
+		case resp = <-_ch4:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Len(t, resp.Embeddings, 2)
 	})
 	t.Run("GenerateObject", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AiGenerateObjectMsg, messages.AiGenerateObjectResp](rt, ctx, messages.AiGenerateObjectMsg{
+		_pr5, err := sdk.Publish(rt, ctx, messages.AiGenerateObjectMsg{
 			Model: "openai/gpt-4o-mini", Prompt: "Give me a color",
 			Schema: map[string]any{"type": "object", "properties": map[string]any{"color": map[string]any{"type": "string"}}, "required": []string{"color"}},
 		})
 		require.NoError(t, err)
+		_ch5 := make(chan messages.AiGenerateObjectResp, 1)
+		_us5, err := sdk.SubscribeTo[messages.AiGenerateObjectResp](rt, ctx, _pr5.ReplyTo, func(r messages.AiGenerateObjectResp, m messages.Message) { _ch5 <- r })
+		require.NoError(t, err)
+		defer _us5()
+		var resp messages.AiGenerateObjectResp
+		select {
+		case resp = <-_ch5:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Object)
 	})
 	t.Run("Stream", func(t *testing.T) {
@@ -373,11 +423,21 @@ func TestPluginSurface_Kit(t *testing.T) {
 	defer cancel()
 
 	t.Run("Deploy_Teardown", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+		_pr6, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 			Source: "plugin-deploy.ts",
 			Code:   `const t = createTool({ id: "plugin-deployed", description: "test", execute: async () => ({}) });`,
 		})
 		require.NoError(t, err)
+		_ch6 := make(chan messages.KitDeployResp, 1)
+		_us6, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr6.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch6 <- r })
+		require.NoError(t, err)
+		defer _us6()
+		var resp messages.KitDeployResp
+		select {
+		case resp = <-_ch6:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.Deployed)
 
 		_pr16, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-deploy.ts"})
@@ -407,15 +467,25 @@ func TestPluginSurface_Kit(t *testing.T) {
 		assert.NotNil(t, resp.Deployments)
 	})
 	t.Run("Redeploy", func(t *testing.T) {
-		sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+		sdk.Publish(rt, ctx, messages.KitDeployMsg{
 			Source: "plugin-redeploy.ts",
 			Code:   `const t = createTool({ id: "plugin-v1", description: "v1", execute: async () => ({}) });`,
 		})
-		resp, err := sdk.PublishAwait[messages.KitRedeployMsg, messages.KitRedeployResp](rt, ctx, messages.KitRedeployMsg{
+		_pr7, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 			Source: "plugin-redeploy.ts",
 			Code:   `const t = createTool({ id: "plugin-v2", description: "v2", execute: async () => ({}) });`,
 		})
 		require.NoError(t, err)
+		_ch7 := make(chan messages.KitRedeployResp, 1)
+		_us7, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr7.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch7 <- r })
+		require.NoError(t, err)
+		defer _us7()
+		var resp messages.KitRedeployResp
+		select {
+		case resp = <-_ch7:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.Deployed)
 		sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-redeploy.ts"})
 	})
@@ -429,10 +499,20 @@ func TestPluginSurface_WASM(t *testing.T) {
 	defer cancel()
 
 	t.Run("Compile_Run", func(t *testing.T) {
-		comp, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+		_pr8, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 			Source: `export function run(): i32 { return 55; }`, Options: &messages.WasmCompileOpts{Name: "plugin-wasm"},
 		})
 		require.NoError(t, err)
+		_ch8 := make(chan messages.WasmCompileResp, 1)
+		_us8, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch8 <- r })
+		require.NoError(t, err)
+		defer _us8()
+		var comp messages.WasmCompileResp
+		select {
+		case comp = <-_ch8:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Greater(t, comp.Size, 0)
 
 		_pr18, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "plugin-wasm"})
@@ -495,7 +575,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		assert.True(t, resp.Removed)
 	})
 	t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
-		sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+		sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 			Source: `
 				import { _on, _setMode } from "brainkit";
 				export function init(): void { _setMode("stateless"); _on("plugin.ev", "h"); }
@@ -577,19 +657,35 @@ func TestPluginSurface_Memory(t *testing.T) {
 		assert.NotEmpty(t, resp.ThreadID)
 	})
 	t.Run("Save_Recall", func(t *testing.T) {
-		create, _ := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
-		_, err := sdk.PublishAwait[messages.MemorySaveMsg, messages.MemorySaveResp](rt, ctx, messages.MemorySaveMsg{
+		_pr9, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		_pr10, err := sdk.Publish(rt, ctx, messages.MemorySaveMsg{
 			ThreadID: create.ThreadID,
 			Messages: []messages.MemoryMessage{{Role: "user", Content: "hello"}},
 		})
 		require.NoError(t, err)
-		_, err = sdk.PublishAwait[messages.MemoryRecallMsg, messages.MemoryRecallResp](rt, ctx, messages.MemoryRecallMsg{
+		_ch10 := make(chan messages.MemorySaveResp, 1)
+		_us10, _ := sdk.SubscribeTo[messages.MemorySaveResp](rt, ctx, _pr10.ReplyTo, func(r messages.MemorySaveResp, m messages.Message) { _ch10 <- r })
+		defer _us10()
+		select {
+		case <-_ch10:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
+		_pr11, err := sdk.Publish(rt, ctx, messages.MemoryRecallMsg{
 			ThreadID: create.ThreadID, Query: "hello",
 		})
 		require.NoError(t, err)
+		_ch11 := make(chan messages.MemoryRecallResp, 1)
+		_us11, _ := sdk.SubscribeTo[messages.MemoryRecallResp](rt, ctx, _pr11.ReplyTo, func(r messages.MemoryRecallResp, m messages.Message) { _ch11 <- r })
+		defer _us11()
+		select {
+		case <-_ch11:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 	})
 	t.Run("GetThread", func(t *testing.T) {
-		create, _ := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+		_pr12, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 		_pr26, err := sdk.Publish(rt, ctx, messages.MemoryGetThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
 		_ch26 := make(chan messages.MemoryGetThreadResp, 1)
@@ -620,7 +716,7 @@ func TestPluginSurface_Memory(t *testing.T) {
 		assert.NotNil(t, resp.Threads)
 	})
 	t.Run("DeleteThread", func(t *testing.T) {
-		create, _ := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+		_pr13, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 		_pr28, err := sdk.Publish(rt, ctx, messages.MemoryDeleteThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
 		_ch28 := make(chan messages.MemoryDeleteThreadResp, 1)
@@ -645,7 +741,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 	defer cancel()
 
 	node := rt.(*kit.Node)
-	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+	_pr14, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
 		Source: "plugin-wf.ts",
 		Code: `
 			const wf = createWorkflow({
@@ -658,19 +754,37 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
+	_ch14 := make(chan messages.KitDeployResp, 1)
+	_us14, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr14.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch14 <- r })
+	defer _us14()
+	select {
+	case <-_ch14:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	t.Run("Run", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
+		_pr15, err := sdk.Publish(rt, ctx, messages.WorkflowRunMsg{
 			Name: "plugin-wf", Input: map[string]any{"v": "test"},
 		})
 		require.NoError(t, err)
+		_ch15 := make(chan messages.WorkflowRunResp, 1)
+		_us15, err := sdk.SubscribeTo[messages.WorkflowRunResp](rt, ctx, _pr15.ReplyTo, func(r messages.WorkflowRunResp, m messages.Message) { _ch15 <- r })
+		require.NoError(t, err)
+		defer _us15()
+		var resp messages.WorkflowRunResp
+		select {
+		case resp = <-_ch15:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 
 	sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-wf.ts"})
 
 	// Deploy suspend workflow for resume/cancel/status
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+	_pr16, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
 		Source: "plugin-suspend-wf.ts",
 		Code: `
 			const swf = createWorkflow({
@@ -683,13 +797,31 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
+	_ch16 := make(chan messages.KitDeployResp, 1)
+	_us16, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr16.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch16 <- r })
+	defer _us16()
+	select {
+	case <-_ch16:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	defer sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-suspend-wf.ts"})
 
 	t.Run("Suspend_Resume", func(t *testing.T) {
-		runResp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
+		_pr17, err := sdk.Publish(rt, ctx, messages.WorkflowRunMsg{
 			Name: "plugin-suspend-wf", Input: map[string]any{"v": "test"},
 		})
 		require.NoError(t, err)
+		_ch17 := make(chan messages.WorkflowRunResp, 1)
+		_us17, err := sdk.SubscribeTo[messages.WorkflowRunResp](rt, ctx, _pr17.ReplyTo, func(r messages.WorkflowRunResp, m messages.Message) { _ch17 <- r })
+		require.NoError(t, err)
+		defer _us17()
+		var runResp messages.WorkflowRunResp
+		select {
+		case runResp = <-_ch17:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var runResult map[string]any
 		json.Unmarshal(runResp.Result, &runResult)
 		if runResult["status"] == "suspended" {
@@ -710,10 +842,20 @@ func TestPluginSurface_Workflows(t *testing.T) {
 			}
 			t.Logf("Plugin workflow status: %s", statusResp.Status)
 
-			resumeResp, err := sdk.PublishAwait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](rt, ctx, messages.WorkflowResumeMsg{
+			_pr18, err := sdk.Publish(rt, ctx, messages.WorkflowResumeMsg{
 				RunID: runId, StepID: "ss1", Data: map[string]any{"ok": true},
 			})
 			require.NoError(t, err)
+			_ch18 := make(chan messages.WorkflowResumeResp, 1)
+			_us18, err := sdk.SubscribeTo[messages.WorkflowResumeResp](rt, ctx, _pr18.ReplyTo, func(r messages.WorkflowResumeResp, m messages.Message) { _ch18 <- r })
+			require.NoError(t, err)
+			defer _us18()
+			var resumeResp messages.WorkflowResumeResp
+			select {
+			case resumeResp = <-_ch18:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 			assert.NotNil(t, resumeResp.Result)
 		}
 	})
@@ -757,10 +899,20 @@ func TestPluginSurface_MCP(t *testing.T) {
 		assert.NotEmpty(t, resp.Tools)
 	})
 	t.Run("CallTool", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.McpCallToolMsg, messages.McpCallToolResp](rt, ctx, messages.McpCallToolMsg{
+		_pr19, err := sdk.Publish(rt, ctx, messages.McpCallToolMsg{
 			Server: "echo", Tool: "echo", Args: map[string]any{"message": "from-plugin"},
 		})
 		require.NoError(t, err)
+		_ch19 := make(chan messages.McpCallToolResp, 1)
+		_us19, err := sdk.SubscribeTo[messages.McpCallToolResp](rt, ctx, _pr19.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { _ch19 <- r })
+		require.NoError(t, err)
+		defer _us19()
+		var resp messages.McpCallToolResp
+		select {
+		case resp = <-_ch19:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 }
@@ -773,24 +925,54 @@ func TestPluginSurface_Registry(t *testing.T) {
 	defer cancel()
 
 	t.Run("Has", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.RegistryHasMsg, messages.RegistryHasResp](rt, ctx, messages.RegistryHasMsg{
+		_pr20, err := sdk.Publish(rt, ctx, messages.RegistryHasMsg{
 			Category: "provider", Name: "nonexistent",
 		})
 		require.NoError(t, err)
+		_ch20 := make(chan messages.RegistryHasResp, 1)
+		_us20, err := sdk.SubscribeTo[messages.RegistryHasResp](rt, ctx, _pr20.ReplyTo, func(r messages.RegistryHasResp, m messages.Message) { _ch20 <- r })
+		require.NoError(t, err)
+		defer _us20()
+		var resp messages.RegistryHasResp
+		select {
+		case resp = <-_ch20:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.False(t, resp.Found)
 	})
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.RegistryListMsg, messages.RegistryListResp](rt, ctx, messages.RegistryListMsg{
+		_pr21, err := sdk.Publish(rt, ctx, messages.RegistryListMsg{
 			Category: "provider",
 		})
 		require.NoError(t, err)
+		_ch21 := make(chan messages.RegistryListResp, 1)
+		_us21, err := sdk.SubscribeTo[messages.RegistryListResp](rt, ctx, _pr21.ReplyTo, func(r messages.RegistryListResp, m messages.Message) { _ch21 <- r })
+		require.NoError(t, err)
+		defer _us21()
+		var resp messages.RegistryListResp
+		select {
+		case resp = <-_ch21:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Items)
 	})
 	t.Run("Resolve", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.RegistryResolveMsg, messages.RegistryResolveResp](rt, ctx, messages.RegistryResolveMsg{
+		_pr22, err := sdk.Publish(rt, ctx, messages.RegistryResolveMsg{
 			Category: "provider", Name: "nonexistent",
 		})
 		require.NoError(t, err)
+		_ch22 := make(chan messages.RegistryResolveResp, 1)
+		_us22, err := sdk.SubscribeTo[messages.RegistryResolveResp](rt, ctx, _pr22.ReplyTo, func(r messages.RegistryResolveResp, m messages.Message) { _ch22 <- r })
+		require.NoError(t, err)
+		defer _us22()
+		var resp messages.RegistryResolveResp
+		select {
+		case resp = <-_ch22:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		// Not found — config should be null/empty
 		assert.True(t, len(resp.Config) == 0 || string(resp.Config) == "null")
 	})
@@ -817,10 +999,20 @@ func TestPluginSurface_Vectors(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("CreateIndex", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.VectorCreateIndexMsg, messages.VectorCreateIndexResp](rt, ctx, messages.VectorCreateIndexMsg{
+		_pr23, err := sdk.Publish(rt, ctx, messages.VectorCreateIndexMsg{
 			Name: "plugin_vec_idx", Dimension: 3, Metric: "cosine",
 		})
 		require.NoError(t, err)
+		_ch23 := make(chan messages.VectorCreateIndexResp, 1)
+		_us23, err := sdk.SubscribeTo[messages.VectorCreateIndexResp](rt, ctx, _pr23.ReplyTo, func(r messages.VectorCreateIndexResp, m messages.Message) { _ch23 <- r })
+		require.NoError(t, err)
+		defer _us23()
+		var resp messages.VectorCreateIndexResp
+		select {
+		case resp = <-_ch23:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 	t.Run("ListIndexes", func(t *testing.T) {
@@ -839,10 +1031,20 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		assert.NotNil(t, resp.Indexes)
 	})
 	t.Run("DeleteIndex", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.VectorDeleteIndexMsg, messages.VectorDeleteIndexResp](rt, ctx, messages.VectorDeleteIndexMsg{
+		_pr24, err := sdk.Publish(rt, ctx, messages.VectorDeleteIndexMsg{
 			Name: "plugin_vec_idx",
 		})
 		require.NoError(t, err)
+		_ch24 := make(chan messages.VectorDeleteIndexResp, 1)
+		_us24, err := sdk.SubscribeTo[messages.VectorDeleteIndexResp](rt, ctx, _pr24.ReplyTo, func(r messages.VectorDeleteIndexResp, m messages.Message) { _ch24 <- r })
+		require.NoError(t, err)
+		defer _us24()
+		var resp messages.VectorDeleteIndexResp
+		select {
+		case resp = <-_ch24:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 }

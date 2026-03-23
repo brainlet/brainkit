@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// crossKitCall is a helper for typed cross-Kit PublishAwaitTo calls.
+// crossKitCall is a helper for typed cross-Kit PublishTo calls.
 // Kit A calls an operation on Kit B's namespace.
 func crossKitCall[Req, Resp messages.BrainkitMessage](t *testing.T, kitA sdk.Runtime, ctx context.Context, targetNS string, req Req) Resp {
 	t.Helper()
@@ -334,7 +334,7 @@ func TestCrossKit_Workflows(t *testing.T) {
 			defer cancel()
 
 			// Deploy workflow on Kit B
-			_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](kitB, ctx, messages.KitDeployMsg{
+			_pr1, err := sdk.Publish(kitB, ctx, messages.KitDeployMsg{
 				Source: "crosskit-wf.ts",
 				Code: `
 					const wf = createWorkflow({
@@ -347,6 +347,14 @@ func TestCrossKit_Workflows(t *testing.T) {
 				`,
 			})
 			require.NoError(t, err)
+			_ch1 := make(chan messages.KitDeployResp, 1)
+			_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+			defer _us1()
+			select {
+			case <-_ch1:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			t.Run("Run_Remote", func(t *testing.T) {
 				resp := crossKitCall[messages.WorkflowRunMsg, messages.WorkflowRunResp](t, kitA, ctx, "kit-b", messages.WorkflowRunMsg{

@@ -74,12 +74,22 @@ func TestGoDirect_MCP(t *testing.T) {
 			})
 
 			t.Run("CallTool", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.McpCallToolMsg, messages.McpCallToolResp](rt, ctx, messages.McpCallToolMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.McpCallToolMsg{
 					Server: "testmcp",
 					Tool:   "echo",
 					Args:   map[string]any{"message": "hello from mcp test"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.McpCallToolResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.McpCallToolResp](rt, ctx, _pr1.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.McpCallToolResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				var result map[string]string
 				json.Unmarshal(resp.Result, &result)
@@ -90,11 +100,21 @@ func TestGoDirect_MCP(t *testing.T) {
 			t.Run("CallTool_via_registry", func(t *testing.T) {
 				// MCP tools are also registered in the tool registry — verify they're callable
 				// via tools.call (which looks them up by short name)
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "echo",
 					Input: map[string]any{"message": "via registry"},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolCallResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				var result map[string]string
 				json.Unmarshal(resp.Result, &result)

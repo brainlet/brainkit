@@ -76,7 +76,7 @@ func TestCross_WASM_Plugin(t *testing.T) {
 				defer wasmCancel()
 
 				// Compile WASM that calls the plugin's "concat" tool via invokeAsync
-				_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](node, wasmCtx, messages.WasmCompileMsg{
+				_pr1, err := sdk.Publish(node, wasmCtx, messages.WasmCompileMsg{
 					Source: `
 						import { _invokeAsync, _setState } from "brainkit";
 
@@ -92,6 +92,14 @@ func TestCross_WASM_Plugin(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "wasm-calls-plugin"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmCompileResp, 1)
+				_us1, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
+				defer _us1()
+				select {
+				case <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr1, err := sdk.Publish(node, wasmCtx, messages.WasmRunMsg{ModuleID: "wasm-calls-plugin"})
 				require.NoError(t, err)

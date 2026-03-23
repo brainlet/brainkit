@@ -22,7 +22,7 @@ func TestCross_TS_WASM(t *testing.T) {
 
 			t.Run("WASM_calls_TS_registered_tool", func(t *testing.T) {
 				// TS surface: deploy .ts that creates a tool
-				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "ts-for-wasm.ts",
 					Code: `
 						const tsTool = createTool({
@@ -35,9 +35,17 @@ func TestCross_TS_WASM(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.KitDeployResp, 1)
+				_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+				defer _us1()
+				select {
+				case <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// WASM surface: compile module that calls the TS tool via invokeAsync
-				_, err = sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _invokeAsync, _setState } from "brainkit";
 
@@ -53,6 +61,14 @@ func TestCross_TS_WASM(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "wasm-calls-ts"},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.WasmCompileResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "wasm-calls-ts"})
 				require.NoError(t, err)
@@ -75,7 +91,7 @@ func TestCross_TS_WASM(t *testing.T) {
 			t.Run("TS_deploys_WASM_shard_and_injects_event", func(t *testing.T) {
 				// First compile the WASM shard via Go (TS can't directly compile, but
 				// the test proves the wiring: compile → deploy → inject via Go → shard responds)
-				_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode, _reply } from "brainkit";
 
@@ -91,6 +107,14 @@ func TestCross_TS_WASM(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "ts-wasm-shard"},
 				})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.WasmCompileResp, 1)
+				_us3, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
+				defer _us3()
+				select {
+				case <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Deploy the shard
 				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "ts-wasm-shard"})

@@ -35,11 +35,19 @@ func TestLogHandler_TSCompartment(t *testing.T) {
 	defer cancel()
 
 	// Deploy .ts that logs at different levels
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](k, ctx, messages.KitDeployMsg{
+	_pr1, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
 		Source: "log-test.ts",
 		Code:   `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`,
 	})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.KitDeployResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Check captured logs
 	mu.Lock()
@@ -77,17 +85,33 @@ func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 	defer cancel()
 
 	// Deploy two different .ts files
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](k, ctx, messages.KitDeployMsg{
+	_pr2, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
 		Source: "file-a.ts",
 		Code:   `console.log("from file A");`,
 	})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.KitDeployResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
+	select {
+	case <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](k, ctx, messages.KitDeployMsg{
+	_pr3, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
 		Source: "file-b.ts",
 		Code:   `console.log("from file B");`,
 	})
 	require.NoError(t, err)
+	_ch3 := make(chan messages.KitDeployResp, 1)
+	_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+	defer _us3()
+	select {
+	case <-_ch3:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -126,7 +150,7 @@ func TestLogHandler_WASMModule(t *testing.T) {
 	defer cancel()
 
 	// Compile and run a WASM module that logs
-	_, err = sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](k, ctx, messages.WasmCompileMsg{
+	_pr4, err := sdk.Publish(k, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _log } from "brainkit";
 			export function run(): i32 {
@@ -138,6 +162,14 @@ func TestLogHandler_WASMModule(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "log-mod"},
 	})
 	require.NoError(t, err)
+	_ch4 := make(chan messages.WasmCompileResp, 1)
+	_us4, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch4 <- r })
+	defer _us4()
+	select {
+	case <-_ch4:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	_pr1, err := sdk.Publish(k, ctx, messages.WasmRunMsg{ModuleID: "log-mod"})
 	require.NoError(t, err)
@@ -179,9 +211,17 @@ func TestLogHandler_NilDefault(t *testing.T) {
 	defer cancel()
 
 	// Should not panic
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](k, ctx, messages.KitDeployMsg{
+	_pr5, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
 		Source: "nil-test.ts",
 		Code:   `console.log("should not panic");`,
 	})
 	require.NoError(t, err)
+	_ch5 := make(chan messages.KitDeployResp, 1)
+	_us5, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch5 <- r })
+	defer _us5()
+	select {
+	case <-_ch5:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 }

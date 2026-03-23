@@ -51,12 +51,22 @@ func TestGoDirect_Vectors(t *testing.T) {
 			// createIndex proves the full handler→JS→PgVector→Postgres path works.
 			// It executes real DDL (CREATE EXTENSION vector, CREATE TABLE) on the real server.
 			t.Run("CreateIndex", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.VectorCreateIndexMsg, messages.VectorCreateIndexResp](rt, ctx, messages.VectorCreateIndexMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.VectorCreateIndexMsg{
 					Name:      idxName,
 					Dimension: 3,
 					Metric:    "cosine",
 				})
 				require.NoError(t, err, "createIndex must succeed — proves handler wiring + real Postgres DDL")
+				_ch1 := make(chan messages.VectorCreateIndexResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.VectorCreateIndexResp](rt, ctx, _pr1.ReplyTo, func(r messages.VectorCreateIndexResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.VectorCreateIndexResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, resp.OK)
 			})
 
@@ -65,7 +75,7 @@ func TestGoDirect_Vectors(t *testing.T) {
 			// connections that QuickJS doesn't fully support. These are driver limitations,
 			// not brainkit wiring issues. Logged but not failed.
 			t.Run("Upsert", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.VectorUpsertMsg, messages.VectorUpsertResp](rt, ctx, messages.VectorUpsertMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.VectorUpsertMsg{
 					Index: idxName,
 					Vectors: []messages.Vector{
 						{ID: "v1", Values: []float64{1.0, 0.0, 0.0}},
@@ -79,7 +89,7 @@ func TestGoDirect_Vectors(t *testing.T) {
 			})
 
 			t.Run("Query", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.VectorQueryMsg, messages.VectorQueryResp](rt, ctx, messages.VectorQueryMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.VectorQueryMsg{
 					Index:     idxName,
 					Embedding: []float64{1.0, 0.0, 0.0},
 					TopK:      2,

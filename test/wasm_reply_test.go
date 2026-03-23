@@ -21,7 +21,7 @@ func TestWASM_Reply(t *testing.T) {
 	defer cancel()
 
 	// Compile a shard that replies with a JSON payload
-	_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+	_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _on, _setMode, _reply } from "brainkit";
 
@@ -37,6 +37,14 @@ func TestWASM_Reply(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "reply-shard"},
 	})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.WasmCompileResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Deploy
 	_pr1, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "reply-shard"})
@@ -66,7 +74,7 @@ func TestWASM_Reply_WithState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _on, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
 
@@ -90,6 +98,14 @@ func TestWASM_Reply_WithState(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "counter-shard"},
 	})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.WasmCompileResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
+	select {
+	case <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "counter-shard"})
 	require.NoError(t, err)

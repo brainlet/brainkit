@@ -24,7 +24,7 @@ func TestCross_WASM_Go(t *testing.T) {
 				// Go surface: "add" tool is already registered
 
 				// WASM surface: compile module that calls Go tool via invokeAsync
-				_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _invokeAsync, _setState } from "brainkit";
 
@@ -40,6 +40,14 @@ func TestCross_WASM_Go(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "cross-wasm-go"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmCompileResp, 1)
+				_us1, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
+				defer _us1()
+				select {
+				case <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Run the WASM module — it calls the Go "add" tool and the callback fires
 				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "cross-wasm-go"})
@@ -60,7 +68,7 @@ func TestCross_WASM_Go(t *testing.T) {
 
 			t.Run("Go_injects_event_WASM_shard_handles", func(t *testing.T) {
 				// WASM surface: compile and deploy a shard that handles events
-				_, err := sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode, _reply } from "brainkit";
 
@@ -76,6 +84,14 @@ func TestCross_WASM_Go(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "cross-go-shard"},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.WasmCompileResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "cross-go-shard"})
 				require.NoError(t, err)

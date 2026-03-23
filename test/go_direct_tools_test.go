@@ -70,29 +70,49 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Call_Echo", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "echo",
 					Input: map[string]any{"message": "hello world"},
 				})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolCallResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				var result map[string]string
 				json.Unmarshal(resp.Result, &result)
 				assert.Equal(t, "hello world", result["echoed"])
 			})
 
 			t.Run("Call_Add", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "add",
 					Input: map[string]any{"a": 17, "b": 25},
 				})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolCallResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolCallResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				var result map[string]int
 				json.Unmarshal(resp.Result, &result)
 				assert.Equal(t, 42, result["sum"])
 			})
 
 			t.Run("Call_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "nonexistent",
 					Input: map[string]any{},
 				})
