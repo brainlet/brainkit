@@ -211,10 +211,14 @@ func TestPluginSurface_Agents(t *testing.T) {
 	defer cancel()
 
 	// Deploy an agent so we can test all operations
-	sdk.Publish(node, ctx, messages.KitDeployMsg{
+	adpr, _ := sdk.Publish(node, ctx, messages.KitDeployMsg{
 		Source: "plugin-agent-setup.ts",
 		Code:   `agent({ name: "plugin-agent", instructions: "Reply ok", model: "openai/gpt-4o-mini" });`,
 	})
+	adch := make(chan messages.KitDeployResp, 1)
+	adun, _ := sdk.SubscribeTo[messages.KitDeployResp](node, ctx, adpr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { adch <- r })
+	defer adun()
+	select { case <-adch: case <-ctx.Done(): t.Fatal("timeout") }
 	defer sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-agent-setup.ts"})
 
 	t.Run("List", func(t *testing.T) {
@@ -599,13 +603,17 @@ func TestPluginSurface_WASM(t *testing.T) {
 		assert.True(t, resp.Removed)
 	})
 	t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
-		sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+		wcpr, _ := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 			Source: `
 				import { _on, _setMode } from "brainkit";
 				export function init(): void { _setMode("stateless"); _on("plugin.ev", "h"); }
 				export function h(t: usize, p: usize): void {}
 			`, Options: &messages.WasmCompileOpts{Name: "plugin-deploy-mod"},
 		})
+		wcch := make(chan messages.WasmCompileResp, 1)
+		wcun, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, wcpr.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { wcch <- r })
+		defer wcun()
+		select { case <-wcch: case <-ctx.Done(): t.Fatal("timeout") }
 		_pr30, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "plugin-deploy-mod"})
 		require.NoError(t, err)
 		_ch30 := make(chan messages.WasmDeployResp, 1)
