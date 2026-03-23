@@ -47,15 +47,19 @@ func TestAsync_CorrelationIDFiltering(t *testing.T) {
 func TestAsync_MultipleInFlight(t *testing.T) {
 	rt := newTestKernel(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Fire 3 concurrent PublishAwait calls
+	// Fire 10 concurrent PublishAwait calls — stress test for correlationID filtering.
+	// GoChannel fan-out delivers every result to every subscriber. Each goroutine
+	// must filter by its own correlationID. The resultCh buffer (16) must handle
+	// receiving other goroutines' results without dropping its own.
+	const n = 10
 	var wg sync.WaitGroup
-	results := make([]messages.ToolListResp, 3)
-	errors := make([]error, 3)
+	results := make([]messages.ToolListResp, n)
+	errors := make([]error, n)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -65,7 +69,7 @@ func TestAsync_MultipleInFlight(t *testing.T) {
 
 	wg.Wait()
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < n; i++ {
 		assert.NoError(t, errors[i], "request %d should succeed", i)
 		assert.NotNil(t, results[i].Tools, "request %d should have tools", i)
 	}

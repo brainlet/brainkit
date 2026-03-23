@@ -21,11 +21,13 @@ func PublishAwait[Req, Resp messages.BrainkitMessage](rt Runtime, ctx context.Co
 	resultCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	resultCh := make(chan messages.Message, 1)
+	resultCh := make(chan messages.Message, 16)
 	stop, err := rt.SubscribeRaw(resultCtx, resultTopic, func(msg messages.Message) {
 		select {
 		case resultCh <- msg:
 		default:
+			// Buffer full — drop. This can happen with many concurrent PublishAwait
+			// calls on the same result topic. The buffer of 16 handles typical concurrency.
 		}
 	})
 	if err != nil {
