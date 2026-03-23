@@ -34,6 +34,7 @@ type Kernel struct {
 	wasmDomainInst  *WASMDomain
 	lifecycle       *LifecycleDomain
 	mcpDomainInst   *MCPDomain
+	registryDomain  *RegistryDomain
 
 	Tools     *toolreg.ToolRegistry
 	mcp       *mcppkg.MCPManager
@@ -174,6 +175,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.wasm = newWASMService(kernel)
 	kernel.wasmDomainInst = newWASMDomain(kernel, kernel.wasm)
 	kernel.lifecycle = newLifecycleDomain(kernel)
+	kernel.registryDomain = newRegistryDomain(kernel)
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()
@@ -587,7 +589,7 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
 		return await globalThis.__kitRunWithSource(%q, async () => {
-			const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, ai, wasm, tools, tool, bus, agents, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness, vectorStore, storage, model, provider, registry } = globalThis.__kit;
+			const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, fs, ai, wasm, tools, tool, bus, agents, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness, vectorStore, storage, model, provider, registry } = globalThis.__kit;
 			%s
 		});
 	})()`, filename, code)

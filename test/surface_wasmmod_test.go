@@ -214,3 +214,54 @@ func TestWASMSurface_MCP(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-mcp-list", "mcp.listTools", `{}`)
 	})
 }
+
+// --- Registry domain from WASM ---
+
+func TestWASMSurface_Registry(t *testing.T) {
+	tk := newTestKernelFull(t)
+	rt := sdk.Runtime(tk)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	t.Run("Has", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-reg-has", "registry.has", `{"category":"provider","name":"nonexistent"}`)
+	})
+	t.Run("List", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-reg-list", "registry.list", `{"category":"provider"}`)
+	})
+	t.Run("Resolve", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-reg-resolve", "registry.resolve", `{"category":"provider","name":"openai"}`)
+	})
+}
+
+// --- Vectors domain from WASM ---
+
+func TestWASMSurface_Vectors(t *testing.T) {
+	tk := newTestKernelWithStorage(t)
+	rt := sdk.Runtime(tk)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// Vectors need a store initialized in JS. Use our embedded storage.
+	_, err := tk.EvalTS(ctx, "__wasm_vec_init.ts", `
+		var url = globalThis.__brainkit_storages && globalThis.__brainkit_storages["default"];
+		if (url) {
+			try {
+				var vs = new LibSQLVector({ id: "wasm_vec", connectionUrl: url });
+				globalThis.__kit_vector_store = vs;
+			} catch(e) {}
+		}
+		return "ok";
+	`)
+	require.NoError(t, err)
+
+	// vectors.createIndex goes through the handler which calls evalDomain → JS.
+	// Even if the vector store fails (no vector extensions in embedded SQLite),
+	// the invokeAsync callback fires — proving the WASM→handler path works.
+	t.Run("CreateIndex", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-vec-create", "vectors.createIndex", `{"name":"wasm_idx","dimension":3,"metric":"cosine"}`)
+	})
+	t.Run("ListIndexes", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-vec-list", "vectors.listIndexes", `{}`)
+	})
+}

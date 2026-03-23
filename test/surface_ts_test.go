@@ -95,30 +95,39 @@ func TestTSSurface_FS(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// FS operations aren't directly in the kit module — deploy .ts that uses bridgeRequestAsync
-	// via tools.call to a Go-registered tool that wraps fs operations.
-	// Simpler: deploy .ts that writes/reads via Go bridges.
-	// Actually, fs has no JS API in kit_runtime.js. TS code accesses fs through Go tools.
-	// We test by deploying .ts that creates tools which use the Workspace/LocalFilesystem APIs.
-	// But the simplest proof: .ts can call Go-registered fs-wrapper tools.
-
-	// Register Go-side wrapper tools for FS
-	_, err := sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](tk, ctx, messages.FsWriteMsg{Path: "ts-test.txt", Data: "hello from Go"})
-	require.NoError(t, err)
-
-	// Deploy .ts that reads the file via tools (testing the TS→Go→FS path)
-	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
 		Source: "ts-fs-surface.ts",
 		Code: `
-			const tsReadFile = createTool({ id: "ts-read-file", execute: async ({ context: input }) => {
-				// Use tools.call to invoke a Go tool that reads the file
-				// FS operations go through Go — .ts proves the bridge works
-				return { note: "FS has no JS API — tested via Go Direct surface" };
+			const tsFsAll = createTool({ id: "ts-fs-all", execute: async () => {
+				await fs.write("ts-written.txt", "hello from ts");
+				var read = await fs.read("ts-written.txt");
+				await fs.mkdir("ts-dir");
+				await fs.write("ts-dir/a.txt", "a");
+				var list = await fs.list("ts-dir");
+				var stat = await fs.stat("ts-written.txt");
+				await fs.delete("ts-written.txt");
+				return {
+					written: true,
+					readData: read.data,
+					listed: (list.files || []).length,
+					statSize: stat.size,
+					deleted: true,
+				};
 			}});
 		`,
 	})
 	require.NoError(t, err)
-	t.Log("FS domain: no JS-side FS API in kit_runtime.js — covered by Go Direct tests (go_direct_fs_test.go)")
+	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-fs-surface.ts"})
+
+	t.Run("AllOperations", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-fs-all", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, "hello from ts", result["readData"])
+		assert.Equal(t, true, result["written"])
+		assert.Equal(t, true, result["deleted"])
+	})
 }
 
 // --- Agents domain from TS ---

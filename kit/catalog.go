@@ -306,6 +306,15 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
 				return kernel.mcpDomainInst.CallTool(ctx, req)
 			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryHasMsg) (*messages.RegistryHasResp, error) {
+				return kernel.registryDomain.Has(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryListMsg) (*messages.RegistryListResp, error) {
+				return kernel.registryDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
+				return kernel.registryDomain.Resolve(ctx, req)
+			}),
 			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
 				return node.processPluginManifest(ctx, req)
 			}),

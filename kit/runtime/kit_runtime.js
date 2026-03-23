@@ -1550,6 +1550,32 @@
     streamObject: embed.streamObject,
 
     // PLATFORM
+    fs: {
+      read: async function(path) {
+        var raw = await bridgeRequestAsync("fs.read", { path: path });
+        return parseBridgeResponse(raw);
+      },
+      write: async function(path, data) {
+        var raw = await bridgeRequestAsync("fs.write", { path: path, data: data });
+        return parseBridgeResponse(raw);
+      },
+      list: async function(path, pattern) {
+        var raw = await bridgeRequestAsync("fs.list", { path: path || ".", pattern: pattern || "" });
+        return parseBridgeResponse(raw);
+      },
+      stat: async function(path) {
+        var raw = await bridgeRequestAsync("fs.stat", { path: path });
+        return parseBridgeResponse(raw);
+      },
+      delete: async function(path) {
+        var raw = await bridgeRequestAsync("fs.delete", { path: path });
+        return parseBridgeResponse(raw);
+      },
+      mkdir: async function(path) {
+        var raw = await bridgeRequestAsync("fs.mkdir", { path: path });
+        return parseBridgeResponse(raw);
+      },
+    },
     ai: ai,
     wasm: wasm,
     tools: tools,
@@ -1814,6 +1840,7 @@
       z: _kitObj.z,
 
       // Runtime operations (pass-through)
+      fs: _kitObj.fs,
       ai: _kitObj.ai,
       tools: _kitObj.tools,
       tool: _kitObj.tool,

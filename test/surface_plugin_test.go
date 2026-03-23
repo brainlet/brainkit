@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -319,5 +320,65 @@ func TestPluginSurface_MCP(t *testing.T) {
 		// No MCP servers configured — should return error
 		_, err := sdk.PublishAwait[messages.McpListToolsMsg, messages.McpListToolsResp](rt, ctx, messages.McpListToolsMsg{})
 		assert.Error(t, err, "no MCP servers configured")
+	})
+}
+
+// --- Registry domain from Plugin ---
+
+func TestPluginSurface_Registry(t *testing.T) {
+	rt := newTestNode(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	t.Run("Has", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.RegistryHasMsg, messages.RegistryHasResp](rt, ctx, messages.RegistryHasMsg{
+			Category: "provider", Name: "nonexistent",
+		})
+		require.NoError(t, err)
+		assert.False(t, resp.Found)
+	})
+	t.Run("List", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.RegistryListMsg, messages.RegistryListResp](rt, ctx, messages.RegistryListMsg{
+			Category: "provider",
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Items)
+	})
+	t.Run("Resolve", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.RegistryResolveMsg, messages.RegistryResolveResp](rt, ctx, messages.RegistryResolveMsg{
+			Category: "provider", Name: "nonexistent",
+		})
+		require.NoError(t, err)
+		// Not found — config should be null/empty
+		assert.True(t, len(resp.Config) == 0 || string(resp.Config) == "null")
+	})
+}
+
+// --- Vectors domain from Plugin ---
+
+func TestPluginSurface_Vectors(t *testing.T) {
+	if !podmanAvailable() {
+		t.Skip("Podman required for pgvector")
+	}
+	pgConnStr := startPgVectorContainer(t)
+
+	rt := newTestNode(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	node := rt.(*kit.Node)
+	_, err := node.Kernel.EvalTS(ctx, "__plugin_vec_init.ts", fmt.Sprintf(`
+		var vs = new PgVector({ id: "plugin_vec", connectionString: %q });
+		globalThis.__kit_vector_store = vs;
+		return "ok";
+	`, pgConnStr))
+	require.NoError(t, err)
+
+	t.Run("CreateIndex", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.VectorCreateIndexMsg, messages.VectorCreateIndexResp](rt, ctx, messages.VectorCreateIndexMsg{
+			Name: "plugin_vec_idx", Dimension: 3, Metric: "cosine",
+		})
+		require.NoError(t, err)
+		assert.True(t, resp.OK)
 	})
 }

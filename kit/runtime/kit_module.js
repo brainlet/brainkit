@@ -5,6 +5,7 @@ export const createWorkflow = globalThis.__kit.createWorkflow;
 export const createStep = globalThis.__kit.createStep;
 export const createMemory = globalThis.__kit.createMemory;
 export const z = globalThis.__kit.z;
+export const fs = globalThis.__kit.fs;
 export const ai = globalThis.__kit.ai;
 export const wasm = globalThis.__kit.wasm;
 export const tools = globalThis.__kit.tools;
