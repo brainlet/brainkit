@@ -270,7 +270,7 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 					invokeCtx = ctx
 				}
 
-				spec, ok := commandCatalog().Lookup(topic)
+				_, ok := commandCatalog().Lookup(topic)
 				if !ok {
 					// Always call back, even on error — use generic error shape
 					errPayload := `{"error":"unknown command topic: ` + topic + `"}`
@@ -281,11 +281,9 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 				}
 
 				resultPayload, err := invoker.Invoke(invokeCtx, topic, json.RawMessage(payload))
-				resultTopic := spec.resultTopic
+				resultTopic := topic + ".result" // convention for WASM callbacks
 				if err != nil {
-					// Use encodeFailure to produce the full typed response with error field,
-					// matching the shape WASM modules expect from normal ResultMeta responses.
-					resultPayload, _ = spec.encodeFailure(err)
+					resultPayload, _ = json.Marshal(map[string]string{"error": err.Error()})
 				}
 
 				// Always call back — uses callExportedFunc for pin/unpin/call lifecycle

@@ -5,76 +5,78 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/google/uuid"
 )
 
-// PublishAwait sends a typed command and blocks until the correlated result arrives.
-// Internally: SubscribeRaw (waits until active) → PublishRaw → filter by correlationID.
-func PublishAwait[Req, Resp messages.BrainkitMessage](rt Runtime, ctx context.Context, req Req) (Resp, error) {
-	var resp Resp
-	payload, err := json.Marshal(req)
-	if err != nil {
-		return resp, fmt.Errorf("marshal %T: %w", req, err)
-	}
-
-	resultTopic := resp.BusTopic()
-	resultCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	resultCh := make(chan messages.Message, 16)
-	stop, err := rt.SubscribeRaw(resultCtx, resultTopic, func(msg messages.Message) {
-		select {
-		case resultCh <- msg:
-		default:
-			// Buffer full — drop. This can happen with many concurrent PublishAwait
-			// calls on the same result topic. The buffer of 16 handles typical concurrency.
-		}
-	})
-	if err != nil {
-		return resp, err
-	}
-	defer stop()
-
-	// Subscribe is active (contract guarantee). Now publish.
-	correlationID, err := rt.PublishRaw(ctx, req.BusTopic(), payload)
-	if err != nil {
-		return resp, err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return resp, ctx.Err()
-		case msg := <-resultCh:
-			if msg.Metadata["correlationId"] != correlationID {
-				continue
-			}
-			cancel()
-			if err := json.Unmarshal(msg.Payload, &resp); err != nil {
-				return resp, fmt.Errorf("unmarshal %T: %w", resp, err)
-			}
-			if errMsg := messages.ResultErrorOf(resp); errMsg != "" {
-				return resp, fmt.Errorf("%s", errMsg)
-			}
-			return resp, nil
-		}
-	}
+// PublishResult contains metadata about a published command.
+type PublishResult struct {
+	MessageID     string // Watermill message UUID
+	CorrelationID string // for response filtering
+	ReplyTo       string // where responses will be sent (always populated for commands)
+	Topic         string // where the message was published
 }
 
-// Publish sends a typed fire-and-forget message. Returns correlationID.
-func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) (string, error) {
+type publishConfig struct {
+	replyTo string
+}
+
+// PublishOption configures a Publish call.
+type PublishOption func(*publishConfig)
+
+// WithReplyTo overrides the auto-generated reply topic.
+func WithReplyTo(topic string) PublishOption {
+	return func(c *publishConfig) { c.replyTo = topic }
+}
+
+// Publish sends a typed command. Always generates a replyTo for response routing.
+// Default convention: <topic>.reply.<uuid>
+func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error) {
+	cfg := publishConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	topic := msg.BusTopic()
+	correlationID := uuid.NewString()
+	replyTo := cfg.replyTo
+	if replyTo == "" {
+		replyTo = topic + ".reply." + correlationID
+	}
+
 	payload, err := json.Marshal(msg)
 	if err != nil {
-		return "", fmt.Errorf("marshal %T: %w", msg, err)
+		return PublishResult{}, fmt.Errorf("marshal %T: %w", msg, err)
 	}
-	return rt.PublishRaw(ctx, msg.BusTopic(), payload)
+
+	ctx = messaging.WithPublishMeta(ctx, correlationID, replyTo)
+	msgID, err := rt.PublishRaw(ctx, topic, payload)
+	if err != nil {
+		return PublishResult{}, err
+	}
+
+	return PublishResult{
+		MessageID:     msgID,
+		CorrelationID: correlationID,
+		ReplyTo:       replyTo,
+		Topic:         topic,
+	}, nil
 }
 
-// Subscribe listens for typed messages on the message's topic.
-// Handler receives the typed message and the raw Message for metadata access (correlationID, callerID, etc).
-func Subscribe[T messages.BrainkitMessage](rt Runtime, ctx context.Context, handler func(T, messages.Message)) (func(), error) {
-	var zero T
-	return rt.SubscribeRaw(ctx, zero.BusTopic(), func(msg messages.Message) {
+// Emit sends a fire-and-forget event. No replyTo, no response expected.
+func Emit[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal %T: %w", msg, err)
+	}
+	_, err = rt.PublishRaw(ctx, msg.BusTopic(), payload)
+	return err
+}
+
+// SubscribeTo listens for typed messages on a specific topic.
+func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, messages.Message)) (func(), error) {
+	return rt.SubscribeRaw(ctx, topic, func(msg messages.Message) {
 		var typed T
 		if err := json.Unmarshal(msg.Payload, &typed); err != nil {
 			return

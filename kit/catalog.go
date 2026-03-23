@@ -12,28 +12,20 @@ import (
 )
 
 type commandSpec struct {
-	topic         string
-	resultTopic   string
-	validate      func(json.RawMessage) error
-	encodeFailure func(error) (json.RawMessage, error)
-	invokeKernel  func(context.Context, *Kernel, json.RawMessage) (json.RawMessage, error)
-	invokeNode    func(context.Context, *Node, json.RawMessage) (json.RawMessage, error)
+	topic        string
+	validate     func(json.RawMessage) error
+	invokeKernel func(context.Context, *Kernel, json.RawMessage) (json.RawMessage, error)
+	invokeNode   func(context.Context, *Node, json.RawMessage) (json.RawMessage, error)
 }
 
-const legacyResultSuffix = "." + "resp"
 
-func kernelCommand[Req, Resp messages.BrainkitMessage](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
+func kernelCommand[Req messages.BrainkitMessage, Resp any](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
 	var req Req
-	var resp Resp
 	return commandSpec{
-		topic:       req.BusTopic(),
-		resultTopic: resp.BusTopic(),
+		topic: req.BusTopic(),
 		validate: func(payload json.RawMessage) error {
 			_, err := decodeCommand[Req](payload, req.BusTopic())
 			return err
-		},
-		encodeFailure: func(err error) (json.RawMessage, error) {
-			return encodeCommandFailure[Resp](err)
 		},
 		invokeKernel: func(ctx context.Context, kernel *Kernel, payload json.RawMessage) (json.RawMessage, error) {
 			decoded, err := decodeCommand[Req](payload, req.BusTopic())
@@ -52,18 +44,13 @@ func kernelCommand[Req, Resp messages.BrainkitMessage](handler func(context.Cont
 	}
 }
 
-func nodeCommand[Req, Resp messages.BrainkitMessage](handler func(context.Context, *Node, Req) (*Resp, error)) commandSpec {
+func nodeCommand[Req messages.BrainkitMessage, Resp any](handler func(context.Context, *Node, Req) (*Resp, error)) commandSpec {
 	var req Req
-	var resp Resp
 	return commandSpec{
-		topic:       req.BusTopic(),
-		resultTopic: resp.BusTopic(),
+		topic: req.BusTopic(),
 		validate: func(payload json.RawMessage) error {
 			_, err := decodeCommand[Req](payload, req.BusTopic())
 			return err
-		},
-		encodeFailure: func(err error) (json.RawMessage, error) {
-			return encodeCommandFailure[Resp](err)
 		},
 		invokeNode: func(ctx context.Context, node *Node, payload json.RawMessage) (json.RawMessage, error) {
 			decoded, err := decodeCommand[Req](payload, req.BusTopic())
@@ -90,15 +77,7 @@ func decodeCommand[T any](payload json.RawMessage, topic string) (T, error) {
 	return out, nil
 }
 
-func encodeCommandFailure[Resp any](err error) (json.RawMessage, error) {
-	var out Resp
-	carrier, ok := any(&out).(interface{ SetError(string) })
-	if !ok {
-		return nil, fmt.Errorf("command result %T does not embed messages.ResultMeta", out)
-	}
-	carrier.SetError(err.Error())
-	return json.Marshal(out)
-}
+
 
 type commandRegistry struct {
 	ordered []commandSpec
@@ -131,10 +110,8 @@ func (r *commandRegistry) BindingsForNode(node *Node) []messaging.RawCommandBind
 			continue
 		}
 		bindings = append(bindings, messaging.RawCommandBinding{
-			Name:          spec.topic,
-			Topic:         spec.topic,
-			ResultTopic:   spec.resultTopic,
-			EncodeFailure: spec.encodeFailure,
+			Name:  spec.topic,
+			Topic: spec.topic,
 			Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 				if spec.invokeNode != nil {
 					return spec.invokeNode(ctx, node, payload)
@@ -328,11 +305,8 @@ func commandCatalog() *commandRegistry {
 
 		byTopic := make(map[string]commandSpec, len(specs))
 		for _, spec := range specs {
-			if strings.HasSuffix(spec.topic, legacyResultSuffix) || strings.HasSuffix(spec.topic, ".result") {
+			if strings.HasSuffix(spec.topic, ".result") {
 				panic(fmt.Sprintf("invalid command topic registered: %s", spec.topic))
-			}
-			if strings.HasSuffix(spec.resultTopic, legacyResultSuffix) || !strings.HasSuffix(spec.resultTopic, ".result") {
-				panic(fmt.Sprintf("invalid command result topic registered: %s", spec.resultTopic))
 			}
 			if _, exists := byTopic[spec.topic]; exists {
 				panic(fmt.Sprintf("duplicate command topic registered: %s", spec.topic))
@@ -359,10 +333,8 @@ func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
 			continue // node-only command
 		}
 		bindings = append(bindings, messaging.RawCommandBinding{
-			Name:          spec.topic,
-			Topic:         spec.topic,
-			ResultTopic:   spec.resultTopic,
-			EncodeFailure: spec.encodeFailure,
+			Name:  spec.topic,
+			Topic: spec.topic,
 			Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 				return spec.invokeKernel(ctx, kernel, payload)
 			},

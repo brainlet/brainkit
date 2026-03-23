@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -101,7 +102,7 @@ func (p *Plugin) Run() error {
 	<-router.Running()
 
 	manifest := p.buildManifest()
-	_, err = PublishAwait[messages.PluginManifestMsg, messages.PluginManifestResp](rt, context.Background(), messages.PluginManifestMsg{
+	manifestMsg := messages.PluginManifestMsg{
 		Owner:       manifest.Owner,
 		Name:        manifest.Name,
 		Version:     manifest.Version,
@@ -121,9 +122,31 @@ func (p *Plugin) Run() error {
 			}
 			return out
 		}(),
+	}
+	pubResult, err := Publish(rt, context.Background(), manifestMsg)
+	if err != nil {
+		return fmt.Errorf("sdk: publish manifest: %w", err)
+	}
+	regCh := make(chan error, 1)
+	cancelReg, err := SubscribeTo[messages.PluginManifestResp](rt, context.Background(), pubResult.ReplyTo, func(resp messages.PluginManifestResp, msg messages.Message) {
+		if resp.Error != "" {
+			regCh <- fmt.Errorf("sdk: register manifest: %s", resp.Error)
+		} else {
+			regCh <- nil
+		}
 	})
 	if err != nil {
-		return fmt.Errorf("sdk: register manifest: %w", err)
+		return fmt.Errorf("sdk: subscribe manifest result: %w", err)
+	}
+	defer cancelReg()
+
+	select {
+	case regErr := <-regCh:
+		if regErr != nil {
+			return regErr
+		}
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("sdk: manifest registration timeout")
 	}
 
 	// Call OnStart

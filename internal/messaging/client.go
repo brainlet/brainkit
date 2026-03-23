@@ -69,6 +69,10 @@ func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespac
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
 
+	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
+		wmsg.Metadata.Set("replyTo", replyTo)
+	}
+
 	if err := c.pub.Publish(c.resolvedTopicForNamespace(targetNamespace, logicalTopic), wmsg); err != nil {
 		return "", err
 	}
@@ -123,6 +127,11 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 		correlationID = uuid.NewString()
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
+
+	// Stamp replyTo if present in context (set by sdk.Publish)
+	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
+		wmsg.Metadata.Set("replyTo", replyTo)
+	}
 
 	if err := c.pub.Publish(c.resolvedTopic(logicalTopic), wmsg); err != nil {
 		return "", err

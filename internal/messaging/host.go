@@ -3,20 +3,19 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// RawCommandBinding binds a logical command topic to a raw JSON handler and
-// result publisher.
+// RawCommandBinding binds a logical command topic to a raw JSON handler.
+// Response is published to the replyTo topic from inbound message metadata.
 type RawCommandBinding struct {
-	Name          string
-	Topic         string
-	ResultTopic   string
-	Handle        func(context.Context, json.RawMessage) (json.RawMessage, error)
-	EncodeFailure func(error) (json.RawMessage, error)
+	Name   string
+	Topic  string
+	Handle func(context.Context, json.RawMessage) (json.RawMessage, error)
 }
 
 // Host binds raw command handlers onto a router and transport.
@@ -57,11 +56,11 @@ func (h *Host) resolvedTopic(logicalTopic string) string {
 }
 
 // RegisterCommands installs all command bindings onto the router.
+// Handlers read replyTo from inbound message metadata and publish responses there.
 func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 	for _, binding := range bindings {
 		binding := binding
 		commandTopic := h.resolvedTopic(binding.Topic)
-		resultTopic := h.resolvedTopic(binding.ResultTopic)
 		handlerName := rawHandlerName(binding.Name, binding.Topic)
 
 		h.router.AddConsumerHandler(
@@ -71,27 +70,39 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 			func(wmsg *message.Message) error {
 				cmdCtx := withInboundMetadata(wmsg.Context(), wmsg, binding.Topic)
 				payload, err := binding.Handle(cmdCtx, json.RawMessage(wmsg.Payload))
-				if err != nil {
-					if binding.EncodeFailure == nil || IsDecodeFailure(err) {
-						return err
-					}
-					payload, err = binding.EncodeFailure(err)
+
+				replyTo := wmsg.Metadata.Get("replyTo")
+				if replyTo == "" {
 					if err != nil {
-						return err
+						log.Printf("[host] command %s failed with no replyTo: %v", binding.Topic, err)
 					}
-				}
-				if payload == nil || binding.ResultTopic == "" {
 					return nil
 				}
-				result := message.NewMessage(watermill.NewUUID(), []byte(payload))
-				correlationID := wmsg.Metadata.Get("correlationId")
-				if correlationID == "" {
-					correlationID = wmsg.UUID
+
+				// Build response payload — on error, wrap in generic error response
+				var responsePayload []byte
+				if err != nil {
+					if IsDecodeFailure(err) {
+						return err
+					}
+					responsePayload, _ = json.Marshal(map[string]string{"error": err.Error()})
+				} else if payload != nil {
+					responsePayload = payload
+				} else {
+					return nil
 				}
+
+				result := message.NewMessage(watermill.NewUUID(), responsePayload)
+				correlationID := wmsg.Metadata.Get("correlationId")
 				if correlationID != "" {
 					result.Metadata.Set("correlationId", correlationID)
 				}
-				return h.pub.Publish(resultTopic, result)
+
+				resolvedReplyTo := replyTo
+				if h.topicSanitizer != nil {
+					resolvedReplyTo = h.topicSanitizer(replyTo)
+				}
+				return h.pub.Publish(resolvedReplyTo, result)
 			},
 		)
 	}
