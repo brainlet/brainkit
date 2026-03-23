@@ -1691,6 +1691,51 @@
 
     // MODULE
     output: output,
+
+    // REGISTRY — resolve registered providers/stores/storages by name
+    vectorStore: function(name) {
+      var configJSON = __go_registry_resolve("vectorStore", name);
+      if (!configJSON) throw new Error("vector store '" + name + "' not registered");
+      return JSON.parse(configJSON);
+    },
+    storage: function(name) {
+      var configJSON = __go_registry_resolve("storage", name);
+      if (!configJSON) throw new Error("storage '" + name + "' not registered");
+      return JSON.parse(configJSON);
+    },
+    model: function(providerName, modelId) {
+      var p = resolveModel(providerName + "/" + modelId);
+      return p;
+    },
+    provider: function(name) {
+      var configJSON = __go_registry_resolve("provider", name);
+      if (!configJSON) throw new Error("AI provider '" + name + "' not registered");
+      var config = JSON.parse(configJSON);
+      var factoryName = providerFactories[config.type];
+      if (!factoryName || !embed[factoryName]) throw new Error("AI provider '" + config.type + "' not available in this build");
+      var opts = {};
+      if (config.config) {
+        if (config.config.APIKey) opts.apiKey = config.config.APIKey;
+        if (config.config.BaseURL) opts.baseURL = config.config.BaseURL;
+      }
+      return embed[factoryName](opts);
+    },
+    registry: {
+      has: function(category, name) {
+        return __go_registry_has(category, name) === "true";
+      },
+      list: function(category) {
+        return JSON.parse(__go_registry_list(category));
+      },
+      register: function(category, name, config) {
+        // Dynamic registration from .ts — delegates to Go bridge
+        // TODO: wire __go_registry_register when needed
+      },
+      unregister: function(category, name) {
+        // Dynamic unregistration from .ts — delegates to Go bridge
+        // TODO: wire __go_registry_unregister when needed
+      },
+    },
   };
 
   // ══════════════════════════════════════════════════════════════
