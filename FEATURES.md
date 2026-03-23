@@ -6,6 +6,26 @@
 
 ---
 
+## Design Principles
+
+These drive every feature decision in brainkit.
+
+**Everything is dynamic.** No hardcoded strings in `.ts` files. Providers, models, vector stores, storage backends — all resolved from the registry at runtime. A `.ts` file calls `model("openai", "gpt-4o-mini")` or `vectorStore("main")`, never raw API keys or connection strings.
+
+**Everything integrations support, brainkit controls.** If Mastra or the AI SDK can manage a capability, brainkit must expose it — with health probing, env injection, and debuggability. Anyone deploying brainkit should be able to diagnose what's healthy, what's connected, and what's failing without reading source code.
+
+**brainkit != its integrations.** brainkit is the wiring — composing Watermill, QuickJS, wazero, Mastra, and the AI SDK into a coherent runtime. When an integration (PgVector, LibSQL, etc.) requires specific infrastructure, that's a deployment concern. brainkit matches the API correctly and lets the infrastructure requirement flow through to the consumer.
+
+**Use cases we won't know.** brainkit is a toolkit. Two Kits should be able to distribute workload, or ask another Kit to do specific work. Someone might want to maintain different environments locally or remotely for whatever reason. Every domain must work across Kit boundaries because we can't predict how people will compose Kits.
+
+**WASM is automation AND administration.** WASM shards aren't just event processors — they're automated systems that can do both task automation and administration automation. A shard should be able to deploy .ts code, query the registry, manage Kit lifecycle — anything a Go host can do.
+
+**Full bus parity across surfaces.** Every surface (TS, WASM, Plugin) should have equivalent access to the message bus. WASM should be the Watermill equivalent — subscribe to anything, publish to anything, raw or with known types. No surface should be a second-class citizen.
+
+**Agents and workflows need the filesystem.** TS code runs agents, tools, and workflows that process data. They need to read, list, and write files on disk. The `fs` API exists in TS because agent developers need it, not because it's technically interesting.
+
+---
+
 ## Runtime
 
 | Feature | Status | Description |
@@ -14,8 +34,8 @@
 | Node (transport-connected) | DONE | Kernel + external Watermill transport (NATS, AMQP, Redis, Postgres, SQLite). |
 | Plugin SDK | DONE | `sdk.New()` + `sdk.Tool()` + `plugin.Run()` — separate process, connects via transport. |
 | InstanceManager (pools) | DONE | Pool of Nodes with shared tool registry. Static + threshold scaling strategies. |
-| Cross-Kit communication | DONE | `sdk.PublishAwaitTo` — call operations on another Kit's namespace over shared transport. |
-| Cross-Kit all domains | DONE | tools, fs, agents, kit, wasm, registry, ai, memory, workflows, mcp, vectors tested cross-Kit. |
+| Cross-Kit communication | DONE | `sdk.PublishAwaitTo` — call operations on another Kit's namespace over shared transport. Two or more Kits can distribute workload or ask each other to do specific work. |
+| Cross-Kit all domains | DONE | tools, fs, agents, kit, wasm, registry, ai, memory, workflows, mcp, vectors tested cross-Kit. Every domain works across Kit boundaries because we can't predict how people will compose Kits. |
 
 ## Transport Backends
 
@@ -48,15 +68,17 @@ All 6 backends tested with 12 domain operations via `backend_matrix_test.go`.
 | Capabilities | agents, tools, workflows, memory, vectors, AI (generate/stream/embed), fs, wasm, mcp, registry, bus |
 | Status | **DONE** — all domains, all operations |
 
-TS code runs in isolated SES Compartments with per-source logging. Has full access to Mastra ecosystem (Memory, scorers, processors, RAG, workspace).
+TS code runs in isolated SES Compartments with per-source logging. Has full access to Mastra ecosystem (Memory, scorers, processors, RAG, workspace). Includes filesystem access because agents and workflows need to read, list, and write files on disk. Everything resolved dynamically from the registry — no hardcoded strings.
 
 ### WASM (AssemblyScript)
 
-| Role | Automation developers — event-driven shards, stateless or persistent |
+| Role | Automation AND administration automation — event-driven shards, Kit management, system orchestration |
 |------|---|
 | Runtime | wazero inside Kernel (LocalInvoker via invokeAsync) |
 | Host functions | `send`, `invokeAsync`, `on`, `tool`, `reply`, `log`, `get_state`, `set_state`, `has_state`, `set_mode` |
 | Status | **PARTIAL** — all domains via invokeAsync, but bus parity missing |
+
+WASM shards are not just event processors. They can deploy .ts code, query the registry, manage Kit lifecycle — automated systems for both task automation and administration. The goal is full bus parity: WASM should be the Watermill equivalent, able to subscribe to anything and publish to anything, raw or typed.
 
 | WASM Capability | Status |
 |----------------|--------|
@@ -211,7 +233,7 @@ MCP servers connected via stdio or HTTP. Tools auto-registered in the tool regis
 | register (runtime) | DONE | DONE | — | — | — |
 | unregister (runtime) | DONE | DONE | — | — | — |
 
-47 typed config structs (16 AI providers, 17 vector stores, 14 storage backends). Dynamic register/unregister from Go and TS. Env var injection into process.env.
+47 typed config structs (16 AI providers, 17 vector stores, 14 storage backends). Dynamic register/unregister from Go and TS. Env var injection into process.env. Available from all surfaces because any code — TS agent, WASM shard, plugin — needs to know which models are configured without hardcoding strings.
 
 ### streaming
 
@@ -240,9 +262,9 @@ Plugin registers capabilities via manifest. State persisted via NATS KV or in-me
 | SES Compartments | DONE | Per-.ts isolation with source-tracked globals |
 | Per-source logging | DONE | LogHandler with source tags (TS Compartments + WASM modules) |
 | Provider registry | DONE | 47 typed configs, has/list/resolve/register/unregister |
-| Live HTTP probing | DONE | 14 AI provider endpoints, real HTTP health checks |
-| JS runtime probing | DONE | Vector store + storage instantiation probing via Kernel |
-| Periodic probing | DONE | Background ticker at ProbeConfig.PeriodicInterval |
+| Live HTTP probing | DONE | 14 AI provider endpoints, real HTTP health checks. Everything integrations support should be controllable and debuggable — probing is how you know what's healthy. |
+| JS runtime probing | DONE | Vector store + storage instantiation probing via Kernel. Tests real connectivity, not just config validity. |
+| Periodic probing | DONE | Background ticker at ProbeConfig.PeriodicInterval. Continuous health monitoring for deployment and administration. |
 | Env var injection | DONE | BRAINKIT_* vars injected into JS process.env on registration |
 | IIFE closure caching | DONE | vectorStore/storage/model/provider cached via closures (not `this`) |
 | Observability | DONE | Auto-tracing via Mastra Observability + DefaultExporter |
@@ -252,9 +274,9 @@ Plugin registers capabilities via manifest. State persisted via NATS KV or in-me
 
 ## Planned Work
 
-| Feature | Description | Impact |
-|---------|-------------|--------|
-| **Streaming formalization** | Add `streaming.*` catalog commands. Typed subscribe API from all surfaces. Chunk sequence validation. | High — streaming is a core AI capability |
-| **WASM bus parity** | Runtime subscribe/unsubscribe host functions. Typed message publish. Dynamic topic listening beyond init-time `on()`. | High — WASM automation needs full bus access |
-| **Plugin new types** | Plugins define custom message types. Requires AS codegen + recompilation for WASM compatibility. | Medium — extensibility story |
-| **Vectors upsert/query** | Fix PgVector Neon driver or add alternative driver that works in QuickJS | Medium — vectors are incomplete without data ops |
+| Feature | Description | Why | Impact |
+|---------|-------------|-----|--------|
+| **Streaming formalization** | Add `streaming.*` catalog commands. Typed subscribe API from all surfaces. Chunk sequence validation. | Should have been done already. Streaming is how AI responses are delivered in real-time. Without formal catalog commands, every surface reimplements chunk handling. | High |
+| **WASM bus parity** | Runtime `subscribe`/`unsubscribe` host functions. Typed message publish. Dynamic topic listening beyond init-time `on()`. Raw and typed pub/sub. | WASM should be the Watermill equivalent — able to subscribe to anything and publish to anything. Currently limited to `send` (fire-and-forget) and `on` (init-time only). A WASM shard doing administration automation needs to listen for events dynamically. | High |
+| **Plugin new types** | Plugins define custom message types that WASM can use. Requires AS codegen + recompilation for type compatibility. | Plugins extend the platform — if a plugin brings new capabilities with new message shapes, WASM shards should be able to work with those types. Compilation is the bridge between dynamic (Plugin) and static (WASM). | Medium |
+| **Vectors upsert/query** | Fix PgVector @neondatabase/serverless WebSocket driver in QuickJS, or add alternative driver. | Vector search is incomplete without data operations. createIndex works (proves wiring), but the actual use case — store embeddings, query by similarity — doesn't work due to the JS driver limitation. | Medium |
