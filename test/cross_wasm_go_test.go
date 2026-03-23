@@ -15,7 +15,7 @@ import (
 func TestCross_WASM_Go(t *testing.T) {
 	for _, backend := range allBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			tk := newTestKernelFull(t)
+			tk := newTestKernelFullWithBackend(t, backend)
 			rt := sdk.Runtime(tk)
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()

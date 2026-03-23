@@ -15,7 +15,7 @@ import (
 func TestCross_TS_Go(t *testing.T) {
 	for _, backend := range allBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			rt := newTestKernelFull(t)
+			rt := newTestKernelFullWithBackend(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 

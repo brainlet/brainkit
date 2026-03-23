@@ -14,7 +14,7 @@ import (
 func TestGoDirect_Memory(t *testing.T) {
 	for _, backend := range allBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			tk := newTestKernelWithStorage(t)
+			tk := newTestKernelWithStorageAndBackend(t, backend)
 			rt := sdk.Runtime(tk)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()

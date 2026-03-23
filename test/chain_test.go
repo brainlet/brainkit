@@ -15,7 +15,7 @@ import (
 func TestChain_Go_TS_WASM(t *testing.T) {
 	for _, backend := range allBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			tk := newTestKernelFull(t)
+			tk := newTestKernelFullWithBackend(t, backend)
 			rt := sdk.Runtime(tk)
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
@@ -79,7 +79,7 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 	for _, backend := range allBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			tk := newTestKernelFull(t)
+			tk := newTestKernelFullWithBackend(t, backend)
 			rt := sdk.Runtime(tk)
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()

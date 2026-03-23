@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
+	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
@@ -306,4 +307,111 @@ func requiresNetworkTransport(t *testing.T, backend string) {
 	if backend == "memory" || backend == "" {
 		t.Skip("plugin subprocess tests require network transport (not memory)")
 	}
+}
+
+// newTestKernelFullWithBackend creates a fully configured Kernel (workspace, storage,
+// AI providers, tools) on the given transport backend. This is the backend-parameterized
+// version of newTestKernelFull — use it in tests that loop over allBackends().
+func newTestKernelFullWithBackend(t *testing.T, backend string) *testKernel {
+	t.Helper()
+	loadEnv(t)
+	tmpDir := t.TempDir()
+
+	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	envVars := make(map[string]string)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		aiProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
+		envVars["OPENAI_API_KEY"] = key
+	}
+
+	cfg := transportConfigForBackend(t, backend)
+	transport := mustCreateTransport(t, cfg)
+	t.Cleanup(func() { transport.Close() })
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace:    "test",
+		CallerID:     "test-" + backend,
+		WorkspaceDir: tmpDir,
+		AIProviders:  aiProviders,
+		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
+			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		},
+		EnvVars:   envVars,
+		Transport: transport,
+	})
+	if err != nil {
+		t.Fatalf("NewKernel(%s): %v", backend, err)
+	}
+	t.Cleanup(func() { k.Close() })
+
+	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+		Description: "echoes the input message",
+		Execute: func(ctx context.Context, input echoInput) (any, error) {
+			return map[string]string{"echoed": input.Message}, nil
+		},
+	})
+	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+		Description: "adds two numbers",
+		Execute: func(ctx context.Context, input addInput) (any, error) {
+			return map[string]int{"sum": input.A + input.B}, nil
+		},
+	})
+
+	return &testKernel{k}
+}
+
+// newTestKernelWithStorageAndBackend creates a Kernel with storage + workspace + AI providers
+// on the given transport backend. Backend-parameterized version of newTestKernelWithStorage.
+func newTestKernelWithStorageAndBackend(t *testing.T, backend string) *testKernel {
+	t.Helper()
+	loadEnv(t)
+	tmpDir := t.TempDir()
+
+	storageProviders := make(map[string]provreg.AIProviderRegistration)
+	storageEnvVars := make(map[string]string)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		storageProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
+		storageEnvVars["OPENAI_API_KEY"] = key
+	}
+
+	cfg := transportConfigForBackend(t, backend)
+	transport := mustCreateTransport(t, cfg)
+	t.Cleanup(func() { transport.Close() })
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace:    "test",
+		CallerID:     "test-storage-" + backend,
+		WorkspaceDir: tmpDir,
+		AIProviders:  storageProviders,
+		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
+			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		},
+		EnvVars:   storageEnvVars,
+		Transport: transport,
+	})
+	if err != nil {
+		t.Fatalf("NewKernel(%s, storage): %v", backend, err)
+	}
+	t.Cleanup(func() { k.Close() })
+
+	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+		Description: "echoes the input message",
+		Execute: func(ctx context.Context, input echoInput) (any, error) {
+			return map[string]string{"echoed": input.Message}, nil
+		},
+	})
+	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+		Description: "adds two numbers",
+		Execute: func(ctx context.Context, input addInput) (any, error) {
+			return map[string]int{"sum": input.A + input.B}, nil
+		},
+	})
+
+	return &testKernel{k}
 }
