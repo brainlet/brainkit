@@ -648,8 +648,14 @@ func (k *Kernel) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJS
 // --- Provider Registry delegation ---
 
 // RegisterAIProvider registers a typed AI provider at runtime.
+// Injects env vars into the JS runtime's process.env.
 func (k *Kernel) RegisterAIProvider(name string, typ provreg.AIProviderType, config any) error {
-	return k.providers.RegisterAIProvider(name, provreg.AIProviderRegistration{Type: typ, Config: config})
+	reg := provreg.AIProviderRegistration{Type: typ, Config: config}
+	if err := k.providers.RegisterAIProvider(name, reg); err != nil {
+		return err
+	}
+	k.injectRegistryEnvVars("PROVIDER", name, config)
+	return nil
 }
 
 // UnregisterAIProvider removes an AI provider.
@@ -660,7 +666,11 @@ func (k *Kernel) ListAIProviders() []provreg.ProviderInfo { return k.providers.L
 
 // RegisterVectorStore registers a typed vector store at runtime.
 func (k *Kernel) RegisterVectorStore(name string, typ provreg.VectorStoreType, config any) error {
-	return k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
+	if err := k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config}); err != nil {
+		return err
+	}
+	k.injectRegistryEnvVars("VECTORSTORE", name, config)
+	return nil
 }
 
 // UnregisterVectorStore removes a vector store.
@@ -671,7 +681,11 @@ func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo { return k.provide
 
 // RegisterStorage registers a typed Mastra storage at runtime.
 func (k *Kernel) RegisterStorage(name string, typ provreg.StorageType, config any) error {
-	return k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
+	if err := k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config}); err != nil {
+		return err
+	}
+	k.injectRegistryEnvVars("STORAGE", name, config)
+	return nil
 }
 
 // UnregisterStorage removes a Mastra storage.
@@ -679,6 +693,16 @@ func (k *Kernel) UnregisterStorage(name string) { k.providers.UnregisterStorage(
 
 // ListStorages returns all registered Mastra storages.
 func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListStorages() }
+
+// injectRegistryEnvVars injects BRAINKIT_* env vars into the JS runtime's process.env.
+func (k *Kernel) injectRegistryEnvVars(category, name string, config any) {
+	envVars := provreg.EnvVarsForRegistration(category, name, config)
+	for envKey, envVal := range envVars {
+		k.bridge.Eval("__env_inject.js", fmt.Sprintf(
+			`globalThis.process.env[%q] = %q`, envKey, envVal,
+		))
+	}
+}
 
 // extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.
 func extractProviderCredentials(reg provreg.AIProviderRegistration) struct{ APIKey, BaseURL string } {

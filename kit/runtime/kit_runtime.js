@@ -1693,33 +1693,69 @@
     output: output,
 
     // REGISTRY — resolve registered providers/stores/storages by name
-    vectorStore: function(name) {
-      var configJSON = __go_registry_resolve("vectorStore", name);
-      if (!configJSON) throw new Error("vector store '" + name + "' not registered");
-      return JSON.parse(configJSON);
-    },
-    storage: function(name) {
-      var configJSON = __go_registry_resolve("storage", name);
-      if (!configJSON) throw new Error("storage '" + name + "' not registered");
-      return JSON.parse(configJSON);
-    },
+    // Instance caches — closure-captured (not `this`-based, since functions are detached in Compartments)
+    vectorStore: (function() {
+      var cache = {};
+      return function(name) {
+        if (cache[name]) return cache[name];
+        var configJSON = __go_registry_resolve("vectorStore", name);
+        if (!configJSON) throw new Error("vector store '" + name + "' not registered");
+        var parsed = JSON.parse(configJSON);
+        var cfg = parsed.config || {};
+        var instance;
+        switch (parsed.type) {
+          case "libsql": instance = new embed.LibSQLVector({ id: name, connectionUrl: cfg.URL, authToken: cfg.AuthToken }); break;
+          case "pgvector": instance = new embed.PgVector({ id: name, connectionString: cfg.ConnectionString }); break;
+          case "mongodb": instance = new embed.MongoDBVector({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
+          default: throw new Error("vector store type '" + parsed.type + "' not available in this build");
+        }
+        cache[name] = instance;
+        return instance;
+      };
+    })(),
+    storage: (function() {
+      var cache = {};
+      return function(name) {
+        if (cache[name]) return cache[name];
+        var configJSON = __go_registry_resolve("storage", name);
+        if (!configJSON) throw new Error("storage '" + name + "' not registered");
+        var parsed = JSON.parse(configJSON);
+        var cfg = parsed.config || {};
+        var instance;
+        switch (parsed.type) {
+          case "memory": instance = new embed.InMemoryStore(); break;
+          case "libsql": instance = new embed.LibSQLStore({ id: name, url: cfg.URL, authToken: cfg.AuthToken }); break;
+          case "postgres": instance = new embed.PostgresStore({ id: name, connectionString: cfg.ConnectionString }); break;
+          case "mongodb": instance = new embed.MongoDBStore({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
+          case "upstash": instance = new embed.UpstashStore({ id: name, url: cfg.URL, token: cfg.Token }); break;
+          default: throw new Error("storage type '" + parsed.type + "' not available in this build");
+        }
+        cache[name] = instance;
+        return instance;
+      };
+    })(),
     model: function(providerName, modelId) {
-      var p = resolveModel(providerName + "/" + modelId);
-      return p;
+      return resolveModel(providerName + "/" + modelId);
     },
-    provider: function(name) {
-      var configJSON = __go_registry_resolve("provider", name);
-      if (!configJSON) throw new Error("AI provider '" + name + "' not registered");
-      var config = JSON.parse(configJSON);
-      var factoryName = providerFactories[config.type];
-      if (!factoryName || !embed[factoryName]) throw new Error("AI provider '" + config.type + "' not available in this build");
-      var opts = {};
-      if (config.config) {
-        if (config.config.APIKey) opts.apiKey = config.config.APIKey;
-        if (config.config.BaseURL) opts.baseURL = config.config.BaseURL;
-      }
-      return embed[factoryName](opts);
-    },
+    provider: (function() {
+      var cache = {};
+      return function(name) {
+        if (cache[name]) return cache[name];
+        var configJSON = __go_registry_resolve("provider", name);
+        if (!configJSON) throw new Error("AI provider '" + name + "' not registered");
+        var parsed = JSON.parse(configJSON);
+        var cfg = parsed.config || {};
+        var factoryName = providerFactories[parsed.type];
+        if (!factoryName || !embed[factoryName]) throw new Error("AI provider '" + parsed.type + "' not available in this build");
+        var opts = {};
+        if (cfg.APIKey) opts.apiKey = cfg.APIKey;
+        if (cfg.BaseURL) opts.baseURL = cfg.BaseURL;
+        if (cfg.Headers) opts.headers = cfg.Headers;
+        var instance = embed[factoryName](opts);
+        cache[name] = instance;
+        return instance;
+      };
+    })(),
     registry: {
       has: function(category, name) {
         return __go_registry_has(category, name) === "true";
@@ -1728,12 +1764,10 @@
         return JSON.parse(__go_registry_list(category));
       },
       register: function(category, name, config) {
-        // Dynamic registration from .ts — delegates to Go bridge
-        // TODO: wire __go_registry_register when needed
+        __go_brainkit_control("registry.register", JSON.stringify({ category: category, name: name, config: config }));
       },
       unregister: function(category, name) {
-        // Dynamic unregistration from .ts — delegates to Go bridge
-        // TODO: wire __go_registry_unregister when needed
+        __go_brainkit_control("registry.unregister", JSON.stringify({ category: category, name: name }));
       },
     },
   };

@@ -8,6 +8,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
+	provreg "github.com/brainlet/brainkit/kit/registry"
 )
 
 // registerBridges adds Go bridge functions to the Kernel's QuickJS context.
@@ -120,6 +121,52 @@ func (k *Kernel) registerBridges() {
 				}
 				if err = k.agentsDomain.Unregister(context.Background(), req.Name); err != nil {
 					return qctx.ThrowError(fmt.Errorf("agents.unregister: %w", err))
+				}
+				resp, _ = json.Marshal(map[string]bool{"ok": true})
+			case "registry.register":
+				var req struct {
+					Category string          `json:"category"`
+					Name     string          `json:"name"`
+					Config   json.RawMessage `json:"config"`
+				}
+				if err = json.Unmarshal(payload, &req); err != nil {
+					return qctx.ThrowError(fmt.Errorf("registry.register: %w", err))
+				}
+				// Two-pass unmarshal: read type from config, then register
+				var typeHolder struct {
+					Type string `json:"type"`
+				}
+				json.Unmarshal(req.Config, &typeHolder)
+				switch req.Category {
+				case "provider":
+					k.providers.RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
+						Type: provreg.AIProviderType(typeHolder.Type),
+					})
+				case "vectorStore":
+					k.providers.RegisterVectorStore(req.Name, provreg.VectorStoreRegistration{
+						Type: provreg.VectorStoreType(typeHolder.Type),
+					})
+				case "storage":
+					k.providers.RegisterStorage(req.Name, provreg.StorageRegistration{
+						Type: provreg.StorageType(typeHolder.Type),
+					})
+				}
+				resp, _ = json.Marshal(map[string]bool{"ok": true})
+			case "registry.unregister":
+				var req struct {
+					Category string `json:"category"`
+					Name     string `json:"name"`
+				}
+				if err = json.Unmarshal(payload, &req); err != nil {
+					return qctx.ThrowError(fmt.Errorf("registry.unregister: %w", err))
+				}
+				switch req.Category {
+				case "provider":
+					k.providers.UnregisterAIProvider(req.Name)
+				case "vectorStore":
+					k.providers.UnregisterVectorStore(req.Name)
+				case "storage":
+					k.providers.UnregisterStorage(req.Name)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			default:
