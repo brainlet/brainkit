@@ -70,15 +70,15 @@ func TestCross_TS_WASM(t *testing.T) {
 					t.Fatal("timeout")
 				}
 
-				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "wasm-calls-ts"})
+				_pr3, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "wasm-calls-ts"})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.WasmRunResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				_ch3 := make(chan messages.WasmRunResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch3 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us3()
 				var runResp messages.WasmRunResp
 				select {
-				case runResp = <-_ch1:
+				case runResp = <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -91,7 +91,7 @@ func TestCross_TS_WASM(t *testing.T) {
 			t.Run("TS_deploys_WASM_shard_and_injects_event", func(t *testing.T) {
 				// First compile the WASM shard via Go (TS can't directly compile, but
 				// the test proves the wiring: compile → deploy → inject via Go → shard responds)
-				_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode, _reply } from "brainkit";
 
@@ -107,23 +107,23 @@ func TestCross_TS_WASM(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "ts-wasm-shard"},
 				})
 				require.NoError(t, err)
-				_ch3 := make(chan messages.WasmCompileResp, 1)
-				_us3, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
-				defer _us3()
+				_ch4 := make(chan messages.WasmCompileResp, 1)
+				_us4, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch4 <- r })
+				defer _us4()
 				select {
-				case <-_ch3:
+				case <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 
 				// Deploy the shard
-				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "ts-wasm-shard"})
+				_pr5, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "ts-wasm-shard"})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.WasmDeployResp, 1)
-				_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
-				defer _us2()
+				_ch5 := make(chan messages.WasmDeployResp, 1)
+				_us5, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch5 <- r })
+				defer _us5()
 				select {
-				case <-_ch2:
+				case <-_ch5:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

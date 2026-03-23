@@ -75,7 +75,7 @@ func TestGoDirect_Vectors(t *testing.T) {
 			// connections that QuickJS doesn't fully support. These are driver limitations,
 			// not brainkit wiring issues. Logged but not failed.
 			t.Run("Upsert", func(t *testing.T) {
-				_pr2, err := sdk.Publish(rt, ctx, messages.VectorUpsertMsg{
+				_, err := sdk.Publish(rt, ctx, messages.VectorUpsertMsg{
 					Index: idxName,
 					Vectors: []messages.Vector{
 						{ID: "v1", Values: []float64{1.0, 0.0, 0.0}},
@@ -89,7 +89,7 @@ func TestGoDirect_Vectors(t *testing.T) {
 			})
 
 			t.Run("Query", func(t *testing.T) {
-				_pr3, err := sdk.Publish(rt, ctx, messages.VectorQueryMsg{
+				_, err := sdk.Publish(rt, ctx, messages.VectorQueryMsg{
 					Index:     idxName,
 					Embedding: []float64{1.0, 0.0, 0.0},
 					TopK:      2,

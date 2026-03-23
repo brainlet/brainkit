@@ -62,7 +62,7 @@ func TestGoDirect_Memory(t *testing.T) {
 				}
 				threadID := createResp.ThreadID
 
-				_pr1, err := sdk.Publish(rt, ctx, messages.MemorySaveMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.MemorySaveMsg{
 					ThreadID: threadID,
 					Messages: []messages.MemoryMessage{
 						{Role: "user", Content: "What is brainkit?"},
@@ -70,79 +70,32 @@ func TestGoDirect_Memory(t *testing.T) {
 					},
 				})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.MemorySaveResp, 1)
-				_us1, _ := sdk.SubscribeTo[messages.MemorySaveResp](rt, ctx, _pr1.ReplyTo, func(r messages.MemorySaveResp, m messages.Message) { _ch1 <- r })
-				defer _us1()
+				_ch3 := make(chan messages.MemorySaveResp, 1)
+				_us3, _ := sdk.SubscribeTo[messages.MemorySaveResp](rt, ctx, _pr3.ReplyTo, func(r messages.MemorySaveResp, m messages.Message) { _ch3 <- r })
+				defer _us3()
 				select {
-				case <-_ch1:
+				case <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 
 				// Recall succeeds (returns empty without vector store — semantic search needs embedder)
-				_pr2, err := sdk.Publish(rt, ctx, messages.MemoryRecallMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.MemoryRecallMsg{
 					ThreadID: threadID,
 					Query:    "brainkit",
 				})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.MemoryRecallResp, 1)
-				_us2, _ := sdk.SubscribeTo[messages.MemoryRecallResp](rt, ctx, _pr2.ReplyTo, func(r messages.MemoryRecallResp, m messages.Message) { _ch2 <- r })
-				defer _us2()
+				_ch4 := make(chan messages.MemoryRecallResp, 1)
+				_us4, _ := sdk.SubscribeTo[messages.MemoryRecallResp](rt, ctx, _pr4.ReplyTo, func(r messages.MemoryRecallResp, m messages.Message) { _ch4 <- r })
+				defer _us4()
 				select {
-				case <-_ch2:
+				case <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 			})
 
 			t.Run("GetThread", func(t *testing.T) {
-				_pr3, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
-				require.NoError(t, err)
-				_ch3 := make(chan messages.MemoryCreateThreadResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr3.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch3 <- r })
-				require.NoError(t, err)
-				defer _us3()
-				var createResp messages.MemoryCreateThreadResp
-				select {
-				case createResp = <-_ch3:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-
-				_pr3, err := sdk.Publish(rt, ctx, messages.MemoryGetThreadMsg{
-					ThreadID: createResp.ThreadID,
-				})
-				require.NoError(t, err)
-				_ch3 := make(chan messages.MemoryGetThreadResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.MemoryGetThreadResp](rt, ctx, _pr3.ReplyTo, func(r messages.MemoryGetThreadResp, m messages.Message) { _ch3 <- r })
-				require.NoError(t, err)
-				defer _us3()
-				var getResp messages.MemoryGetThreadResp
-				select {
-				case getResp = <-_ch3:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.NotNil(t, getResp.Thread, "should return thread data")
-			})
-
-			t.Run("ListThreads", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.MemoryListThreadsMsg{})
-				require.NoError(t, err)
-				_ch4 := make(chan messages.MemoryListThreadsResp, 1)
-				_us4, err := sdk.SubscribeTo[messages.MemoryListThreadsResp](rt, ctx, _pr4.ReplyTo, func(r messages.MemoryListThreadsResp, m messages.Message) { _ch4 <- r })
-				require.NoError(t, err)
-				defer _us4()
-				var listResp messages.MemoryListThreadsResp
-				select {
-				case listResp = <-_ch4:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.NotNil(t, listResp.Threads, "should return threads array")
-			})
-
-			t.Run("DeleteThread", func(t *testing.T) {
 				_pr5, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 				require.NoError(t, err)
 				_ch5 := make(chan messages.MemoryCreateThreadResp, 1)
@@ -156,17 +109,64 @@ func TestGoDirect_Memory(t *testing.T) {
 					t.Fatal("timeout")
 				}
 
-				_pr4, err := sdk.Publish(rt, ctx, messages.MemoryDeleteThreadMsg{
+				_pr6, err := sdk.Publish(rt, ctx, messages.MemoryGetThreadMsg{
 					ThreadID: createResp.ThreadID,
 				})
 				require.NoError(t, err)
-				_ch4 := make(chan messages.MemoryDeleteThreadResp, 1)
-				_us4, err := sdk.SubscribeTo[messages.MemoryDeleteThreadResp](rt, ctx, _pr4.ReplyTo, func(r messages.MemoryDeleteThreadResp, m messages.Message) { _ch4 <- r })
+				_ch6 := make(chan messages.MemoryGetThreadResp, 1)
+				_us6, err := sdk.SubscribeTo[messages.MemoryGetThreadResp](rt, ctx, _pr6.ReplyTo, func(r messages.MemoryGetThreadResp, m messages.Message) { _ch6 <- r })
 				require.NoError(t, err)
-				defer _us4()
+				defer _us6()
+				var getResp messages.MemoryGetThreadResp
+				select {
+				case getResp = <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
+				assert.NotNil(t, getResp.Thread, "should return thread data")
+			})
+
+			t.Run("ListThreads", func(t *testing.T) {
+				_pr7, err := sdk.Publish(rt, ctx, messages.MemoryListThreadsMsg{})
+				require.NoError(t, err)
+				_ch7 := make(chan messages.MemoryListThreadsResp, 1)
+				_us7, err := sdk.SubscribeTo[messages.MemoryListThreadsResp](rt, ctx, _pr7.ReplyTo, func(r messages.MemoryListThreadsResp, m messages.Message) { _ch7 <- r })
+				require.NoError(t, err)
+				defer _us7()
+				var listResp messages.MemoryListThreadsResp
+				select {
+				case listResp = <-_ch7:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
+				assert.NotNil(t, listResp.Threads, "should return threads array")
+			})
+
+			t.Run("DeleteThread", func(t *testing.T) {
+				_pr8, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+				require.NoError(t, err)
+				_ch8 := make(chan messages.MemoryCreateThreadResp, 1)
+				_us8, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr8.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch8 <- r })
+				require.NoError(t, err)
+				defer _us8()
+				var createResp messages.MemoryCreateThreadResp
+				select {
+				case createResp = <-_ch8:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
+
+				_pr9, err := sdk.Publish(rt, ctx, messages.MemoryDeleteThreadMsg{
+					ThreadID: createResp.ThreadID,
+				})
+				require.NoError(t, err)
+				_ch9 := make(chan messages.MemoryDeleteThreadResp, 1)
+				_us9, err := sdk.SubscribeTo[messages.MemoryDeleteThreadResp](rt, ctx, _pr9.ReplyTo, func(r messages.MemoryDeleteThreadResp, m messages.Message) { _ch9 <- r })
+				require.NoError(t, err)
+				defer _us9()
 				var deleteResp messages.MemoryDeleteThreadResp
 				select {
-				case deleteResp = <-_ch4:
+				case deleteResp = <-_ch9:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

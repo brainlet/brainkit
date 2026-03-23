@@ -149,15 +149,15 @@ func TestCross_Plugin_Go(t *testing.T) {
 				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer listCancel()
 
-				_pr1, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
+				_pr2, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.ToolListResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				_ch2 := make(chan messages.ToolListResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch2 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us2()
 				var resp messages.ToolListResp
 				select {
-				case resp = <-_ch1:
+				case resp = <-_ch2:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

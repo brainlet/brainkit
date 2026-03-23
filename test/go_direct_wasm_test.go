@@ -43,15 +43,15 @@ func TestGoDirect_WASM(t *testing.T) {
 				assert.Equal(t, "gd-run", compResp.Name)
 				assert.Greater(t, compResp.Size, 0)
 
-				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-run"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-run"})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.WasmRunResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				_ch2 := make(chan messages.WasmRunResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us2()
 				var runResp messages.WasmRunResp
 				select {
-				case runResp = <-_ch1:
+				case runResp = <-_ch2:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -66,15 +66,15 @@ func TestGoDirect_WASM(t *testing.T) {
 					Source: `export function run(): i32 { return 2; }`, Options: &messages.WasmCompileOpts{Name: "gd-list-b"},
 				})
 
-				_pr2, err := sdk.Publish(rt, ctx, messages.WasmListMsg{})
+				_pr3, err := sdk.Publish(rt, ctx, messages.WasmListMsg{})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.WasmListResp, 1)
-				_us2, err := sdk.SubscribeTo[messages.WasmListResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmListResp, m messages.Message) { _ch2 <- r })
+				_ch3 := make(chan messages.WasmListResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.WasmListResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmListResp, m messages.Message) { _ch3 <- r })
 				require.NoError(t, err)
-				defer _us2()
+				defer _us3()
 				var resp messages.WasmListResp
 				select {
-				case resp = <-_ch2:
+				case resp = <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -91,24 +91,7 @@ func TestGoDirect_WASM(t *testing.T) {
 					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-get"},
 				})
 
-				_pr3, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-get"})
-				require.NoError(t, err)
-				_ch3 := make(chan messages.WasmGetResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch3 <- r })
-				require.NoError(t, err)
-				defer _us3()
-				var resp messages.WasmGetResp
-				select {
-				case resp = <-_ch3:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				require.NotNil(t, resp.Module)
-				assert.Equal(t, "gd-get", resp.Module.Name)
-			})
-
-			t.Run("Get_NotFound", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "nope"})
+				_pr4, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-get"})
 				require.NoError(t, err)
 				_ch4 := make(chan messages.WasmGetResp, 1)
 				_us4, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch4 <- r })
@@ -120,6 +103,23 @@ func TestGoDirect_WASM(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
+				require.NotNil(t, resp.Module)
+				assert.Equal(t, "gd-get", resp.Module.Name)
+			})
+
+			t.Run("Get_NotFound", func(t *testing.T) {
+				_pr5, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "nope"})
+				require.NoError(t, err)
+				_ch5 := make(chan messages.WasmGetResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch5 <- r })
+				require.NoError(t, err)
+				defer _us5()
+				var resp messages.WasmGetResp
+				select {
+				case resp = <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Nil(t, resp.Module)
 			})
 
@@ -128,21 +128,21 @@ func TestGoDirect_WASM(t *testing.T) {
 					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-remove"},
 				})
 
-				_pr5, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-remove"})
+				_pr6, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-remove"})
 				require.NoError(t, err)
-				_ch5 := make(chan messages.WasmRemoveResp, 1)
-				_us5, err := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch5 <- r })
+				_ch6 := make(chan messages.WasmRemoveResp, 1)
+				_us6, err := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr6.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch6 <- r })
 				require.NoError(t, err)
-				defer _us5()
+				defer _us6()
 				var resp messages.WasmRemoveResp
 				select {
-				case resp = <-_ch5:
+				case resp = <-_ch6:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 				assert.True(t, resp.Removed)
 
-				_pr2, _ := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
+				_, _ := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
 				assert.Nil(t, getResp.Module)
 			})
 
@@ -159,45 +159,45 @@ func TestGoDirect_WASM(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "gd-deploy"},
 				})
 
-				_pr6, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-deploy"})
+				_pr8, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-deploy"})
 				require.NoError(t, err)
-				_ch6 := make(chan messages.WasmDeployResp, 1)
-				_us6, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr6.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch6 <- r })
+				_ch8 := make(chan messages.WasmDeployResp, 1)
+				_us8, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch8 <- r })
 				require.NoError(t, err)
-				defer _us6()
+				defer _us8()
 				var deployResp messages.WasmDeployResp
 				select {
-				case deployResp = <-_ch6:
+				case deployResp = <-_ch8:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 				assert.Equal(t, "gd-deploy", deployResp.Module)
 				assert.Equal(t, "stateless", deployResp.Mode)
 
-				_pr7, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "gd-deploy"})
+				_pr9, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "gd-deploy"})
 				require.NoError(t, err)
-				_ch7 := make(chan messages.WasmDescribeResp, 1)
-				_us7, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr7.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch7 <- r })
+				_ch9 := make(chan messages.WasmDescribeResp, 1)
+				_us9, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr9.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch9 <- r })
 				require.NoError(t, err)
-				defer _us7()
+				defer _us9()
 				var descResp messages.WasmDescribeResp
 				select {
-				case descResp = <-_ch7:
+				case descResp = <-_ch9:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 				assert.Equal(t, "stateless", descResp.Mode)
 				assert.Contains(t, descResp.Handlers, "gd.test.event")
 
-				_pr8, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-deploy"})
+				_pr10, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-deploy"})
 				require.NoError(t, err)
-				_ch8 := make(chan messages.WasmUndeployResp, 1)
-				_us8, err := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch8 <- r })
+				_ch10 := make(chan messages.WasmUndeployResp, 1)
+				_us10, err := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr10.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch10 <- r })
 				require.NoError(t, err)
-				defer _us8()
+				defer _us10()
 				var undeployResp messages.WasmUndeployResp
 				select {
-				case undeployResp = <-_ch8:
+				case undeployResp = <-_ch10:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -219,15 +219,15 @@ func TestGoDirect_WASM(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "gd-hostfn"},
 				})
 
-				_pr9, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-hostfn"})
+				_pr11, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-hostfn"})
 				require.NoError(t, err)
-				_ch9 := make(chan messages.WasmRunResp, 1)
-				_us9, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr9.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch9 <- r })
+				_ch11 := make(chan messages.WasmRunResp, 1)
+				_us11, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr11.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch11 <- r })
 				require.NoError(t, err)
-				defer _us9()
+				defer _us11()
 				var runResp messages.WasmRunResp
 				select {
-				case runResp = <-_ch9:
+				case runResp = <-_ch11:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -235,7 +235,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Run_NotFound", func(t *testing.T) {
-				_pr10, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "nope"})
+				_, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "nope"})
 				assert.Error(t, err)
 			})
 
@@ -250,7 +250,7 @@ func TestGoDirect_WASM(t *testing.T) {
 				})
 				sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-rm-deployed"})
 
-				_pr11, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
+				_, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
 				assert.Error(t, err, "cannot remove deployed module")
 
 				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-rm-deployed"})

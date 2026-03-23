@@ -52,15 +52,15 @@ func TestWASM_InvokeAsync_ToolsCall(t *testing.T) {
 	assert.Equal(t, "invoke-tools", compResp.Name)
 
 	// Run — invokeAsync fires in a goroutine, run() returns immediately
-	_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-tools"})
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-tools"})
 	require.NoError(t, err)
-	_ch1 := make(chan messages.WasmRunResp, 1)
-	_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+	_ch2 := make(chan messages.WasmRunResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
 	require.NoError(t, err)
-	defer _us1()
+	defer _us2()
 	var runResp messages.WasmRunResp
 	select {
-	case runResp = <-_ch1:
+	case runResp = <-_ch2:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -76,7 +76,7 @@ func TestWASM_InvokeAsync_UnknownTopic(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+	_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _invokeAsync, _setState } from "brainkit";
 
@@ -93,24 +93,24 @@ func TestWASM_InvokeAsync_UnknownTopic(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "invoke-unknown"},
 	})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.WasmCompileResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
-	defer _us2()
+	_ch3 := make(chan messages.WasmCompileResp, 1)
+	_us3, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
+	defer _us3()
 	select {
-	case <-_ch2:
+	case <-_ch3:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
-	_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-unknown"})
+	_pr4, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-unknown"})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.WasmRunResp, 1)
-	_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
+	_ch4 := make(chan messages.WasmRunResp, 1)
+	_us4, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch4 <- r })
 	require.NoError(t, err)
-	defer _us2()
+	defer _us4()
 	var runResp messages.WasmRunResp
 	select {
-	case runResp = <-_ch2:
+	case runResp = <-_ch4:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -125,7 +125,7 @@ func TestWASM_InvokeAsync_ToolsList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+	_pr5, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _invokeAsync, _setState } from "brainkit";
 
@@ -141,25 +141,25 @@ func TestWASM_InvokeAsync_ToolsList(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "invoke-list"},
 	})
 	require.NoError(t, err)
-	_ch3 := make(chan messages.WasmCompileResp, 1)
-	_us3, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
+	_ch5 := make(chan messages.WasmCompileResp, 1)
+	_us5, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr5.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch5 <- r })
 	require.NoError(t, err)
-	defer _us3()
+	defer _us5()
 	var compResp messages.WasmCompileResp
 	select {
-	case compResp = <-_ch3:
+	case compResp = <-_ch5:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 	assert.NotEmpty(t, compResp.Exports)
 
-	_pr3, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-list"})
+	_pr6, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-list"})
 	require.NoError(t, err)
-	_ch3 := make(chan messages.WasmRunResp, 1)
-	_us3, _ := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch3 <- r })
-	defer _us3()
+	_ch6 := make(chan messages.WasmRunResp, 1)
+	_us6, _ := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr6.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch6 <- r })
+	defer _us6()
 	select {
-	case <-_ch3:
+	case <-_ch6:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

@@ -47,15 +47,15 @@ func wasmDomainTest(t *testing.T, rt sdk.Runtime, ctx context.Context, name, top
 		t.Fatal("timeout")
 	}
 
-	_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: name})
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: name})
 	require.NoError(t, err, "run %s", name)
-	_ch1 := make(chan messages.WasmRunResp, 1)
-	_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+	_ch2 := make(chan messages.WasmRunResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
 	require.NoError(t, err)
-	defer _us1()
+	defer _us2()
 	var runResp messages.WasmRunResp
 	select {
-	case runResp = <-_ch1:
+	case runResp = <-_ch2:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -197,15 +197,15 @@ func TestWASMSurface_Memory(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a thread from Go so WASM can operate on it
-	_pr2, err := sdk.Publish(tk, ctx, messages.MemoryCreateThreadMsg{})
+	_pr3, err := sdk.Publish(tk, ctx, messages.MemoryCreateThreadMsg{})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.MemoryCreateThreadResp, 1)
-	_us2, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr2.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch2 <- r })
+	_ch3 := make(chan messages.MemoryCreateThreadResp, 1)
+	_us3, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr3.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch3 <- r })
 	require.NoError(t, err)
-	defer _us2()
+	defer _us3()
 	var createResp messages.MemoryCreateThreadResp
 	select {
-	case createResp = <-_ch2:
+	case createResp = <-_ch3:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -241,7 +241,7 @@ func TestWASMSurface_Workflows(t *testing.T) {
 	defer cancel()
 
 	// Deploy a workflow first
-	_pr2, err := sdk.Publish(tk, ctx, messages.KitDeployMsg{
+	_pr4, err := sdk.Publish(tk, ctx, messages.KitDeployMsg{
 		Source: "wasm-wf-setup.ts",
 		Code: `
 			const wf = createWorkflow({
@@ -259,11 +259,11 @@ func TestWASMSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.KitDeployResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
-	defer _us2()
+	_ch4 := make(chan messages.KitDeployResp, 1)
+	_us4, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch4 <- r })
+	defer _us4()
 	select {
-	case <-_ch2:
+	case <-_ch4:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

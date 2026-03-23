@@ -51,18 +51,18 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_CallTool", func(t *testing.T) {
-		_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+		_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 			Name:  "add",
 			Input: map[string]any{"a": 100, "b": 200},
 		})
 		require.NoError(t, err)
-		_ch1 := make(chan messages.ToolCallResp, 1)
-		_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+		_ch2 := make(chan messages.ToolCallResp, 1)
+		_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
 		require.NoError(t, err)
-		defer _us1()
+		defer _us2()
 		var resp messages.ToolCallResp
 		select {
-		case resp = <-_ch1:
+		case resp = <-_ch2:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -72,28 +72,28 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_FS_WriteRead", func(t *testing.T) {
-		_pr2, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
+		_pr3, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 			Path: "plugin-data.json", Data: `{"status":"ok"}`,
 		})
 		require.NoError(t, err)
-		_ch2 := make(chan messages.FsWriteResp, 1)
-		_us2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch2 <- r })
-		defer _us2()
+		_ch3 := make(chan messages.FsWriteResp, 1)
+		_us3, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr3.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch3 <- r })
+		defer _us3()
 		select {
-		case <-_ch2:
+		case <-_ch3:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
 
-		_pr2, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "plugin-data.json"})
+		_pr4, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "plugin-data.json"})
 		require.NoError(t, err)
-		_ch2 := make(chan messages.FsReadResp, 1)
-		_us2, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch2 <- r })
+		_ch4 := make(chan messages.FsReadResp, 1)
+		_us4, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch4 <- r })
 		require.NoError(t, err)
-		defer _us2()
+		defer _us4()
 		var resp messages.FsReadResp
 		select {
-		case resp = <-_ch2:
+		case resp = <-_ch4:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -101,30 +101,30 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_Deploy_Teardown", func(t *testing.T) {
-		_pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+		_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 			Source: "plugin-created.ts",
 			Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) });`,
 		})
 		require.NoError(t, err)
-		_ch3 := make(chan messages.KitDeployResp, 1)
-		_us3, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+		_ch5 := make(chan messages.KitDeployResp, 1)
+		_us5, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch5 <- r })
 		require.NoError(t, err)
-		defer _us3()
+		defer _us5()
 		var deployResp messages.KitDeployResp
 		select {
-		case deployResp = <-_ch3:
+		case deployResp = <-_ch5:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
 		assert.True(t, deployResp.Deployed)
 
-		_pr3, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-created.ts"})
+		_pr6, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-created.ts"})
 		require.NoError(t, err)
-		_ch3 := make(chan messages.KitTeardownResp, 1)
-		_us3, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch3 <- r })
-		defer _us3()
+		_ch6 := make(chan messages.KitTeardownResp, 1)
+		_us6, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr6.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch6 <- r })
+		defer _us6()
 		select {
-		case <-_ch3:
+		case <-_ch6:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -137,8 +137,8 @@ func TestPlugin_InProcess(t *testing.T) {
 		assert.NotEmpty(t, corrID)
 
 		received := make(chan bool, 1)
-		cancel, err := sdk.Subscribe[messages.ToolListResp](rt, ctx, func(resp messages.ToolListResp, msg messages.Message) {
-			if msg.Metadata["correlationId"] == corrID {
+		cancel, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, "tools.list.reply.test", func(resp messages.ToolListResp, msg messages.Message) {
+			if msg.Metadata["correlationId"] == corrID.CorrelationID {
 				received <- true
 			}
 		})

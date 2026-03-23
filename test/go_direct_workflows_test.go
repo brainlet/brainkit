@@ -225,14 +225,14 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 	})
 
 	t.Run("Cancel_NotFound", func(t *testing.T) {
-		_pr7, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{
+		_, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{
 			RunID: "nonexistent-run-id",
 		})
 		assert.Error(t, err, "cancel should fail for nonexistent run")
 	})
 
 	t.Run("Status_NotFound", func(t *testing.T) {
-		_pr8, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
+		_, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
 			RunID: "nonexistent-run-id",
 		})
 		assert.Error(t, err, "status should fail for nonexistent run")

@@ -50,15 +50,15 @@ func TestCross_WASM_Go(t *testing.T) {
 				}
 
 				// Run the WASM module — it calls the Go "add" tool and the callback fires
-				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "cross-wasm-go"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "cross-wasm-go"})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.WasmRunResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				_ch2 := make(chan messages.WasmRunResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us2()
 				var runResp messages.WasmRunResp
 				select {
-				case runResp = <-_ch1:
+				case runResp = <-_ch2:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -68,7 +68,7 @@ func TestCross_WASM_Go(t *testing.T) {
 
 			t.Run("Go_injects_event_WASM_shard_handles", func(t *testing.T) {
 				// WASM surface: compile and deploy a shard that handles events
-				_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode, _reply } from "brainkit";
 
@@ -84,22 +84,22 @@ func TestCross_WASM_Go(t *testing.T) {
 					Options: &messages.WasmCompileOpts{Name: "cross-go-shard"},
 				})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.WasmCompileResp, 1)
-				_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
-				defer _us2()
+				_ch3 := make(chan messages.WasmCompileResp, 1)
+				_us3, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
+				defer _us3()
 				select {
-				case <-_ch2:
+				case <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 
-				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "cross-go-shard"})
+				_pr4, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "cross-go-shard"})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.WasmDeployResp, 1)
-				_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
-				defer _us2()
+				_ch4 := make(chan messages.WasmDeployResp, 1)
+				_us4, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch4 <- r })
+				defer _us4()
 				select {
-				case <-_ch2:
+				case <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

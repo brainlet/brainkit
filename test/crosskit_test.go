@@ -17,12 +17,12 @@ import (
 
 // crossKitCall is a helper for typed cross-Kit PublishTo calls.
 // Kit A calls an operation on Kit B's namespace.
-func crossKitCall[Req, Resp messages.BrainkitMessage](t *testing.T, kitA sdk.Runtime, ctx context.Context, targetNS string, req Req) Resp {
+func crossKitCall[Req messages.BrainkitMessage, Resp any](t *testing.T, kitA sdk.Runtime, ctx context.Context, targetNS string, req Req) Resp {
 	t.Helper()
 	_pr1, err := sdk.PublishTo(kitA, ctx, targetNS, req)
 	require.NoError(t, err)
 	_ch1 := make(chan Resp, 1)
-	_us1, err := sdk.SubscribeTo[Resp](rt, ctx, _pr1.ReplyTo, func(r Resp, m messages.Message) { _ch1 <- r })
+	_us1, err := sdk.SubscribeTo[Resp](kitA, ctx, _pr1.ReplyTo, func(r Resp, m messages.Message) { _ch1 <- r })
 	require.NoError(t, err)
 	defer _us1()
 	var resp Resp
@@ -130,7 +130,7 @@ func TestCrossKit_FS(t *testing.T) {
 			_pr2, err := sdk.Publish(kitB, ctx, messages.FsReadMsg{Path: "crosskit.txt"})
 			require.NoError(t, err)
 			_ch2 := make(chan messages.FsReadResp, 1)
-			_us2, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch2 <- r })
+			_us2, err := sdk.SubscribeTo[messages.FsReadResp](kitB, ctx, _pr2.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch2 <- r })
 			require.NoError(t, err)
 			defer _us2()
 			var localResp messages.FsReadResp
@@ -334,7 +334,7 @@ func TestCrossKit_Workflows(t *testing.T) {
 			defer cancel()
 
 			// Deploy workflow on Kit B
-			_pr1, err := sdk.Publish(kitB, ctx, messages.KitDeployMsg{
+			_pr3, err := sdk.Publish(kitB, ctx, messages.KitDeployMsg{
 				Source: "crosskit-wf.ts",
 				Code: `
 					const wf = createWorkflow({
@@ -347,11 +347,11 @@ func TestCrossKit_Workflows(t *testing.T) {
 				`,
 			})
 			require.NoError(t, err)
-			_ch1 := make(chan messages.KitDeployResp, 1)
-			_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
-			defer _us1()
+			_ch3 := make(chan messages.KitDeployResp, 1)
+			_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](kitA, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+			defer _us3()
 			select {
-			case <-_ch1:
+			case <-_ch3:
 			case <-ctx.Done():
 				t.Fatal("timeout")
 			}

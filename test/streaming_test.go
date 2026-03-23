@@ -47,7 +47,7 @@ func TestStreaming_AiStream(t *testing.T) {
 	for {
 		select {
 		case msg := <-chunks:
-			if msg.Metadata["correlationId"] == corrID {
+			if msg.Metadata["correlationId"] == corrID.CorrelationID {
 				var chunk messages.StreamChunk
 				if err := json.Unmarshal(msg.Payload, &chunk); err == nil {
 					received = append(received, chunk)

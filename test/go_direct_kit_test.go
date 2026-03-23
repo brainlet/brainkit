@@ -41,7 +41,7 @@ func TestGoDirect_Kit(t *testing.T) {
 			})
 
 			t.Run("Deploy_Teardown", func(t *testing.T) {
-				_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "kit-test-1.ts",
 					Code: `
 						const t = createTool({
@@ -52,28 +52,28 @@ func TestGoDirect_Kit(t *testing.T) {
 					`,
 				})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.KitDeployResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+				_ch2 := make(chan messages.KitDeployResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us2()
 				var deployResp messages.KitDeployResp
 				select {
-				case deployResp = <-_ch1:
+				case deployResp = <-_ch2:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
 				assert.True(t, deployResp.Deployed)
 
 				// List should show it
-				_pr2, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
+				_pr3, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.KitListResp, 1)
-				_us2, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch2 <- r })
+				_ch3 := make(chan messages.KitListResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch3 <- r })
 				require.NoError(t, err)
-				defer _us2()
+				defer _us3()
 				var listResp messages.KitListResp
 				select {
-				case listResp = <-_ch2:
+				case listResp = <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -86,15 +86,15 @@ func TestGoDirect_Kit(t *testing.T) {
 				assert.True(t, found)
 
 				// Teardown
-				_pr3, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "kit-test-1.ts"})
+				_pr4, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "kit-test-1.ts"})
 				require.NoError(t, err)
-				_ch3 := make(chan messages.KitTeardownResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch3 <- r })
+				_ch4 := make(chan messages.KitTeardownResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch4 <- r })
 				require.NoError(t, err)
-				defer _us3()
+				defer _us4()
 				var teardownResp messages.KitTeardownResp
 				select {
-				case teardownResp = <-_ch3:
+				case teardownResp = <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -103,54 +103,9 @@ func TestGoDirect_Kit(t *testing.T) {
 
 			t.Run("Redeploy", func(t *testing.T) {
 				// Deploy v1
-				_pr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "kit-redeploy.ts",
 					Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) });`,
-				})
-				require.NoError(t, err)
-				_ch2 := make(chan messages.KitDeployResp, 1)
-				_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
-				defer _us2()
-				select {
-				case <-_ch2:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-
-				// Redeploy v2
-				_pr3, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
-					Source: "kit-redeploy.ts",
-					Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
-				})
-				require.NoError(t, err)
-				_ch3 := make(chan messages.KitRedeployResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch3 <- r })
-				require.NoError(t, err)
-				defer _us3()
-				var redeployResp messages.KitRedeployResp
-				select {
-				case redeployResp = <-_ch3:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.True(t, redeployResp.Deployed)
-
-				// Teardown
-				_pr4, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "kit-redeploy.ts"})
-			})
-
-			t.Run("Deploy_InvalidCode", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
-					Source: "bad-code.ts",
-					Code:   `throw new Error("intentional failure");`,
-				})
-				assert.Error(t, err)
-			})
-
-			t.Run("Deploy_Duplicate", func(t *testing.T) {
-				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
-					Source: "dup.ts",
-					Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) });`,
 				})
 				require.NoError(t, err)
 				_ch5 := make(chan messages.KitDeployResp, 1)
@@ -162,14 +117,59 @@ func TestGoDirect_Kit(t *testing.T) {
 					t.Fatal("timeout")
 				}
 
+				// Redeploy v2
+				_pr6, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
+					Source: "kit-redeploy.ts",
+					Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
+				})
+				require.NoError(t, err)
+				_ch6 := make(chan messages.KitRedeployResp, 1)
+				_us6, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr6.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch6 <- r })
+				require.NoError(t, err)
+				defer _us6()
+				var redeployResp messages.KitRedeployResp
+				select {
+				case redeployResp = <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
+				assert.True(t, redeployResp.Deployed)
+
+				// Teardown
+				_, _ = sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "kit-redeploy.ts"})
+			})
+
+			t.Run("Deploy_InvalidCode", func(t *testing.T) {
+				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+					Source: "bad-code.ts",
+					Code:   `throw new Error("intentional failure");`,
+				})
+				assert.Error(t, err)
+			})
+
+			t.Run("Deploy_Duplicate", func(t *testing.T) {
+				_pr9, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+					Source: "dup.ts",
+					Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) });`,
+				})
+				require.NoError(t, err)
+				_ch9 := make(chan messages.KitDeployResp, 1)
+				_us9, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr9.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch9 <- r })
+				defer _us9()
+				select {
+				case <-_ch9:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
+
 				// Deploy again with same source — should fail
-				_pr6, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_, err = sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
 					Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) });`,
 				})
 				assert.Error(t, err, "duplicate deploy should fail")
 
-				_pr5, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "dup.ts"})
+				_, _ = sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "dup.ts"})
 			})
 		})
 	}

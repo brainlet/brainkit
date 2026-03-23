@@ -41,7 +41,7 @@ func TestLogHandler_TSCompartment(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_ch1 := make(chan messages.KitDeployResp, 1)
-	_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+	_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
 	defer _us1()
 	select {
 	case <-_ch1:
@@ -91,7 +91,7 @@ func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_ch2 := make(chan messages.KitDeployResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
+	_us2, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, _pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch2 <- r })
 	defer _us2()
 	select {
 	case <-_ch2:
@@ -105,7 +105,7 @@ func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_ch3 := make(chan messages.KitDeployResp, 1)
-	_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+	_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
 	defer _us3()
 	select {
 	case <-_ch3:
@@ -163,7 +163,7 @@ func TestLogHandler_WASMModule(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_ch4 := make(chan messages.WasmCompileResp, 1)
-	_us4, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch4 <- r })
+	_us4, _ := sdk.SubscribeTo[messages.WasmCompileResp](k, ctx, _pr4.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch4 <- r })
 	defer _us4()
 	select {
 	case <-_ch4:
@@ -171,13 +171,13 @@ func TestLogHandler_WASMModule(t *testing.T) {
 		t.Fatal("timeout")
 	}
 
-	_pr1, err := sdk.Publish(k, ctx, messages.WasmRunMsg{ModuleID: "log-mod"})
+	_pr5, err := sdk.Publish(k, ctx, messages.WasmRunMsg{ModuleID: "log-mod"})
 	require.NoError(t, err)
-	_ch1 := make(chan messages.WasmRunResp, 1)
-	_us1, _ := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
-	defer _us1()
+	_ch5 := make(chan messages.WasmRunResp, 1)
+	_us5, _ := sdk.SubscribeTo[messages.WasmRunResp](k, ctx, _pr5.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch5 <- r })
+	defer _us5()
 	select {
-	case <-_ch1:
+	case <-_ch5:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -211,16 +211,16 @@ func TestLogHandler_NilDefault(t *testing.T) {
 	defer cancel()
 
 	// Should not panic
-	_pr5, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
+	_pr6, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
 		Source: "nil-test.ts",
 		Code:   `console.log("should not panic");`,
 	})
 	require.NoError(t, err)
-	_ch5 := make(chan messages.KitDeployResp, 1)
-	_us5, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch5 <- r })
-	defer _us5()
+	_ch6 := make(chan messages.KitDeployResp, 1)
+	_us6, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, _pr6.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch6 <- r })
+	defer _us6()
 	select {
-	case <-_ch5:
+	case <-_ch6:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

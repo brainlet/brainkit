@@ -47,13 +47,13 @@ func TestWASM_Reply(t *testing.T) {
 	}
 
 	// Deploy
-	_pr1, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "reply-shard"})
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "reply-shard"})
 	require.NoError(t, err)
-	_ch1 := make(chan messages.WasmDeployResp, 1)
-	_us1, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch1 <- r })
-	defer _us1()
+	_ch2 := make(chan messages.WasmDeployResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
 	select {
-	case <-_ch1:
+	case <-_ch2:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -74,7 +74,7 @@ func TestWASM_Reply_WithState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+	_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _on, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
 
@@ -98,22 +98,22 @@ func TestWASM_Reply_WithState(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "counter-shard"},
 	})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.WasmCompileResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch2 <- r })
-	defer _us2()
+	_ch3 := make(chan messages.WasmCompileResp, 1)
+	_us3, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch3 <- r })
+	defer _us3()
 	select {
-	case <-_ch2:
+	case <-_ch3:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
-	_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "counter-shard"})
+	_pr4, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "counter-shard"})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.WasmDeployResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
-	defer _us2()
+	_ch4 := make(chan messages.WasmDeployResp, 1)
+	_us4, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr4.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch4 <- r })
+	defer _us4()
 	select {
-	case <-_ch2:
+	case <-_ch4:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

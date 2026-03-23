@@ -74,19 +74,19 @@ func TestGoDirect_MCP(t *testing.T) {
 			})
 
 			t.Run("CallTool", func(t *testing.T) {
-				_pr1, err := sdk.Publish(rt, ctx, messages.McpCallToolMsg{
+				_pr2, err := sdk.Publish(rt, ctx, messages.McpCallToolMsg{
 					Server: "testmcp",
 					Tool:   "echo",
 					Args:   map[string]any{"message": "hello from mcp test"},
 				})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.McpCallToolResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.McpCallToolResp](rt, ctx, _pr1.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { _ch1 <- r })
+				_ch2 := make(chan messages.McpCallToolResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.McpCallToolResp](rt, ctx, _pr2.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { _ch2 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us2()
 				var resp messages.McpCallToolResp
 				select {
-				case resp = <-_ch1:
+				case resp = <-_ch2:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -100,18 +100,18 @@ func TestGoDirect_MCP(t *testing.T) {
 			t.Run("CallTool_via_registry", func(t *testing.T) {
 				// MCP tools are also registered in the tool registry — verify they're callable
 				// via tools.call (which looks them up by short name)
-				_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+				_pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "echo",
 					Input: map[string]any{"message": "via registry"},
 				})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.ToolCallResp, 1)
-				_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+				_ch3 := make(chan messages.ToolCallResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch3 <- r })
 				require.NoError(t, err)
-				defer _us2()
+				defer _us3()
 				var resp messages.ToolCallResp
 				select {
-				case resp = <-_ch2:
+				case resp = <-_ch3:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

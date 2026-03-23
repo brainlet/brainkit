@@ -65,23 +65,23 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Resolve_NotFound", func(t *testing.T) {
-				_pr3, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
+				_, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
 				assert.Error(t, err)
 			})
 
 			t.Run("Call_Echo", func(t *testing.T) {
-				_pr1, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+				_pr4, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "echo",
 					Input: map[string]any{"message": "hello world"},
 				})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.ToolCallResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+				_ch4 := make(chan messages.ToolCallResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr4.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch4 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us4()
 				var resp messages.ToolCallResp
 				select {
-				case resp = <-_ch1:
+				case resp = <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -91,18 +91,18 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Call_Add", func(t *testing.T) {
-				_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+				_pr5, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "add",
 					Input: map[string]any{"a": 17, "b": 25},
 				})
 				require.NoError(t, err)
-				_ch2 := make(chan messages.ToolCallResp, 1)
-				_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+				_ch5 := make(chan messages.ToolCallResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr5.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch5 <- r })
 				require.NoError(t, err)
-				defer _us2()
+				defer _us5()
 				var resp messages.ToolCallResp
 				select {
-				case resp = <-_ch2:
+				case resp = <-_ch5:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}
@@ -112,7 +112,7 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Call_NotFound", func(t *testing.T) {
-				_pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+				_, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "nonexistent",
 					Input: map[string]any{},
 				})

@@ -48,15 +48,15 @@ func TestE2E_ToolPipeline(t *testing.T) {
 	assert.True(t, deployResp.Deployed)
 
 	// 3. Verify "greeter" appears in tools.list
-	_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	_pr2, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 	require.NoError(t, err)
-	_ch1 := make(chan messages.ToolListResp, 1)
-	_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+	_ch2 := make(chan messages.ToolListResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch2 <- r })
 	require.NoError(t, err)
-	defer _us1()
+	defer _us2()
 	var listResp messages.ToolListResp
 	select {
-	case listResp = <-_ch1:
+	case listResp = <-_ch2:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -69,18 +69,18 @@ func TestE2E_ToolPipeline(t *testing.T) {
 	assert.True(t, found, "deployed 'greeter' tool should appear")
 
 	// 4. Call the deployed tool via the unified API
-	_pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	_pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 		Name:  "greeter",
 		Input: map[string]any{"name": "Brainkit"},
 	})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.ToolCallResp, 1)
-	_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+	_ch3 := make(chan messages.ToolCallResp, 1)
+	_us3, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch3 <- r })
 	require.NoError(t, err)
-	defer _us2()
+	defer _us3()
 	var callResp messages.ToolCallResp
 	select {
-	case callResp = <-_ch2:
+	case callResp = <-_ch3:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -89,13 +89,13 @@ func TestE2E_ToolPipeline(t *testing.T) {
 	assert.Equal(t, "Hello, Brainkit!", result["greeting"])
 
 	// 5. Teardown
-	_pr2, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "pipeline.ts"})
+	_pr4, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "pipeline.ts"})
 	require.NoError(t, err)
-	_ch2 := make(chan messages.KitTeardownResp, 1)
-	_us2, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch2 <- r })
-	defer _us2()
+	_ch4 := make(chan messages.KitTeardownResp, 1)
+	_us4, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch4 <- r })
+	defer _us4()
 	select {
-	case <-_ch2:
+	case <-_ch4:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -108,30 +108,30 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	defer cancel()
 
 	// Deploy v1
-	_pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+	_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 		Source: "lifecycle.ts",
 		Code:   `const v1 = createTool({ id: "version-check", description: "v1", execute: async () => ({ version: 1 }) });`,
 	})
 	require.NoError(t, err)
-	_ch3 := make(chan messages.KitDeployResp, 1)
-	_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
-	defer _us3()
+	_ch5 := make(chan messages.KitDeployResp, 1)
+	_us5, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch5 <- r })
+	defer _us5()
 	select {
-	case <-_ch3:
+	case <-_ch5:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// List — should show lifecycle.ts
-	_pr3, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
+	_pr6, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
-	_ch3 := make(chan messages.KitListResp, 1)
-	_us3, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch3 <- r })
+	_ch6 := make(chan messages.KitListResp, 1)
+	_us6, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr6.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch6 <- r })
 	require.NoError(t, err)
-	defer _us3()
+	defer _us6()
 	var listResp messages.KitListResp
 	select {
-	case listResp = <-_ch3:
+	case listResp = <-_ch6:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -142,45 +142,45 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	assert.True(t, sources["lifecycle.ts"])
 
 	// Redeploy with v2
-	_pr4, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
+	_pr7, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 		Source: "lifecycle.ts",
 		Code:   `const v2 = createTool({ id: "version-check-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
 	})
 	require.NoError(t, err)
-	_ch4 := make(chan messages.KitRedeployResp, 1)
-	_us4, _ := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch4 <- r })
-	defer _us4()
+	_ch7 := make(chan messages.KitRedeployResp, 1)
+	_us7, _ := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, _pr7.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { _ch7 <- r })
+	defer _us7()
 	select {
-	case <-_ch4:
+	case <-_ch7:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// Teardown
-	_pr4, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "lifecycle.ts"})
+	_pr8, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "lifecycle.ts"})
 	require.NoError(t, err)
-	_ch4 := make(chan messages.KitTeardownResp, 1)
-	_us4, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch4 <- r })
+	_ch8 := make(chan messages.KitTeardownResp, 1)
+	_us8, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr8.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch8 <- r })
 	require.NoError(t, err)
-	defer _us4()
+	defer _us8()
 	var tearResp messages.KitTeardownResp
 	select {
-	case tearResp = <-_ch4:
+	case tearResp = <-_ch8:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 	assert.GreaterOrEqual(t, tearResp.Removed, 0)
 
 	// List — should be empty (or at least not contain lifecycle.ts)
-	_pr5, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
+	_pr9, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
-	_ch5 := make(chan messages.KitListResp, 1)
-	_us5, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch5 <- r })
+	_ch9 := make(chan messages.KitListResp, 1)
+	_us9, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr9.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch9 <- r })
 	require.NoError(t, err)
-	defer _us5()
-	var listResp messages.KitListResp
+	defer _us9()
+	
 	select {
-	case listResp = <-_ch5:
+	case listResp = <-_ch9:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -197,30 +197,30 @@ func TestE2E_MultiDomain(t *testing.T) {
 	defer cancel()
 
 	// 1. Write input file
-	_pr5, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
+	_pr10, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 		Path: "input.json",
 		Data: `{"items":["apple","banana","cherry"]}`,
 	})
 	require.NoError(t, err)
-	_ch5 := make(chan messages.FsWriteResp, 1)
-	_us5, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr5.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch5 <- r })
-	defer _us5()
+	_ch10 := make(chan messages.FsWriteResp, 1)
+	_us10, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr10.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch10 <- r })
+	defer _us10()
 	select {
-	case <-_ch5:
+	case <-_ch10:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// 2. Read it back
-	_pr6, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "input.json"})
+	_pr11, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "input.json"})
 	require.NoError(t, err)
-	_ch6 := make(chan messages.FsReadResp, 1)
-	_us6, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch6 <- r })
+	_ch11 := make(chan messages.FsReadResp, 1)
+	_us11, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr11.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch11 <- r })
 	require.NoError(t, err)
-	defer _us6()
+	defer _us11()
 	var readResp messages.FsReadResp
 	select {
-	case readResp = <-_ch6:
+	case readResp = <-_ch11:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -229,47 +229,47 @@ func TestE2E_MultiDomain(t *testing.T) {
 	var input map[string]any
 	json.Unmarshal([]byte(readResp.Data), &input)
 
-	_pr6, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	_pr12, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": readResp.Data},
 	})
 	require.NoError(t, err)
-	_ch6 := make(chan messages.ToolCallResp, 1)
-	_us6, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr6.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch6 <- r })
+	_ch12 := make(chan messages.ToolCallResp, 1)
+	_us12, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr12.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch12 <- r })
 	require.NoError(t, err)
-	defer _us6()
+	defer _us12()
 	var callResp messages.ToolCallResp
 	select {
-	case callResp = <-_ch6:
+	case callResp = <-_ch12:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// 4. Write the processed output
-	_pr7, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
+	_pr13, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
 		Path: "output.json",
 		Data: string(callResp.Result),
 	})
 	require.NoError(t, err)
-	_ch7 := make(chan messages.FsWriteResp, 1)
-	_us7, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch7 <- r })
-	defer _us7()
+	_ch13 := make(chan messages.FsWriteResp, 1)
+	_us13, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr13.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch13 <- r })
+	defer _us13()
 	select {
-	case <-_ch7:
+	case <-_ch13:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// 5. Read and verify output
-	_pr7, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "output.json"})
+	_pr14, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "output.json"})
 	require.NoError(t, err)
-	_ch7 := make(chan messages.FsReadResp, 1)
-	_us7, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch7 <- r })
+	_ch14 := make(chan messages.FsReadResp, 1)
+	_us14, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr14.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch14 <- r })
 	require.NoError(t, err)
-	defer _us7()
+	defer _us14()
 	var outResp messages.FsReadResp
 	select {
-	case outResp = <-_ch7:
+	case outResp = <-_ch14:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -285,7 +285,7 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	defer cancel()
 
 	// Compile a persistent shard that accumulates event data
-	_pr8, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+	_pr15, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
 			import { _on, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
 
@@ -307,25 +307,25 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 		Options: &messages.WasmCompileOpts{Name: "lifecycle-shard"},
 	})
 	require.NoError(t, err)
-	_ch8 := make(chan messages.WasmCompileResp, 1)
-	_us8, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch8 <- r })
-	defer _us8()
+	_ch15 := make(chan messages.WasmCompileResp, 1)
+	_us15, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr15.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch15 <- r })
+	defer _us15()
 	select {
-	case <-_ch8:
+	case <-_ch15:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// Deploy
-	_pr8, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "lifecycle-shard"})
+	_pr16, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
-	_ch8 := make(chan messages.WasmDeployResp, 1)
-	_us8, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch8 <- r })
+	_ch16 := make(chan messages.WasmDeployResp, 1)
+	_us16, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr16.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch16 <- r })
 	require.NoError(t, err)
-	defer _us8()
+	defer _us16()
 	var deployResp messages.WasmDeployResp
 	select {
-	case deployResp = <-_ch8:
+	case deployResp = <-_ch16:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -344,15 +344,15 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	}
 
 	// Describe — verify handlers
-	_pr9, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "lifecycle-shard"})
+	_pr17, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
-	_ch9 := make(chan messages.WasmDescribeResp, 1)
-	_us9, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr9.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch9 <- r })
+	_ch17 := make(chan messages.WasmDescribeResp, 1)
+	_us17, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr17.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch17 <- r })
 	require.NoError(t, err)
-	defer _us9()
+	defer _us17()
 	var descResp messages.WasmDescribeResp
 	select {
-	case descResp = <-_ch9:
+	case descResp = <-_ch17:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -360,39 +360,39 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	assert.Contains(t, descResp.Handlers, "lifecycle.data")
 
 	// Undeploy
-	_pr10, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "lifecycle-shard"})
+	_pr18, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
-	_ch10 := make(chan messages.WasmUndeployResp, 1)
-	_us10, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr10.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch10 <- r })
-	defer _us10()
+	_ch18 := make(chan messages.WasmUndeployResp, 1)
+	_us18, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr18.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch18 <- r })
+	defer _us18()
 	select {
-	case <-_ch10:
+	case <-_ch16:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// Remove
-	_pr11, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "lifecycle-shard"})
+	_pr19, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
-	_ch11 := make(chan messages.WasmRemoveResp, 1)
-	_us11, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr11.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch11 <- r })
-	defer _us11()
+	_ch19 := make(chan messages.WasmRemoveResp, 1)
+	_us19, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr19.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch19 <- r })
+	defer _us19()
 	select {
-	case <-_ch11:
+	case <-_ch16:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 
 	// Verify it's gone
-	_pr12, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "lifecycle-shard"})
+	_pr20, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
-	_ch12 := make(chan messages.WasmGetResp, 1)
-	_us12, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr12.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch12 <- r })
+	_ch20 := make(chan messages.WasmGetResp, 1)
+	_us20, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr20.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch20 <- r })
 	require.NoError(t, err)
-	defer _us12()
+	defer _us20()
 	var getResp messages.WasmGetResp
 	select {
-	case getResp = <-_ch12:
+	case getResp = <-_ch20:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -412,7 +412,7 @@ func TestE2E_ConcurrentOperations(t *testing.T) {
 
 	for i := range n {
 		go func(val int) {
-			_pr9, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+			pubResult, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
 			})
@@ -420,9 +420,23 @@ func TestE2E_ConcurrentOperations(t *testing.T) {
 				errors <- err
 				return
 			}
-			var result map[string]int
-			json.Unmarshal(resp.Result, &result)
-			results <- result["sum"]
+			done := make(chan messages.ToolCallResp, 1)
+			unsub, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pubResult.ReplyTo, func(r messages.ToolCallResp, m messages.Message) {
+				done <- r
+			})
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer unsub()
+			select {
+			case resp := <-done:
+				var result map[string]int
+				json.Unmarshal(resp.Result, &result)
+				results <- result["sum"]
+			case <-ctx.Done():
+				errors <- ctx.Err()
+			}
 		}(i)
 	}
 

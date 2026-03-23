@@ -92,7 +92,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				})
 				require.NoError(t, err)
 				_ch1 := make(chan messages.KitDeployResp, 1)
-				_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
+				_us1, _ := sdk.SubscribeTo[messages.KitDeployResp](node, ctx, _pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch1 <- r })
 				defer _us1()
 				select {
 				case <-_ch1:
@@ -141,7 +141,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				})
 				require.NoError(t, err)
 				_ch3 := make(chan messages.KitDeployResp, 1)
-				_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+				_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](node, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
 				defer _us3()
 				select {
 				case <-_ch3:
@@ -152,15 +152,15 @@ func TestCross_TS_Plugin(t *testing.T) {
 				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer listCancel()
 
-				_pr1, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
+				_pr4, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
-				_ch1 := make(chan messages.ToolListResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				_ch4 := make(chan messages.ToolListResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, _pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch4 <- r })
 				require.NoError(t, err)
-				defer _us1()
+				defer _us4()
 				var resp messages.ToolListResp
 				select {
-				case resp = <-_ch1:
+				case resp = <-_ch4:
 				case <-ctx.Done():
 					t.Fatal("timeout")
 				}

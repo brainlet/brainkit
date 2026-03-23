@@ -59,21 +59,21 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("GetStatus_NotFound", func(t *testing.T) {
-				_pr2, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{
+				_, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{
 					Name: "ghost-agent",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("SetStatus_NotFound", func(t *testing.T) {
-				_pr3, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
+				_, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "ghost-agent", Status: "busy",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("SetStatus_InvalidStatus", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
+				_, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "any", Status: "flying",
 				})
 				assert.Error(t, err)
@@ -85,7 +85,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy .ts that creates an agent with string model reference
-				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "test-agent.ts",
 					Code: `
 						const a = agent({
@@ -156,7 +156,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				_us4, err := sdk.SubscribeTo[messages.AgentGetStatusResp](rt, ctx, _pr4.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { _ch4 <- r })
 				require.NoError(t, err)
 				defer _us4()
-				var statusResp messages.AgentGetStatusResp
+				
 				select {
 				case statusResp = <-_ch4:
 				case <-ctx.Done():
@@ -165,18 +165,18 @@ func TestGoDirect_Agents(t *testing.T) {
 				assert.Equal(t, "busy", statusResp.Status)
 
 				// Teardown
-				_pr5, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "test-agent.ts"})
+				_,  _ = sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "test-agent.ts"})
 			})
 
 			t.Run("Request_NotFound", func(t *testing.T) {
-				_pr7, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{
+				_, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{
 					Name: "ghost-agent", Prompt: "hello",
 				})
 				assert.Error(t, err)
 			})
 
 			t.Run("Message_NotFound", func(t *testing.T) {
-				_pr8, err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
+				_,  err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
 					Target: "ghost-agent", Payload: "hello",
 				})
 				assert.Error(t, err)
@@ -188,7 +188,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy an agent so it exists in the registry
-				_pr9, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "msg-agent.ts",
 					Code: `
 						const a = agent({
