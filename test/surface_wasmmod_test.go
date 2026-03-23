@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	"github.com/brainlet/brainkit/kit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -126,6 +128,9 @@ func TestWASMSurface_Agents(t *testing.T) {
 	t.Run("Message", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-agents-message", "agents.message", `{"target":"wasm-target","payload":{"text":"from wasm"}}`)
 	})
+	t.Run("Request", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-agents-request", "agents.request", `{"name":"wasm-target","prompt":"Say ok"}`)
+	})
 }
 
 // --- AI domain from WASM ---
@@ -151,6 +156,10 @@ func TestWASMSurface_AI(t *testing.T) {
 	t.Run("GenerateObject", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-ai-genobj", "ai.generateObject",
 			`{"model":"openai/gpt-4o-mini","prompt":"color","schema":{"type":"object","properties":{"color":{"type":"string"}}}}`)
+	})
+	t.Run("Stream", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-ai-stream", "ai.stream",
+			`{"model":"openai/gpt-4o-mini","prompt":"Say ok","streamTo":"stream.chunk"}`)
 	})
 }
 
@@ -238,19 +247,35 @@ func TestWASMSurface_Kit(t *testing.T) {
 	t.Run("List", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-kit-list", "kit.list", `{}`)
 	})
+	t.Run("Deploy", func(t *testing.T) {
+		// Deploy a minimal .ts — use escaped quotes for the JSON inside AS string
+		wasmDomainTest(t, rt, ctx, "wasm-kit-deploy", "kit.deploy",
+			`{"source":"wasm-deployed.ts","code":"var x = 1;"}`)
+	})
+	t.Run("Teardown", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-kit-teardown", "kit.teardown", `{"source":"wasm-deployed.ts"}`)
+	})
 }
 
 // --- MCP domain from WASM ---
 
 func TestWASMSurface_MCP(t *testing.T) {
-	rt := newTestKernel(t)
+	mcpBinary := buildTestMCP(t)
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace: "test", CallerID: "test-wasm-mcp", WorkspaceDir: t.TempDir(),
+		MCPServers: map[string]mcppkg.ServerConfig{"echo": {Command: mcpBinary}},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+	rt := sdk.Runtime(k)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// MCP listTools will error (no servers configured) but the callback SHOULD still fire
-	// with an error response. This proves the path works even for error cases.
 	t.Run("ListTools", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-mcp-list", "mcp.listTools", `{}`)
+	})
+	t.Run("CallTool", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-mcp-call", "mcp.callTool", `{"server":"echo","tool":"echo","args":{"message":"from-wasm"}}`)
 	})
 }
 

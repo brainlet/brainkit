@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -234,4 +235,18 @@ func newTestKernelWithStorage(t *testing.T) *testKernel {
 	})
 
 	return &testKernel{k}
+}
+
+// buildTestMCP compiles the testmcp binary and returns its path.
+func buildTestMCP(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "testmcp")
+	cmd := exec.Command("go", "build", "-o", binary, "./test/testmcp/")
+	cmd.Dir = filepath.Join("..")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("build testmcp: %v", err)
+	}
+	return binary
 }

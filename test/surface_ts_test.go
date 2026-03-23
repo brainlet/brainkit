@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/kit"
 	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk"
@@ -250,6 +251,17 @@ func TestTSSurface_AI(t *testing.T) {
 				});
 				return { object: result.object };
 			}});
+			const tsAiStream = createTool({ id: "ts-ai-stream", execute: async () => {
+				var stream = ai.stream({ model: "openai/gpt-4o-mini", prompt: "Say exactly: pong" });
+				var text = "";
+				var reader = stream.textStream.getReader();
+				while (true) {
+					var chunk = await reader.read();
+					if (chunk.done) break;
+					text += chunk.value || "";
+				}
+				return { text: text };
+			}});
 		`,
 	})
 	require.NoError(t, err)
@@ -282,6 +294,13 @@ func TestTSSurface_AI(t *testing.T) {
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotNil(t, result["object"])
+	})
+	t.Run("Stream", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-stream", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.NotEmpty(t, result["text"])
 	})
 }
 
@@ -498,20 +517,31 @@ func TestTSSurface_Kit(t *testing.T) {
 // --- MCP domain from TS ---
 
 func TestTSSurface_MCP(t *testing.T) {
-	tk := newTSKernel(t)
+	// Build testmcp binary for a real MCP server
+	mcpBinary := buildTestMCP(t)
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace: "test", CallerID: "test-ts-mcp", WorkspaceDir: t.TempDir(),
+		MCPServers: map[string]mcppkg.ServerConfig{
+			"echo": {Command: mcpBinary},
+		},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+	tk := &testKernel{k}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
 		Source: "ts-mcp-surface.ts",
 		Code: `
 			const tsMcpList = createTool({ id: "ts-mcp-list", execute: async () => {
-				try {
-					var tools = await mcp.listTools();
-					return { tools: tools };
-				} catch(e) {
-					return { error: e.message };
-				}
+				var tools = await mcp.listTools();
+				return { tools: tools };
+			}});
+			const tsMcpCall = createTool({ id: "ts-mcp-call", execute: async () => {
+				var result = await mcp.callTool("echo", "echo", { message: "from-ts" });
+				return result;
 			}});
 		`,
 	})
@@ -523,8 +553,12 @@ func TestTSSurface_MCP(t *testing.T) {
 		require.NoError(t, err)
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
-		// Either returns tools array or error (no MCP servers configured)
-		assert.True(t, result["tools"] != nil || result["error"] != nil)
+		assert.NotNil(t, result["tools"])
+	})
+	t.Run("CallTool", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-mcp-call", Input: map[string]any{}})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Result)
 	})
 }
 
