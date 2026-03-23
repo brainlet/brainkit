@@ -348,7 +348,7 @@ func TestCrossKit_Workflows(t *testing.T) {
 			})
 			require.NoError(t, err)
 			_ch3 := make(chan messages.KitDeployResp, 1)
-			_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](kitA, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
+			_us3, _ := sdk.SubscribeTo[messages.KitDeployResp](kitB, ctx, _pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch3 <- r })
 			defer _us3()
 			select {
 			case <-_ch3:
