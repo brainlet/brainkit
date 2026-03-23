@@ -1,0 +1,155 @@
+package test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+func TestCross_Plugin_Go(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping plugin tests in short mode")
+	}
+
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			requiresNetworkTransport(t, backend)
+
+			// Build testplugin binary
+			pluginBinary := filepath.Join(t.TempDir(), "testplugin")
+			moduleRoot := filepath.Join("..")
+			buildCmd := exec.Command("go", "build", "-o", pluginBinary, "./test/testplugin/")
+			buildCmd.Dir = moduleRoot
+			buildCmd.Stdout = os.Stdout
+			buildCmd.Stderr = os.Stderr
+			if err := buildCmd.Run(); err != nil {
+				t.Fatalf("build test plugin: %v", err)
+			}
+
+			// For NATS, start a container
+			var natsURL string
+			if backend == "nats" {
+				os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+				if os.Getenv("DOCKER_HOST") == "" {
+					if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
+						os.Setenv("DOCKER_HOST", "unix://"+string(out[:len(out)-1]))
+					}
+				}
+
+				ctx := context.Background()
+				natsContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+					ContainerRequest: testcontainers.ContainerRequest{
+						Image:        "nats:latest",
+						ExposedPorts: []string{"4222/tcp"},
+						Cmd:          []string{"-js"},
+						WaitingFor:   wait.ForLog("Server is ready").WithStartupTimeout(30 * time.Second),
+					},
+					Started: true,
+				})
+				if err != nil {
+					t.Skipf("failed to start NATS container: %v", err)
+				}
+				defer natsContainer.Terminate(ctx)
+
+				host, _ := natsContainer.Host(ctx)
+				port, _ := natsContainer.MappedPort(ctx, "4222")
+				natsURL = fmt.Sprintf("nats://%s:%s", host, port.Port())
+			} else {
+				t.Skipf("plugin cross-surface test only implemented for NATS backend currently")
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+
+			tmpDir := t.TempDir()
+
+			node, err := kit.NewNode(kit.NodeConfig{
+				Kernel: kit.KernelConfig{
+					Namespace:    "plugin-cross",
+					CallerID:     "host",
+					WorkspaceDir: tmpDir,
+				},
+				Messaging: kit.MessagingConfig{
+					Transport: "nats",
+					NATSURL:   natsURL,
+					NATSName:  "brainkit-cross-plugin",
+				},
+				Plugins: []kit.PluginConfig{
+					{
+						Name:         "testplugin",
+						Binary:       pluginBinary,
+						StartTimeout: 30 * time.Second,
+					},
+				},
+			})
+			require.NoError(t, err)
+			defer node.Close()
+
+			// Register a host-side tool
+			kit.RegisterTool(node.Kernel, "host-multiply", registry.TypedTool[struct {
+				A int `json:"a"`
+				B int `json:"b"`
+			}]{
+				Description: "multiplies two numbers",
+				Execute: func(ctx context.Context, input struct {
+					A int `json:"a"`
+					B int `json:"b"`
+				}) (any, error) {
+					return map[string]int{"product": input.A * input.B}, nil
+				},
+			})
+
+			err = node.Start(ctx)
+			require.NoError(t, err)
+
+			// Wait for plugin manifest registration
+			time.Sleep(2 * time.Second)
+
+			t.Run("Plugin_tool_called_from_Go", func(t *testing.T) {
+				toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
+				defer toolCancel()
+
+				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](node, toolCtx, messages.ToolCallMsg{
+					Name:  "echo",
+					Input: map[string]any{"message": "plugin→go test"},
+				})
+				require.NoError(t, err)
+
+				var result map[string]string
+				json.Unmarshal(resp.Result, &result)
+				assert.Equal(t, "plugin→go test", result["echoed"])
+				assert.Equal(t, "testplugin", result["plugin"])
+			})
+
+			t.Run("Go_tool_visible_in_list", func(t *testing.T) {
+				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
+				defer listCancel()
+
+				resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](node, listCtx, messages.ToolListMsg{})
+				require.NoError(t, err)
+
+				names := make(map[string]bool)
+				for _, tool := range resp.Tools {
+					names[tool.ShortName] = true
+				}
+				assert.True(t, names["echo"], "plugin echo tool")
+				assert.True(t, names["concat"], "plugin concat tool")
+				assert.True(t, names["host-multiply"], "host-side tool")
+			})
+		})
+	}
+}
