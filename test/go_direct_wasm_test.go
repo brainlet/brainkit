@@ -235,8 +235,20 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Run_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "nope"})
-				assert.Error(t, err)
+				pr, _ := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "nope"})
+				errCh := make(chan string, 1)
+				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					errCh <- r.Error
+				})
+				defer un()
+				select {
+				case errMsg := <-errCh:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Remove_WhileDeployed", func(t *testing.T) {
@@ -250,8 +262,20 @@ func TestGoDirect_WASM(t *testing.T) {
 				})
 				sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-rm-deployed"})
 
-				_, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
-				assert.Error(t, err, "cannot remove deployed module")
+				pr, _ := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
+				errCh := make(chan string, 1)
+				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					errCh <- r.Error
+				})
+				defer un()
+				select {
+				case errMsg := <-errCh:
+					assert.NotEmpty(t, errMsg, "cannot remove deployed module")
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-rm-deployed"})
 				sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})

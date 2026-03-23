@@ -875,8 +875,20 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		}
 	})
 	t.Run("Cancel_NotFound", func(t *testing.T) {
-		_, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{RunID: "nonexistent"})
-		assert.Error(t, err)
+		pr, _ := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{RunID: "nonexistent"})
+		errCh := make(chan string, 1)
+		un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+			var r struct { Error string `json:"error"` }
+			json.Unmarshal(msg.Payload, &r)
+			errCh <- r.Error
+		})
+		defer un()
+		select {
+		case errMsg := <-errCh:
+			assert.NotEmpty(t, errMsg)
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 	})
 }
 
