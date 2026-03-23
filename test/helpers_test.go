@@ -11,6 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
+	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -48,29 +49,27 @@ func newTestKernelFull(t *testing.T) *testKernel {
 	loadEnv(t)
 	tmpDir := t.TempDir()
 
-	providers := make(map[string]kit.ProviderConfig)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		providers["openai"] = kit.ProviderConfig{APIKey: key}
-	}
-
-	storages := map[string]kit.StorageConfig{
-		"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
-	}
-
-	// Pass provider API keys as env vars too — the embedded JS runtime's
-	// ModelRouterEmbeddingModel reads from process.env.OPENAI_API_KEY etc.
+	aiProviders := make(map[string]provreg.AIProviderRegistration)
 	envVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		aiProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
 		envVars["OPENAI_API_KEY"] = key
 	}
 
+	embeddedStorages := map[string]kit.EmbeddedStorageConfig{
+		"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+	}
+
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-caller",
-		WorkspaceDir: tmpDir,
-		Providers:    providers,
-		Storages:     storages,
-		EnvVars:      envVars,
+		Namespace:        "test",
+		CallerID:         "test-caller",
+		WorkspaceDir:     tmpDir,
+		AIProviders:      aiProviders,
+		EmbeddedStorages: embeddedStorages,
+		EnvVars:          envVars,
 	})
 	if err != nil {
 		t.Fatalf("NewKernel: %v", err)
@@ -113,9 +112,12 @@ func newTestNode(t *testing.T) sdk.Runtime {
 	loadEnv(t)
 	tmpDir := t.TempDir()
 
-	providers := make(map[string]kit.ProviderConfig)
+	nodeProviders := make(map[string]provreg.AIProviderRegistration)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		providers["openai"] = kit.ProviderConfig{APIKey: key}
+		nodeProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
 	}
 
 	n, err := kit.NewNode(kit.NodeConfig{
@@ -123,8 +125,8 @@ func newTestNode(t *testing.T) sdk.Runtime {
 			Namespace:    "test",
 			CallerID:     "test-node",
 			WorkspaceDir: tmpDir,
-			Providers:    providers,
-			Storages: map[string]kit.StorageConfig{
+			AIProviders:  nodeProviders,
+			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
 				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
 			},
 		},
@@ -189,27 +191,25 @@ func newTestKernelWithStorage(t *testing.T) *testKernel {
 	loadEnv(t)
 	tmpDir := t.TempDir()
 
-	providers := make(map[string]kit.ProviderConfig)
+	storageProviders := make(map[string]provreg.AIProviderRegistration)
+	storageEnvVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		providers["openai"] = kit.ProviderConfig{APIKey: key}
-	}
-
-	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		envVars["OPENAI_API_KEY"] = key
-	}
-
-	storages := map[string]kit.StorageConfig{
-		"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		storageProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
+		storageEnvVars["OPENAI_API_KEY"] = key
 	}
 
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-storage",
 		WorkspaceDir: tmpDir,
-		Providers:    providers,
-		Storages:     storages,
-		EnvVars:      envVars,
+		AIProviders:  storageProviders,
+		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
+			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		},
+		EnvVars: storageEnvVars,
 	})
 	if err != nil {
 		t.Fatalf("NewKernel (with storage): %v", err)

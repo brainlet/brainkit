@@ -15,7 +15,8 @@ import (
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	"github.com/brainlet/brainkit/internal/registry"
+	toolreg "github.com/brainlet/brainkit/internal/registry"
+	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -34,8 +35,9 @@ type Kernel struct {
 	lifecycle       *LifecycleDomain
 	mcpDomainInst   *MCPDomain
 
-	Tools *registry.ToolRegistry
-	mcp   *mcppkg.MCPManager
+	Tools     *toolreg.ToolRegistry
+	mcp       *mcppkg.MCPManager
+	providers *provreg.ProviderRegistry
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -70,7 +72,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	sharedTools := cfg.SharedTools
 	if sharedTools == nil {
-		sharedTools = registry.New()
+		sharedTools = toolreg.New()
 	}
 
 	kernel := &Kernel{
@@ -83,7 +85,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		bridgeSubs:  make(map[string]func()),
 	}
 	providers := make(map[string]agentembed.ProviderConfig)
-	for name, pc := range cfg.Providers {
+	for name, reg := range cfg.AIProviders {
+		pc := extractProviderCredentials(reg)
 		providers[name] = agentembed.ProviderConfig{APIKey: pc.APIKey, BaseURL: pc.BaseURL}
 	}
 
@@ -108,7 +111,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	kernel.registerBridges()
 
-	for name, scfg := range cfg.Storages {
+	for name, scfg := range cfg.EmbeddedStorages {
 		if err := kernel.addStorageInternal(name, scfg); err != nil {
 			for _, srv := range kernel.storages {
 				_ = srv.Close()
@@ -139,11 +142,33 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	// Inject provider configs into the JS runtime for ai.generate/embed model resolution.
 	// The JS runtime's resolveModel() reads from globalThis.__kit_providers.
-	if len(cfg.Providers) > 0 {
-		provJSON, _ := json.Marshal(cfg.Providers)
+	// Convert typed AIProvider registrations to the shape the JS runtime expects.
+	if len(cfg.AIProviders) > 0 {
+		provMap := make(map[string]map[string]string)
+		for name, reg := range cfg.AIProviders {
+			creds := extractProviderCredentials(reg)
+			entry := map[string]string{"APIKey": creds.APIKey}
+			if creds.BaseURL != "" {
+				entry["BaseURL"] = creds.BaseURL
+			}
+			provMap[name] = entry
+		}
+		provJSON, _ := json.Marshal(provMap)
 		kernel.bridge.Eval("__providers.js", fmt.Sprintf(
 			`globalThis.__kit_providers = %s;`, string(provJSON),
 		))
+	}
+
+	// Initialize the provider registry
+	kernel.providers = provreg.New(cfg.Probe)
+	for name, reg := range cfg.AIProviders {
+		kernel.providers.RegisterAIProvider(name, reg)
+	}
+	for name, reg := range cfg.VectorStores {
+		kernel.providers.RegisterVectorStore(name, reg)
+	}
+	for name, reg := range cfg.MastraStorages {
+		kernel.providers.RegisterStorage(name, reg)
 	}
 
 	kernel.wasm = newWASMService(kernel)
@@ -165,8 +190,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 			}
 			for _, tool := range kernel.mcp.ListToolsForServer(name) {
 				toolCopy := tool
-				fullName := registry.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
-				_ = kernel.Tools.Register(registry.RegisteredTool{
+				fullName := toolreg.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
+				_ = kernel.Tools.Register(toolreg.RegisteredTool{
 					Name:        fullName,
 					ShortName:   toolCopy.Name,
 					Owner:       "mcp",
@@ -174,7 +199,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 					Version:     "1.0.0",
 					Description: toolCopy.Description,
 					InputSchema: toolCopy.InputSchema,
-					Executor: &registry.GoFuncExecutor{
+					Executor: &toolreg.GoFuncExecutor{
 						Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 							return kernel.mcp.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
 						},
@@ -344,7 +369,7 @@ func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, err
 }
 
 // AddStorage starts a new named embedded SQLite storage and makes it available to JS.
-func (k *Kernel) AddStorage(name string, cfg StorageConfig) error {
+func (k *Kernel) AddStorage(name string, cfg EmbeddedStorageConfig) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if _, exists := k.storages[name]; exists {
@@ -527,7 +552,7 @@ func (k *Kernel) InjectWASMEvent(shardName, topic string, payload json.RawMessag
 	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload)
 }
 
-func (k *Kernel) addStorageInternal(name string, cfg StorageConfig) error {
+func (k *Kernel) addStorageInternal(name string, cfg EmbeddedStorageConfig) error {
 	srv, err := libsql.NewServer(cfg.Path)
 	if err != nil {
 		return err
@@ -590,8 +615,8 @@ func (k *Kernel) EvalModule(ctx context.Context, filename, code string) (string,
 }
 
 // RegisterTool is a convenience method for registering typed Go tools.
-func RegisterTool[T any](k *Kernel, name string, tool registry.TypedTool[T]) error {
-	return registry.Register(k.Tools, name, tool)
+func RegisterTool[T any](k *Kernel, name string, tool toolreg.TypedTool[T]) error {
+	return toolreg.Register(k.Tools, name, tool)
 }
 
 // ResumeWorkflow resumes a suspended workflow run from the Go side.
@@ -618,4 +643,79 @@ func (k *Kernel) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJS
 	}
 	defer result.Free()
 	return result.String(), nil
+}
+
+// --- Provider Registry delegation ---
+
+// RegisterAIProvider registers a typed AI provider at runtime.
+func (k *Kernel) RegisterAIProvider(name string, typ provreg.AIProviderType, config any) error {
+	return k.providers.RegisterAIProvider(name, provreg.AIProviderRegistration{Type: typ, Config: config})
+}
+
+// UnregisterAIProvider removes an AI provider.
+func (k *Kernel) UnregisterAIProvider(name string) { k.providers.UnregisterAIProvider(name) }
+
+// ListAIProviders returns all registered AI providers.
+func (k *Kernel) ListAIProviders() []provreg.ProviderInfo { return k.providers.ListAIProviders() }
+
+// RegisterVectorStore registers a typed vector store at runtime.
+func (k *Kernel) RegisterVectorStore(name string, typ provreg.VectorStoreType, config any) error {
+	return k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
+}
+
+// UnregisterVectorStore removes a vector store.
+func (k *Kernel) UnregisterVectorStore(name string) { k.providers.UnregisterVectorStore(name) }
+
+// ListVectorStores returns all registered vector stores.
+func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo { return k.providers.ListVectorStores() }
+
+// RegisterStorage registers a typed Mastra storage at runtime.
+func (k *Kernel) RegisterStorage(name string, typ provreg.StorageType, config any) error {
+	return k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
+}
+
+// UnregisterStorage removes a Mastra storage.
+func (k *Kernel) UnregisterStorage(name string) { k.providers.UnregisterStorage(name) }
+
+// ListStorages returns all registered Mastra storages.
+func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListStorages() }
+
+// extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.
+func extractProviderCredentials(reg provreg.AIProviderRegistration) struct{ APIKey, BaseURL string } {
+	switch cfg := reg.Config.(type) {
+	case provreg.OpenAIProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.AnthropicProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.GoogleProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.MistralProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.CohereProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.GroqProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.PerplexityProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.DeepSeekProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.FireworksProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.TogetherAIProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.XAIProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.AzureProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.HuggingFaceProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.CerebrasProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
+	case provreg.VertexProviderConfig:
+		return struct{ APIKey, BaseURL string }{cfg.APIKey, ""}
+	case provreg.BedrockProviderConfig:
+		return struct{ APIKey, BaseURL string }{"", ""}
+	default:
+		return struct{ APIKey, BaseURL string }{}
+	}
 }
