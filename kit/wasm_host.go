@@ -209,18 +209,25 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			hs.logsMu.Lock()
 			hs.logs = append(hs.logs, msg)
 			hs.logsMu.Unlock()
+			// Determine source name from module or shard
+			source := "wasm"
+			if hs.module != nil && hs.module.Name != "" {
+				source = "wasm:" + hs.module.Name
+			}
+			var levelStr string
 			switch level {
 			case 0:
-				log.Printf("[wasm:debug] %s", msg)
+				levelStr = "debug"
 			case 1:
-				log.Printf("[wasm:info] %s", msg)
+				levelStr = "info"
 			case 2:
-				log.Printf("[wasm:warn] %s", msg)
+				levelStr = "warn"
 			case 3:
-				log.Printf("[wasm:error] %s", msg)
+				levelStr = "error"
 			default:
-				log.Printf("[wasm] %s", msg)
+				levelStr = "log"
 			}
+			hs.kit.emitLog(source, levelStr, msg)
 		}).Export("log").
 
 		// ── 2. send(topic: string, payload: string) ──

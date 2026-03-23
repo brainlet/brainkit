@@ -190,6 +190,19 @@ func (k *Kernel) registerBridges() {
 			return qctx.NewUndefined()
 		}))
 
+	// __go_console_log_tagged(source, level, message) — per-Compartment tagged logging
+	qctx.Globals().Set("__go_console_log_tagged",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 3 {
+				return qctx.NewUndefined()
+			}
+			source := args[0].String()
+			level := args[1].String()
+			message := args[2].String()
+			k.emitLog(source, level, message)
+			return qctx.NewUndefined()
+		}))
+
 	// Set context globals
 	qctx.Globals().Set("__brainkit_sandbox_id", qctx.NewString(k.agents.ID()))
 	qctx.Globals().Set("__brainkit_sandbox_namespace", qctx.NewString(k.namespace))

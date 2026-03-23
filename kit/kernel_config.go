@@ -28,6 +28,11 @@ type KernelConfig struct {
 	// DeferRouterStart skips starting the router during NewKernel.
 	// Used by Node to register node-specific command bindings before starting.
 	DeferRouterStart bool
+
+	// LogHandler receives tagged log entries from .ts Compartments, WASM modules,
+	// and the Kernel. Called concurrently from multiple goroutines — must be safe.
+	// nil = default (print to stdout via log.Printf).
+	LogHandler func(LogEntry)
 }
 
 // ProviderConfig configures an AI provider.

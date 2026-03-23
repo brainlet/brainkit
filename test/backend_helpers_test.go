@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
@@ -226,4 +228,82 @@ func splitEnvVar(ev string) [2]string {
 		}
 	}
 	return [2]string{ev, ""}
+}
+
+// waitForBackendReady verifies the transport is fully operational by publishing
+// a probe message and waiting for it to round-trip. This catches cases where the
+// container is up but Watermill isn't fully connected (e.g., NATS JetStream provisioning).
+func waitForBackendReady(t *testing.T, transport *messaging.Transport) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	probeTopic := "probe-" + fmt.Sprintf("%d", time.Now().UnixNano())
+	if transport.TopicSanitizer != nil {
+		probeTopic = transport.TopicSanitizer(probeTopic)
+	}
+
+	ch, err := transport.Subscriber.Subscribe(ctx, probeTopic)
+	if err != nil {
+		t.Skipf("backend not ready (subscribe failed): %v", err)
+		return
+	}
+
+	msg := message.NewMessage(watermill.NewUUID(), []byte(`{"probe":true}`))
+	if err := transport.Publisher.Publish(probeTopic, msg); err != nil {
+		t.Skipf("backend not ready (publish failed): %v", err)
+		return
+	}
+
+	select {
+	case wmsg, ok := <-ch:
+		if ok {
+			wmsg.Ack()
+		}
+	case <-ctx.Done():
+		t.Skipf("backend not ready (probe timeout after 30s)")
+	}
+}
+
+// newTestKernelPair creates two Kernels on the SAME transport with different namespaces.
+// Both Kits share one transport instance so cross-namespace messages can route between them.
+func newTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) {
+	t.Helper()
+	loadEnv(t)
+	cfg := transportConfigForBackend(t, backend)
+	transport := mustCreateTransport(t, cfg)
+	t.Cleanup(func() { transport.Close() })
+
+	makeKit := func(namespace string) sdk.Runtime {
+		tmpDir := t.TempDir()
+		k, err := kit.NewKernel(kit.KernelConfig{
+			Namespace:    namespace,
+			CallerID:     namespace + "-caller",
+			WorkspaceDir: tmpDir,
+			Transport:    transport,
+		})
+		if err != nil {
+			t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
+		}
+		t.Cleanup(func() { k.Close() })
+
+		kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+			Description: "echoes the input message",
+			Execute: func(ctx context.Context, input echoInput) (any, error) {
+				return map[string]string{"echoed": input.Message, "from": namespace}, nil
+			},
+		})
+		return k
+	}
+
+	return makeKit("kit-a"), makeKit("kit-b")
+}
+
+// requiresNetworkTransport skips the test if the backend is memory (in-process only).
+// Plugin subprocess tests cannot use GoChannel memory transport.
+func requiresNetworkTransport(t *testing.T, backend string) {
+	t.Helper()
+	if backend == "memory" || backend == "" {
+		t.Skip("plugin subprocess tests require network transport (not memory)")
+	}
 }

@@ -1794,8 +1794,14 @@
       LocalFilesystem: _kitObj.LocalFilesystem,
       LocalSandbox: _kitObj.LocalSandbox,
 
-      // JS built-ins for compartment
-      console: console,
+      // JS built-ins for compartment — per-source tagged console
+      console: {
+        log:   (...a) => __go_console_log_tagged(source, "log", a.map(String).join(' ')),
+        warn:  (...a) => __go_console_log_tagged(source, "warn", a.map(String).join(' ')),
+        error: (...a) => __go_console_log_tagged(source, "error", a.map(String).join(' ')),
+        info:  (...a) => __go_console_log_tagged(source, "info", a.map(String).join(' ')),
+        debug: (...a) => __go_console_log_tagged(source, "debug", a.map(String).join(' ')),
+      },
       JSON: JSON,
       setTimeout: ws(globalThis.setTimeout),
       setInterval: ws(globalThis.setInterval),

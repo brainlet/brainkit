@@ -234,7 +234,7 @@ export namespace agents {
         _invokeAsync("agents.discover", msg.toJSON(), callback)
     }
 
-    export function get-status(msg: AgentGetStatusMsg, callback: string): void {
+    export function getStatus(msg: AgentGetStatusMsg, callback: string): void {
         _invokeAsync("agents.get-status", msg.toJSON(), callback)
     }
 
@@ -250,7 +250,7 @@ export namespace agents {
         _invokeAsync("agents.request", msg.toJSON(), callback)
     }
 
-    export function set-status(msg: AgentSetStatusMsg, callback: string): void {
+    export function setStatus(msg: AgentSetStatusMsg, callback: string): void {
         _invokeAsync("agents.set-status", msg.toJSON(), callback)
     }
 

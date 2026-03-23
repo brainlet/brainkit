@@ -13,6 +13,8 @@ WASM_DIR="kit/runtime/wasm"
 OUT="kit/runtime/wasm_bundle.ts"
 
 # File order (dependency-safe)
+# Infra files first (host declares @external, json provides JSONObject/JSONValue),
+# then generated domain files (complete, from codegen/wasmgen), index last.
 FILES=(
     "$WASM_DIR/host.ts"
     "$WASM_DIR/json.ts"
@@ -20,15 +22,18 @@ FILES=(
     "$WASM_DIR/log.ts"
     "$WASM_DIR/state.ts"
     "$WASM_DIR/shard.ts"
-    "$WASM_DIR/bus.ts"
-    "$WASM_DIR/ai.ts"
-    "$WASM_DIR/tools.ts"
-    "$WASM_DIR/agents.ts"
-    "$WASM_DIR/wasm_ops.ts"
-    "$WASM_DIR/memory.ts"
-    "$WASM_DIR/workflows.ts"
-    "$WASM_DIR/vectors.ts"
-    "$WASM_DIR/fs.ts"
+    "$WASM_DIR/generated/ai.ts"
+    "$WASM_DIR/generated/agents.ts"
+    "$WASM_DIR/generated/fs.ts"
+    "$WASM_DIR/generated/kit.ts"
+    "$WASM_DIR/generated/mcp.ts"
+    "$WASM_DIR/generated/memory.ts"
+    "$WASM_DIR/generated/plugin.ts"
+    "$WASM_DIR/generated/stream.ts"
+    "$WASM_DIR/generated/tools.ts"
+    "$WASM_DIR/generated/vectors.ts"
+    "$WASM_DIR/generated/wasm.ts"
+    "$WASM_DIR/generated/workflows.ts"
     "$WASM_DIR/index.ts"
 )
 

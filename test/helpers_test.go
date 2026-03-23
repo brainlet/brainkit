@@ -181,3 +181,54 @@ func mustJSON(v any) json.RawMessage {
 	}
 	return b
 }
+
+// newTestKernelWithStorage creates a Kernel with storage, workspace, and AI providers.
+// Used for memory, workflows, and vectors domain tests that need JS runtime storage init.
+func newTestKernelWithStorage(t *testing.T) *testKernel {
+	t.Helper()
+	loadEnv(t)
+	tmpDir := t.TempDir()
+
+	providers := make(map[string]kit.ProviderConfig)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		providers["openai"] = kit.ProviderConfig{APIKey: key}
+	}
+
+	envVars := make(map[string]string)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		envVars["OPENAI_API_KEY"] = key
+	}
+
+	storages := map[string]kit.StorageConfig{
+		"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+	}
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace:    "test",
+		CallerID:     "test-storage",
+		WorkspaceDir: tmpDir,
+		Providers:    providers,
+		Storages:     storages,
+		EnvVars:      envVars,
+	})
+	if err != nil {
+		t.Fatalf("NewKernel (with storage): %v", err)
+	}
+	t.Cleanup(func() { k.Close() })
+
+	// Register standard test tools
+	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+		Description: "echoes the input message",
+		Execute: func(ctx context.Context, input echoInput) (any, error) {
+			return map[string]string{"echoed": input.Message}, nil
+		},
+	})
+	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+		Description: "adds two numbers",
+		Execute: func(ctx context.Context, input addInput) (any, error) {
+			return map[string]int{"sum": input.A + input.B}, nil
+		},
+	})
+
+	return &testKernel{k}
+}

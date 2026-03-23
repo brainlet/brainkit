@@ -438,11 +438,14 @@ func topicDomain(topic string) string {
 func commandFuncName(topic, domain string) string {
 	// "ai.generate" with domain "ai" → "generate"
 	// "ai.generateObject" → "generateObject"
+	// "agents.get-status" → "getStatus" (hyphens to camelCase)
 	suffix := strings.TrimPrefix(topic, domain+".")
-	// Convert dots to camelCase: "createThread" stays, "foo.bar" becomes "fooBar"
-	parts := strings.Split(suffix, ".")
-	if len(parts) == 1 {
-		return parts[0]
+	// Convert dots and hyphens to camelCase
+	parts := strings.FieldsFunc(suffix, func(c rune) bool {
+		return c == '.' || c == '-'
+	})
+	if len(parts) == 0 {
+		return suffix
 	}
 	result := parts[0]
 	for _, p := range parts[1:] {
