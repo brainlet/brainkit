@@ -22,7 +22,7 @@ func (d *VectorsDomain) CreateIndex(ctx context.Context, req messages.VectorCrea
 		var req = globalThis.__pending_req;
 		var vs = globalThis.__kit_vector_store;
 		if (!vs) throw new Error("vector store not configured");
-		await vs.createIndex(req.name, req.dimension, req.metric);
+		await vs.createIndex({ indexName: req.name, dimension: req.dimension });
 		return JSON.stringify({ ok: true });
 	`)
 	if err != nil {
@@ -65,7 +65,12 @@ func (d *VectorsDomain) Upsert(ctx context.Context, req messages.VectorUpsertMsg
 		var req = globalThis.__pending_req;
 		var vs = globalThis.__kit_vector_store;
 		if (!vs) throw new Error("vector store not configured");
-		await vs.upsert(req.index, req.vectors);
+		await vs.upsert({
+			indexName: req.index,
+			vectors: req.vectors.map(function(v) {
+				return { id: v.id, vector: v.values, metadata: v.metadata };
+			}),
+		});
 		return JSON.stringify({ ok: true });
 	`)
 	if err != nil {
@@ -79,7 +84,14 @@ func (d *VectorsDomain) Query(ctx context.Context, req messages.VectorQueryMsg) 
 		var req = globalThis.__pending_req;
 		var vs = globalThis.__kit_vector_store;
 		if (!vs) throw new Error("vector store not configured");
-		var matches = await vs.query(req.index, req.embedding, req.topK, req.filter);
+		var results = await vs.query({
+			indexName: req.index,
+			queryVector: req.embedding,
+			topK: req.topK,
+		});
+		var matches = (results || []).map(function(r) {
+			return { id: r.id, score: r.score, values: r.vector, metadata: r.metadata };
+		});
 		return JSON.stringify({ matches: matches });
 	`)
 	if err != nil {

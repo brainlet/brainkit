@@ -186,6 +186,16 @@
   // Key: runId, Value: { run, workflow }
   var _pendingRuns = {};
 
+  // Registry of committed workflows — keyed by workflow ID.
+  // Used by workflows.run handler to find workflows by name.
+  var _workflows = {};
+  Object.defineProperty(globalThis, '__kit_workflows', {
+    value: _workflows, writable: false, enumerable: false, configurable: false
+  });
+  Object.defineProperty(globalThis, '__kit_pending_runs', {
+    value: _pendingRuns, writable: false, enumerable: false, configurable: false
+  });
+
   // Wrap createWorkflow to inject storage for snapshot persistence and track runs.
   // Without this, workflow suspend/resume cannot persist snapshots.
   // QuickJS bug workaround: obj?.method() does NOT short-circuit when method is undefined.
@@ -242,6 +252,7 @@
     var workflowId = config && (config.id || config.name);
     if (workflowId) {
       _resourceRegistry.register("workflow", workflowId, workflowId, wf);
+      _workflows[workflowId] = wf;
     }
     return wf;
   }

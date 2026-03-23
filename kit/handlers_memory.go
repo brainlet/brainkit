@@ -22,7 +22,8 @@ func (d *MemoryDomain) CreateThread(ctx context.Context, req messages.MemoryCrea
 		var req = globalThis.__pending_req || {};
 		var mem = globalThis.__kit_memory;
 		if (!mem) throw new Error("memory not configured — add Storages to Kit config and call createMemory()");
-		var thread = await mem.createThread(req.opts);
+		var opts = req.opts || {};
+		var thread = await mem.createThread(opts);
 		return JSON.stringify({ threadId: thread.id });
 	`)
 	if err != nil {
@@ -38,7 +39,7 @@ func (d *MemoryDomain) GetThread(ctx context.Context, req messages.MemoryGetThre
 		var req = globalThis.__pending_req;
 		var mem = globalThis.__kit_memory;
 		if (!mem) throw new Error("memory not configured");
-		var thread = await mem.getThread(req.threadId);
+		var thread = await mem.getThreadById({ threadId: req.threadId });
 		return JSON.stringify(thread);
 	`)
 	if err != nil {
@@ -52,8 +53,9 @@ func (d *MemoryDomain) ListThreads(ctx context.Context, req messages.MemoryListT
 		var req = globalThis.__pending_req || {};
 		var mem = globalThis.__kit_memory;
 		if (!mem) throw new Error("memory not configured");
-		var threads = await mem.listThreads(req.filter);
-		return JSON.stringify(threads);
+		var filter = req.filter || {};
+		var result = await mem.listThreads(filter);
+		return JSON.stringify(result.threads || result);
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("memory.listThreads: %w", err)
@@ -66,7 +68,7 @@ func (d *MemoryDomain) Save(ctx context.Context, req messages.MemorySaveMsg) (*m
 		var req = globalThis.__pending_req;
 		var mem = globalThis.__kit_memory;
 		if (!mem) throw new Error("memory not configured");
-		await mem.save(req.threadId, req.messages);
+		await mem.saveMessages({ threadId: req.threadId, messages: req.messages });
 		return JSON.stringify({ ok: true });
 	`)
 	if err != nil {
@@ -80,7 +82,11 @@ func (d *MemoryDomain) Recall(ctx context.Context, req messages.MemoryRecallMsg)
 		var req = globalThis.__pending_req;
 		var mem = globalThis.__kit_memory;
 		if (!mem) throw new Error("memory not configured");
-		var result = await mem.recall(req.threadId, req.query);
+		var result = await mem.recall({
+			threadId: req.threadId,
+			resourceId: req.resourceId || "",
+			query: req.query || "",
+		});
 		return JSON.stringify(result);
 	`)
 	if err != nil {
