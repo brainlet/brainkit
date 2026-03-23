@@ -55,8 +55,16 @@ func TestGoDirect_FS(t *testing.T) {
 			})
 
 			t.Run("Write_Overwrite", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v1"})
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v2"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v1"})
+				_sch1 := make(chan messages.FsWriteResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr1.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
+				_spr2, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v2"})
+				_sch2 := make(chan messages.FsWriteResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr3, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "overwrite.txt"})
 				require.NoError(t, err)
@@ -115,9 +123,21 @@ func TestGoDirect_FS(t *testing.T) {
 			})
 
 			t.Run("List_WithPattern", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/a.txt", Data: "a"})
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/b.json", Data: "{}"})
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/c.txt", Data: "c"})
+				_spr3, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/a.txt", Data: "a"})
+				_sch3 := make(chan messages.FsWriteResp, 1)
+				_sun3, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr3.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch3 <- r })
+				defer _sun3()
+				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
+				_spr4, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/b.json", Data: "{}"})
+				_sch4 := make(chan messages.FsWriteResp, 1)
+				_sun4, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr4.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch4 <- r })
+				defer _sun4()
+				select { case <-_sch4: case <-ctx.Done(): t.Fatal("timeout") }
+				_spr5, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/c.txt", Data: "c"})
+				_sch5 := make(chan messages.FsWriteResp, 1)
+				_sun5, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr5.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch5 <- r })
+				defer _sun5()
+				select { case <-_sch5: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr7, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "listdir", Pattern: "*.txt"})
 				require.NoError(t, err)
@@ -135,7 +155,11 @@ func TestGoDirect_FS(t *testing.T) {
 			})
 
 			t.Run("Stat_File", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "stat-target.txt", Data: "12345"})
+				_spr6, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "stat-target.txt", Data: "12345"})
+				_sch6 := make(chan messages.FsWriteResp, 1)
+				_sun6, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr6.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch6 <- r })
+				defer _sun6()
+				select { case <-_sch6: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr8, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "stat-target.txt"})
 				require.NoError(t, err)
@@ -155,7 +179,11 @@ func TestGoDirect_FS(t *testing.T) {
 			})
 
 			t.Run("Stat_Directory", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "stat-dir"})
+				_spr7, _ := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "stat-dir"})
+				_sch7 := make(chan messages.FsMkdirResp, 1)
+				_sun7, _ := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _spr7.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _sch7 <- r })
+				defer _sun7()
+				select { case <-_sch7: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr9, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "stat-dir"})
 				require.NoError(t, err)
@@ -173,7 +201,11 @@ func TestGoDirect_FS(t *testing.T) {
 			})
 
 			t.Run("Delete", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "delete-me.txt", Data: "x"})
+				_spr8, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "delete-me.txt", Data: "x"})
+				_sch8 := make(chan messages.FsWriteResp, 1)
+				_sun8, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr8.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch8 <- r })
+				defer _sun8()
+				select { case <-_sch8: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr10, err := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "delete-me.txt"})
 				require.NoError(t, err)

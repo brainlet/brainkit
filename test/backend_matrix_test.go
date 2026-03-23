@@ -109,8 +109,16 @@ func TestBackendMatrix(t *testing.T) {
 			})
 
 			t.Run("fs_mkdir_list_stat_delete", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "matrix-dir"})
-				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "matrix-dir/a.txt", Data: "a"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "matrix-dir"})
+				_sch1 := make(chan messages.FsMkdirResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _spr1.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
+				_spr2, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "matrix-dir/a.txt", Data: "a"})
+				_sch2 := make(chan messages.FsWriteResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 
 				_pr6, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "matrix-dir"})
 				require.NoError(t, err)
@@ -292,7 +300,11 @@ func TestBackendMatrix(t *testing.T) {
 					t.Fatal("timeout")
 				}
 				assert.True(t, resp.Deployed)
-				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
+				_spr3, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
+				_sch3 := make(chan messages.KitTeardownResp, 1)
+				_sun3, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch3 <- r })
+				defer _sun3()
+				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 
 			// --- WASM deploy/undeploy/describe ---

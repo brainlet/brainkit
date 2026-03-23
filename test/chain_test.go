@@ -107,7 +107,11 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			assert.Equal(t, float64(42), result["doubled"])
 
 			// Cleanup
-			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-ts.ts"})
+			_spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-ts.ts"})
+			_sch1 := make(chan messages.KitTeardownResp, 1)
+			_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+			defer _sun1()
+			select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 		})
 	}
 }
@@ -198,8 +202,16 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			assert.Equal(t, "complete", resp["chain"])
 
 			// Cleanup
-			sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "chain-reply-shard"})
-			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-reply-ts.ts"})
+			_spr2, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "chain-reply-shard"})
+			_sch2 := make(chan messages.WasmUndeployResp, 1)
+			_sun2, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr2.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch2 <- r })
+			defer _sun2()
+			select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
+			_spr3, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-reply-ts.ts"})
+			_sch3 := make(chan messages.KitTeardownResp, 1)
+			_sun3, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch3 <- r })
+			defer _sun3()
+			select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
 		})
 	}
 }

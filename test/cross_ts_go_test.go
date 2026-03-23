@@ -65,7 +65,11 @@ func TestCross_TS_Go(t *testing.T) {
 				assert.Equal(t, "hello from TS, Go", result["greeting"])
 
 				// Cleanup
-				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-ts-tool.ts"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-ts-tool.ts"})
+				_sch1 := make(chan messages.KitTeardownResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 
 			t.Run("Go_registers_tool_TS_calls_via_deploy", func(t *testing.T) {
@@ -119,7 +123,11 @@ func TestCross_TS_Go(t *testing.T) {
 				inner, _ := result["inner"].(map[string]any)
 				assert.Equal(t, "from TS to Go", inner["echoed"])
 
-				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-go-call.ts"})
+				_spr2, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-go-call.ts"})
+				_sch2 := make(chan messages.KitTeardownResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 		})
 	}

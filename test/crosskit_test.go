@@ -366,7 +366,11 @@ func TestCrossKit_Workflows(t *testing.T) {
 				assert.Equal(t, "success", result["status"])
 			})
 
-			sdk.Publish(kitB, ctx, messages.KitTeardownMsg{Source: "crosskit-wf.ts"})
+			_spr1, _ := sdk.Publish(kitB, ctx, messages.KitTeardownMsg{Source: "crosskit-wf.ts"})
+			_sch1 := make(chan messages.KitTeardownResp, 1)
+			_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](kitB, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+			defer _sun1()
+			select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 		})
 	}
 }

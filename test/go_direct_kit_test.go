@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -140,11 +141,24 @@ func TestGoDirect_Kit(t *testing.T) {
 			})
 
 			t.Run("Deploy_InvalidCode", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_epr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "bad-code.ts",
 					Code:   `throw new Error("intentional failure");`,
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech1 := make(chan string, 1)
+				_eun1, _ := rt.SubscribeRaw(ctx, _epr1.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech1 <- r.Error
+				})
+				defer _eun1()
+				select {
+				case errMsg := <-_ech1:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Deploy_Duplicate", func(t *testing.T) {
@@ -163,11 +177,24 @@ func TestGoDirect_Kit(t *testing.T) {
 				}
 
 				// Deploy again with same source — should fail
-				_, err = sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				_epr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
 					Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) });`,
 				})
-				assert.Error(t, err, "duplicate deploy should fail")
+				require.NoError(t, err)
+				_ech2 := make(chan string, 1)
+				_eun2, _ := rt.SubscribeRaw(ctx, _epr2.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech2 <- r.Error
+				})
+				defer _eun2()
+				select {
+				case errMsg := <-_ech2:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				_, _ = sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "dup.ts"})
 			})

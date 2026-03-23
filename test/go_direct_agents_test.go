@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -59,24 +60,63 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("GetStatus_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{
+				_epr1, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{
 					Name: "ghost-agent",
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech1 := make(chan string, 1)
+				_eun1, _ := rt.SubscribeRaw(ctx, _epr1.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech1 <- r.Error
+				})
+				defer _eun1()
+				select {
+				case errMsg := <-_ech1:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("SetStatus_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
+				_epr2, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "ghost-agent", Status: "busy",
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech2 := make(chan string, 1)
+				_eun2, _ := rt.SubscribeRaw(ctx, _epr2.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech2 <- r.Error
+				})
+				defer _eun2()
+				select {
+				case errMsg := <-_ech2:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("SetStatus_InvalidStatus", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
+				_epr3, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{
 					Name: "any", Status: "flying",
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech3 := make(chan string, 1)
+				_eun3, _ := rt.SubscribeRaw(ctx, _epr3.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech3 <- r.Error
+				})
+				defer _eun3()
+				select {
+				case errMsg := <-_ech3:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Deploy_Agent_Then_List", func(t *testing.T) {
@@ -85,7 +125,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy .ts that creates an agent with string model reference
-				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				dpr, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "test-agent.ts",
 					Code: `
 						const a = agent({
@@ -97,6 +137,17 @@ func TestGoDirect_Agents(t *testing.T) {
 				})
 				if err != nil {
 					t.Skipf("agent deployment failed (provider may not be configured): %v", err)
+				}
+				dch := make(chan messages.KitDeployResp, 1)
+				dun, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, dpr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { dch <- r })
+				defer dun()
+				select {
+				case dr := <-dch:
+					if dr.Error != "" {
+						t.Skipf("agent deployment failed: %s", dr.Error)
+					}
+				case <-ctx.Done():
+					t.Fatal("timeout waiting for deploy")
 				}
 
 				// List should find it
@@ -169,17 +220,43 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("Request_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{
+				_epr4, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{
 					Name: "ghost-agent", Prompt: "hello",
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech4 := make(chan string, 1)
+				_eun4, _ := rt.SubscribeRaw(ctx, _epr4.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech4 <- r.Error
+				})
+				defer _eun4()
+				select {
+				case errMsg := <-_ech4:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Message_NotFound", func(t *testing.T) {
-				_,  err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
+				_epr5, err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{
 					Target: "ghost-agent", Payload: "hello",
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				_ech5 := make(chan string, 1)
+				_eun5, _ := rt.SubscribeRaw(ctx, _epr5.ReplyTo, func(msg messages.Message) {
+					var r struct { Error string `json:"error"` }
+					json.Unmarshal(msg.Payload, &r)
+					_ech5 <- r.Error
+				})
+				defer _eun5()
+				select {
+				case errMsg := <-_ech5:
+					assert.NotEmpty(t, errMsg)
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Message_Delivered", func(t *testing.T) {
@@ -188,7 +265,7 @@ func TestGoDirect_Agents(t *testing.T) {
 				}
 
 				// Deploy an agent so it exists in the registry
-				_, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+				dpr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "msg-agent.ts",
 					Code: `
 						const a = agent({
@@ -200,6 +277,15 @@ func TestGoDirect_Agents(t *testing.T) {
 				})
 				if err != nil {
 					t.Skipf("agent deploy failed: %v", err)
+				}
+				dch2 := make(chan messages.KitDeployResp, 1)
+				dun2, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, dpr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { dch2 <- r })
+				defer dun2()
+				select {
+				case dr2 := <-dch2:
+					if dr2.Error != "" { t.Skipf("agent deploy failed: %s", dr2.Error) }
+				case <-ctx.Done():
+					t.Fatal("timeout")
 				}
 				defer sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "msg-agent.ts"})
 

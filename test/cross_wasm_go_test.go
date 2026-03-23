@@ -114,7 +114,11 @@ func TestCross_WASM_Go(t *testing.T) {
 				assert.Equal(t, "wasm", resp["source"])
 
 				// Cleanup
-				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "cross-go-shard"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "cross-go-shard"})
+				_sch1 := make(chan messages.WasmUndeployResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr1.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 		})
 	}

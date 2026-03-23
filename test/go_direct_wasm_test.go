@@ -260,7 +260,11 @@ func TestGoDirect_WASM(t *testing.T) {
 					`,
 					Options: &messages.WasmCompileOpts{Name: "gd-rm-deployed"},
 				})
-				sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-rm-deployed"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-rm-deployed"})
+				_sch1 := make(chan messages.WasmDeployResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _spr1.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 
 				pr, _ := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
 				errCh := make(chan string, 1)
@@ -277,8 +281,16 @@ func TestGoDirect_WASM(t *testing.T) {
 					t.Fatal("timeout")
 				}
 
-				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-rm-deployed"})
-				sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
+				_spr2, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "gd-rm-deployed"})
+				_sch2 := make(chan messages.WasmUndeployResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr2.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
+				_spr3, _ := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
+				_sch3 := make(chan messages.WasmRemoveResp, 1)
+				_sun3, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _spr3.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _sch3 <- r })
+				defer _sun3()
+				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 		})
 	}

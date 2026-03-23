@@ -85,7 +85,11 @@ func TestCross_TS_WASM(t *testing.T) {
 				assert.Equal(t, 0, runResp.ExitCode)
 
 				// Cleanup
-				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "ts-for-wasm.ts"})
+				_spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "ts-for-wasm.ts"})
+				_sch1 := make(chan messages.KitTeardownResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 
 			t.Run("TS_deploys_WASM_shard_and_injects_event", func(t *testing.T) {
@@ -137,7 +141,11 @@ func TestCross_TS_WASM(t *testing.T) {
 				assert.Equal(t, true, resp["pong"])
 
 				// Cleanup
-				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "ts-wasm-shard"})
+				_spr2, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "ts-wasm-shard"})
+				_sch2 := make(chan messages.WasmUndeployResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr2.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 		})
 	}

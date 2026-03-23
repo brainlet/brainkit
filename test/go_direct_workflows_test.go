@@ -119,7 +119,11 @@ func TestGoDirect_Workflows(t *testing.T) {
 			})
 
 			// Cleanup
-			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "test-workflow.ts"})
+			_spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "test-workflow.ts"})
+			_sch1 := make(chan messages.KitTeardownResp, 1)
+			_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+			defer _sun1()
+			select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 		})
 	}
 }
@@ -225,16 +229,42 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 	})
 
 	t.Run("Cancel_NotFound", func(t *testing.T) {
-		_, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{
+		_epr1, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{
 			RunID: "nonexistent-run-id",
 		})
-		assert.Error(t, err, "cancel should fail for nonexistent run")
+		require.NoError(t, err)
+		_ech1 := make(chan string, 1)
+		_eun1, _ := rt.SubscribeRaw(ctx, _epr1.ReplyTo, func(msg messages.Message) {
+			var r struct { Error string `json:"error"` }
+			json.Unmarshal(msg.Payload, &r)
+			_ech1 <- r.Error
+		})
+		defer _eun1()
+		select {
+		case errMsg := <-_ech1:
+			assert.NotEmpty(t, errMsg)
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 	})
 
 	t.Run("Status_NotFound", func(t *testing.T) {
-		_, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
+		_epr2, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{
 			RunID: "nonexistent-run-id",
 		})
-		assert.Error(t, err, "status should fail for nonexistent run")
+		require.NoError(t, err)
+		_ech2 := make(chan string, 1)
+		_eun2, _ := rt.SubscribeRaw(ctx, _epr2.ReplyTo, func(msg messages.Message) {
+			var r struct { Error string `json:"error"` }
+			json.Unmarshal(msg.Payload, &r)
+			_ech2 <- r.Error
+		})
+		defer _eun2()
+		select {
+		case errMsg := <-_ech2:
+			assert.NotEmpty(t, errMsg)
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 	})
 }

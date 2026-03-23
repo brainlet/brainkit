@@ -89,8 +89,16 @@ func TestWASMSurface_FS(t *testing.T) {
 	defer cancel()
 
 	// Pre-write a file so we can read it from WASM
-	sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "wasm-test.txt", Data: "hello"})
-	sdk.Publish(tk, ctx, messages.FsMkdirMsg{Path: "wasm-dir"})
+	_spr1, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "wasm-test.txt", Data: "hello"})
+	_sch1 := make(chan messages.FsWriteResp, 1)
+	_sun1, _ := sdk.SubscribeTo[messages.FsWriteResp](tk, ctx, _spr1.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch1 <- r })
+	defer _sun1()
+	select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
+	_spr2, _ := sdk.Publish(tk, ctx, messages.FsMkdirMsg{Path: "wasm-dir"})
+	_sch2 := make(chan messages.FsMkdirResp, 1)
+	_sun2, _ := sdk.SubscribeTo[messages.FsMkdirResp](tk, ctx, _spr2.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _sch2 <- r })
+	defer _sun2()
+	select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 
 	t.Run("Write", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-fs-write", "fs.write", `{"path":"wasm-written.txt","data":"from wasm"}`)

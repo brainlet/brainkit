@@ -226,5 +226,9 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 	json.Unmarshal(resp.Result, &result)
 	assert.Equal(t, true, result["hasOpenAI"])
 
-	sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "registry-user.ts"})
+	_spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "registry-user.ts"})
+	_sch1 := make(chan messages.KitTeardownResp, 1)
+	_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+	defer _sun1()
+	select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 }

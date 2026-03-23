@@ -124,7 +124,11 @@ func TestCross_TS_Plugin(t *testing.T) {
 				inner, _ := result["fromPlugin"].(map[string]any)
 				assert.Equal(t, "foobar", inner["result"])
 
-				sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin.ts"})
+				_spr1, _ := sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin.ts"})
+				_sch1 := make(chan messages.KitTeardownResp, 1)
+				_sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](node, ctx, _spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch1 <- r })
+				defer _sun1()
+				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 
 			t.Run("TS_deployed_tool_visible_alongside_plugin", func(t *testing.T) {
@@ -173,7 +177,11 @@ func TestCross_TS_Plugin(t *testing.T) {
 				assert.True(t, names["concat"], "plugin concat tool")
 				assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-				sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-alongside.ts"})
+				_spr2, _ := sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-alongside.ts"})
+				_sch2 := make(chan messages.KitTeardownResp, 1)
+				_sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](node, ctx, _spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch2 <- r })
+				defer _sun2()
+				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 			})
 		})
 	}

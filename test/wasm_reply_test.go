@@ -64,7 +64,11 @@ func TestWASM_Reply(t *testing.T) {
 	assert.Equal(t, `{"response":"hello from wasm"}`, result.ReplyPayload)
 
 	// Cleanup
-	sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "reply-shard"})
+	_spr1, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "reply-shard"})
+	_sch1 := make(chan messages.WasmUndeployResp, 1)
+	_sun1, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr1.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch1 <- r })
+	defer _sun1()
+	select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
 }
 
 // TestWASM_Reply_WithState tests reply in persistent mode with state.
@@ -130,5 +134,9 @@ func TestWASM_Reply_WithState(t *testing.T) {
 		assert.Equal(t, i, resp.Count, "invocation %d should have count %d", i, i)
 	}
 
-	sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "counter-shard"})
+	_spr2, _ := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "counter-shard"})
+	_sch2 := make(chan messages.WasmUndeployResp, 1)
+	_sun2, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr2.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch2 <- r })
+	defer _sun2()
+	select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
 }
