@@ -1,0 +1,95 @@
+package test
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGoDirect_MCP(t *testing.T) {
+	// Build the testmcp binary
+	mcpBinary := filepath.Join(t.TempDir(), "testmcp")
+	moduleRoot := filepath.Join("..")
+	buildCmd := exec.Command("go", "build", "-o", mcpBinary, "./test/testmcp/")
+	buildCmd.Dir = moduleRoot
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("build testmcp: %v", err)
+	}
+
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			k, err := kit.NewKernel(kit.KernelConfig{
+				Namespace:    "test-mcp",
+				CallerID:     "test-mcp-caller",
+				WorkspaceDir: tmpDir,
+				MCPServers: map[string]mcppkg.ServerConfig{
+					"testmcp": {
+						Command: mcpBinary,
+					},
+				},
+			})
+			require.NoError(t, err)
+			defer k.Close()
+
+			rt := sdk.Runtime(k)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			t.Run("ListTools", func(t *testing.T) {
+				resp, err := sdk.PublishAwait[messages.McpListToolsMsg, messages.McpListToolsResp](rt, ctx, messages.McpListToolsMsg{})
+				require.NoError(t, err)
+
+				found := false
+				for _, tool := range resp.Tools {
+					if tool.Name == "echo" && tool.Server == "testmcp" {
+						found = true
+					}
+				}
+				assert.True(t, found, "testmcp echo tool should be listed")
+			})
+
+			t.Run("CallTool", func(t *testing.T) {
+				resp, err := sdk.PublishAwait[messages.McpCallToolMsg, messages.McpCallToolResp](rt, ctx, messages.McpCallToolMsg{
+					Server: "testmcp",
+					Tool:   "echo",
+					Args:   map[string]any{"message": "hello from mcp test"},
+				})
+				require.NoError(t, err)
+
+				var result map[string]string
+				json.Unmarshal(resp.Result, &result)
+				assert.Equal(t, "hello from mcp test", result["echoed"])
+				assert.Equal(t, "testmcp", result["server"])
+			})
+
+			t.Run("CallTool_via_registry", func(t *testing.T) {
+				// MCP tools are also registered in the tool registry — verify they're callable
+				// via tools.call (which looks them up by short name)
+				resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](rt, ctx, messages.ToolCallMsg{
+					Name:  "echo",
+					Input: map[string]any{"message": "via registry"},
+				})
+				require.NoError(t, err)
+
+				var result map[string]string
+				json.Unmarshal(resp.Result, &result)
+				assert.Equal(t, "via registry", result["echoed"])
+			})
+		})
+	}
+}
