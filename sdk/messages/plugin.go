@@ -25,7 +25,6 @@ type PluginManifestResp struct {
 	Registered bool `json:"registered"`
 }
 
-func (PluginManifestResp) BusTopic() string { return "plugin.manifest.result" }
 
 // ── Plugin State ──
 
@@ -40,7 +39,6 @@ type PluginStateGetResp struct {
 	Value string `json:"value"`
 }
 
-func (PluginStateGetResp) BusTopic() string { return "plugin.state.get.result" }
 
 type PluginStateSetMsg struct {
 	Key   string `json:"key"`
@@ -54,4 +52,3 @@ type PluginStateSetResp struct {
 	OK bool `json:"ok"`
 }
 
-func (PluginStateSetResp) BusTopic() string { return "plugin.state.set.result" }

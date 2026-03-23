@@ -51,8 +51,18 @@ func TestGoDirect_MCP(t *testing.T) {
 			defer cancel()
 
 			t.Run("ListTools", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.McpListToolsMsg, messages.McpListToolsResp](rt, ctx, messages.McpListToolsMsg{})
+				_pr1, err := sdk.Publish(rt, ctx, messages.McpListToolsMsg{})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.McpListToolsResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.McpListToolsResp](rt, ctx, _pr1.ReplyTo, func(r messages.McpListToolsResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.McpListToolsResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				found := false
 				for _, tool := range resp.Tools {

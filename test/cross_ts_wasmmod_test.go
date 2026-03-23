@@ -54,12 +54,22 @@ func TestCross_TS_WASM(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "wasm-calls-ts"})
+				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "wasm-calls-ts"})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmRunResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var runResp messages.WasmRunResp
+				select {
+				case runResp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, 0, runResp.ExitCode)
 
 				// Cleanup
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "ts-for-wasm.ts"})
+				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "ts-for-wasm.ts"})
 			})
 
 			t.Run("TS_deploys_WASM_shard_and_injects_event", func(t *testing.T) {
@@ -83,8 +93,16 @@ func TestCross_TS_WASM(t *testing.T) {
 				require.NoError(t, err)
 
 				// Deploy the shard
-				_, err = sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "ts-wasm-shard"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "ts-wasm-shard"})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.WasmDeployResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Inject event and verify shard responded
 				result, err := tk.InjectWASMEvent("ts-wasm-shard", "ts.wasm.ping", json.RawMessage(`{}`))
@@ -95,7 +113,7 @@ func TestCross_TS_WASM(t *testing.T) {
 				assert.Equal(t, true, resp["pong"])
 
 				// Cleanup
-				sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "ts-wasm-shard"})
+				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "ts-wasm-shard"})
 			})
 		})
 	}

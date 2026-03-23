@@ -139,8 +139,16 @@ func TestLogHandler_WASMModule(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](k, ctx, messages.WasmRunMsg{ModuleID: "log-mod"})
+	_pr1, err := sdk.Publish(k, ctx, messages.WasmRunMsg{ModuleID: "log-mod"})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.WasmRunResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Check captured logs
 	mu.Lock()

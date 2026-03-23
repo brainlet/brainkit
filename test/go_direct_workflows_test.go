@@ -101,7 +101,7 @@ func TestGoDirect_Workflows(t *testing.T) {
 			})
 
 			// Cleanup
-			sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "test-workflow.ts"})
+			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "test-workflow.ts"})
 		})
 	}
 }
@@ -118,7 +118,7 @@ func TestGoDirect_Workflows_SuspendResume(t *testing.T) {
 		Code:   testSuspendWorkflowCode,
 	})
 	require.NoError(t, err, "suspend workflow deploy must succeed")
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "suspend-workflow.ts"})
+	defer sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "suspend-workflow.ts"})
 
 	t.Run("Run_Suspends", func(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{

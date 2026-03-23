@@ -69,21 +69,51 @@ func TestTSSurface_Tools(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-tools-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-tools-surface.ts"})
 
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-tools-list", Input: map[string]any{}})
+		_pr1, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-tools-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch1 := make(chan messages.ToolCallResp, 1)
+		_us1, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch1 <- r })
+		require.NoError(t, err)
+		defer _us1()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch1:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Call", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-tools-call", Input: map[string]any{}})
+		_pr2, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-tools-call", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch2 := make(chan messages.ToolCallResp, 1)
+		_us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch2 <- r })
+		require.NoError(t, err)
+		defer _us2()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch2:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Resolve", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-tools-resolve", Input: map[string]any{"name": "ts-tools-list"}})
+		_pr3, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-tools-resolve", Input: map[string]any{"name": "ts-tools-list"}})
 		require.NoError(t, err)
+		_ch3 := make(chan messages.ToolCallResp, 1)
+		_us3, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch3 <- r })
+		require.NoError(t, err)
+		defer _us3()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch3:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotEmpty(t, result["id"])
@@ -119,11 +149,21 @@ func TestTSSurface_FS(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-fs-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-fs-surface.ts"})
 
 	t.Run("AllOperations", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-fs-all", Input: map[string]any{}})
+		_pr4, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-fs-all", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch4 := make(chan messages.ToolCallResp, 1)
+		_us4, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr4.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch4 <- r })
+		require.NoError(t, err)
+		defer _us4()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch4:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "hello from ts", result["readData"])
@@ -177,42 +217,102 @@ func TestTSSurface_Agents(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-agents-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-agents-surface.ts"})
 
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-list", Input: map[string]any{}})
+		_pr5, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch5 := make(chan messages.ToolCallResp, 1)
+		_us5, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr5.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch5 <- r })
+		require.NoError(t, err)
+		defer _us5()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch5:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Discover", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-discover", Input: map[string]any{}})
+		_pr6, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-discover", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch6 := make(chan messages.ToolCallResp, 1)
+		_us6, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr6.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch6 <- r })
+		require.NoError(t, err)
+		defer _us6()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch6:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("GetStatus", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-status", Input: map[string]any{}})
+		_pr7, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-status", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch7 := make(chan messages.ToolCallResp, 1)
+		_us7, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr7.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch7 <- r })
+		require.NoError(t, err)
+		defer _us7()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch7:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "idle", result["status"])
 	})
 	t.Run("SetStatus", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-setstatus", Input: map[string]any{}})
+		_pr8, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-setstatus", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch8 := make(chan messages.ToolCallResp, 1)
+		_us8, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr8.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch8 <- r })
+		require.NoError(t, err)
+		defer _us8()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch8:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "busy", result["statusWas"])
 	})
 	t.Run("Message", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-message", Input: map[string]any{}})
+		_pr9, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-message", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch9 := make(chan messages.ToolCallResp, 1)
+		_us9, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr9.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch9 <- r })
+		require.NoError(t, err)
+		defer _us9()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch9:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["delivered"])
 	})
 	t.Run("Request", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-request", Input: map[string]any{}})
+		_pr10, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-agents-request", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch10 := make(chan messages.ToolCallResp, 1)
+		_us10, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr10.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch10 <- r })
+		require.NoError(t, err)
+		defer _us10()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch10:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotEmpty(t, result["text"])
@@ -266,39 +366,89 @@ func TestTSSurface_AI(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-ai-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-ai-surface.ts"})
 
 	t.Run("Generate", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-generate", Input: map[string]any{}})
+		_pr11, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-ai-generate", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch11 := make(chan messages.ToolCallResp, 1)
+		_us11, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr11.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch11 <- r })
+		require.NoError(t, err)
+		defer _us11()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch11:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotEmpty(t, result["text"])
 	})
 	t.Run("Embed", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-embed", Input: map[string]any{}})
+		_pr12, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-ai-embed", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch12 := make(chan messages.ToolCallResp, 1)
+		_us12, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr12.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch12 <- r })
+		require.NoError(t, err)
+		defer _us12()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch12:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Greater(t, result["dimensions"], float64(0))
 	})
 	t.Run("EmbedMany", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-embedmany", Input: map[string]any{}})
+		_pr13, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-ai-embedmany", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch13 := make(chan messages.ToolCallResp, 1)
+		_us13, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr13.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch13 <- r })
+		require.NoError(t, err)
+		defer _us13()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch13:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, float64(2), result["count"])
 	})
 	t.Run("GenerateObject", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-genobj", Input: map[string]any{}})
+		_pr14, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-ai-genobj", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch14 := make(chan messages.ToolCallResp, 1)
+		_us14, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr14.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch14 <- r })
+		require.NoError(t, err)
+		defer _us14()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch14:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotNil(t, result["object"])
 	})
 	t.Run("Stream", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-ai-stream", Input: map[string]any{}})
+		_pr15, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-ai-stream", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch15 := make(chan messages.ToolCallResp, 1)
+		_us15, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr15.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch15 <- r })
+		require.NoError(t, err)
+		defer _us15()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch15:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotEmpty(t, result["text"])
@@ -338,11 +488,21 @@ func TestTSSurface_Memory(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-memory-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-memory-surface.ts"})
 
 	t.Run("AllOperations", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-mem-all", Input: map[string]any{}})
+		_pr16, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-mem-all", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch16 := make(chan messages.ToolCallResp, 1)
+		_us16, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr16.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch16 <- r })
+		require.NoError(t, err)
+		defer _us16()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch16:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["created"])
@@ -412,19 +572,39 @@ func TestTSSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-wf-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-wf-surface.ts"})
 
 	t.Run("Run", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wf-run", Input: map[string]any{"val": "hello"}})
+		_pr17, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wf-run", Input: map[string]any{"val": "hello"}})
 		require.NoError(t, err)
+		_ch17 := make(chan messages.ToolCallResp, 1)
+		_us17, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr17.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch17 <- r })
+		require.NoError(t, err)
+		defer _us17()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch17:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "success", result["status"])
 	})
 	t.Run("Suspend_Resume", func(t *testing.T) {
 		// Run the suspend workflow
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wf-suspend", Input: map[string]any{"val": "test"}})
+		_pr18, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wf-suspend", Input: map[string]any{"val": "test"}})
 		require.NoError(t, err)
+		_ch18 := make(chan messages.ToolCallResp, 1)
+		_us18, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr18.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch18 <- r })
+		require.NoError(t, err)
+		defer _us18()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch18:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var suspendResult map[string]any
 		json.Unmarshal(resp.Result, &suspendResult)
 		if suspendResult["status"] == "suspended" {
@@ -487,57 +667,137 @@ func TestTSSurface_WASM(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-wasm-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-wasm-surface.ts"})
 
 	t.Run("Compile", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-compile", Input: map[string]any{}})
+		_pr19, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-compile", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch19 := make(chan messages.ToolCallResp, 1)
+		_us19, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr19.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch19 <- r })
+		require.NoError(t, err)
+		defer _us19()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch19:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "ts-compiled", result["name"])
 	})
 	t.Run("Run", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-run", Input: map[string]any{}})
+		_pr20, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-run", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch20 := make(chan messages.ToolCallResp, 1)
+		_us20, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr20.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch20 <- r })
+		require.NoError(t, err)
+		defer _us20()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch20:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, float64(77), result["exitCode"])
 	})
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-list", Input: map[string]any{}})
+		_pr21, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch21 := make(chan messages.ToolCallResp, 1)
+		_us21, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr21.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch21 <- r })
+		require.NoError(t, err)
+		defer _us21()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch21:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		// wasm.list() should not error — proves bridge path works
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Get", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-get", Input: map[string]any{}})
+		_pr22, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-get", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch22 := make(chan messages.ToolCallResp, 1)
+		_us22, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr22.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch22 <- r })
+		require.NoError(t, err)
+		defer _us22()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch22:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["found"])
 	})
 	t.Run("Remove", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-remove", Input: map[string]any{}})
+		_pr23, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-remove", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch23 := make(chan messages.ToolCallResp, 1)
+		_us23, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr23.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch23 <- r })
+		require.NoError(t, err)
+		defer _us23()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch23:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["removed"])
 	})
 	t.Run("Deploy", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-deploy", Input: map[string]any{}})
+		_pr24, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-deploy", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch24 := make(chan messages.ToolCallResp, 1)
+		_us24, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr24.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch24 <- r })
+		require.NoError(t, err)
+		defer _us24()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch24:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "stateless", result["mode"])
 	})
 	t.Run("Describe", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-describe", Input: map[string]any{}})
+		_pr25, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-describe", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch25 := make(chan messages.ToolCallResp, 1)
+		_us25, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr25.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch25 <- r })
+		require.NoError(t, err)
+		defer _us25()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch25:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Undeploy", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-undeploy", Input: map[string]any{}})
+		_pr26, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-undeploy", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch26 := make(chan messages.ToolCallResp, 1)
+		_us26, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr26.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch26 <- r })
+		require.NoError(t, err)
+		defer _us26()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch26:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 }
@@ -554,8 +814,18 @@ func TestTSSurface_Kit(t *testing.T) {
 	// But you can call kit.list via the bus.
 	// The kit domain is inherently a Go-side concern — .ts code IS the deployed artifact.
 	t.Run("ListFromGo", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.KitListMsg, messages.KitListResp](tk, ctx, messages.KitListMsg{})
+		_pr27, err := sdk.Publish(tk, ctx, messages.KitListMsg{})
 		require.NoError(t, err)
+		_ch27 := make(chan messages.KitListResp, 1)
+		_us27, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr27.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch27 <- r })
+		require.NoError(t, err)
+		defer _us27()
+		var resp messages.KitListResp
+		select {
+		case resp = <-_ch27:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Deployments)
 	})
 	t.Log("Kit lifecycle: deploy/teardown/redeploy are Go-only operations — .ts code IS the deployed artifact")
@@ -593,18 +863,38 @@ func TestTSSurface_MCP(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-mcp-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-mcp-surface.ts"})
 
 	t.Run("ListTools", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-mcp-list", Input: map[string]any{}})
+		_pr28, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-mcp-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch28 := make(chan messages.ToolCallResp, 1)
+		_us28, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr28.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch28 <- r })
+		require.NoError(t, err)
+		defer _us28()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch28:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.NotNil(t, result["tools"])
 	})
 	t.Run("CallTool", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-mcp-call", Input: map[string]any{}})
+		_pr29, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-mcp-call", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch29 := make(chan messages.ToolCallResp, 1)
+		_us29, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr29.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch29 <- r })
+		require.NoError(t, err)
+		defer _us29()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch29:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 }
@@ -639,24 +929,54 @@ func TestTSSurface_Registry(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-registry-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-registry-surface.ts"})
 
 	t.Run("Has", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-reg-has", Input: map[string]any{}})
+		_pr30, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-reg-has", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch30 := make(chan messages.ToolCallResp, 1)
+		_us30, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr30.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch30 <- r })
+		require.NoError(t, err)
+		defer _us30()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch30:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["hasDefault"])
 		assert.Equal(t, false, result["hasFake"])
 	})
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-reg-list", Input: map[string]any{}})
+		_pr31, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-reg-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch31 := make(chan messages.ToolCallResp, 1)
+		_us31, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr31.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch31 <- r })
+		require.NoError(t, err)
+		defer _us31()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch31:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Resolve", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-reg-resolve", Input: map[string]any{}})
+		_pr32, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-reg-resolve", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch32 := make(chan messages.ToolCallResp, 1)
+		_us32, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr32.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch32 <- r })
+		require.NoError(t, err)
+		defer _us32()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch32:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["resolved"])
@@ -694,22 +1014,42 @@ func TestTSSurface_Vectors(t *testing.T) {
 		`, pgConnStr),
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-vec-surface.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "ts-vec-surface.ts"})
 
 	t.Run("CreateIndex", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-create", Input: map[string]any{"name": "ts_vec_idx"}})
+		_pr33, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-vec-create", Input: map[string]any{"name": "ts_vec_idx"}})
 		require.NoError(t, err)
+		_ch33 := make(chan messages.ToolCallResp, 1)
+		_us33, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr33.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch33 <- r })
+		require.NoError(t, err)
+		defer _us33()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch33:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["ok"])
 	})
 	t.Run("ListIndexes", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-list", Input: map[string]any{}})
+		_pr34, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-vec-list", Input: map[string]any{}})
 		require.NoError(t, err)
+		_ch34 := make(chan messages.ToolCallResp, 1)
+		_us34, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, _pr34.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { _ch34 <- r })
+		require.NoError(t, err)
+		defer _us34()
+		var resp messages.ToolCallResp
+		select {
+		case resp = <-_ch34:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Result)
 	})
 	t.Run("DeleteIndex", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-delete", Input: map[string]any{"name": "ts_vec_idx"}})
+		_pr35, err := sdk.Publish(tk, ctx, messages.ToolCallMsg{Name: "ts-vec-delete", Input: map[string]any{"name": "ts_vec_idx"}})
 		if err != nil {
 			t.Logf("PgVector deleteIndex: Neon driver limitation in QuickJS: %v", err)
 		}

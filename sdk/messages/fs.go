@@ -47,14 +47,12 @@ type FsReadResp struct {
 	Data string `json:"data"`
 }
 
-func (FsReadResp) BusTopic() string { return "fs.read.result" }
 
 type FsListResp struct {
 	ResultMeta
 	Files []FsFileInfo `json:"files"`
 }
 
-func (FsListResp) BusTopic() string { return "fs.list.result" }
 
 type FsStatResp struct {
 	ResultMeta
@@ -63,28 +61,24 @@ type FsStatResp struct {
 	ModTime string `json:"modTime"`
 }
 
-func (FsStatResp) BusTopic() string { return "fs.stat.result" }
 
 type FsWriteResp struct {
 	ResultMeta
 	OK bool `json:"ok"`
 }
 
-func (FsWriteResp) BusTopic() string { return "fs.write.result" }
 
 type FsDeleteResp struct {
 	ResultMeta
 	OK bool `json:"ok"`
 }
 
-func (FsDeleteResp) BusTopic() string { return "fs.delete.result" }
 
 type FsMkdirResp struct {
 	ResultMeta
 	OK bool `json:"ok"`
 }
 
-func (FsMkdirResp) BusTopic() string { return "fs.mkdir.result" }
 
 // ── Shared types ──
 

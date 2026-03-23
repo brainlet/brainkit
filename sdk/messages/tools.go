@@ -33,7 +33,6 @@ type ToolListResp struct {
 	Tools []ToolInfo `json:"tools"`
 }
 
-func (ToolListResp) BusTopic() string { return "tools.list.result" }
 
 type ToolInfo struct {
 	Name        string `json:"name"`
@@ -50,7 +49,6 @@ type ToolResolveResp struct {
 	InputSchema any    `json:"inputSchema,omitempty"`
 }
 
-func (ToolResolveResp) BusTopic() string { return "tools.resolve.result" }
 
 // ToolRegisterResp removed — see note above.
 
@@ -59,4 +57,3 @@ type ToolCallResp struct {
 	Result json.RawMessage `json:"result"`
 }
 
-func (ToolCallResp) BusTopic() string { return "tools.call.result" }

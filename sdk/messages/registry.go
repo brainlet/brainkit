@@ -31,18 +31,15 @@ type RegistryHasResp struct {
 	Found bool `json:"found"`
 }
 
-func (RegistryHasResp) BusTopic() string { return "registry.has.result" }
 
 type RegistryListResp struct {
 	ResultMeta
 	Items json.RawMessage `json:"items"`
 }
 
-func (RegistryListResp) BusTopic() string { return "registry.list.result" }
 
 type RegistryResolveResp struct {
 	ResultMeta
 	Config json.RawMessage `json:"config"`
 }
 
-func (RegistryResolveResp) BusTopic() string { return "registry.resolve.result" }

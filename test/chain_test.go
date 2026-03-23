@@ -56,8 +56,18 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			require.NoError(t, err)
 
 			// Step 3: Run WASM — it calls the .ts tool
-			runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "chain-wasm"})
+			_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "chain-wasm"})
 			require.NoError(t, err)
+			_ch1 := make(chan messages.WasmRunResp, 1)
+			_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+			require.NoError(t, err)
+			defer _us1()
+			var runResp messages.WasmRunResp
+			select {
+			case runResp = <-_ch1:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 			assert.Equal(t, 0, runResp.ExitCode)
 
 			// Verify the chain worked by calling the tool from Go too
@@ -71,7 +81,7 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			assert.Equal(t, float64(42), result["doubled"])
 
 			// Cleanup
-			sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "chain-ts.ts"})
+			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-ts.ts"})
 		})
 	}
 }
@@ -126,8 +136,16 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			require.NoError(t, err)
 
 			// Step 3: Deploy shard
-			_, err = sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "chain-reply-shard"})
+			_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "chain-reply-shard"})
 			require.NoError(t, err)
+			_ch2 := make(chan messages.WasmDeployResp, 1)
+			_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
+			defer _us2()
+			select {
+			case <-_ch2:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 
 			// Step 4: Go injects event → WASM shard handles → calls .ts tool → replies
 			result, err := tk.InjectWASMEvent("chain-reply-shard", "chain.trigger", json.RawMessage(`{}`))
@@ -138,8 +156,8 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			assert.Equal(t, "complete", resp["chain"])
 
 			// Cleanup
-			sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "chain-reply-shard"})
-			sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "chain-reply-ts.ts"})
+			sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "chain-reply-shard"})
+			sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "chain-reply-ts.ts"})
 		})
 	}
 }

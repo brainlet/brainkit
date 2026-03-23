@@ -19,8 +19,18 @@ import (
 // Kit A calls an operation on Kit B's namespace.
 func crossKitCall[Req, Resp messages.BrainkitMessage](t *testing.T, kitA sdk.Runtime, ctx context.Context, targetNS string, req Req) Resp {
 	t.Helper()
-	resp, err := sdk.PublishAwaitTo[Req, Resp](kitA, ctx, targetNS, req)
+	_pr1, err := sdk.PublishTo(kitA, ctx, targetNS, req)
 	require.NoError(t, err)
+	_ch1 := make(chan Resp, 1)
+	_us1, err := sdk.SubscribeTo[Resp](rt, ctx, _pr1.ReplyTo, func(r Resp, m messages.Message) { _ch1 <- r })
+	require.NoError(t, err)
+	defer _us1()
+	var resp Resp
+	select {
+	case resp = <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	return resp
 }
 
@@ -117,8 +127,18 @@ func TestCrossKit_FS(t *testing.T) {
 			assert.Equal(t, "written-by-A-on-B", resp.Data)
 
 			// Verify Kit B sees the file locally too
-			localResp, err := sdk.PublishAwait[messages.FsReadMsg, messages.FsReadResp](kitB, ctx, messages.FsReadMsg{Path: "crosskit.txt"})
+			_pr2, err := sdk.Publish(kitB, ctx, messages.FsReadMsg{Path: "crosskit.txt"})
 			require.NoError(t, err)
+			_ch2 := make(chan messages.FsReadResp, 1)
+			_us2, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch2 <- r })
+			require.NoError(t, err)
+			defer _us2()
+			var localResp messages.FsReadResp
+			select {
+			case localResp = <-_ch2:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 			assert.Equal(t, "written-by-A-on-B", localResp.Data)
 		})
 	}
@@ -338,7 +358,7 @@ func TestCrossKit_Workflows(t *testing.T) {
 				assert.Equal(t, "success", result["status"])
 			})
 
-			sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](kitB, ctx, messages.KitTeardownMsg{Source: "crosskit-wf.ts"})
+			sdk.Publish(kitB, ctx, messages.KitTeardownMsg{Source: "crosskit-wf.ts"})
 		})
 	}
 }

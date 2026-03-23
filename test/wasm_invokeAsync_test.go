@@ -42,8 +42,18 @@ func TestWASM_InvokeAsync_ToolsCall(t *testing.T) {
 	assert.Equal(t, "invoke-tools", compResp.Name)
 
 	// Run — invokeAsync fires in a goroutine, run() returns immediately
-	runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-tools"})
+	_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-tools"})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.WasmRunResp, 1)
+	_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+	require.NoError(t, err)
+	defer _us1()
+	var runResp messages.WasmRunResp
+	select {
+	case runResp = <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Equal(t, 0, runResp.ExitCode)
 	// The callback should have been called (pendingInvokes.Wait ensures this)
 	// State "resultReceived" was set in the callback
@@ -74,8 +84,18 @@ func TestWASM_InvokeAsync_UnknownTopic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-unknown"})
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-unknown"})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.WasmRunResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch2 <- r })
+	require.NoError(t, err)
+	defer _us2()
+	var runResp messages.WasmRunResp
+	select {
+	case runResp = <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Equal(t, 0, runResp.ExitCode)
 	// The callback should have been called with an error payload
 	// (our fix in wasm_host.go ensures this)
@@ -105,6 +125,14 @@ func TestWASM_InvokeAsync_ToolsList(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, compResp.Exports)
 
-	_, err = sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-list"})
+	_pr3, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "invoke-list"})
 	require.NoError(t, err)
+	_ch3 := make(chan messages.WasmRunResp, 1)
+	_us3, _ := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr3.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch3 <- r })
+	defer _us3()
+	select {
+	case <-_ch3:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 }

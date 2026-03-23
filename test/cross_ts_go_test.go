@@ -47,7 +47,7 @@ func TestCross_TS_Go(t *testing.T) {
 				assert.Equal(t, "hello from TS, Go", result["greeting"])
 
 				// Cleanup
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "cross-ts-tool.ts"})
+				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-ts-tool.ts"})
 			})
 
 			t.Run("Go_registers_tool_TS_calls_via_deploy", func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestCross_TS_Go(t *testing.T) {
 				inner, _ := result["inner"].(map[string]any)
 				assert.Equal(t, "from TS to Go", inner["echoed"])
 
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "cross-go-call.ts"})
+				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-go-call.ts"})
 			})
 		})
 	}

@@ -106,7 +106,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				inner, _ := result["fromPlugin"].(map[string]any)
 				assert.Equal(t, "foobar", inner["result"])
 
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin.ts"})
+				sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin.ts"})
 			})
 
 			t.Run("TS_deployed_tool_visible_alongside_plugin", func(t *testing.T) {
@@ -126,8 +126,18 @@ func TestCross_TS_Plugin(t *testing.T) {
 				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer listCancel()
 
-				resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](node, listCtx, messages.ToolListMsg{})
+				_pr1, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolListResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolListResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				names := make(map[string]bool)
 				for _, tool := range resp.Tools {
@@ -137,7 +147,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				assert.True(t, names["concat"], "plugin concat tool")
 				assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "ts-alongside.ts"})
+				sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-alongside.ts"})
 			})
 		})
 	}

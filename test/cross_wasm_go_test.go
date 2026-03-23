@@ -42,8 +42,18 @@ func TestCross_WASM_Go(t *testing.T) {
 				require.NoError(t, err)
 
 				// Run the WASM module — it calls the Go "add" tool and the callback fires
-				runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "cross-wasm-go"})
+				_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "cross-wasm-go"})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmRunResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var runResp messages.WasmRunResp
+				select {
+				case runResp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, 0, runResp.ExitCode)
 				// The callback was called (pendingInvokes.Wait ensures this)
 			})
@@ -67,8 +77,16 @@ func TestCross_WASM_Go(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				_, err = sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "cross-go-shard"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "cross-go-shard"})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.WasmDeployResp, 1)
+				_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
+				defer _us2()
+				select {
+				case <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				// Go surface: inject event into the shard
 				result, err := tk.InjectWASMEvent("cross-go-shard", "cross.go.event", json.RawMessage(`{"from":"go"}`))
@@ -80,7 +98,7 @@ func TestCross_WASM_Go(t *testing.T) {
 				assert.Equal(t, "wasm", resp["source"])
 
 				// Cleanup
-				sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "cross-go-shard"})
+				sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "cross-go-shard"})
 			})
 		})
 	}

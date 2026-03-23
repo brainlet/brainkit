@@ -26,8 +26,18 @@ func TestGoDirect_Tools(t *testing.T) {
 			defer cancel()
 
 			t.Run("List_FindsRegisteredTools", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, ctx, messages.ToolListMsg{})
+				_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolListResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolListResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				names := make(map[string]bool)
 				for _, tool := range resp.Tools {
 					names[tool.ShortName] = true
@@ -37,15 +47,25 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Resolve_Echo", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolResolveMsg, messages.ToolResolveResp](rt, ctx, messages.ToolResolveMsg{Name: "echo"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "echo"})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolResolveResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolResolveResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolResolveResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "echo", resp.ShortName)
 				assert.Equal(t, "echoes the input message", resp.Description)
 				assert.NotNil(t, resp.InputSchema)
 			})
 
 			t.Run("Resolve_NotFound", func(t *testing.T) {
-				_, err := sdk.PublishAwait[messages.ToolResolveMsg, messages.ToolResolveResp](rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
+				_pr3, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
 				assert.Error(t, err)
 			})
 

@@ -32,14 +32,34 @@ func TestGoDirect_Memory(t *testing.T) {
 			require.NoError(t, err, "memory init must succeed")
 
 			t.Run("CreateThread", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+				_pr1, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.MemoryCreateThreadResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr1.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.MemoryCreateThreadResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotEmpty(t, resp.ThreadID, "should return a thread ID")
 			})
 
 			t.Run("CreateThread_Save_Recall", func(t *testing.T) {
-				createResp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+				_pr2, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.MemoryCreateThreadResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr2.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var createResp messages.MemoryCreateThreadResp
+				select {
+				case createResp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				threadID := createResp.ThreadID
 
 				_, err = sdk.PublishAwait[messages.MemorySaveMsg, messages.MemorySaveResp](rt, ctx, messages.MemorySaveMsg{
@@ -60,8 +80,18 @@ func TestGoDirect_Memory(t *testing.T) {
 			})
 
 			t.Run("GetThread", func(t *testing.T) {
-				createResp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+				_pr3, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.MemoryCreateThreadResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr3.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch3 <- r })
+				require.NoError(t, err)
+				defer _us3()
+				var createResp messages.MemoryCreateThreadResp
+				select {
+				case createResp = <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				getResp, err := sdk.PublishAwait[messages.MemoryGetThreadMsg, messages.MemoryGetThreadResp](rt, ctx, messages.MemoryGetThreadMsg{
 					ThreadID: createResp.ThreadID,
@@ -71,14 +101,34 @@ func TestGoDirect_Memory(t *testing.T) {
 			})
 
 			t.Run("ListThreads", func(t *testing.T) {
-				listResp, err := sdk.PublishAwait[messages.MemoryListThreadsMsg, messages.MemoryListThreadsResp](rt, ctx, messages.MemoryListThreadsMsg{})
+				_pr4, err := sdk.Publish(rt, ctx, messages.MemoryListThreadsMsg{})
 				require.NoError(t, err)
+				_ch4 := make(chan messages.MemoryListThreadsResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.MemoryListThreadsResp](rt, ctx, _pr4.ReplyTo, func(r messages.MemoryListThreadsResp, m messages.Message) { _ch4 <- r })
+				require.NoError(t, err)
+				defer _us4()
+				var listResp messages.MemoryListThreadsResp
+				select {
+				case listResp = <-_ch4:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotNil(t, listResp.Threads, "should return threads array")
 			})
 
 			t.Run("DeleteThread", func(t *testing.T) {
-				createResp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+				_pr5, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 				require.NoError(t, err)
+				_ch5 := make(chan messages.MemoryCreateThreadResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr5.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch5 <- r })
+				require.NoError(t, err)
+				defer _us5()
+				var createResp messages.MemoryCreateThreadResp
+				select {
+				case createResp = <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				deleteResp, err := sdk.PublishAwait[messages.MemoryDeleteThreadMsg, messages.MemoryDeleteThreadResp](rt, ctx, messages.MemoryDeleteThreadMsg{
 					ThreadID: createResp.ThreadID,

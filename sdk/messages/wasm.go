@@ -81,39 +81,32 @@ type WasmDeployResp struct {
 	Handlers map[string]string `json:"handlers"`
 }
 
-func (WasmCompileResp) BusTopic() string { return "wasm.compile.result" }
 
-func (WasmRunResp) BusTopic() string { return "wasm.run.result" }
 
-func (WasmDeployResp) BusTopic() string { return "wasm.deploy.result" }
 
 type WasmUndeployResp struct {
 	ResultMeta
 	Undeployed bool `json:"undeployed"`
 }
 
-func (WasmUndeployResp) BusTopic() string { return "wasm.undeploy.result" }
 
 type WasmListResp struct {
 	ResultMeta
 	Modules []WasmModuleInfo `json:"modules"`
 }
 
-func (WasmListResp) BusTopic() string { return "wasm.list.result" }
 
 type WasmGetResp struct {
 	ResultMeta
 	Module *WasmModuleInfo `json:"module,omitempty"`
 }
 
-func (WasmGetResp) BusTopic() string { return "wasm.get.result" }
 
 type WasmRemoveResp struct {
 	ResultMeta
 	Removed bool `json:"removed"`
 }
 
-func (WasmRemoveResp) BusTopic() string { return "wasm.remove.result" }
 
 type WasmDescribeResp struct {
 	ResultMeta
@@ -122,7 +115,6 @@ type WasmDescribeResp struct {
 	Handlers map[string]string `json:"handlers"`
 }
 
-func (WasmDescribeResp) BusTopic() string { return "wasm.describe.result" }
 
 // ── Shared types ──
 

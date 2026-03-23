@@ -39,8 +39,16 @@ func TestWASM_Reply(t *testing.T) {
 	require.NoError(t, err)
 
 	// Deploy
-	_, err = sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "reply-shard"})
+	_pr1, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "reply-shard"})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.WasmDeployResp, 1)
+	_us1, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch1 <- r })
+	defer _us1()
+	select {
+	case <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Inject event and check reply — using the exported InjectWASMEvent on Kernel
 	result, err := tk.InjectWASMEvent("reply-shard", "reply.test.event", json.RawMessage(`{}`))
@@ -48,7 +56,7 @@ func TestWASM_Reply(t *testing.T) {
 	assert.Equal(t, `{"response":"hello from wasm"}`, result.ReplyPayload)
 
 	// Cleanup
-	sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "reply-shard"})
+	sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "reply-shard"})
 }
 
 // TestWASM_Reply_WithState tests reply in persistent mode with state.
@@ -83,8 +91,16 @@ func TestWASM_Reply_WithState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "counter-shard"})
+	_pr2, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "counter-shard"})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.WasmDeployResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr2.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
+	select {
+	case <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Invoke 3 times — counter should increment
 	for i := 1; i <= 3; i++ {
@@ -98,5 +114,5 @@ func TestWASM_Reply_WithState(t *testing.T) {
 		assert.Equal(t, i, resp.Count, "invocation %d should have count %d", i, i)
 	}
 
-	sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "counter-shard"})
+	sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "counter-shard"})
 }

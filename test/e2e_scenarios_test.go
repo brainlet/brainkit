@@ -38,8 +38,18 @@ func TestE2E_ToolPipeline(t *testing.T) {
 	assert.True(t, deployResp.Deployed)
 
 	// 3. Verify "greeter" appears in tools.list
-	listResp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, ctx, messages.ToolListMsg{})
+	_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 	require.NoError(t, err)
+	_ch1 := make(chan messages.ToolListResp, 1)
+	_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+	require.NoError(t, err)
+	defer _us1()
+	var listResp messages.ToolListResp
+	select {
+	case listResp = <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	found := false
 	for _, tool := range listResp.Tools {
 		if tool.ShortName == "greeter" {
@@ -59,8 +69,16 @@ func TestE2E_ToolPipeline(t *testing.T) {
 	assert.Equal(t, "Hello, Brainkit!", result["greeting"])
 
 	// 5. Teardown
-	_, err = sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "pipeline.ts"})
+	_pr2, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "pipeline.ts"})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.KitTeardownResp, 1)
+	_us2, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch2 <- r })
+	defer _us2()
+	select {
+	case <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 }
 
 // TestE2E_DeployLifecycle tests the full deploy → list → redeploy → teardown cycle.
@@ -77,8 +95,18 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// List — should show lifecycle.ts
-	listResp, err := sdk.PublishAwait[messages.KitListMsg, messages.KitListResp](rt, ctx, messages.KitListMsg{})
+	_pr3, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
+	_ch3 := make(chan messages.KitListResp, 1)
+	_us3, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr3.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch3 <- r })
+	require.NoError(t, err)
+	defer _us3()
+	var listResp messages.KitListResp
+	select {
+	case listResp = <-_ch3:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	sources := make(map[string]bool)
 	for _, d := range listResp.Deployments {
 		sources[d.Source] = true
@@ -93,13 +121,33 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Teardown
-	tearResp, err := sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "lifecycle.ts"})
+	_pr4, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "lifecycle.ts"})
 	require.NoError(t, err)
+	_ch4 := make(chan messages.KitTeardownResp, 1)
+	_us4, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr4.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch4 <- r })
+	require.NoError(t, err)
+	defer _us4()
+	var tearResp messages.KitTeardownResp
+	select {
+	case tearResp = <-_ch4:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.GreaterOrEqual(t, tearResp.Removed, 0)
 
 	// List — should be empty (or at least not contain lifecycle.ts)
-	listResp, err = sdk.PublishAwait[messages.KitListMsg, messages.KitListResp](rt, ctx, messages.KitListMsg{})
+	_pr5, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
+	_ch5 := make(chan messages.KitListResp, 1)
+	_us5, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr5.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch5 <- r })
+	require.NoError(t, err)
+	defer _us5()
+	var listResp messages.KitListResp
+	select {
+	case listResp = <-_ch5:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	for _, d := range listResp.Deployments {
 		assert.NotEqual(t, "lifecycle.ts", d.Source, "should be torn down")
 	}
@@ -120,8 +168,18 @@ func TestE2E_MultiDomain(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2. Read it back
-	readResp, err := sdk.PublishAwait[messages.FsReadMsg, messages.FsReadResp](rt, ctx, messages.FsReadMsg{Path: "input.json"})
+	_pr6, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "input.json"})
 	require.NoError(t, err)
+	_ch6 := make(chan messages.FsReadResp, 1)
+	_us6, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch6 <- r })
+	require.NoError(t, err)
+	defer _us6()
+	var readResp messages.FsReadResp
+	select {
+	case readResp = <-_ch6:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// 3. Process with the "echo" tool (simulating processing)
 	var input map[string]any
@@ -141,8 +199,18 @@ func TestE2E_MultiDomain(t *testing.T) {
 	require.NoError(t, err)
 
 	// 5. Read and verify output
-	outResp, err := sdk.PublishAwait[messages.FsReadMsg, messages.FsReadResp](rt, ctx, messages.FsReadMsg{Path: "output.json"})
+	_pr7, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "output.json"})
 	require.NoError(t, err)
+	_ch7 := make(chan messages.FsReadResp, 1)
+	_us7, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch7 <- r })
+	require.NoError(t, err)
+	defer _us7()
+	var outResp messages.FsReadResp
+	select {
+	case outResp = <-_ch7:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Contains(t, outResp.Data, "echoed")
 }
 
@@ -179,8 +247,18 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Deploy
-	deployResp, err := sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "lifecycle-shard"})
+	_pr8, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
+	_ch8 := make(chan messages.WasmDeployResp, 1)
+	_us8, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr8.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch8 <- r })
+	require.NoError(t, err)
+	defer _us8()
+	var deployResp messages.WasmDeployResp
+	select {
+	case deployResp = <-_ch8:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Equal(t, "persistent", deployResp.Mode)
 
 	// Inject 5 events
@@ -196,22 +274,58 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	}
 
 	// Describe — verify handlers
-	descResp, err := sdk.PublishAwait[messages.WasmDescribeMsg, messages.WasmDescribeResp](rt, ctx, messages.WasmDescribeMsg{Name: "lifecycle-shard"})
+	_pr9, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
+	_ch9 := make(chan messages.WasmDescribeResp, 1)
+	_us9, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr9.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch9 <- r })
+	require.NoError(t, err)
+	defer _us9()
+	var descResp messages.WasmDescribeResp
+	select {
+	case descResp = <-_ch9:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Equal(t, "persistent", descResp.Mode)
 	assert.Contains(t, descResp.Handlers, "lifecycle.data")
 
 	// Undeploy
-	_, err = sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "lifecycle-shard"})
+	_pr10, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
+	_ch10 := make(chan messages.WasmUndeployResp, 1)
+	_us10, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr10.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch10 <- r })
+	defer _us10()
+	select {
+	case <-_ch10:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Remove
-	_, err = sdk.PublishAwait[messages.WasmRemoveMsg, messages.WasmRemoveResp](rt, ctx, messages.WasmRemoveMsg{Name: "lifecycle-shard"})
+	_pr11, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
+	_ch11 := make(chan messages.WasmRemoveResp, 1)
+	_us11, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr11.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch11 <- r })
+	defer _us11()
+	select {
+	case <-_ch11:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 
 	// Verify it's gone
-	getResp, err := sdk.PublishAwait[messages.WasmGetMsg, messages.WasmGetResp](rt, ctx, messages.WasmGetMsg{Name: "lifecycle-shard"})
+	_pr12, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "lifecycle-shard"})
 	require.NoError(t, err)
+	_ch12 := make(chan messages.WasmGetResp, 1)
+	_us12, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr12.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch12 <- r })
+	require.NoError(t, err)
+	defer _us12()
+	var getResp messages.WasmGetResp
+	select {
+	case getResp = <-_ch12:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Nil(t, getResp.Module)
 }
 

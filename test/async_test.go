@@ -82,7 +82,7 @@ func TestAsync_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, ctx, messages.ToolListMsg{})
+	_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 	assert.Error(t, err, "should fail with cancelled context")
 }
 

@@ -45,13 +45,21 @@ func main() {
 	sdk.Tool[ConcatInput, ConcatOutput](plugin, "concat", "concatenates two strings",
 		func(ctx context.Context, rt sdk.Runtime, in ConcatInput) (ConcatOutput, error) {
 			// Test plugin state: increment call count
-			countResp, _ := sdk.PublishAwait[messages.PluginStateGetMsg, messages.PluginStateGetResp](rt, ctx, messages.PluginStateGetMsg{Key: "callCount"})
+			getResult, _ := sdk.Publish(rt, ctx, messages.PluginStateGetMsg{Key: "callCount"})
+			countCh := make(chan messages.PluginStateGetResp, 1)
+			unsub, _ := sdk.SubscribeTo[messages.PluginStateGetResp](rt, ctx, getResult.ReplyTo, func(r messages.PluginStateGetResp, m messages.Message) { countCh <- r })
+			var countResp messages.PluginStateGetResp
+			select {
+			case countResp = <-countCh:
+			case <-ctx.Done():
+			}
+			unsub()
 			count := 0
 			if countResp.Value != "" {
 				fmt.Sscanf(countResp.Value, "%d", &count)
 			}
 			count++
-			sdk.PublishAwait[messages.PluginStateSetMsg, messages.PluginStateSetResp](rt, ctx, messages.PluginStateSetMsg{
+			sdk.Publish(rt, ctx, messages.PluginStateSetMsg{
 				Key:   "callCount",
 				Value: fmt.Sprintf("%d", count),
 			})
@@ -66,11 +74,18 @@ func main() {
 		log.Println("[testplugin] started successfully")
 
 		// List tools on the host to verify connectivity
-		resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, context.Background(), messages.ToolListMsg{})
+		listResult, err := sdk.Publish(rt, context.Background(), messages.ToolListMsg{})
 		if err != nil {
-			log.Printf("[testplugin] failed to list host tools: %v", err)
+			log.Printf("[testplugin] failed to publish tool list: %v", err)
 		} else {
-			log.Printf("[testplugin] host has %d tools", len(resp.Tools))
+			toolsCh := make(chan messages.ToolListResp, 1)
+			unsub, _ := sdk.SubscribeTo[messages.ToolListResp](rt, context.Background(), listResult.ReplyTo, func(r messages.ToolListResp, m messages.Message) { toolsCh <- r })
+			select {
+			case resp := <-toolsCh:
+				log.Printf("[testplugin] host has %d tools", len(resp.Tools))
+			case <-context.Background().Done():
+			}
+			unsub()
 		}
 		return nil
 	})

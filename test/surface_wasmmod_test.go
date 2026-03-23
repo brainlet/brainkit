@@ -39,8 +39,18 @@ func wasmDomainTest(t *testing.T, rt sdk.Runtime, ctx context.Context, name, top
 	})
 	require.NoError(t, err, "compile %s", name)
 
-	runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: name})
+	_pr1, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: name})
 	require.NoError(t, err, "run %s", name)
+	_ch1 := make(chan messages.WasmRunResp, 1)
+	_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+	require.NoError(t, err)
+	defer _us1()
+	var runResp messages.WasmRunResp
+	select {
+	case runResp = <-_ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	assert.Equal(t, 0, runResp.ExitCode, "%s should exit 0", name)
 }
 
@@ -71,8 +81,8 @@ func TestWASMSurface_FS(t *testing.T) {
 	defer cancel()
 
 	// Pre-write a file so we can read it from WASM
-	sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](tk, ctx, messages.FsWriteMsg{Path: "wasm-test.txt", Data: "hello"})
-	sdk.PublishAwait[messages.FsMkdirMsg, messages.FsMkdirResp](tk, ctx, messages.FsMkdirMsg{Path: "wasm-dir"})
+	sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "wasm-test.txt", Data: "hello"})
+	sdk.Publish(tk, ctx, messages.FsMkdirMsg{Path: "wasm-dir"})
 
 	t.Run("Write", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-fs-write", "fs.write", `{"path":"wasm-written.txt","data":"from wasm"}`)
@@ -111,7 +121,7 @@ func TestWASMSurface_Agents(t *testing.T) {
 		Source: "wasm-agent-setup.ts",
 		Code:   `agent({ name: "wasm-target", instructions: "test", model: "openai/gpt-4o-mini" });`,
 	})
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "wasm-agent-setup.ts"})
+	defer sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: "wasm-agent-setup.ts"})
 
 	t.Run("List", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-agents-list", "agents.list", `{}`)
@@ -179,8 +189,18 @@ func TestWASMSurface_Memory(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a thread from Go so WASM can operate on it
-	createResp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](tk, ctx, messages.MemoryCreateThreadMsg{})
+	_pr2, err := sdk.Publish(tk, ctx, messages.MemoryCreateThreadMsg{})
 	require.NoError(t, err)
+	_ch2 := make(chan messages.MemoryCreateThreadResp, 1)
+	_us2, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr2.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch2 <- r })
+	require.NoError(t, err)
+	defer _us2()
+	var createResp messages.MemoryCreateThreadResp
+	select {
+	case createResp = <-_ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
 	threadID := createResp.ThreadID
 
 	t.Run("CreateThread", func(t *testing.T) {

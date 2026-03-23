@@ -208,5 +208,5 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 	json.Unmarshal(resp.Result, &result)
 	assert.Equal(t, true, result["hasOpenAI"])
 
-	sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "registry-user.ts"})
+	sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "registry-user.ts"})
 }

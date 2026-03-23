@@ -93,8 +93,18 @@ func TestCross_WASM_Plugin(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				runResp, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](node, wasmCtx, messages.WasmRunMsg{ModuleID: "wasm-calls-plugin"})
+				_pr1, err := sdk.Publish(node, wasmCtx, messages.WasmRunMsg{ModuleID: "wasm-calls-plugin"})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.WasmRunResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var runResp messages.WasmRunResp
+				select {
+				case runResp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, 0, runResp.ExitCode)
 				// pendingInvokes.Wait() ensures the callback was called
 			})
@@ -103,8 +113,18 @@ func TestCross_WASM_Plugin(t *testing.T) {
 				listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 				defer listCancel()
 
-				resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](node, listCtx, messages.ToolListMsg{})
+				_pr2, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolListResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolListResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				names := make(map[string]bool)
 				for _, tool := range resp.Tools {

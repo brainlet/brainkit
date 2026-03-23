@@ -25,14 +25,12 @@ type McpListToolsResp struct {
 	Tools []McpToolInfo `json:"tools"`
 }
 
-func (McpListToolsResp) BusTopic() string { return "mcp.listTools.result" }
 
 type McpCallToolResp struct {
 	ResultMeta
 	Result json.RawMessage `json:"result"`
 }
 
-func (McpCallToolResp) BusTopic() string { return "mcp.callTool.result" }
 
 // ── Shared types ──
 

@@ -29,13 +29,33 @@ func TestPluginSurface_Tools(t *testing.T) {
 	defer cancel()
 
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, ctx, messages.ToolListMsg{})
+		_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 		require.NoError(t, err)
+		_ch1 := make(chan messages.ToolListResp, 1)
+		_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+		require.NoError(t, err)
+		defer _us1()
+		var resp messages.ToolListResp
+		select {
+		case resp = <-_ch1:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Tools)
 	})
 	t.Run("Resolve", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.ToolResolveMsg, messages.ToolResolveResp](rt, ctx, messages.ToolResolveMsg{Name: "echo"})
+		_pr2, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "echo"})
 		require.NoError(t, err)
+		_ch2 := make(chan messages.ToolResolveResp, 1)
+		_us2, err := sdk.SubscribeTo[messages.ToolResolveResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { _ch2 <- r })
+		require.NoError(t, err)
+		defer _us2()
+		var resp messages.ToolResolveResp
+		select {
+		case resp = <-_ch2:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "echo", resp.ShortName)
 	})
 	t.Run("Call", func(t *testing.T) {
@@ -57,37 +77,97 @@ func TestPluginSurface_FS(t *testing.T) {
 	defer cancel()
 
 	t.Run("Write", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "plugin-test.txt", Data: "from plugin"})
+		_pr3, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "plugin-test.txt", Data: "from plugin"})
 		require.NoError(t, err)
+		_ch3 := make(chan messages.FsWriteResp, 1)
+		_us3, err := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr3.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch3 <- r })
+		require.NoError(t, err)
+		defer _us3()
+		var resp messages.FsWriteResp
+		select {
+		case resp = <-_ch3:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 	t.Run("Read", func(t *testing.T) {
-		sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "plugin-read.txt", Data: "data"})
-		resp, err := sdk.PublishAwait[messages.FsReadMsg, messages.FsReadResp](rt, ctx, messages.FsReadMsg{Path: "plugin-read.txt"})
+		sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "plugin-read.txt", Data: "data"})
+		_pr4, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "plugin-read.txt"})
 		require.NoError(t, err)
+		_ch4 := make(chan messages.FsReadResp, 1)
+		_us4, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch4 <- r })
+		require.NoError(t, err)
+		defer _us4()
+		var resp messages.FsReadResp
+		select {
+		case resp = <-_ch4:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "data", resp.Data)
 	})
 	t.Run("Mkdir", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.FsMkdirMsg, messages.FsMkdirResp](rt, ctx, messages.FsMkdirMsg{Path: "plugin-dir"})
+		_pr5, err := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "plugin-dir"})
 		require.NoError(t, err)
+		_ch5 := make(chan messages.FsMkdirResp, 1)
+		_us5, err := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _pr5.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _ch5 <- r })
+		require.NoError(t, err)
+		defer _us5()
+		var resp messages.FsMkdirResp
+		select {
+		case resp = <-_ch5:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 	t.Run("List", func(t *testing.T) {
-		sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "plugin-ls/a.txt", Data: "a"})
-		resp, err := sdk.PublishAwait[messages.FsListMsg, messages.FsListResp](rt, ctx, messages.FsListMsg{Path: "plugin-ls"})
+		sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "plugin-ls/a.txt", Data: "a"})
+		_pr6, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "plugin-ls"})
 		require.NoError(t, err)
+		_ch6 := make(chan messages.FsListResp, 1)
+		_us6, err := sdk.SubscribeTo[messages.FsListResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsListResp, m messages.Message) { _ch6 <- r })
+		require.NoError(t, err)
+		defer _us6()
+		var resp messages.FsListResp
+		select {
+		case resp = <-_ch6:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Files)
 	})
 	t.Run("Stat", func(t *testing.T) {
-		sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "plugin-stat.txt", Data: "x"})
-		resp, err := sdk.PublishAwait[messages.FsStatMsg, messages.FsStatResp](rt, ctx, messages.FsStatMsg{Path: "plugin-stat.txt"})
+		sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "plugin-stat.txt", Data: "x"})
+		_pr7, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "plugin-stat.txt"})
 		require.NoError(t, err)
+		_ch7 := make(chan messages.FsStatResp, 1)
+		_us7, err := sdk.SubscribeTo[messages.FsStatResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsStatResp, m messages.Message) { _ch7 <- r })
+		require.NoError(t, err)
+		defer _us7()
+		var resp messages.FsStatResp
+		select {
+		case resp = <-_ch7:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.False(t, resp.IsDir)
 	})
 	t.Run("Delete", func(t *testing.T) {
-		sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "plugin-del.txt", Data: "x"})
-		resp, err := sdk.PublishAwait[messages.FsDeleteMsg, messages.FsDeleteResp](rt, ctx, messages.FsDeleteMsg{Path: "plugin-del.txt"})
+		sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "plugin-del.txt", Data: "x"})
+		_pr8, err := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "plugin-del.txt"})
 		require.NoError(t, err)
+		_ch8 := make(chan messages.FsDeleteResp, 1)
+		_us8, err := sdk.SubscribeTo[messages.FsDeleteResp](rt, ctx, _pr8.ReplyTo, func(r messages.FsDeleteResp, m messages.Message) { _ch8 <- r })
+		require.NoError(t, err)
+		defer _us8()
+		var resp messages.FsDeleteResp
+		select {
+		case resp = <-_ch8:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 }
@@ -109,40 +189,108 @@ func TestPluginSurface_Agents(t *testing.T) {
 		Source: "plugin-agent-setup.ts",
 		Code:   `agent({ name: "plugin-agent", instructions: "Reply ok", model: "openai/gpt-4o-mini" });`,
 	})
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-agent-setup.ts"})
+	defer sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-agent-setup.ts"})
 
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AgentListMsg, messages.AgentListResp](rt, ctx, messages.AgentListMsg{})
+		_pr9, err := sdk.Publish(rt, ctx, messages.AgentListMsg{})
 		require.NoError(t, err)
+		_ch9 := make(chan messages.AgentListResp, 1)
+		_us9, err := sdk.SubscribeTo[messages.AgentListResp](rt, ctx, _pr9.ReplyTo, func(r messages.AgentListResp, m messages.Message) { _ch9 <- r })
+		require.NoError(t, err)
+		defer _us9()
+		var resp messages.AgentListResp
+		select {
+		case resp = <-_ch9:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Agents)
 	})
 	t.Run("Discover", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AgentDiscoverMsg, messages.AgentDiscoverResp](rt, ctx, messages.AgentDiscoverMsg{})
+		_pr10, err := sdk.Publish(rt, ctx, messages.AgentDiscoverMsg{})
 		require.NoError(t, err)
+		_ch10 := make(chan messages.AgentDiscoverResp, 1)
+		_us10, err := sdk.SubscribeTo[messages.AgentDiscoverResp](rt, ctx, _pr10.ReplyTo, func(r messages.AgentDiscoverResp, m messages.Message) { _ch10 <- r })
+		require.NoError(t, err)
+		defer _us10()
+		var resp messages.AgentDiscoverResp
+		select {
+		case resp = <-_ch10:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Agents)
 	})
 	t.Run("GetStatus", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AgentGetStatusMsg, messages.AgentGetStatusResp](rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
+		_pr11, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
 		require.NoError(t, err)
+		_ch11 := make(chan messages.AgentGetStatusResp, 1)
+		_us11, err := sdk.SubscribeTo[messages.AgentGetStatusResp](rt, ctx, _pr11.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { _ch11 <- r })
+		require.NoError(t, err)
+		defer _us11()
+		var resp messages.AgentGetStatusResp
+		select {
+		case resp = <-_ch11:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "idle", resp.Status)
 	})
 	t.Run("SetStatus", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "busy"})
+		_pr12, err := sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "busy"})
 		require.NoError(t, err)
-		resp, err := sdk.PublishAwait[messages.AgentGetStatusMsg, messages.AgentGetStatusResp](rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
+		_ch12 := make(chan messages.AgentSetStatusResp, 1)
+		_us12, _ := sdk.SubscribeTo[messages.AgentSetStatusResp](rt, ctx, _pr12.ReplyTo, func(r messages.AgentSetStatusResp, m messages.Message) { _ch12 <- r })
+		defer _us12()
+		select {
+		case <-_ch12:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
+		_pr13, err := sdk.Publish(rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
 		require.NoError(t, err)
+		_ch13 := make(chan messages.AgentGetStatusResp, 1)
+		_us13, err := sdk.SubscribeTo[messages.AgentGetStatusResp](rt, ctx, _pr13.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { _ch13 <- r })
+		require.NoError(t, err)
+		defer _us13()
+		var resp messages.AgentGetStatusResp
+		select {
+		case resp = <-_ch13:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "busy", resp.Status)
 		// Reset
-		sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "idle"})
+		sdk.Publish(rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "idle"})
 	})
 	t.Run("Message", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{Target: "plugin-agent", Payload: "hello"})
+		_pr14, err := sdk.Publish(rt, ctx, messages.AgentMessageMsg{Target: "plugin-agent", Payload: "hello"})
 		require.NoError(t, err)
+		_ch14 := make(chan messages.AgentMessageResp, 1)
+		_us14, err := sdk.SubscribeTo[messages.AgentMessageResp](rt, ctx, _pr14.ReplyTo, func(r messages.AgentMessageResp, m messages.Message) { _ch14 <- r })
+		require.NoError(t, err)
+		defer _us14()
+		var resp messages.AgentMessageResp
+		select {
+		case resp = <-_ch14:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.Delivered)
 	})
 	t.Run("Request", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.AgentRequestMsg, messages.AgentRequestResp](rt, ctx, messages.AgentRequestMsg{Name: "plugin-agent", Prompt: "Say ok"})
+		_pr15, err := sdk.Publish(rt, ctx, messages.AgentRequestMsg{Name: "plugin-agent", Prompt: "Say ok"})
 		require.NoError(t, err)
+		_ch15 := make(chan messages.AgentRequestResp, 1)
+		_us15, err := sdk.SubscribeTo[messages.AgentRequestResp](rt, ctx, _pr15.ReplyTo, func(r messages.AgentRequestResp, m messages.Message) { _ch15 <- r })
+		require.NoError(t, err)
+		defer _us15()
+		var resp messages.AgentRequestResp
+		select {
+		case resp = <-_ch15:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Text)
 	})
 }
@@ -232,12 +380,30 @@ func TestPluginSurface_Kit(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Deployed)
 
-		_, err = sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "plugin-deploy.ts"})
+		_pr16, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-deploy.ts"})
 		require.NoError(t, err)
+		_ch16 := make(chan messages.KitTeardownResp, 1)
+		_us16, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr16.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch16 <- r })
+		defer _us16()
+		select {
+		case <-_ch16:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 	})
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.KitListMsg, messages.KitListResp](rt, ctx, messages.KitListMsg{})
+		_pr17, err := sdk.Publish(rt, ctx, messages.KitListMsg{})
 		require.NoError(t, err)
+		_ch17 := make(chan messages.KitListResp, 1)
+		_us17, err := sdk.SubscribeTo[messages.KitListResp](rt, ctx, _pr17.ReplyTo, func(r messages.KitListResp, m messages.Message) { _ch17 <- r })
+		require.NoError(t, err)
+		defer _us17()
+		var resp messages.KitListResp
+		select {
+		case resp = <-_ch17:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Deployments)
 	})
 	t.Run("Redeploy", func(t *testing.T) {
@@ -251,7 +417,7 @@ func TestPluginSurface_Kit(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.True(t, resp.Deployed)
-		sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "plugin-redeploy.ts"})
+		sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-redeploy.ts"})
 	})
 }
 
@@ -269,23 +435,63 @@ func TestPluginSurface_WASM(t *testing.T) {
 		require.NoError(t, err)
 		assert.Greater(t, comp.Size, 0)
 
-		run, err := sdk.PublishAwait[messages.WasmRunMsg, messages.WasmRunResp](rt, ctx, messages.WasmRunMsg{ModuleID: "plugin-wasm"})
+		_pr18, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "plugin-wasm"})
 		require.NoError(t, err)
+		_ch18 := make(chan messages.WasmRunResp, 1)
+		_us18, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr18.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch18 <- r })
+		require.NoError(t, err)
+		defer _us18()
+		var run messages.WasmRunResp
+		select {
+		case run = <-_ch18:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, 55, run.ExitCode)
 	})
 	t.Run("List", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.WasmListMsg, messages.WasmListResp](rt, ctx, messages.WasmListMsg{})
+		_pr19, err := sdk.Publish(rt, ctx, messages.WasmListMsg{})
 		require.NoError(t, err)
+		_ch19 := make(chan messages.WasmListResp, 1)
+		_us19, err := sdk.SubscribeTo[messages.WasmListResp](rt, ctx, _pr19.ReplyTo, func(r messages.WasmListResp, m messages.Message) { _ch19 <- r })
+		require.NoError(t, err)
+		defer _us19()
+		var resp messages.WasmListResp
+		select {
+		case resp = <-_ch19:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Modules)
 	})
 	t.Run("Get", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.WasmGetMsg, messages.WasmGetResp](rt, ctx, messages.WasmGetMsg{Name: "plugin-wasm"})
+		_pr20, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "plugin-wasm"})
 		require.NoError(t, err)
+		_ch20 := make(chan messages.WasmGetResp, 1)
+		_us20, err := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr20.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch20 <- r })
+		require.NoError(t, err)
+		defer _us20()
+		var resp messages.WasmGetResp
+		select {
+		case resp = <-_ch20:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Module)
 	})
 	t.Run("Remove", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.WasmRemoveMsg, messages.WasmRemoveResp](rt, ctx, messages.WasmRemoveMsg{Name: "plugin-wasm"})
+		_pr21, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "plugin-wasm"})
 		require.NoError(t, err)
+		_ch21 := make(chan messages.WasmRemoveResp, 1)
+		_us21, err := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr21.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch21 <- r })
+		require.NoError(t, err)
+		defer _us21()
+		var resp messages.WasmRemoveResp
+		select {
+		case resp = <-_ch21:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.Removed)
 	})
 	t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
@@ -296,16 +502,46 @@ func TestPluginSurface_WASM(t *testing.T) {
 				export function h(t: usize, p: usize): void {}
 			`, Options: &messages.WasmCompileOpts{Name: "plugin-deploy-mod"},
 		})
-		deploy, err := sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "plugin-deploy-mod"})
+		_pr22, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "plugin-deploy-mod"})
 		require.NoError(t, err)
+		_ch22 := make(chan messages.WasmDeployResp, 1)
+		_us22, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr22.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch22 <- r })
+		require.NoError(t, err)
+		defer _us22()
+		var deploy messages.WasmDeployResp
+		select {
+		case deploy = <-_ch22:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "stateless", deploy.Mode)
 
-		desc, err := sdk.PublishAwait[messages.WasmDescribeMsg, messages.WasmDescribeResp](rt, ctx, messages.WasmDescribeMsg{Name: "plugin-deploy-mod"})
+		_pr23, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "plugin-deploy-mod"})
 		require.NoError(t, err)
+		_ch23 := make(chan messages.WasmDescribeResp, 1)
+		_us23, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr23.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch23 <- r })
+		require.NoError(t, err)
+		defer _us23()
+		var desc messages.WasmDescribeResp
+		select {
+		case desc = <-_ch23:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.Equal(t, "stateless", desc.Mode)
 
-		undeploy, err := sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "plugin-deploy-mod"})
+		_pr24, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "plugin-deploy-mod"})
 		require.NoError(t, err)
+		_ch24 := make(chan messages.WasmUndeployResp, 1)
+		_us24, err := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr24.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch24 <- r })
+		require.NoError(t, err)
+		defer _us24()
+		var undeploy messages.WasmUndeployResp
+		select {
+		case undeploy = <-_ch24:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, undeploy.Undeployed)
 	})
 }
@@ -326,8 +562,18 @@ func TestPluginSurface_Memory(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("CreateThread", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
+		_pr25, err := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
 		require.NoError(t, err)
+		_ch25 := make(chan messages.MemoryCreateThreadResp, 1)
+		_us25, err := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, _pr25.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { _ch25 <- r })
+		require.NoError(t, err)
+		defer _us25()
+		var resp messages.MemoryCreateThreadResp
+		select {
+		case resp = <-_ch25:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.ThreadID)
 	})
 	t.Run("Save_Recall", func(t *testing.T) {
@@ -344,19 +590,49 @@ func TestPluginSurface_Memory(t *testing.T) {
 	})
 	t.Run("GetThread", func(t *testing.T) {
 		create, _ := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
-		resp, err := sdk.PublishAwait[messages.MemoryGetThreadMsg, messages.MemoryGetThreadResp](rt, ctx, messages.MemoryGetThreadMsg{ThreadID: create.ThreadID})
+		_pr26, err := sdk.Publish(rt, ctx, messages.MemoryGetThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
+		_ch26 := make(chan messages.MemoryGetThreadResp, 1)
+		_us26, err := sdk.SubscribeTo[messages.MemoryGetThreadResp](rt, ctx, _pr26.ReplyTo, func(r messages.MemoryGetThreadResp, m messages.Message) { _ch26 <- r })
+		require.NoError(t, err)
+		defer _us26()
+		var resp messages.MemoryGetThreadResp
+		select {
+		case resp = <-_ch26:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Thread)
 	})
 	t.Run("ListThreads", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.MemoryListThreadsMsg, messages.MemoryListThreadsResp](rt, ctx, messages.MemoryListThreadsMsg{})
+		_pr27, err := sdk.Publish(rt, ctx, messages.MemoryListThreadsMsg{})
 		require.NoError(t, err)
+		_ch27 := make(chan messages.MemoryListThreadsResp, 1)
+		_us27, err := sdk.SubscribeTo[messages.MemoryListThreadsResp](rt, ctx, _pr27.ReplyTo, func(r messages.MemoryListThreadsResp, m messages.Message) { _ch27 <- r })
+		require.NoError(t, err)
+		defer _us27()
+		var resp messages.MemoryListThreadsResp
+		select {
+		case resp = <-_ch27:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Threads)
 	})
 	t.Run("DeleteThread", func(t *testing.T) {
 		create, _ := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](rt, ctx, messages.MemoryCreateThreadMsg{})
-		resp, err := sdk.PublishAwait[messages.MemoryDeleteThreadMsg, messages.MemoryDeleteThreadResp](rt, ctx, messages.MemoryDeleteThreadMsg{ThreadID: create.ThreadID})
+		_pr28, err := sdk.Publish(rt, ctx, messages.MemoryDeleteThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
+		_ch28 := make(chan messages.MemoryDeleteThreadResp, 1)
+		_us28, err := sdk.SubscribeTo[messages.MemoryDeleteThreadResp](rt, ctx, _pr28.ReplyTo, func(r messages.MemoryDeleteThreadResp, m messages.Message) { _ch28 <- r })
+		require.NoError(t, err)
+		defer _us28()
+		var resp messages.MemoryDeleteThreadResp
+		select {
+		case resp = <-_ch28:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.True(t, resp.OK)
 	})
 }
@@ -391,7 +667,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		assert.NotNil(t, resp.Result)
 	})
 
-	sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-wf.ts"})
+	sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-wf.ts"})
 
 	// Deploy suspend workflow for resume/cancel/status
 	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
@@ -407,7 +683,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		`,
 	})
 	require.NoError(t, err)
-	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-suspend-wf.ts"})
+	defer sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "plugin-suspend-wf.ts"})
 
 	t.Run("Suspend_Resume", func(t *testing.T) {
 		runResp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
@@ -420,8 +696,18 @@ func TestPluginSurface_Workflows(t *testing.T) {
 			runId, _ := runResult["runId"].(string)
 			require.NotEmpty(t, runId)
 
-			statusResp, err := sdk.PublishAwait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](rt, ctx, messages.WorkflowStatusMsg{RunID: runId})
+			_pr29, err := sdk.Publish(rt, ctx, messages.WorkflowStatusMsg{RunID: runId})
 			require.NoError(t, err)
+			_ch29 := make(chan messages.WorkflowStatusResp, 1)
+			_us29, err := sdk.SubscribeTo[messages.WorkflowStatusResp](rt, ctx, _pr29.ReplyTo, func(r messages.WorkflowStatusResp, m messages.Message) { _ch29 <- r })
+			require.NoError(t, err)
+			defer _us29()
+			var statusResp messages.WorkflowStatusResp
+			select {
+			case statusResp = <-_ch29:
+			case <-ctx.Done():
+				t.Fatal("timeout")
+			}
 			t.Logf("Plugin workflow status: %s", statusResp.Status)
 
 			resumeResp, err := sdk.PublishAwait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](rt, ctx, messages.WorkflowResumeMsg{
@@ -432,7 +718,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		}
 	})
 	t.Run("Cancel_NotFound", func(t *testing.T) {
-		_, err := sdk.PublishAwait[messages.WorkflowCancelMsg, messages.WorkflowCancelResp](rt, ctx, messages.WorkflowCancelMsg{RunID: "nonexistent"})
+		_pr30, err := sdk.Publish(rt, ctx, messages.WorkflowCancelMsg{RunID: "nonexistent"})
 		assert.Error(t, err)
 	})
 }
@@ -456,8 +742,18 @@ func TestPluginSurface_MCP(t *testing.T) {
 	defer cancel()
 
 	t.Run("ListTools", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.McpListToolsMsg, messages.McpListToolsResp](rt, ctx, messages.McpListToolsMsg{})
+		_pr31, err := sdk.Publish(rt, ctx, messages.McpListToolsMsg{})
 		require.NoError(t, err)
+		_ch31 := make(chan messages.McpListToolsResp, 1)
+		_us31, err := sdk.SubscribeTo[messages.McpListToolsResp](rt, ctx, _pr31.ReplyTo, func(r messages.McpListToolsResp, m messages.Message) { _ch31 <- r })
+		require.NoError(t, err)
+		defer _us31()
+		var resp messages.McpListToolsResp
+		select {
+		case resp = <-_ch31:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotEmpty(t, resp.Tools)
 	})
 	t.Run("CallTool", func(t *testing.T) {
@@ -528,8 +824,18 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		assert.True(t, resp.OK)
 	})
 	t.Run("ListIndexes", func(t *testing.T) {
-		resp, err := sdk.PublishAwait[messages.VectorListIndexesMsg, messages.VectorListIndexesResp](rt, ctx, messages.VectorListIndexesMsg{})
+		_pr32, err := sdk.Publish(rt, ctx, messages.VectorListIndexesMsg{})
 		require.NoError(t, err)
+		_ch32 := make(chan messages.VectorListIndexesResp, 1)
+		_us32, err := sdk.SubscribeTo[messages.VectorListIndexesResp](rt, ctx, _pr32.ReplyTo, func(r messages.VectorListIndexesResp, m messages.Message) { _ch32 <- r })
+		require.NoError(t, err)
+		defer _us32()
+		var resp messages.VectorListIndexesResp
+		select {
+		case resp = <-_ch32:
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
 		assert.NotNil(t, resp.Indexes)
 	})
 	t.Run("DeleteIndex", func(t *testing.T) {

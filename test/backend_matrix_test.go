@@ -37,14 +37,34 @@ func TestBackendMatrix(t *testing.T) {
 			})
 
 			t.Run("tools_list", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolListMsg, messages.ToolListResp](rt, ctx, messages.ToolListMsg{})
+				_pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 				require.NoError(t, err)
+				_ch1 := make(chan messages.ToolListResp, 1)
+				_us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, _pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { _ch1 <- r })
+				require.NoError(t, err)
+				defer _us1()
+				var resp messages.ToolListResp
+				select {
+				case resp = <-_ch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotEmpty(t, resp.Tools)
 			})
 
 			t.Run("tools_resolve", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.ToolResolveMsg, messages.ToolResolveResp](rt, ctx, messages.ToolResolveMsg{Name: "echo"})
+				_pr2, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "echo"})
 				require.NoError(t, err)
+				_ch2 := make(chan messages.ToolResolveResp, 1)
+				_us2, err := sdk.SubscribeTo[messages.ToolResolveResp](rt, ctx, _pr2.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { _ch2 <- r })
+				require.NoError(t, err)
+				defer _us2()
+				var resp messages.ToolResolveResp
+				select {
+				case resp = <-_ch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "echo", resp.ShortName)
 			})
 
@@ -55,31 +75,79 @@ func TestBackendMatrix(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				resp, err := sdk.PublishAwait[messages.FsReadMsg, messages.FsReadResp](rt, ctx, messages.FsReadMsg{Path: "matrix-test.txt"})
+				_pr3, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "matrix-test.txt"})
 				require.NoError(t, err)
+				_ch3 := make(chan messages.FsReadResp, 1)
+				_us3, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr3.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch3 <- r })
+				require.NoError(t, err)
+				defer _us3()
+				var resp messages.FsReadResp
+				select {
+				case resp = <-_ch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "backend:"+backend, resp.Data)
 			})
 
 			t.Run("fs_mkdir_list_stat_delete", func(t *testing.T) {
-				sdk.PublishAwait[messages.FsMkdirMsg, messages.FsMkdirResp](rt, ctx, messages.FsMkdirMsg{Path: "matrix-dir"})
-				sdk.PublishAwait[messages.FsWriteMsg, messages.FsWriteResp](rt, ctx, messages.FsWriteMsg{Path: "matrix-dir/a.txt", Data: "a"})
+				sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "matrix-dir"})
+				sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "matrix-dir/a.txt", Data: "a"})
 
-				listResp, err := sdk.PublishAwait[messages.FsListMsg, messages.FsListResp](rt, ctx, messages.FsListMsg{Path: "matrix-dir"})
+				_pr4, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "matrix-dir"})
 				require.NoError(t, err)
+				_ch4 := make(chan messages.FsListResp, 1)
+				_us4, err := sdk.SubscribeTo[messages.FsListResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsListResp, m messages.Message) { _ch4 <- r })
+				require.NoError(t, err)
+				defer _us4()
+				var listResp messages.FsListResp
+				select {
+				case listResp = <-_ch4:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Len(t, listResp.Files, 1)
 
-				statResp, err := sdk.PublishAwait[messages.FsStatMsg, messages.FsStatResp](rt, ctx, messages.FsStatMsg{Path: "matrix-dir/a.txt"})
+				_pr5, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "matrix-dir/a.txt"})
 				require.NoError(t, err)
+				_ch5 := make(chan messages.FsStatResp, 1)
+				_us5, err := sdk.SubscribeTo[messages.FsStatResp](rt, ctx, _pr5.ReplyTo, func(r messages.FsStatResp, m messages.Message) { _ch5 <- r })
+				require.NoError(t, err)
+				defer _us5()
+				var statResp messages.FsStatResp
+				select {
+				case statResp = <-_ch5:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.False(t, statResp.IsDir)
 
-				_, err = sdk.PublishAwait[messages.FsDeleteMsg, messages.FsDeleteResp](rt, ctx, messages.FsDeleteMsg{Path: "matrix-dir/a.txt"})
+				_pr6, err := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "matrix-dir/a.txt"})
 				require.NoError(t, err)
+				_ch6 := make(chan messages.FsDeleteResp, 1)
+				_us6, _ := sdk.SubscribeTo[messages.FsDeleteResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsDeleteResp, m messages.Message) { _ch6 <- r })
+				defer _us6()
+				select {
+				case <-_ch6:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			// --- Agents domain ---
 			t.Run("agents_list_empty", func(t *testing.T) {
-				resp, err := sdk.PublishAwait[messages.AgentListMsg, messages.AgentListResp](rt, ctx, messages.AgentListMsg{})
+				_pr7, err := sdk.Publish(rt, ctx, messages.AgentListMsg{})
 				require.NoError(t, err)
+				_ch7 := make(chan messages.AgentListResp, 1)
+				_us7, err := sdk.SubscribeTo[messages.AgentListResp](rt, ctx, _pr7.ReplyTo, func(r messages.AgentListResp, m messages.Message) { _ch7 <- r })
+				require.NoError(t, err)
+				defer _us7()
+				var resp messages.AgentListResp
+				select {
+				case resp = <-_ch7:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.NotNil(t, resp.Agents)
 			})
 
@@ -108,8 +176,18 @@ func TestBackendMatrix(t *testing.T) {
 				assert.Equal(t, "works", result["backend"])
 
 				// Teardown
-				tearResp, err := sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "matrix-deploy.ts"})
+				_pr8, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-deploy.ts"})
 				require.NoError(t, err)
+				_ch8 := make(chan messages.KitTeardownResp, 1)
+				_us8, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr8.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch8 <- r })
+				require.NoError(t, err)
+				defer _us8()
+				var tearResp messages.KitTeardownResp
+				select {
+				case tearResp = <-_ch8:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.GreaterOrEqual(t, tearResp.Removed, 0)
 			})
 
@@ -146,7 +224,7 @@ func TestBackendMatrix(t *testing.T) {
 				})
 				require.NoError(t, err)
 				assert.True(t, resp.Deployed)
-				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
+				sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
 			})
 
 			// --- WASM deploy/undeploy/describe ---
@@ -158,16 +236,46 @@ func TestBackendMatrix(t *testing.T) {
 						export function h(t: usize, p: usize): void {}
 					`, Options: &messages.WasmCompileOpts{Name: "matrix-shard-" + backend},
 				})
-				deploy, err := sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "matrix-shard-" + backend})
+				_pr9, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "matrix-shard-" + backend})
 				require.NoError(t, err)
+				_ch9 := make(chan messages.WasmDeployResp, 1)
+				_us9, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr9.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch9 <- r })
+				require.NoError(t, err)
+				defer _us9()
+				var deploy messages.WasmDeployResp
+				select {
+				case deploy = <-_ch9:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "stateless", deploy.Mode)
 
-				desc, err := sdk.PublishAwait[messages.WasmDescribeMsg, messages.WasmDescribeResp](rt, ctx, messages.WasmDescribeMsg{Name: "matrix-shard-" + backend})
+				_pr10, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "matrix-shard-" + backend})
 				require.NoError(t, err)
+				_ch10 := make(chan messages.WasmDescribeResp, 1)
+				_us10, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr10.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch10 <- r })
+				require.NoError(t, err)
+				defer _us10()
+				var desc messages.WasmDescribeResp
+				select {
+				case desc = <-_ch10:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Equal(t, "stateless", desc.Mode)
 
-				undeploy, err := sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "matrix-shard-" + backend})
+				_pr11, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "matrix-shard-" + backend})
 				require.NoError(t, err)
+				_ch11 := make(chan messages.WasmUndeployResp, 1)
+				_us11, err := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr11.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch11 <- r })
+				require.NoError(t, err)
+				defer _us11()
+				var undeploy messages.WasmUndeployResp
+				select {
+				case undeploy = <-_ch11:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.True(t, undeploy.Undeployed)
 			})
 
