@@ -366,7 +366,7 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	_us18, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr18.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch18 <- r })
 	defer _us18()
 	select {
-	case <-_ch16:
+	case <-_ch18:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -378,7 +378,7 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	_us19, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _pr19.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _ch19 <- r })
 	defer _us19()
 	select {
-	case <-_ch16:
+	case <-_ch19:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

@@ -132,15 +132,13 @@ func TestPlugin_InProcess(t *testing.T) {
 
 	t.Run("Plugin_Async_Subscribe", func(t *testing.T) {
 		// Simulate plugin subscribing to tool list results asynchronously
-		corrID, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+		pubResult, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
 		require.NoError(t, err)
-		assert.NotEmpty(t, corrID)
+		assert.NotEmpty(t, pubResult.ReplyTo)
 
 		received := make(chan bool, 1)
-		cancel, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, "tools.list.reply.test", func(resp messages.ToolListResp, msg messages.Message) {
-			if msg.Metadata["correlationId"] == corrID.CorrelationID {
-				received <- true
-			}
+		cancel, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, pubResult.ReplyTo, func(resp messages.ToolListResp, msg messages.Message) {
+			received <- true
 		})
 		require.NoError(t, err)
 		defer cancel()

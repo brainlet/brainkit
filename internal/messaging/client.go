@@ -69,8 +69,9 @@ func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespac
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
 
+	// Stamp replyTo — resolve with publisher's namespace so the handler publishes to the right topic
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
-		wmsg.Metadata.Set("replyTo", replyTo)
+		wmsg.Metadata.Set("replyTo", c.resolvedTopic(replyTo))
 	}
 
 	if err := c.pub.Publish(c.resolvedTopicForNamespace(targetNamespace, logicalTopic), wmsg); err != nil {

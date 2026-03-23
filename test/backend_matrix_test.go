@@ -309,13 +309,17 @@ func TestBackendMatrix(t *testing.T) {
 
 			// --- WASM deploy/undeploy/describe ---
 			t.Run("wasm_deploy_lifecycle", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+				cpr, _ := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
 						import { _on, _setMode } from "brainkit";
 						export function init(): void { _setMode("stateless"); _on("matrix.ev", "h"); }
 						export function h(t: usize, p: usize): void {}
 					`, Options: &messages.WasmCompileOpts{Name: "matrix-shard-" + backend},
 				})
+				cch := make(chan messages.WasmCompileResp, 1)
+				cun, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, cpr.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { cch <- r })
+				defer cun()
+				select { case <-cch: case <-ctx.Done(): t.Fatal("timeout") }
 				_pr16, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "matrix-shard-" + backend})
 				require.NoError(t, err)
 				_ch16 := make(chan messages.WasmDeployResp, 1)
