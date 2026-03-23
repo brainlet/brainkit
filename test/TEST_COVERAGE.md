@@ -7,8 +7,6 @@
 
 ## Matrix 1: Domain Operations × API Surface
 
-Every domain command in the catalog tested from every API surface.
-
 | Domain | Operation | Go Direct (Kernel) | Go Direct (Node) | TS (.ts deploy) | WASM (invokeAsync) | Plugin (Node) |
 |--------|-----------|:--:|:--:|:--:|:--:|:--:|
 | **tools** | call | `go_direct_tools` | `go_direct_tools` | `surface_ts` | `surface_wasmmod` | `surface_plugin` |
@@ -67,25 +65,22 @@ Every domain command in the catalog tested from every API surface.
 | | state.get | — | `node` | — | — | — |
 | | state.set | — | `node` | — | — | — |
 
-`*` = PgVector Neon WebSocket driver limitation in QuickJS (createIndex works, upsert/query log errors)
+`*` = PgVector Neon WebSocket driver limitation in QuickJS (createIndex works, upsert/query log errors — not a brainkit issue)
 `N/A` = WASM can't call WASM (same runtime)
 `—` = Not tested
 
-### Remaining Gaps in Matrix 1
+### Remaining `—` cells
 
 | Gap | Reason |
 |-----|--------|
-| ai.* from Go Direct Node | Node delegates to Kernel — same path, proven by Kernel tests |
-| memory/workflows/vectors from Go Direct Node | Same delegation — Kernel tests cover the path |
-| workflows.resume/cancel/status from TS/WASM/Plugin | Suspend state tracked in JS runtime globals; surfaces can't easily chain run→suspend→resume. Go Direct covers full suspend/resume lifecycle. |
-| vectors.upsert/query deep path | PgVector's @neondatabase/serverless WebSocket driver doesn't fully work in QuickJS. createIndex proves the handler→JS→PgVector→Postgres wiring. Not a brainkit issue. |
-| kit.deploy/teardown from TS surface | TS code IS the deployed artifact — deploying .ts from inside .ts is circular. Kit lifecycle is a Go/WASM/Plugin concern. |
+| ai/memory/workflows/vectors from Go Direct Node | Node delegates to Kernel — identical code path, proven by Kernel tests |
+| workflows.resume/cancel/status from TS/WASM/Plugin | Suspend state lives in JS runtime globals — surfaces can't chain run→suspend→resume across separate eval calls. Full lifecycle covered by Go Direct. |
+| vectors.upsert/query full path | PgVector's @neondatabase/serverless WebSocket driver doesn't work in QuickJS. Handler wiring proven by createIndex. |
+| kit.deploy/teardown from TS | TS code IS the deployed artifact. Kit lifecycle is a Go/WASM/Plugin concern. |
 
 ---
 
 ## Matrix 2: Domain Operations × Transport Backend
-
-Tests parameterized across all 6 Watermill backends.
 
 | Domain | Test File | GoChannel | SQLite | NATS | AMQP | Redis | Postgres |
 |--------|-----------|:---------:|:------:|:----:|:----:|:-----:|:--------:|
@@ -105,8 +100,6 @@ Tests parameterized across all 6 Watermill backends.
 
 ## Matrix 3: Cross-Surface Pairs × Transport Backend
 
-Every pair of API surfaces communicating across transports.
-
 | Surface Pair | Test File | GoChannel | SQLite | NATS | AMQP | Redis | Postgres |
 |--------------|-----------|:---------:|:------:|:----:|:----:|:-----:|:--------:|
 | TS ↔ Go | `cross_ts_go` | Y | Y | P | P | P | P |
@@ -117,13 +110,11 @@ Every pair of API surfaces communicating across transports.
 | WASM ↔ Plugin | `cross_wasmmod_plugin` | — | — | P | — | — | — |
 | Kit-A ↔ Kit-B | `crosskit` | Y | Y | P | P | P | P |
 
-Plugin cross-surface tests require NATS (subprocess needs network transport).
+Plugin cross-surface requires NATS (subprocess needs network transport).
 
 ---
 
 ## Matrix 4: Chain Tests × Backend
-
-Multi-surface chains where a request crosses 2+ surfaces.
 
 | Chain | Test File | GoChannel | SQLite | NATS | AMQP | Redis | Postgres |
 |-------|-----------|:---------:|:------:|:----:|:----:|:-----:|:--------:|
@@ -132,32 +123,32 @@ Multi-surface chains where a request crosses 2+ surfaces.
 
 ---
 
-## Matrix 5: Infrastructure & Integration Tests
+## Matrix 5: Infrastructure & Integration
 
-| Category | Test | Real Infrastructure | File |
-|----------|------|---------------------|------|
+| Category | Test | Infrastructure | File |
+|----------|------|----------------|------|
 | **Probing** | OpenAI live HTTP probe | Real OpenAI API | `probe` |
 | | Bad API key detection (401) | Real OpenAI API | `probe` |
-| | PgVector JS runtime probe | Podman pgvector container | `probe` |
+| | PgVector JS runtime probe | Podman pgvector | `probe` |
 | | InMemory storage probe | In-process JS | `probe` |
 | | Periodic ticker (500ms) | Real OpenAI API | `probe` |
 | | ProbeAll (all registered) | Real OpenAI API | `probe` |
-| **Vectors** | PgVector createIndex/list/delete | Podman pgvector container | `go_direct_vectors` |
-| **MCP** | listTools + callTool | testmcp binary (stdio) | `go_direct_mcp` |
-| | listTools + callTool from TS | testmcp binary | `surface_ts` |
-| | listTools + callTool from WASM | testmcp binary | `surface_wasmmod` |
-| | listTools + callTool from Plugin | testmcp binary | `surface_plugin` |
-| **Plugin subprocess** | Full e2e with NATS | Podman NATS + testplugin binary | `plugin_subprocess` |
+| **Vectors** | PgVector createIndex/list/delete | Podman pgvector | `go_direct_vectors` |
+| **MCP** | listTools + callTool (Go) | testmcp binary | `go_direct_mcp` |
+| | listTools + callTool (TS) | testmcp binary | `surface_ts` |
+| | listTools + callTool (WASM) | testmcp binary | `surface_wasmmod` |
+| | listTools + callTool (Plugin) | testmcp binary | `surface_plugin` |
+| **Plugin subprocess** | Full e2e with NATS | Podman NATS + testplugin | `plugin_subprocess` |
 | **Transport** | Pub/sub compliance | Per-backend containers | `transport_compliance` |
-| **Logging** | TS Compartment per-source tags | In-process | `log_handler` |
-| | Multi-file source isolation | In-process | `log_handler` |
+| **Logging** | TS per-source tags | In-process | `log_handler` |
+| | Multi-file isolation | In-process | `log_handler` |
 | | WASM module tags | In-process | `log_handler` |
-| | Nil handler (default) | In-process | `log_handler` |
-| **Registry** | Go-side register/list/unregister | In-process | `registry_integration` |
-| | Runtime dynamic register/unregister | In-process | `registry_integration` |
+| | Nil handler default | In-process | `log_handler` |
+| **Registry** | Go-side CRUD | In-process | `registry_integration` |
+| | Runtime register/unregister | In-process | `registry_integration` |
 | | JS bridge (has/list/resolve) | In-process | `registry_integration` |
-| | Deployed .ts Compartment access | In-process | `registry_integration` |
-| **Workflows** | Suspend → Status → Resume | In-process (Mastra suspend) | `go_direct_workflows` |
+| | Deployed .ts access | In-process | `registry_integration` |
+| **Workflows** | Suspend → Status → Resume | Mastra suspend | `go_direct_workflows` |
 | | Cancel/Status not found | In-process | `go_direct_workflows` |
 
 ---
@@ -166,16 +157,16 @@ Multi-surface chains where a request crosses 2+ surfaces.
 
 | Scenario | What it proves | File |
 |----------|---------------|------|
-| Tool pipeline | Go registers tool → .ts deploys → tool callable → teardown | `e2e_scenarios` |
-| Deploy lifecycle | deploy → list → redeploy → teardown → verify gone | `e2e_scenarios` |
+| Tool pipeline | Go registers → .ts deploys → tool callable → teardown | `e2e_scenarios` |
+| Deploy lifecycle | deploy → list → redeploy → teardown → gone | `e2e_scenarios` |
 | Multi-domain | fs.write → fs.read → tools.call → fs.write → verify | `e2e_scenarios` |
-| WASM shard lifecycle | compile → deploy (persistent) → 5 events → state accumulates → undeploy → remove | `e2e_scenarios` |
-| Concurrent operations | 3 concurrent PublishAwait tool calls | `e2e_scenarios` |
-| Async patterns | correlationID filtering, 10 concurrent PublishAwait, context cancellation, subscribe cancel | `async` |
-| WASM invokeAsync | tools.call callback, tools.list callback, unknown topic error callback | `wasm_invokeAsync` |
-| WASM reply + state | shard reply(), persistent counter across 3 invocations | `wasm_reply` |
-| Plugin in-process | Node as sdk.Runtime — list tools, call tool, fs, deploy/teardown, async subscribe | `plugin_inprocess` |
-| Streaming | ai.stream → StreamChunk messages with sequential seq numbers | `streaming` |
+| WASM shard lifecycle | compile → deploy persistent → 5 events → state → undeploy → remove | `e2e_scenarios` |
+| Concurrent operations | 3 concurrent PublishAwait | `e2e_scenarios` |
+| Async patterns | correlationID, 10 concurrent, cancel, subscribe cancel | `async` |
+| WASM invokeAsync | tools.call, tools.list, unknown topic error callback | `wasm_invokeAsync` |
+| WASM reply + state | shard reply(), persistent counter ×3 | `wasm_reply` |
+| Plugin in-process | Node as sdk.Runtime — tools, fs, deploy, async | `plugin_inprocess` |
+| Streaming | ai.stream → sequential StreamChunks | `streaming` |
 
 ---
 
@@ -183,11 +174,11 @@ Multi-surface chains where a request crosses 2+ surfaces.
 
 | # | File | Subtests | Surfaces | Backends | Infra |
 |---|------|----------|----------|----------|-------|
-| 1 | `go_direct_tools_test.go` | 6 (×2 Kernel/Node) | Kernel, Node | default | — |
-| 2 | `go_direct_fs_test.go` | 10 (×2 Kernel/Node) | Kernel, Node | default | — |
-| 3 | `go_direct_agents_test.go` | 9 (×2 Kernel/Node) | Kernel, Node | default | OpenAI |
-| 4 | `go_direct_kit_test.go` | 5 (×2 Kernel/Node) | Kernel, Node | default | — |
-| 5 | `go_direct_wasm_test.go` | 9 (×2 Kernel/Node) | Kernel, Node | default | — |
+| 1 | `go_direct_tools_test.go` | 6 ×2 | Kernel, Node | default | — |
+| 2 | `go_direct_fs_test.go` | 10 ×2 | Kernel, Node | default | — |
+| 3 | `go_direct_agents_test.go` | 9 ×2 | Kernel, Node | default | OpenAI |
+| 4 | `go_direct_kit_test.go` | 5 ×2 | Kernel, Node | default | — |
+| 5 | `go_direct_wasm_test.go` | 9 ×2 | Kernel, Node | default | — |
 | 6 | `go_direct_ai_test.go` | 4 | Kernel | default | OpenAI |
 | 7 | `go_direct_memory_test.go` | 5 | Kernel | all 6 | — |
 | 8 | `go_direct_workflows_test.go` | 6 | Kernel | all 6 + default | — |
@@ -213,71 +204,16 @@ Multi-surface chains where a request crosses 2+ surfaces.
 | 28 | `log_handler_test.go` | 4 | Kernel | default | — |
 | 29 | `registry_integration_test.go` | 6 | Kernel | default | — |
 | 30 | `probe_test.go` | 7 | Kernel | default | OpenAI, Podman pgvector |
-| 31 | `surface_ts_test.go` | 11 | Kernel | default | OpenAI, testmcp binary |
-| 32 | `surface_wasmmod_test.go` | 11 | Kernel | default | OpenAI, testmcp binary |
-| 33 | `surface_plugin_test.go` | 12 | Node | memory | OpenAI, Podman pgvector, testmcp binary |
-
----
+| 31 | `surface_ts_test.go` | 11 | Kernel | default | OpenAI, testmcp |
+| 32 | `surface_wasmmod_test.go` | 11 | Kernel | default | OpenAI, testmcp |
+| 33 | `surface_plugin_test.go` | 12 | Node | memory | OpenAI, pgvector, testmcp |
 
 ## Test Binaries
 
 | Binary | Location | Purpose |
 |--------|----------|---------|
-| `testplugin` | `test/testplugin/main.go` | Echo + concat tools over NATS transport |
-| `testmcp` | `test/testmcp/main.go` | MCP echo server (stdio transport) |
-
----
-
-## Changes Since Previous Inventory
-
-36 cells in Matrix 1 changed from `—` (gap) to tested:
-
-| # | Operation | Surface | How |
-|---|-----------|---------|-----|
-| 1 | agents.get-status | TS | `surface_ts` — deployed agent, query status |
-| 2 | agents.set-status | TS | `surface_ts` — set to busy, verify, reset |
-| 3 | agents.request | TS | `surface_ts` — real OpenAI generate |
-| 4 | agents.message | TS | `surface_ts` — fire-and-forget delivery |
-| 5 | agents.get-status | WASM | `surface_wasmmod` — invokeAsync |
-| 6 | agents.set-status | WASM | `surface_wasmmod` — invokeAsync |
-| 7 | agents.request | WASM | `surface_wasmmod` — invokeAsync + AI callback |
-| 8 | agents.message | WASM | `surface_wasmmod` — invokeAsync |
-| 9 | agents.get-status | Plugin | `surface_plugin` — PublishAwait |
-| 10 | agents.set-status | Plugin | `surface_plugin` — PublishAwait |
-| 11 | agents.request | Plugin | `surface_plugin` — real OpenAI |
-| 12 | agents.message | Plugin | `surface_plugin` — PublishAwait |
-| 13 | agents.message | Go Direct | `go_direct_agents` — Message_NotFound + Message_Delivered |
-| 14 | ai.stream | TS | `surface_ts` — textStream reader in .ts tool |
-| 15 | ai.stream | WASM | `surface_wasmmod` — invokeAsync ai.stream |
-| 16 | ai.stream | Plugin | `surface_plugin` — Publish + subscribe chunks |
-| 17 | memory.getThread | WASM | `surface_wasmmod` — invokeAsync with threadId |
-| 18 | memory.save | WASM | `surface_wasmmod` — invokeAsync |
-| 19 | memory.recall | TS | `surface_ts` — inside mem tool |
-| 20 | memory.recall | WASM | `surface_wasmmod` — invokeAsync |
-| 21 | memory.deleteThread | WASM | `surface_wasmmod` — invokeAsync |
-| 22 | workflows.resume | Go Direct | `go_direct_workflows` — SuspendResume test |
-| 23 | workflows.cancel | Go Direct | `go_direct_workflows` — Cancel_NotFound |
-| 24 | workflows.status | Go Direct | `go_direct_workflows` — query suspended run |
-| 25 | wasm.deploy | TS | `surface_ts` — compile + deploy from .ts |
-| 26 | wasm.undeploy | TS | `surface_ts` — undeploy from .ts |
-| 27 | wasm.describe | TS | `surface_ts` — describe from .ts |
-| 28 | wasm.deploy | Plugin | `surface_plugin` — full shard lifecycle |
-| 29 | wasm.undeploy | Plugin | `surface_plugin` — undeploy |
-| 30 | wasm.describe | Plugin | `surface_plugin` — describe |
-| 31 | kit.deploy | WASM | `surface_wasmmod` — invokeAsync kit.deploy |
-| 32 | kit.teardown | WASM | `surface_wasmmod` — invokeAsync kit.teardown |
-| 33 | mcp.callTool | TS | `surface_ts` — real testmcp binary |
-| 34 | mcp.callTool | WASM | `surface_wasmmod` — real testmcp binary |
-| 35 | mcp.callTool | Plugin | `surface_plugin` — real testmcp binary |
-| 36 | registry.resolve | TS | `surface_ts` — storage() instantiation |
-
-New features tested:
-- **fs JS API** — `fs.{read,write,list,stat,delete,mkdir}` added to kit_runtime.js, tested from TS surface
-- **registry catalog commands** — `registry.{has,list,resolve}` added as bus commands, tested from WASM + Plugin
-- **Live HTTP probing** — 14 AI provider endpoints, real OpenAI API
-- **Kernel-level JS probing** — vector store + storage via JS runtime instantiation
-- **Periodic probing ticker** — goroutine at ProbeConfig.PeriodicInterval
-- **Workflow suspend/resume** — full lifecycle with Mastra suspend step
+| `testplugin` | `test/testplugin/main.go` | Echo + concat tools over NATS |
+| `testmcp` | `test/testmcp/main.go` | MCP echo server (stdio) |
 
 ---
 
@@ -288,4 +224,4 @@ New features tested:
 - **6 transport backends**: GoChannel, SQLite, NATS, AMQP, Redis, Postgres
 - **13 domains**: tools, fs, agents, ai, memory, workflows, vectors, wasm, kit, mcp, registry, plugin, streaming
 - **6 cross-surface pairs** + 2 chain tests + 2 cross-Kit tests
-- **Real infrastructure**: OpenAI API, Podman containers (NATS, RabbitMQ, Redis, Postgres, pgvector), testmcp + testplugin binaries
+- **Real infrastructure**: OpenAI API, Podman (NATS, RabbitMQ, Redis, Postgres, pgvector), testmcp + testplugin binaries
