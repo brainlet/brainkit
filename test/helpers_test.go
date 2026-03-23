@@ -113,11 +113,13 @@ func newTestNode(t *testing.T) sdk.Runtime {
 	tmpDir := t.TempDir()
 
 	nodeProviders := make(map[string]provreg.AIProviderRegistration)
+	nodeEnvVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		nodeProviders["openai"] = provreg.AIProviderRegistration{
 			Type:   provreg.AIProviderOpenAI,
 			Config: provreg.OpenAIProviderConfig{APIKey: key},
 		}
+		nodeEnvVars["OPENAI_API_KEY"] = key
 	}
 
 	n, err := kit.NewNode(kit.NodeConfig{
@@ -126,6 +128,7 @@ func newTestNode(t *testing.T) sdk.Runtime {
 			CallerID:     "test-node",
 			WorkspaceDir: tmpDir,
 			AIProviders:  nodeProviders,
+			EnvVars:      nodeEnvVars,
 			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
 				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
 			},
