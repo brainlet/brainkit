@@ -10,7 +10,7 @@
 
 These drive every feature decision in brainkit.
 
-**Everything is dynamic.** No hardcoded strings in `.ts` files. Providers, models, vector stores, storage backends — all resolved from the registry at runtime. A `.ts` file calls `model("openai", "gpt-4o-mini")` or `vectorStore("main")`, never raw API keys or connection strings.
+**Everything is dynamic.** Providers, models, vector stores, storage backends — all resolvable from the registry at runtime. A `.ts` file can call `model("openai", "gpt-4o-mini")` or `vectorStore("main")` instead of hardcoding API keys or connection strings. Users *can* still use raw strings if they want — but we provide the tools so they shouldn't have to.
 
 **Everything integrations support, brainkit controls.** If Mastra or the AI SDK can manage a capability, brainkit must expose it — with health probing, env injection, and debuggability. Anyone deploying brainkit should be able to diagnose what's healthy, what's connected, and what's failing without reading source code.
 
