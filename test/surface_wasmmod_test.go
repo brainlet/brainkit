@@ -95,15 +95,36 @@ func TestWASMSurface_FS(t *testing.T) {
 // --- Agents domain from WASM ---
 
 func TestWASMSurface_Agents(t *testing.T) {
-	rt := newTestKernel(t)
+	loadEnv(t)
+	if !hasAIKey() {
+		t.Skip("OPENAI_API_KEY required for agent deploy")
+	}
+	tk := newTestKernelFull(t)
+	rt := sdk.Runtime(tk)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
+
+	// Deploy an agent from Go so WASM can query its status
+	sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+		Source: "wasm-agent-setup.ts",
+		Code:   `agent({ name: "wasm-target", instructions: "test", model: "openai/gpt-4o-mini" });`,
+	})
+	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "wasm-agent-setup.ts"})
 
 	t.Run("List", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-agents-list", "agents.list", `{}`)
 	})
 	t.Run("Discover", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-agents-discover", "agents.discover", `{}`)
+	})
+	t.Run("GetStatus", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-agents-getstatus", "agents.get-status", `{"name":"wasm-target"}`)
+	})
+	t.Run("SetStatus", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-agents-setstatus", "agents.set-status", `{"name":"wasm-target","status":"busy"}`)
+	})
+	t.Run("Message", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-agents-message", "agents.message", `{"target":"wasm-target","payload":{"text":"from wasm"}}`)
 	})
 }
 
@@ -148,11 +169,29 @@ func TestWASMSurface_Memory(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
+	// Create a thread from Go so WASM can operate on it
+	createResp, err := sdk.PublishAwait[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](tk, ctx, messages.MemoryCreateThreadMsg{})
+	require.NoError(t, err)
+	threadID := createResp.ThreadID
+
 	t.Run("CreateThread", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-mem-create", "memory.createThread", `{}`)
 	})
+	t.Run("Save", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-mem-save", "memory.save",
+			`{"threadId":"`+threadID+`","messages":[{"role":"user","content":"from wasm"}]}`)
+	})
+	t.Run("GetThread", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-mem-get", "memory.getThread", `{"threadId":"`+threadID+`"}`)
+	})
 	t.Run("ListThreads", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-mem-list", "memory.listThreads", `{}`)
+	})
+	t.Run("Recall", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-mem-recall", "memory.recall", `{"threadId":"`+threadID+`","query":"wasm"}`)
+	})
+	t.Run("DeleteThread", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-mem-delete", "memory.deleteThread", `{"threadId":"`+threadID+`"}`)
 	})
 }
 

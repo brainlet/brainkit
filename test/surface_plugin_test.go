@@ -94,9 +94,21 @@ func TestPluginSurface_FS(t *testing.T) {
 // --- Agents domain from Plugin ---
 
 func TestPluginSurface_Agents(t *testing.T) {
+	loadEnv(t)
+	if !hasAIKey() {
+		t.Skip("OPENAI_API_KEY required")
+	}
 	rt := newTestNode(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	node := rt.(*kit.Node)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	// Deploy an agent so we can test all operations
+	sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+		Source: "plugin-agent-setup.ts",
+		Code:   `agent({ name: "plugin-agent", instructions: "Reply ok", model: "openai/gpt-4o-mini" });`,
+	})
+	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-agent-setup.ts"})
 
 	t.Run("List", func(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.AgentListMsg, messages.AgentListResp](rt, ctx, messages.AgentListMsg{})
@@ -107,6 +119,30 @@ func TestPluginSurface_Agents(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.AgentDiscoverMsg, messages.AgentDiscoverResp](rt, ctx, messages.AgentDiscoverMsg{})
 		require.NoError(t, err)
 		assert.NotNil(t, resp.Agents)
+	})
+	t.Run("GetStatus", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.AgentGetStatusMsg, messages.AgentGetStatusResp](rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
+		require.NoError(t, err)
+		assert.Equal(t, "idle", resp.Status)
+	})
+	t.Run("SetStatus", func(t *testing.T) {
+		_, err := sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "busy"})
+		require.NoError(t, err)
+		resp, err := sdk.PublishAwait[messages.AgentGetStatusMsg, messages.AgentGetStatusResp](rt, ctx, messages.AgentGetStatusMsg{Name: "plugin-agent"})
+		require.NoError(t, err)
+		assert.Equal(t, "busy", resp.Status)
+		// Reset
+		sdk.PublishAwait[messages.AgentSetStatusMsg, messages.AgentSetStatusResp](rt, ctx, messages.AgentSetStatusMsg{Name: "plugin-agent", Status: "idle"})
+	})
+	t.Run("Message", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{Target: "plugin-agent", Payload: "hello"})
+		require.NoError(t, err)
+		assert.True(t, resp.Delivered)
+	})
+	t.Run("Request", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.AgentRequestMsg, messages.AgentRequestResp](rt, ctx, messages.AgentRequestMsg{Name: "plugin-agent", Prompt: "Say ok"})
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp.Text)
 	})
 }
 
@@ -222,6 +258,26 @@ func TestPluginSurface_WASM(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.WasmRemoveMsg, messages.WasmRemoveResp](rt, ctx, messages.WasmRemoveMsg{Name: "plugin-wasm"})
 		require.NoError(t, err)
 		assert.True(t, resp.Removed)
+	})
+	t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
+		sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+			Source: `
+				import { _on, _setMode } from "brainkit";
+				export function init(): void { _setMode("stateless"); _on("plugin.ev", "h"); }
+				export function h(t: usize, p: usize): void {}
+			`, Options: &messages.WasmCompileOpts{Name: "plugin-deploy-mod"},
+		})
+		deploy, err := sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "plugin-deploy-mod"})
+		require.NoError(t, err)
+		assert.Equal(t, "stateless", deploy.Mode)
+
+		desc, err := sdk.PublishAwait[messages.WasmDescribeMsg, messages.WasmDescribeResp](rt, ctx, messages.WasmDescribeMsg{Name: "plugin-deploy-mod"})
+		require.NoError(t, err)
+		assert.Equal(t, "stateless", desc.Mode)
+
+		undeploy, err := sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "plugin-deploy-mod"})
+		require.NoError(t, err)
+		assert.True(t, undeploy.Undeployed)
 	})
 }
 

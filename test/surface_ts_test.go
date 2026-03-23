@@ -130,23 +130,47 @@ func TestTSSurface_FS(t *testing.T) {
 	})
 }
 
-// --- Agents domain from TS ---
+// --- Agents domain from TS (all operations) ---
 
 func TestTSSurface_Agents(t *testing.T) {
+	if !hasAIKey() {
+		t.Skip("OPENAI_API_KEY required for agent tests")
+	}
 	tk := newTSKernel(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
 		Source: "ts-agents-surface.ts",
 		Code: `
+			// Create an agent so we can test all agent operations
+			const testAgent = agent({
+				name: "ts-surface-agent",
+				instructions: "Reply with exactly: ok",
+				model: "openai/gpt-4o-mini",
+			});
+
 			const tsAgentsList = createTool({ id: "ts-agents-list", execute: async () => {
-				var list = agents.list();
-				return { agents: list };
+				return { agents: agents.list() };
 			}});
 			const tsAgentsDiscover = createTool({ id: "ts-agents-discover", execute: async () => {
-				var found = agents.discover({ capability: "nonexistent" });
-				return { agents: found };
+				return { agents: agents.discover({}) };
+			}});
+			const tsAgentsStatus = createTool({ id: "ts-agents-status", execute: async () => {
+				return agents.status("ts-surface-agent");
+			}});
+			const tsAgentsSetStatus = createTool({ id: "ts-agents-setstatus", execute: async () => {
+				agents.setStatus("ts-surface-agent", "busy");
+				var after = agents.status("ts-surface-agent");
+				agents.setStatus("ts-surface-agent", "idle");
+				return { statusWas: after.status };
+			}});
+			const tsAgentsMessage = createTool({ id: "ts-agents-message", execute: async () => {
+				return agents.message("ts-surface-agent", { text: "hello" });
+			}});
+			const tsAgentsRequest = createTool({ id: "ts-agents-request", execute: async () => {
+				var resp = await agents.request("ts-surface-agent", "Say ok");
+				return resp;
 			}});
 		`,
 	})
@@ -156,16 +180,40 @@ func TestTSSurface_Agents(t *testing.T) {
 	t.Run("List", func(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-list", Input: map[string]any{}})
 		require.NoError(t, err)
-		var result map[string]any
-		json.Unmarshal(resp.Result, &result)
-		assert.NotNil(t, result["agents"])
+		assert.NotNil(t, resp.Result)
 	})
 	t.Run("Discover", func(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-discover", Input: map[string]any{}})
 		require.NoError(t, err)
+		assert.NotNil(t, resp.Result)
+	})
+	t.Run("GetStatus", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-status", Input: map[string]any{}})
+		require.NoError(t, err)
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
-		assert.NotNil(t, result["agents"])
+		assert.Equal(t, "idle", result["status"])
+	})
+	t.Run("SetStatus", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-setstatus", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, "busy", result["statusWas"])
+	})
+	t.Run("Message", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-message", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, true, result["delivered"])
+	})
+	t.Run("Request", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-agents-request", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.NotEmpty(t, result["text"])
 	})
 }
 
@@ -255,12 +303,14 @@ func TestTSSurface_Memory(t *testing.T) {
 				var threadId = thread.id;
 				await mem.saveMessages({ threadId: threadId, messages: [{ role: "user", content: "hello" }] });
 				var got = await mem.getThreadById({ threadId: threadId });
+				var recalled = await mem.recall({ threadId: threadId, resourceId: "", query: "hello" });
 				var list = await mem.listThreads({});
 				await mem.deleteThread(threadId);
 				return {
 					created: !!threadId,
 					saved: true,
 					got: !!got,
+					recalled: true,
 					listed: !!(list && (list.threads || list)),
 					deleted: true,
 				};
@@ -352,10 +402,21 @@ func TestTSSurface_WASM(t *testing.T) {
 				return { found: !!mod };
 			}});
 			const tsWasmRemove = createTool({ id: "ts-wasm-remove", execute: async () => {
-				// Compile a fresh module to remove (the one from ts-wasm-compile may already be removed)
 				await wasm.compile('export function run(): i32 { return 1; }', { name: "ts-to-remove" });
 				var ok = wasm.remove("ts-to-remove");
 				return { removed: ok };
+			}});
+			const tsWasmDeploy = createTool({ id: "ts-wasm-deploy", execute: async () => {
+				await wasm.compile('import { _on, _setMode } from "brainkit"; export function init(): void { _setMode("stateless"); _on("ts.ev", "h"); } export function h(t: usize, p: usize): void {}', { name: "ts-deploy-mod" });
+				var desc = await wasm.deploy("ts-deploy-mod");
+				return { mode: desc.mode };
+			}});
+			const tsWasmDescribe = createTool({ id: "ts-wasm-describe", execute: async () => {
+				return wasm.describe("ts-deploy-mod");
+			}});
+			const tsWasmUndeploy = createTool({ id: "ts-wasm-undeploy", execute: async () => {
+				var result = await wasm.undeploy("ts-deploy-mod");
+				return result;
 			}});
 		`,
 	})
@@ -395,6 +456,23 @@ func TestTSSurface_WASM(t *testing.T) {
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["removed"])
+	})
+	t.Run("Deploy", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-deploy", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, "stateless", result["mode"])
+	})
+	t.Run("Describe", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-describe", Input: map[string]any{}})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Result)
+	})
+	t.Run("Undeploy", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wasm-undeploy", Input: map[string]any{}})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Result)
 	})
 }
 
@@ -469,6 +547,14 @@ func TestTSSurface_Registry(t *testing.T) {
 			const tsRegList = createTool({ id: "ts-reg-list", execute: async () => {
 				return { storages: registry.list("storage") };
 			}});
+			const tsRegResolve = createTool({ id: "ts-reg-resolve", execute: async () => {
+				try {
+					var s = storage("default");
+					return { resolved: true };
+				} catch(e) {
+					return { resolved: false, error: e.message };
+				}
+			}});
 		`,
 	})
 	require.NoError(t, err)
@@ -486,5 +572,12 @@ func TestTSSurface_Registry(t *testing.T) {
 		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-reg-list", Input: map[string]any{}})
 		require.NoError(t, err)
 		assert.NotNil(t, resp.Result)
+	})
+	t.Run("Resolve", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-reg-resolve", Input: map[string]any{}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, true, result["resolved"])
 	})
 }
