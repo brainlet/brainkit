@@ -300,6 +300,58 @@ func newTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 	return makeKit("kit-a"), makeKit("kit-b")
 }
 
+// newTestKernelPairFull creates two fully-configured Kernels on the SAME transport.
+// Both have: workspace, embedded storage, AI providers, env vars, echo tool.
+// For cross-Kit tests that need AI/memory/workflows/vectors.
+func newTestKernelPairFull(t *testing.T, backend string) (*testKernel, *testKernel) {
+	t.Helper()
+	loadEnv(t)
+	cfg := transportConfigForBackend(t, backend)
+	transport := mustCreateTransport(t, cfg)
+	t.Cleanup(func() { transport.Close() })
+
+	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	envVars := make(map[string]string)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		aiProviders["openai"] = provreg.AIProviderRegistration{
+			Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
+		envVars["OPENAI_API_KEY"] = key
+	}
+
+	makeKit := func(namespace string) *testKernel {
+		tmpDir := t.TempDir()
+		k, err := kit.NewKernel(kit.KernelConfig{
+			Namespace:    namespace,
+			CallerID:     namespace + "-caller",
+			WorkspaceDir: tmpDir,
+			Transport:    transport,
+			AIProviders:  aiProviders,
+			EnvVars:      envVars,
+			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
+				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+			},
+			MastraStorages: map[string]provreg.StorageRegistration{
+				"default": {Type: provreg.StorageInMemory, Config: provreg.InMemoryStorageConfig{}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
+		}
+		t.Cleanup(func() { k.Close() })
+
+		kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+			Description: "echoes the input message",
+			Execute: func(ctx context.Context, input echoInput) (any, error) {
+				return map[string]string{"echoed": input.Message, "from": namespace}, nil
+			},
+		})
+		return &testKernel{k}
+	}
+
+	return makeKit("kit-a"), makeKit("kit-b")
+}
+
 // requiresNetworkTransport skips the test if the backend is memory (in-process only).
 // Plugin subprocess tests cannot use GoChannel memory transport.
 func requiresNetworkTransport(t *testing.T, backend string) {

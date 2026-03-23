@@ -3,9 +3,12 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	"github.com/brainlet/brainkit/kit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -221,6 +224,198 @@ func TestCrossKit_Registry(t *testing.T) {
 					Category: "provider",
 				})
 				assert.NotNil(t, resp.Items)
+			})
+		})
+	}
+}
+
+// --- AI domain cross-Kit ---
+
+func TestCrossKit_AI(t *testing.T) {
+	loadEnv(t)
+	if !hasAIKey() {
+		t.Skip("OPENAI_API_KEY required")
+	}
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			kitA, _ := newTestKernelPairFull(t, backend)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			t.Run("Generate_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.AiGenerateMsg, messages.AiGenerateResp](t, kitA, ctx, "kit-b", messages.AiGenerateMsg{
+					Model: "openai/gpt-4o-mini", Prompt: "Say exactly: pong",
+				})
+				assert.NotEmpty(t, resp.Text)
+			})
+			t.Run("Embed_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.AiEmbedMsg, messages.AiEmbedResp](t, kitA, ctx, "kit-b", messages.AiEmbedMsg{
+					Model: "openai/text-embedding-3-small", Value: "test",
+				})
+				assert.NotEmpty(t, resp.Embedding)
+			})
+		})
+	}
+}
+
+// --- Memory domain cross-Kit ---
+
+func TestCrossKit_Memory(t *testing.T) {
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			kitA, kitB := newTestKernelPairFull(t, backend)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Init memory on Kit B so cross-Kit memory calls have a target
+			_, err := kitB.EvalTS(ctx, "__crosskit_mem_init.ts", `
+				globalThis.__kit_memory = createMemory({ storage: new InMemoryStore(), lastMessages: 10 });
+				return "ok";
+			`)
+			require.NoError(t, err)
+
+			t.Run("CreateThread_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](t, kitA, ctx, "kit-b", messages.MemoryCreateThreadMsg{})
+				assert.NotEmpty(t, resp.ThreadID)
+			})
+			t.Run("Save_Get_Remote", func(t *testing.T) {
+				create := crossKitCall[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](t, kitA, ctx, "kit-b", messages.MemoryCreateThreadMsg{})
+				crossKitCall[messages.MemorySaveMsg, messages.MemorySaveResp](t, kitA, ctx, "kit-b", messages.MemorySaveMsg{
+					ThreadID: create.ThreadID,
+					Messages: []messages.MemoryMessage{{Role: "user", Content: "cross-kit msg"}},
+				})
+				get := crossKitCall[messages.MemoryGetThreadMsg, messages.MemoryGetThreadResp](t, kitA, ctx, "kit-b", messages.MemoryGetThreadMsg{
+					ThreadID: create.ThreadID,
+				})
+				assert.NotNil(t, get.Thread)
+			})
+			t.Run("ListThreads_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.MemoryListThreadsMsg, messages.MemoryListThreadsResp](t, kitA, ctx, "kit-b", messages.MemoryListThreadsMsg{})
+				assert.NotNil(t, resp.Threads)
+			})
+			t.Run("DeleteThread_Remote", func(t *testing.T) {
+				create := crossKitCall[messages.MemoryCreateThreadMsg, messages.MemoryCreateThreadResp](t, kitA, ctx, "kit-b", messages.MemoryCreateThreadMsg{})
+				resp := crossKitCall[messages.MemoryDeleteThreadMsg, messages.MemoryDeleteThreadResp](t, kitA, ctx, "kit-b", messages.MemoryDeleteThreadMsg{
+					ThreadID: create.ThreadID,
+				})
+				assert.True(t, resp.OK)
+			})
+		})
+	}
+}
+
+// --- Workflows domain cross-Kit ---
+
+func TestCrossKit_Workflows(t *testing.T) {
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			kitA, kitB := newTestKernelPairFull(t, backend)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Deploy workflow on Kit B
+			_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](kitB, ctx, messages.KitDeployMsg{
+				Source: "crosskit-wf.ts",
+				Code: `
+					const wf = createWorkflow({
+						id: "crosskit-wf", inputSchema: z.object({ v: z.string() }), outputSchema: z.object({ r: z.string() }),
+					});
+					wf.then(createStep({
+						id: "s1", inputSchema: z.object({ v: z.string() }), outputSchema: z.object({ r: z.string() }),
+						execute: async ({ inputData }) => ({ r: inputData.v + "-crosskit" }),
+					})).commit();
+				`,
+			})
+			require.NoError(t, err)
+
+			t.Run("Run_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.WorkflowRunMsg, messages.WorkflowRunResp](t, kitA, ctx, "kit-b", messages.WorkflowRunMsg{
+					Name: "crosskit-wf", Input: map[string]any{"v": "hello"},
+				})
+				assert.NotNil(t, resp.Result)
+				var result map[string]any
+				json.Unmarshal(resp.Result, &result)
+				assert.Equal(t, "success", result["status"])
+			})
+
+			sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](kitB, ctx, messages.KitTeardownMsg{Source: "crosskit-wf.ts"})
+		})
+	}
+}
+
+// --- MCP domain cross-Kit ---
+
+func TestCrossKit_MCP(t *testing.T) {
+	mcpBinary := buildTestMCP(t)
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			loadEnv(t)
+			cfg := transportConfigForBackend(t, backend)
+			transport := mustCreateTransport(t, cfg)
+			t.Cleanup(func() { transport.Close() })
+
+			// Kit B has MCP server, Kit A calls remotely
+			tmpA := t.TempDir()
+			kitA, err := kit.NewKernel(kit.KernelConfig{
+				Namespace: "kit-a", CallerID: "kit-a-caller", WorkspaceDir: tmpA, Transport: transport,
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { kitA.Close() })
+
+			tmpB := t.TempDir()
+			kitB, err := kit.NewKernel(kit.KernelConfig{
+				Namespace: "kit-b", CallerID: "kit-b-caller", WorkspaceDir: tmpB, Transport: transport,
+				MCPServers: map[string]mcppkg.ServerConfig{"echo": {Command: mcpBinary}},
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { kitB.Close() })
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			t.Run("ListTools_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.McpListToolsMsg, messages.McpListToolsResp](t, kitA, ctx, "kit-b", messages.McpListToolsMsg{})
+				assert.NotEmpty(t, resp.Tools)
+			})
+			t.Run("CallTool_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.McpCallToolMsg, messages.McpCallToolResp](t, kitA, ctx, "kit-b", messages.McpCallToolMsg{
+					Server: "echo", Tool: "echo", Args: map[string]any{"message": "cross-kit-mcp"},
+				})
+				assert.NotNil(t, resp.Result)
+			})
+		})
+	}
+}
+
+// --- Vectors domain cross-Kit ---
+
+func TestCrossKit_Vectors(t *testing.T) {
+	if !podmanAvailable() {
+		t.Skip("Podman required for pgvector")
+	}
+	pgConnStr := startPgVectorContainer(t)
+
+	for _, backend := range allBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			kitA, kitB := newTestKernelPairFull(t, backend)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			// Init PgVector on Kit B
+			_, err := kitB.EvalTS(ctx, "__crosskit_vec_init.ts", fmt.Sprintf(`
+				var vs = new PgVector({ id: "crosskit_vec", connectionString: %q });
+				globalThis.__kit_vector_store = vs;
+				return "ok";
+			`, pgConnStr))
+			require.NoError(t, err)
+
+			idxName := "crosskit_" + sanitizeIdent(backend)
+
+			t.Run("CreateIndex_Remote", func(t *testing.T) {
+				resp := crossKitCall[messages.VectorCreateIndexMsg, messages.VectorCreateIndexResp](t, kitA, ctx, "kit-b", messages.VectorCreateIndexMsg{
+					Name: idxName, Dimension: 3, Metric: "cosine",
+				})
+				assert.True(t, resp.OK)
 			})
 		})
 	}

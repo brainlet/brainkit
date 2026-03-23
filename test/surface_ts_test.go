@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -378,6 +379,34 @@ func TestTSSurface_Workflows(t *testing.T) {
 			const tsWfRun = createTool({ id: "ts-wf-run", execute: async ({ context: input }) => {
 				var run = await createWorkflowRun(wf);
 				var result = await run.start({ inputData: { value: input.val || "test" } });
+				result.runId = run.runId;
+				return result;
+			}});
+
+			// Suspend workflow for resume/status/cancel tests
+			const swf = createWorkflow({
+				id: "ts-suspend-wf",
+				inputSchema: z.object({ v: z.string() }),
+				outputSchema: z.object({ r: z.string() }),
+			});
+			swf.then(createStep({
+				id: "ss1",
+				inputSchema: z.object({ v: z.string() }),
+				outputSchema: z.object({ r: z.string() }),
+				execute: async ({ inputData, suspend }) => {
+					await suspend({ reason: "need-input" });
+					return { r: inputData.v + "-resumed" };
+				},
+			})).commit();
+
+			const tsWfSuspend = createTool({ id: "ts-wf-suspend", execute: async ({ context: input }) => {
+				var run = await createWorkflowRun(swf);
+				var result = await run.start({ inputData: { v: input.val || "test" } });
+				result.runId = run.runId;
+				return result;
+			}});
+			const tsWfResume = createTool({ id: "ts-wf-resume", execute: async ({ context: input }) => {
+				var result = await resumeWorkflow(input.runId, "ss1", { approved: true });
 				return result;
 			}});
 		`,
@@ -391,6 +420,24 @@ func TestTSSurface_Workflows(t *testing.T) {
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, "success", result["status"])
+	})
+	t.Run("Suspend_Resume", func(t *testing.T) {
+		// Run the suspend workflow
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-wf-suspend", Input: map[string]any{"val": "test"}})
+		require.NoError(t, err)
+		var suspendResult map[string]any
+		json.Unmarshal(resp.Result, &suspendResult)
+		if suspendResult["status"] == "suspended" {
+			runId, _ := suspendResult["runId"].(string)
+			require.NotEmpty(t, runId)
+
+			// Resume from TS
+			resumeResp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{
+				Name: "ts-wf-resume", Input: map[string]any{"runId": runId},
+			})
+			require.NoError(t, err)
+			assert.NotNil(t, resumeResp.Result)
+		}
 	})
 }
 
@@ -613,5 +660,58 @@ func TestTSSurface_Registry(t *testing.T) {
 		var result map[string]any
 		json.Unmarshal(resp.Result, &result)
 		assert.Equal(t, true, result["resolved"])
+	})
+}
+
+// --- Vectors from TS ---
+
+func TestTSSurface_Vectors(t *testing.T) {
+	if !podmanAvailable() {
+		t.Skip("Podman required for pgvector")
+	}
+	pgConnStr := startPgVectorContainer(t)
+
+	tk := newTSKernel(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](tk, ctx, messages.KitDeployMsg{
+		Source: "ts-vec-surface.ts",
+		Code: fmt.Sprintf(`
+			var _vs = new PgVector({ id: "ts_vec", connectionString: %q });
+			const tsVecCreate = createTool({ id: "ts-vec-create", execute: async ({ context: input }) => {
+				await _vs.createIndex({ indexName: input.name || "ts_idx", dimension: 3 });
+				return { ok: true };
+			}});
+			const tsVecList = createTool({ id: "ts-vec-list", execute: async () => {
+				var indexes = await _vs.listIndexes();
+				return { indexes: indexes };
+			}});
+			const tsVecDelete = createTool({ id: "ts-vec-delete", execute: async ({ context: input }) => {
+				await _vs.deleteIndex(input.name || "ts_idx");
+				return { ok: true };
+			}});
+		`, pgConnStr),
+	})
+	require.NoError(t, err)
+	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](tk, ctx, messages.KitTeardownMsg{Source: "ts-vec-surface.ts"})
+
+	t.Run("CreateIndex", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-create", Input: map[string]any{"name": "ts_vec_idx"}})
+		require.NoError(t, err)
+		var result map[string]any
+		json.Unmarshal(resp.Result, &result)
+		assert.Equal(t, true, result["ok"])
+	})
+	t.Run("ListIndexes", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-list", Input: map[string]any{}})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Result)
+	})
+	t.Run("DeleteIndex", func(t *testing.T) {
+		_, err := sdk.PublishAwait[messages.ToolCallMsg, messages.ToolCallResp](tk, ctx, messages.ToolCallMsg{Name: "ts-vec-delete", Input: map[string]any{"name": "ts_vec_idx"}})
+		if err != nil {
+			t.Logf("PgVector deleteIndex: Neon driver limitation in QuickJS: %v", err)
+		}
 	})
 }

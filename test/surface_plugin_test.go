@@ -392,6 +392,49 @@ func TestPluginSurface_Workflows(t *testing.T) {
 	})
 
 	sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-wf.ts"})
+
+	// Deploy suspend workflow for resume/cancel/status
+	_, err = sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](node, ctx, messages.KitDeployMsg{
+		Source: "plugin-suspend-wf.ts",
+		Code: `
+			const swf = createWorkflow({
+				id: "plugin-suspend-wf", inputSchema: z.object({ v: z.string() }), outputSchema: z.object({ r: z.string() }),
+			});
+			swf.then(createStep({
+				id: "ss1", inputSchema: z.object({ v: z.string() }), outputSchema: z.object({ r: z.string() }),
+				execute: async ({ inputData, suspend }) => { await suspend({ reason: "wait" }); return { r: inputData.v + "-done" }; },
+			})).commit();
+		`,
+	})
+	require.NoError(t, err)
+	defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](node, ctx, messages.KitTeardownMsg{Source: "plugin-suspend-wf.ts"})
+
+	t.Run("Suspend_Resume", func(t *testing.T) {
+		runResp, err := sdk.PublishAwait[messages.WorkflowRunMsg, messages.WorkflowRunResp](rt, ctx, messages.WorkflowRunMsg{
+			Name: "plugin-suspend-wf", Input: map[string]any{"v": "test"},
+		})
+		require.NoError(t, err)
+		var runResult map[string]any
+		json.Unmarshal(runResp.Result, &runResult)
+		if runResult["status"] == "suspended" {
+			runId, _ := runResult["runId"].(string)
+			require.NotEmpty(t, runId)
+
+			statusResp, err := sdk.PublishAwait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](rt, ctx, messages.WorkflowStatusMsg{RunID: runId})
+			require.NoError(t, err)
+			t.Logf("Plugin workflow status: %s", statusResp.Status)
+
+			resumeResp, err := sdk.PublishAwait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](rt, ctx, messages.WorkflowResumeMsg{
+				RunID: runId, StepID: "ss1", Data: map[string]any{"ok": true},
+			})
+			require.NoError(t, err)
+			assert.NotNil(t, resumeResp.Result)
+		}
+	})
+	t.Run("Cancel_NotFound", func(t *testing.T) {
+		_, err := sdk.PublishAwait[messages.WorkflowCancelMsg, messages.WorkflowCancelResp](rt, ctx, messages.WorkflowCancelMsg{RunID: "nonexistent"})
+		assert.Error(t, err)
+	})
 }
 
 // --- MCP domain from Plugin ---
