@@ -116,6 +116,42 @@ func TestGoDirect_Agents(t *testing.T) {
 				})
 				assert.Error(t, err)
 			})
+
+			t.Run("Message_NotFound", func(t *testing.T) {
+				_, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{
+					Target: "ghost-agent", Payload: "hello",
+				})
+				assert.Error(t, err)
+			})
+
+			t.Run("Message_Delivered", func(t *testing.T) {
+				if !hasAIKey() {
+					t.Skip("OPENAI_API_KEY required for agent deployment")
+				}
+
+				// Deploy an agent so it exists in the registry
+				_, err := sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+					Source: "msg-agent.ts",
+					Code: `
+						const a = agent({
+							name: "msg-target",
+							instructions: "You are a test agent.",
+							model: "openai/gpt-4o-mini",
+						});
+					`,
+				})
+				if err != nil {
+					t.Skipf("agent deploy failed: %v", err)
+				}
+				defer sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "msg-agent.ts"})
+
+				// Send a message — fire-and-forget, should return delivered: true
+				resp, err := sdk.PublishAwait[messages.AgentMessageMsg, messages.AgentMessageResp](rt, ctx, messages.AgentMessageMsg{
+					Target: "msg-target", Payload: map[string]string{"text": "hello agent"},
+				})
+				require.NoError(t, err)
+				assert.True(t, resp.Delivered)
+			})
 		})
 	}
 }

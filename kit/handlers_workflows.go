@@ -24,6 +24,7 @@ func (d *WorkflowsDomain) Run(ctx context.Context, req messages.WorkflowRunMsg) 
 		if (!wf) throw new Error("workflow '" + req.name + "' not found");
 		var run = await createWorkflowRun(wf);
 		var result = await run.start({ inputData: req.input });
+		result.runId = run.runId;
 		return JSON.stringify(result);
 	`)
 	if err != nil {
