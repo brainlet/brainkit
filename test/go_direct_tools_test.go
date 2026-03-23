@@ -65,8 +65,17 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Resolve_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
-				assert.Error(t, err)
+				pr, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
+				require.NoError(t, err)
+				ch := make(chan messages.ToolResolveResp, 1)
+				un, _ := sdk.SubscribeTo[messages.ToolResolveResp](rt, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+				defer un()
+				select {
+				case resp := <-ch:
+					assert.NotEmpty(t, resp.Error, "should have error in response")
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 
 			t.Run("Call_Echo", func(t *testing.T) {
@@ -112,11 +121,20 @@ func TestGoDirect_Tools(t *testing.T) {
 			})
 
 			t.Run("Call_NotFound", func(t *testing.T) {
-				_, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+				pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 					Name:  "nonexistent",
 					Input: map[string]any{},
 				})
-				assert.Error(t, err)
+				require.NoError(t, err)
+				ch := make(chan messages.ToolCallResp, 1)
+				un, _ := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+				defer un()
+				select {
+				case resp := <-ch:
+					assert.NotEmpty(t, resp.Error, "should have error in response")
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 		})
 	}
