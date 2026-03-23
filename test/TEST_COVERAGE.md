@@ -1,7 +1,8 @@
 # Test Coverage Matrix
 
-> **92 test functions** across **33 test files** + 2 test binaries.
+> **98 test functions** across **33 test files** + 2 test binaries.
 > Real OpenAI API, real Podman containers (NATS, RabbitMQ, Redis, Postgres, pgvector). Zero mocks.
+> All tests use pure async `sdk.Publish` + `sdk.SubscribeTo` pattern. Zero `PublishAwait`.
 > This document is a FINAL STATE not a log.
 
 ---
@@ -269,7 +270,7 @@ vectors.deleteIndex tested from Go Direct + WASM. vectors.listIndexes + deleteIn
 
 ## Summary
 
-- **92 test functions** across **33 test files**
+- **98 test functions** across **33 test files**
 - **5 API surfaces**: Go Kernel, Go Node, TS, WASM, Plugin
 - **6 transport backends**: GoChannel, SQLite, NATS, AMQP, Redis, Postgres
 - **13 domains**: tools, fs, agents, ai, memory, workflows, vectors, wasm, kit, mcp, registry, plugin, streaming

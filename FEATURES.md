@@ -26,6 +26,20 @@ These drive every feature decision in brainkit.
 
 ---
 
+## Messaging Model
+
+Pure async pub/sub. No blocking helpers. No PublishAwait.
+
+| API | Purpose | Returns |
+|-----|---------|---------|
+| `sdk.Publish[T](rt, ctx, msg, opts...)` | Send command, get replyTo | `PublishResult{MessageID, CorrelationID, ReplyTo, Topic}` |
+| `sdk.SubscribeTo[T](rt, ctx, topic, handler)` | Typed subscribe on any topic | `cancel func()` |
+| `sdk.Emit[T](rt, ctx, msg)` | Fire-and-forget event | `error` |
+| `sdk.PublishTo[T](rt, ctx, ns, msg, opts...)` | Cross-Kit command | `PublishResult` |
+| `sdk.WithReplyTo(topic)` | Custom reply topic | `PublishOption` |
+
+ReplyTo convention: `<topic>.reply.<uuid>`, namespaced and sanitized by the publisher. Handlers read `replyTo` from message metadata and publish responses there. Errors arrive in `ResultMeta.Error` on the same replyTo topic. Response types have no BusTopic — they're never routing keys.
+
 ## Runtime
 
 | Feature | Status | Description |
