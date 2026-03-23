@@ -484,4 +484,16 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.OK)
 	})
+	t.Run("ListIndexes", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.VectorListIndexesMsg, messages.VectorListIndexesResp](rt, ctx, messages.VectorListIndexesMsg{})
+		require.NoError(t, err)
+		assert.NotNil(t, resp.Indexes)
+	})
+	t.Run("DeleteIndex", func(t *testing.T) {
+		resp, err := sdk.PublishAwait[messages.VectorDeleteIndexMsg, messages.VectorDeleteIndexResp](rt, ctx, messages.VectorDeleteIndexMsg{
+			Name: "plugin_vec_idx",
+		})
+		require.NoError(t, err)
+		assert.True(t, resp.OK)
+	})
 }

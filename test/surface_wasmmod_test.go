@@ -328,4 +328,7 @@ func TestWASMSurface_Vectors(t *testing.T) {
 	t.Run("ListIndexes", func(t *testing.T) {
 		wasmDomainTest(t, rt, ctx, "wasm-vec-list", "vectors.listIndexes", `{}`)
 	})
+	t.Run("DeleteIndex", func(t *testing.T) {
+		wasmDomainTest(t, rt, ctx, "wasm-vec-delete", "vectors.deleteIndex", `{"name":"wasm_idx"}`)
+	})
 }

@@ -135,6 +135,56 @@ func TestBackendMatrix(t *testing.T) {
 				require.NoError(t, err)
 				assert.NotEmpty(t, corrID)
 			})
+
+			// --- Kit redeploy ---
+			t.Run("kit_redeploy", func(t *testing.T) {
+				sdk.PublishAwait[messages.KitDeployMsg, messages.KitDeployResp](rt, ctx, messages.KitDeployMsg{
+					Source: "matrix-redeploy.ts", Code: `var v = 1;`,
+				})
+				resp, err := sdk.PublishAwait[messages.KitRedeployMsg, messages.KitRedeployResp](rt, ctx, messages.KitRedeployMsg{
+					Source: "matrix-redeploy.ts", Code: `var v = 2;`,
+				})
+				require.NoError(t, err)
+				assert.True(t, resp.Deployed)
+				sdk.PublishAwait[messages.KitTeardownMsg, messages.KitTeardownResp](rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy.ts"})
+			})
+
+			// --- WASM deploy/undeploy/describe ---
+			t.Run("wasm_deploy_lifecycle", func(t *testing.T) {
+				sdk.PublishAwait[messages.WasmCompileMsg, messages.WasmCompileResp](rt, ctx, messages.WasmCompileMsg{
+					Source: `
+						import { _on, _setMode } from "brainkit";
+						export function init(): void { _setMode("stateless"); _on("matrix.ev", "h"); }
+						export function h(t: usize, p: usize): void {}
+					`, Options: &messages.WasmCompileOpts{Name: "matrix-shard-" + backend},
+				})
+				deploy, err := sdk.PublishAwait[messages.WasmDeployMsg, messages.WasmDeployResp](rt, ctx, messages.WasmDeployMsg{Name: "matrix-shard-" + backend})
+				require.NoError(t, err)
+				assert.Equal(t, "stateless", deploy.Mode)
+
+				desc, err := sdk.PublishAwait[messages.WasmDescribeMsg, messages.WasmDescribeResp](rt, ctx, messages.WasmDescribeMsg{Name: "matrix-shard-" + backend})
+				require.NoError(t, err)
+				assert.Equal(t, "stateless", desc.Mode)
+
+				undeploy, err := sdk.PublishAwait[messages.WasmUndeployMsg, messages.WasmUndeployResp](rt, ctx, messages.WasmUndeployMsg{Name: "matrix-shard-" + backend})
+				require.NoError(t, err)
+				assert.True(t, undeploy.Undeployed)
+			})
+
+			// --- Registry ---
+			t.Run("registry_has_list", func(t *testing.T) {
+				resp, err := sdk.PublishAwait[messages.RegistryHasMsg, messages.RegistryHasResp](rt, ctx, messages.RegistryHasMsg{
+					Category: "provider", Name: "nonexistent",
+				})
+				require.NoError(t, err)
+				assert.False(t, resp.Found)
+
+				listResp, err := sdk.PublishAwait[messages.RegistryListMsg, messages.RegistryListResp](rt, ctx, messages.RegistryListMsg{
+					Category: "provider",
+				})
+				require.NoError(t, err)
+				assert.NotNil(t, listResp.Items)
+			})
 		})
 	}
 }
