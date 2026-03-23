@@ -1850,6 +1850,13 @@
       LocalFilesystem: _kitObj.LocalFilesystem,
       LocalSandbox: _kitObj.LocalSandbox,
 
+      // Registry — resolve providers/stores/storages by name
+      vectorStore: _kitObj.vectorStore,
+      storage: _kitObj.storage,
+      model: _kitObj.model,
+      provider: _kitObj.provider,
+      registry: _kitObj.registry,
+
       // JS built-ins for compartment — per-source tagged console
       console: {
         log:   (...a) => __go_console_log_tagged(source, "log", a.map(String).join(' ')),
