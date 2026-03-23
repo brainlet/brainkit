@@ -446,7 +446,7 @@ func TestPluginSurface_Kit(t *testing.T) {
 		_us22, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _pr22.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _ch22 <- r })
 		defer _us22()
 		select {
-		case <-_ch18:
+		case <-_ch22:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -460,7 +460,7 @@ func TestPluginSurface_Kit(t *testing.T) {
 		defer _us23()
 		var resp messages.KitListResp
 		select {
-		case resp = <-_ch19:
+		case resp = <-_ch23:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -538,7 +538,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		defer _us27()
 		var resp messages.WasmListResp
 		select {
-		case resp = <-_ch26:
+		case resp = <-_ch27:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -553,7 +553,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		defer _us28()
 		var resp messages.WasmGetResp
 		select {
-		case resp = <-_ch23:
+		case resp = <-_ch28:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -568,7 +568,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		defer _us29()
 		var resp messages.WasmRemoveResp
 		select {
-		case resp = <-_ch23:
+		case resp = <-_ch29:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -590,7 +590,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		defer _us30()
 		var deploy messages.WasmDeployResp
 		select {
-		case deploy = <-_ch23:
+		case deploy = <-_ch30:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -618,7 +618,7 @@ func TestPluginSurface_WASM(t *testing.T) {
 		defer _us32()
 		var undeploy messages.WasmUndeployResp
 		select {
-		case undeploy = <-_ch31:
+		case undeploy = <-_ch32:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -650,14 +650,19 @@ func TestPluginSurface_Memory(t *testing.T) {
 		defer _us33()
 		var resp messages.MemoryCreateThreadResp
 		select {
-		case resp = <-_ch31:
+		case resp = <-_ch33:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
 		assert.NotEmpty(t, resp.ThreadID)
 	})
 	t.Run("Save_Recall", func(t *testing.T) {
-		_, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		cr, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		crCh := make(chan messages.MemoryCreateThreadResp, 1)
+		crUn, _ := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, cr.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { crCh <- r })
+		defer crUn()
+		var create messages.MemoryCreateThreadResp
+		select { case create = <-crCh: case <-ctx.Done(): t.Fatal("timeout") }
 		_pr35, err := sdk.Publish(rt, ctx, messages.MemorySaveMsg{
 			ThreadID: create.ThreadID,
 			Messages: []messages.MemoryMessage{{Role: "user", Content: "hello"}},
@@ -667,7 +672,7 @@ func TestPluginSurface_Memory(t *testing.T) {
 		_us35, _ := sdk.SubscribeTo[messages.MemorySaveResp](rt, ctx, _pr35.ReplyTo, func(r messages.MemorySaveResp, m messages.Message) { _ch35 <- r })
 		defer _us35()
 		select {
-		case <-_ch26:
+		case <-_ch35:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -679,13 +684,18 @@ func TestPluginSurface_Memory(t *testing.T) {
 		_us36, _ := sdk.SubscribeTo[messages.MemoryRecallResp](rt, ctx, _pr36.ReplyTo, func(r messages.MemoryRecallResp, m messages.Message) { _ch36 <- r })
 		defer _us36()
 		select {
-		case <-_ch26:
+		case <-_ch36:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
 	})
 	t.Run("GetThread", func(t *testing.T) {
-		_, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		cr2, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		cr2Ch := make(chan messages.MemoryCreateThreadResp, 1)
+		cr2Un, _ := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, cr2.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { cr2Ch <- r })
+		defer cr2Un()
+		var create messages.MemoryCreateThreadResp
+		select { case create = <-cr2Ch: case <-ctx.Done(): t.Fatal("timeout") }
 		_pr38, err := sdk.Publish(rt, ctx, messages.MemoryGetThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
 		_ch38 := make(chan messages.MemoryGetThreadResp, 1)
@@ -694,7 +704,7 @@ func TestPluginSurface_Memory(t *testing.T) {
 		defer _us38()
 		var resp messages.MemoryGetThreadResp
 		select {
-		case resp = <-_ch31:
+		case resp = <-_ch38:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -709,14 +719,19 @@ func TestPluginSurface_Memory(t *testing.T) {
 		defer _us39()
 		var resp messages.MemoryListThreadsResp
 		select {
-		case resp = <-_ch31:
+		case resp = <-_ch39:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
 		assert.NotNil(t, resp.Threads)
 	})
 	t.Run("DeleteThread", func(t *testing.T) {
-		_, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		cr3, _ := sdk.Publish(rt, ctx, messages.MemoryCreateThreadMsg{})
+		cr3Ch := make(chan messages.MemoryCreateThreadResp, 1)
+		cr3Un, _ := sdk.SubscribeTo[messages.MemoryCreateThreadResp](rt, ctx, cr3.ReplyTo, func(r messages.MemoryCreateThreadResp, m messages.Message) { cr3Ch <- r })
+		defer cr3Un()
+		var create messages.MemoryCreateThreadResp
+		select { case create = <-cr3Ch: case <-ctx.Done(): t.Fatal("timeout") }
 		_pr41, err := sdk.Publish(rt, ctx, messages.MemoryDeleteThreadMsg{ThreadID: create.ThreadID})
 		require.NoError(t, err)
 		_ch41 := make(chan messages.MemoryDeleteThreadResp, 1)
@@ -725,7 +740,7 @@ func TestPluginSurface_Memory(t *testing.T) {
 		defer _us41()
 		var resp messages.MemoryDeleteThreadResp
 		select {
-		case resp = <-_ch31:
+		case resp = <-_ch41:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -758,7 +773,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 	_us42, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr42.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch42 <- r })
 	defer _us42()
 	select {
-	case <-_ch38:
+	case <-_ch42:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -774,7 +789,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		defer _us43()
 		var resp messages.WorkflowRunResp
 		select {
-		case resp = <-_ch38:
+		case resp = <-_ch43:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -801,7 +816,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 	_us44, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, _pr44.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { _ch44 <- r })
 	defer _us44()
 	select {
-	case <-_ch38:
+	case <-_ch44:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -818,7 +833,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 		defer _us45()
 		var runResp messages.WorkflowRunResp
 		select {
-		case runResp = <-_ch38:
+		case runResp = <-_ch45:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -836,7 +851,7 @@ func TestPluginSurface_Workflows(t *testing.T) {
 			defer _us46()
 			var statusResp messages.WorkflowStatusResp
 			select {
-			case statusResp = <-_ch45:
+			case statusResp = <-_ch46:
 			case <-ctx.Done():
 				t.Fatal("timeout")
 			}
@@ -892,7 +907,7 @@ func TestPluginSurface_MCP(t *testing.T) {
 		defer _us49()
 		var resp messages.McpListToolsResp
 		select {
-		case resp = <-_ch47:
+		case resp = <-_ch49:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -909,7 +924,7 @@ func TestPluginSurface_MCP(t *testing.T) {
 		defer _us50()
 		var resp messages.McpCallToolResp
 		select {
-		case resp = <-_ch47:
+		case resp = <-_ch50:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -935,7 +950,7 @@ func TestPluginSurface_Registry(t *testing.T) {
 		defer _us51()
 		var resp messages.RegistryHasResp
 		select {
-		case resp = <-_ch45:
+		case resp = <-_ch51:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -952,7 +967,7 @@ func TestPluginSurface_Registry(t *testing.T) {
 		defer _us52()
 		var resp messages.RegistryListResp
 		select {
-		case resp = <-_ch45:
+		case resp = <-_ch52:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -969,7 +984,7 @@ func TestPluginSurface_Registry(t *testing.T) {
 		defer _us53()
 		var resp messages.RegistryResolveResp
 		select {
-		case resp = <-_ch45:
+		case resp = <-_ch53:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -1009,7 +1024,7 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		defer _us54()
 		var resp messages.VectorCreateIndexResp
 		select {
-		case resp = <-_ch45:
+		case resp = <-_ch54:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -1024,7 +1039,7 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		defer _us55()
 		var resp messages.VectorListIndexesResp
 		select {
-		case resp = <-_ch47:
+		case resp = <-_ch55:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}
@@ -1041,7 +1056,7 @@ func TestPluginSurface_Vectors(t *testing.T) {
 		defer _us56()
 		var resp messages.VectorDeleteIndexResp
 		select {
-		case resp = <-_ch45:
+		case resp = <-_ch56:
 		case <-ctx.Done():
 			t.Fatal("timeout")
 		}

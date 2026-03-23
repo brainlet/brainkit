@@ -98,11 +98,8 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 					result.Metadata.Set("correlationId", correlationID)
 				}
 
-				resolvedReplyTo := replyTo
-				if h.topicSanitizer != nil {
-					resolvedReplyTo = h.topicSanitizer(replyTo)
-				}
-				return h.pub.Publish(resolvedReplyTo, result)
+				// replyTo is already namespaced+sanitized by the publisher
+				return h.pub.Publish(replyTo, result)
 			},
 		)
 	}

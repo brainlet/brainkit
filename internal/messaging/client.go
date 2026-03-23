@@ -128,9 +128,10 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
 
-	// Stamp replyTo if present in context (set by sdk.Publish)
+	// Stamp replyTo if present in context (set by sdk.Publish).
+	// Namespace it so the handler can publish to the absolute topic.
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
-		wmsg.Metadata.Set("replyTo", replyTo)
+		wmsg.Metadata.Set("replyTo", c.resolvedTopic(replyTo))
 	}
 
 	if err := c.pub.Publish(c.resolvedTopic(logicalTopic), wmsg); err != nil {
