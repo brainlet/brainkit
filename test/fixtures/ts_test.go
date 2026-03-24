@@ -111,14 +111,14 @@ func TestTSFixturesE2E(t *testing.T) {
 				t.Skipf("Mastra workflow API mismatch (fixture needs rewrite)")
 			}
 
-			// 1. Transpile
-			js := loadTSFixture(t, name)
+			// 1. Read raw .ts source — Deploy handles transpile + import strip
+			tsSource := loadTSFixtureRaw(t, name)
 
 			// 2. Create kernel with tools the fixtures expect
 			tk := testutil.NewTestKernelFull(t)
 			registerFixtureTools(t, tk, name)
 
-			// 3. Deploy with generous timeout (AI calls can be slow)
+			// 3. Deploy .ts directly — Kernel detects .ts, transpiles, strips imports
 			timeout := 15 * time.Second
 			if fixtureNeedsAI(name) {
 				timeout = 60 * time.Second
@@ -126,7 +126,7 @@ func TestTSFixturesE2E(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
-			_, err := tk.Deploy(ctx, name+".ts", js)
+			_, err := tk.Deploy(ctx, name+".ts", tsSource)
 			if err != nil {
 				if fixtureNeedsAI(name) && !hasAI {
 					t.Skipf("deploy needs AI key: %v", err)
