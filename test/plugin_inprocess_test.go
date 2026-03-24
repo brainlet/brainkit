@@ -103,7 +103,7 @@ func TestPlugin_InProcess(t *testing.T) {
 	t.Run("Plugin_Deploy_Teardown", func(t *testing.T) {
 		_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 			Source: "plugin-created.ts",
-			Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) });`,
+			Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) }); kit.register("tool", "plugin-tool", t);`,
 		})
 		require.NoError(t, err)
 		_ch5 := make(chan messages.KitDeployResp, 1)

@@ -131,18 +131,7 @@ var (
 func commandCatalog() *commandRegistry {
 	commandCatalogOnce.Do(func() {
 		specs := []commandSpec{
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AiGenerateMsg) (*messages.AiGenerateResp, error) {
-				return kernel.ai.Generate(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AiEmbedMsg) (*messages.AiEmbedResp, error) {
-				return kernel.ai.Embed(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AiEmbedManyMsg) (*messages.AiEmbedManyResp, error) {
-				return kernel.ai.EmbedMany(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AiGenerateObjectMsg) (*messages.AiGenerateObjectResp, error) {
-				return kernel.ai.GenerateObject(ctx, req)
-			}),
+			// ── Tools ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ToolCallMsg) (*messages.ToolCallResp, error) {
 				return kernel.toolsDomain.Call(ctx, req)
 			}),
@@ -152,6 +141,7 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ToolListMsg) (*messages.ToolListResp, error) {
 				return kernel.toolsDomain.List(ctx, req)
 			}),
+			// ── Agents (registry ops only) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentListMsg) (*messages.AgentListResp, error) {
 				filter := (*agentFilter)(nil)
 				if req.Filter != nil {
@@ -172,12 +162,7 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
 				return kernel.agentsDomain.SetStatus(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentRequestMsg) (*messages.AgentRequestResp, error) {
-				return kernel.agentsDomain.Request(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentMessageMsg) (*messages.AgentMessageResp, error) {
-				return kernel.agentsDomain.Message(ctx, req)
-			}),
+			// ── Filesystem ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsReadMsg) (*messages.FsReadResp, error) {
 				return kernel.fsDomain.Read(ctx, req)
 			}),
@@ -196,51 +181,7 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsMkdirMsg) (*messages.FsMkdirResp, error) {
 				return kernel.fsDomain.Mkdir(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemoryCreateThreadMsg) (*messages.MemoryCreateThreadResp, error) {
-				return kernel.memoryDomain.CreateThread(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemoryGetThreadMsg) (*messages.MemoryGetThreadResp, error) {
-				return kernel.memoryDomain.GetThread(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemoryListThreadsMsg) (*messages.MemoryListThreadsResp, error) {
-				return kernel.memoryDomain.ListThreads(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemorySaveMsg) (*messages.MemorySaveResp, error) {
-				return kernel.memoryDomain.Save(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemoryRecallMsg) (*messages.MemoryRecallResp, error) {
-				return kernel.memoryDomain.Recall(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MemoryDeleteThreadMsg) (*messages.MemoryDeleteThreadResp, error) {
-				return kernel.memoryDomain.DeleteThread(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowRunMsg) (*messages.WorkflowRunResp, error) {
-				return kernel.workflowsDomain.Run(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowResumeMsg) (*messages.WorkflowResumeResp, error) {
-				return kernel.workflowsDomain.Resume(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowCancelMsg) (*messages.WorkflowCancelResp, error) {
-				return kernel.workflowsDomain.Cancel(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStatusMsg) (*messages.WorkflowStatusResp, error) {
-				return kernel.workflowsDomain.Status(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorCreateIndexMsg) (*messages.VectorCreateIndexResp, error) {
-				return kernel.vectorsDomain.CreateIndex(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorDeleteIndexMsg) (*messages.VectorDeleteIndexResp, error) {
-				return kernel.vectorsDomain.DeleteIndex(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorListIndexesMsg) (*messages.VectorListIndexesResp, error) {
-				return kernel.vectorsDomain.ListIndexes(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorUpsertMsg) (*messages.VectorUpsertResp, error) {
-				return kernel.vectorsDomain.Upsert(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorQueryMsg) (*messages.VectorQueryResp, error) {
-				return kernel.vectorsDomain.Query(ctx, req)
-			}),
+			// ── WASM ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmCompileMsg) (*messages.WasmCompileResp, error) {
 				return kernel.wasmDomainInst.Compile(ctx, req)
 			}),

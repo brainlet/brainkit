@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCross_WASM_Plugin tests WASM modules calling plugin-registered tools via invokeAsync.
+// TestCross_WASM_Plugin tests WASM modules calling plugin-registered tools via _busPublish.
 // Note: file named cross_wasmmod_plugin_test.go to avoid _wasm build constraint suffix.
 func TestCross_WASM_Plugin(t *testing.T) {
 	if testing.Short() {
@@ -71,21 +71,21 @@ func TestCross_WASM_Plugin(t *testing.T) {
 			require.NoError(t, err)
 			time.Sleep(2 * time.Second)
 
-			t.Run("WASM_calls_plugin_tool_via_invokeAsync", func(t *testing.T) {
+			t.Run("WASM_calls_plugin_tool_via_busPublish", func(t *testing.T) {
 				wasmCtx, wasmCancel := context.WithTimeout(ctx, 60*time.Second)
 				defer wasmCancel()
 
-				// Compile WASM that calls the plugin's "concat" tool via invokeAsync
+				// Compile WASM that calls the plugin's "concat" tool via _busPublish
 				_pr1, err := sdk.Publish(node, wasmCtx, messages.WasmCompileMsg{
 					Source: `
-						import { _invokeAsync, _setState } from "brainkit";
+						import { _busPublish, _setState } from "brainkit";
 
 						export function onConcatResult(topic: usize, payload: usize): void {
 							_setState("pluginCallDone", "true");
 						}
 
 						export function run(): i32 {
-							_invokeAsync("tools.call", '{"name":"concat","input":{"a":"wasm","b":"plugin"}}', "onConcatResult");
+							_busPublish("tools.call", '{"name":"concat","input":{"a":"wasm","b":"plugin"}}', "onConcatResult");
 							return 0;
 						}
 					`,

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 )
@@ -430,8 +431,8 @@ func (s *WASMService) bindShardSubscriptions(shardName string, shard *deployedSh
 			s.cancelShardSubscriptions(shard)
 			return fmt.Errorf("shard %q uses unsupported wildcard subscription %q on transport-backed runtime", shardName, topic)
 		}
-		cancel, err := s.kit.subscribe(topic, func(payload []byte) {
-			if _, invokeErr := s.invokeShardHandler(context.Background(), shardName, topic, json.RawMessage(payload)); invokeErr != nil {
+		cancel, err := s.kit.subscribe(topic, func(msg messages.Message) {
+			if _, invokeErr := s.invokeShardHandler(context.Background(), shardName, topic, json.RawMessage(msg.Payload)); invokeErr != nil {
 				log.Printf("[brainkit] shard %q handler for %s failed: %v", shardName, topic, invokeErr)
 			}
 		})

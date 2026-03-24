@@ -4,15 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
 	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -249,4 +252,21 @@ func buildTestMCP(t *testing.T) string {
 		t.Fatalf("build testmcp: %v", err)
 	}
 	return binary
+}
+
+// startPgVectorContainer starts a pgvector container and returns the connection string.
+func startPgVectorContainer(t *testing.T) string {
+	t.Helper()
+	addr := startContainer(t,
+		"pgvector/pgvector:pg16",
+		"5432/tcp",
+		nil,
+		wait.ForLog("database system is ready to accept connections").
+			WithOccurrence(2).
+			WithStartupTimeout(60*time.Second),
+		"POSTGRES_USER=test",
+		"POSTGRES_PASSWORD=test",
+		"POSTGRES_DB=brainkit",
+	)
+	return fmt.Sprintf("postgresql://test:test@%s/brainkit", addr)
 }

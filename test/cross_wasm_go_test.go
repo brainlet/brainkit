@@ -20,20 +20,20 @@ func TestCross_WASM_Go(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
-			t.Run("WASM_calls_Go_tool_via_invokeAsync", func(t *testing.T) {
+			t.Run("WASM_calls_Go_tool_via_busPublish", func(t *testing.T) {
 				// Go surface: "add" tool is already registered
 
-				// WASM surface: compile module that calls Go tool via invokeAsync
+				// WASM surface: compile module that calls Go tool via _busPublish
 				_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _invokeAsync, _setState } from "brainkit";
+						import { _busPublish, _setState } from "brainkit";
 
 						export function onResult(topic: usize, payload: usize): void {
 							_setState("gotResult", "true");
 						}
 
 						export function run(): i32 {
-							_invokeAsync("tools.call", '{"name":"add","input":{"a":7,"b":8}}', "onResult");
+							_busPublish("tools.call", '{"name":"add","input":{"a":7,"b":8}}', "onResult");
 							return 0;
 						}
 					`,
@@ -70,11 +70,12 @@ func TestCross_WASM_Go(t *testing.T) {
 				// WASM surface: compile and deploy a shard that handles events
 				_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _on, _setMode, _reply } from "brainkit";
+						import { _busOn, _setMode, _reply } from "brainkit";
 
 						export function init(): void {
 							_setMode("stateless");
-							_on("cross.go.event", "handleEvent");
+							
+_busOn("cross.go.event", "handleEvent");
 						}
 
 						export function handleEvent(topic: usize, payload: usize): void {

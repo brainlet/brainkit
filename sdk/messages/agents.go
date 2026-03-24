@@ -1,28 +1,6 @@
 package messages
 
-// ── Requests ──
-
-type AgentRequestMsg struct {
-	Name   string `json:"name"`
-	Prompt string `json:"prompt"`
-}
-
-func (AgentRequestMsg) BusTopic() string { return "agents.request" }
-
-type AgentStreamMsg struct {
-	Name     string `json:"name"`
-	Prompt   string `json:"prompt"`
-	StreamTo string `json:"streamTo"`
-}
-
-func (AgentStreamMsg) BusTopic() string { return "agents.stream" }
-
-type AgentMessageMsg struct {
-	Target  string `json:"target"`
-	Payload any    `json:"payload"`
-}
-
-func (AgentMessageMsg) BusTopic() string { return "agents.message" }
+// ── Registry Requests (discovery + status) ──
 
 type AgentListMsg struct {
 	Filter *AgentFilter `json:"filter,omitempty"`
@@ -37,10 +15,6 @@ type AgentDiscoverMsg struct {
 }
 
 func (AgentDiscoverMsg) BusTopic() string { return "agents.discover" }
-
-// AgentRegisterMsg and AgentUnregisterMsg removed — agents are created via
-// .ts deployment (kit.Deploy), not via bus messages. The internal bridgeRequest
-// path in kit_runtime.js still handles agent registration.
 
 type AgentGetStatusMsg struct {
 	Name string `json:"name"`
@@ -57,48 +31,26 @@ func (AgentSetStatusMsg) BusTopic() string { return "agents.set-status" }
 
 // ── Responses ──
 
-type AgentRequestResp struct {
-	ResultMeta
-	Text string `json:"text"`
-}
-
-
-type AgentUnregisterResp struct {
-	ResultMeta
-	OK bool `json:"ok"`
-}
-
-
 type AgentGetStatusResp struct {
 	ResultMeta
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
-
 type AgentSetStatusResp struct {
 	ResultMeta
 	OK bool `json:"ok"`
 }
-
 
 type AgentListResp struct {
 	ResultMeta
 	Agents []AgentInfo `json:"agents"`
 }
 
-
 type AgentDiscoverResp struct {
 	ResultMeta
 	Agents []AgentInfo `json:"agents"`
 }
-
-
-type AgentMessageResp struct {
-	ResultMeta
-	Delivered bool `json:"delivered"`
-}
-
 
 // ── Shared types ──
 

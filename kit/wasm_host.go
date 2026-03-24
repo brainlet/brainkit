@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 	"unicode/utf16"
 
+	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 )
@@ -230,30 +233,21 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			hs.kit.emitLog(source, levelStr, msg)
 		}).Export("log").
 
-		// ── 2. send(topic: string, payload: string) ──
-		// Fire-and-forget bus publish. (module-protocol §4.1, §12.1)
+		// ── 2. bus_emit(topic: string, payload: string) ──
+		// Fire-and-forget bus publish. No replyTo.
 		NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, m api.Module, topicPtr, payloadPtr uint32) {
 			topic := readASString(m, topicPtr)
 			payload := readASString(m, payloadPtr)
-			if commandCatalog().HasCommand(topic) {
-				log.Printf("[wasm:send] rejected command topic %q; send only publishes events", topic)
-				return
+			if err := hs.kit.publish(ctx, topic, json.RawMessage(payload)); err != nil {
+				log.Printf("[wasm:bus_emit] publish to %s failed: %v", topic, err)
 			}
-			raw := json.RawMessage(payload)
-			if err := eventCatalog().Validate(topic, raw); err != nil {
-				log.Printf("[wasm:send] invalid event for %s: %v", topic, err)
-				return
-			}
-			if err := hs.kit.publish(ctx, topic, raw); err != nil {
-				log.Printf("[wasm:send] publish to %s failed: %v", topic, err)
-			}
-		}).Export("send").
+		}).Export("bus_emit").
 
-		// ── 3. invokeAsync(topic: string, payload: string, callbackFuncName: string) ──
-		// Async typed command invocation. Goroutine dispatches to a local domain method,
-		// then calls the exported callback with the typed result payload.
-		// (module-protocol §4.2, §12.1)
+		// ── 3. bus_publish(topic: string, payload: string, callbackFuncName: string) ──
+		// Publish to bus with replyTo. Subscribes to replyTo topic and routes the
+		// response back to the WASM callback. Can talk to .ts services, other WASM
+		// shards, plugins — anything on the bus.
 		NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, m api.Module, topicPtr, payloadPtr, callbackPtr uint32) {
 			topic := readASString(m, topicPtr)
@@ -270,32 +264,64 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 					invokeCtx = ctx
 				}
 
-				_, ok := commandCatalog().Lookup(topic)
-				if !ok {
-					// Always call back, even on error — use generic error shape
-					errPayload := `{"error":"unknown command topic: ` + topic + `"}`
-					if callErr := hs.callExportedFunc(callbackName, topic+".result", errPayload); callErr != nil {
-						log.Printf("[wasm:invokeAsync] callback delivery failed: %v", callErr)
+				// First try the catalog (for infrastructure commands like tools.call, fs.read)
+				if spec, ok := commandCatalog().Lookup(topic); ok && spec.invokeKernel != nil {
+					resultPayload, err := invoker.Invoke(invokeCtx, topic, json.RawMessage(payload))
+					resultTopic := topic + ".result"
+					if err != nil {
+						resultPayload, _ = json.Marshal(map[string]string{"error": err.Error()})
+					}
+					if callErr := hs.callExportedFunc(callbackName, resultTopic, string(resultPayload)); callErr != nil {
+						log.Printf("[wasm:bus_publish] callback delivery failed: %v", callErr)
 					}
 					return
 				}
 
-				resultPayload, err := invoker.Invoke(invokeCtx, topic, json.RawMessage(payload))
-				resultTopic := topic + ".result" // convention for WASM callbacks
-				if err != nil {
-					resultPayload, _ = json.Marshal(map[string]string{"error": err.Error()})
+				// Not a catalog command — publish to the bus with replyTo
+				correlationID := fmt.Sprintf("wasm-%d", time.Now().UnixNano())
+				replyTo := topic + ".reply." + correlationID
+
+				// Subscribe to replyTo first
+				replyCtx, replyCancel := context.WithTimeout(invokeCtx, 30*time.Second)
+				defer replyCancel()
+
+				replyCh := make(chan messages.Message, 1)
+				unsub, subErr := hs.kit.SubscribeRaw(replyCtx, replyTo, func(msg messages.Message) {
+					select {
+					case replyCh <- msg:
+					default:
+					}
+				})
+				if subErr != nil {
+					errPayload := `{"error":"bus_publish: subscribe failed: ` + subErr.Error() + `"}`
+					hs.callExportedFunc(callbackName, topic+".reply", errPayload)
+					return
+				}
+				defer unsub()
+
+				// Publish with replyTo metadata
+				publishCtx := messaging.WithPublishMeta(invokeCtx, correlationID, replyTo)
+				if _, pubErr := hs.kit.PublishRaw(publishCtx, topic, json.RawMessage(payload)); pubErr != nil {
+					errPayload := `{"error":"bus_publish: publish failed: ` + pubErr.Error() + `"}`
+					hs.callExportedFunc(callbackName, topic+".reply", errPayload)
+					return
 				}
 
-				// Always call back — uses callExportedFunc for pin/unpin/call lifecycle
-				if callErr := hs.callExportedFunc(callbackName, resultTopic, string(resultPayload)); callErr != nil {
-					log.Printf("[wasm:invokeAsync] callback delivery failed: %v", callErr)
+				// Wait for reply
+				select {
+				case msg := <-replyCh:
+					if callErr := hs.callExportedFunc(callbackName, topic+".reply", string(msg.Payload)); callErr != nil {
+						log.Printf("[wasm:bus_publish] callback delivery failed: %v", callErr)
+					}
+				case <-replyCtx.Done():
+					errPayload := `{"error":"bus_publish: timeout waiting for reply"}`
+					hs.callExportedFunc(callbackName, topic+".reply", errPayload)
 				}
 			}()
-		}).Export("invokeAsync").
+		}).Export("bus_publish").
 
-		// ── 4. on(topic: string, funcName: string) ──
+		// ── 4. bus_on(topic: string, funcName: string) ──
 		// Subscribe to topic pattern. Init phase only.
-		// (module-protocol §12.1)
 		NewFunctionBuilder().
 		WithFunc(func(ctx context.Context, m api.Module, topicPtr, funcPtr uint32) {
 			if !hs.initPhase {
@@ -304,7 +330,7 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			topic := readASString(m, topicPtr)
 			funcName := readASString(m, funcPtr)
 			hs.shardHandlers[topic] = funcName
-		}).Export("on").
+		}).Export("bus_on").
 
 		// ── 5. tool(name: string, funcName: string) ──
 		// Register a tool this shard provides. Init phase only.

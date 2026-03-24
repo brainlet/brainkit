@@ -187,6 +187,7 @@ func TestBackendMatrix(t *testing.T) {
 							description: "matrix test tool",
 							execute: async () => ({ backend: "works" })
 						});
+						kit.register("tool", "matrix-tool", matrixTool);
 					`,
 				})
 				require.NoError(t, err)
@@ -311,8 +312,8 @@ func TestBackendMatrix(t *testing.T) {
 			t.Run("wasm_deploy_lifecycle", func(t *testing.T) {
 				cpr, _ := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _on, _setMode } from "brainkit";
-						export function init(): void { _setMode("stateless"); _on("matrix.ev", "h"); }
+						import { _busOn, _setMode } from "brainkit";
+						export function init(): void { _setMode("stateless"); _busOn("matrix.ev", "h"); }
 						export function h(t: usize, p: usize): void {}
 					`, Options: &messages.WasmCompileOpts{Name: "matrix-shard-" + backend},
 				})

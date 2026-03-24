@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill/message"
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
+	"github.com/brainlet/brainkit/internal/messaging"
 	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // registerBridges adds Go bridge functions to the Kernel's QuickJS context.
@@ -195,6 +199,78 @@ func (k *Kernel) registerBridges() {
 			return qctx.NewUndefined()
 		}))
 
+	// __go_brainkit_bus_publish(topic, payloadJSON) → JSON string {replyTo, correlationId}
+	// Publishes a message with auto-generated replyTo, returns routing info to JS.
+	qctx.Globals().Set("__go_brainkit_bus_publish",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 2 {
+				return qctx.ThrowError(fmt.Errorf("bus_publish: expected 2 args (topic, payload)"))
+			}
+			topic := args[0].String()
+			payload := json.RawMessage(args[1].String())
+
+			correlationID := uuid.NewString()
+			replyTo := topic + ".reply." + correlationID
+
+			ctx := messaging.WithPublishMeta(context.Background(), correlationID, replyTo)
+			_, err := k.remote.PublishRaw(ctx, topic, payload)
+			if err != nil {
+				return qctx.ThrowError(fmt.Errorf("bus_publish %s: %w", topic, err))
+			}
+
+			result, _ := json.Marshal(map[string]string{
+				"replyTo":       replyTo,
+				"correlationId": correlationID,
+			})
+			return qctx.NewString(string(result))
+		}))
+
+	// __go_brainkit_bus_emit(topic, payloadJSON) → void
+	// Fire-and-forget publish. No replyTo, no correlationId returned.
+	qctx.Globals().Set("__go_brainkit_bus_emit",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 2 {
+				return qctx.ThrowError(fmt.Errorf("bus_emit: expected 2 args (topic, payload)"))
+			}
+			topic := args[0].String()
+			payload := json.RawMessage(args[1].String())
+
+			if err := k.publish(context.Background(), topic, payload); err != nil {
+				return qctx.ThrowError(fmt.Errorf("bus_emit %s: %w", topic, err))
+			}
+			return qctx.NewUndefined()
+		}))
+
+	// __go_brainkit_bus_reply(replyTo, payloadJSON, correlationId, done) → void
+	// Publishes a response to a specific replyTo topic with correlationId and done flag.
+	// Used by msg.reply() (done=true) and msg.send() (done=false) in JS.
+	qctx.Globals().Set("__go_brainkit_bus_reply",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 4 {
+				return qctx.ThrowError(fmt.Errorf("bus_reply: expected 4 args (replyTo, payload, correlationId, done)"))
+			}
+			replyTo := args[0].String()
+			payload := args[1].String()
+			correlationID := args[2].String()
+			done := args[3].ToBool()
+
+			if replyTo == "" {
+				return qctx.NewUndefined()
+			}
+
+			wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
+			wmsg.Metadata.Set("correlationId", correlationID)
+			if done {
+				wmsg.Metadata.Set("done", "true")
+			}
+
+			// replyTo is already namespaced+sanitized by the publisher
+			if err := k.transport.Publisher.Publish(replyTo, wmsg); err != nil {
+				return qctx.ThrowError(fmt.Errorf("bus_reply to %s: %w", replyTo, err))
+			}
+			return qctx.NewUndefined()
+		}))
+
 	qctx.Globals().Set("__go_brainkit_subscribe",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
@@ -202,13 +278,46 @@ func (k *Kernel) registerBridges() {
 			}
 			topic := args[0].String()
 			subID := uuid.NewString()
-			cancel, err := k.subscribe(topic, func(payload []byte) {
-				quoted := strconv.Quote(string(payload))
+			cancel, err := k.subscribe(topic, func(msg messages.Message) {
+				// Build full message JSON with metadata for JS handlers
+				msgObj := map[string]any{
+					"topic": msg.Topic,
+				}
+				// Parse payload as raw JSON; fall back to string
+				if len(msg.Payload) > 0 && (msg.Payload[0] == '{' || msg.Payload[0] == '[' || msg.Payload[0] == '"') {
+					msgObj["payload"] = json.RawMessage(msg.Payload)
+				} else {
+					msgObj["payload"] = string(msg.Payload)
+				}
+				if msg.CallerID != "" {
+					msgObj["callerId"] = msg.CallerID
+				}
+				if msg.Metadata != nil {
+					if v := msg.Metadata["replyTo"]; v != "" {
+						msgObj["replyTo"] = v
+					}
+					if v := msg.Metadata["correlationId"]; v != "" {
+						msgObj["correlationId"] = v
+					}
+				}
+				msgJSON, _ := json.Marshal(msgObj)
+				quoted := strconv.Quote(string(msgJSON))
+
 				qctx.Schedule(func(qctx *quickjs.Context) {
 					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { fn(JSON.parse(%s)); } })()`, subID, quoted)
 					val := qctx.Eval(script)
 					if val != nil {
-						val.Free()
+						if val.IsPromise() {
+							// Async handler — await it so streaming, agent calls, etc. complete.
+							// ctx.Await is reentrant: it polls ProcessJobs + JS_ExecutePendingJob,
+							// so nested Schedule'd work (fetch chunks, other bus messages) fires.
+							awaited := qctx.Await(val)
+							if awaited != nil {
+								awaited.Free()
+							}
+						} else {
+							val.Free()
+						}
 					}
 				})
 			})

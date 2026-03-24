@@ -50,6 +50,7 @@ func TestGoDirect_Kit(t *testing.T) {
 							description: "tool from deploy test",
 							execute: async () => ({ ok: true })
 						});
+						kit.register("tool", "kit-deployed-tool", t);
 					`,
 				})
 				require.NoError(t, err)
@@ -106,7 +107,7 @@ func TestGoDirect_Kit(t *testing.T) {
 				// Deploy v1
 				_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "kit-redeploy.ts",
-					Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) });`,
+					Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "redeploy-v1", t);`,
 				})
 				require.NoError(t, err)
 				_ch5 := make(chan messages.KitDeployResp, 1)
@@ -121,7 +122,7 @@ func TestGoDirect_Kit(t *testing.T) {
 				// Redeploy v2
 				_pr6, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 					Source: "kit-redeploy.ts",
-					Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
+					Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "redeploy-v2", t);`,
 				})
 				require.NoError(t, err)
 				_ch6 := make(chan messages.KitRedeployResp, 1)
@@ -164,7 +165,7 @@ func TestGoDirect_Kit(t *testing.T) {
 			t.Run("Deploy_Duplicate", func(t *testing.T) {
 				_pr9, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
-					Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) });`,
+					Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) }); kit.register("tool", "dup-tool", t);`,
 				})
 				require.NoError(t, err)
 				_ch9 := make(chan messages.KitDeployResp, 1)
@@ -179,7 +180,7 @@ func TestGoDirect_Kit(t *testing.T) {
 				// Deploy again with same source — should fail
 				_epr2, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 					Source: "dup.ts",
-					Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) });`,
+					Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) }); kit.register("tool", "dup-tool-2", t);`,
 				})
 				require.NoError(t, err)
 				_ech2 := make(chan string, 1)

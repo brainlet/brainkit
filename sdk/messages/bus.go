@@ -1,5 +1,7 @@
 package messages
 
+import "encoding/json"
+
 // BrainkitMessage is the interface all typed messages implement.
 // The BusTopic() return value is the Watermill routing key.
 //
@@ -40,4 +42,22 @@ type Message struct {
 	CallerID string            `json:"callerId,omitempty"`
 	TraceID  string            `json:"traceId,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// CustomMsg is a generic message for sending to any topic.
+// Used by Go Direct/Plugin to send messages to .ts deployments.
+// MarshalJSON serializes only the Payload (not the Topic wrapper),
+// so the .ts subscriber receives the inner payload directly as msg.payload.
+type CustomMsg struct {
+	Topic   string          `json:"-"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func (m CustomMsg) BusTopic() string { return m.Topic }
+
+func (m CustomMsg) MarshalJSON() ([]byte, error) {
+	if len(m.Payload) > 0 {
+		return []byte(m.Payload), nil
+	}
+	return []byte("null"), nil
 }

@@ -88,6 +88,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 								return { fromPlugin: result };
 							}
 						});
+						kit.register("tool", "plugin-caller", pluginCaller);
 					`,
 				})
 				require.NoError(t, err)
@@ -141,6 +142,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 							description: "a TS-side tool",
 							execute: async () => ({ from: "ts" })
 						});
+						kit.register("tool", "ts-side-tool", tsTool);
 					`,
 				})
 				require.NoError(t, err)

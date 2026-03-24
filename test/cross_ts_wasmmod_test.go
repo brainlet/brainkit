@@ -32,6 +32,7 @@ func TestCross_TS_WASM(t *testing.T) {
 								return { result: (input.value || 0) * 2 };
 							}
 						});
+						kit.register("tool", "ts-multiplier", tsTool);
 					`,
 				})
 				require.NoError(t, err)
@@ -44,17 +45,17 @@ func TestCross_TS_WASM(t *testing.T) {
 					t.Fatal("timeout")
 				}
 
-				// WASM surface: compile module that calls the TS tool via invokeAsync
+				// WASM surface: compile module that calls the TS tool via _busPublish
 				_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _invokeAsync, _setState } from "brainkit";
+						import { _busPublish, _setState } from "brainkit";
 
 						export function onResult(topic: usize, payload: usize): void {
 							_setState("callDone", "true");
 						}
 
 						export function run(): i32 {
-							_invokeAsync("tools.call", '{"name":"ts-multiplier","input":{"value":21}}', "onResult");
+							_busPublish("tools.call", '{"name":"ts-multiplier","input":{"value":21}}', "onResult");
 							return 0;
 						}
 					`,
@@ -97,11 +98,12 @@ func TestCross_TS_WASM(t *testing.T) {
 				// the test proves the wiring: compile → deploy → inject via Go → shard responds)
 				_pr4, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _on, _setMode, _reply } from "brainkit";
+						import { _busOn, _setMode, _reply } from "brainkit";
 
 						export function init(): void {
 							_setMode("stateless");
-							_on("ts.wasm.ping", "handlePing");
+							
+_busOn("ts.wasm.ping", "handlePing");
 						}
 
 						export function handlePing(topic: usize, payload: usize): void {

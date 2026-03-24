@@ -23,11 +23,12 @@ func TestWASM_Reply(t *testing.T) {
 	// Compile a shard that replies with a JSON payload
 	_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
-			import { _on, _setMode, _reply } from "brainkit";
+			import { _busOn, _setMode, _reply } from "brainkit";
 
 			export function init(): void {
 				_setMode("stateless");
-				_on("reply.test.event", "handleReply");
+				
+_busOn("reply.test.event", "handleReply");
 			}
 
 			export function handleReply(topic: usize, payload: usize): void {
@@ -80,11 +81,12 @@ func TestWASM_Reply_WithState(t *testing.T) {
 
 	_pr3, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
-			import { _on, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
+			import { _busOn, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
 
 			export function init(): void {
 				_setMode("persistent");
-				_on("counter.event", "handleCounter");
+				
+_busOn("counter.event", "handleCounter");
 			}
 
 			export function handleCounter(topic: usize, payload: usize): void {

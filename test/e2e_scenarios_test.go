@@ -32,6 +32,7 @@ func TestE2E_ToolPipeline(t *testing.T) {
 					return { greeting: "Hello, " + (input.name || "world") + "!" };
 				}
 			});
+			kit.register("tool", "greeter", greeter);
 		`,
 	})
 	require.NoError(t, err)
@@ -110,7 +111,7 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	// Deploy v1
 	_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 		Source: "lifecycle.ts",
-		Code:   `const v1 = createTool({ id: "version-check", description: "v1", execute: async () => ({ version: 1 }) });`,
+		Code:   `const v1 = createTool({ id: "version-check", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "version-check", v1);`,
 	})
 	require.NoError(t, err)
 	_ch5 := make(chan messages.KitDeployResp, 1)
@@ -144,7 +145,7 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 	// Redeploy with v2
 	_pr7, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
 		Source: "lifecycle.ts",
-		Code:   `const v2 = createTool({ id: "version-check-v2", description: "v2", execute: async () => ({ version: 2 }) });`,
+		Code:   `const v2 = createTool({ id: "version-check-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "version-check-v2", v2);`,
 	})
 	require.NoError(t, err)
 	_ch7 := make(chan messages.KitRedeployResp, 1)
@@ -287,11 +288,12 @@ func TestE2E_WasmShardLifecycle(t *testing.T) {
 	// Compile a persistent shard that accumulates event data
 	_pr15, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 		Source: `
-			import { _on, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
+			import { _busOn, _setMode, _reply, _getState, _setState, _hasState } from "brainkit";
 
 			export function init(): void {
 				_setMode("persistent");
-				_on("lifecycle.data", "handleData");
+				
+_busOn("lifecycle.data", "handleData");
 			}
 
 			export function handleData(topic: usize, payload: usize): void {

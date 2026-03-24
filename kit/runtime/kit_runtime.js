@@ -1,133 +1,19 @@
-// kit_runtime.js — The "kit" module.
-// Loaded into every sandbox before user code.
-// LOCAL imports wrap Mastra directly. PLATFORM imports call Go bridges.
+// kit_runtime.js — Bootstrap for brainkit .ts services.
+// Sets up: bus API, resource registry, model resolution, observability, compartments.
+// AI SDK and Mastra are accessed via "ai" and "agent" modules — NOT wrapped here.
 
 (function() {
   "use strict";
 
   var embed = globalThis.__agent_embed;
-  if (!embed) {
-    // Not in an agent-embed sandbox — skip runtime setup
-    return;
-  }
+  if (!embed) return;
 
-  // Suppress "Invalid target: draft-07" warnings from Zod v4's toJSONSchema.
-  // The AI SDK converts tool schemas with draft-07 target, which Zod v4 doesn't support.
-  // The schemas work correctly — just the warning is noisy.
-  var _origConsoleWarn = console.warn;
-  console.warn = function() {
-    if (arguments[0] && typeof arguments[0] === "string" && arguments[0].startsWith("Invalid target:")) return;
-    return _origConsoleWarn.apply(console, arguments);
-  };
+  // ─── QuickJS Workarounds ──────────────────────────────────────
+  // QuickJS bug: obj?.method() does NOT short-circuit when method is undefined.
+  // Mastra workflows and agents use this.#mastra?.generateId() internally.
+  // Fix: patch prototypes to inject storage shim before any method call.
 
-  // ─── LOCAL (intra-sandbox, direct JS, no bus) ──────────────────
-
-  // resolveModel converts "provider/model-id" to an AI SDK model instance
-  // using the provider configs injected by the sandbox.
-  var providerFactories = {
-    openai: "createOpenAI",
-    anthropic: "createAnthropic",
-    google: "createGoogleGenerativeAI",
-    mistral: "createMistral",
-    xai: "createXai",
-    groq: "createGroq",
-    deepseek: "createDeepSeek",
-    cerebras: "createCerebras",
-    perplexity: "createPerplexity",
-    togetherai: "createTogetherAI",
-    fireworks: "createFireworks",
-    cohere: "createCohere",
-  };
-
-  function resolveModel(modelStr) {
-    if (!modelStr || typeof modelStr !== "string") return modelStr;
-    var slashIdx = modelStr.indexOf("/");
-    if (slashIdx < 0) return modelStr;
-
-    var providerName = modelStr.substring(0, slashIdx);
-    var modelId = modelStr.substring(slashIdx + 1);
-
-    var providers = globalThis.__kit_providers || {};
-    var pc = providers[providerName];
-    if (!pc) return modelStr;
-
-    var factoryName = providerFactories[providerName];
-    if (!factoryName || !embed[factoryName]) return modelStr;
-
-    var opts = { apiKey: pc.APIKey || pc.apiKey };
-    if (pc.BaseURL || pc.baseURL) opts.baseURL = pc.BaseURL || pc.baseURL;
-    return embed[factoryName](opts)(modelId);
-  }
-
-  // ─── Shared result wrappers ─────────────────────────────────────
-  // THE brainlet response contract. Maps from Mastra/AI SDK internals to our stable shape.
-  // Both agent().generate() and ai.generate() return this exact shape.
-  function wrapGenerateResult(result) {
-    return {
-      text: result.text || "",
-      object: result.object || undefined,
-      reasoning: result.reasoningText || "",
-      usage: {
-        promptTokens: result.usage?.inputTokens || result.usage?.promptTokens || 0,
-        completionTokens: result.usage?.outputTokens || result.usage?.completionTokens || 0,
-        totalTokens: result.usage?.totalTokens || 0,
-      },
-      totalUsage: {
-        promptTokens: result.totalUsage?.inputTokens || 0,
-        completionTokens: result.totalUsage?.outputTokens || 0,
-        totalTokens: result.totalUsage?.totalTokens || 0,
-      },
-      finishReason: result.finishReason || "stop",
-      toolCalls: result.toolCalls || [],
-      toolResults: result.toolResults || [],
-      steps: result.steps || [],
-      sources: result.sources || [],
-      files: result.files || [],
-      warnings: result.warnings || [],
-      response: {
-        id: result.response?.id || "",
-        modelId: result.response?.modelId || "",
-        timestamp: result.response?.timestamp?.toISOString?.() || "",
-      },
-      traceId: result.traceId || undefined,
-      runId: result.runId || undefined,
-      providerMetadata: result.providerMetadata || undefined,
-      suspendPayload: result.suspendPayload || undefined,
-    };
-  }
-
-  // Both agent().stream() and ai.stream() return this exact shape.
-  // Wraps the internal stream object with stable field names.
-  function wrapStreamResult(rawStream) {
-    return {
-      textStream: rawStream.textStream,
-      fullStream: rawStream.fullStream,
-      text: rawStream.text,
-      object: rawStream.object,
-      usage: rawStream.usage,
-      totalUsage: rawStream.totalUsage,
-      finishReason: rawStream.finishReason,
-      reasoning: rawStream.reasoning || rawStream.reasoningText,
-      toolCalls: rawStream.toolCalls,
-      toolResults: rawStream.toolResults,
-      steps: rawStream.steps,
-      sources: rawStream.sources,
-      files: rawStream.files,
-      warnings: rawStream.warnings,
-      response: rawStream.response,
-      traceId: rawStream.traceId,
-      runId: rawStream.runId,
-      error: rawStream.error,
-      tripwire: rawStream.tripwire,
-      scoringData: rawStream.scoringData,
-      providerMetadata: rawStream.providerMetadata,
-    };
-  }
-
-  // Shared default store for the Kit (in-memory, persists across agent calls within this Kit)
   var _defaultStore = new embed.InMemoryStore();
-  // Expose for observability span queries (internal — not part of public API)
-  // Non-enumerable: hidden from user code iteration. Non-configurable: can't be deleted.
   Object.defineProperty(globalThis, '__kit_internal_store', {
     value: _defaultStore, writable: false, enumerable: false, configurable: false
   });
@@ -135,95 +21,53 @@
     value: null, writable: true, enumerable: false, configurable: false
   });
 
-  // Observability — auto-tracing for agents, tools, workflows, LLM calls.
-  // Config comes from Kit.Config.Observability (injected as globalThis.__brainkit_obs_config).
   var _obsConfig = globalThis.__brainkit_obs_config || { enabled: true, strategy: "realtime", serviceName: "brainkit" };
   var _observability = null;
   if (_obsConfig.enabled !== false) {
     try {
       if (embed.Observability && embed.DefaultExporter) {
         _observability = new embed.Observability({
-          configs: {
-            default: {
-              serviceName: _obsConfig.serviceName || "brainkit",
-              exporters: [new embed.DefaultExporter({
-                storage: _defaultStore,
-                strategy: _obsConfig.strategy || "realtime",
-              })],
-            },
-          },
+          configs: { default: {
+            serviceName: _obsConfig.serviceName || "brainkit",
+            exporters: [new embed.DefaultExporter({ storage: _defaultStore, strategy: _obsConfig.strategy || "realtime" })],
+          }},
         });
         globalThis.__kit_internal_observability = _observability;
       }
-    } catch(e) {
-      // Observability init failed — continue without tracing
-    }
+    } catch(e) {}
   }
 
-  // Storage shim — injected into workflows, scorers, and agents via __registerMastra().
-  // Provides getStorage() for snapshot persistence and observability for auto-tracing.
-  // Satisfies the Mastra interface without creating a full Mastra instance.
   var _workflowStorageShim = {
     getStorage: function() { return _defaultStore; },
     getLogger: function() { return undefined; },
     generateId: function() { return crypto.randomUUID(); },
     get observability() { return _observability; },
-    // Agent-specific: methods accessed via this.#mastra?.method()
-    // Must exist as functions (even no-ops) due to QuickJS optional chaining bug
     addWorkspace: function() {},
     getWorkspace: function() { return undefined; },
     getScorerById: function() { return undefined; },
     listGateways: function() { return undefined; },
   };
 
-  // Initialize observability exporters — they need the storage shim to persist spans.
-  // This replicates what Mastra.constructor does: this.#observability.setMastraContext({ mastra: this })
   if (_observability && typeof _observability.setMastraContext === "function") {
     try { _observability.setMastraContext({ mastra: _workflowStorageShim }); } catch(e) {}
   }
 
-  // Registry of active workflow runs — needed for resume after suspend.
-  // Key: runId, Value: { run, workflow }
-  var _pendingRuns = {};
-
-  // Registry of committed workflows — keyed by workflow ID.
-  // Used by workflows.run handler to find workflows by name.
-  var _workflows = {};
-  Object.defineProperty(globalThis, '__kit_workflows', {
-    value: _workflows, writable: false, enumerable: false, configurable: false
-  });
-  Object.defineProperty(globalThis, '__kit_pending_runs', {
-    value: _pendingRuns, writable: false, enumerable: false, configurable: false
-  });
-
-  // Wrap createWorkflow to inject storage for snapshot persistence and track runs.
-  // Without this, workflow suspend/resume cannot persist snapshots.
-  // QuickJS bug workaround: obj?.method() does NOT short-circuit when method is undefined.
-  // Mastra workflows call this.#mastra?.generateId() in createRun(). Without a mastra instance,
-  // QuickJS calls undefined() instead of returning undefined.
-  //
-  // Fix: patch the Workflow class prototype to inject our storage shim into every workflow
-  // instance via __registerMastra. This catches ALL workflows — user-created, scorer internals,
-  // processor workflows — regardless of how they're constructed.
+  // Patch Workflow.commit to inject storage shim
   (function() {
     var probe = embed.createWorkflow({ id: "__probe", inputSchema: embed.z.any(), outputSchema: embed.z.any() });
     var WorkflowProto = Object.getPrototypeOf(probe);
-    var _origCommitProto = WorkflowProto.commit;
-    if (_origCommitProto) {
+    var _origCommit = WorkflowProto.commit;
+    if (_origCommit) {
       WorkflowProto.commit = function() {
-        // Inject storage shim before commit so createRun() has a valid #mastra
         if (typeof this.__registerMastra === "function") {
           try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
         }
-        return _origCommitProto.apply(this, arguments);
+        return _origCommit.apply(this, arguments);
       };
     }
   })();
 
-  // Patch Agent constructor to auto-inject storage shim on every new Agent.
-  // This catches internally-created Agents (like observational memory's observer/reflector)
-  // that bypass our agent() wrapper. Without this, the internal agents hit QuickJS's
-  // optional chaining bug on this.#mastra?.generateId() etc.
+  // Patch Agent.generate/stream to inject storage shim
   (function() {
     var AgentProto = embed.Agent.prototype;
     var _origGenerate = AgentProto.generate;
@@ -246,606 +90,148 @@
     }
   })();
 
-  // wrappedCreateWorkflow — the public API that developers use.
-  function wrappedCreateWorkflow(config) {
-    var wf = embed.createWorkflow(config);
-    var workflowId = config && (config.id || config.name);
-    if (workflowId) {
-      _resourceRegistry.register("workflow", workflowId, workflowId, wf);
-      _workflows[workflowId] = wf;
-    }
-    return wf;
+  // ─── Model / Provider Resolution ──────────────────────────────
+
+  var providerFactories = {
+    openai: "createOpenAI", anthropic: "createAnthropic",
+    google: "createGoogleGenerativeAI", mistral: "createMistral",
+    xai: "createXai", groq: "createGroq", deepseek: "createDeepSeek",
+    cerebras: "createCerebras", perplexity: "createPerplexity",
+    togetherai: "createTogetherAI", fireworks: "createFireworks",
+    cohere: "createCohere",
+  };
+
+  function resolveModel(providerName, modelId) {
+    var providers = globalThis.__kit_providers || {};
+    var pc = providers[providerName];
+    if (!pc) return providerName + "/" + modelId;
+    var factoryName = providerFactories[providerName];
+    if (!factoryName || !embed[factoryName]) return providerName + "/" + modelId;
+    var opts = { apiKey: pc.APIKey || pc.apiKey };
+    if (pc.BaseURL || pc.baseURL) opts.baseURL = pc.BaseURL || pc.baseURL;
+    return embed[factoryName](opts)(modelId);
   }
 
-  // createWorkflowRun — create a run from a committed workflow, with storage + tracking.
-  // This is our own API that wraps workflow.createRun() to enable suspend/resume.
-  async function createWorkflowRun(workflow, opts) {
-    // Inject storage shim for snapshot persistence
-    if (typeof workflow.__registerMastra === "function") {
-      try { workflow.__registerMastra(_workflowStorageShim); } catch(e) {}
-    }
-    var run = await workflow.createRun(opts);
-    var origRunId = run.runId;
-    _pendingRuns[origRunId] = { run: run, workflow: workflow };
-
-    // Wrap start to track suspension
-    var _origStart = run.start.bind(run);
-    run.start = async function(params) {
-      var result = await _origStart(params);
-      if (result.status !== "suspended") {
-        delete _pendingRuns[origRunId];
-      }
-      return result;
-    };
-
-    return run;
-  }
-
-  // resumeWorkflow — resume a suspended workflow run.
-  // runId: the run's ID (from run.runId)
-  // stepId: (optional) which step to resume, auto-detected if omitted
-  // resumeData: the data to pass to the resumed step
-  async function resumeWorkflow(runId, stepId, resumeData) {
-    var entry = _pendingRuns[runId];
-    if (!entry) {
-      throw new Error("brainlet: no pending workflow run with id " + runId);
-    }
-
-    var resumeOpts = { resumeData: resumeData };
-    if (stepId) {
-      resumeOpts.step = stepId;
-    }
-
-    var result = await entry.run.resume(resumeOpts);
-
-    // Clean up if completed
-    if (result.status !== "suspended") {
-      delete _pendingRuns[runId];
-    }
-
-    return result;
-  }
-
-  // createMemory() — create a Memory instance using @mastra/memory
-  // Developers can pass their own storage or use the Kit's default in-memory store.
-  // Supports vector store + embedder for semantic recall.
-  // Supports observationalMemory for 3-tier memory compression.
-  function createMemory(memoryConfig) {
-    var storage = memoryConfig.storage || _defaultStore;
+  var _providerCache = {};
+  function resolveProvider(name) {
+    if (_providerCache[name]) return _providerCache[name];
+    var configJSON = __go_registry_resolve("provider", name);
+    if (!configJSON) throw new Error("AI provider '" + name + "' not registered");
+    var parsed = JSON.parse(configJSON);
+    var cfg = parsed.config || {};
+    var factoryName = providerFactories[parsed.type];
+    if (!factoryName || !embed[factoryName]) throw new Error("AI provider '" + parsed.type + "' not available");
     var opts = {};
-    if (typeof memoryConfig.lastMessages === "number") opts.lastMessages = memoryConfig.lastMessages;
-    if (memoryConfig.semanticRecall !== undefined) opts.semanticRecall = memoryConfig.semanticRecall;
-    if (memoryConfig.workingMemory !== undefined) opts.workingMemory = memoryConfig.workingMemory;
-    if (memoryConfig.generateTitle !== undefined) opts.generateTitle = memoryConfig.generateTitle;
-
-    // Observational memory — 3-tier compression (messages → observations → reflections)
-    if (memoryConfig.observationalMemory !== undefined) {
-      if (memoryConfig.observationalMemory === true) {
-        // Simple mode: use defaults (google/gemini-2.5-flash, 30K/40K thresholds)
-        opts.observationalMemory = true;
-      } else if (typeof memoryConfig.observationalMemory === "object") {
-        // Detailed config: resolve model strings to real model instances
-        var omCfg = { ...memoryConfig.observationalMemory };
-        if (omCfg.model && typeof omCfg.model === "string") {
-          omCfg.model = resolveModel(omCfg.model);
-        }
-        if (omCfg.observation && typeof omCfg.observation === "object") {
-          omCfg.observation = { ...omCfg.observation };
-          if (omCfg.observation.model && typeof omCfg.observation.model === "string") {
-            omCfg.observation.model = resolveModel(omCfg.observation.model);
-          }
-        }
-        if (omCfg.reflection && typeof omCfg.reflection === "object") {
-          omCfg.reflection = { ...omCfg.reflection };
-          if (omCfg.reflection.model && typeof omCfg.reflection.model === "string") {
-            omCfg.reflection.model = resolveModel(omCfg.reflection.model);
-          }
-        }
-        opts.observationalMemory = omCfg;
-      }
-    }
-
-    var memConfig = {
-      storage: storage,
-      options: opts,
-    };
-
-    // Vector store for semantic recall
-    if (memoryConfig.vector) {
-      memConfig.vector = memoryConfig.vector;
-    } else {
-      memConfig.vector = false;
-    }
-
-    // Embedder model for semantic recall (string like "openai/text-embedding-3-small")
-    if (memoryConfig.embedder) {
-      memConfig.embedder = memoryConfig.embedder;
-    }
-
-    var mem = new embed.Memory(memConfig);
-    // Inject storage shim into Memory — needed for observational memory's observer/reflector
-    // agents which access this.#mastra internally.
-    if (typeof mem.__registerMastra === "function") {
-      try { mem.__registerMastra(_workflowStorageShim); } catch(e) {}
-    }
-
-    var memId = memoryConfig.id || (memoryConfig.thread && memoryConfig.thread.id) || ("mem_" + Date.now());
-    _resourceRegistry.register("memory", memId, memId, mem);
-
-    return mem;
+    if (cfg.APIKey) opts.apiKey = cfg.APIKey;
+    if (cfg.BaseURL) opts.baseURL = cfg.BaseURL;
+    var instance = embed[factoryName](opts);
+    _providerCache[name] = instance;
+    return instance;
   }
 
-  // unwrapAgents extracts raw Mastra Agent instances from our wrapped agent objects.
-  // If a value has _mastraAgent, use that. Otherwise pass through (might be raw Mastra Agent).
-  function unwrapAgents(agents) {
-    if (!agents || typeof agents !== "object") return agents;
-    var result = {};
-    for (var key in agents) {
-      var val = agents[key];
-      result[key] = (val && val._mastraAgent) ? val._mastraAgent : val;
+  // ─── Storage / Vector Resolution (IIFE closure caching) ──────
+
+  var _storageCache = {};
+  function resolveStorage(name) {
+    if (_storageCache[name]) return _storageCache[name];
+    var configJSON = __go_registry_resolve("storage", name);
+    if (!configJSON) throw new Error("storage '" + name + "' not registered");
+    var parsed = JSON.parse(configJSON);
+    var cfg = parsed.config || {};
+    var instance;
+    switch (parsed.type) {
+      case "memory": instance = new embed.InMemoryStore(); break;
+      case "libsql": instance = new embed.LibSQLStore({ id: name, url: cfg.URL, authToken: cfg.AuthToken }); break;
+      case "postgres": instance = new embed.PostgresStore({ id: name, connectionString: cfg.ConnectionString }); break;
+      case "mongodb": instance = new embed.MongoDBStore({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
+      case "upstash": instance = new embed.UpstashStore({ id: name, url: cfg.URL, token: cfg.Token }); break;
+      default: throw new Error("storage type '" + parsed.type + "' not available");
     }
-    return result;
+    _storageCache[name] = instance;
+    return instance;
   }
 
-  // resolveModelArg handles both static strings and dynamic resolver functions for model config.
-  // Static: "openai/gpt-4o-mini" → resolved model instance
-  // Dynamic: ({ requestContext }) => "openai/gpt-4o-mini" → function that resolves at call time
-  function resolveModelArg(modelArg) {
-    if (typeof modelArg === "function") {
-      // Dynamic resolver — wrap it to resolve the model string when called
-      return function(ctx) {
-        var result = modelArg(ctx);
-        if (result && typeof result.then === "function") {
-          return result.then(function(str) { return resolveModel(str); });
-        }
-        return resolveModel(result);
-      };
+  var _vectorStoreCache = {};
+  function resolveVectorStore(name) {
+    if (_vectorStoreCache[name]) return _vectorStoreCache[name];
+    var configJSON = __go_registry_resolve("vectorStore", name);
+    if (!configJSON) throw new Error("vector store '" + name + "' not registered");
+    var parsed = JSON.parse(configJSON);
+    var cfg = parsed.config || {};
+    var instance;
+    switch (parsed.type) {
+      case "libsql": instance = new embed.LibSQLVector({ id: name, connectionUrl: cfg.URL, authToken: cfg.AuthToken }); break;
+      case "pgvector": instance = new embed.PgVector({ id: name, connectionString: cfg.ConnectionString }); break;
+      case "mongodb": instance = new embed.MongoDBVector({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
+      default: throw new Error("vector store type '" + parsed.type + "' not available");
     }
-    return resolveModel(modelArg);
+    _vectorStoreCache[name] = instance;
+    return instance;
   }
 
-  // ─── Constrained Subagents ───────────────────────────────────
-  // createSubagent() defines a subagent type with constrained tools.
-  // When used with the `subagents` config on agent(), a meta-tool is created
-  // that spawns fresh agents per invocation with filtered tool sets.
+  // ─── Resource Registry ────────────────────────────────────────
 
-  function createSubagent(def) {
-    return {
-      _isSubagentDef: true,
-      id: def.id,
-      name: def.name || def.id,
-      instructions: def.instructions || "",
-      allowedTools: def.allowedTools || [],
-      model: def.model || undefined,
-      maxSteps: def.maxSteps || 50,
-    };
-  }
-
-  // Builds the internal "subagent" meta-tool from subagent definitions + parent tools.
-  // The LLM sees one tool: subagent({ agentType, task }) which spawns a constrained agent.
-  function buildSubagentTool(subagentDefs, parentTools, onEvent) {
-    var defMap = {};
-    var validTypes = [];
-    for (var i = 0; i < subagentDefs.length; i++) {
-      defMap[subagentDefs[i].id] = subagentDefs[i];
-      validTypes.push(subagentDefs[i].id);
-    }
-
-    return embed.createTool({
-      id: "subagent",
-      description: "Delegate a task to a specialized sub-agent. Available types: " + validTypes.join(", ") + ".",
-      inputSchema: embed.z.object({
-        agentType: embed.z.enum(validTypes).describe("Which sub-agent type to use"),
-        task: embed.z.string().describe("Self-contained task description for the sub-agent"),
-      }),
-      execute: async function(input, context) {
-        var def = defMap[input.agentType];
-        if (!def) return { content: "Unknown agent type: " + input.agentType, isError: true };
-
-        var startTime = Date.now();
-        var toolCallLog = [];
-
-        // Filter tools by allowedTools
-        var filteredTools = {};
-        for (var t = 0; t < def.allowedTools.length; t++) {
-          var toolId = def.allowedTools[t];
-          if (parentTools[toolId]) filteredTools[toolId] = parentTools[toolId];
-        }
-
-        // Resolve model
-        var model = def.model ? resolveModel(def.model) : resolveModel(config?.model || "openai/gpt-4o-mini");
-
-        // Create fresh agent
-        var subAgent = new embed.Agent({
-          id: "subagent-" + def.id,
-          name: def.name + " Subagent",
-          instructions: def.instructions,
-          model: model,
-          tools: filteredTools,
-        });
-
-        // Inject storage shim for tracing
-        if (typeof subAgent.__registerMastra === "function") {
-          try { subAgent.__registerMastra(_workflowStorageShim); } catch(e) {}
-        }
-
-        // Emit start event
-        if (onEvent) {
-          onEvent({ type: "start", agentType: input.agentType, task: input.task });
-        }
-
-        try {
-          // Stream the sub-agent
-          var response = await subAgent.stream(input.task, {
-            maxSteps: def.maxSteps,
-            requestContext: context?.requestContext,
-          });
-
-          // Consume fullStream, forward events
-          var partialText = "";
-          var reader = response.fullStream.getReader();
-          while (true) {
-            var read = await reader.read();
-            if (read.done) break;
-            var chunk = read.value;
-            if (!chunk) continue;
-
-            if (chunk.type === "text-delta") {
-              partialText += (chunk.textDelta || chunk.payload?.text || "");
-              if (onEvent) onEvent({ type: "text_delta", agentType: input.agentType, text: chunk.textDelta || chunk.payload?.text || "" });
-            } else if (chunk.type === "tool-call") {
-              var toolName = chunk.toolName || chunk.payload?.toolName || "";
-              toolCallLog.push({ name: toolName });
-              if (onEvent) onEvent({ type: "tool_start", agentType: input.agentType, toolName: toolName, args: chunk.args || chunk.payload?.args });
-            } else if (chunk.type === "tool-result") {
-              var trName = chunk.toolName || chunk.payload?.toolName || "";
-              var isErr = chunk.isError || chunk.payload?.isError || false;
-              for (var j = toolCallLog.length - 1; j >= 0; j--) {
-                if (toolCallLog[j].name === trName && toolCallLog[j].isError === undefined) {
-                  toolCallLog[j].isError = isErr;
-                  break;
-                }
-              }
-              if (onEvent) onEvent({ type: "tool_end", agentType: input.agentType, toolName: trName, isError: isErr });
-            }
-          }
-
-          var fullText = "";
-          try { fullText = await response.text; } catch(e) { fullText = partialText; }
-          if (!fullText) fullText = partialText;
-
-          var durationMs = Date.now() - startTime;
-          var toolsStr = toolCallLog.map(function(tc) { return tc.name + ":" + (tc.isError ? "err" : "ok"); }).join(",");
-
-          if (onEvent) onEvent({ type: "end", agentType: input.agentType, durationMs: durationMs, isError: false });
-
-          return {
-            content: fullText + "\n<subagent-meta modelId=\"" + (def.model || "default") + "\" durationMs=\"" + durationMs + "\" tools=\"" + toolsStr + "\" />",
-            isError: false,
-          };
-        } catch(e) {
-          var durationMs = Date.now() - startTime;
-          if (onEvent) onEvent({ type: "end", agentType: input.agentType, durationMs: durationMs, isError: true });
-          return {
-            content: "Subagent \"" + def.name + "\" failed: " + (e.message || String(e)),
-            isError: true,
-          };
-        }
-      },
-    });
-  }
-
-  // Agent registry — tracks named agents for Harness mode resolution.
-  // When agent() is called with a name, the wrapped agent is stored here.
-  // The Harness looks up agents by name when resolving mode.agent.
-  var _agentRegistry = {};
-
-  // Expose agent registry as non-enumerable global for EvalTS access.
-  // agents.request handler looks up agents here by name.
-  Object.defineProperty(globalThis, '__kit_agent_registry', {
-    value: _agentRegistry, writable: false, enumerable: false, configurable: false
-  });
-
-  // Resource registry — tracks every resource created in this Kit.
-  // Keyed by "type:id". Used by Kit.ListResources(), Kit.TeardownFile(), etc.
   var _currentSource = "";
   var _resourceRegistry = {
     entries: {},
     cleanups: {},
-
     register: function(type, id, name, ref, cleanupFn) {
       var key = type + ":" + id;
-      // Idempotent: if re-registering same id, run old cleanup first
-      if (this.cleanups[key]) {
-        try { this.cleanups[key](); } catch(e) {}
-      }
+      if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} }
       this.entries[key] = {
-        type: type,
-        id: id,
-        name: name || id,
+        type: type, id: id, name: name || id,
         source: _currentSource || "unknown",
-        createdAt: Date.now(),
-        ref: ref,
+        createdAt: Date.now(), ref: ref,
       };
-      if (typeof cleanupFn === "function") {
-        this.cleanups[key] = cleanupFn;
-      }
+      if (typeof cleanupFn === "function") this.cleanups[key] = cleanupFn;
     },
-
     unregister: function(type, id) {
       var key = type + ":" + id;
       var entry = this.entries[key];
       if (entry) {
-        // Run cleanup hook if one exists
-        if (this.cleanups[key]) {
-          try { this.cleanups[key](); } catch(e) {}
-          delete this.cleanups[key];
-        }
+        if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} delete this.cleanups[key]; }
         delete this.entries[key];
         return entry;
       }
       return null;
     },
-
     list: function(type) {
       var result = [];
       for (var key in this.entries) {
         var entry = this.entries[key];
         if (!type || entry.type === type) {
-          result.push({
-            type: entry.type,
-            id: entry.id,
-            name: entry.name,
-            source: entry.source,
-            createdAt: entry.createdAt,
-          });
+          result.push({ type: entry.type, id: entry.id, name: entry.name, source: entry.source, createdAt: entry.createdAt });
         }
       }
       return result;
     },
-
     listBySource: function(source) {
       var result = [];
       for (var key in this.entries) {
         var entry = this.entries[key];
-        if (entry.source === source) {
-          result.push({
-            type: entry.type,
-            id: entry.id,
-            name: entry.name,
-            source: entry.source,
-            createdAt: entry.createdAt,
-          });
-        }
+        if (entry.source === source) result.push({ type: entry.type, id: entry.id, name: entry.name, source: entry.source, createdAt: entry.createdAt });
       }
       return result;
     },
-
-    get: function(type, id) {
-      return this.entries[type + ":" + id] || null;
-    },
-
-    clear: function() {
-      this.entries = {};
-    },
+    get: function(type, id) { return this.entries[type + ":" + id] || null; },
   };
-
-  // Expose registry for Go API access
   Object.defineProperty(globalThis, '__kit_registry', {
     value: _resourceRegistry, writable: false, enumerable: false, configurable: false
   });
 
-  // agent() — create a persistent agent in THIS Kit
-  function agent(config) {
-    var agentOpts = {
-      name: config.name || "unnamed",
-      id: config.id || undefined,
-      description: config.description || "",
-      instructions: config.instructions || "",
-      model: resolveModelArg(config.model),
-      tools: config.tools || {},
-    };
+  // ─── Bridge Helpers ───────────────────────────────────────────
 
-    // Forward all Mastra Agent config fields
-    if (config.maxSteps !== undefined) agentOpts.maxSteps = config.maxSteps;
-    if (config.defaultOptions) agentOpts.defaultOptions = config.defaultOptions;
-    if (config.requestContextSchema) agentOpts.requestContextSchema = config.requestContextSchema;
-    if (config.inputProcessors) agentOpts.inputProcessors = config.inputProcessors;
-    if (config.outputProcessors) agentOpts.outputProcessors = config.outputProcessors;
-    if (config.maxProcessorRetries !== undefined) agentOpts.maxProcessorRetries = config.maxProcessorRetries;
-    if (config.scorers) agentOpts.scorers = config.scorers;
-    if (config.workspace) agentOpts.workspace = config.workspace;
-    if (config.voice) agentOpts.voice = config.voice;
-    if (config.workflows) agentOpts.workflows = config.workflows;
-
-    // Agents (subagents for delegation/supervisor pattern).
-    // Extract raw Mastra Agent instances from our wrapped agents.
-    if (config.agents) {
-      if (typeof config.agents === "function") {
-        // Dynamic resolver — wrap to extract _mastraAgent from resolved agents
-        var origAgentsFn = config.agents;
-        agentOpts.agents = function(ctx) {
-          var result = origAgentsFn(ctx);
-          if (result && typeof result.then === "function") {
-            return result.then(function(agents) { return unwrapAgents(agents); });
-          }
-          return unwrapAgents(result);
-        };
-      } else {
-        agentOpts.agents = unwrapAgents(config.agents);
-      }
-    }
-
-    // Constrained subagents — creates a meta-tool that spawns typed sub-agents
-    // with filtered tool sets. Different from `agents` config (which is raw Mastra).
-    if (config.subagents && Array.isArray(config.subagents)) {
-      var subagentDefs = config.subagents.filter(function(s) { return s && s._isSubagentDef; });
-      if (subagentDefs.length > 0) {
-        var subagentMetaTool = buildSubagentTool(subagentDefs, config.tools || {}, config.onSubagentEvent || null);
-        agentOpts.tools = Object.assign({}, agentOpts.tools, { subagent: subagentMetaTool });
-      }
-    }
-
-    // Memory: accept a Memory instance directly (Mastra-style) or a config object
-    var memoryInstance = null;
-    var memoryOpts = null;
-    if (config.memory) {
-      if (config.memory instanceof embed.Memory || (config.memory.constructor && config.memory.constructor.name === "Memory")) {
-        // Already a Memory instance — pass through (Mastra API)
-        agentOpts.memory = config.memory;
-        memoryInstance = config.memory;
-      } else {
-        // Config object — create Memory from it
-        memoryInstance = createMemory(config.memory);
-        agentOpts.memory = memoryInstance;
-        memoryOpts = {
-          thread: typeof config.memory.thread === "string" ? { id: config.memory.thread } : config.memory.thread || { id: "default" },
-          resource: config.memory.resource || "default",
-        };
-      }
-    }
-
-    var a = new embed.Agent(agentOpts);
-
-    // Inject storage shim (includes observability) for auto-tracing.
-    if (typeof a.__registerMastra === "function") {
-      try {
-        a.__registerMastra(_workflowStorageShim);
-      } catch(e) {}
-    }
-
-    var wrapped = {
-      generate: async function(promptOrMessages, options) {
-        var opts = options || {};
-        if (memoryOpts && !opts.memory) {
-          opts.memory = memoryOpts;
-        }
-        var result = await a.generate(
-          typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
-          opts
-        );
-        return wrapGenerateResult(result);
-      },
-      stream: async function(promptOrMessages, options) {
-        var opts = options || {};
-        if (memoryOpts && !opts.memory) {
-          opts.memory = memoryOpts;
-        }
-        var result = await a.stream(
-          typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
-          opts
-        );
-        return wrapStreamResult(result);
-      },
-      // Direct access to the Memory instance — for thread/message management.
-      // null if no memory configured.
-      memory: memoryInstance,
-      // Supervisor/network mode — delegates to registered sub-agents.
-      // The routing agent sees sub-agents as tools (agent-<name>) and delegates.
-      network: async function(promptOrMessages, options) {
-        var opts = options || {};
-        if (memoryOpts && !opts.memory) {
-          opts.memory = memoryOpts;
-        }
-        var result = await a.network(
-          typeof promptOrMessages === "string" ? promptOrMessages : promptOrMessages,
-          opts
-        );
-        return wrapGenerateResult(result);
-      },
-      // Internal: raw Mastra Agent instance (used by runEvals, not part of public API).
-      _mastraAgent: a,
-    };
-
-    // Register named agents for Harness mode resolution
-    if (config.name) {
-      _agentRegistry[config.name] = wrapped;
-
-      // Auto-register on the bus agent registry
-      try {
-        bridgeControl("agents.register", {
-          name: config.name,
-          capabilities: (function() {
-            var caps = [];
-            if (config.tools && typeof config.tools === "object") {
-              var keys = Object.keys(config.tools);
-              for (var i = 0; i < keys.length; i++) {
-                caps.push(keys[i]);
-              }
-            }
-            return caps;
-          })(),
-          model: typeof config.model === "string" ? config.model : "",
-          kit: globalThis.__brainkit_sandbox_id || "",
-        });
-      } catch(e) {
-        console.error("[agent] bus registration failed for " + config.name + ": " + e);
-        throw e;
-      }
-    }
-
-    // Track in resource registry with cleanup hook
-    var _agentId = config.name || config.id || ("agent_" + Date.now());
-    _resourceRegistry.register("agent", _agentId, config.name || "unnamed", wrapped, function() {
-      // Cleanup: remove from agent registry + unregister from bus
-      delete _agentRegistry[_agentId];
-      try { bridgeControl("agents.unregister", { name: _agentId }); } catch(e) {}
-    });
-
-    return wrapped;
-  }
-
-  // createTool() — define a tool in THIS sandbox
-  // Spread passthrough: forwards ALL Mastra fields (outputSchema, suspendSchema, resumeSchema,
-  // requireApproval, toModelOutput, providerOptions, lifecycle hooks, etc.)
-  // Backward-compat: accepts `name` as alias for `id`, `schema` as alias for `inputSchema`.
-  function createTool(config) {
-    var tool = embed.createTool({
-      ...config,
-      id: config.id || config.name,
-      inputSchema: config.inputSchema || config.schema || embed.z.object({}),
-    });
-    if (typeof config.execute === "function") {
-      try { tool.__brainkit_execute = config.execute; } catch(e) {}
-    }
-    var toolId = config.id || config.name;
-    if (toolId) {
-      try {
-        bridgeControl("tools.register", {
-          name: toolId,
-          description: config.description || "",
-          inputSchema: config.inputSchema || config.schema || {},
-        });
-      } catch(e) {
-        console.error("[tool] registration failed for " + toolId + ": " + e);
-        throw e;
-      }
-      _resourceRegistry.register("tool", toolId, toolId, tool, function() {
-        try { bridgeControl("tools.unregister", { name: toolId }); } catch(e) {}
-      });
-    }
-    return tool;
-  }
-
-  // z — Zod schemas
-  var z = embed.z;
-
-  // ─── PLATFORM (cross-sandbox, through Go bridges) ──────────────
-
-  // Synchronous bridge request — blocks QuickJS thread. For quick ops (tools.resolve).
   function bridgeRequest(topic, payload) {
     if (typeof __go_brainkit_request === "function") {
       return __go_brainkit_request(topic, typeof payload === "string" ? payload : JSON.stringify(payload));
     }
-    throw new Error("brainlet: platform bridge not available (topic: " + topic + ")");
+    throw new Error("brainkit: platform bridge not available (topic: " + topic + ")");
   }
 
-  // Async bridge request — returns Promise, frees QuickJS thread. For I/O ops (tools.call).
   function bridgeRequestAsync(topic, payload) {
     if (typeof __go_brainkit_request_async === "function") {
       return __go_brainkit_request_async(topic, typeof payload === "string" ? payload : JSON.stringify(payload));
     }
-    // Fallback to sync if async not available
     return Promise.resolve(bridgeRequest(topic, payload));
   }
 
@@ -853,283 +239,66 @@
     if (typeof __go_brainkit_control === "function") {
       return __go_brainkit_control(action, typeof payload === "string" ? payload : JSON.stringify(payload));
     }
-    throw new Error("brainlet: platform control bridge not available (action: " + action + ")");
+    throw new Error("brainkit: platform control bridge not available (action: " + action + ")");
   }
 
-  // Parse bridge response, throwing if it contains an error.
   function parseBridgeResponse(raw) {
     var result = JSON.parse(raw);
-    if (result && result.error) {
-      throw new Error("brainlet: " + result.error);
-    }
+    if (result && result.error) throw new Error("brainkit: " + result.error);
     return result;
   }
 
-  // ai.* — LOCAL: direct LLM calls via AI SDK (generateText/streamText).
-  // No Agent creation, no bus round-trip.
-  var ai = {
-    generate: async function(params) {
-      var model = resolveModel(params.model);
-      var opts = { model: model };
-      if (params.prompt) opts.prompt = params.prompt;
-      if (params.system) opts.system = params.system;
-      if (params.messages) opts.messages = params.messages;
-      var result = await embed.generateText(opts);
-      return wrapGenerateResult(result);
-    },
-    stream: function(params) {
-      var model = resolveModel(params.model);
-      var opts = { model: model };
-      if (params.prompt) opts.prompt = params.prompt;
-      if (params.system) opts.system = params.system;
-      if (params.messages) opts.messages = params.messages;
-      var result = embed.streamText(opts);
-      return wrapStreamResult(result);
-    },
-    embed: async function(params) {
-      // LOCAL: uses AI SDK embed() + Mastra's ModelRouterEmbeddingModel
-      var embeddingModel = new embed.ModelRouterEmbeddingModel(params.model);
-      var result = await embed.embed({ model: embeddingModel, value: params.value });
-      return {
-        embedding: result.embedding,
-        usage: {
-          promptTokens: result.usage?.tokens || 0,
-          completionTokens: 0,
-          totalTokens: result.usage?.tokens || 0,
-        },
-      };
-    },
-    embedMany: async function(params) {
-      var embeddingModel = new embed.ModelRouterEmbeddingModel(params.model);
-      var result = await embed.embedMany({ model: embeddingModel, values: params.values });
-      return {
-        embeddings: result.embeddings,
-        usage: {
-          promptTokens: result.usage?.tokens || 0,
-          completionTokens: 0,
-          totalTokens: result.usage?.tokens || 0,
-        },
-      };
-    },
-    generateObject: async function(params) {
-      var model = resolveModel(params.model);
-      var opts = { model: model };
-      if (params.prompt) opts.prompt = params.prompt;
-      if (params.system) opts.system = params.system;
-      if (params.messages) opts.messages = params.messages;
-      if (params.schema) opts.schema = params.schema;
-      if (params.schemaName) opts.schemaName = params.schemaName;
-      if (params.schemaDescription) opts.schemaDescription = params.schemaDescription;
-      if (params.mode) opts.mode = params.mode;
-      if (params.output) opts.output = params.output;
-      if (params.enum) opts.enum = params.enum;
-      var result = await embed.generateObject(opts);
-      return {
-        object: result.object,
-        usage: {
-          promptTokens: result.usage?.promptTokens || 0,
-          completionTokens: result.usage?.completionTokens || 0,
-          totalTokens: result.usage?.totalTokens || 0,
-        },
-        finishReason: result.finishReason || "stop",
-        warnings: result.warnings || [],
-        response: {
-          id: result.response?.id || "",
-          modelId: result.response?.modelId || "",
-          timestamp: result.response?.timestamp?.toISOString?.() || "",
-        },
-      };
-    },
-    streamObject: function(params) {
-      var model = resolveModel(params.model);
-      var opts = { model: model };
-      if (params.prompt) opts.prompt = params.prompt;
-      if (params.system) opts.system = params.system;
-      if (params.messages) opts.messages = params.messages;
-      if (params.schema) opts.schema = params.schema;
-      if (params.schemaName) opts.schemaName = params.schemaName;
-      if (params.schemaDescription) opts.schemaDescription = params.schemaDescription;
-      if (params.mode) opts.mode = params.mode;
-      if (params.output) opts.output = params.output;
-      if (params.enum) opts.enum = params.enum;
-      var result = embed.streamObject(opts);
-      return {
-        partialObjectStream: result.partialObjectStream,
-        object: result.object,
-        usage: result.usage,
-        finishReason: result.finishReason,
-        warnings: result.warnings,
-        response: result.response,
-      };
-    },
-  };
+  // ─── Bus API ──────────────────────────────────────────────────
 
-  // wasm.* — compile/run via as-embed + wazero
-  var wasm = {
-    compile: async function(source, opts) {
-      var raw = bridgeRequest("wasm.compile", { source: source, options: opts || {} });
-      var result = parseBridgeResponse(raw);
-      if (result && result.moduleId) {
-        var name = (opts && opts.name) || result.moduleId;
-        _resourceRegistry.register("wasm", name, name, result);
-      }
-      return result;
-    },
-    run: async function(module, input) {
-      // Accept module object OR module name string
-      var payload;
-      if (typeof module === "string") {
-        payload = { moduleId: module, input: input };
-      } else {
-        payload = { module: module, input: input };
-      }
-      // MUST use async bridge — host functions (call_agent, call_tool) need
-      // the JS thread free to process EvalOnJSThread calls during WASM execution.
-      // Sync bridgeRequest would deadlock: JS blocked waiting for wasm.run,
-      // wasm.run blocked waiting for JS to process the scheduled eval.
-      var raw = await bridgeRequestAsync("wasm.run", payload);
-      return parseBridgeResponse(raw);
-    },
-    validate: async function(module) {
-      var raw = bridgeRequest("wasm.validate", { module: module });
-      return parseBridgeResponse(raw);
-    },
-    list: function() {
-      var raw = bridgeRequest("wasm.list", {});
-      return parseBridgeResponse(raw);
-    },
-    get: function(name) {
-      var raw = bridgeRequest("wasm.get", { name: name });
-      var result = parseBridgeResponse(raw);
-      return result || null;
-    },
-    remove: function(name) {
-      var raw = bridgeRequest("wasm.remove", { name: name });
-      var result = parseBridgeResponse(raw);
-      if (result && result.removed) {
-        _resourceRegistry.unregister("wasm", name);
-      }
-      return result ? result.removed : false;
-    },
-    exists: function(name) {
-      var raw = bridgeRequest("wasm.get", { name: name });
-      var result = parseBridgeResponse(raw);
-      return result !== null && result !== undefined;
-    },
-    deploy: async function(name) {
-      var raw = await bridgeRequestAsync("wasm.deploy", { name: name });
-      return parseBridgeResponse(raw);
-    },
-    undeploy: async function(name) {
-      var raw = await bridgeRequestAsync("wasm.undeploy", { name: name });
-      return parseBridgeResponse(raw);
-    },
-    describe: function(name) {
-      var raw = bridgeRequest("wasm.describe", { name: name });
-      return parseBridgeResponse(raw);
-    },
-  };
-
-  // tools.* — tool registry
-  var tools = {
-    call: async function(name, input) {
-      var raw = await bridgeRequestAsync("tools.call", { name: name, input: input });
-      var resp = parseBridgeResponse(raw);
-      return resp.result;
-    },
-    list: async function(namespace) {
-      var raw = bridgeRequest("tools.list", { namespace: namespace || "" });
-      return parseBridgeResponse(raw).tools || [];
-    },
-    register: async function(name, config) {
-      bridgeControl("tools.register", { name: name, description: config.description, inputSchema: config.inputSchema });
-    },
-  };
-
-  // buildZodFromJsonSchema — converts JSON Schema to Zod object for Mastra tools
-  function buildZodFromJsonSchema(schema) {
-    if (!schema || typeof schema !== "object") return embed.z.object({});
-    var props = schema.properties;
-    if (!props) return embed.z.object({});
-
-    var required = {};
-    if (Array.isArray(schema.required)) {
-      for (var i = 0; i < schema.required.length; i++) {
-        required[schema.required[i]] = true;
-      }
-    }
-
-    var shape = {};
-    for (var key in props) {
-      var prop = props[key];
-      var typ = prop.type || "string";
-      var field;
-      switch (typ) {
-        case "number": case "integer": field = embed.z.number(); break;
-        case "boolean": field = embed.z.boolean(); break;
-        case "array": field = embed.z.array(embed.z.any()); break;
-        case "object": field = buildZodFromJsonSchema(prop); break;
-        default: field = embed.z.string(); break;
-      }
-      if (prop.description) field = field.describe(prop.description);
-      if (!required[key]) field = field.optional();
-      shape[key] = field;
-    }
-    return embed.z.object(shape);
-  }
-
-  // tool() — namespace-aware tool lookup, returns Mastra-compatible tool
-  function tool(name) {
-    if (typeof __go_brainkit_request !== "function") {
-      throw new Error("brainlet: platform bridge not available for tool resolution");
-    }
-    var raw = bridgeRequest("tools.resolve", { name: name });
-    var info = parseBridgeResponse(raw);
-
-    // Build Zod schema from JSON Schema if available
-    var schema = embed.z.object({});
-    if (info.inputSchema) {
-      try {
-        var jsonSchema = typeof info.inputSchema === "string" ? JSON.parse(info.inputSchema) : info.inputSchema;
-        schema = buildZodFromJsonSchema(jsonSchema);
-      } catch(e) { /* fallback to empty schema */ }
-    }
-
-    var t = embed.createTool({
-      id: info.shortName || name,
-      description: info.description || "",
-      inputSchema: schema,
-      execute: async function(input) {
-        return await tools.call(info.name || name, input);
-      },
-    });
-    t._registryTool = true;
-    return t;
-  }
-
-  // bus.* — platform bus
-  // __bus_subs stores JS callback functions keyed by subscription ID.
-  // Non-enumerable: hidden from user code. Object contents are mutable (add/delete keys).
   Object.defineProperty(globalThis, '__bus_subs', {
     value: {}, writable: false, enumerable: false, configurable: false
   });
 
-  var busMod = {
-    send: function(topic, payload) {
-      __go_brainkit_bus_send(topic, JSON.stringify(payload || null));
+  function wrapMsg(rawMsg) {
+    return {
+      payload: rawMsg.payload,
+      replyTo: rawMsg.replyTo || "",
+      correlationId: rawMsg.correlationId || "",
+      topic: rawMsg.topic || "",
+      callerId: rawMsg.callerId || "",
+      reply: function(data) {
+        if (this.replyTo) {
+          __go_brainkit_bus_reply(this.replyTo, JSON.stringify(data), this.correlationId, true);
+        }
+      },
+      send: function(data) {
+        if (this.replyTo) {
+          __go_brainkit_bus_reply(this.replyTo, JSON.stringify(data), this.correlationId, false);
+        }
+      },
+    };
+  }
+
+  var bus = {
+    publish: function(topic, data) {
+      var result = __go_brainkit_bus_publish(topic, JSON.stringify(data || null));
+      return JSON.parse(result);
     },
-    publish: function(topic, payload) {
-      __go_brainkit_bus_send(topic, JSON.stringify(payload || null));
+    emit: function(topic, data) {
+      __go_brainkit_bus_emit(topic, JSON.stringify(data || null));
     },
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);
-      globalThis.__bus_subs[subId] = handler;
-      // Auto-register with cleanup for lifecycle management
+      globalThis.__bus_subs[subId] = function(rawMsg) {
+        handler(wrapMsg(rawMsg));
+      };
       _resourceRegistry.register("subscription", subId, subId, null, function() {
         __go_brainkit_unsubscribe(subId);
         delete globalThis.__bus_subs[subId];
       });
       return subId;
+    },
+    on: function(localTopic, handler) {
+      // bus.on requires a deployment namespace — set during deploy via __kitRunWithSource
+      if (!globalThis.__kit_deployment_namespace) {
+        throw new Error("bus.on() can only be used inside a deployed .ts file");
+      }
+      return bus.subscribe(globalThis.__kit_deployment_namespace + "." + localTopic, handler);
     },
     unsubscribe: function(subId) {
       __go_brainkit_unsubscribe(subId);
@@ -1138,15 +307,91 @@
     },
   };
 
-  // sandbox context
-  var sandboxCtx = {
-    id: globalThis.__brainkit_sandbox_id || "",
-    namespace: globalThis.__brainkit_sandbox_namespace || "",
-    callerID: globalThis.__brainkit_sandbox_callerID || "",
+  // ─── kit.register ─────────────────────────────────────────────
+
+  var _validTypes = { "tool": true, "agent": true, "workflow": true, "memory": true };
+
+  var kit = {
+    register: function(type, name, ref) {
+      if (!_validTypes[type]) {
+        throw new Error("kit.register: invalid type '" + type + "' (must be tool, agent, workflow, or memory)");
+      }
+      if (!name || typeof name !== "string") {
+        throw new Error("kit.register: name is required and must be a string");
+      }
+
+      // Idempotent: if already registered with same type+name, skip
+      var existing = _resourceRegistry.get(type, name);
+      if (existing) {
+        return; // already registered — no-op
+      }
+
+      var cleanupFn = null;
+      if (type === "tool") {
+        try {
+          bridgeControl("tools.register", { name: name, description: (ref && ref.description) || "", inputSchema: {} });
+        } catch(e) {}
+        cleanupFn = function() { try { bridgeControl("tools.unregister", { name: name }); } catch(e) {} };
+      } else if (type === "agent") {
+        try {
+          bridgeControl("agents.register", { name: name, capabilities: [], model: "", kit: globalThis.__brainkit_sandbox_id || "" });
+        } catch(e) {}
+        cleanupFn = function() { try { bridgeControl("agents.unregister", { name: name }); } catch(e) {} };
+      }
+      _resourceRegistry.register(type, name, name, ref, cleanupFn);
+    },
+    unregister: function(type, name) {
+      _resourceRegistry.unregister(type, name);
+    },
+    list: function(type) {
+      return _resourceRegistry.list(type);
+    },
+    get source() { return _currentSource; },
+    get namespace() { return globalThis.__brainkit_sandbox_namespace || ""; },
+    get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
   };
 
-  // output() — set the module's output value (read by Go after execution)
-  // Initialize as non-enumerable (hidden from user iteration) but writable.
+  // ─── Infrastructure APIs ──────────────────────────────────────
+
+  var tools = {
+    call: async function(name, input) {
+      var raw = await bridgeRequestAsync("tools.call", { name: name, input: input });
+      return parseBridgeResponse(raw).result;
+    },
+    list: function(namespace) {
+      var raw = bridgeRequest("tools.list", { namespace: namespace || "" });
+      return parseBridgeResponse(raw).tools || [];
+    },
+    resolve: function(name) {
+      var raw = bridgeRequest("tools.resolve", { name: name });
+      return parseBridgeResponse(raw);
+    },
+  };
+
+  var fs = {
+    read: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.read", { path: path })); },
+    write: async function(path, data) { return parseBridgeResponse(await bridgeRequestAsync("fs.write", { path: path, data: data })); },
+    list: async function(path, pattern) { return parseBridgeResponse(await bridgeRequestAsync("fs.list", { path: path || ".", pattern: pattern || "" })); },
+    stat: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.stat", { path: path })); },
+    delete: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.delete", { path: path })); },
+    mkdir: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.mkdir", { path: path })); },
+  };
+
+  var mcp = {
+    listTools: function(server) { return parseBridgeResponse(bridgeRequest("mcp.listTools", { server: server || "" })).tools || []; },
+    callTool: async function(server, tool, args) { return parseBridgeResponse(await bridgeRequestAsync("mcp.callTool", { server: server, tool: tool, args: args || {} })); },
+  };
+
+  var registry = {
+    has: function(category, name) { return __go_registry_has(category, name) === "true"; },
+    list: function(category) { return JSON.parse(__go_registry_list(category)); },
+    resolve: function(category, name) { var r = __go_registry_resolve(category, name); return r ? JSON.parse(r) : null; },
+    register: function(category, name, config) { bridgeControl("registry.register", { category: category, name: name, config: config }); },
+    unregister: function(category, name) { bridgeControl("registry.unregister", { category: category, name: name }); },
+  };
+
+  // ─── Output ───────────────────────────────────────────────────
+
   Object.defineProperty(globalThis, '__module_result', {
     value: undefined, writable: true, enumerable: false, configurable: false
   });
@@ -1154,655 +399,23 @@
     globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
   }
 
-  // Helper: convert a plain string to a MastraDBMessage (format used by type:'agent' scorers)
-  function toMastraDBMessage(text, role) {
-    return {
-      id: "msg-" + Math.random().toString(36).slice(2),
-      role: role || "user",
-      content: {
-        format: 2,
-        parts: [{ type: "text", text: text }],
-        content: text,
-      },
-      createdAt: new Date(),
-    };
-  }
-
-  // Wrap a pre-built scorer factory so .run() accepts plain strings
-  // Pre-built scorers use type:'agent' and expect MastraDBMessage arrays.
-  // We wrap .run() to convert plain string input/output to the agent format.
-  function wrapPrebuiltScorer(factoryFn) {
-    return function(opts) {
-      var scorer = factoryFn(opts);
-      // Inject storage shim (scorer creates workflow internally)
-      if (typeof scorer.__registerMastra === "function") {
-        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
-      }
-      var origRun = scorer.run.bind(scorer);
-      scorer.run = async function(input) {
-        // If input/output are plain strings, convert to MastraDBMessage format
-        var converted = {};
-        if (typeof input.input === "string") {
-          converted.input = {
-            inputMessages: [toMastraDBMessage(input.input, "user")],
-            rememberedMessages: [],
-            systemMessages: [],
-            taggedSystemMessages: {},
-          };
-        } else {
-          converted.input = input.input;
-        }
-        if (typeof input.output === "string") {
-          converted.output = [toMastraDBMessage(input.output, "assistant")];
-        } else {
-          converted.output = input.output;
-        }
-        if (input.runId) converted.runId = input.runId;
-        if (input.groundTruth !== undefined) converted.groundTruth = input.groundTruth;
-        return origRun(converted);
-      };
-      return scorer;
-    };
-  }
-
-  // Wrap an LLM-based pre-built scorer factory.
-  // Same as wrapPrebuiltScorer but also resolves the model string for the judge.
-  function wrapLLMScorer(factoryFn) {
-    return function(opts) {
-      // Resolve model string for the judge
-      if (opts && typeof opts.model === "string") {
-        opts = { ...opts, model: resolveModel(opts.model) };
-      }
-      var scorer = factoryFn(opts);
-      if (typeof scorer.__registerMastra === "function") {
-        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
-      }
-      // Wrap .run() to convert plain strings to MastraDBMessage format
-      var origRun = scorer.run.bind(scorer);
-      scorer.run = async function(input) {
-        var converted = {};
-        if (typeof input.input === "string") {
-          converted.input = {
-            inputMessages: [toMastraDBMessage(input.input, "user")],
-            rememberedMessages: [],
-            systemMessages: [],
-            taggedSystemMessages: {},
-          };
-        } else {
-          converted.input = input.input;
-        }
-        if (typeof input.output === "string") {
-          converted.output = [toMastraDBMessage(input.output, "assistant")];
-        } else {
-          converted.output = input.output;
-        }
-        if (input.runId) converted.runId = input.runId;
-        if (input.groundTruth !== undefined) converted.groundTruth = input.groundTruth;
-        return origRun(converted);
-      };
-      return scorer;
-    };
-  }
-
-  // ─── HARNESS ──────────────────────────────────────────────────
-
-  // buildZodFromJsonSchema converts a JSON Schema object to a Zod schema.
-  // Used by createHarness() to translate Go's JSON Schema stateSchema to the
-  // Zod schema that Mastra's Harness expects for state validation.
-  function buildZodFromJsonSchema(schema) {
-    if (!schema || typeof schema !== "object") return z.any();
-
-    if (schema.type === "string") {
-      var s = z.string();
-      if (schema["default"] !== undefined) s = s.default(schema["default"]);
-      return schema.optional ? s.optional() : s;
-    }
-    if (schema.type === "number" || schema.type === "integer") {
-      var n = z.number();
-      if (schema["default"] !== undefined) n = n.default(schema["default"]);
-      return schema.optional ? n.optional() : n;
-    }
-    if (schema.type === "boolean") {
-      var b = z.boolean();
-      if (schema["default"] !== undefined) b = b.default(schema["default"]);
-      return schema.optional ? b.optional() : b;
-    }
-    if (schema.type === "array") {
-      var items = schema.items ? buildZodFromJsonSchema(schema.items) : z.any();
-      var a = z.array(items);
-      if (schema["default"] !== undefined) a = a.default(schema["default"]);
-      return schema.optional ? a.optional() : a;
-    }
-    if (schema.type === "object") {
-      if (schema.properties) {
-        var shape = {};
-        var required = schema.required || [];
-        for (var key in schema.properties) {
-          var prop = schema.properties[key];
-          var field = buildZodFromJsonSchema(prop);
-          if (required.indexOf(key) < 0 && !prop.optional) field = field.optional();
-          shape[key] = field;
-        }
-        var obj = z.object(shape);
-        if (schema["default"] !== undefined) obj = obj.default(schema["default"]);
-        return schema.optional ? obj.optional() : obj;
-      }
-      // Object without properties — accept any object shape
-      return z.record(z.string(), z.any());
-    }
-    if (schema["enum"]) {
-      return z.enum(schema["enum"]);
-    }
-    return z.any();
-  }
-
-  // createHarness() — called from Go via Kit.InitHarness().
-  // Creates a Mastra Harness instance, bridges events to Go,
-  // and exposes all methods on globalThis.__brainkit_harness.
-  function createHarness(configJSON) {
-    var config = typeof configJSON === "string" ? JSON.parse(configJSON) : configJSON;
-
-    if (!embed.Harness) {
-      throw new Error("Harness not available in bundle — rebuild with @mastra/core/harness import");
-    }
-
-    // Resolve agent references from the registry
-    var modes = (config.modes || []).map(function(m) {
-      var agentRef = m.agentName ? _agentRegistry[m.agentName] : null;
-      if (m.agentName && !agentRef) {
-        throw new Error("Harness mode '" + m.id + "': agent '" + m.agentName + "' not found. Create the agent before InitHarness().");
-      }
-      return {
-        id: m.id,
-        name: m.name || m.id,
-        default: m["default"] || false,
-        defaultModelId: m.defaultModelId || "",
-        color: m.color || "",
-        agent: agentRef ? agentRef._mastraAgent : undefined,
-      };
-    });
-
-    // Build subagent definitions
-    var subagents = (config.subagents || []).map(function(s) {
-      return {
-        id: s.id,
-        allowedTools: s.allowedTools || [],
-        defaultModelId: s.defaultModelId || "",
-        instructions: s.instructions || "",
-      };
-    });
-
-    // Build Harness config
-    // Use the real InMemoryStore as storage (not the shim).
-    // The Harness creates a real Mastra instance with this storage for
-    // thread persistence and tool approval snapshots.
-    var harnessConfig = {
-      id: config.id,
-      modes: modes,
-      storage: _defaultStore,
-      resolveModel: function(modelId) { return resolveModel(modelId); },
-      heartbeatHandlers: [], // Go handles heartbeats, not JS
-    };
-
-    if (config.resourceId) harnessConfig.resourceId = config.resourceId;
-    if (config.stateSchema) harnessConfig.stateSchema = buildZodFromJsonSchema(config.stateSchema);
-    if (config.initialState) harnessConfig.initialState = config.initialState;
-    if (subagents.length > 0) harnessConfig.subagents = subagents;
-    if (config.omConfig) harnessConfig.omConfig = config.omConfig;
-    if (config.defaultPermissions) {
-      // Set up initial permission rules in initialState
-      if (!harnessConfig.initialState) harnessConfig.initialState = {};
-      if (!harnessConfig.initialState.permissionRules) {
-        harnessConfig.initialState.permissionRules = {
-          categories: config.defaultPermissions,
-          tools: {},
-        };
-      }
-    }
-
-    // Thread locking — delegated to Go bridges
-    harnessConfig.threadLock = {
-      acquire: async function(threadId) {
-        var err = __go_harness_lock_acquire(threadId);
-        if (err && err !== "null" && err !== null) throw new Error(err);
-      },
-      release: async function(threadId) {
-        var err = __go_harness_lock_release(threadId);
-        if (err && err !== "null" && err !== null) throw new Error(err);
-      },
-    };
-
-    var harness = new embed.Harness(harnessConfig);
-
-    // Event bridge: every JS event → Go
-    harness.subscribe(function(event) {
-      try {
-        __go_harness_event(JSON.stringify(event));
-      } catch(e) {
-        // Don't let bridge errors crash the harness
-      }
-    });
-
-    // Expose all methods for Go → JS calls
-    var _harnessAPI = {
-      init: function() { return harness.init(); },
-
-      // Core messaging
-      sendMessage: function(args) { return harness.sendMessage(args); },
-      abort: function() { return harness.abort(); },
-      steer: function(args) { return harness.steer(args); },
-      followUp: function(args) { return harness.followUp(args); },
-      isRunning: function() { return harness.isRunning(); },
-      getCurrentRunId: function() { return harness.getCurrentRunId(); },
-
-      // Threads
-      createThread: function(args) { return harness.createThread(args || {}); },
-      switchThread: function(args) { return harness.switchThread(args); },
-      deleteThread: function(args) { return harness.deleteThread(args); },
-      listThreads: function(args) { return harness.listThreads(args); },
-      renameThread: function(args) { return harness.renameThread(args); },
-      cloneThread: function(args) { return harness.cloneThread(args); },
-      getCurrentThreadId: function() { return harness.getCurrentThreadId(); },
-      listMessages: function(args) { return harness.listMessages(args); },
-      listMessagesForThread: function(args) { return harness.listMessagesForThread(args); },
-
-      // Modes
-      switchMode: function(args) { return harness.switchMode(args); },
-      listModes: function() { return harness.listModes(); },
-      getCurrentMode: function() { return harness.getCurrentMode(); },
-      getCurrentModeId: function() { return harness.getCurrentModeId(); },
-
-      // Models
-      switchModel: function(args) { return harness.switchModel(args); },
-      listAvailableModels: function() { return harness.listAvailableModels(); },
-      getCurrentModelId: function() { return harness.getCurrentModelId(); },
-      hasModelSelected: function() { return harness.hasModelSelected(); },
-
-      // Approval
-      respondToToolApproval: function(args) { return harness.respondToToolApproval(args); },
-      respondToQuestion: function(args) { return harness.respondToQuestion(args); },
-      respondToPlanApproval: function(args) { return harness.respondToPlanApproval(args); },
-
-      // Permissions
-      grantSessionCategory: function(args) { return harness.grantSessionCategory(args); },
-      grantSessionTool: function(args) { return harness.grantSessionTool(args); },
-      getSessionGrants: function() { return harness.getSessionGrants(); },
-      setPermissionForCategory: function(args) { return harness.setPermissionForCategory(args); },
-      setPermissionForTool: function(args) { return harness.setPermissionForTool(args); },
-      getPermissionRules: function() { return harness.getPermissionRules(); },
-
-      // State
-      getState: function() { return harness.getState(); },
-      setState: function(args) { return harness.setState(args); },
-      getDisplayState: function() { return harness.getDisplayState(); },
-
-      // OM
-      switchObserverModel: function(args) { return harness.switchObserverModel(args); },
-      switchReflectorModel: function(args) { return harness.switchReflectorModel(args); },
-      getObserverModelId: function() { return harness.getObserverModelId(); },
-      getReflectorModelId: function() { return harness.getReflectorModelId(); },
-
-      // Subagents
-      setSubagentModelId: function(args) { return harness.setSubagentModelId(args); },
-      getSubagentModelId: function(args) { return harness.getSubagentModelId(args); },
-
-      // Workspace
-      hasWorkspace: function() { return harness.hasWorkspace(); },
-      isWorkspaceReady: function() { return harness.isWorkspaceReady(); },
-      destroyWorkspace: function() { return harness.destroyWorkspace(); },
-
-      // Session
-      getSession: function() { return harness.getSession(); },
-      getTokenUsage: function() { return harness.getTokenUsage(); },
-
-      // Resource
-      setResourceId: function(args) { return harness.setResourceId(args); },
-      getResourceId: function() { return harness.getResourceId(); },
-      getKnownResourceIds: function() { return harness.getKnownResourceIds(); },
-    };
-    // Non-enumerable: hidden from user code. Non-configurable: can't be deleted.
-    Object.defineProperty(globalThis, '__brainkit_harness', {
-      value: _harnessAPI, writable: false, enumerable: false, configurable: false
-    });
-
-    _resourceRegistry.register("harness", config.id, config.id, harness);
-
-    return true; // signal success to Go
-  }
-
-  // ─── EXPORT ────────────────────────────────────────────────────
+  // ─── Export to globalThis.__kit ───────────────────────────────
 
   globalThis.__kit = {
-    // LOCAL
-    agent: agent,
-    createTool: createTool,
-    createSubagent: createSubagent,
-    createWorkflow: wrappedCreateWorkflow,
-    createStep: embed.createStep,
-    createMemory: createMemory,
-    z: z,
-
-    // STORAGE (for custom memory configs)
-    Memory: embed.Memory,
-    InMemoryStore: embed.InMemoryStore,
-    // Wrapped LibSQLStore: if no url is provided, auto-connects to Kit's embedded SQLite bridge.
-    //   new LibSQLStore({ id: "x" })                  → "default" storage (brainkit way)
-    //   new LibSQLStore({ id: "x", storage: "vecs" }) → named storage (brainkit way)
-    //   new LibSQLStore({ id: "x", url: "..." })      → explicit URL (mastra way, passthrough)
-    LibSQLStore: (function() {
-      var _Real = embed.LibSQLStore;
-      function BrainletLibSQLStore(config) {
-        if (config && !config.url && !config.client) {
-          var storages = globalThis.__brainkit_storages || {};
-          var name = config.storage || "default";
-          var resolved = storages[name];
-          // If named storage not found, try the first available
-          if (!resolved && !config.storage) {
-            var keys = Object.keys(storages);
-            if (keys.length > 0) resolved = storages[keys[0]];
-          }
-          if (resolved) {
-            config = Object.assign({}, config, { url: resolved });
-            delete config.storage; // don't pass brainkit-only field to Mastra
-          } else {
-            throw new Error("LibSQLStore: no url provided and no Kit storage '" + name + "' configured. Either pass { url } or add Storages to Kit config.");
-          }
-        }
-        return new _Real(config);
-      }
-      BrainletLibSQLStore.prototype = _Real.prototype;
-      return BrainletLibSQLStore;
-    })(),
-    UpstashStore: embed.UpstashStore,
-    PostgresStore: embed.PostgresStore,
-    MongoDBStore: embed.MongoDBStore,
-
-    // VECTOR STORES (for semantic recall)
-    // Wrapped LibSQLVector: same auto-URL pattern as LibSQLStore
-    LibSQLVector: (function() {
-      var _Real = embed.LibSQLVector;
-      function BrainletLibSQLVector(config) {
-        if (config && !config.url) {
-          var storages = globalThis.__brainkit_storages || {};
-          var name = config.storage || "default";
-          var resolved = storages[name];
-          if (!resolved && !config.storage) {
-            var keys = Object.keys(storages);
-            if (keys.length > 0) resolved = storages[keys[0]];
-          }
-          if (resolved) {
-            config = Object.assign({}, config, { url: resolved });
-            delete config.storage;
-          }
-        }
-        return new _Real(config);
-      }
-      BrainletLibSQLVector.prototype = _Real.prototype;
-      return BrainletLibSQLVector;
-    })(),
-    PgVector: embed.PgVector,
-    MongoDBVector: embed.MongoDBVector,
-
-    // AI SDK (for advanced use — most developers use ai.generate/ai.stream instead)
-    generateText: embed.generateText,
-    streamText: embed.streamText,
-    generateObject: embed.generateObject,
-    streamObject: embed.streamObject,
-
-    // PLATFORM
-    fs: {
-      read: async function(path) {
-        var raw = await bridgeRequestAsync("fs.read", { path: path });
-        return parseBridgeResponse(raw);
-      },
-      write: async function(path, data) {
-        var raw = await bridgeRequestAsync("fs.write", { path: path, data: data });
-        return parseBridgeResponse(raw);
-      },
-      list: async function(path, pattern) {
-        var raw = await bridgeRequestAsync("fs.list", { path: path || ".", pattern: pattern || "" });
-        return parseBridgeResponse(raw);
-      },
-      stat: async function(path) {
-        var raw = await bridgeRequestAsync("fs.stat", { path: path });
-        return parseBridgeResponse(raw);
-      },
-      delete: async function(path) {
-        var raw = await bridgeRequestAsync("fs.delete", { path: path });
-        return parseBridgeResponse(raw);
-      },
-      mkdir: async function(path) {
-        var raw = await bridgeRequestAsync("fs.mkdir", { path: path });
-        return parseBridgeResponse(raw);
-      },
-    },
-    ai: ai,
-    wasm: wasm,
+    bus: bus,
+    kit: kit,
+    model: resolveModel,
+    provider: resolveProvider,
+    storage: resolveStorage,
+    vectorStore: resolveVectorStore,
+    registry: registry,
     tools: tools,
-    tool: tool,
-    bus: busMod,
-    agents: {
-      list: function(filter) {
-        var raw = bridgeRequest("agents.list", { filter: filter || null });
-        return parseBridgeResponse(raw).agents || [];
-      },
-      discover: function(query) {
-        var raw = bridgeRequest("agents.discover", query || {});
-        return parseBridgeResponse(raw).agents || [];
-      },
-      message: function(target, payload) {
-        var raw = bridgeRequest("agents.message", { target: target, payload: payload });
-        return parseBridgeResponse(raw);
-      },
-      status: function(name) {
-        var raw = bridgeRequest("agents.get-status", { name: name });
-        return parseBridgeResponse(raw);
-      },
-      setStatus: function(name, status) {
-        var raw = bridgeRequest("agents.set-status", { name: name, status: status });
-        return parseBridgeResponse(raw);
-      },
-      request: async function(name, prompt) {
-        var raw = await bridgeRequestAsync("agents.request", { name: name, prompt: prompt });
-        return parseBridgeResponse(raw);
-      },
-    },
-
-    // CONTEXT
-    sandbox: sandboxCtx,
-    RequestContext: embed.RequestContext,
-
-    // WORKFLOWS
-    createWorkflowRun: createWorkflowRun,
-    resumeWorkflow: resumeWorkflow,
-
-    // EVALS
-    createScorer: function(config) {
-      // Pre-resolve judge model string to a real model instance
-      var resolvedConfig = config;
-      if (config.judge && typeof config.judge.model === "string") {
-        var resolved = resolveModel(config.judge.model);
-        if (resolved !== config.judge.model) {
-          resolvedConfig = { ...config, judge: { ...config.judge, model: resolved } };
-        }
-      }
-      var scorer = embed.createScorer(resolvedConfig);
-      // Inject storage shim — scorers internally create workflows that need storage
-      if (typeof scorer.__registerMastra === "function") {
-        try { scorer.__registerMastra(_workflowStorageShim); } catch(e) {}
-      }
-      return scorer;
-    },
-    // Wrapped runEvals: accepts our wrapped agent (extracts internal Mastra Agent for target).
-    runEvals: function(config) {
-      var cfg = Object.assign({}, config);
-      // If target is our wrapped agent, extract the raw Mastra Agent
-      if (cfg.target && cfg.target._mastraAgent) {
-        cfg.target = cfg.target._mastraAgent;
-      }
-      return embed.runEvals(cfg);
-    },
-    scorers: {
-      // Rule-based (no LLM)
-      completeness: wrapPrebuiltScorer(embed.createCompletenessScorer),
-      textualDifference: wrapPrebuiltScorer(embed.createTextualDifferenceScorer),
-      keywordCoverage: wrapPrebuiltScorer(embed.createKeywordCoverageScorer),
-      contentSimilarity: wrapPrebuiltScorer(embed.createContentSimilarityScorer),
-      tone: wrapPrebuiltScorer(embed.createToneScorer),
-      // LLM-based (require judge model)
-      hallucination: wrapLLMScorer(embed.createHallucinationScorer),
-      faithfulness: wrapLLMScorer(embed.createFaithfulnessScorer),
-      answerRelevancy: wrapLLMScorer(embed.createAnswerRelevancyScorer),
-      answerSimilarity: wrapLLMScorer(embed.createAnswerSimilarityScorer),
-      bias: wrapLLMScorer(embed.createBiasScorer),
-      toxicity: wrapLLMScorer(embed.createToxicityScorer),
-      contextPrecision: wrapLLMScorer(embed.createContextPrecisionScorer),
-      contextRelevance: wrapLLMScorer(embed.createContextRelevanceScorerLLM),
-      noiseSensitivity: wrapLLMScorer(embed.createNoiseSensitivityScorerLLM),
-      promptAlignment: wrapLLMScorer(embed.createPromptAlignmentScorerLLM),
-      toolCallAccuracy: wrapLLMScorer(embed.createToolCallAccuracyScorerLLM),
-    },
-
-    // PROCESSORS — built-in input/output middleware
-    processors: {
-      // Security & Safety
-      ModerationProcessor: embed.ModerationProcessor,
-      PromptInjectionDetector: embed.PromptInjectionDetector,
-      PIIDetector: embed.PIIDetector,
-      SystemPromptScrubber: embed.SystemPromptScrubber,
-      // Data Transformation
-      UnicodeNormalizer: embed.UnicodeNormalizer,
-      LanguageDetector: embed.LanguageDetector,
-      // Stream & Token
-      TokenLimiterProcessor: embed.TokenLimiterProcessor,
-      BatchPartsProcessor: embed.BatchPartsProcessor,
-      StructuredOutputProcessor: embed.StructuredOutputProcessor,
-      // Tool Management
-      ToolCallFilter: embed.ToolCallFilter,
-      ToolSearchProcessor: embed.ToolSearchProcessor,
-    },
-
-    // MCP
-    mcp: {
-      listTools: async function(serverName) {
-        var raw = bridgeRequest("mcp.listTools", { server: serverName || "" });
-        return parseBridgeResponse(raw).tools || [];
-      },
-      callTool: async function(serverName, toolName, args) {
-        var raw = await bridgeRequestAsync("mcp.callTool", {
-          server: serverName,
-          tool: toolName,
-          args: args || {},
-        });
-        return parseBridgeResponse(raw);
-      },
-    },
-
-    // Workspace
-    Workspace: embed.Workspace,
-    LocalFilesystem: embed.LocalFilesystem,
-    LocalSandbox: embed.LocalSandbox,
-
-    // RAG
-    MDocument: embed.MDocument,
-    GraphRAG: embed.GraphRAG,
-    createVectorQueryTool: embed.createVectorQueryTool,
-    createDocumentChunkerTool: embed.createDocumentChunkerTool,
-    createGraphRAGTool: embed.createGraphRAGTool,
-    rerank: embed.rerank,
-    rerankWithScorer: embed.rerankWithScorer,
-
-    // HARNESS
-    createHarness: createHarness,
-
-    // MODULE
+    fs: fs,
+    mcp: mcp,
     output: output,
-
-    // REGISTRY — resolve registered providers/stores/storages by name
-    // Instance caches — closure-captured (not `this`-based, since functions are detached in Compartments)
-    vectorStore: (function() {
-      var cache = {};
-      return function(name) {
-        if (cache[name]) return cache[name];
-        var configJSON = __go_registry_resolve("vectorStore", name);
-        if (!configJSON) throw new Error("vector store '" + name + "' not registered");
-        var parsed = JSON.parse(configJSON);
-        var cfg = parsed.config || {};
-        var instance;
-        switch (parsed.type) {
-          case "libsql": instance = new embed.LibSQLVector({ id: name, connectionUrl: cfg.URL, authToken: cfg.AuthToken }); break;
-          case "pgvector": instance = new embed.PgVector({ id: name, connectionString: cfg.ConnectionString }); break;
-          case "mongodb": instance = new embed.MongoDBVector({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
-          default: throw new Error("vector store type '" + parsed.type + "' not available in this build");
-        }
-        cache[name] = instance;
-        return instance;
-      };
-    })(),
-    storage: (function() {
-      var cache = {};
-      return function(name) {
-        if (cache[name]) return cache[name];
-        var configJSON = __go_registry_resolve("storage", name);
-        if (!configJSON) throw new Error("storage '" + name + "' not registered");
-        var parsed = JSON.parse(configJSON);
-        var cfg = parsed.config || {};
-        var instance;
-        switch (parsed.type) {
-          case "memory": instance = new embed.InMemoryStore(); break;
-          case "libsql": instance = new embed.LibSQLStore({ id: name, url: cfg.URL, authToken: cfg.AuthToken }); break;
-          case "postgres": instance = new embed.PostgresStore({ id: name, connectionString: cfg.ConnectionString }); break;
-          case "mongodb": instance = new embed.MongoDBStore({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
-          case "upstash": instance = new embed.UpstashStore({ id: name, url: cfg.URL, token: cfg.Token }); break;
-          default: throw new Error("storage type '" + parsed.type + "' not available in this build");
-        }
-        cache[name] = instance;
-        return instance;
-      };
-    })(),
-    model: function(providerName, modelId) {
-      return resolveModel(providerName + "/" + modelId);
-    },
-    provider: (function() {
-      var cache = {};
-      return function(name) {
-        if (cache[name]) return cache[name];
-        var configJSON = __go_registry_resolve("provider", name);
-        if (!configJSON) throw new Error("AI provider '" + name + "' not registered");
-        var parsed = JSON.parse(configJSON);
-        var cfg = parsed.config || {};
-        var factoryName = providerFactories[parsed.type];
-        if (!factoryName || !embed[factoryName]) throw new Error("AI provider '" + parsed.type + "' not available in this build");
-        var opts = {};
-        if (cfg.APIKey) opts.apiKey = cfg.APIKey;
-        if (cfg.BaseURL) opts.baseURL = cfg.BaseURL;
-        if (cfg.Headers) opts.headers = cfg.Headers;
-        var instance = embed[factoryName](opts);
-        cache[name] = instance;
-        return instance;
-      };
-    })(),
-    registry: {
-      has: function(category, name) {
-        return __go_registry_has(category, name) === "true";
-      },
-      list: function(category) {
-        return JSON.parse(__go_registry_list(category));
-      },
-      register: function(category, name, config) {
-        __go_brainkit_control("registry.register", JSON.stringify({ category: category, name: name, config: config }));
-      },
-      unregister: function(category, name) {
-        __go_brainkit_control("registry.unregister", JSON.stringify({ category: category, name: name }));
-      },
-    },
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // SES Compartment Endowments Factory
-  // Creates a per-source hardened API object for Compartment isolation.
-  // Resource-creating functions are wrapped to set __kit_current_source.
-  // ══════════════════════════════════════════════════════════════
+  // ─── Compartment Endowments ───────────────────────────────────
 
   globalThis.__kit_compartments = {};
 
@@ -1818,113 +431,98 @@
   globalThis.__kitRunWithSource = async function(source, fn) {
     var prev = _currentSource;
     _currentSource = source;
+    var prevNs = globalThis.__kit_deployment_namespace;
+    globalThis.__kit_deployment_namespace = "ts." + source.replace(/\.ts$/, "").replace(/\//g, ".");
     try { return await fn(); }
-    finally { _currentSource = prev; }
+    finally {
+      _currentSource = prev;
+      globalThis.__kit_deployment_namespace = prevNs;
+    }
   };
 
-  var _kitObj = globalThis.__kit; // capture reference
+  var _kitObj = globalThis.__kit;
 
   globalThis.__kitEndowments = function(source) {
+    var ns = "ts." + source.replace(/\.ts$/, "").replace(/\//g, ".");
     var ws = function(fn) { return __withSource(fn, source); };
+
+    var scopedBus = {
+      publish: _kitObj.bus.publish,
+      emit: _kitObj.bus.emit,
+      subscribe: ws(_kitObj.bus.subscribe),
+      on: function(localTopic, handler) {
+        return scopedBus.subscribe(ns + "." + localTopic, handler);
+      },
+      unsubscribe: _kitObj.bus.unsubscribe,
+    };
+
+    var scopedKit = {
+      register: ws(_kitObj.kit.register),
+      unregister: ws(_kitObj.kit.unregister),
+      list: _kitObj.kit.list,
+      get source() { return source; },
+      get namespace() { return globalThis.__brainkit_sandbox_namespace || ""; },
+      get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
+    };
+
     var endowments = {
-      // Resource-creating (source-tracked)
-      agent: ws(_kitObj.agent),
-      createTool: ws(_kitObj.createTool),
-      createSubagent: ws(_kitObj.createSubagent),
-      createMemory: ws(_kitObj.createMemory),
-      createWorkflow: ws(_kitObj.createWorkflow),
-      createHarness: ws(_kitObj.createHarness),
-
-      // Schema & steps
-      createStep: _kitObj.createStep,
-      z: _kitObj.z,
-
-      // Runtime operations (pass-through)
-      fs: _kitObj.fs,
-      ai: _kitObj.ai,
-      tools: _kitObj.tools,
-      tool: _kitObj.tool,
-      bus: {
-        send: _kitObj.bus.send,
-        publish: _kitObj.bus.publish,
-        subscribe: ws(_kitObj.bus.subscribe),
-        unsubscribe: _kitObj.bus.unsubscribe,
-      },
-      wasm: {
-        compile: ws(_kitObj.wasm.compile),
-        run: _kitObj.wasm.run,
-        validate: _kitObj.wasm.validate,
-        list: _kitObj.wasm.list,
-        get: _kitObj.wasm.get,
-        remove: _kitObj.wasm.remove,
-        exists: _kitObj.wasm.exists,
-        deploy: _kitObj.wasm.deploy,
-        undeploy: _kitObj.wasm.undeploy,
-        describe: _kitObj.wasm.describe,
-      },
-      agents: _kitObj.agents,
-      mcp: _kitObj.mcp,
-
-      // Storage
-      Memory: _kitObj.Memory,
-      InMemoryStore: _kitObj.InMemoryStore,
-      LibSQLStore: _kitObj.LibSQLStore,
-      UpstashStore: _kitObj.UpstashStore,
-      PostgresStore: _kitObj.PostgresStore,
-      MongoDBStore: _kitObj.MongoDBStore,
-      LibSQLVector: _kitObj.LibSQLVector,
-      PgVector: _kitObj.PgVector,
-      MongoDBVector: _kitObj.MongoDBVector,
-
-      // AI SDK advanced
-      generateText: _kitObj.generateText,
-      streamText: _kitObj.streamText,
-      generateObject: _kitObj.generateObject,
-      streamObject: _kitObj.streamObject,
-
-      // Workflow execution
-      createWorkflowRun: _kitObj.createWorkflowRun,
-      resumeWorkflow: _kitObj.resumeWorkflow,
-
-      // Evals
-      createScorer: _kitObj.createScorer,
-      runEvals: _kitObj.runEvals,
-      scorers: _kitObj.scorers,
-      processors: _kitObj.processors,
-
-      // Context
-      sandbox: _kitObj.sandbox,
-      output: _kitObj.output,
-      RequestContext: _kitObj.RequestContext,
-
-      // RAG
-      MDocument: _kitObj.MDocument,
-      GraphRAG: _kitObj.GraphRAG,
-      createVectorQueryTool: _kitObj.createVectorQueryTool,
-      createDocumentChunkerTool: _kitObj.createDocumentChunkerTool,
-      createGraphRAGTool: _kitObj.createGraphRAGTool,
-      rerank: _kitObj.rerank,
-      rerankWithScorer: _kitObj.rerankWithScorer,
-
-      // Workspace
-      Workspace: _kitObj.Workspace,
-      LocalFilesystem: _kitObj.LocalFilesystem,
-      LocalSandbox: _kitObj.LocalSandbox,
-
-      // Registry — resolve providers/stores/storages by name
-      vectorStore: _kitObj.vectorStore,
-      storage: _kitObj.storage,
+      // brainkit infrastructure ("kit" module)
+      bus: scopedBus,
+      kit: scopedKit,
       model: _kitObj.model,
       provider: _kitObj.provider,
+      storage: _kitObj.storage,
+      vectorStore: _kitObj.vectorStore,
       registry: _kitObj.registry,
-
-      // JS built-ins for compartment — per-source tagged console
+      tools: _kitObj.tools,
+      fs: _kitObj.fs,
+      mcp: _kitObj.mcp,
+      output: _kitObj.output,
+      // AI SDK ("ai" module) — also available as endowments for Compartment code
+      generateText: embed.generateText,
+      streamText: embed.streamText,
+      generateObject: embed.generateObject,
+      streamObject: embed.streamObject,
+      embed: embed.embed,
+      embedMany: embed.embedMany,
+      z: embed.z,
+      // Mastra ("agent" module) — also available as endowments for Compartment code
+      Agent: embed.Agent,
+      createTool: ws(embed.createTool),
+      createWorkflow: ws(embed.createWorkflow),
+      createStep: embed.createStep,
+      Memory: embed.Memory,
+      InMemoryStore: embed.InMemoryStore,
+      LibSQLStore: embed.LibSQLStore,
+      UpstashStore: embed.UpstashStore,
+      PostgresStore: embed.PostgresStore,
+      MongoDBStore: embed.MongoDBStore,
+      LibSQLVector: embed.LibSQLVector,
+      PgVector: embed.PgVector,
+      MongoDBVector: embed.MongoDBVector,
+      ModelRouterEmbeddingModel: embed.ModelRouterEmbeddingModel,
+      RequestContext: embed.RequestContext,
+      Workspace: embed.Workspace,
+      LocalFilesystem: embed.LocalFilesystem,
+      LocalSandbox: embed.LocalSandbox,
+      MDocument: embed.MDocument,
+      GraphRAG: embed.GraphRAG,
+      createVectorQueryTool: embed.createVectorQueryTool,
+      createDocumentChunkerTool: embed.createDocumentChunkerTool,
+      createGraphRAGTool: embed.createGraphRAGTool,
+      rerank: embed.rerank,
+      rerankWithScorer: embed.rerankWithScorer,
+      Observability: embed.Observability,
+      DefaultExporter: embed.DefaultExporter,
+      createScorer: embed.createScorer,
+      runEvals: embed.runEvals,
+      // JS built-ins — per-source tagged console
       console: {
-        log:   (...a) => __go_console_log_tagged(source, "log", a.map(String).join(' ')),
-        warn:  (...a) => __go_console_log_tagged(source, "warn", a.map(String).join(' ')),
-        error: (...a) => __go_console_log_tagged(source, "error", a.map(String).join(' ')),
-        info:  (...a) => __go_console_log_tagged(source, "info", a.map(String).join(' ')),
-        debug: (...a) => __go_console_log_tagged(source, "debug", a.map(String).join(' ')),
+        log:   function() { __go_console_log_tagged(source, "log", Array.prototype.slice.call(arguments).map(String).join(' ')); },
+        warn:  function() { __go_console_log_tagged(source, "warn", Array.prototype.slice.call(arguments).map(String).join(' ')); },
+        error: function() { __go_console_log_tagged(source, "error", Array.prototype.slice.call(arguments).map(String).join(' ')); },
+        info:  function() { __go_console_log_tagged(source, "info", Array.prototype.slice.call(arguments).map(String).join(' ')); },
+        debug: function() { __go_console_log_tagged(source, "debug", Array.prototype.slice.call(arguments).map(String).join(' ')); },
       },
       JSON: JSON,
       setTimeout: ws(globalThis.setTimeout),

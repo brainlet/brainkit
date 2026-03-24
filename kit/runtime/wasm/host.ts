@@ -1,14 +1,14 @@
 // runtime/wasm/host.ts — Raw host function bindings (INTERNAL).
 // Developers never import this file directly. Namespace files use these.
 
-@external("host", "send")
-export declare function _send(topic: string, payload: string): void
+@external("host", "bus_emit")
+export declare function _busEmit(topic: string, payload: string): void
 
-@external("host", "invokeAsync")
-export declare function _invokeAsync(topic: string, payload: string, callbackFuncName: string): void
+@external("host", "bus_publish")
+export declare function _busPublish(topic: string, payload: string, callbackFuncName: string): void
 
-@external("host", "on")
-export declare function _on(topic: string, funcName: string): void
+@external("host", "bus_on")
+export declare function _busOn(topic: string, funcName: string): void
 
 @external("host", "tool")
 export declare function _tool(name: string, funcName: string): void

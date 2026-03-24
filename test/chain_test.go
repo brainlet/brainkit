@@ -20,7 +20,7 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 
-			// Chain: Go deploys .ts → .ts creates a tool → WASM calls that tool via invokeAsync
+			// Chain: Go deploys .ts → .ts creates a tool → WASM calls that tool via _busPublish
 
 			// Step 1: Go deploys .ts that creates a tool
 			_pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
@@ -33,6 +33,7 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 							return { doubled: (input.n || 0) * 2 };
 						}
 					});
+					kit.register("tool", "chain-doubler", chainTool);
 				`,
 			})
 			require.NoError(t, err)
@@ -48,14 +49,14 @@ func TestChain_Go_TS_WASM(t *testing.T) {
 			// Step 2: Compile WASM that calls the .ts tool
 			_pr2, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 				Source: `
-					import { _invokeAsync, _setState } from "brainkit";
+					import { _busPublish, _setState } from "brainkit";
 
 					export function onDoubled(topic: usize, payload: usize): void {
 						_setState("chainDone", "true");
 					}
 
 					export function run(): i32 {
-						_invokeAsync("tools.call", '{"name":"chain-doubler","input":{"n":21}}', "onDoubled");
+						_busPublish("tools.call", '{"name":"chain-doubler","input":{"n":21}}', "onDoubled");
 						return 0;
 					}
 				`,
@@ -125,7 +126,7 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			defer cancel()
 
 			// Chain: Go deploys .ts tool → deploys WASM shard → Go injects event →
-			// WASM shard calls .ts tool via invokeAsync → shard replies with result
+			// WASM shard calls .ts tool via _busPublish → shard replies with result
 
 			// Step 1: Deploy .ts tool
 			_pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
@@ -138,6 +139,7 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 							return { sum: (input.v || 0) + 100 };
 						}
 					});
+					kit.register("tool", "chain-adder", adder);
 				`,
 			})
 			require.NoError(t, err)
@@ -153,11 +155,12 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 			// Step 2: Compile WASM shard that calls .ts tool and replies
 			_pr6, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 				Source: `
-					import { _on, _setMode, _invokeAsync, _reply, _setState, _getState, _hasState } from "brainkit";
+					import { _busOn, _setMode, _busPublish, _reply, _setState, _getState, _hasState } from "brainkit";
 
 					export function init(): void {
 						_setMode("stateless");
-						_on("chain.trigger", "handleTrigger");
+						
+_busOn("chain.trigger", "handleTrigger");
 					}
 
 					export function onAdderResult(topic: usize, payload: usize): void {
@@ -165,7 +168,7 @@ func TestChain_Go_TS_WASM_Reply(t *testing.T) {
 					}
 
 					export function handleTrigger(topic: usize, payload: usize): void {
-						_invokeAsync("tools.call", '{"name":"chain-adder","input":{"v":42}}', "onAdderResult");
+						_busPublish("tools.call", '{"name":"chain-adder","input":{"v":42}}', "onAdderResult");
 						_reply('{"chain":"complete"}');
 					}
 				`,

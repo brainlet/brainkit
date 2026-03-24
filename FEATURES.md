@@ -28,17 +28,61 @@ These drive every feature decision in brainkit.
 
 ## Messaging Model
 
-Pure async pub/sub. No blocking helpers. No PublishAwait.
+Pure async pub/sub. No blocking helpers. No PublishAwait. Same verbs across all surfaces.
+
+### Go / Plugin
 
 | API | Purpose | Returns |
 |-----|---------|---------|
-| `sdk.Publish[T](rt, ctx, msg, opts...)` | Send command, get replyTo | `PublishResult{MessageID, CorrelationID, ReplyTo, Topic}` |
+| `sdk.Publish[T](rt, ctx, msg, opts...)` | Send + expect reply | `PublishResult{MessageID, CorrelationID, ReplyTo, Topic}` |
 | `sdk.SubscribeTo[T](rt, ctx, topic, handler)` | Typed subscribe on any topic | `cancel func()` |
 | `sdk.Emit[T](rt, ctx, msg)` | Fire-and-forget event | `error` |
 | `sdk.PublishTo[T](rt, ctx, ns, msg, opts...)` | Cross-Kit command | `PublishResult` |
 | `sdk.WithReplyTo(topic)` | Custom reply topic | `PublishOption` |
 
-ReplyTo convention: `<topic>.reply.<uuid>`, namespaced and sanitized by the publisher. Handlers read `replyTo` from message metadata and publish responses there. Errors arrive in `ResultMeta.Error` on the same replyTo topic. Response types have no BusTopic — they're never routing keys.
+### .ts (deployed services)
+
+| API | Purpose | Returns |
+|-----|---------|---------|
+| `bus.publish(topic, data)` | Send + expect reply | `{replyTo, correlationId}` |
+| `bus.subscribe(topic, handler)` | Listen on absolute topic | `subId` |
+| `bus.on(localTopic, handler)` | Listen on deployment mailbox | `subId` |
+| `bus.emit(topic, data)` | Fire-and-forget | void |
+| `bus.unsubscribe(subId)` | Remove subscription | void |
+| `msg.reply(data)` | Final response (done=true) | void |
+| `msg.send(data)` | Intermediate chunk (streaming) | void |
+
+### WASM
+
+| API | Purpose |
+|-----|---------|
+| `bus_publish(topic, payload, callback)` | Send + callback on reply |
+| `bus_emit(topic, payload)` | Fire-and-forget |
+| `bus_on(topic, funcName)` | Namespaced subscribe (init phase) |
+| `reply(payload)` | Reply to inbound message |
+
+ReplyTo convention: `<topic>.reply.<uuid>`, namespaced and sanitized by the publisher.
+
+## Module System
+
+Four modules for .ts code:
+
+| Module | Owns | Source |
+|--------|------|--------|
+| `"ai"` | AI SDK functions (generateText, streamText, embed, etc.) | Re-export from `__agent_embed` |
+| `"agent"` | Mastra framework (Agent, createTool, Memory, etc.) | Re-export from `__agent_embed` |
+| `"compiler"` | AS compiler access | Re-export from `__agent_embed` |
+| `"kit"` | brainkit infrastructure (bus, model, registry, tools, fs, mcp) | brainkit's own |
+
+.ts code uses AI SDK / Mastra directly — no wrapper. brainkit injects infrastructure.
+
+## Deployment Mailbox
+
+Each deployed .ts file gets a topic namespace: `my-agent.ts` → `ts.my-agent`. `bus.on("ask", handler)` subscribes to `ts.my-agent.ask`. Other surfaces send to this topic to communicate with the .ts service.
+
+## Resource Registration
+
+`kit.register(type, name, ref)` — explicit registration for agents, tools, workflows, memory. Makes resources discoverable + cleaned up on teardown.
 
 ## Runtime
 
@@ -68,18 +112,19 @@ All 6 backends tested with 12 domain operations via `backend_matrix_test.go`.
 
 ### Go Direct
 
-| Role | Host application — creates Kits, registers Go tools, manages lifecycle |
+| Role | Control plane — creates Kits, registers Go tools, manages lifecycle, sends messages to .ts services |
 |------|---|
 | Runtime | Kernel or Node |
-| Path | `sdk.PublishAwait` → transport → router → handler |
-| Status | **DONE** — all domains, all operations |
+| Path | `sdk.Publish` → transport → router → handler (infrastructure) or → .ts service (via bus) |
+| Status | **DONE** — infrastructure commands + bus messaging to .ts services |
 
 ### TS (.ts deploy)
 
-| Role | Agent/tool/workflow developers — write .ts deployed into SES Compartments |
+| Role | AI workbench — agents, tools, workflows, RAG. Deployed as bus services with mailbox topics |
 |------|---|
-| Runtime | QuickJS inside Kernel (LocalInvoker — no transport) |
-| Capabilities | agents, tools, workflows, memory, vectors, AI (generate/stream/embed), fs, wasm, mcp, registry, bus |
+| Runtime | QuickJS inside Kernel. Uses AI SDK / Mastra directly (no wrapper). Bus API for messaging. |
+| Modules | `"ai"` (AI SDK), `"agent"` (Mastra), `"compiler"` (AS), `"kit"` (infrastructure) |
+| Capabilities | Full AI SDK, full Mastra, bus pub/sub with replyTo, tool registry, fs, mcp, registry |
 | Status | **DONE** — all domains, all operations |
 
 TS code runs in isolated SES Compartments with per-source logging. Has full access to Mastra ecosystem (Memory, scorers, processors, RAG, workspace). Includes filesystem access because agents and workflows need to read, list, and write files on disk. Everything resolved dynamically from the registry — no hardcoded strings.

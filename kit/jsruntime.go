@@ -13,9 +13,18 @@ var kitRuntimeJS string
 //go:embed runtime/kit_module.js
 var kitModuleJS string
 
+//go:embed runtime/ai_module.js
+var aiModuleJS string
+
+//go:embed runtime/agent_module.js
+var agentModuleJS string
+
+//go:embed runtime/compiler_module.js
+var compilerModuleJS string
+
 // loadRuntime sets up the kit runtime:
 // 1. Evaluates kit_runtime.js (sets globalThis.__kit)
-// 2. Registers "kit" as an ES module (enables import { ... } from "kit")
+// 2. Registers four ES modules: "kit", "ai", "agent", "compiler"
 func (k *Kernel) loadRuntime() error {
 	val, err := k.bridge.Eval("kit-runtime.js", kitRuntimeJS)
 	if err != nil {
@@ -24,13 +33,26 @@ func (k *Kernel) loadRuntime() error {
 	val.Free()
 
 	ctx := k.bridge.Context()
-	modVal := ctx.LoadModule(kitModuleJS, "kit", quickjs.EvalLoadOnly(true))
-	if modVal.IsException() {
-		exc := ctx.Exception()
-		modVal.Free()
-		return fmt.Errorf("brainkit: register kit module: %v", exc)
+
+	modules := []struct {
+		source string
+		name   string
+	}{
+		{kitModuleJS, "kit"},
+		{aiModuleJS, "ai"},
+		{agentModuleJS, "agent"},
+		{compilerModuleJS, "compiler"},
 	}
-	modVal.Free()
+
+	for _, mod := range modules {
+		modVal := ctx.LoadModule(mod.source, mod.name, quickjs.EvalLoadOnly(true))
+		if modVal.IsException() {
+			exc := ctx.Exception()
+			modVal.Free()
+			return fmt.Errorf("brainkit: register %s module: %v", mod.name, exc)
+		}
+		modVal.Free()
+	}
 
 	return nil
 }

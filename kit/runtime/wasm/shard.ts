@@ -1,10 +1,20 @@
-// runtime/wasm/shard.ts — Shard registration functions (init phase only).
+// runtime/wasm/shard.ts — Shard registration + bus functions.
 
-import { _on, _tool, _reply, _setMode } from "./host"
+import { _busOn, _busPublish, _busEmit, _tool, _reply, _setMode } from "./host"
 
 /** Subscribe to a topic pattern. Handler function is called when messages match. Init only. */
 export function on(topic: string, handlerFuncName: string): void {
-    _on(topic, handlerFuncName)
+    _busOn(topic, handlerFuncName)
+}
+
+/** Publish to bus with replyTo. Callback receives the reply. */
+export function publish(topic: string, payload: string, callbackFuncName: string): void {
+    _busPublish(topic, payload, callbackFuncName)
+}
+
+/** Fire-and-forget bus publish. No replyTo. */
+export function emit(topic: string, payload: string): void {
+    _busEmit(topic, payload)
 }
 
 /** Register a tool this shard provides. Init only. */

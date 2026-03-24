@@ -1,6 +1,33 @@
 // AUTO-GENERATED from sdk/messages — do not edit.
 // Domain: plugin
 
+export namespace plugin {
+}
+
+// Events
+export class PluginRegisteredEvent {
+    owner: string
+    name: string
+    version: string
+    tools: i32
+
+    constructor(owner: string, name: string, version: string, tools: i32) {
+        this.owner = owner
+        this.name = name
+        this.version = version
+        this.tools = tools
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("owner", this.owner)
+        obj.setString("name", this.name)
+        obj.setString("version", this.version)
+        obj.setInt("tools", this.tools)
+        return obj.toString()
+    }
+}
+
 export class PluginManifestMsg {
     owner: string
     name: string
@@ -60,108 +87,6 @@ export class PluginStateSetMsg {
         let obj = new JSONObject()
         obj.setString("key", this.key)
         obj.setString("value", this.value)
-        return obj.toString()
-    }
-}
-
-export class PluginManifestResp {
-    registered: bool
-    error: string
-
-    constructor() {
-        this.registered = false
-        this.error = ""
-    }
-
-    static parse(json: string): PluginManifestResp {
-        let resp = new PluginManifestResp()
-        let val = JSONValue.parse(json)
-        if (val.isObject()) {
-            let obj = val.asObject()
-            if (obj.has("registered")) resp.registered = obj.getBool("registered")
-            if (obj.has("error")) resp.error = obj.getString("error")
-        }
-        return resp
-    }
-}
-
-export class PluginStateGetResp {
-    value: string
-    error: string
-
-    constructor() {
-        this.value = ""
-        this.error = ""
-    }
-
-    static parse(json: string): PluginStateGetResp {
-        let resp = new PluginStateGetResp()
-        let val = JSONValue.parse(json)
-        if (val.isObject()) {
-            let obj = val.asObject()
-            if (obj.has("value")) resp.value = obj.getString("value")
-            if (obj.has("error")) resp.error = obj.getString("error")
-        }
-        return resp
-    }
-}
-
-export class PluginStateSetResp {
-    ok: bool
-    error: string
-
-    constructor() {
-        this.ok = false
-        this.error = ""
-    }
-
-    static parse(json: string): PluginStateSetResp {
-        let resp = new PluginStateSetResp()
-        let val = JSONValue.parse(json)
-        if (val.isObject()) {
-            let obj = val.asObject()
-            if (obj.has("ok")) resp.ok = obj.getBool("ok")
-            if (obj.has("error")) resp.error = obj.getString("error")
-        }
-        return resp
-    }
-}
-
-export namespace plugin {
-    export function manifest(msg: PluginManifestMsg, callback: string): void {
-        _invokeAsync("plugin.manifest", msg.toJSON(), callback)
-    }
-
-    export function stateGet(msg: PluginStateGetMsg, callback: string): void {
-        _invokeAsync("plugin.state.get", msg.toJSON(), callback)
-    }
-
-    export function stateSet(msg: PluginStateSetMsg, callback: string): void {
-        _invokeAsync("plugin.state.set", msg.toJSON(), callback)
-    }
-
-}
-
-// Events
-export class PluginRegisteredEvent {
-    owner: string
-    name: string
-    version: string
-    tools: i32
-
-    constructor(owner: string, name: string, version: string, tools: i32) {
-        this.owner = owner
-        this.name = name
-        this.version = version
-        this.tools = tools
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("owner", this.owner)
-        obj.setString("name", this.name)
-        obj.setString("version", this.version)
-        obj.setInt("tools", this.tools)
         return obj.toString()
     }
 }

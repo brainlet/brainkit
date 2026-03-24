@@ -24,17 +24,13 @@ import (
 // It owns JS/WASM/runtime state and an internal Watermill transport.
 type Kernel struct {
 	// Domain handlers (internal — accessed via command catalog, not directly)
-	ai              *AIDomain
-	toolsDomain     *ToolsDomain
-	agentsDomain    *AgentsDomain
-	fsDomain        *FSDomain
-	memoryDomain    *MemoryDomain
-	workflowsDomain *WorkflowsDomain
-	vectorsDomain   *VectorsDomain
-	wasmDomainInst  *WASMDomain
-	lifecycle       *LifecycleDomain
-	mcpDomainInst   *MCPDomain
-	registryDomain  *RegistryDomain
+	toolsDomain    *ToolsDomain
+	agentsDomain   *AgentsDomain
+	fsDomain       *FSDomain
+	wasmDomainInst *WASMDomain
+	lifecycle      *LifecycleDomain
+	mcpDomainInst  *MCPDomain
+	registryDomain *RegistryDomain
 
 	Tools     *toolreg.ToolRegistry
 	mcp       *mcppkg.MCPManager
@@ -102,13 +98,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.agents = agentSandbox
 	kernel.bridge = agentSandbox.Bridge()
 
-	kernel.ai = newAIDomain(kernel)
 	kernel.toolsDomain = newToolsDomain(kernel)
 	kernel.agentsDomain = newAgentsDomain(kernel)
 	kernel.fsDomain = newFSDomain(kernel)
-	kernel.memoryDomain = newMemoryDomain(kernel)
-	kernel.workflowsDomain = newWorkflowsDomain(kernel)
-	kernel.vectorsDomain = newVectorsDomain(kernel)
 
 	kernel.registerBridges()
 
@@ -262,6 +254,11 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	}
 	// If DeferRouterStart: caller (Node) registers all bindings and starts the router
 
+	// Start background job pump — processes qctx.Schedule'd callbacks
+	// even when no EvalTS is active. Enables deployed .ts services to
+	// receive bus messages asynchronously.
+	kernel.startJobPump()
+
 	return kernel, nil
 }
 
@@ -295,11 +292,9 @@ func (k *Kernel) publish(ctx context.Context, topic string, payload json.RawMess
 	return err
 }
 
-// subscribe is an internal convenience for subscribing with raw byte handler.
-func (k *Kernel) subscribe(topic string, handler func([]byte)) (func(), error) {
-	return k.remote.SubscribeRaw(context.Background(), topic, func(msg messages.Message) {
-		handler(msg.Payload)
-	})
+// subscribe is an internal convenience for subscribing with full message.
+func (k *Kernel) subscribe(topic string, handler func(messages.Message)) (func(), error) {
+	return k.remote.SubscribeRaw(context.Background(), topic, handler)
 }
 
 // Close shuts down the runtime and all local services.
@@ -585,11 +580,11 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 	return json.RawMessage(resultJSON), nil
 }
 
-// EvalTS runs .ts-style code with brainlet imports destructured.
+// EvalTS runs .ts-style code with brainkit infrastructure imports destructured.
 func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
 		return await globalThis.__kitRunWithSource(%q, async () => {
-			const { agent, createTool, createSubagent, createWorkflow, createStep, createMemory, z, fs, ai, wasm, tools, tool, bus, agents, mcp, sandbox, output, Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore, LibSQLVector, PgVector, MongoDBVector, generateText, streamText, generateObject, streamObject, createWorkflowRun, resumeWorkflow, createScorer, runEvals, scorers, processors, RequestContext, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Workspace, LocalFilesystem, LocalSandbox, createHarness, vectorStore, storage, model, provider, registry } = globalThis.__kit;
+			const { bus, kit, model, provider, storage, vectorStore, registry, tools, fs, mcp, output } = globalThis.__kit;
 			%s
 		});
 	})()`, filename, code)
@@ -819,6 +814,32 @@ func (k *Kernel) startPeriodicProbing() {
 				return
 			}
 			k.ProbeAll()
+		}
+	}()
+}
+
+// startJobPump starts a background goroutine that periodically processes
+// QuickJS scheduled callbacks. This enables deployed .ts services to receive
+// bus messages (via qctx.Schedule) even when no EvalTS/EvalAsync is active.
+// The pump stops when the Kernel is closed.
+func (k *Kernel) startJobPump() {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				k.mu.Lock()
+				closed := k.closed
+				k.mu.Unlock()
+				if closed {
+					ticker.Stop()
+					return
+				}
+				k.bridge.ProcessScheduledJobs()
+			case <-k.bridge.GoContext().Done():
+				ticker.Stop()
+				return
+			}
 		}
 	}()
 }

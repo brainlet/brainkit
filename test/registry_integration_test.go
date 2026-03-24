@@ -194,6 +194,7 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 					};
 				}
 			});
+			kit.register("tool", "check-providers", registryTool);
 		`,
 	})
 	require.NoError(t, err)

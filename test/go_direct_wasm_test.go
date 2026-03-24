@@ -149,10 +149,11 @@ func TestGoDirect_WASM(t *testing.T) {
 			t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
 				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _on, _setMode } from "brainkit";
+						import { _busOn, _setMode } from "brainkit";
 						export function init(): void {
 							_setMode("stateless");
-							_on("gd.test.event", "handle");
+							
+_busOn("gd.test.event", "handle");
 						}
 						export function handle(t: usize, p: usize): void {}
 					`,
@@ -254,8 +255,9 @@ func TestGoDirect_WASM(t *testing.T) {
 			t.Run("Remove_WhileDeployed", func(t *testing.T) {
 				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
 					Source: `
-						import { _on, _setMode } from "brainkit";
-						export function init(): void { _setMode("stateless"); _on("x.ev", "h"); }
+						import { _busOn, _setMode } from "brainkit";
+						export function init(): void { _setMode("stateless"); 
+_busOn("x.ev", "h"); }
 						export function h(t: usize, p: usize): void {}
 					`,
 					Options: &messages.WasmCompileOpts{Name: "gd-rm-deployed"},

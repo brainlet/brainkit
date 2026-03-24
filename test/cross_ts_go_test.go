@@ -31,6 +31,7 @@ func TestCross_TS_Go(t *testing.T) {
 								return { greeting: "hello from TS, " + (input.name || "world") };
 							}
 						});
+						kit.register("tool", "ts-greeter", myTool);
 					`,
 				})
 				require.NoError(t, err)
@@ -88,6 +89,7 @@ func TestCross_TS_Go(t *testing.T) {
 								return { wrapped: true, inner: result };
 							}
 						});
+						kit.register("tool", "echo-wrapper", wrapper);
 					`,
 				})
 				require.NoError(t, err)

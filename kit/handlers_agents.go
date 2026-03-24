@@ -2,7 +2,6 @@ package kit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -163,54 +162,6 @@ func (d *AgentsDomain) SetStatus(_ context.Context, req messages.AgentSetStatusM
 		return nil, fmt.Errorf("agents.set-status: agent %q not found", req.Name)
 	}
 	return &messages.AgentSetStatusResp{OK: true}, nil
-}
-
-// Request sends a prompt to a named agent and returns the response.
-func (d *AgentsDomain) Request(ctx context.Context, req messages.AgentRequestMsg) (*messages.AgentRequestResp, error) {
-	if req.Name == "" {
-		return nil, fmt.Errorf("agents.request: name is required")
-	}
-	if req.Prompt == "" {
-		return nil, fmt.Errorf("agents.request: prompt is required")
-	}
-	d.mu.RLock()
-	_, ok := d.reg[req.Name]
-	d.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("agents.request: agent %q not found", req.Name)
-	}
-
-	code := fmt.Sprintf(`
-		var _agent = globalThis.__kit_agent_registry[%q];
-		if (!_agent) throw new Error("agent not found in JS registry: " + %q);
-		var _result = await _agent.generate(%q);
-		return JSON.stringify({ text: _result.text || "" });
-	`, req.Name, req.Name, req.Prompt)
-
-	resultJSON, err := d.kit.EvalTS(ctx, "__agents_request.ts", code)
-	if err != nil {
-		return nil, fmt.Errorf("agents.request: generate failed: %w", err)
-	}
-	var resp messages.AgentRequestResp
-	json.Unmarshal([]byte(resultJSON), &resp)
-	return &resp, nil
-}
-
-// Message sends a fire-and-forget message to a named agent.
-func (d *AgentsDomain) Message(_ context.Context, req messages.AgentMessageMsg) (*messages.AgentMessageResp, error) {
-	if req.Target == "" {
-		return nil, fmt.Errorf("agents.message: target is required")
-	}
-	d.mu.RLock()
-	_, ok := d.reg[req.Target]
-	d.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("agents.message: agent %q not found", req.Target)
-	}
-	// Publish to agent-specific topic via Watermill
-	payload, _ := json.Marshal(req.Payload)
-	_ = d.kit.publish(context.Background(), "agent."+req.Target+".message", json.RawMessage(payload))
-	return &messages.AgentMessageResp{Delivered: true}, nil
 }
 
 // UnregisterAllForKit removes all agents registered by a specific Kit instance.
