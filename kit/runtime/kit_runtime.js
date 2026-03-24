@@ -516,6 +516,23 @@
       DefaultExporter: embed.DefaultExporter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
+      // Compiler ("compiler" module)
+      compile: async function(source, opts) {
+        var raw = await (typeof __go_brainkit_request_async === "function"
+          ? __go_brainkit_request_async("wasm.compile", JSON.stringify({ source: source, options: opts || {} }))
+          : __go_brainkit_request("wasm.compile", JSON.stringify({ source: source, options: opts || {} })));
+        var result = JSON.parse(raw);
+        if (result && result.error) throw new Error("compiler: " + result.error);
+        result.run = async function(input) {
+          var runRaw = await (typeof __go_brainkit_request_async === "function"
+            ? __go_brainkit_request_async("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null }))
+            : __go_brainkit_request("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null })));
+          var runResult = JSON.parse(runRaw);
+          if (runResult && runResult.error) throw new Error("wasm.run: " + runResult.error);
+          return runResult;
+        };
+        return result;
+      },
       // JS built-ins — per-source tagged console
       console: {
         log:   function() { __go_console_log_tagged(source, "log", Array.prototype.slice.call(arguments).map(String).join(' ')); },
@@ -551,6 +568,21 @@
       btoa: globalThis.btoa,
       crypto: globalThis.crypto,
       structuredClone: globalThis.structuredClone,
+      // Date — SES blocks Date.now() and new Date() in Compartments.
+      // We re-grant it as an endowment so .ts services can use time.
+      Date: (function() {
+        var _OrigDate = globalThis.Date;
+        var _now = function() { return _OrigDate.now(); };
+        function BrainkitDate() {
+          if (arguments.length === 0) return new _OrigDate(_now());
+          return new (Function.prototype.bind.apply(_OrigDate, [null].concat(Array.prototype.slice.call(arguments))))();
+        }
+        BrainkitDate.now = _now;
+        BrainkitDate.parse = _OrigDate.parse;
+        BrainkitDate.UTC = _OrigDate.UTC;
+        BrainkitDate.prototype = _OrigDate.prototype;
+        return BrainkitDate;
+      })(),
       // Node.js compat — Buffer, EventEmitter, child_process, fs, path
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
