@@ -1,8 +1,11 @@
-import { tools, ToolCallMsg, setState, log, JSONObject, JSONValue } from "brainkit";
+import { publish, setState, log, JSONObject, JSONValue } from "brainkit";
 
 export function run(): i32 {
   // Step 1: call echo with step=1
-  tools.call(new ToolCallMsg("echo", '{"step":1}'), "onStep1");
+  const payload = new JSONObject()
+    .setString("name", "echo")
+    .set("input", JSONValue.parse('{"step":1}'));
+  publish("tools.call", payload.toString(), "onStep1");
   return 0;
 }
 
@@ -23,7 +26,10 @@ export function onStep1(topic: string, payload: string): void {
   const step2Input = new JSONObject()
     .setInt("step", 2)
     .setString("prev", payload);
-  tools.call(new ToolCallMsg("echo", step2Input.toString()), "onStep2");
+  const step2Payload = new JSONObject()
+    .setString("name", "echo")
+    .set("input", JSONValue.parse(step2Input.toString()));
+  publish("tools.call", step2Payload.toString(), "onStep2");
 }
 
 export function onStep2(topic: string, payload: string): void {

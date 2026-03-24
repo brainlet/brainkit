@@ -1,8 +1,10 @@
-import { tools, ToolCallMsg, setState, JSONObject, JSONValue } from "brainkit";
+import { publish, setState, JSONObject, JSONValue } from "brainkit";
 
 export function run(): i32 {
-  const args = new JSONObject().setString("key", "val");
-  tools.call(new ToolCallMsg("echo", args.toString()), "onToolResult");
+  const payload = new JSONObject()
+    .setString("name", "echo")
+    .set("input", JSONValue.parse('{"key":"val"}'));
+  publish("tools.call", payload.toString(), "onToolResult");
   return 0;
 }
 

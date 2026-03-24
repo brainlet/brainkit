@@ -1,4 +1,4 @@
-import { setState, getState, log, bus } from "brainkit";
+import { setState, getState, log, emit } from "brainkit";
 
 export function run(): i32 {
   // 1. setState with empty string value
@@ -12,7 +12,7 @@ export function run(): i32 {
   log("");
 
   // 4. bus.sendRaw with empty string payload — should not crash
-  bus.sendRaw("test.empty", "");
+  emit("test.empty", "");
 
   return 0;
 }

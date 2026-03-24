@@ -1,6 +1,6 @@
-import { bus } from "brainkit";
+import { emit } from "brainkit";
 
 export function run(): i32 {
-  bus.sendRaw("as.test.raw", '{"msg":"raw"}');
+  emit("as.test.raw", '{"msg":"raw"}');
   return 0;
 }

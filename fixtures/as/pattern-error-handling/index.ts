@@ -1,8 +1,11 @@
-import { tools, ToolCallMsg, setState, log } from "brainkit";
+import { publish, setState, log, JSONObject } from "brainkit";
 
 export function run(): i32 {
   // Call a tool that does not exist
-  tools.call(new ToolCallMsg("nonexistent", "{}"), "onResult");
+  const payload = new JSONObject()
+    .setString("name", "nonexistent")
+    .setString("input", "{}");
+  publish("tools.call", payload.toString(), "onResult");
   return 0;
 }
 

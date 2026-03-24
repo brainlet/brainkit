@@ -1,7 +1,7 @@
 // Stateless shard that uses send() (fire-and-forget) inside a handler.
 // Tests: bus.sendRaw from within a handler, no reply
 import { setMode, on, log } from "brainkit";
-import { bus } from "brainkit";
+import { emit } from "brainkit";
 
 export function init(): void {
   setMode("stateless");
@@ -9,6 +9,6 @@ export function init(): void {
 }
 
 export function handleForward(topic: string, payload: string): void {
-  bus.sendRaw("test.forwarded", payload);
+  emit("test.forwarded", payload);
   log("forwarded");
 }

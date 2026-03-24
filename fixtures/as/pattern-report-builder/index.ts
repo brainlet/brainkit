@@ -1,4 +1,4 @@
-import { setState, getState, bus, log, JSONObject, JSONArray } from "brainkit";
+import { setState, getState, emit, log, JSONObject, JSONArray } from "brainkit";
 
 export function run(): i32 {
   // 1. Seed state with data points
@@ -36,7 +36,7 @@ export function run(): i32 {
   if (!json.includes("healthy")) return 5;
 
   // 5. Publish the report
-  bus.sendRaw("report.generated", report.toString());
+  emit("report.generated", report.toString());
 
   return 0;
 }

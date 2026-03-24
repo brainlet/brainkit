@@ -1,7 +1,7 @@
 // Persistent shard: logs events and tracks count.
 // Tests: persistent state across events, send() from handler, reply with state
 import { setMode, on, reply, getState, setState, log } from "brainkit";
-import { bus } from "brainkit";
+import { emit } from "brainkit";
 
 export function init(): void {
   setMode("persistent");
@@ -18,7 +18,7 @@ export function handleAudit(topic: string, payload: string): void {
   setState("lastPayload", payload);
 
   // Forward a notification
-  bus.sendRaw("audit.logged", '{"count":' + count.toString() + '}');
+  emit("audit.logged", '{"count":' + count.toString() + '}');
   log("audit event #" + count.toString());
 }
 

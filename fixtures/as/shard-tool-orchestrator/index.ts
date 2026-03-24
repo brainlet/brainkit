@@ -1,6 +1,6 @@
-// Stateless shard: receives a request, calls a tool via the typed async wrapper, stores result.
-// Tests: tools.call async wrapper, callback processes tool output
-import { setMode, on, reply, setState, log, JSONValue, tools, ToolCallMsg } from "brainkit";
+// Stateless shard: receives a request, calls a tool via bus publish, stores result.
+// Tests: publish to tools.call with dynamic tool name, callback processes output
+import { setMode, on, reply, setState, log, publish, JSONValue, JSONObject } from "brainkit";
 
 export function init(): void {
   setMode("stateless");
@@ -17,8 +17,11 @@ export function handleQuery(topic: string, payload: string): void {
   const toolName = obj.getString("tool");
   const input = obj.get("input");
 
-  // Call the tool via the typed async wrapper
-  tools.call(new ToolCallMsg(toolName, input.toString()), "onToolResult");
+  // Call the tool via bus publish
+  const toolPayload = new JSONObject()
+    .setString("name", toolName)
+    .set("input", input);
+  publish("tools.call", toolPayload.toString(), "onToolResult");
   log("calling tool: " + toolName);
 }
 

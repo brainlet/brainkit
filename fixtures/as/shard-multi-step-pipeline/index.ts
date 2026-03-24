@@ -1,8 +1,7 @@
 // Persistent shard: multi-step pipeline — tool call → .ts AI service → store.
 // Tests: chained async calls (tool → .ts service), multi-callback flow,
 //        persistent state tracking pipeline stages.
-// Note: AI calls now go to .ts services via bus, not via removed catalog commands.
-import { setMode, on, reply, setState, getState, log, JSONValue, tools, ToolCallMsg, publish, emit } from "brainkit";
+import { setMode, on, reply, setState, getState, log, JSONValue, JSONObject, publish, emit } from "brainkit";
 
 export function init(): void {
   setMode("persistent");
@@ -14,8 +13,11 @@ export function handleRun(topic: string, payload: string): void {
   setState("stage", "fetching");
   log("pipeline: stage 1 — fetching data");
 
-  // Stage 1: call a tool to fetch data (tools domain is still in catalog)
-  tools.call(new ToolCallMsg("data_fetch", JSONValue.parse(payload).toString()), "onDataFetched");
+  // Stage 1: call a tool to fetch data via bus publish
+  const toolPayload = new JSONObject()
+    .setString("name", "data_fetch")
+    .set("input", JSONValue.parse(payload));
+  publish("tools.call", toolPayload.toString(), "onDataFetched");
 }
 
 export function onDataFetched(topic: string, payload: string): void {

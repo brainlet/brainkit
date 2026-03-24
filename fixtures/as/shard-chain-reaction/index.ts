@@ -1,7 +1,7 @@
 // Persistent shard: handler emits event that triggers another handler on the same shard.
 // Tests: intra-shard event chain, persistent state across chained handlers
 import { setMode, on, reply, getState, setState, log } from "brainkit";
-import { bus } from "brainkit";
+import { emit } from "brainkit";
 
 export function init(): void {
   setMode("persistent");
@@ -12,7 +12,7 @@ export function init(): void {
 export function onStart(topic: string, payload: string): void {
   setState("step", "1");
   log("chain: step 1 done");
-  bus.sendRaw("chain.step2", '{"from":"step1"}');
+  emit("chain.step2", '{"from":"step1"}');
   reply('{"started":true,"step":"1"}');
 }
 
