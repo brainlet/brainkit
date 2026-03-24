@@ -598,14 +598,9 @@ func TestTS_AgentWithTool_Real(t *testing.T) {
 // This is the primary use case for the .ts service architecture.
 // Requires OPENAI_API_KEY.
 //
-// KNOWN ISSUE: generateText (fetch → HTTP) called inside a bus.on handler
-// processed by the job pump's ProcessScheduledJobs does not complete.
-// The fetch goroutine's ctx.Schedule resolve callback is not picked up
-// by the Await loop nested inside ProcessJobs. This needs investigation
-// in the jsbridge/quickjs-go interaction layer.
-// Direct EvalTS/Deploy with generateText works fine (tested above).
+// Fixed: ProcessScheduledJobs now uses ctx.Loop() instead of ctx.ProcessJobs()
+// to run both Go→JS callbacks AND JS microtasks (Promise continuations).
 func TestTS_BusServiceAsAIProxy(t *testing.T) {
-	t.Skip("KNOWN ISSUE: generateText inside bus.on handler — fetch resolve not picked up by nested Await")
 	testutil.LoadEnv(t)
 	if os.Getenv("OPENAI_API_KEY") == "" {
 		t.Skip("OPENAI_API_KEY not set")
