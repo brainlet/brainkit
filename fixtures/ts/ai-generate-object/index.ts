@@ -2,7 +2,7 @@
 import { generateObject, z } from "ai";
 import { model, output } from "kit";
 
-const result = await generateObject({
+const result = await generateObject<{ name: string; age: number; hobbies: string[] }>({
   model: model("openai", "gpt-4o-mini"),
   schema: z.object({
     name: z.string().describe("A fictional person's name"),

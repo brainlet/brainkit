@@ -5,7 +5,7 @@ import { output } from "kit";
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set, process.env keys: " + Object.keys(globalThis.process?.env || {}).join(","));
 
-const vector = new LibSQLVector({
+const vector: any = new LibSQLVector({
   id: "test-vector-methods",
   url: url,
 });
@@ -23,7 +23,7 @@ const hasB = indexes.includes("test_idx_b");
 const info = await vector.describeIndex({ indexName: "test_idx_a" });
 
 // 4. Upsert some vectors
-await vector.upsert({
+await (vector as any).upsert({
   indexName: "test_idx_a",
   vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
   ids: ["v1", "v2"],

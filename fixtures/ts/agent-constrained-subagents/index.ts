@@ -4,7 +4,7 @@
 import { Agent, createTool, z } from "agent";
 import { model, output } from "kit";
 
-const results = {};
+const results: any = {};
 
 try {
   // Create tools

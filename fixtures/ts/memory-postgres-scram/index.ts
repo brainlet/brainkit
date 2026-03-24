@@ -16,7 +16,7 @@ const a = new Agent({
   name: "fixture",
   model: model("openai", "gpt-4o-mini"),
   instructions: "You are a helpful assistant. Remember what the user tells you.",
-  memory: store,
+  memory: store as any,
 });
 
 await a.generate("My favorite number is 42.", {

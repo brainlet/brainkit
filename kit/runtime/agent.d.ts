@@ -274,7 +274,7 @@ declare module "agent" {
   interface WorkflowRun {
     runId: string;
     start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
-    resume(params: { resumeData: Record<string, unknown>; step?: string }): Promise<WorkflowRunResult>;
+    resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string }, resumeData?: Record<string, unknown>): Promise<WorkflowRunResult>;
     cancel(): void;
     readonly status: string;
     readonly currentStep: string;
@@ -506,7 +506,7 @@ declare module "agent" {
     maxSize?: number;
     overlap?: number;
     separator?: string;
-    headers?: Record<string, string>;
+    headers?: [string, string][] | Record<string, string>;
     [key: string]: any;
   }
 

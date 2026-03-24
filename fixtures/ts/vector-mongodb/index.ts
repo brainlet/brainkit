@@ -24,7 +24,7 @@ try {
   if (e.message && e.message.includes("createSearchIndexes")) {
     // Expected on Community Edition — Atlas Search not available.
     // Verify we can at least upsert to the backing collection.
-    await vector.upsert({
+    await (vector as any).upsert({
       indexName: "test_vectors",
       vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
       ids: ["x", "y"],

@@ -34,7 +34,7 @@ for (let i = 0; i < chunks.length; i++) {
   ids.push("chunk-" + i);
 }
 
-await vectorStore.upsert({
+await (vectorStore as any).upsert({
   indexName: "rag_docs",
   vectors,
   metadata,
@@ -57,5 +57,5 @@ output({
   chunkCount: chunks.length,
   resultCount: results.length,
   hasResults: results.length > 0,
-  topResult: results[0]?.metadata?.text?.substring(0, 80),
+  topResult: (results[0]?.metadata?.text as string)?.substring(0, 80),
 });

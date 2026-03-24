@@ -31,7 +31,7 @@ const wasmResult = await wasmModule.run({});
 
 output({
   aiText: aiResult.text,
-  reversed: reversed.result,
+  reversed: (reversed as any).result,
   hasLocalTool: !!concatTool,
   wasmExitCode: wasmResult.exitCode,
 });

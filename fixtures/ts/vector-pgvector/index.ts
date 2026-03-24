@@ -17,7 +17,7 @@ await vector.createIndex({
 });
 
 // Upsert vectors
-await vector.upsert({
+await (vector as any).upsert({
   indexName: "test_vectors",
   vectors: [
     [1.0, 0.0, 0.0],

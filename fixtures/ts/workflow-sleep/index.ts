@@ -34,5 +34,5 @@ const result = await run.start({ inputData: {} });
 output({
   status: result.status,
   elapsed: result.result?.elapsed,
-  sleptEnough: result.result?.elapsed >= 50,
+  sleptEnough: (result.result?.elapsed as number) >= 50,
 });

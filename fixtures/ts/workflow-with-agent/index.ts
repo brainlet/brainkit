@@ -54,5 +54,5 @@ const result = await run.start({ inputData: { topic: "banana" } });
 output({
   status: result.status,
   result: result.result,
-  hasAnswer: result.status === "success" && result.result?.formatted?.includes("The answer is:"),
+  hasAnswer: result.status === "success" && (result.result as any)?.formatted?.includes("The answer is:"),
 });
