@@ -112,6 +112,20 @@
     return embed[factoryName](opts)(modelId);
   }
 
+  function resolveEmbeddingModel(providerName, modelId) {
+    var providers = globalThis.__kit_providers || {};
+    var pc = providers[providerName];
+    if (!pc) throw new Error("embeddingModel: provider '" + providerName + "' not registered");
+    var factoryName = providerFactories[providerName];
+    if (!factoryName || !embed[factoryName]) throw new Error("embeddingModel: provider '" + providerName + "' not available");
+    var opts = { apiKey: pc.APIKey || pc.apiKey };
+    if (pc.BaseURL || pc.baseURL) opts.baseURL = pc.BaseURL || pc.baseURL;
+    var prov = embed[factoryName](opts);
+    if (typeof prov.embedding === "function") return prov.embedding(modelId);
+    if (typeof prov.textEmbeddingModel === "function") return prov.textEmbeddingModel(modelId);
+    throw new Error("embeddingModel: provider '" + providerName + "' does not support embeddings");
+  }
+
   var _providerCache = {};
   function resolveProvider(name) {
     if (_providerCache[name]) return _providerCache[name];
@@ -405,6 +419,7 @@
     bus: bus,
     kit: kit,
     model: resolveModel,
+    embeddingModel: resolveEmbeddingModel,
     provider: resolveProvider,
     storage: resolveStorage,
     vectorStore: resolveVectorStore,
@@ -470,11 +485,26 @@
       bus: scopedBus,
       kit: scopedKit,
       model: _kitObj.model,
+      embeddingModel: _kitObj.embeddingModel,
       provider: _kitObj.provider,
       storage: _kitObj.storage,
       vectorStore: _kitObj.vectorStore,
       registry: _kitObj.registry,
       tools: _kitObj.tools,
+      // tool() resolver — wraps a Go-registered tool as a Mastra-compatible tool object
+      // so Agent can use it: const t = tool("name"); new Agent({ tools: { name: t } })
+      tool: function(name) {
+        var info = _kitObj.tools.resolve(name);
+        if (!info) throw new Error("tool '" + name + "' not found");
+        return embed.createTool({
+          id: info.shortName || name,
+          description: info.description || "",
+          inputSchema: info.inputSchema ? embed.z.object(info.inputSchema) : embed.z.any(),
+          execute: async function(input) {
+            return await _kitObj.tools.call(name, input);
+          },
+        });
+      },
       fs: _kitObj.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,

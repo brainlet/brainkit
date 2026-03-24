@@ -8,9 +8,9 @@ try {
     id: "approval",
     inputSchema: z.object({ amount: z.number() }),
     outputSchema: z.object({ approved: z.boolean(), approver: z.string() }),
-    execute: async ({ inputData, resumeData, suspend }) => {
+    execute: async ({ inputData, resumeData, suspend }: any) => {
       if (!resumeData) {
-        return suspend({ question: "Approve?", amount: inputData.amount });
+        return await suspend({ question: "Approve?", amount: inputData.amount });
       }
       return { approved: resumeData.approved, approver: resumeData.approver };
     },
@@ -32,9 +32,9 @@ try {
 
   if (result1.status === "suspended") {
     log.push("resuming");
-    const result2 = await run.resume("approval", {
-      approved: true,
-      approver: "David",
+    const result2 = await run.resume({
+      step: "approval",
+      resumeData: { approved: true, approver: "David" },
     });
     log.push("resumed:" + result2.status);
 

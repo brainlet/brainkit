@@ -24,7 +24,7 @@ const workflow = createWorkflow({
   outputSchema: z.any(),
 })
   .then(produceStep)
-  .forEach({ items: "items", step: processStep })
+  .foreach(processStep)
   .commit();
 
 const run = await workflow.createRun();

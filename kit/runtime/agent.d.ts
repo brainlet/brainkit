@@ -246,7 +246,7 @@ declare module "agent" {
     then(step: Step): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
     branch(config: BranchConfig | Step[][]): WorkflowBuilder;
-    forEach(config: ForEachConfig): WorkflowBuilder;
+    foreach(config: ForEachConfig): WorkflowBuilder;
     /** Loop until condition is met. */
     dountil(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
     /** Pause execution for a duration (ms). */

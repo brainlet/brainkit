@@ -61,8 +61,11 @@ declare module "kit" {
 
   // ── Model Resolution ─────────────────────────────────────────
 
-  /** Resolve a model from the provider registry. Returns an AI SDK model instance. */
+  /** Resolve a language model from the provider registry. For generateText, streamText, Agent. */
   export function model(provider: string, modelId: string): any;
+
+  /** Resolve an embedding model from the provider registry. For embed, embedMany. */
+  export function embeddingModel(provider: string, modelId: string): any;
 
   /** Resolve a provider factory from the registry. */
   export function provider(name: string): ProviderFactory;
