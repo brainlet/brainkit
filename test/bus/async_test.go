@@ -1,4 +1,4 @@
-package test
+package bus_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestAsync_CorrelationIDFiltering(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -41,7 +42,7 @@ func TestAsync_CorrelationIDFiltering(t *testing.T) {
 }
 
 func TestAsync_MultipleInFlight(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -88,7 +89,7 @@ func TestAsync_MultipleInFlight(t *testing.T) {
 }
 
 func TestAsync_ContextCancellation(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 
 	// Create a context that's already cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,7 +102,7 @@ func TestAsync_ContextCancellation(t *testing.T) {
 }
 
 func TestAsync_SubscribeCancellation(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 
 	ctx := context.Background()
 

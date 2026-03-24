@@ -1,10 +1,11 @@
-package test
+package transport_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -12,12 +13,12 @@ import (
 )
 
 func TestTransport_Compliance(t *testing.T) {
-	for _, backend := range allBackends(t) {
+	for _, backend := range testutil.AllBackends(t) {
 		if backend == "amqp" || backend == "redis" || backend == "sql-postgres" {
 			continue // these require more debugging — skip for now
 		}
 		t.Run(backend, func(t *testing.T) {
-			transport := createTestTransport(t, backend)
+			transport := testutil.CreateTestTransport(t, backend)
 			remote := messaging.NewRemoteClientWithTransport("compliance", "tester", transport)
 
 			t.Run("PublishSubscribe", func(t *testing.T) {

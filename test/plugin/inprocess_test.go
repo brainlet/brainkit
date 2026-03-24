@@ -1,4 +1,4 @@
-package test
+package plugin_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ import (
 // implement sdk.Runtime, and the tests pass on Node, the plugin path works too.
 func TestPlugin_InProcess(t *testing.T) {
 	// Use Node as the "plugin-side" Runtime — same interface, same behavior
-	rt := newTestNode(t)
+	rt := testutil.NewTestNode(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

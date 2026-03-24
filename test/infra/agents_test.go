@@ -1,4 +1,4 @@
-package test
+package infra_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -17,8 +18,8 @@ func TestGoDirect_Agents(t *testing.T) {
 		name string
 		make func(t *testing.T) sdk.Runtime
 	}{
-		{"Kernel", newTestKernel},
-		{"Node", newTestNode},
+		{"Kernel", testutil.NewTestKernel},
+		{"Node", testutil.NewTestNode},
 	} {
 		t.Run(factory.name, func(t *testing.T) {
 			rt := factory.make(t)
@@ -120,7 +121,7 @@ func TestGoDirect_Agents(t *testing.T) {
 			})
 
 			t.Run("Deploy_Agent_Then_List", func(t *testing.T) {
-				if !hasAIKey() {
+				if !testutil.HasAIKey() {
 					t.Skip("OPENAI_API_KEY required for agent deployment")
 				}
 

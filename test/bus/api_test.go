@@ -1,4 +1,4 @@
-package test
+package bus_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 // TestBusBridge_JSPublishReturnsReplyTo verifies that __go_brainkit_bus_publish
 // generates a replyTo and correlationId, and returns them to JS.
 func TestBusBridge_JSPublishReturnsReplyTo(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -40,7 +41,7 @@ func TestBusBridge_JSPublishReturnsReplyTo(t *testing.T) {
 
 // TestBusBridge_JSEmitFireAndForget verifies __go_brainkit_bus_emit publishes without replyTo.
 func TestBusBridge_JSEmitFireAndForget(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -70,7 +71,7 @@ func TestBusBridge_JSEmitFireAndForget(t *testing.T) {
 // to replyTo with correlationId and done metadata flag.
 // Uses the real flow: Go publishes → JS subscribes → JS replies → Go receives.
 func TestBusBridge_JSReplyDoneFlag(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -136,7 +137,7 @@ func TestBusBridge_JSReplyDoneFlag(t *testing.T) {
 // TestBusBridge_JSSubscribeReceivesMetadata verifies that JS bus.subscribe
 // handlers receive payload + replyTo + correlationId + callerId.
 func TestBusBridge_JSSubscribeReceivesMetadata(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -195,7 +196,7 @@ func TestBusBridge_JSSubscribeReceivesMetadata(t *testing.T) {
 // TestBusBridge_GoToJSRoundTrip verifies Go can publish a CustomMsg to a JS handler
 // and receive a reply back through the bus.
 func TestBusBridge_GoToJSRoundTrip(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -234,10 +235,10 @@ func TestBusBridge_GoToJSRoundTrip(t *testing.T) {
 	}
 }
 
-// TestBusAPI_DeployWithBusOn verifies the full deploy → bus.on → message → reply flow.
+// TestBusAPI_DeployWithBusOn verifies the full deploy -> bus.on -> message -> reply flow.
 // Deploys .ts code that uses bus.on("greet"), then sends a message from Go.
 func TestBusAPI_DeployWithBusOn(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -293,7 +294,7 @@ func TestBusAPI_DeployWithBusOn(t *testing.T) {
 
 // TestBusAPI_StreamingChunks verifies msg.send (chunks) + msg.reply (final) from a .ts service.
 func TestBusAPI_StreamingChunks(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -360,7 +361,7 @@ done:
 // TestBusAPI_KitRegisterAgentDiscovery verifies kit.register("agent") makes it
 // discoverable via agents.list, and teardown removes it.
 func TestBusAPI_KitRegisterAgentDiscovery(t *testing.T) {
-	rt := newTestKernelFull(t)
+	rt := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

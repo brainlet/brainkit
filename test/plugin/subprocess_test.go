@@ -1,4 +1,4 @@
-package test
+package plugin_test
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/kit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -33,16 +33,7 @@ func TestPlugin_Subprocess(t *testing.T) {
 	}
 
 	// Build the test plugin binary
-	pluginBinary := filepath.Join(t.TempDir(), "testplugin")
-	// Build from the module root so Go can resolve the module path
-	moduleRoot := filepath.Join("..")
-	buildCmd := exec.Command("go", "build", "-o", pluginBinary, "./test/testplugin/")
-	buildCmd.Dir = moduleRoot
-	buildCmd.Stdout = os.Stdout
-	buildCmd.Stderr = os.Stderr
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("build test plugin: %v", err)
-	}
+	pluginBinary := testutil.BuildTestPlugin(t)
 	t.Logf("Built test plugin: %s", pluginBinary)
 
 	// NATS JetStream auto-provisioning for 48+ command topics is slow.
@@ -138,9 +129,9 @@ func TestPlugin_Subprocess(t *testing.T) {
 	defer node.Close()
 
 	// Register a host-side tool
-	kit.RegisterTool(node.Kernel, "host-add", registry.TypedTool[addInput]{
+	kit.RegisterTool(node.Kernel, "host-add", registry.TypedTool[testutil.AddInput]{
 		Description: "adds two numbers (host-side)",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})

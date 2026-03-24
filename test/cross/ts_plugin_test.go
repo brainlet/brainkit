@@ -1,4 +1,4 @@
-package test
+package cross_test
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/kit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -26,22 +26,15 @@ func TestCross_TS_Plugin(t *testing.T) {
 		t.Skip("skipping plugin tests in short mode")
 	}
 
-	for _, backend := range allBackends(t) {
+	for _, backend := range testutil.AllBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			requiresNetworkTransport(t, backend)
+			testutil.RequiresNetworkTransport(t, backend)
 
 			if backend != "nats" {
 				t.Skipf("TS↔Plugin cross-surface currently tested on NATS only")
 			}
 
-			pluginBinary := filepath.Join(t.TempDir(), "testplugin")
-			buildCmd := exec.Command("go", "build", "-o", pluginBinary, "./test/testplugin/")
-			buildCmd.Dir = filepath.Join("..")
-			buildCmd.Stdout = os.Stdout
-			buildCmd.Stderr = os.Stderr
-			if err := buildCmd.Run(); err != nil {
-				t.Fatalf("build test plugin: %v", err)
-			}
+			pluginBinary := testutil.BuildTestPlugin(t)
 
 			natsURL := startNATSContainer(t)
 

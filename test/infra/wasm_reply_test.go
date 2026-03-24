@@ -1,4 +1,4 @@
-package test
+package infra_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 // TestWASM_Reply tests that a shard handler can use reply() to send a response
 // back through the host function, and the Go caller receives the reply payload.
 func TestWASM_Reply(t *testing.T) {
-	tk := newTestKernelFull(t)
+	tk := testutil.NewTestKernelFull(t)
 	rt := sdk.Runtime(tk)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -74,7 +75,7 @@ _busOn("reply.test.event", "handleReply");
 
 // TestWASM_Reply_WithState tests reply in persistent mode with state.
 func TestWASM_Reply_WithState(t *testing.T) {
-	tk := newTestKernelFull(t)
+	tk := testutil.NewTestKernelFull(t)
 	rt := sdk.Runtime(tk)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

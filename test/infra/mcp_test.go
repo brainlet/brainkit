@@ -1,15 +1,13 @@
-package test
+package infra_test
 
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/kit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -19,17 +17,9 @@ import (
 
 func TestGoDirect_MCP(t *testing.T) {
 	// Build the testmcp binary
-	mcpBinary := filepath.Join(t.TempDir(), "testmcp")
-	moduleRoot := filepath.Join("..")
-	buildCmd := exec.Command("go", "build", "-o", mcpBinary, "./test/testmcp/")
-	buildCmd.Dir = moduleRoot
-	buildCmd.Stdout = os.Stdout
-	buildCmd.Stderr = os.Stderr
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("build testmcp: %v", err)
-	}
+	mcpBinary := testutil.BuildTestMCP(t)
 
-	for _, backend := range allBackends(t) {
+	for _, backend := range testutil.AllBackends(t) {
 		t.Run(backend, func(t *testing.T) {
 			tmpDir := t.TempDir()
 

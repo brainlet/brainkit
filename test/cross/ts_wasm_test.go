@@ -1,4 +1,4 @@
-package test
+package cross_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,9 @@ import (
 )
 
 func TestCross_TS_WASM(t *testing.T) {
-	for _, backend := range allBackends(t) {
+	for _, backend := range testutil.AllBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			tk := newTestKernelFullWithBackend(t, backend)
+			tk := testutil.NewTestKernelFullWithBackend(t, backend)
 			rt := sdk.Runtime(tk)
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()

@@ -1,10 +1,11 @@
-package test
+package infra_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 // TestWASM_InvokeAsync tests that WASM modules can call domain methods via _busPublish
 // and receive results in their callback functions.
 func TestWASM_InvokeAsync_ToolsCall(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -72,7 +73,7 @@ func TestWASM_InvokeAsync_ToolsCall(t *testing.T) {
 // TestWASM_InvokeAsync_UnknownTopic tests that _busPublish with an unknown topic
 // still calls back (with an error payload) instead of silently dropping.
 func TestWASM_InvokeAsync_UnknownTopic(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -121,7 +122,7 @@ func TestWASM_InvokeAsync_UnknownTopic(t *testing.T) {
 
 // TestWASM_InvokeAsync_ToolsList tests _busPublish with tools.list.
 func TestWASM_InvokeAsync_ToolsList(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

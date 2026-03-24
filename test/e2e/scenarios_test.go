@@ -1,4 +1,4 @@
-package test
+package e2e_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 // TestE2E_ToolPipeline tests a real-world scenario:
 // Go registers a tool → deploys .ts code that calls the tool → verifies the full chain.
 func TestE2E_ToolPipeline(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -104,7 +105,7 @@ func TestE2E_ToolPipeline(t *testing.T) {
 
 // TestE2E_DeployLifecycle tests the full deploy → list → redeploy → teardown cycle.
 func TestE2E_DeployLifecycle(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -193,7 +194,7 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 // TestE2E_MultiDomain tests a workflow that crosses domain boundaries:
 // write a file → call a tool that reads and processes it → write output → verify.
 func TestE2E_MultiDomain(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -280,7 +281,7 @@ func TestE2E_MultiDomain(t *testing.T) {
 // TestE2E_WasmShardLifecycle tests the full WASM shard lifecycle:
 // compile → deploy → inject events → verify state → undeploy → remove.
 func TestE2E_WasmShardLifecycle(t *testing.T) {
-	tk := newTestKernelFull(t)
+	tk := testutil.NewTestKernelFull(t)
 	rt := sdk.Runtime(tk)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -403,7 +404,7 @@ _busOn("lifecycle.data", "handleData");
 
 // TestE2E_ConcurrentOperations tests multiple operations running concurrently.
 func TestE2E_ConcurrentOperations(t *testing.T) {
-	rt := newTestKernel(t)
+	rt := testutil.NewTestKernel(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

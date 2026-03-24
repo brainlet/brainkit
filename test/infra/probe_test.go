@@ -1,4 +1,4 @@
-package test
+package infra_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/kit"
 	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 
 // TestProbe_AIProvider_Real_OpenAI probes the real OpenAI API with a real key.
 func TestProbe_AIProvider_Real_OpenAI(t *testing.T) {
-	loadEnv(t)
+	testutil.LoadEnv(t)
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
 		t.Skip("OPENAI_API_KEY required")
@@ -114,11 +115,11 @@ func TestProbe_Storage_InMemory(t *testing.T) {
 
 // TestProbe_VectorStore_Real_PgVector tests vector store probing with a real Postgres+pgvector.
 func TestProbe_VectorStore_Real_PgVector(t *testing.T) {
-	if !podmanAvailable() {
+	if !testutil.PodmanAvailable() {
 		t.Skip("Podman required for pgvector container")
 	}
 
-	pgConnStr := startPgVectorContainer(t)
+	pgConnStr := testutil.StartPgVectorContainer(t)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
@@ -153,7 +154,7 @@ func TestProbe_VectorStore_Real_PgVector(t *testing.T) {
 
 // TestProbe_ProbeAll runs probes for everything registered.
 func TestProbe_ProbeAll(t *testing.T) {
-	loadEnv(t)
+	testutil.LoadEnv(t)
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
 		t.Skip("OPENAI_API_KEY required")
@@ -189,7 +190,7 @@ func TestProbe_ProbeAll(t *testing.T) {
 
 // TestProbe_PeriodicTicker verifies that periodic probing fires.
 func TestProbe_PeriodicTicker(t *testing.T) {
-	loadEnv(t)
+	testutil.LoadEnv(t)
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
 		t.Skip("OPENAI_API_KEY required")

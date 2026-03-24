@@ -1,10 +1,12 @@
-package test
+package infra_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -16,8 +18,8 @@ func TestGoDirect_WASM(t *testing.T) {
 		name string
 		make func(t *testing.T) sdk.Runtime
 	}{
-		{"Kernel", newTestKernel},
-		{"Node", newTestNode},
+		{"Kernel", testutil.NewTestKernel},
+		{"Node", testutil.NewTestNode},
 	} {
 		t.Run(factory.name, func(t *testing.T) {
 			rt := factory.make(t)
@@ -142,7 +144,17 @@ func TestGoDirect_WASM(t *testing.T) {
 				}
 				assert.True(t, resp.Removed)
 
-				_, _ := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
+				// Verify it's gone after removal
+				_pr_rm, _ := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-remove"})
+				_ch_rm := make(chan messages.WasmGetResp, 1)
+				_us_rm, _ := sdk.SubscribeTo[messages.WasmGetResp](rt, ctx, _pr_rm.ReplyTo, func(r messages.WasmGetResp, m messages.Message) { _ch_rm <- r })
+				defer _us_rm()
+				var getResp messages.WasmGetResp
+				select {
+				case getResp = <-_ch_rm:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				assert.Nil(t, getResp.Module)
 			})
 

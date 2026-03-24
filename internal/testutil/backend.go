@@ -1,4 +1,4 @@
-package test
+package testutil
 
 import (
 	"context"
@@ -21,8 +21,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// podmanAvailable returns true if Podman is installed and running.
-func podmanAvailable() bool {
+// PodmanAvailable returns true if Podman is installed and running.
+func PodmanAvailable() bool {
 	if _, err := exec.LookPath("podman"); err != nil {
 		return false
 	}
@@ -30,11 +30,11 @@ func podmanAvailable() bool {
 	return err == nil && len(out) > 0
 }
 
-// allBackends returns backends available for testing.
+// AllBackends returns backends available for testing.
 // GoChannel and SQLite always included. Others require Podman.
-func allBackends(t *testing.T) []string {
+func AllBackends(t *testing.T) []string {
 	backends := []string{"memory", "sql-sqlite"}
-	if podmanAvailable() {
+	if PodmanAvailable() {
 		backends = append(backends, "nats", "amqp", "redis", "sql-postgres")
 	} else {
 		t.Log("Podman not available — skipping NATS, AMQP, Redis, Postgres backends")
@@ -42,11 +42,11 @@ func allBackends(t *testing.T) []string {
 	return backends
 }
 
-// createTestTransport creates a transport for the given backend.
+// CreateTestTransport creates a transport for the given backend.
 // For Podman-based backends, starts the container and returns URL.
-func createTestTransport(t *testing.T, backend string) *messaging.Transport {
+func CreateTestTransport(t *testing.T, backend string) *messaging.Transport {
 	t.Helper()
-	cfg := transportConfigForBackend(t, backend)
+	cfg := TransportConfigForBackend(t, backend)
 	transport, err := messaging.NewTransportSet(cfg)
 	if err != nil {
 		t.Fatalf("create transport %s: %v", backend, err)
@@ -55,18 +55,18 @@ func createTestTransport(t *testing.T, backend string) *messaging.Transport {
 	return transport
 }
 
-// newTestKernelWithTransport creates a Kernel with the given backend transport.
-func newTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
+// NewTestKernelWithTransport creates a Kernel with the given backend transport.
+func NewTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
-	cfg := transportConfigForBackend(t, backend)
+	cfg := TransportConfigForBackend(t, backend)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-" + backend,
 		WorkspaceDir: tmpDir,
-		Transport:    mustCreateTransport(t, cfg),
+		Transport:    MustCreateTransport(t, cfg),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel(%s): %v", backend, err)
@@ -74,15 +74,15 @@ func newTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	t.Cleanup(func() { k.Close() })
 
 	// Register test tools
-	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
@@ -90,28 +90,28 @@ func newTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	return k
 }
 
-// newKitWithNamespace creates a Kernel with a specific namespace on the given backend.
+// NewKitWithNamespace creates a Kernel with a specific namespace on the given backend.
 // For cross-Kit tests, two Kits share the same transport but different namespaces.
-func newKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
+func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
-	cfg := transportConfigForBackend(t, backend)
+	cfg := TransportConfigForBackend(t, backend)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    namespace,
 		CallerID:     namespace + "-caller",
 		WorkspaceDir: tmpDir,
-		Transport:    mustCreateTransport(t, cfg),
+		Transport:    MustCreateTransport(t, cfg),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message, "from": namespace}, nil
 		},
 	})
@@ -119,8 +119,8 @@ func newKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
 	return k
 }
 
-// mustCreateTransport creates a transport or fails the test.
-func mustCreateTransport(t *testing.T, cfg messaging.TransportConfig) *messaging.Transport {
+// MustCreateTransport creates a transport or fails the test.
+func MustCreateTransport(t *testing.T, cfg messaging.TransportConfig) *messaging.Transport {
 	t.Helper()
 	transport, err := messaging.NewTransportSet(cfg)
 	if err != nil {
@@ -130,9 +130,9 @@ func mustCreateTransport(t *testing.T, cfg messaging.TransportConfig) *messaging
 	return transport
 }
 
-// transportConfigForBackend returns a TransportConfig for the given backend.
+// TransportConfigForBackend returns a TransportConfig for the given backend.
 // For Podman-based backends, starts the container and returns the URL.
-func transportConfigForBackend(t *testing.T, backend string) messaging.TransportConfig {
+func TransportConfigForBackend(t *testing.T, backend string) messaging.TransportConfig {
 	t.Helper()
 	switch backend {
 	case "memory", "":
@@ -143,19 +143,19 @@ func transportConfigForBackend(t *testing.T, backend string) messaging.Transport
 			SQLitePath: filepath.Join(t.TempDir(), "transport.db"),
 		}
 	case "nats":
-		url := startContainer(t, "nats:latest", "4222/tcp", []string{"-js"},
+		url := StartContainer(t, "nats:latest", "4222/tcp", []string{"-js"},
 			wait.ForLog("Server is ready").WithStartupTimeout(30*time.Second))
 		return messaging.TransportConfig{Type: "nats", NATSURL: url, NATSName: "test"}
 	case "amqp":
-		url := startContainer(t, "rabbitmq:management", "5672/tcp", nil,
+		url := StartContainer(t, "rabbitmq:management", "5672/tcp", nil,
 			wait.ForLog("Ready to start client connection listeners").WithStartupTimeout(60*time.Second))
 		return messaging.TransportConfig{Type: "amqp", AMQPURL: fmt.Sprintf("amqp://guest:guest@%s/", url)}
 	case "redis":
-		url := startContainer(t, "redis:latest", "6379/tcp", nil,
+		url := StartContainer(t, "redis:latest", "6379/tcp", nil,
 			wait.ForLog("Ready to accept connections").WithStartupTimeout(30*time.Second))
 		return messaging.TransportConfig{Type: "redis", RedisURL: fmt.Sprintf("redis://%s/0", url)}
 	case "sql-postgres":
-		url := startContainer(t, "postgres:16", "5432/tcp", nil,
+		url := StartContainer(t, "postgres:16", "5432/tcp", nil,
 			wait.ForLog("database system is ready to accept connections").WithStartupTimeout(60*time.Second),
 			"POSTGRES_USER=test", "POSTGRES_PASSWORD=test", "POSTGRES_DB=brainkit",
 		)
@@ -169,8 +169,8 @@ func transportConfigForBackend(t *testing.T, backend string) messaging.Transport
 	}
 }
 
-// startContainer starts a Podman container and returns "host:port".
-func startContainer(t *testing.T, image, port string, cmd []string, strategy wait.Strategy, envVars ...string) string {
+// StartContainer starts a Podman container and returns "host:port".
+func StartContainer(t *testing.T, image, port string, cmd []string, strategy wait.Strategy, envVars ...string) string {
 	t.Helper()
 
 	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -231,10 +231,9 @@ func splitEnvVar(ev string) [2]string {
 	return [2]string{ev, ""}
 }
 
-// waitForBackendReady verifies the transport is fully operational by publishing
-// a probe message and waiting for it to round-trip. This catches cases where the
-// container is up but Watermill isn't fully connected (e.g., NATS JetStream provisioning).
-func waitForBackendReady(t *testing.T, transport *messaging.Transport) {
+// WaitForBackendReady verifies the transport is fully operational by publishing
+// a probe message and waiting for it to round-trip.
+func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -266,13 +265,12 @@ func waitForBackendReady(t *testing.T, transport *messaging.Transport) {
 	}
 }
 
-// newTestKernelPair creates two Kernels on the SAME transport with different namespaces.
-// Both Kits share one transport instance so cross-namespace messages can route between them.
-func newTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) {
+// NewTestKernelPair creates two Kernels on the SAME transport with different namespaces.
+func NewTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) {
 	t.Helper()
-	loadEnv(t)
-	cfg := transportConfigForBackend(t, backend)
-	transport := mustCreateTransport(t, cfg)
+	LoadEnv(t)
+	cfg := TransportConfigForBackend(t, backend)
+	transport := MustCreateTransport(t, cfg)
 	t.Cleanup(func() { transport.Close() })
 
 	makeKit := func(namespace string) sdk.Runtime {
@@ -288,9 +286,9 @@ func newTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 		}
 		t.Cleanup(func() { k.Close() })
 
-		kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+		kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 			Description: "echoes the input message",
-			Execute: func(ctx context.Context, input echoInput) (any, error) {
+			Execute: func(ctx context.Context, input EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message, "from": namespace}, nil
 			},
 		})
@@ -300,14 +298,12 @@ func newTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 	return makeKit("kit-a"), makeKit("kit-b")
 }
 
-// newTestKernelPairFull creates two fully-configured Kernels on the SAME transport.
-// Both have: workspace, embedded storage, AI providers, env vars, echo tool.
-// For cross-Kit tests that need AI/memory/workflows/vectors.
-func newTestKernelPairFull(t *testing.T, backend string) (*testKernel, *testKernel) {
+// NewTestKernelPairFull creates two fully-configured Kernels on the SAME transport.
+func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKernel) {
 	t.Helper()
-	loadEnv(t)
-	cfg := transportConfigForBackend(t, backend)
-	transport := mustCreateTransport(t, cfg)
+	LoadEnv(t)
+	cfg := TransportConfigForBackend(t, backend)
+	transport := MustCreateTransport(t, cfg)
 	t.Cleanup(func() { transport.Close() })
 
 	aiProviders := make(map[string]provreg.AIProviderRegistration)
@@ -319,7 +315,7 @@ func newTestKernelPairFull(t *testing.T, backend string) (*testKernel, *testKern
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	makeKit := func(namespace string) *testKernel {
+	makeKit := func(namespace string) *TestKernel {
 		tmpDir := t.TempDir()
 		k, err := kit.NewKernel(kit.KernelConfig{
 			Namespace:    namespace,
@@ -340,33 +336,30 @@ func newTestKernelPairFull(t *testing.T, backend string) (*testKernel, *testKern
 		}
 		t.Cleanup(func() { k.Close() })
 
-		kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+		kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 			Description: "echoes the input message",
-			Execute: func(ctx context.Context, input echoInput) (any, error) {
+			Execute: func(ctx context.Context, input EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message, "from": namespace}, nil
 			},
 		})
-		return &testKernel{k}
+		return &TestKernel{k}
 	}
 
 	return makeKit("kit-a"), makeKit("kit-b")
 }
 
-// requiresNetworkTransport skips the test if the backend is memory (in-process only).
-// Plugin subprocess tests cannot use GoChannel memory transport.
-func requiresNetworkTransport(t *testing.T, backend string) {
+// RequiresNetworkTransport skips the test if the backend is memory (in-process only).
+func RequiresNetworkTransport(t *testing.T, backend string) {
 	t.Helper()
 	if backend == "memory" || backend == "" {
 		t.Skip("plugin subprocess tests require network transport (not memory)")
 	}
 }
 
-// newTestKernelFullWithBackend creates a fully configured Kernel (workspace, storage,
-// AI providers, tools) on the given transport backend. This is the backend-parameterized
-// version of newTestKernelFull — use it in tests that loop over allBackends().
-func newTestKernelFullWithBackend(t *testing.T, backend string) *testKernel {
+// NewTestKernelFullWithBackend creates a fully configured Kernel on the given transport backend.
+func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
 
 	aiProviders := make(map[string]provreg.AIProviderRegistration)
@@ -379,8 +372,8 @@ func newTestKernelFullWithBackend(t *testing.T, backend string) *testKernel {
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	cfg := transportConfigForBackend(t, backend)
-	transport := mustCreateTransport(t, cfg)
+	cfg := TransportConfigForBackend(t, backend)
+	transport := MustCreateTransport(t, cfg)
 	t.Cleanup(func() { transport.Close() })
 
 	k, err := kit.NewKernel(kit.KernelConfig{
@@ -399,27 +392,27 @@ func newTestKernelFullWithBackend(t *testing.T, backend string) *testKernel {
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	return &testKernel{k}
+	return &TestKernel{k}
 }
 
-// newTestKernelWithStorageAndBackend creates a Kernel with storage + workspace + AI providers
-// on the given transport backend. Backend-parameterized version of newTestKernelWithStorage.
-func newTestKernelWithStorageAndBackend(t *testing.T, backend string) *testKernel {
+// NewTestKernelWithStorageAndBackend creates a Kernel with storage + workspace + AI providers
+// on the given transport backend.
+func NewTestKernelWithStorageAndBackend(t *testing.T, backend string) *TestKernel {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
 
 	storageProviders := make(map[string]provreg.AIProviderRegistration)
@@ -432,8 +425,8 @@ func newTestKernelWithStorageAndBackend(t *testing.T, backend string) *testKerne
 		storageEnvVars["OPENAI_API_KEY"] = key
 	}
 
-	cfg := transportConfigForBackend(t, backend)
-	transport := mustCreateTransport(t, cfg)
+	cfg := TransportConfigForBackend(t, backend)
+	transport := MustCreateTransport(t, cfg)
 	t.Cleanup(func() { transport.Close() })
 
 	k, err := kit.NewKernel(kit.KernelConfig{
@@ -452,18 +445,33 @@ func newTestKernelWithStorageAndBackend(t *testing.T, backend string) *testKerne
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	return &testKernel{k}
+	return &TestKernel{k}
+}
+
+// BuildTestPlugin compiles the testplugin binary and returns its path.
+func BuildTestPlugin(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "testplugin")
+	root := projectRoot()
+	cmd := exec.Command("go", "build", "-o", binary, "./test/testplugin/")
+	cmd.Dir = root
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("build test plugin: %v", err)
+	}
+	return binary
 }

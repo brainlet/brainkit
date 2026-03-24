@@ -1,4 +1,4 @@
-package test
+package testutil
 
 import (
 	"bufio"
@@ -15,15 +15,53 @@ import (
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
 	provreg "github.com/brainlet/brainkit/kit/registry"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// loadEnv reads the .env file from the project root and sets env vars.
-func loadEnv(t *testing.T) {
+// TestKernel wraps a Kernel and exposes both sdk.Runtime and *Kernel for setup.
+type TestKernel struct {
+	*kit.Kernel
+}
+
+// EchoInput is the input type for the echo test tool.
+type EchoInput struct {
+	Message string `json:"message"`
+}
+
+// AddInput is the input type for the add test tool.
+type AddInput struct {
+	A int `json:"a"`
+	B int `json:"b"`
+}
+
+// projectRoot walks up from the current working directory to find the project root
+// (the directory containing go.mod).
+func projectRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// LoadEnv reads the .env file from the project root and sets env vars.
+func LoadEnv(t *testing.T) {
 	t.Helper()
-	// Walk up from test/ to find .env
-	envPath := filepath.Join("..", ".env")
+	root := projectRoot()
+	if root == "" {
+		return
+	}
+	envPath := filepath.Join(root, ".env")
 	f, err := os.Open(envPath)
 	if err != nil {
 		return // no .env, that's fine
@@ -42,15 +80,10 @@ func loadEnv(t *testing.T) {
 	}
 }
 
-// testKernel wraps a Kernel and exposes both sdk.Runtime and *Kernel for setup.
-type testKernel struct {
-	*kit.Kernel
-}
-
-// newTestKernelFull creates a Kernel with workspace, storage, AI provider, and a registered Go tool.
-func newTestKernelFull(t *testing.T) *testKernel {
+// NewTestKernelFull creates a Kernel with workspace, storage, AI provider, and a registered Go tool.
+func NewTestKernelFull(t *testing.T) *TestKernel {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
 
 	aiProviders := make(map[string]provreg.AIProviderRegistration)
@@ -81,9 +114,9 @@ func newTestKernelFull(t *testing.T) *testKernel {
 	t.Cleanup(func() { k.Close() })
 
 	// Register test tools
-	err = kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	err = kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
@@ -91,9 +124,9 @@ func newTestKernelFull(t *testing.T) *testKernel {
 		t.Fatalf("RegisterTool echo: %v", err)
 	}
 
-	err = kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+	err = kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
@@ -101,19 +134,19 @@ func newTestKernelFull(t *testing.T) *testKernel {
 		t.Fatalf("RegisterTool add: %v", err)
 	}
 
-	return &testKernel{k}
+	return &TestKernel{k}
 }
 
-// newTestKernel creates a Kernel as sdk.Runtime.
-func newTestKernel(t *testing.T) sdk.Runtime {
+// NewTestKernel creates a Kernel as sdk.Runtime.
+func NewTestKernel(t *testing.T) sdk.Runtime {
 	t.Helper()
-	return newTestKernelFull(t)
+	return NewTestKernelFull(t)
 }
 
-// newTestNode creates a Node with memory transport.
-func newTestNode(t *testing.T) sdk.Runtime {
+// NewTestNode creates a Node with memory transport.
+func NewTestNode(t *testing.T) sdk.Runtime {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
 
 	nodeProviders := make(map[string]provreg.AIProviderRegistration)
@@ -146,15 +179,15 @@ func newTestNode(t *testing.T) sdk.Runtime {
 	}
 
 	// Register test tools on Node's kernel
-	kit.RegisterTool(n.Kernel, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(n.Kernel, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(n.Kernel, "add", registry.TypedTool[addInput]{
+	kit.RegisterTool(n.Kernel, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
@@ -167,23 +200,13 @@ func newTestNode(t *testing.T) sdk.Runtime {
 	return n
 }
 
-// hasAIKey returns true if an AI provider key is available.
-func hasAIKey() bool {
+// HasAIKey returns true if an AI provider key is available.
+func HasAIKey() bool {
 	return os.Getenv("OPENAI_API_KEY") != ""
 }
 
-// --- Test types ---
-
-type echoInput struct {
-	Message string `json:"message"`
-}
-
-type addInput struct {
-	A int `json:"a"`
-	B int `json:"b"`
-}
-
-func mustJSON(v any) json.RawMessage {
+// MustJSON marshals v to json.RawMessage or panics.
+func MustJSON(v any) json.RawMessage {
 	b, err := json.Marshal(v)
 	if err != nil {
 		panic(err)
@@ -191,11 +214,11 @@ func mustJSON(v any) json.RawMessage {
 	return b
 }
 
-// newTestKernelWithStorage creates a Kernel with storage, workspace, and AI providers.
+// NewTestKernelWithStorage creates a Kernel with storage, workspace, and AI providers.
 // Used for memory, workflows, and vectors domain tests that need JS runtime storage init.
-func newTestKernelWithStorage(t *testing.T) *testKernel {
+func NewTestKernelWithStorage(t *testing.T) *TestKernel {
 	t.Helper()
-	loadEnv(t)
+	LoadEnv(t)
 	tmpDir := t.TempDir()
 
 	storageProviders := make(map[string]provreg.AIProviderRegistration)
@@ -224,28 +247,29 @@ func newTestKernelWithStorage(t *testing.T) *testKernel {
 	t.Cleanup(func() { k.Close() })
 
 	// Register standard test tools
-	kit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input echoInput) (any, error) {
+		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[addInput]{
+	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input addInput) (any, error) {
+		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	return &testKernel{k}
+	return &TestKernel{k}
 }
 
-// buildTestMCP compiles the testmcp binary and returns its path.
-func buildTestMCP(t *testing.T) string {
+// BuildTestMCP compiles the testmcp binary and returns its path.
+func BuildTestMCP(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "testmcp")
+	root := projectRoot()
 	cmd := exec.Command("go", "build", "-o", binary, "./test/testmcp/")
-	cmd.Dir = filepath.Join("..")
+	cmd.Dir = root
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -254,10 +278,10 @@ func buildTestMCP(t *testing.T) string {
 	return binary
 }
 
-// startPgVectorContainer starts a pgvector container and returns the connection string.
-func startPgVectorContainer(t *testing.T) string {
+// StartPgVectorContainer starts a pgvector container and returns the connection string.
+func StartPgVectorContainer(t *testing.T) string {
 	t.Helper()
-	addr := startContainer(t,
+	addr := StartContainer(t,
 		"pgvector/pgvector:pg16",
 		"5432/tcp",
 		nil,
