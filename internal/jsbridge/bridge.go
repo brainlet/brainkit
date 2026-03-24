@@ -119,19 +119,12 @@ func (b *Bridge) Close() {
 	defer b.mu.Unlock()
 	if b.ctx != nil {
 		b.ctx.ProcessJobs()
-		// Skip ctx.Close() (JS_FreeContext) — freeing SES-hardened objects
-		// triggers SIGSEGV (fault 0x18, NULL deref in object chain).
-		// wg.Wait above guarantees no goroutine uses the ctx after this point.
+		b.ctx.Close()
 		b.ctx = nil
 	}
 	if b.runtime != nil {
-		// Skip RunGC + runtime.Close() — JS_FreeRuntime walks gc_obj_list
-		// to free remaining objects, but SES-hardened objects create dangling
-		// pointers that cause SIGSEGV (fault 0x18). The patched QuickJS
-		// relaxes the gc_obj_list assertion, but the underlying pointer
-		// corruption remains. Unlock the OS thread pinned by NewRuntime()
-		// to prevent thread exhaustion across bridge lifecycles.
-		runtime.UnlockOSThread()
+		b.runtime.RunGC()
+		b.runtime.Close()
 		b.runtime = nil
 	}
 }
