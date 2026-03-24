@@ -113,3 +113,5 @@ require (
 )
 
 replace github.com/buke/quickjs-go => ./vendor_quickjs
+
+replace github.com/brainlet/brainkit/vendor_typescript => ./vendor_typescript
