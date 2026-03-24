@@ -37,10 +37,7 @@ func AllBackends(t *testing.T) []string {
 	backends := []string{"memory", "sql-sqlite"}
 	if PodmanAvailable() {
 		CleanupOrphanedContainers(t)
-		// AMQP excluded: watermill-amqp v3 exchange/queue binding doesn't deliver
-		// router responses to replyTo topics. Needs investigation of DurablePubSubConfig
-		// routing key matching with our topic sanitizer.
-		backends = append(backends, "nats", "redis", "sql-postgres")
+		backends = append(backends, "nats", "amqp", "redis", "sql-postgres")
 	} else {
 		t.Log("Podman not available — skipping NATS, AMQP, Redis, Postgres backends")
 	}

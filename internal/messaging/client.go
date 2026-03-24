@@ -132,7 +132,19 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 	// Stamp replyTo if present in context (set by sdk.Publish).
 	// Namespace it so the handler can publish to the absolute topic.
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
-		wmsg.Metadata.Set("replyTo", c.resolvedTopic(replyTo))
+		resolvedReplyTo := c.resolvedTopic(replyTo)
+		wmsg.Metadata.Set("replyTo", resolvedReplyTo)
+
+		// Pre-declare the replyTo queue/exchange BEFORE publishing, so the
+		// handler's response isn't dropped. AMQP fanout exchanges discard
+		// messages when no queue is bound. The subscribe creates a durable
+		// exchange+queue, then we cancel immediately — the durable queue
+		// retains messages until the caller's SubscribeTo consumes them.
+		// For GoChannel/NATS/Redis/SQL this is harmless (they persist).
+		preCtx, preCancel := context.WithCancel(ctx)
+		_, subErr := c.sub.Subscribe(preCtx, resolvedReplyTo)
+		preCancel() // Cancel consumer — durable queue persists
+		_ = subErr
 	}
 
 	if err := c.pub.Publish(c.resolvedTopic(logicalTopic), wmsg); err != nil {
