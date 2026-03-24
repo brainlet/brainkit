@@ -154,6 +154,39 @@ export default x;`
 	t.Logf("Output:\n%s", result)
 }
 
+func TestTranspileTypeImport(t *testing.T) {
+	source := "import type { BusMessage } from \"kit\";\n" +
+		"import { bus, output } from \"kit\";\n\n" +
+		"const received: BusMessage[] = [];\n" +
+		"bus.subscribe(\"test\", (msg: BusMessage) => {\n" +
+		"  received.push(msg);\n" +
+		"});\n" +
+		"output(received[0].topic);\n"
+
+	result, err := Transpile(source, TranspileOptions{})
+	if err != nil {
+		t.Fatalf("Transpile: %v", err)
+	}
+	t.Logf("Output:\n%s", result)
+
+	// import type should be completely removed
+	if strings.Contains(result, "import type") {
+		t.Errorf("import type not stripped")
+	}
+	// value import should remain
+	if !strings.Contains(result, `from "kit"`) {
+		t.Errorf("value import lost")
+	}
+	// BusMessage annotation should be stripped
+	if strings.Contains(result, "BusMessage") {
+		t.Errorf("type reference not stripped")
+	}
+	// Code should be preserved
+	if !strings.Contains(result, "received.push(msg)") {
+		t.Errorf("code lost")
+	}
+}
+
 func TestTranspileEmptySource(t *testing.T) {
 	result, err := Transpile("", TranspileOptions{})
 	if err != nil {
