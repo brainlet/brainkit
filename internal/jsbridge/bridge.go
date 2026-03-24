@@ -119,6 +119,25 @@ func (b *Bridge) Close() {
 	defer b.mu.Unlock()
 	if b.ctx != nil {
 		b.ctx.ProcessJobs()
+		// Null out global references to break closure chains before freeing.
+		// The SES lockdown + Mastra bundle create closures that capture the
+		// IIFE scope (containing _defaultStore, _obsConfig, etc.). Prototype
+		// patches (Workflow.commit, Agent.generate) hold references to these
+		// closures via __registerMastra. Nullifying globals breaks the chain
+		// so refcounts drop to 0 during JS_FreeContext.
+		b.ctx.Eval(`(function(){
+			if(typeof globalThis.__kit_internal_store!=="undefined") globalThis.__kit_internal_store=null;
+			if(typeof globalThis.__kit_internal_observability!=="undefined") globalThis.__kit_internal_observability=null;
+			if(typeof globalThis.__kit!=="undefined") globalThis.__kit=null;
+			if(typeof globalThis.__kit_registry!=="undefined") globalThis.__kit_registry=null;
+			if(typeof globalThis.__bus_subs!=="undefined") globalThis.__bus_subs=null;
+			if(typeof globalThis.__kit_compartments!=="undefined") globalThis.__kit_compartments=null;
+			if(typeof globalThis.__kit_providers!=="undefined") globalThis.__kit_providers=null;
+			if(typeof globalThis.__brainkit_obs_config!=="undefined") globalThis.__brainkit_obs_config=null;
+			if(typeof globalThis.__brainkit_storages!=="undefined") globalThis.__brainkit_storages=null;
+		})()`)
+		// Run GC after nullification to free cycles broken by the nullification.
+		b.runtime.RunGC()
 		b.ctx.Close()
 		b.ctx = nil
 	}

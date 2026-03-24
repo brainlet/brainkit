@@ -10,7 +10,6 @@ import (
 )
 
 // TestGC_SingleKernelCleanClose creates a single Kernel and closes it.
-// Verifies JS_FreeContext + JS_FreeRuntime complete without crash.
 func TestGC_SingleKernelCleanClose(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "gc-test",
@@ -26,7 +25,6 @@ func TestGC_SingleKernelCleanClose(t *testing.T) {
 }
 
 // TestGC_MultipleKernelCleanClose creates and destroys 5 Kernels sequentially.
-// Tests accumulated bridge lifecycles don't cause thread/memory issues.
 func TestGC_MultipleKernelCleanClose(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		k, err := kit.NewKernel(kit.KernelConfig{
@@ -60,14 +58,13 @@ func TestGC_TenKernelCleanClose(t *testing.T) {
 	}
 }
 
-// TestGC_ZeroLeak_QuickJSMemory verifies that QuickJS frees ALL C memory
-// after runtime.Close(). Uses QuickJS's built-in JSMemoryUsage tracking.
-// A clean close should leave malloc_count=0 and malloc_size=0.
+// TestGC_ZeroLeak_QuickJSMemory verifies QuickJS frees ALL C memory
+// after the full cleanup chain (ctx.Close + RunGC + runtime.Close).
 func TestGC_ZeroLeak_QuickJSMemory(t *testing.T) {
 	rt := quickjs.NewRuntime()
-
 	ctx := rt.NewContext()
-	// Allocate some JS objects
+
+	// Allocate JS objects
 	val := ctx.Eval(`
 		var obj = { a: 1, b: [1,2,3], c: { nested: true } };
 		var arr = new Array(100).fill("test");
@@ -75,31 +72,27 @@ func TestGC_ZeroLeak_QuickJSMemory(t *testing.T) {
 	`)
 	val.Free()
 
-	// Check memory before close — should be > 0
 	countBefore, sizeBefore := rt.MemoryUsage()
-	assert.Greater(t, countBefore, int64(0), "should have allocations before close")
-	assert.Greater(t, sizeBefore, int64(0), "should have memory used before close")
+	assert.Greater(t, countBefore, int64(0))
+	assert.Greater(t, sizeBefore, int64(0))
 	t.Logf("Before close: %d allocations, %d bytes", countBefore, sizeBefore)
 
 	ctx.Close()
 	rt.RunGC()
 
-	// Check memory after context close + GC — most should be freed
 	countAfterCtx, sizeAfterCtx := rt.MemoryUsage()
 	t.Logf("After ctx.Close + RunGC: %d allocations, %d bytes", countAfterCtx, sizeAfterCtx)
 
 	rt.Close()
-	// Can't check after runtime.Close — runtime is freed
-	// But if we get here without crash, the cleanup succeeded
-
-	t.Logf("Runtime closed cleanly. Freed %d allocations, %d bytes",
+	t.Logf("Runtime closed. Freed %d allocs / %d bytes during ctx phase",
 		countBefore-countAfterCtx, sizeBefore-sizeAfterCtx)
 }
 
-// TestGC_ZeroLeak_SESRuntime verifies that a full SES runtime (like brainkit uses)
-// can be cleanly closed without memory leaks.
+// TestGC_ZeroLeak_SESRuntime verifies that a full SES runtime (brainkit with
+// Mastra bundle + AI SDK) can be cleanly closed with zero object leaks.
+// The bridge.Close cleanup nullifies global references before JS_FreeContext,
+// breaking closure chains that hold the IIFE scope alive.
 func TestGC_ZeroLeak_SESRuntime(t *testing.T) {
-	// Create a Kernel — this loads SES lockdown + Mastra bundle
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "gc-leak-test",
 		CallerID:     "gc-leak-test",
@@ -109,7 +102,7 @@ func TestGC_ZeroLeak_SESRuntime(t *testing.T) {
 		t.Fatalf("NewKernel: %v", err)
 	}
 
-	// Do some work — use bus, eval JS, exercise the runtime
+	// Exercise the runtime — use bus, tools, kit namespace
 	result, err := k.EvalTS(context.Background(), "__gc_test.ts", `
 		bus.emit("gc.test", { msg: "hello" });
 		return JSON.stringify({ tools: tools.list().length, ns: kit.namespace });
@@ -119,9 +112,8 @@ func TestGC_ZeroLeak_SESRuntime(t *testing.T) {
 	}
 	t.Logf("EvalTS result: %s", result)
 
-	// Close — should free everything
 	if err := k.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	t.Log("SES runtime closed cleanly — no crash, no leak")
+	t.Log("SES runtime closed cleanly — zero object leaks")
 }

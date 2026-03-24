@@ -15,10 +15,10 @@
 
   var _defaultStore = new embed.InMemoryStore();
   Object.defineProperty(globalThis, '__kit_internal_store', {
-    value: _defaultStore, writable: false, enumerable: false, configurable: false
+    value: _defaultStore, writable: false, enumerable: false, configurable: true
   });
   Object.defineProperty(globalThis, '__kit_internal_observability', {
-    value: null, writable: true, enumerable: false, configurable: false
+    value: null, writable: true, enumerable: false, configurable: true
   });
 
   var _obsConfig = globalThis.__brainkit_obs_config || { enabled: true, strategy: "realtime", serviceName: "brainkit" };
@@ -216,7 +216,7 @@
     get: function(type, id) { return this.entries[type + ":" + id] || null; },
   };
   Object.defineProperty(globalThis, '__kit_registry', {
-    value: _resourceRegistry, writable: false, enumerable: false, configurable: false
+    value: _resourceRegistry, writable: false, enumerable: false, configurable: true
   });
 
   // ─── Bridge Helpers ───────────────────────────────────────────
@@ -251,7 +251,7 @@
   // ─── Bus API ──────────────────────────────────────────────────
 
   Object.defineProperty(globalThis, '__bus_subs', {
-    value: {}, writable: false, enumerable: false, configurable: false
+    value: {}, writable: false, enumerable: false, configurable: true
   });
 
   function wrapMsg(rawMsg) {
@@ -393,7 +393,7 @@
   // ─── Output ───────────────────────────────────────────────────
 
   Object.defineProperty(globalThis, '__module_result', {
-    value: undefined, writable: true, enumerable: false, configurable: false
+    value: undefined, writable: true, enumerable: false, configurable: true
   });
   function output(value) {
     globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
