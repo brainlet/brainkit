@@ -494,10 +494,8 @@ func (c *Compiler) disposeLastModule() {
 		val.Free()
 	}()
 
-	// Force QuickJS garbage collection to reclaim memory from disposed modules.
-	// Without this, sequential compilations accumulate unreachable JS objects
-	// until the runtime's memory limit is hit.
-	c.bridge.Runtime().RunGC()
+	// Note: RunGC() removed — triggers gc_decref assertion on the AS
+	// compiler object graph. Memory bounded by MemoryLimit + bridge rotation.
 }
 
 func selectEntrySource(sources map[string]string) string {

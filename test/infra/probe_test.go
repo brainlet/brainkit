@@ -1,8 +1,6 @@
 package infra_test
 
 import (
-	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -135,17 +133,9 @@ func TestProbe_VectorStore_Real_PgVector(t *testing.T) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	// Set up the vector store in JS so the probe can find it
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	_, err = k.EvalTS(ctx, "__probe_vs_init.ts", fmt.Sprintf(`
-		var vs = new PgVector({ id: "probe_vs", connectionString: %q });
-		globalThis.__kit_vector_store = vs;
-		return "ok";
-	`, pgConnStr))
-	require.NoError(t, err)
-
+	// ProbeVectorStore calls vectorStore("main") internally, which resolves
+	// from the Go ProviderRegistry and instantiates PgVector via __agent_embed.
+	// No manual JS init needed.
 	result := k.ProbeVectorStore("main")
 	assert.True(t, result.Available, "PgVector store should be reachable")
 	assert.Empty(t, result.Error)

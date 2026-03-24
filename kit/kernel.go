@@ -819,12 +819,17 @@ func (k *Kernel) startPeriodicProbing() {
 }
 
 // startJobPump starts a background goroutine that periodically processes
-// QuickJS scheduled callbacks. This enables deployed .ts services to receive
-// bus messages (via qctx.Schedule) even when no EvalTS/EvalAsync is active.
-// The pump stops when the Kernel is closed.
+// QuickJS scheduled callbacks AND JS microtasks. This enables deployed .ts
+// services to receive bus messages and run async handlers (fetch, generateText)
+// even when no EvalTS/EvalAsync is active.
+//
+// Uses bridge.Go() so the goroutine is tracked by bridge.wg — Close() waits
+// for it to finish before touching the QuickJS context. Without this, the
+// pump can be inside ctx.Loop() when Close frees the context -> SIGSEGV.
 func (k *Kernel) startJobPump() {
 	ticker := time.NewTicker(10 * time.Millisecond)
-	go func() {
+	k.bridge.Go(func(goCtx context.Context) {
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -832,16 +837,14 @@ func (k *Kernel) startJobPump() {
 				closed := k.closed
 				k.mu.Unlock()
 				if closed {
-					ticker.Stop()
 					return
 				}
 				k.bridge.ProcessScheduledJobs()
-			case <-k.bridge.GoContext().Done():
-				ticker.Stop()
+			case <-goCtx.Done():
 				return
 			}
 		}
-	}()
+	})
 }
 
 // extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.

@@ -112,4 +112,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/buke/quickjs-go => /Users/davidroman/Documents/code/forks/quickjs-go
+replace github.com/buke/quickjs-go => ./vendor_quickjs

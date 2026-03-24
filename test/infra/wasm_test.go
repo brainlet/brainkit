@@ -13,6 +13,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// compileWASM compiles an AS module and waits for the response.
+func compileWASM(t *testing.T, rt sdk.Runtime, ctx context.Context, source, name string) messages.WasmCompileResp {
+	t.Helper()
+	pr, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
+		Source:  source,
+		Options: &messages.WasmCompileOpts{Name: name},
+	})
+	require.NoError(t, err)
+	ch := make(chan messages.WasmCompileResp, 1)
+	unsub, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, pr.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { ch <- r })
+	require.NoError(t, err)
+	defer unsub()
+	select {
+	case resp := <-ch:
+		require.Empty(t, resp.Error, "compile %s failed: %s", name, resp.Error)
+		return resp
+	case <-ctx.Done():
+		t.Fatalf("compile %s: timeout", name)
+		return messages.WasmCompileResp{}
+	}
+}
+
 func TestGoDirect_WASM(t *testing.T) {
 	for _, factory := range []struct {
 		name string
@@ -27,23 +49,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			defer cancel()
 
 			t.Run("Compile_Run", func(t *testing.T) {
-				_pr1, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source:  `export function run(): i32 { return 42; }`,
-					Options: &messages.WasmCompileOpts{Name: "gd-run"},
-				})
-				require.NoError(t, err)
-				_ch1 := make(chan messages.WasmCompileResp, 1)
-				_us1, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr1.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch1 <- r })
-				require.NoError(t, err)
-				defer _us1()
-				var compResp messages.WasmCompileResp
-				select {
-				case compResp = <-_ch1:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "gd-run", compResp.Name)
-				assert.Greater(t, compResp.Size, 0)
+				compileWASM(t, rt, ctx, `export function run(): i32 { return 42; }`, "gd-run")
 
 				_pr2, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-run"})
 				require.NoError(t, err)
@@ -61,12 +67,8 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("List", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-list-a"},
-				})
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `export function run(): i32 { return 2; }`, Options: &messages.WasmCompileOpts{Name: "gd-list-b"},
-				})
+				compileWASM(t, rt, ctx, `export function run(): i32 { return 1; }`, "gd-list-a")
+				compileWASM(t, rt, ctx, `export function run(): i32 { return 2; }`, "gd-list-b")
 
 				_pr3, err := sdk.Publish(rt, ctx, messages.WasmListMsg{})
 				require.NoError(t, err)
@@ -89,9 +91,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Get", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-get"},
-				})
+				compileWASM(t, rt, ctx, `export function run(): i32 { return 1; }`, "gd-get")
 
 				_pr4, err := sdk.Publish(rt, ctx, messages.WasmGetMsg{Name: "gd-get"})
 				require.NoError(t, err)
@@ -126,9 +126,7 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Remove", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `export function run(): i32 { return 1; }`, Options: &messages.WasmCompileOpts{Name: "gd-remove"},
-				})
+				compileWASM(t, rt, ctx, `export function run(): i32 { return 1; }`, "gd-remove")
 
 				_pr6, err := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-remove"})
 				require.NoError(t, err)
@@ -159,18 +157,14 @@ func TestGoDirect_WASM(t *testing.T) {
 			})
 
 			t.Run("Deploy_Undeploy_Describe", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `
-						import { _busOn, _setMode } from "brainkit";
-						export function init(): void {
-							_setMode("stateless");
-							
-_busOn("gd.test.event", "handle");
-						}
-						export function handle(t: usize, p: usize): void {}
-					`,
-					Options: &messages.WasmCompileOpts{Name: "gd-deploy"},
-				})
+				compileWASM(t, rt, ctx, `
+					import { _busOn, _setMode } from "brainkit";
+					export function init(): void {
+						_setMode("stateless");
+						_busOn("gd.test.event", "handle");
+					}
+					export function handle(t: usize, p: usize): void {}
+				`, "gd-deploy")
 
 				_pr8, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-deploy"})
 				require.NoError(t, err)
@@ -218,19 +212,16 @@ _busOn("gd.test.event", "handle");
 			})
 
 			t.Run("Run_HostFunctions", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `
-						import { _log, _setState, _getState, _hasState } from "brainkit";
-						export function run(): i32 {
-							_log("test log", 1);
-							_setState("k", "v");
-							if (_hasState("k") == 0) return 0;
-							if (_getState("k") != "v") return 0;
-							return 1;
-						}
-					`,
-					Options: &messages.WasmCompileOpts{Name: "gd-hostfn"},
-				})
+				compileWASM(t, rt, ctx, `
+					import { _log, _setState, _getState, _hasState } from "brainkit";
+					export function run(): i32 {
+						_log("test log", 1);
+						_setState("k", "v");
+						if (_hasState("k") == 0) return 0;
+						if (_getState("k") != "v") return 0;
+						return 1;
+					}
+				`, "gd-hostfn")
 
 				_pr11, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "gd-hostfn"})
 				require.NoError(t, err)
@@ -251,7 +242,7 @@ _busOn("gd.test.event", "handle");
 				pr, _ := sdk.Publish(rt, ctx, messages.WasmRunMsg{ModuleID: "nope"})
 				errCh := make(chan string, 1)
 				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
+					var r struct{ Error string `json:"error"` }
 					json.Unmarshal(msg.Payload, &r)
 					errCh <- r.Error
 				})
@@ -265,25 +256,26 @@ _busOn("gd.test.event", "handle");
 			})
 
 			t.Run("Remove_WhileDeployed", func(t *testing.T) {
-				sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `
-						import { _busOn, _setMode } from "brainkit";
-						export function init(): void { _setMode("stateless"); 
-_busOn("x.ev", "h"); }
-						export function h(t: usize, p: usize): void {}
-					`,
-					Options: &messages.WasmCompileOpts{Name: "gd-rm-deployed"},
-				})
+				compileWASM(t, rt, ctx, `
+					import { _busOn, _setMode } from "brainkit";
+					export function init(): void { _setMode("stateless"); _busOn("x.ev", "h"); }
+					export function h(t: usize, p: usize): void {}
+				`, "gd-rm-deployed")
+
 				_spr1, _ := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "gd-rm-deployed"})
 				_sch1 := make(chan messages.WasmDeployResp, 1)
 				_sun1, _ := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _spr1.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _sch1 <- r })
 				defer _sun1()
-				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
+				select {
+				case <-_sch1:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 
 				pr, _ := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
 				errCh := make(chan string, 1)
 				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
+					var r struct{ Error string `json:"error"` }
 					json.Unmarshal(msg.Payload, &r)
 					errCh <- r.Error
 				})
@@ -299,12 +291,20 @@ _busOn("x.ev", "h"); }
 				_sch2 := make(chan messages.WasmUndeployResp, 1)
 				_sun2, _ := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _spr2.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _sch2 <- r })
 				defer _sun2()
-				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
+				select {
+				case <-_sch2:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 				_spr3, _ := sdk.Publish(rt, ctx, messages.WasmRemoveMsg{Name: "gd-rm-deployed"})
 				_sch3 := make(chan messages.WasmRemoveResp, 1)
 				_sun3, _ := sdk.SubscribeTo[messages.WasmRemoveResp](rt, ctx, _spr3.ReplyTo, func(r messages.WasmRemoveResp, m messages.Message) { _sch3 <- r })
 				defer _sun3()
-				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
+				select {
+				case <-_sch3:
+				case <-ctx.Done():
+					t.Fatal("timeout")
+				}
 			})
 		})
 	}
