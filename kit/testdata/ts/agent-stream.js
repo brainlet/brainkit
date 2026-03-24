@@ -1,8 +1,10 @@
 // Test: agent streams a response with real-time tokens
-import { agent, output } from "kit";
+import { Agent } from "agent";
+import { model, output } from "kit";
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Count from 1 to 3, one number per line, nothing else.",
 });
 

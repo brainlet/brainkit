@@ -1,8 +1,10 @@
-import { agents, AgentRequestMsg, setState, getState, log } from "brainkit";
+// Pattern: WASM calls .ts agent service via bus, persists result in state.
+// Note: agents.request was removed — agent calls now go to .ts services via bus.
+import { publish, setState, getState, log } from "brainkit";
 
 export function run(): i32 {
-  // 1. Call the agent
-  agents.request(new AgentRequestMsg("test-helper", "say hello"), "onAgentResult");
+  // 1. Call the agent service via bus
+  publish("ts.agent-service.ask", '{"agent":"test-helper","prompt":"say hello"}', "onAgentResult");
   return 0;
 }
 

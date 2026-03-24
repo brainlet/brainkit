@@ -1,25 +1,86 @@
-# Test Fixtures — NEEDS UPDATE
+# Test Fixtures
 
-These `.ts` fixtures use the OLD single-module import pattern:
-
-```js
-import { agent, createTool, z, output } from "kit";
-```
-
-They need updating to the new four-module system:
+These `.js` fixtures use the four-module import pattern:
 
 ```js
-import { generateText, streamText, z } from "ai";
-import { Agent, createTool, Memory } from "agent";
-import { bus, kit, model, tools, fs, output } from "kit";
+import { Agent, createTool, createWorkflow, createStep, Memory, z } from "agent";
+import { generateText, streamText, generateObject, embed, embedMany, z } from "ai";
+import { compile } from "compiler";
+import { bus, kit, model, tools, mcp, output } from "kit";
 ```
 
-Key changes needed:
-- `agent()` wrapper is gone → use `new Agent()` + `kit.register("agent", name, ref)`
-- `createTool()` no longer auto-registers → add `kit.register("tool", name, ref)` after creation
-- `ai.generate()` / `ai.stream()` wrappers are gone → use `generateText()` / `streamText()` from `"ai"` directly
-- `createMemory()` wrapper is gone → use `new Memory()` from `"agent"` directly
-- `bus.send()` / `bus.publish()` → use `bus.emit()` / `bus.publish()` from `"kit"`
-- All CallSettings (temperature, maxTokens, etc.) are now passed directly to AI SDK functions
+## Module Reference
 
-These fixtures are not currently referenced by any Go test code — they were used by the deleted surface tests. They will be needed when we rewrite the surface tests.
+### `"kit"` — Infrastructure
+`bus`, `kit`, `model`, `provider`, `storage`, `vectorStore`, `registry`, `tools`, `fs`, `mcp`, `output`, `wasm` (if present), `tool`
+
+### `"agent"` — Mastra Framework
+`Agent`, `createTool`, `createWorkflow`, `createStep`, `Memory`, `InMemoryStore`, `LibSQLStore`, `PostgresStore`, `MongoDBStore`, `UpstashStore`, `LibSQLVector`, `PgVector`, `MongoDBVector`, `Workspace`, `LocalFilesystem`, `LocalSandbox`, `MDocument`, `GraphRAG`, `createVectorQueryTool`, `createDocumentChunkerTool`, `createGraphRAGTool`, `rerank`, `rerankWithScorer`, `Observability`, `DefaultExporter`, `createScorer`, `runEvals`, `RequestContext`, `ModelRouterEmbeddingModel`, `z`
+
+### `"ai"` — AI SDK
+`generateText`, `streamText`, `generateObject`, `streamObject`, `embed`, `embedMany`, `z`
+
+### `"compiler"` — WASM
+`compile`
+
+## Key Patterns
+
+### Agent creation
+```js
+// Old: agent({ model: "openai/gpt-4o-mini", ... })
+// New:
+import { Agent } from "agent";
+import { model } from "kit";
+
+const a = new Agent({
+  name: "my-agent",
+  model: model("openai", "gpt-4o-mini"),
+  instructions: "...",
+});
+```
+
+### Direct AI calls
+```js
+// Old: ai.generate({ model: "openai/gpt-4o-mini", prompt: "..." })
+// New:
+import { generateText } from "ai";
+import { model } from "kit";
+
+const result = await generateText({
+  model: model("openai", "gpt-4o-mini"),
+  prompt: "...",
+});
+```
+
+### Tool registration
+```js
+// Old: tools.register("my_tool", { ... })
+// New:
+import { createTool, z } from "agent";
+import { kit } from "kit";
+
+const myTool = createTool({ id: "my_tool", ... });
+kit.register("tool", "my_tool", myTool);
+```
+
+### Memory
+```js
+// Old: agent({ memory: { thread: "x", resource: "y", storage: new InMemoryStore() } })
+// New:
+import { Agent, Memory, InMemoryStore } from "agent";
+
+const memory = new Memory({ storage: new InMemoryStore(), options: { lastMessages: 10 } });
+const a = new Agent({ name: "...", model: ..., memory: memory });
+// Pass thread/resource per-call:
+await a.generate("...", { memory: { thread: { id: "x" }, resource: "y" } });
+```
+
+## Removed APIs
+
+The following old APIs no longer exist and fixtures that used them have been annotated with TODO comments:
+
+- `processors` (UnicodeNormalizer, TokenLimiterProcessor, etc.) — see `processors-builtin.js`
+- `createSubagent()` — replaced by `new Agent()` with `agents` config
+- `scorers` (pre-built scorers) — only `createScorer()` remains
+- `sandbox` context export — replaced by globalThis context
+- `inputProcessors` / `outputProcessors` on agent — see `agent-with-processor.js`, `agent-with-tripwire.js`

@@ -1,15 +1,16 @@
-// Test: ai.embed() and ai.embedMany() — embedding generation
-import { ai, output } from "kit";
+// Test: embed() and embedMany() — embedding generation
+import { embed, embedMany } from "ai";
+import { model, output } from "kit";
 
 // Single embedding
-const single = await ai.embed({
-  model: "openai/text-embedding-3-small",
+const single = await embed({
+  model: model("openai", "text-embedding-3-small"),
   value: "Hello world",
 });
 
 // Multiple embeddings
-const multi = await ai.embedMany({
-  model: "openai/text-embedding-3-small",
+const multi = await embedMany({
+  model: model("openai", "text-embedding-3-small"),
   values: ["Hello", "World", "Brainlet"],
 });
 

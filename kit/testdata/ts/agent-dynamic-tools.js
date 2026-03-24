@@ -1,5 +1,6 @@
 // Test: dynamic tools resolver — tools computed per-request from RequestContext
-import { agent, createTool, RequestContext, z, output } from "kit";
+import { Agent, createTool, RequestContext, z } from "agent";
+import { model, output } from "kit";
 
 const addTool = createTool({
   id: "add",
@@ -16,8 +17,9 @@ const multiplyTool = createTool({
 });
 
 // Agent with dynamic tools — which tools depend on requestContext
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Use the available tool to compute the result. Return ONLY the number.",
   tools: ({ requestContext }) => {
     const mode = requestContext.get("mode");

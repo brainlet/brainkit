@@ -1,5 +1,6 @@
 // Test: observability — verify spans are persisted in storage with span hierarchy
-import { agent, createTool, z, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { model, output } from "kit";
 
 const addTool = createTool({
   id: "add",
@@ -8,8 +9,9 @@ const addTool = createTool({
   execute: async ({ a, b }) => ({ result: a + b }),
 });
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Use the add tool to compute 10 + 32. Return ONLY the number.",
   tools: { add: addTool },
 });

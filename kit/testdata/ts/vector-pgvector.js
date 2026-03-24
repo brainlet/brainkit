@@ -1,5 +1,6 @@
 // Test: PgVector — PostgreSQL vector store for semantic search
-import { PgVector, output } from "kit";
+import { PgVector } from "agent";
+import { output } from "kit";
 
 const url = globalThis.process?.env?.POSTGRES_URL;
 if (!url) throw new Error("POSTGRES_URL not set");

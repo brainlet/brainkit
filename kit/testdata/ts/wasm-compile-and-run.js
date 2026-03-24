@@ -1,13 +1,14 @@
 // Test: compile AssemblyScript to WASM and execute it
-import { wasm, output } from "kit";
+import { compile } from "compiler";
+import { output } from "kit";
 
 // Compile
-const compiled = await wasm.compile(
+const compiled = await compile(
   'export function run(): i32 { return 42; }'
 );
 
 // Run
-const wasmResult = await wasm.run(compiled, {});
+const wasmResult = await compiled.run({});
 
 output({
   moduleId: compiled.moduleId,

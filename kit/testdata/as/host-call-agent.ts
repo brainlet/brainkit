@@ -1,7 +1,10 @@
-import { agents, AgentRequestMsg, setState, JSONValue } from "brainkit";
+// Tests: WASM module calling a .ts agent service via bus_publish.
+// Note: agents.request was removed — agent calls now go to .ts services via bus.
+import { publish, setState, JSONValue } from "brainkit";
 
 export function run(): i32 {
-  agents.request(new AgentRequestMsg("test-helper", "say hello"), "onAgentResult");
+  // Publish to a .ts agent service via bus
+  publish("ts.agent-service.ask", '{"agent":"test-helper","prompt":"say hello"}', "onAgentResult");
   return 0;
 }
 

@@ -1,5 +1,6 @@
 // Test: Dynamic workspace factory — workspace resolved per generate() call via requestContext
-import { agent, Workspace, LocalFilesystem, RequestContext, output } from "kit";
+import { Agent, Workspace, LocalFilesystem, RequestContext } from "agent";
+import { model, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 if (!basePath) throw new Error("WORKSPACE_PATH not set");
@@ -11,8 +12,9 @@ try {
   let factoryCalled = false;
   let factoryPath = null;
 
-  const a = agent({
-    model: "openai/gpt-4o-mini",
+  const a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a helpful assistant with workspace access. List files in the workspace.",
     workspace: ({ requestContext }) => {
       factoryCalled = true;

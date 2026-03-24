@@ -1,8 +1,8 @@
-// Persistent shard: receives text, asks AI to summarize, stores result.
-// Tests: typed AI async wrapper, callback processing AI response,
-//        persistent state accumulating request count
-import { setMode, on, reply, setState, getState, log, JSONValue, ai, AiGenerateMsg } from "brainkit";
-import { bus } from "brainkit";
+// Persistent shard: receives text, publishes to a .ts AI service, stores result.
+// Tests: bus_publish to .ts service, callback processing response,
+//        persistent state accumulating request count.
+// Note: AI calls are now handled by .ts services, not WASM catalog commands.
+import { setMode, on, reply, setState, getState, log, JSONValue, publish, emit } from "brainkit";
 
 export function init(): void {
   setMode("persistent");
@@ -18,10 +18,9 @@ export function handleRequest(topic: string, payload: string): void {
   }
   const obj = parsed.asObject();
   const text = obj.getString("text");
-  const model = obj.getString("model");
 
-  // Ask AI to generate a summary
-  ai.generate(new AiGenerateMsg(model, "Summarize: " + text), "onAiResponse");
+  // Publish to a .ts AI service via bus (the .ts service calls generateText internally)
+  publish("ts.ai-service.summarize", '{"text":"' + text + '"}', "onServiceResponse");
 
   // Track request count
   var count: i32 = 0;
@@ -29,19 +28,19 @@ export function handleRequest(topic: string, payload: string): void {
   if (raw.length > 0) count = I32.parseInt(raw);
   count++;
   setState("requestCount", count.toString());
-  log("AI summary request #" + count.toString());
+  log("summary request #" + count.toString());
 }
 
-export function onAiResponse(topic: string, payload: string): void {
+export function onServiceResponse(topic: string, payload: string): void {
   const parsed = JSONValue.parse(payload);
   if (parsed.isNull()) {
-    setState("lastError", "null ai response");
+    setState("lastError", "null service response");
     return;
   }
   if (parsed.isObject()) {
-    const text = parsed.asObject().getString("text");
-    setState("lastSummary", text);
-    bus.sendRaw("summarize.completed", '{"summary":"' + text + '"}');
+    const summary = parsed.asObject().getString("summary");
+    setState("lastSummary", summary);
+    emit("summarize.completed", '{"summary":"' + summary + '"}');
   }
 }
 

@@ -1,5 +1,6 @@
 // Test: Workspace skills (SKILL.md) + BM25 search
-import { agent, Workspace, LocalFilesystem, output } from "kit";
+import { Agent, Workspace, LocalFilesystem } from "agent";
+import { model, output } from "kit";
 
 try {
   var results = {};
@@ -45,8 +46,9 @@ When reviewing code, follow these steps:
   await workspace.init();
 
   // Test 1: Agent with skills — should have skill, skill_read, skill_search tools
-  var a = agent({
-    model: "openai/gpt-4o-mini",
+  var a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You have workspace tools including skill tools. Use them as requested. Be concise.",
     workspace: workspace,
     maxSteps: 5,

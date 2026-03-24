@@ -1,8 +1,11 @@
 // Test: sandbox context is available
-import { sandbox, output } from "kit";
+// NOTE: sandbox export is removed. Context info is now available via kit.
+import { output } from "kit";
 
+// The sandbox context (id, namespace, callerID) is now accessed differently.
+// TODO: Update once the new kit context API is defined.
 output({
-  id: sandbox.id,
-  namespace: sandbox.namespace,
-  callerID: sandbox.callerID,
+  id: globalThis.__kit_sandbox_id || "unavailable",
+  namespace: globalThis.__kit_namespace || "unavailable",
+  callerID: globalThis.__kit_caller_id || "unavailable",
 });

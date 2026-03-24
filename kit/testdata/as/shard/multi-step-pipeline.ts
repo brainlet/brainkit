@@ -1,8 +1,8 @@
-// Persistent shard: multi-step pipeline — tool call → AI analysis → store.
-// Tests: chained typed async calls (tool → AI), multi-callback flow,
-//        persistent state tracking pipeline stages
-import { setMode, on, reply, setState, getState, log, JSONValue, tools, ToolCallMsg, ai, AiGenerateMsg } from "brainkit";
-import { bus } from "brainkit";
+// Persistent shard: multi-step pipeline — tool call → .ts AI service → store.
+// Tests: chained async calls (tool → .ts service), multi-callback flow,
+//        persistent state tracking pipeline stages.
+// Note: AI calls now go to .ts services via bus, not via removed catalog commands.
+import { setMode, on, reply, setState, getState, log, JSONValue, tools, ToolCallMsg, publish, emit } from "brainkit";
 
 export function init(): void {
   setMode("persistent");
@@ -14,17 +14,17 @@ export function handleRun(topic: string, payload: string): void {
   setState("stage", "fetching");
   log("pipeline: stage 1 — fetching data");
 
-  // Stage 1: call a tool to fetch data
+  // Stage 1: call a tool to fetch data (tools domain is still in catalog)
   tools.call(new ToolCallMsg("data_fetch", JSONValue.parse(payload).toString()), "onDataFetched");
 }
 
 export function onDataFetched(topic: string, payload: string): void {
   setState("stage", "analyzing");
   setState("fetchedData", payload);
-  log("pipeline: stage 2 — analyzing with AI");
+  log("pipeline: stage 2 — analyzing via .ts AI service");
 
-  // Stage 2: send fetched data to AI for analysis
-  ai.generate(new AiGenerateMsg("openai/gpt-4o-mini", "Analyze this data: " + payload), "onAnalysisComplete");
+  // Stage 2: publish to a .ts AI service for analysis
+  publish("ts.ai-service.analyze", '{"data":' + payload + '}', "onAnalysisComplete");
 }
 
 export function onAnalysisComplete(topic: string, payload: string): void {
@@ -33,7 +33,7 @@ export function onAnalysisComplete(topic: string, payload: string): void {
 
   const parsed = JSONValue.parse(payload);
   if (parsed.isObject()) {
-    const analysis = parsed.asObject().getString("text");
+    const analysis = parsed.asObject().getString("analysis");
     setState("analysis", analysis);
   } else {
     setState("analysis", payload);
@@ -46,7 +46,7 @@ export function onAnalysisComplete(topic: string, payload: string): void {
   count++;
   setState("runs", count.toString());
 
-  bus.sendRaw("pipeline.completed", '{"run":' + count.toString() + '}');
+  emit("pipeline.completed", '{"run":' + count.toString() + '}');
 }
 
 export function handleStatus(topic: string, payload: string): void {

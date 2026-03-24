@@ -1,8 +1,10 @@
 // Test: dynamic instructions resolver — instructions computed per-request
-import { agent, RequestContext, output } from "kit";
+import { Agent, RequestContext } from "agent";
+import { model, output } from "kit";
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: ({ requestContext }) => {
     const word = requestContext.get("keyword") || "DEFAULT";
     return "Reply with EXACTLY: " + word;

@@ -1,6 +1,7 @@
 // Test: LocalFilesystem.setAllowedPaths() runtime update
 // Verifies: initial containment, setAllowedPaths expands access, containment still works for disallowed paths
-import { Workspace, LocalFilesystem, output } from "kit";
+import { Workspace, LocalFilesystem } from "agent";
+import { output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 const extraPath = globalThis.process?.env?.EXTRA_PATH;

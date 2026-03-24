@@ -1,5 +1,6 @@
 // Test: MDocument token chunking — splits by token count (uses js-tiktoken)
-import { MDocument, output } from "kit";
+import { MDocument } from "agent";
+import { output } from "kit";
 
 const sentences = Array.from({ length: 20 }, (_, i) =>
   `This is sentence number ${i + 1} in our test document about artificial intelligence and machine learning.`

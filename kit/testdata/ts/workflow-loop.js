@@ -1,5 +1,6 @@
 // Test: .dountil() — loop until condition is met
-import { createWorkflow, createStep, z, output } from "kit";
+import { createWorkflow, createStep, z } from "agent";
+import { output } from "kit";
 
 const stateSchema = z.object({ counter: z.number().optional() });
 

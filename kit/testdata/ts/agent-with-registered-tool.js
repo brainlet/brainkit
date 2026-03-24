@@ -1,11 +1,13 @@
 // Test: agent uses a platform-registered tool (e.g., from a plugin)
 // The "multiply" tool is registered in Go before this runs.
-import { agent, tool, output } from "kit";
+import { Agent } from "agent";
+import { model, tool, output } from "kit";
 
 const multiplyTool = tool("multiply");
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Always use the multiply tool. Return only the number.",
   tools: { multiply: multiplyTool },
 });

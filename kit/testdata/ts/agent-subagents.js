@@ -1,6 +1,7 @@
 // Test: Agent networks / subagent delegation
 // Verifies: agents config, sub-agents become tools, supervisor delegates to sub-agents
-import { agent, createTool, z, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { model, output } from "kit";
 
 const results = {};
 
@@ -21,22 +22,25 @@ try {
     },
   });
 
-  const mathAgent = agent({
-    model: "openai/gpt-4o-mini",
+  const mathAgent = new Agent({
+    name: "math",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a math specialist. Use the calculate tool to solve math problems. Always use the tool, don't compute in your head.",
     tools: { calculate: calcTool },
     maxSteps: 3,
   });
 
   // Create a writing sub-agent (no tools, just writes)
-  const writerAgent = agent({
-    model: "openai/gpt-4o-mini",
+  const writerAgent = new Agent({
+    name: "writer",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a concise writer. Summarize information in one short sentence.",
   });
 
   // Create a supervisor that delegates to sub-agents
-  const supervisor = agent({
-    model: "openai/gpt-4o-mini",
+  const supervisor = new Agent({
+    name: "supervisor",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a supervisor. When asked a math question, delegate to the math agent. When asked to summarize, delegate to the writer agent. Always delegate, never answer yourself.",
     agents: { math: mathAgent, writer: writerAgent },
     maxSteps: 5,

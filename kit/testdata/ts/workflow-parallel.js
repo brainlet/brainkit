@@ -1,5 +1,6 @@
 // Test: .parallel() — run two steps concurrently
-import { createWorkflow, createStep, z, output } from "kit";
+import { createWorkflow, createStep, z } from "agent";
+import { output } from "kit";
 
 const stepA = createStep({
   id: "step-a",

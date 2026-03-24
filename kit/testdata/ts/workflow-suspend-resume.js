@@ -1,5 +1,6 @@
 // Test: workflow suspend and resume — HITL approval pattern
-import { createWorkflow, createStep, createWorkflowRun, resumeWorkflow, z, output } from "kit";
+import { createWorkflow, createStep, z } from "agent";
+import { output } from "kit";
 
 var log = [];
 try {
@@ -23,7 +24,7 @@ try {
   }).then(approvalStep).commit();
   log.push("workflow-committed");
 
-  const run = await createWorkflowRun(workflow);
+  const run = await workflow.createRun();
   log.push("run-created:" + run.runId);
 
   const result1 = await run.start({ inputData: { amount: 500 } });
@@ -31,7 +32,7 @@ try {
 
   if (result1.status === "suspended") {
     log.push("resuming");
-    const result2 = await resumeWorkflow(run.runId, "approval", {
+    const result2 = await run.resume("approval", {
       approved: true,
       approver: "David",
     });

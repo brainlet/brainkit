@@ -1,8 +1,10 @@
-import { agents, AgentRequestMsg, setState, log, JSONValue } from "brainkit";
+// Pattern: multi-stage WASM pipeline calling .ts agent service via bus.
+// Note: agents.request was removed — agent calls now go to .ts services via bus.
+import { publish, setState, log, JSONValue } from "brainkit";
 
 export function run(): i32 {
-  // Stage 1: initial agent call
-  agents.request(new AgentRequestMsg("test-helper", "first prompt"), "onStage1");
+  // Stage 1: initial agent call via bus
+  publish("ts.agent-service.ask", '{"agent":"test-helper","prompt":"first prompt"}', "onStage1");
   return 0;
 }
 
@@ -28,7 +30,7 @@ export function onStage1(topic: string, payload: string): void {
 
   // Stage 2: follow-up call using first result
   const followUp = "based on: " + text1 + " - continue";
-  agents.request(new AgentRequestMsg("test-helper", followUp), "onStage2");
+  publish("ts.agent-service.ask", '{"agent":"test-helper","prompt":"' + followUp + '"}', "onStage2");
 }
 
 export function onStage2(topic: string, payload: string): void {

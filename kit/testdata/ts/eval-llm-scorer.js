@@ -1,5 +1,6 @@
 // Test: LLM-based custom scorer with judge model (createPrompt pattern)
-import { createScorer, output } from "kit";
+import { createScorer } from "agent";
+import { output } from "kit";
 
 try {
   const helpfulnessScorer = createScorer({

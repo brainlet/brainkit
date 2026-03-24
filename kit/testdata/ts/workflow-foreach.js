@@ -1,5 +1,6 @@
 // Test: .foreach() — iterate over array from previous step
-import { createWorkflow, createStep, z, output } from "kit";
+import { createWorkflow, createStep, z } from "agent";
+import { output } from "kit";
 
 const produceStep = createStep({
   id: "produce",

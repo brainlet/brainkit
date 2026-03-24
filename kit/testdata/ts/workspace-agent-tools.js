@@ -1,5 +1,6 @@
 // Test: All workspace auto-tools
-import { agent, Workspace, LocalFilesystem, LocalSandbox, MDocument, output } from "kit";
+import { Agent, Workspace, LocalFilesystem, LocalSandbox, MDocument } from "agent";
+import { model, output } from "kit";
 
 try {
   var results = {};
@@ -21,8 +22,9 @@ try {
   await __go_fs_writeFile(tmpDir + "/readme.txt", "This project is called Brainlet.\nIt is an Agent OS.\nBuilt with Go and TypeScript.");
   await __go_fs_writeFile(tmpDir + "/config.json", '{"name":"brainlet","version":"1.0"}');
 
-  var a = agent({
-    model: "openai/gpt-4o-mini",
+  var a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: `You have workspace tools. Use them as requested. Paths are relative to workspace root. Be concise.`,
     workspace: workspace,
     maxSteps: 5,

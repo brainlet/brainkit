@@ -1,8 +1,9 @@
 // Test: direct AI streaming without an agent (LOCAL)
-import { ai, output } from "kit";
+import { streamText } from "ai";
+import { model, output } from "kit";
 
-const stream = await ai.stream({
-  model: "openai/gpt-4o-mini",
+const stream = await streamText({
+  model: model("openai", "gpt-4o-mini"),
   prompt: "Count from 1 to 3, one number per line, nothing else.",
 });
 

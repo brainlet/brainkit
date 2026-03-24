@@ -1,5 +1,6 @@
 // Test: working memory — agent maintains a structured profile across calls
-import { agent, Memory, LibSQLStore, LibSQLVector, output } from "kit";
+import { Agent, Memory, LibSQLStore, LibSQLVector } from "agent";
+import { model, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");
@@ -7,7 +8,7 @@ if (!url) throw new Error("LIBSQL_URL not set");
 const memory = new Memory({
   storage: new LibSQLStore({ id: "wm-storage", url: url }),
   vector: new LibSQLVector({ id: "wm-vector", url: url }),
-  embedder: "openai/text-embedding-3-small",
+  embedder: model("openai", "text-embedding-3-small"),
   options: {
     lastMessages: 5,
     semanticRecall: true,
@@ -22,8 +23,9 @@ const memory = new Memory({
   },
 });
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: `You are a helpful assistant with working memory.
 When you learn facts about the user, update your working memory.
 Always check working memory before answering questions about the user.`,

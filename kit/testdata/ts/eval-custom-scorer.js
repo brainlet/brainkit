@@ -1,5 +1,7 @@
 // Test: custom scorer + pre-built rule-based scorer with plain strings
-import { createScorer, scorers, output } from "kit";
+// NOTE: scorers (pre-built) is a removed API. Only createScorer remains.
+import { createScorer } from "agent";
+import { output } from "kit";
 
 // Test 1: custom scorer with bare function API
 const keywordScorer = createScorer({
@@ -23,14 +25,23 @@ const r1 = await keywordScorer.run({
   output: "hello world, how are you?",
 });
 
-// Test 2: pre-built scorer with plain strings (wrapper converts to MastraDBMessage format)
-const similarityScorer = scorers.contentSimilarity();
+// Test 2: custom content similarity scorer (replaces removed scorers.contentSimilarity)
+const similarityScorer = createScorer({
+  id: "content-similarity",
+  description: "Checks if output matches input (simple equality check)",
+})
+  .generateScore(({ run }) => {
+    const input = String(run.input).toLowerCase();
+    const out = String(run.output).toLowerCase();
+    return input === out ? 1 : 0;
+  });
+
 const r2 = await similarityScorer.run({
   input: "hello world",
   output: "hello world",
 });
 
-// Test 3: pre-built scorer with different strings
+// Test 3: different strings
 const r3 = await similarityScorer.run({
   input: "hello world",
   output: "goodbye universe",

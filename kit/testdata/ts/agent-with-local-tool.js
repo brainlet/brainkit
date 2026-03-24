@@ -1,5 +1,6 @@
 // Test: agent uses a locally-defined tool with Zod schema
-import { agent, createTool, z, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { model, output } from "kit";
 
 const addTool = createTool({
   id: "add",
@@ -11,8 +12,9 @@ const addTool = createTool({
   execute: async ({ a, b }) => ({ result: a + b }),
 });
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Always use the add tool when asked to compute. Return just the number.",
   tools: { add: addTool },
 });

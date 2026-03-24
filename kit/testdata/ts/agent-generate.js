@@ -1,8 +1,10 @@
 // Test: agent creates and generates a response
-import { agent, output } from "kit";
+import { Agent } from "agent";
+import { model, output } from "kit";
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Reply with exactly: FIXTURE_WORKS",
 });
 

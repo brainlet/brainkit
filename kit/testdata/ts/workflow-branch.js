@@ -1,5 +1,6 @@
 // Test: .branch() — conditional routing based on input
-import { createWorkflow, createStep, z, output } from "kit";
+import { createWorkflow, createStep, z } from "agent";
+import { output } from "kit";
 
 const highStep = createStep({
   id: "high",

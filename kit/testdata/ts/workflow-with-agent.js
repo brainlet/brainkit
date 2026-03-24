@@ -1,5 +1,6 @@
 // Test: workflow with an agent step — combines workflows + AI
-import { createWorkflow, createStep, agent, z, output } from "kit";
+import { createWorkflow, createStep, Agent, z } from "agent";
+import { model, output } from "kit";
 
 // Step 1: prepare prompt
 const prepareStep = createStep({
@@ -17,8 +18,9 @@ const aiStep = createStep({
   inputSchema: z.object({ prompt: z.string() }),
   outputSchema: z.object({ answer: z.string() }),
   execute: async ({ inputData }) => {
-    const a = agent({
-      model: "openai/gpt-4o-mini",
+    const a = new Agent({
+      name: "fixture",
+      model: model("openai", "gpt-4o-mini"),
       instructions: "Reply with exactly one word. No punctuation.",
     });
     const result = await a.generate(inputData.prompt);

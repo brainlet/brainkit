@@ -1,13 +1,15 @@
 // Test: runEvals() batch evaluation
 // Verifies: batch scoring against a dataset with a custom scorer
-import { agent, createScorer, runEvals, output } from "kit";
+import { Agent, createScorer, runEvals } from "agent";
+import { model, output } from "kit";
 
 const results = {};
 
 try {
   // Create a simple agent
-  const a = agent({
-    model: "openai/gpt-4o-mini",
+  const a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "Answer questions concisely in one sentence.",
   });
 

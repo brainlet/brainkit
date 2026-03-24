@@ -1,6 +1,7 @@
 // Stress test: Heavy concurrent async I/O during agent tool calls
 // Tests: file I/O, exec, timers, multiple tool calls, streaming — all interleaved
-import { agent, createTool, z, Workspace, LocalFilesystem, LocalSandbox, output } from "kit";
+import { Agent, createTool, Workspace, LocalFilesystem, LocalSandbox, z } from "agent";
+import { model, output } from "kit";
 
 try {
   var results = {};
@@ -70,8 +71,9 @@ try {
     },
   });
 
-  var a = agent({
-    model: "openai/gpt-4o-mini",
+  var a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: `You have stress test tools. When asked, call them with the specified parameters. Be concise.`,
     tools: {
       "file-io-stress": fileIOTool,
@@ -140,8 +142,9 @@ try {
   await workspace.init();
   await __go_fs_writeFile(tmpDir + "/stress-data.txt", "stress test content here");
 
-  var wsAgent = agent({
-    model: "openai/gpt-4o-mini",
+  var wsAgent = new Agent({
+    name: "ws-fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "Use workspace tools. Be concise.",
     workspace: workspace,
     maxSteps: 5,

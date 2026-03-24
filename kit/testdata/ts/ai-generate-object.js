@@ -1,8 +1,9 @@
-// Test: ai.generateObject — structured output with schema
-import { ai, z, output } from "kit";
+// Test: generateObject — structured output with schema
+import { generateObject, z } from "ai";
+import { model, output } from "kit";
 
-const result = await ai.generateObject({
-  model: "openai/gpt-4o-mini",
+const result = await generateObject({
+  model: model("openai", "gpt-4o-mini"),
   schema: z.object({
     name: z.string().describe("A fictional person's name"),
     age: z.number().describe("Age between 20 and 80"),

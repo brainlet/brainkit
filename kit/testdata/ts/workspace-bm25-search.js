@@ -1,6 +1,7 @@
 // Test: Workspace BM25 search (keyword-based)
 // Works with embedded SQLite bridge — no vector extensions needed.
-import { Workspace, LocalFilesystem, output } from "kit";
+import { Workspace, LocalFilesystem } from "agent";
+import { output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 if (!basePath) throw new Error("WORKSPACE_PATH not set");

@@ -1,7 +1,9 @@
 // Test: Workspace vector + hybrid search
 // Requires: real libsql-server (testcontainer) with vector extensions + OpenAI API key
 // The LIBSQL_URL env var is set by the test to point to a real libsql-server with vector32() support.
-import { Workspace, LocalFilesystem, LibSQLVector, ai, output } from "kit";
+import { Workspace, LocalFilesystem, LibSQLVector } from "agent";
+import { embed } from "ai";
+import { model, output } from "kit";
 
 const basePath = globalThis.process?.env?.WORKSPACE_PATH;
 const libsqlUrl = globalThis.process?.env?.LIBSQL_URL;
@@ -12,7 +14,7 @@ const results = {};
 
 try {
   const embedder = async (text) => {
-    const r = await ai.embed({ model: "openai/text-embedding-3-small", value: text });
+    const r = await embed({ model: model("openai", "text-embedding-3-small"), value: text });
     return r.embedding;
   };
 

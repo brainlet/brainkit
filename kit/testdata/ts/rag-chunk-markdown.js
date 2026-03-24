@@ -1,5 +1,6 @@
 // Test: MDocument markdown chunking — splits by headers
-import { MDocument, output } from "kit";
+import { MDocument } from "agent";
+import { output } from "kit";
 
 const markdown = `# Main Title
 

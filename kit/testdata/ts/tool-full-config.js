@@ -1,5 +1,6 @@
 // Test: createTool with extended config fields (outputSchema passthrough)
-import { agent, createTool, z, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { model, output } from "kit";
 
 // Tool with outputSchema — Mastra validates the return value
 const calculator = createTool({
@@ -10,8 +11,9 @@ const calculator = createTool({
   execute: async ({ a, b }) => ({ result: a + b }),
 });
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Use the calculator tool to add 17 and 25. Return ONLY the number.",
   tools: { calculator },
 });

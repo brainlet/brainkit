@@ -1,6 +1,7 @@
 // Test: Agent generate options passthrough
 // Verifies: temperature, maxSteps, onStepFinish, onFinish, structuredOutput, activeTools
-import { agent, createTool, z, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { model, output } from "kit";
 
 const results = {};
 
@@ -19,8 +20,9 @@ const mulTool = createTool({
   execute: async ({ a, b }) => ({ result: a * b }),
 });
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "You are a math assistant. Use tools when asked to compute.",
   tools: { add: addTool, multiply: mulTool },
   maxSteps: 3,

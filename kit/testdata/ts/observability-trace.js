@@ -1,8 +1,10 @@
 // Test: observability — verify agent.generate() creates trace spans
-import { agent, output } from "kit";
+import { Agent } from "agent";
+import { model, output } from "kit";
 
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "Reply with EXACTLY: TRACED_OK",
 });
 

@@ -1,20 +1,20 @@
-// Test: full composition — uses agent, ai, tools, wasm, sandbox, z, createTool
+// Test: full composition — uses Agent, generateText, tools, compile, z, createTool
 // This is what a real developer .ts file looks like.
-import { agent, ai, tools, wasm, sandbox, z, createTool, output } from "kit";
+import { Agent, createTool, z } from "agent";
+import { generateText } from "ai";
+import { compile } from "compiler";
+import { model, tools, output } from "kit";
 
-// 1. Check sandbox context
-const ctx = { ns: sandbox.namespace, id: sandbox.id };
-
-// 2. Direct AI call (LOCAL)
-const aiResult = await ai.generate({
-  model: "openai/gpt-4o-mini",
+// 1. Direct AI call (LOCAL)
+const aiResult = await generateText({
+  model: model("openai", "gpt-4o-mini"),
   prompt: "What is 2+2? Reply with just the number.",
 });
 
-// 3. Call a Go tool through the bus (PLATFORM)
+// 2. Call a Go tool through the bus (PLATFORM)
 const reversed = await tools.call("reverse", { text: "brainlet" });
 
-// 4. Create a local tool with Zod schema
+// 3. Create a local tool with Zod schema
 const concatTool = createTool({
   id: "concat",
   description: "Concatenates two strings",
@@ -25,12 +25,11 @@ const concatTool = createTool({
   execute: async ({ a, b }) => ({ result: a + b }),
 });
 
-// 5. Compile and run WASM
-const wasmModule = await wasm.compile('export function run(): i32 { return 99; }');
-const wasmResult = await wasm.run(wasmModule, {});
+// 4. Compile and run WASM
+const wasmModule = await compile('export function run(): i32 { return 99; }');
+const wasmResult = await wasmModule.run({});
 
 output({
-  sandbox: ctx,
   aiText: aiResult.text,
   reversed: reversed.result,
   hasLocalTool: !!concatTool,

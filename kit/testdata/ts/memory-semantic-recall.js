@@ -1,6 +1,7 @@
 // Test: semantic recall — Mastra Memory with vector store
 // Uses the same pattern as Mastra docs: create Memory, pass to agent
-import { agent, Memory, LibSQLStore, LibSQLVector, output } from "kit";
+import { Agent, Memory, LibSQLStore, LibSQLVector } from "agent";
+import { model, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");
@@ -9,7 +10,7 @@ if (!url) throw new Error("LIBSQL_URL not set");
 const memory = new Memory({
   storage: new LibSQLStore({ id: "sem-storage", url: url }),
   vector: new LibSQLVector({ id: "sem-vector", url: url }),
-  embedder: "openai/text-embedding-3-small",
+  embedder: model("openai", "text-embedding-3-small"),
   options: {
     lastMessages: 5,
     semanticRecall: {
@@ -20,8 +21,9 @@ const memory = new Memory({
 });
 
 // Mastra-style: pass Memory instance to agent
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "You are a helpful assistant. Remember what users tell you.",
   memory: memory,
 });

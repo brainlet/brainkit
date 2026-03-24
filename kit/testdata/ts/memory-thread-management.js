@@ -1,6 +1,7 @@
 // Test: Full Memory thread management API
 // Verifies: saveThread, getThreadById, listThreads, updateThread, deleteThread, deleteMessages
-import { Memory, LibSQLStore, output } from "kit";
+import { Memory, LibSQLStore } from "agent";
+import { output } from "kit";
 
 const store = new LibSQLStore({ id: "thread-mgmt" });
 const mem = new Memory({ storage: store, options: { lastMessages: 10 } });

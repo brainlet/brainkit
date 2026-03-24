@@ -1,6 +1,7 @@
 // Test: Observational memory retrieval — agent recalls facts from observations.
 // Uses LibSQLStore because InMemoryStore has a threadId=null issue with message persistence.
-import { agent, output, Memory, LibSQLStore } from "kit";
+import { Agent, Memory, LibSQLStore } from "agent";
+import { model, output } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;
@@ -27,8 +28,9 @@ try {
     vector: false,
   });
 
-  const a = agent({
-    model: "openai/gpt-4o-mini",
+  const a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a helpful assistant. Answer questions concisely. Use information the user has told you previously.",
     memory: memory,
   });

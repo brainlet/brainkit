@@ -1,5 +1,6 @@
 // Debug: test LibSQLStore directly — create, save thread, save messages, recall
-import { agent, Memory, LibSQLStore, output } from "kit";
+import { Agent, Memory, LibSQLStore } from "agent";
+import { model, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");
@@ -18,21 +19,22 @@ const mem = new Memory({
 });
 
 // Step 2: First agent call
-const a = agent({
-  model: "openai/gpt-4o-mini",
+const a = new Agent({
+  name: "fixture",
+  model: model("openai", "gpt-4o-mini"),
   instructions: "You are a helpful assistant. Remember what the user tells you.",
-  memory: {
-    thread: "debug-thread-1",
-    resource: "test-user",
-    storage: store,
-  },
+  memory: mem,
 });
 
-const r1 = await a.generate("My favorite color is blue.");
+const r1 = await a.generate("My favorite color is blue.", {
+  memory: { thread: { id: "debug-thread-1" }, resource: "test-user" },
+});
 const r1text = r1.text;
 
 // Step 3: Second agent call
-const r2 = await a.generate("What is my favorite color?");
+const r2 = await a.generate("What is my favorite color?", {
+  memory: { thread: { id: "debug-thread-1" }, resource: "test-user" },
+});
 const r2text = r2.text;
 
 output({

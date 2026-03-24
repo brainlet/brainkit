@@ -1,5 +1,6 @@
 // Test: LSP diagnostics — create a TS file with a type error, verify diagnostics
-import { Workspace, LocalFilesystem, LocalSandbox, output } from "kit";
+import { Workspace, LocalFilesystem, LocalSandbox } from "agent";
+import { output } from "kit";
 
 try {
   var results = {};

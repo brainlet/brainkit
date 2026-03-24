@@ -1,5 +1,6 @@
 // Test: Two threads have separate observations — Thread B doesn't see Thread A's facts.
-import { agent, output, Memory, LibSQLStore } from "kit";
+import { Agent, Memory, LibSQLStore } from "agent";
+import { model, output } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;
@@ -22,8 +23,9 @@ try {
       vector: false,
     });
     return {
-      a: agent({
-        model: "openai/gpt-4o-mini",
+      a: new Agent({
+        name: "fixture-" + threadId,
+        model: model("openai", "gpt-4o-mini"),
         instructions: "Answer questions concisely. If you don't know something, say 'I don't know'.",
         memory: memory,
       }),

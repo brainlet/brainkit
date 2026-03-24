@@ -1,5 +1,6 @@
 // Test: MDocument text chunking with recursive strategy
-import { MDocument, output } from "kit";
+import { MDocument } from "agent";
+import { output } from "kit";
 
 const text = `
 Chapter 1: Introduction

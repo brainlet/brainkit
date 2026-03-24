@@ -1,5 +1,7 @@
 // Test: createVectorQueryTool — end-to-end RAG pipeline
-import { MDocument, createVectorQueryTool, LibSQLVector, ai, output } from "kit";
+import { MDocument, LibSQLVector } from "agent";
+import { embed } from "ai";
+import { model, output } from "kit";
 
 const url = globalThis.process?.env?.LIBSQL_URL;
 if (!url) throw new Error("LIBSQL_URL not set");
@@ -23,8 +25,8 @@ const vectors = [];
 const metadata = [];
 const ids = [];
 for (let i = 0; i < chunks.length; i++) {
-  const embResult = await ai.embed({
-    model: "openai/text-embedding-3-small",
+  const embResult = await embed({
+    model: model("openai", "text-embedding-3-small"),
     value: chunks[i].text,
   });
   vectors.push(embResult.embedding);
@@ -40,8 +42,8 @@ await vectorStore.upsert({
 });
 
 // 4. Query — find chunks about "brainkit"
-const queryEmb = await ai.embed({
-  model: "openai/text-embedding-3-small",
+const queryEmb = await embed({
+  model: model("openai", "text-embedding-3-small"),
   value: "What is brainkit?",
 });
 

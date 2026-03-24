@@ -1,6 +1,7 @@
 // Test: Long conversation where agent proves it remembers facts from the very beginning.
 // This is the ultimate empirical proof that observational memory works end-to-end.
-import { agent, output, Memory, LibSQLStore } from "kit";
+import { Agent, Memory, LibSQLStore } from "agent";
+import { model, output } from "kit";
 
 try {
   const url = globalThis.process?.env?.LIBSQL_URL;
@@ -21,8 +22,9 @@ try {
     vector: false,
   });
 
-  const a = agent({
-    model: "openai/gpt-4o-mini",
+  const a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
     instructions: "You are a personal assistant. Remember everything the user tells you. Answer concisely.",
     memory: memory,
   });

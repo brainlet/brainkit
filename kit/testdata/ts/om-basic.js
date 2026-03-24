@@ -1,11 +1,11 @@
 // Test: Observational memory creates observations after threshold
-import { agent, output } from "kit";
+import { Agent, Memory, InMemoryStore } from "agent";
+import { model, output } from "kit";
 
 try {
-  const a = agent({
-    model: "openai/gpt-4o-mini",
-    instructions: "You are a helpful assistant. Keep your replies to 1-2 sentences.",
-    memory: {
+  const memory = new Memory({
+    storage: new InMemoryStore(),
+    options: {
       lastMessages: 40,
       observationalMemory: {
         model: "openai/gpt-4o-mini",
@@ -18,10 +18,17 @@ try {
         },
         scope: "thread",
       },
-      thread: "om-test-thread-1",
-      resource: "om-test-user",
     },
   });
+
+  const a = new Agent({
+    name: "fixture",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "You are a helpful assistant. Keep your replies to 1-2 sentences.",
+    memory: memory,
+  });
+
+  const memOpts = { memory: { thread: { id: "om-test-thread-1" }, resource: "om-test-user" } };
 
   // Send enough messages to exceed the 300 token threshold
   // Each message pair (user + assistant) is ~50-80 tokens
@@ -38,7 +45,7 @@ try {
 
   var lastResult;
   for (var i = 0; i < messages.length; i++) {
-    lastResult = await a.generate(messages[i]);
+    lastResult = await a.generate(messages[i], memOpts);
   }
 
   output({
