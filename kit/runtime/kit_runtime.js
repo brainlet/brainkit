@@ -613,7 +613,8 @@
         BrainkitDate.prototype = _OrigDate.prototype;
         return BrainkitDate;
       })(),
-      // Node.js compat — Buffer, EventEmitter, child_process, fs, path
+      // Node.js compat — Buffer, EventEmitter, process, child_process, fs, path
+      process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
     };

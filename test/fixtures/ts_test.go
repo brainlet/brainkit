@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // TestTSFixturesTranspile verifies every TS fixture transpiles to valid JS.
@@ -47,19 +48,29 @@ func fixtureNeedsAI(name string) bool {
 	return false
 }
 
-// fixtureNeedsInfra returns true if the fixture needs external containers.
-func fixtureNeedsInfra(name string) bool {
-	infraPrefixes := []string{
-		"memory-libsql", "memory-postgres", "memory-mongodb", "memory-upstash",
-		"memory-semantic", "memory-working",
-		"vector-", "rag-vector", "observability-",
+// fixtureNeedsContainer returns true if the fixture needs an external container (Podman).
+func fixtureNeedsContainer(name string) bool {
+	containers := map[string]bool{
+		"memory-postgres":      true, // needs Postgres
+		"memory-postgres-scram": true, // needs Postgres
+		"memory-mongodb":       true, // needs MongoDB
+		"memory-upstash":       true, // needs Upstash cloud creds
+		"vector-pgvector":      true, // needs Postgres with pgvector
+		"vector-mongodb":       true, // needs MongoDB
 	}
-	for _, prefix := range infraPrefixes {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
+	return containers[name]
+}
+
+// fixtureNeedsVectorExtensions returns true if the fixture needs libsql with vector support.
+// The embedded libsql bridge uses modernc.org/sqlite which doesn't have vector extensions.
+func fixtureNeedsVectorExtensions(name string) bool {
+	vectorExts := map[string]bool{
+		"memory-semantic-recall": true, // LibSQLVector needs vector32()
+		"memory-working":        true, // LibSQLVector needs vector32()
+		"vector-methods":        true, // LibSQLVector needs vector32()
+		"rag-vector-query-tool": true, // LibSQLVector + embed
 	}
-	return false
+	return vectorExts[name]
 }
 
 // TestTSFixturesE2E runs the full pipeline: transpile → deploy → get output → assert.
@@ -78,25 +89,41 @@ func TestTSFixturesE2E(t *testing.T) {
 		}
 		name := entry.Name()
 		t.Run(name, func(t *testing.T) {
-			// Only skip when the required infrastructure is genuinely unavailable
 			if fixtureNeedsAI(name) && !hasAI {
 				t.Skipf("needs OPENAI_API_KEY")
 			}
-			if fixtureNeedsInfra(name) {
-				t.Skipf("needs external containers (run with Podman)")
+			if fixtureNeedsContainer(name) && !testutil.PodmanAvailable() {
+				t.Skipf("needs Podman for containers")
+			}
+			if fixtureNeedsVectorExtensions(name) {
+				t.Skipf("needs libsql-server with vector extensions")
 			}
 			if name == "mcp-tools" {
 				t.Skipf("needs running MCP server")
 			}
+			if name == "memory-upstash" {
+				t.Skipf("needs Upstash cloud credentials")
+			}
 
-			// 1. Read raw .ts source — Deploy handles transpile + import strip
+			// 1. Start containers if needed — injects env vars (POSTGRES_URL, etc.)
+			setupFixtureInfra(t, name)
+
+			// 2. Read raw .ts source — Deploy handles transpile + import strip
 			tsSource := loadTSFixtureRaw(t, name)
 
-			// 2. Create kernel with tools the fixtures expect
+			// 3. Create kernel with tools the fixtures expect
 			tk := testutil.NewTestKernelFull(t)
 			registerFixtureTools(t, tk, name)
 
-			// 3. Deploy .ts directly — Kernel detects .ts, transpiles, strips imports
+			// 4. Inject infra URLs into env (process.env reads from os.Getenv)
+			if strings.HasPrefix(name, "memory-libsql") || name == "vector-methods" || name == "rag-vector-query-tool" {
+				libsqlURL := tk.StorageURL("default")
+				if libsqlURL != "" {
+					os.Setenv("LIBSQL_URL", libsqlURL)
+				}
+			}
+
+			// 5. Deploy .ts directly — Kernel detects .ts, transpiles, strips imports
 			timeout := 15 * time.Second
 			if fixtureNeedsAI(name) {
 				timeout = 60 * time.Second
@@ -215,6 +242,21 @@ func registerFixtureTools(t *testing.T, tk *testutil.TestKernel, name string) {
 				return map[string]string{"result": string(runes)}, nil
 			},
 		})
+	}
+}
+
+// setupFixtureInfra starts containers and sets env vars for fixtures that need them.
+func setupFixtureInfra(t *testing.T, name string) {
+	t.Helper()
+	switch name {
+	case "memory-postgres", "memory-postgres-scram":
+		url := testutil.StartPgVectorContainer(t)
+		os.Setenv("POSTGRES_URL", url)
+	case "memory-mongodb":
+		addr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
+			wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
+			"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
+		os.Setenv("MONGODB_URL", "mongodb://test:test@"+addr)
 	}
 }
 
