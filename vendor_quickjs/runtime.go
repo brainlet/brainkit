@@ -197,6 +197,15 @@ func (r *Runtime) SetExecuteTimeout(timeout uint64) {
 	r.interruptHandler = nil
 }
 
+// MemoryUsage returns the current memory allocation stats for this runtime.
+// malloc_count is the number of live allocations, malloc_size is total bytes.
+// After a clean Close(), both should be 0.
+func (r *Runtime) MemoryUsage() (mallocCount int64, mallocSize int64) {
+	var stats C.JSMemoryUsage
+	C.JS_ComputeMemoryUsage(r.ref, &stats)
+	return int64(stats.malloc_count), int64(stats.malloc_size)
+}
+
 // SetStripInfo sets the strip info for the runtime.
 func (r *Runtime) SetStripInfo(strip int) {
 	C.JS_SetStripInfo(r.ref, C.int(strip))
