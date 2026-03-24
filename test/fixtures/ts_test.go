@@ -78,37 +78,15 @@ func TestTSFixturesE2E(t *testing.T) {
 		}
 		name := entry.Name()
 		t.Run(name, func(t *testing.T) {
-			// Skip fixtures that need infra we don't have
+			// Only skip when the required infrastructure is genuinely unavailable
 			if fixtureNeedsAI(name) && !hasAI {
 				t.Skipf("needs OPENAI_API_KEY")
 			}
 			if fixtureNeedsInfra(name) {
-				t.Skipf("needs external containers")
+				t.Skipf("needs external containers (run with Podman)")
 			}
-			// MCP fixtures need a running MCP server
 			if name == "mcp-tools" {
-				t.Skipf("needs MCP server")
-			}
-			// Some AI SDK functions fail inside SES Compartments (internal calls
-			// hit missing globals). They work fine in EvalTS but Deploy wraps in
-			// Compartment which restricts scope. Known runtime limitation.
-			compartmentBroken := map[string]bool{
-				"ai-embed": true, "ai-stream": true,
-				"agent-stream": true, "agent-with-local-tool": true,
-				"agent-with-memory": true, "agent-with-registered-tool": true,
-			}
-			if compartmentBroken[name] {
-				t.Skipf("AI SDK function fails inside SES Compartment (known limitation)")
-			}
-			// Fixtures that use Mastra workflow APIs not matching runtime
-			workflowBroken := map[string]bool{
-				"workflow-foreach":        true, // .forEach() not a function at runtime
-				"workflow-branch":         true, // branch API mismatch
-				"workflow-sleep":          true, // sleep API mismatch
-				"workflow-suspend-resume": true, // suspend/resume flow incomplete
-			}
-			if workflowBroken[name] {
-				t.Skipf("Mastra workflow API mismatch (fixture needs rewrite)")
+				t.Skipf("needs running MCP server")
 			}
 
 			// 1. Read raw .ts source — Deploy handles transpile + import strip
