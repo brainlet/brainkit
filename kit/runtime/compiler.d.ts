@@ -39,5 +39,9 @@ declare module "compiler" {
     size: number;
     /** Exported function names. */
     exports: string[];
+    /** Run the compiled module (calls wasm.run). */
+    run?: (input?: any) => Promise<{ exitCode: number; value?: any }>;
+    /** Allow extra fields from runtime. */
+    [key: string]: any;
   }
 }
