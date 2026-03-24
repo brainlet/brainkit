@@ -47,15 +47,20 @@ declare module "ai" {
   interface ZodType {
     optional(): ZodType;
     nullable(): ZodType;
-    default(value: any): ZodType;
+    default(value: unknown): ZodType;
     describe(description: string): ZodType;
     array(): ZodType;
     or(other: ZodType): ZodType;
     and(other: ZodType): ZodType;
-    transform(fn: (val: any) => any): ZodType;
-    refine(fn: (val: any) => boolean, message?: string): ZodType;
-    parse(value: any): any;
-    safeParse(value: any): { success: boolean; data?: any; error?: any };
+    transform(fn: (val: unknown) => unknown): ZodType;
+    refine(fn: (val: unknown) => boolean, message?: string): ZodType;
+    parse(value: unknown): unknown;
+    safeParse(value: unknown): { success: boolean; data?: unknown; error?: ZodError };
+  }
+
+  interface ZodError {
+    issues: Array<{ message: string; path: (string | number)[] }>;
+    message: string;
   }
 
   // ── CallSettings (shared across all functions) ────────────────
@@ -107,14 +112,14 @@ declare module "ai" {
   interface ToolCall {
     toolCallId: string;
     toolName: string;
-    args: any;
+    args: Record<string, unknown>;
   }
 
   interface ToolResult {
     toolCallId: string;
     toolName: string;
-    args: any;
-    result: any;
+    args: Record<string, unknown>;
+    result: unknown;
   }
 
   interface StepResult {
@@ -124,7 +129,7 @@ declare module "ai" {
     toolResults: ToolResult[];
     finishReason: FinishReason;
     usage: Usage;
-    stepType: string;
+    stepType: "initial" | "tool-result" | "continue";
     isContinued: boolean;
   }
 
@@ -133,24 +138,53 @@ declare module "ai" {
     url?: string;
     title?: string;
     sourceType?: string;
-    providerMetadata?: Record<string, any>;
+    providerMetadata?: ProviderMetadata;
   }
 
-  /** Language model instance (returned by provider factory). */
-  type LanguageModel = any;
+  /** Content part in a multi-modal message. */
+  type ContentPart =
+    | { type: "text"; text: string }
+    | { type: "image"; image: string | Uint8Array; mimeType?: string }
+    | { type: "tool-call"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+    | { type: "tool-result"; toolCallId: string; toolName: string; result: unknown };
 
-  /** Embedding model instance. */
-  type EmbeddingModel = any;
+  /** Message content — either a simple string or multi-modal parts. */
+  type MessageContent = string | ContentPart[];
+
+  /** Generated file from the model (images, audio, etc). */
+  interface GeneratedFile {
+    data: Uint8Array;
+    mimeType: string;
+  }
+
+  /** Warning from the provider. */
+  interface Warning {
+    type: string;
+    message: string;
+  }
+
+  /** Provider-specific metadata keyed by provider name. */
+  type ProviderMetadata = Record<string, Record<string, unknown>>;
+
+  /** Language model instance (opaque — returned by provider factory). */
+  interface LanguageModel {
+    /** @internal */ readonly __brand: "LanguageModel";
+  }
+
+  /** Embedding model instance (opaque — returned by provider factory). */
+  interface EmbeddingModel {
+    /** @internal */ readonly __brand: "EmbeddingModel";
+  }
 
   /** Tool definition for AI SDK. */
   interface ToolDefinition {
     description?: string;
     parameters: ZodType;
-    execute?: (args: any, options?: any) => Promise<any>;
+    execute?: (args: Record<string, unknown>, options?: { abortSignal?: AbortSignal }) => Promise<unknown>;
   }
 
   /** Provider options keyed by provider name. */
-  type ProviderOptions = Record<string, Record<string, any>>;
+  type ProviderOptions = Record<string, Record<string, unknown>>;
 
   // ── generateText ──────────────────────────────────────────────
 
@@ -162,7 +196,7 @@ declare module "ai" {
     /** System message. */
     system?: string;
     /** Conversation messages. */
-    messages?: Array<{ role: string; content: any }>;
+    messages?: Array<{ role: "system" | "user" | "assistant" | "tool"; content: MessageContent }>;
     /** Tool definitions. */
     tools?: Record<string, ToolDefinition>;
     /** Tool selection strategy. */
@@ -174,7 +208,7 @@ declare module "ai" {
     /** Provider-specific options. */
     providerOptions?: ProviderOptions;
     /** Structured output specification. */
-    output?: any;
+    output?: ZodType | { type: "object" | "array" | "enum" | "no-schema" };
     /** Callback: each step finishes. */
     onStepFinish?: (event: StepResult) => void | Promise<void>;
     /** Callback: all steps done. */
@@ -199,13 +233,13 @@ declare module "ai" {
     /** Response metadata. */
     response: ResponseMeta;
     /** Generated files (images, etc). */
-    files: any[];
+    files: GeneratedFile[];
     /** Source attributions. */
     sources: Source[];
     /** Warnings from the provider. */
-    warnings: any[];
+    warnings: Warning[];
     /** Provider-specific metadata. */
-    providerMetadata?: Record<string, any>;
+    providerMetadata?: ProviderMetadata;
   }
 
   export function generateText(params: GenerateTextParams): Promise<GenerateTextResult>;
@@ -214,7 +248,7 @@ declare module "ai" {
 
   interface StreamTextParams extends GenerateTextParams {
     /** Callback per stream chunk. */
-    onChunk?: (event: { chunk: any }) => void;
+    onChunk?: (event: { chunk: StreamPart }) => void;
     /** Error callback. */
     onError?: (event: { error: unknown }) => void;
   }
@@ -247,8 +281,8 @@ declare module "ai" {
   type StreamPart =
     | { type: "text-delta"; textDelta: string }
     | { type: "reasoning"; textDelta: string }
-    | { type: "tool-call"; toolCallId: string; toolName: string; args: any }
-    | { type: "tool-result"; toolCallId: string; toolName: string; result: any }
+    | { type: "tool-call"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+    | { type: "tool-result"; toolCallId: string; toolName: string; result: unknown }
     | { type: "step-finish"; finishReason: FinishReason; usage: Usage }
     | { type: "finish"; finishReason: FinishReason; usage: Usage }
     | { type: "error"; error: unknown };
@@ -265,9 +299,9 @@ declare module "ai" {
     /** System message. */
     system?: string;
     /** Conversation messages. */
-    messages?: Array<{ role: string; content: any }>;
+    messages?: Array<{ role: "system" | "user" | "assistant" | "tool"; content: MessageContent }>;
     /** Output schema (Zod or JSON Schema). */
-    schema?: ZodType | any;
+    schema?: ZodType;
     /** Optional name for the schema. */
     schemaName?: string;
     /** Optional description for the schema. */
@@ -277,12 +311,12 @@ declare module "ai" {
     /** Output type. */
     output?: "object" | "array" | "enum" | "no-schema";
     /** Enum values (for output: "enum"). */
-    enum?: any[];
+    enum?: string[];
     /** Provider-specific options. */
     providerOptions?: ProviderOptions;
   }
 
-  interface GenerateObjectResult<T = any> {
+  interface GenerateObjectResult<T = unknown> {
     /** The generated object. */
     object: T;
     /** Why generation stopped. */
@@ -292,12 +326,12 @@ declare module "ai" {
     /** Response metadata. */
     response: ResponseMeta;
     /** Warnings. */
-    warnings: any[];
+    warnings: Warning[];
     /** Provider-specific metadata. */
-    providerMetadata?: Record<string, any>;
+    providerMetadata?: ProviderMetadata;
   }
 
-  export function generateObject<T = any>(params: GenerateObjectParams): Promise<GenerateObjectResult<T>>;
+  export function generateObject<T = unknown>(params: GenerateObjectParams): Promise<GenerateObjectResult<T>>;
 
   // ── streamObject ──────────────────────────────────────────────
 
@@ -305,10 +339,10 @@ declare module "ai" {
     /** Error callback. */
     onError?: (event: { error: unknown }) => void;
     /** Finish callback. */
-    onFinish?: (event: { object: any; usage: Usage }) => void;
+    onFinish?: (event: { object: unknown; usage: Usage }) => void;
   }
 
-  interface StreamObjectResult<T = any> {
+  interface StreamObjectResult<T = unknown> {
     /** Async iterable of partial objects as they build. */
     partialObjectStream: AsyncIterable<Partial<T>>;
     /** Async iterable of elements (for output: "array"). */
@@ -321,7 +355,7 @@ declare module "ai" {
     response: Promise<ResponseMeta>;
   }
 
-  export function streamObject<T = any>(params: StreamObjectParams): StreamObjectResult<T>;
+  export function streamObject<T = unknown>(params: StreamObjectParams): StreamObjectResult<T>;
 
   // ── embed ─────────────────────────────────────────────────────
 
@@ -388,18 +422,20 @@ declare module "ai" {
   /** Wrap a language model with middleware. */
   export function wrapLanguageModel(options: { model: LanguageModel; middleware: LanguageModelMiddleware | LanguageModelMiddleware[] }): LanguageModel;
 
-  /** Language model middleware type. */
-  type LanguageModelMiddleware = any;
+  /** Language model middleware (opaque). */
+  interface LanguageModelMiddleware {
+    /** @internal */ readonly __brand: "LanguageModelMiddleware";
+  }
 
   // ── Tool utilities ────────────────────────────────────────────
 
   /** Define a tool with schema + execute function. */
-  export function tool<T>(definition: {
+  export function tool<T = Record<string, unknown>>(definition: {
     description?: string;
     parameters: ZodType;
-    execute?: (args: T, options?: any) => Promise<any>;
+    execute?: (args: T, options?: { abortSignal?: AbortSignal }) => Promise<unknown>;
   }): ToolDefinition;
 
   /** Convert a JSON Schema object to an AI SDK schema. */
-  export function jsonSchema(schema: any): any;
+  export function jsonSchema(schema: Record<string, unknown>): ZodType;
 }

@@ -47,39 +47,33 @@ declare module "agent" {
     /** System instructions. */
     instructions?: string;
     /** Language model (use model() from "kit" to resolve). */
-    model: any;
+    model: import("ai").LanguageModel;
     /** Tool definitions. */
-    tools?: Record<string, any>;
+    tools?: Record<string, Tool>;
     /** Max tool-call rounds (default: 5). */
     maxSteps?: number;
     /** Tool selection strategy. */
     toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
     /** Memory instance for conversation persistence. */
-    memory?: MemoryInstance;
+    memory?: Memory;
     /** Sub-agents for supervisor/network pattern. */
     agents?: Record<string, Agent>;
     /** Default call options. */
     defaultOptions?: Partial<AgentCallOptions>;
     /** Dynamic model resolver. */
-    modelResolver?: (ctx: any) => any | Promise<any>;
+    modelResolver?: (ctx: RequestContext) => import("ai").LanguageModel | Promise<import("ai").LanguageModel>;
     /** Dynamic tools resolver. */
-    toolsResolver?: (ctx: any) => Record<string, any> | Promise<Record<string, any>>;
+    toolsResolver?: (ctx: RequestContext) => Record<string, Tool> | Promise<Record<string, Tool>>;
     /** Dynamic instructions resolver. */
-    instructionsResolver?: (ctx: any) => string | Promise<string>;
-    /** Input processors. */
-    inputProcessors?: any[];
-    /** Output processors. */
-    outputProcessors?: any[];
+    instructionsResolver?: (ctx: RequestContext) => string | Promise<string>;
     /** Scorer definitions for evals. */
-    scorers?: any[];
+    scorers?: Scorer[];
     /** Workspace instance. */
-    workspace?: WorkspaceInstance;
-    /** Voice configuration. */
-    voice?: any;
+    workspace?: Workspace;
     /** Workflow definitions. */
-    workflows?: Record<string, any>;
+    workflows?: Record<string, Workflow>;
     /** Provider-specific options. */
-    providerOptions?: Record<string, Record<string, any>>;
+    providerOptions?: Record<string, Record<string, unknown>>;
   }
 
   interface AgentCallOptions {
@@ -88,55 +82,57 @@ declare module "agent" {
     /** Memory options. */
     memory?: { thread?: string | { id: string }; resource?: string };
     /** Request context for dynamic resolvers. */
-    requestContext?: RequestContextInstance;
+    requestContext?: RequestContext;
   }
 
   interface AgentResult {
     text: string;
     reasoningText?: string;
-    object?: any;
-    toolCalls: Array<{ toolCallId: string; toolName: string; args: any }>;
-    toolResults: Array<{ toolCallId: string; toolName: string; args: any; result: any }>;
+    object?: unknown;
+    toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    toolResults: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>;
     finishReason: string;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-    steps: Array<{
-      text: string;
-      reasoning?: string;
-      toolCalls: any[];
-      toolResults: any[];
-      finishReason: string;
-      usage: any;
-      stepType: string;
-      isContinued: boolean;
-    }>;
+    steps: AgentStepResult[];
     response: { id: string; modelId: string; timestamp: string };
     runId?: string;
-    suspendPayload?: any;
-    providerMetadata?: any;
+    suspendPayload?: unknown;
+    providerMetadata?: Record<string, unknown>;
+  }
+
+  interface AgentStepResult {
+    text: string;
+    reasoning?: string;
+    toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    toolResults: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>;
+    finishReason: string;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    stepType: string;
+    isContinued: boolean;
   }
 
   interface AgentStreamResult {
     /** Async iterable of text chunks. */
     textStream: AsyncIterable<string>;
     /** Async iterable of typed stream parts. */
-    fullStream: AsyncIterable<any>;
+    fullStream: AsyncIterable<import("ai").StreamPart>;
     /** Promise: final complete text. */
     text: Promise<string>;
     /** Promise: token usage. */
-    usage: Promise<any>;
+    usage: Promise<{ promptTokens: number; completionTokens: number; totalTokens: number }>;
     /** Promise: finish reason. */
     finishReason: Promise<string>;
     /** Promise: all tool calls. */
-    toolCalls: Promise<any[]>;
+    toolCalls: Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>>;
     /** Promise: all tool results. */
-    toolResults: Promise<any[]>;
+    toolResults: Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>>;
     /** Promise: all steps. */
-    steps: Promise<any[]>;
+    steps: Promise<AgentStepResult[]>;
   }
 
   interface Message {
     role: "system" | "user" | "assistant" | "tool";
-    content: any;
+    content: import("ai").MessageContent;
   }
 
   // ── Tools ─────────────────────────────────────────────────────
@@ -163,21 +159,25 @@ declare module "agent" {
     /** Human-readable description. */
     description?: string;
     /** Input schema (Zod). */
-    inputSchema?: any;
+    inputSchema?: import("ai").ZodType;
     /** Output schema (Zod). */
-    outputSchema?: any;
+    outputSchema?: import("ai").ZodType;
     /** Execute function. */
-    execute?: (input: any, context?: any) => Promise<any>;
+    execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
     /** Suspend schema (for tool approval workflows). */
-    suspendSchema?: any;
+    suspendSchema?: import("ai").ZodType;
     /** Resume schema. */
-    resumeSchema?: any;
+    resumeSchema?: import("ai").ZodType;
+  }
+
+  interface ToolExecutionContext {
+    requestContext?: RequestContext;
   }
 
   interface Tool {
     id: string;
     description?: string;
-    execute?: (input: any, context?: any) => Promise<any>;
+    execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
   }
 
   // ── Workflows ─────────────────────────────────────────────────
@@ -201,45 +201,66 @@ declare module "agent" {
 
   interface WorkflowConfig {
     id: string;
-    inputSchema?: any;
-    outputSchema?: any;
+    inputSchema?: import("ai").ZodType;
+    outputSchema?: import("ai").ZodType;
   }
 
   interface StepConfig {
     id: string;
-    inputSchema?: any;
-    outputSchema?: any;
-    execute?: (context: { inputData: any; mapiData?: any }) => Promise<any>;
+    inputSchema?: import("ai").ZodType;
+    outputSchema?: import("ai").ZodType;
+    execute?: (context: StepExecutionContext) => Promise<unknown>;
+  }
+
+  interface StepExecutionContext {
+    inputData: Record<string, unknown>;
+    mapiData?: Record<string, unknown>;
   }
 
   interface WorkflowBuilder {
     then(step: Step): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
-    branch(config: any): WorkflowBuilder;
-    forEach(config: any): WorkflowBuilder;
+    branch(config: BranchConfig): WorkflowBuilder;
+    forEach(config: ForEachConfig): WorkflowBuilder;
     commit(): Workflow;
+  }
+
+  interface BranchConfig {
+    condition: (data: Record<string, unknown>) => boolean;
+    trueStep: Step;
+    falseStep?: Step;
+  }
+
+  interface ForEachConfig {
+    items: string;
+    step: Step;
   }
 
   interface Step {}
 
   interface Workflow {
-    createRun(opts?: any): Promise<WorkflowRun>;
+    createRun(opts?: { runId?: string }): Promise<WorkflowRun>;
   }
 
   interface WorkflowRun {
     runId: string;
-    start(params: { inputData: any }): Promise<WorkflowRunResult>;
-    resume(params: { resumeData: any; step?: string }): Promise<WorkflowRunResult>;
+    start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
+    resume(params: { resumeData: Record<string, unknown>; step?: string }): Promise<WorkflowRunResult>;
     cancel(): void;
     readonly status: string;
     readonly currentStep: string;
   }
 
   interface WorkflowRunResult {
-    status: "completed" | "suspended" | "failed";
-    result?: any;
+    status: "completed" | "suspended" | "failed" | "success";
+    result?: Record<string, unknown>;
     runId?: string;
-    steps?: Record<string, any>;
+    steps?: Record<string, StepRunResult>;
+  }
+
+  interface StepRunResult {
+    status: string;
+    output?: unknown;
   }
 
   // ── Memory ────────────────────────────────────────────────────
@@ -247,78 +268,125 @@ declare module "agent" {
   /** Memory class — conversation persistence. */
   export class Memory {
     constructor(config: MemoryConfig);
-    createThread(opts?: any): Promise<{ id: string }>;
-    getThreadById(opts: { threadId: string }): Promise<any>;
-    listThreads(filter?: any): Promise<any>;
-    saveMessages(opts: { threadId: string; messages: any[] }): Promise<void>;
-    recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<any>;
+    createThread(opts?: { resourceId?: string }): Promise<{ id: string }>;
+    getThreadById(opts: { threadId: string }): Promise<Thread | null>;
+    listThreads(filter?: { resourceId?: string }): Promise<Thread[]>;
+    saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
     deleteThread(threadId: string): Promise<void>;
   }
 
-  type MemoryInstance = Memory;
+  interface Thread {
+    id: string;
+    resourceId?: string;
+    title?: string;
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  interface RecallResult {
+    messages: Message[];
+    workingMemory?: string;
+  }
 
   interface MemoryConfig {
-    storage?: any;
-    vector?: any | false;
-    embedder?: any;
+    storage?: StorageInstance;
+    vector?: VectorStoreInstance | false;
+    embedder?: import("ai").EmbeddingModel;
     options?: {
       lastMessages?: number;
-      semanticRecall?: any;
-      workingMemory?: any;
-      generateTitle?: any;
-      observationalMemory?: any;
+      semanticRecall?: boolean | { topK?: number; messageRange?: number };
+      workingMemory?: boolean | { enabled: boolean };
+      generateTitle?: boolean;
+      observationalMemory?: boolean | { enabled: boolean };
     };
   }
 
   // ── Storage backends ──────────────────────────────────────────
 
-  export class InMemoryStore {
+  /** Marker type for resolved storage instances. */
+  interface StorageInstance {
+    /** @internal */ readonly __storageType: string;
+  }
+
+  export class InMemoryStore implements StorageInstance {
+    readonly __storageType: "memory";
     constructor(config?: { id?: string });
   }
 
-  export class LibSQLStore {
+  export class LibSQLStore implements StorageInstance {
+    readonly __storageType: "libsql";
     constructor(config: { id?: string; url?: string; authToken?: string; storage?: string });
   }
 
-  export class UpstashStore {
+  export class UpstashStore implements StorageInstance {
+    readonly __storageType: "upstash";
     constructor(config: { id?: string; url: string; token: string });
   }
 
-  export class PostgresStore {
+  export class PostgresStore implements StorageInstance {
+    readonly __storageType: "postgres";
     constructor(config: { id?: string; connectionString: string });
   }
 
-  export class MongoDBStore {
+  export class MongoDBStore implements StorageInstance {
+    readonly __storageType: "mongodb";
     constructor(config: { id?: string; uri: string; dbName?: string });
   }
 
   // ── Vector stores ─────────────────────────────────────────────
 
-  export class LibSQLVector {
+  /** Marker type for resolved vector store instances. */
+  interface VectorStoreInstance {
+    /** @internal */ readonly __vectorType: string;
+    createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
+  }
+
+  interface VectorEntry {
+    id?: string;
+    vector: number[];
+    metadata?: Record<string, unknown>;
+  }
+
+  interface VectorQueryResult {
+    id: string;
+    score: number;
+    metadata?: Record<string, unknown>;
+    vector?: number[];
+  }
+
+  export class LibSQLVector implements VectorStoreInstance {
+    readonly __vectorType: "libsql";
     constructor(config: { id?: string; connectionUrl?: string; url?: string; authToken?: string; storage?: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: any[] }): Promise<any>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<any[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
   }
 
-  export class PgVector {
+  export class PgVector implements VectorStoreInstance {
+    readonly __vectorType: "pgvector";
     constructor(config: { id?: string; connectionString: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: any[] }): Promise<any>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<any[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
   }
 
-  export class MongoDBVector {
+  export class MongoDBVector implements VectorStoreInstance {
+    readonly __vectorType: "mongodb";
     constructor(config: { id?: string; uri: string; dbName?: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: any[] }): Promise<any>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<any[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
   }
 
   // ── Embedding model router ────────────────────────────────────
@@ -338,18 +406,28 @@ declare module "agent" {
     has(key: string): boolean;
   }
 
-  type RequestContextInstance = RequestContext;
-
   // ── Workspace ─────────────────────────────────────────────────
 
   export class Workspace {
     constructor(config: WorkspaceConfig);
     init(): Promise<void>;
     destroy(): Promise<void>;
-    search(query: string, options?: any): Promise<any[]>;
+    search(query: string, options?: { limit?: number }): Promise<WorkspaceSearchResult[]>;
     index(filePath: string, content: string): Promise<void>;
-    getInfo(): any;
+    getInfo(): WorkspaceInfo;
     getInstructions(): string;
+  }
+
+  interface WorkspaceSearchResult {
+    path: string;
+    content: string;
+    score: number;
+  }
+
+  interface WorkspaceInfo {
+    id: string;
+    name?: string;
+    basePath: string;
   }
 
   export class LocalFilesystem {
@@ -366,45 +444,94 @@ declare module "agent" {
     filesystem: LocalFilesystem;
     sandbox?: LocalSandbox;
     bm25?: boolean | { k1?: number; b?: number };
-    vectorStore?: LibSQLVector | PgVector | MongoDBVector;
+    vectorStore?: VectorStoreInstance;
     embedder?: (text: string) => Promise<number[]>;
     searchIndexName?: string;
-    tools?: any;
+    tools?: Record<string, Tool>;
     skills?: string[];
-    lsp?: boolean | any;
+    lsp?: boolean | { command: string; args?: string[] };
   }
-
-  type WorkspaceInstance = Workspace;
 
   // ── RAG ───────────────────────────────────────────────────────
 
   /** Document class for RAG chunking. */
   export class MDocument {
-    static fromText(text: string, metadata?: any): MDocument;
-    static fromMarkdown(markdown: string, metadata?: any): MDocument;
-    chunk(options?: any): Promise<any[]>;
+    static fromText(text: string, metadata?: Record<string, unknown>): MDocument;
+    static fromMarkdown(markdown: string, metadata?: Record<string, unknown>): MDocument;
+    chunk(options?: ChunkOptions): Promise<DocumentChunk[]>;
+  }
+
+  interface ChunkOptions {
+    strategy?: "recursive" | "character" | "token" | "markdown" | "html";
+    size?: number;
+    overlap?: number;
+    separator?: string;
+  }
+
+  interface DocumentChunk {
+    text: string;
+    metadata: Record<string, unknown>;
   }
 
   /** Graph RAG for knowledge graph queries. */
   export class GraphRAG {
-    constructor(config: any);
-    query(query: string, options?: any): Promise<any>;
+    constructor(config: { vectorStore: VectorStoreInstance; embedder: import("ai").EmbeddingModel });
+    query(query: string, options?: { topK?: number }): Promise<GraphRAGResult>;
   }
 
-  export function createVectorQueryTool(config: any): any;
-  export function createDocumentChunkerTool(config: any): any;
-  export function createGraphRAGTool(config: any): any;
-  export function rerank(config: any): Promise<any>;
-  export function rerankWithScorer(config: any): Promise<any>;
+  interface GraphRAGResult {
+    answer: string;
+    sources: Array<{ text: string; score: number }>;
+  }
+
+  export function createVectorQueryTool(config: {
+    vectorStore: VectorStoreInstance;
+    indexName: string;
+    embedder: import("ai").EmbeddingModel;
+    topK?: number;
+    description?: string;
+  }): Tool;
+
+  export function createDocumentChunkerTool(config: {
+    vectorStore: VectorStoreInstance;
+    indexName: string;
+    embedder: import("ai").EmbeddingModel;
+    chunkOptions?: ChunkOptions;
+  }): Tool;
+
+  export function createGraphRAGTool(config: {
+    graphRag: GraphRAG;
+    description?: string;
+  }): Tool;
+
+  export function rerank(config: {
+    results: Array<{ text: string; score: number }>;
+    query: string;
+    topK?: number;
+  }): Promise<Array<{ text: string; score: number }>>;
+
+  export function rerankWithScorer(config: {
+    results: Array<{ text: string; score: number }>;
+    query: string;
+    scorer: Scorer;
+    topK?: number;
+  }): Promise<Array<{ text: string; score: number }>>;
 
   // ── Observability ─────────────────────────────────────────────
 
   export class Observability {
-    constructor(config: any);
+    constructor(config: ObservabilityConfig);
+  }
+
+  interface ObservabilityConfig {
+    configs: Record<string, {
+      serviceName: string;
+      exporters: DefaultExporter[];
+    }>;
   }
 
   export class DefaultExporter {
-    constructor(config: any);
+    constructor(config: { storage: StorageInstance; strategy?: "realtime" | "batch" });
   }
 
   // ── Evals ─────────────────────────────────────────────────────
@@ -414,18 +541,37 @@ declare module "agent" {
     id?: string;
     name?: string;
     description?: string;
-    judge?: { model: any };
-    execute?: (input: any) => Promise<{ score: number; details?: any }>;
+    judge?: { model: import("ai").LanguageModel };
+    execute?: (input: ScorerInput) => Promise<ScorerResult>;
   }): Scorer;
+
+  interface ScorerInput {
+    input: string;
+    output: string;
+    groundTruth?: string;
+  }
+
+  interface ScorerResult {
+    score: number;
+    details?: Record<string, unknown>;
+  }
 
   /** Run evaluations against an agent. */
   export function runEvals(config: {
     target: Agent;
     scorers: Scorer[];
     dataset: Array<{ input: string; output?: string; groundTruth?: string }>;
-  }): Promise<any>;
+  }): Promise<EvalRunResult>;
+
+  interface EvalRunResult {
+    results: Array<{
+      input: string;
+      output: string;
+      scores: Record<string, ScorerResult>;
+    }>;
+  }
 
   interface Scorer {
-    run(input: any): Promise<{ score: number; details?: any }>;
+    run(input: ScorerInput): Promise<ScorerResult>;
   }
 }
