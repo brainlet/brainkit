@@ -187,7 +187,7 @@ func newAMQPTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		amqpURL = "amqp://guest:guest@localhost:5672/"
 	}
 
-	amqpConfig := wmamqp.NewDurablePubSubConfig(amqpURL, nil)
+	amqpConfig := wmamqp.NewDurablePubSubConfig(amqpURL, wmamqp.GenerateQueueNameTopicName)
 
 	publisher, err := wmamqp.NewPublisher(amqpConfig, logger)
 	if err != nil {
@@ -289,9 +289,10 @@ func newPostgresTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (
 	}
 
 	subscriber, err := wmsql.NewSubscriber(dbWrapped, wmsql.SubscriberConfig{
-		SchemaAdapter:  wmsql.DefaultPostgreSQLSchema{},
-		OffsetsAdapter: wmsql.DefaultPostgreSQLOffsetsAdapter{},
-		PollInterval:   100 * time.Millisecond,
+		SchemaAdapter:    wmsql.DefaultPostgreSQLSchema{},
+		OffsetsAdapter:   wmsql.DefaultPostgreSQLOffsetsAdapter{},
+		InitializeSchema: true,
+		PollInterval:     100 * time.Millisecond,
 	}, logger)
 	if err != nil {
 		_ = publisher.Close()
