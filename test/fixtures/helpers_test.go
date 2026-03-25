@@ -20,30 +20,32 @@ func fixturesRoot(t *testing.T) string {
 	return filepath.Join(wd, "..", "..", "fixtures")
 }
 
-// loadTSFixtureRaw reads the raw .ts source for a fixture.
+// loadTSFixtureRaw reads the raw .ts source for a fixture at fixtures/ts/<category>/<name>/index.ts.
 // Pass directly to kit.Deploy — it handles transpile + import stripping.
-func loadTSFixtureRaw(t *testing.T, name string) string {
+func loadTSFixtureRaw(t *testing.T, category, name string) string {
 	t.Helper()
-	source, err := os.ReadFile(filepath.Join(fixturesRoot(t), "ts", name, "index.ts"))
+	path := filepath.Join(fixturesRoot(t), "ts", category, name, "index.ts")
+	source, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read fixture ts/%s: %v", name, err)
+		t.Fatalf("read fixture ts/%s/%s: %v", category, name, err)
 	}
 	return string(source)
 }
 
 // loadTSFixture reads and transpiles a TS fixture for the transpile-only test.
 // Used by TestTSFixturesTranspile (no Kernel, just verifies transpilation).
-func loadTSFixture(t *testing.T, name string) string {
+func loadTSFixture(t *testing.T, category, name string) string {
 	t.Helper()
-	source, err := os.ReadFile(filepath.Join(fixturesRoot(t), "ts", name, "index.ts"))
+	path := filepath.Join(fixturesRoot(t), "ts", category, name, "index.ts")
+	source, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read fixture ts/%s: %v", name, err)
+		t.Fatalf("read fixture ts/%s/%s: %v", category, name, err)
 	}
 	js, err := typescript.Transpile(string(source), typescript.TranspileOptions{
 		FileName: name + ".ts",
 	})
 	if err != nil {
-		t.Fatalf("transpile ts/%s: %v", name, err)
+		t.Fatalf("transpile ts/%s/%s: %v", category, name, err)
 	}
 	return js
 }
@@ -58,11 +60,11 @@ func loadASFixture(t *testing.T, name string) string {
 	return string(source)
 }
 
-// loadExpect reads the expect.json sidecar for a fixture.
+// loadExpect reads the expect.json sidecar for a fixture at fixtures/ts/<category>/<name>/expect.json.
 // Returns nil if no expect.json exists.
 func loadExpect(t *testing.T, category, name string) map[string]any {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(fixturesRoot(t), category, name, "expect.json"))
+	data, err := os.ReadFile(filepath.Join(fixturesRoot(t), "ts", category, name, "expect.json"))
 	if err != nil {
 		return nil
 	}
