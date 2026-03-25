@@ -113,13 +113,33 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				}
 
 				if n > 0 {
-					data := base64.StdEncoding.EncodeToString(buf[:n])
-					qctx.Schedule(func(qctx *quickjs.Context) {
-						qctx.Eval(fmt.Sprintf(
-							`globalThis.__net_sockets[%d]?._onData("%s")`,
-							id, data,
-						))
-					})
+					// Split TCP data at wire protocol message boundaries.
+					// Many protocols (MongoDB, PostgreSQL) use a 4-byte LE length
+					// prefix. When TCP coalesces multiple messages into one read,
+					// we schedule a SEPARATE callback for each message. This ensures
+					// the QuickJS Await loop can drain microtasks between messages,
+					// preventing data from landing in a stale async iterator.
+					chunk := buf[:n]
+					for len(chunk) > 0 {
+						msgLen := len(chunk)
+						// Try to read a 4-byte LE length header
+						if len(chunk) >= 4 {
+							wireLen := int(uint32(chunk[0]) | uint32(chunk[1])<<8 | uint32(chunk[2])<<16 | uint32(chunk[3])<<24)
+							if wireLen >= 4 && wireLen <= len(chunk) {
+								msgLen = wireLen
+							}
+						}
+						msg := make([]byte, msgLen)
+						copy(msg, chunk[:msgLen])
+						chunk = chunk[msgLen:]
+						data := base64.StdEncoding.EncodeToString(msg)
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							qctx.Eval(fmt.Sprintf(
+								`globalThis.__net_sockets[%d]?._onData("%s")`,
+								id, data,
+							))
+						})
+					}
 				}
 
 				if readErr != nil {

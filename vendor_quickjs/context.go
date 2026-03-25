@@ -80,6 +80,27 @@ func (ctx *Context) ProcessJobs() {
 	}
 }
 
+// processOneJob executes at most one pending scheduled job. Returns true if
+// a job was processed, false if the queue was empty. Used by the Await loop
+// to interleave Go job processing with JS microtask execution — this ensures
+// that when GoSocket delivers two TCP responses in sequence, the for-await
+// chain for the first response fully completes (including generator exit and
+// listener cleanup) before the second response's data is delivered.
+func (ctx *Context) processOneJob() bool {
+	if ctx == nil || ctx.jobQueue == nil {
+		return false
+	}
+	select {
+	case job := <-ctx.jobQueue:
+		if job != nil {
+			job(ctx)
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func (ctx *Context) drainJobs() {
 	if ctx == nil || ctx.jobQueue == nil {
 		return
@@ -1014,17 +1035,18 @@ func (ctx *Context) Await(v *Value) *Value {
 	runtimeRef := ctx.runtime.ref
 
 	for {
-		// 1. Drain Go-scheduled work (resolve/reject from goroutines).
-		//    Schedule callbacks may resolve Promises (e.g., GoSocket data delivery),
-		//    which enqueue JS microtasks.
-		ctx.ProcessJobs()
+		// 1. Process ONE Go-scheduled job, then drain ALL resulting microtasks.
+		//    This is critical: when GoSocket delivers two TCP responses in the
+		//    same batch (e.g., MongoDB hello response + saslStart response), we
+		//    must let the for-await chain for the FIRST response fully complete
+		//    (including generator exit and event listener cleanup) before the
+		//    second response's data is delivered. Processing all Go jobs at once
+		//    would deliver both responses before any microtasks run, causing the
+		//    second response to land in the first onData iterator's unconsumedEvents
+		//    — which is then discarded when the iterator exits.
+		ctx.processOneJob()
 
-		// 2. Drain ALL pending JS microtasks before checking state.
-		//    This is critical for nested for-await chains (like MongoDB's
-		//    conn.command → sendWire → readMany → onData, 4 levels deep).
-		//    Each yield/await in the chain is a separate microtask. If we only
-		//    run one microtask then go back to ProcessJobs, other connections'
-		//    Schedule callbacks can interleave and starve the chain.
+		// 2. Drain ALL pending JS microtasks.
 		for {
 			executed := C.JS_ExecutePendingJob(runtimeRef, nil)
 			if hook := awaitExecutePendingJobHook; hook != nil {
@@ -1036,7 +1058,7 @@ func (ctx *Context) Await(v *Value) *Value {
 				return ctx.ThrowInternalError("failed to execute pending job")
 			}
 			if executed == 0 {
-				break // all microtasks drained
+				break
 			}
 		}
 
@@ -1055,20 +1077,11 @@ func (ctx *Context) Await(v *Value) *Value {
 			return &Value{ctx: ctx, ref: C.JS_Throw(ctx.ref, reason)}
 		case pendingState:
 			// All microtasks drained, promise still pending.
-			// Check for new Go-scheduled work.
-			ctx.ProcessJobs()
-
-			// Re-check after processing Go jobs (they may have resolved it).
-			newState := C.JS_PromiseState(ctx.ref, promise.ref)
-			if newState != pendingState {
-				continue // resolved — loop back to handle it
-			}
-
-			// Still pending. If Go jobs are queued, keep polling.
-			// Otherwise yield briefly — a goroutine will Schedule work soon.
+			// If Go jobs are queued, loop back to process the next one.
 			if len(ctx.jobQueue) > 0 {
 				continue
 			}
+			// No Go jobs, no microtasks. Yield briefly for goroutines.
 			time.Sleep(awaitPollInterval)
 		default:
 			return v
