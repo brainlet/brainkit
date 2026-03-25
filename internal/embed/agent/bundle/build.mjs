@@ -299,7 +299,7 @@ const moduleStubs = {
     export default { setTimeout, setInterval };
   `,
   "module": `
-    export var createRequire = function() { return function() { return {}; }; };
+    export var createRequire = function() { return globalThis.require || function() { return {}; }; };
     export default { createRequire };
   `,
   "dns": `
