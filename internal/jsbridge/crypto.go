@@ -1,6 +1,8 @@
 package jsbridge
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/hmac"
 	"crypto/md5"
 	crand "crypto/rand"
@@ -11,6 +13,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
+	"io"
 
 	"golang.org/x/crypto/pbkdf2"
 
@@ -40,6 +43,8 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 
 		var h hash.Hash
 		switch alg {
+		case "md5":
+			h = md5.New()
 		case "sha1":
 			h = sha1.New()
 		case "sha256":
@@ -188,6 +193,30 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.NewString(base64.StdEncoding.EncodeToString(buf))
 	}))
 
+	// __go_zlib_gunzip_sync(base64data) → base64result
+	// Synchronous gzip decompression. Used by @mongodb-js/saslprep to decompress
+	// Unicode code point tables needed for SCRAM-SHA-256 authentication.
+	ctx.Globals().Set("__go_zlib_gunzip_sync", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return ctx.ThrowError(fmt.Errorf("gunzipSync: requires data"))
+		}
+		b64 := args[0].String()
+		compressed, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return ctx.ThrowError(fmt.Errorf("gunzipSync: invalid base64: %w", err))
+		}
+		r, err := gzip.NewReader(bytes.NewReader(compressed))
+		if err != nil {
+			return ctx.ThrowError(fmt.Errorf("gunzipSync: %w", err))
+		}
+		defer r.Close()
+		decompressed, err := io.ReadAll(r)
+		if err != nil {
+			return ctx.ThrowError(fmt.Errorf("gunzipSync: decompress: %w", err))
+		}
+		return ctx.NewString(base64.StdEncoding.EncodeToString(decompressed))
+	}))
+
 	return evalJS(ctx, `
 globalThis.crypto = globalThis.crypto || {};
 globalThis.crypto.randomUUID = () => __go_crypto_randomUUID();
@@ -325,22 +354,104 @@ globalThis.crypto.getRandomValues = function(arr) {
   };
 })();
 
-globalThis.__node_crypto = {
-  createHash: (alg) => {
-    let _data = '';
-    return {
-      update(d) { _data += d; return this; },
-      digest(enc) { return __go_crypto_hash(alg, _data); }
-    };
-  },
-  createHmac: (alg, key) => {
-    let _data = '';
-    return {
-      update(d) { _data += d; return this; },
-      digest(enc) { return __go_crypto_hmac(alg, key, _data); }
-    };
-  },
-  webcrypto: globalThis.crypto,
-};
+// __node_crypto — Node.js createHash/createHmac with binary data support.
+// MongoDB SCRAM auth passes Uint8Array keys and data. We accumulate bytes
+// and encode to base64 before calling Go bridges to avoid null-byte truncation.
+(function() {
+  var _b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var _b64l = {}; for (var _i = 0; _i < _b64c.length; _i++) _b64l[_b64c[_i]] = _i;
+
+  function bytesOf(d) {
+    if (d instanceof Uint8Array) return d;
+    if (d && d._isBuffer) return d;
+    if (typeof d === "string") {
+      // Manual UTF-8 encode — works even without TextEncoder polyfill
+      var bytes = [];
+      for (var i = 0; i < d.length; i++) {
+        var c = d.charCodeAt(i);
+        if (c < 0x80) bytes.push(c);
+        else if (c < 0x800) { bytes.push(0xC0|(c>>6), 0x80|(c&0x3F)); }
+        else { bytes.push(0xE0|(c>>12), 0x80|((c>>6)&0x3F), 0x80|(c&0x3F)); }
+      }
+      return new Uint8Array(bytes);
+    }
+    if (d && d.buffer) return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+    return new Uint8Array(0);
+  }
+
+  function toB64(bytes) {
+    var b64 = "";
+    for (var i = 0; i < bytes.length; i += 3) {
+      var b0 = bytes[i], b1 = i+1<bytes.length?bytes[i+1]:0, b2 = i+2<bytes.length?bytes[i+2]:0;
+      b64 += _b64c[(b0>>2)&0x3f]; b64 += _b64c[((b0<<4)|(b1>>4))&0x3f];
+      b64 += (i+1<bytes.length) ? _b64c[((b1<<2)|(b2>>6))&0x3f] : "=";
+      b64 += (i+2<bytes.length) ? _b64c[b2&0x3f] : "=";
+    }
+    return b64;
+  }
+
+  function fromB64(b64) {
+    var bufLen = Math.floor(b64.length * 3 / 4);
+    if (b64.length > 1 && b64[b64.length-1] === "=") bufLen--;
+    if (b64.length > 2 && b64[b64.length-2] === "=") bufLen--;
+    var bytes = new Uint8Array(bufLen); var p = 0;
+    for (var i = 0; i < b64.length; i += 4) {
+      var a = _b64l[b64[i]]||0, b = _b64l[b64[i+1]]||0, c = _b64l[b64[i+2]]||0, d = _b64l[b64[i+3]]||0;
+      bytes[p++] = (a<<2)|(b>>4);
+      if (b64[i+2] !== "=") bytes[p++] = ((b<<4)|(c>>2))&0xff;
+      if (b64[i+3] !== "=") bytes[p++] = ((c<<6)|d)&0xff;
+    }
+    return bytes;
+  }
+
+  function concatBytes(a, b) {
+    var r = new Uint8Array(a.length + b.length);
+    r.set(a, 0); r.set(b, a.length);
+    return r;
+  }
+
+  globalThis.__node_crypto = {
+    createHash: function(alg) {
+      var _bytes = new Uint8Array(0);
+      return {
+        update: function(d, enc) { _bytes = concatBytes(_bytes, bytesOf(d)); return this; },
+        copy: function() {
+          var c = globalThis.__node_crypto.createHash(alg);
+          c._bytes = _bytes.slice(); return c;
+        },
+        digest: function(enc) {
+          var resultB64 = __go_crypto_subtle_digest(
+            alg === "md5" ? "MD5" : alg === "sha1" ? "SHA-1" : alg === "sha256" ? "SHA-256" : alg === "sha512" ? "SHA-512" : alg.toUpperCase(),
+            toB64(_bytes)
+          );
+          if (enc === "hex") {
+            var raw = fromB64(resultB64);
+            var hex = ""; for (var i = 0; i < raw.length; i++) hex += (raw[i] < 16 ? "0" : "") + raw[i].toString(16);
+            return hex;
+          }
+          return fromB64(resultB64);
+        }
+      };
+    },
+    createHmac: function(alg, key) {
+      var _keyB64 = toB64(bytesOf(key));
+      var _bytes = new Uint8Array(0);
+      var hashName = alg === "sha1" ? "SHA-1" : alg === "sha256" ? "SHA-256" : alg === "sha512" ? "SHA-512" : alg.toUpperCase();
+      return {
+        update: function(d, enc) { _bytes = concatBytes(_bytes, bytesOf(d)); return this; },
+        digest: function(enc) {
+          var resultB64 = __go_crypto_subtle_sign(hashName, _keyB64, toB64(_bytes));
+          if (enc === "hex") {
+            var raw = fromB64(resultB64);
+            var hex = ""; for (var i = 0; i < raw.length; i++) hex += (raw[i] < 16 ? "0" : "") + raw[i].toString(16);
+            return hex;
+          }
+          return fromB64(resultB64);
+        }
+      };
+    },
+    webcrypto: globalThis.crypto,
+  };
+})();
 `)
 }
