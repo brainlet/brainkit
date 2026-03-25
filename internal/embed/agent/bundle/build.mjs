@@ -44,9 +44,13 @@ const throwFn = (name) => `() => { throw new Error("${name}: not available in Qu
 const moduleStubs = {
   "crypto": `
     export const randomUUID = () => globalThis.crypto?.randomUUID?.() ?? "00000000-0000-0000-0000-000000000000";
-    export const randomBytes = (n) => {
+    export const randomBytes = (n, cb) => {
       const b = new Uint8Array(n);
       if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(b);
+      // Support Node.js callback form: crypto.randomBytes(size, (err, buf) => {...})
+      // The MongoDB driver's SCRAM auth uses this form. Without it, the nonce
+      // generation Promise never resolves and MongoClient.connect() hangs.
+      if (typeof cb === "function") { cb(null, b); }
       return b;
     };
     export const randomFillSync = (buf) => {
@@ -69,8 +73,58 @@ const moduleStubs = {
     export const createDecipheriv = ${throwFn("createDecipheriv")};
     export const createSign = ${throwFn("createSign")};
     export const createVerify = ${throwFn("createVerify")};
-    export const pbkdf2 = ${throwFn("pbkdf2")};
-    export const pbkdf2Sync = ${throwFn("pbkdf2Sync")};
+    // pbkdf2 callback form — wraps pbkdf2Sync in a microtask
+    export const pbkdf2 = (password, salt, iterations, keylen, digest, cb) => {
+      try {
+        const result = pbkdf2Sync(password, salt, iterations, keylen, digest);
+        if (typeof cb === "function") queueMicrotask(() => cb(null, result));
+      } catch(e) {
+        if (typeof cb === "function") queueMicrotask(() => cb(e));
+      }
+    };
+    // pbkdf2Sync — used by MongoDB SCRAM-SHA-256 auth for password hashing.
+    // Delegates to Go's __go_crypto_subtle_deriveBits which uses golang.org/x/crypto/pbkdf2.
+    export const pbkdf2Sync = (password, salt, iterations, keylen, digest) => {
+      // Convert inputs to base64 for the Go bridge
+      var _b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      function toB64(data) {
+        var bytes;
+        if (typeof data === "string") { bytes = new TextEncoder().encode(data); }
+        else if (data instanceof Uint8Array) { bytes = data; }
+        else if (data && data.buffer) { bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength); }
+        else { bytes = new Uint8Array(0); }
+        var b64 = "";
+        for (var i = 0; i < bytes.length; i += 3) {
+          var b0 = bytes[i], b1 = i + 1 < bytes.length ? bytes[i+1] : 0, b2 = i + 2 < bytes.length ? bytes[i+2] : 0;
+          b64 += _b64[(b0 >> 2) & 0x3f];
+          b64 += _b64[((b0 << 4) | (b1 >> 4)) & 0x3f];
+          b64 += (i+1 < bytes.length) ? _b64[((b1 << 2) | (b2 >> 6)) & 0x3f] : "=";
+          b64 += (i+2 < bytes.length) ? _b64[b2 & 0x3f] : "=";
+        }
+        return b64;
+      }
+      function fromB64(b64) {
+        var lookup = {}; for (var i = 0; i < _b64.length; i++) lookup[_b64[i]] = i;
+        var bufLen = Math.floor(b64.length * 3 / 4);
+        if (b64.length > 1 && b64[b64.length-1] === "=") bufLen--;
+        if (b64.length > 2 && b64[b64.length-2] === "=") bufLen--;
+        var bytes = new Uint8Array(bufLen); var p = 0;
+        for (var i = 0; i < b64.length; i += 4) {
+          var a = lookup[b64[i]]||0, b = lookup[b64[i+1]]||0, c = lookup[b64[i+2]]||0, d = lookup[b64[i+3]]||0;
+          bytes[p++] = (a<<2)|(b>>4);
+          if (b64[i+2] !== "=") bytes[p++] = ((b<<4)|(c>>2))&0xff;
+          if (b64[i+3] !== "=") bytes[p++] = ((c<<6)|d)&0xff;
+        }
+        return bytes;
+      }
+      // Map Node.js hash names to WebCrypto names
+      var hashMap = { "sha1": "SHA-1", "sha256": "SHA-256", "sha512": "SHA-512" };
+      var hashAlg = hashMap[digest] || hashMap[digest?.toLowerCase?.()] || "SHA-256";
+      var pwB64 = toB64(password);
+      var saltB64 = toB64(salt);
+      var resultB64 = __go_crypto_subtle_deriveBits(pwB64, saltB64, iterations, keylen * 8, hashAlg);
+      return fromB64(resultB64);
+    };
     export const scrypt = ${throwFn("scrypt")};
     export const scryptSync = ${throwFn("scryptSync")};
     export const timingSafeEqual = (a, b) => {

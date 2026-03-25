@@ -87,10 +87,11 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onConnect()`, id))
 			})
 
-			// Read loop — use short read deadline so we can check for cancellation
+			// Read loop — use short read deadline so we can check for cancellation.
+			// The 500ms deadline keeps the goroutine responsive to cancellation
+			// (gc.done / goCtx) while avoiding busy-spinning.
 			buf := make([]byte, 16384)
 			for {
-				// Set a short read deadline so Read() doesn't block forever
 				conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 				n, readErr := conn.Read(buf)
 
@@ -112,7 +113,6 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				}
 
 				if n > 0 {
-					// Send data as base64 to avoid escaping issues
 					data := base64.StdEncoding.EncodeToString(buf[:n])
 					qctx.Schedule(func(qctx *quickjs.Context) {
 						qctx.Eval(fmt.Sprintf(

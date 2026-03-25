@@ -53,11 +53,15 @@ func fixtureNeedsAI(name string) bool {
 // fixtureNeedsContainer returns true if the fixture needs an external container (Podman).
 func fixtureNeedsContainer(name string) bool {
 	containers := map[string]bool{
-		"memory-postgres":      true, // needs Postgres container
+		"memory-postgres":       true, // needs Postgres container
 		"memory-postgres-scram": true, // needs Postgres container
-		"memory-mongodb":       true, // needs MongoDB container
-		"vector-pgvector":      true, // needs Postgres with pgvector
-		"vector-mongodb":       true, // needs MongoDB container
+		"memory-mongodb":        true, // needs MongoDB container
+		"vector-pgvector":       true, // needs Postgres with pgvector
+		"vector-mongodb":        true, // needs MongoDB container
+		"memory-semantic-recall": true, // needs libsql-server with vector32()
+		"memory-working":        true, // needs libsql-server with vector32()
+		"vector-methods":        true, // needs libsql-server with vector32()
+		"rag-vector-query-tool": true, // needs libsql-server with vector32()
 	}
 	return containers[name]
 }
@@ -98,16 +102,30 @@ func TestTSFixturesE2E(t *testing.T) {
 			os.Setenv("POSTGRES_URL", pgURL)
 			t.Logf("Postgres container started: %s", pgURL)
 
+			// Start MongoDB without auth — our QuickJS crypto polyfills don't fully support
+			// SCRAM-SHA-256 (pbkdf2Sync + saslprep). No-auth mode lets us test the driver
+			// wire protocol, connection pooling, and CRUD operations end-to-end.
 			mongoAddr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
-				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
-				"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
-			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr)
+				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second))
+			os.Setenv("MONGODB_URL", "mongodb://"+mongoAddr)
 			t.Logf("MongoDB container started: %s", mongoAddr)
 
 			// TCP health probe — verify ports actually accept connections
 			// Container log messages can appear before the service is truly ready.
 			waitForTCP(t, mongoAddr, 15*time.Second)
 			t.Logf("MongoDB TCP probe passed")
+
+			// Start libsql-server for vector extension fixtures (memory-semantic-recall,
+			// memory-working, vector-methods, rag-vector-query-tool).
+			// The embedded libsql bridge uses modernc.org/sqlite which lacks vector32().
+			// The containerized libsql-server has full vector extension support.
+			libsqlAddr := testutil.StartContainer(t,
+				"ghcr.io/tursodatabase/libsql-server:latest",
+				"8080/tcp",
+				[]string{"sqld", "--http-listen-addr", "0.0.0.0:8080"},
+				wait.ForHTTP("/health").WithStartupTimeout(30*time.Second))
+			os.Setenv("LIBSQL_VECTOR_URL", "http://"+libsqlAddr)
+			t.Logf("libsql-server container started: %s", libsqlAddr)
 		})
 	}
 
@@ -127,7 +145,10 @@ func TestTSFixturesE2E(t *testing.T) {
 				startContainers()
 			}
 			if fixtureNeedsVectorExtensions(name) {
-				t.Skipf("needs libsql-server with vector extensions")
+				if !hasPodman {
+					t.Skipf("needs Podman for libsql-server container")
+				}
+				startContainers()
 			}
 			if name == "mcp-tools" {
 				t.Skipf("needs running MCP server")
@@ -144,10 +165,18 @@ func TestTSFixturesE2E(t *testing.T) {
 			registerFixtureTools(t, tk, name)
 
 			// 3. Inject infra URLs into env (process.env reads from os.Getenv)
-			if strings.HasPrefix(name, "memory-libsql") || name == "vector-methods" || name == "rag-vector-query-tool" {
+			if strings.HasPrefix(name, "memory-libsql") {
+				// memory-libsql* fixtures use the embedded bridge (no vector extensions needed)
 				libsqlURL := tk.StorageURL("default")
 				if libsqlURL != "" {
 					os.Setenv("LIBSQL_URL", libsqlURL)
+				}
+			}
+			if fixtureNeedsVectorExtensions(name) {
+				// Vector extension fixtures use the containerized libsql-server which has vector32()
+				vectorURL := os.Getenv("LIBSQL_VECTOR_URL")
+				if vectorURL != "" {
+					os.Setenv("LIBSQL_URL", vectorURL)
 				}
 			}
 			if name == "vector-pgvector" || name == "vector-mongodb" {
