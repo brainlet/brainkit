@@ -61,24 +61,32 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 	}
 
 	b, err := jsbridge.New(bridgeCfg,
+		// Core runtime
 		jsbridge.Console(),
-		jsbridge.Process(),
-		jsbridge.Encoding(),
-		jsbridge.Streams(),      // Web Streams (ReadableStream/WritableStream)
-		jsbridge.Crypto(),
-		jsbridge.URL(),
-		jsbridge.Timers(),
-		jsbridge.Abort(),
-		jsbridge.Events(),       // EventEmitter
+		jsbridge.Process(),        // process.env (Go-backed), process.version, nextTick, stdout
+		jsbridge.Encoding(),       // TextEncoder, TextDecoder, btoa, atob
+		jsbridge.Streams(),        // Web Streams (ReadableStream/WritableStream/TransformStream)
+		jsbridge.Crypto(),         // crypto.subtle, __node_crypto (createHash, pbkdf2Sync, etc.)
+		jsbridge.URL(),            // URL, URLSearchParams
+		jsbridge.Timers(),         // setTimeout, clearTimeout (Go-backed)
+		jsbridge.Scheduling(),     // setImmediate, clearImmediate, setInterval, clearInterval
+		jsbridge.Abort(),          // AbortController, AbortSignal, DOMException
+		jsbridge.Events(),         // EventEmitter (Node.js)
+		jsbridge.DOMEvents(),      // EventTarget, Event, CustomEvent (DOM)
 		jsbridge.StructuredClone(),
-		jsbridge.NodeStreams(),   // Node.js streams (Readable/Duplex/Transform) — must be after Events
-		jsbridge.Buffer(),       // Node.js Buffer — must be after Encoding
-		jsbridge.OS(),           // Node.js os module
-		jsbridge.Net(),          // Socket extends Duplex — must be after NodeStreams + Buffer
-		jsbridge.WebAssembly(),
-		jsbridge.FS(),
-		jsbridge.Exec(),
-		jsbridge.Fetch(fetchOpts...),
+		jsbridge.Navigator(),      // navigator.userAgent, etc.
+		jsbridge.Performance(),    // performance.now(), timeOrigin
+		jsbridge.Intl(),           // Intl.DateTimeFormat (minimal)
+		jsbridge.ErrorCompat(),    // Error.captureStackTrace, global alias, Response.json
+		// Node.js module APIs
+		jsbridge.NodeStreams(),     // Readable, Writable, Duplex, Transform — must be after Events
+		jsbridge.Buffer(),         // Buffer.from, alloc, concat — must be after Encoding
+		jsbridge.OS(),             // os.platform, arch, tmpdir, homedir
+		jsbridge.Net(),            // Socket extends Duplex — must be after NodeStreams + Buffer
+		jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
+		jsbridge.FS(),             // fs.readFile, writeFile, etc.
+		jsbridge.Exec(),           // child_process.exec, spawn
+		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
 	)
 	if err != nil {
 		return nil, fmt.Errorf("agent-embed: create bridge: %w", err)
