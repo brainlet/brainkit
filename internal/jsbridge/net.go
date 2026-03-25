@@ -427,4 +427,86 @@ class GoSocket {
 
 // Expose GoSocket globally so the esbuild net stub can delegate to it
 globalThis.GoSocket = GoSocket;
+
+// ─── Socket extends Duplex ──────────────────────────────────────────
+// net.Socket wraps GoSocket (raw TCP transport) with proper Node.js Duplex
+// inheritance from __node_stream. This gives us Readable.pipe() with
+// pause/resume/buffer semantics, Symbol.asyncIterator with correct data
+// handoff, and the full Node.js stream contract.
+//
+// GoSocket pushes data INTO the Duplex via this.push(chunk).
+// Writes go through GoSocket.write() directly (bypass Duplex._write).
+(function() {
+  var Duplex = globalThis.__node_stream && globalThis.__node_stream.Duplex;
+  if (!Duplex) return; // NodeStreams not loaded yet
+
+  class Socket extends Duplex {
+    constructor() {
+      super();
+      this._gs = new GoSocket();
+    }
+    connect(portOrOpts, host) {
+      this._gs.connect(portOrOpts, host);
+      var self = this;
+      // Wire GoSocket events → Duplex push/emit
+      this._gs.on("data", function(chunk) { self.push(chunk); });
+      this._gs.on("end", function() { self.push(null); });
+      this._gs.on("error", function(err) { self.destroy(err); });
+      this._gs.on("connect", function() { self.emit("connect"); });
+      this._gs.on("close", function() { if (!self.destroyed) self.destroy(); });
+      this._gs.on("timeout", function() { self.emit("timeout"); });
+      return this;
+    }
+    // Write goes directly to GoSocket — bypass Duplex._write
+    write(data, encoding, cb) {
+      if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
+      return this._gs.write(data, encoding, cb);
+    }
+    end(data, encoding, cb) {
+      if (typeof data === "function") { cb = data; data = undefined; }
+      if (data) this.write(data, encoding);
+      if (this._gs) this._gs.end();
+      this.writable = false;
+      if (cb) cb();
+      return this;
+    }
+    destroy(err) {
+      if (this.destroyed) return this;
+      this.destroyed = true;
+      if (this._gs) this._gs.destroy(err);
+      if (err) this.emit("error", err);
+      this.emit("close");
+      return this;
+    }
+    setNoDelay() { return this; }
+    setKeepAlive() { return this; }
+    setTimeout(ms, cb) { if (this._gs) this._gs.setTimeout(ms, cb); return this; }
+    ref() { return this; }
+    unref() { return this; }
+    cork() {}
+    uncork() {}
+    get remoteAddress() { return this._gs ? this._gs.remoteAddress : undefined; }
+    get remotePort() { return this._gs ? this._gs.remotePort : undefined; }
+  }
+
+  var createConnection = function(portOrOpts, host) {
+    var s = new Socket();
+    s.connect(portOrOpts, host);
+    return s;
+  };
+
+  var notAvailable = function(name) { return function() { throw new Error(name + ": not available in QuickJS"); }; };
+  var isIP = function(input) { try { return input.includes(":") ? 6 : input.match(/^\d+\.\d+\.\d+\.\d+$/) ? 4 : 0; } catch(e) { return 0; } };
+
+  globalThis.__node_net = {
+    Socket: Socket,
+    createConnection: createConnection,
+    connect: createConnection,
+    createServer: notAvailable("net.createServer"),
+    Server: class Server {},
+    isIP: isIP,
+    isIPv4: function(input) { return isIP(input) === 4; },
+    isIPv6: function(input) { return isIP(input) === 6; },
+  };
+})();
 `

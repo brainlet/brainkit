@@ -31,3 +31,38 @@ func TestNetJoinHostPort_Hostname(t *testing.T) {
 		t.Errorf("hostname: got %q, want %q", addr, "db.example.com:5432")
 	}
 }
+
+func TestSocket_ExtendsDuplex(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
+	result := evalString(t, b, `
+		var s = new globalThis.__node_net.Socket();
+		JSON.stringify({
+			isReadable: typeof s.pipe === "function",
+			isDuplex: typeof s.write === "function" && typeof s.push === "function",
+			hasAsyncIterator: typeof s[Symbol.asyncIterator] === "function",
+			hasConnect: typeof s.connect === "function",
+			hasSetNoDelay: typeof s.setNoDelay === "function",
+		});
+	`)
+	expected := `{"isReadable":true,"isDuplex":true,"hasAsyncIterator":true,"hasConnect":true,"hasSetNoDelay":true}`
+	if result != expected {
+		t.Errorf("got %s", result)
+	}
+}
+
+func TestSocket_CreateConnection(t *testing.T) {
+	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
+	result := evalString(t, b, `
+		var N = globalThis.__node_net;
+		JSON.stringify({
+			hasSocket: typeof N.Socket === "function",
+			hasCreateConnection: typeof N.createConnection === "function",
+			hasConnect: typeof N.connect === "function",
+			hasIsIP: typeof N.isIP === "function",
+		});
+	`)
+	expected := `{"hasSocket":true,"hasCreateConnection":true,"hasConnect":true,"hasIsIP":true}`
+	if result != expected {
+		t.Errorf("got %s", result)
+	}
+}

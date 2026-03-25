@@ -64,14 +64,17 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.Console(),
 		jsbridge.Process(),
 		jsbridge.Encoding(),
-		jsbridge.Streams(),
+		jsbridge.Streams(),      // Web Streams (ReadableStream/WritableStream)
 		jsbridge.Crypto(),
 		jsbridge.URL(),
 		jsbridge.Timers(),
 		jsbridge.Abort(),
-		jsbridge.Events(),
+		jsbridge.Events(),       // EventEmitter
 		jsbridge.StructuredClone(),
-		jsbridge.Net(),
+		jsbridge.NodeStreams(),   // Node.js streams (Readable/Duplex/Transform) — must be after Events
+		jsbridge.Buffer(),       // Node.js Buffer — must be after Encoding
+		jsbridge.OS(),           // Node.js os module
+		jsbridge.Net(),          // Socket extends Duplex — must be after NodeStreams + Buffer
 		jsbridge.WebAssembly(),
 		jsbridge.FS(),
 		jsbridge.Exec(),
