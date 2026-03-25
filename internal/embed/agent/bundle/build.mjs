@@ -805,39 +805,64 @@ const moduleStubs = {
     export default { createServer, request, get, Agent, globalAgent };
   `,
   "net": `
+    import { Duplex } from "stream";
     const notAvailable = (name) => () => { throw new Error(name + ": not available in QuickJS"); };
     export const createServer = notAvailable("net.createServer");
-    export class Socket {
+    // net.Socket extends Duplex from the stream stub. GoSocket is the raw TCP
+    // transport — it pushes data INTO the Duplex via push(), and writes go through
+    // GoSocket.write(). This gives us proper Readable.pipe() with pause/resume/buffer
+    // semantics, which is critical for MongoDB's socket.pipe(SizedMessageTransform)
+    // → async iterator chain. Without this, data can be lost between consecutive
+    // readMany() calls because GoSocket's simpler event model doesn't buffer.
+    export class Socket extends Duplex {
       constructor() {
-        if (globalThis.GoSocket) {
-          this._gs = new globalThis.GoSocket();
-        } else {
-          this._events = {};
-        }
+        super();
+        this._gs = globalThis.GoSocket ? new globalThis.GoSocket() : null;
       }
-      connect() { if (this._gs) return this._gs.connect.apply(this._gs, arguments); return this; }
-      write() { if (this._gs) return this._gs.write.apply(this._gs, arguments); return false; }
-      end() { if (this._gs) return this._gs.end.apply(this._gs, arguments); }
-      destroy() { if (this._gs) return this._gs.destroy.apply(this._gs, arguments); return this; }
-      pipe() { if (this._gs) return this._gs.pipe.apply(this._gs, arguments); return arguments[0]; }
-      on(e, fn) { if (this._gs) { this._gs.on(e, fn); return this; } (this._events[e] = this._events[e] || []).push(fn); return this; }
-      once(e, fn) { if (this._gs) { this._gs.once(e, fn); return this; } return this.on(e, fn); }
-      removeListener(e, fn) { if (this._gs) { this._gs.removeListener(e, fn); return this; } return this; }
-      removeAllListeners(e) { if (this._gs) { this._gs.removeAllListeners && this._gs.removeAllListeners(e); return this; } return this; }
-      off(e, fn) { return this.removeListener(e, fn); }
-      emit() { if (this._gs) return this._gs.emit.apply(this._gs, arguments); return false; }
-      pause() { if (this._gs && this._gs.pause) this._gs.pause(); return this; }
-      resume() { if (this._gs && this._gs.resume) this._gs.resume(); return this; }
+      connect(portOrOpts, host) {
+        if (!this._gs) return this;
+        this._gs.connect(portOrOpts, host);
+        // Wire GoSocket events → Duplex push/emit. GoSocket is now just transport.
+        this._gs.on("data", (chunk) => this.push(chunk));
+        this._gs.on("end", () => this.push(null));
+        this._gs.on("error", (err) => { this.destroy(err); });
+        this._gs.on("connect", () => this.emit("connect"));
+        this._gs.on("close", () => { if (!this.destroyed) this.destroy(); });
+        this._gs.on("timeout", () => this.emit("timeout"));
+        return this;
+      }
+      // Write goes directly to GoSocket — bypass Duplex._write
+      write(data, encoding, cb) {
+        if (typeof encoding === "function") { cb = encoding; encoding = undefined; }
+        if (!this._gs) return false;
+        return this._gs.write(data, encoding, cb);
+      }
+      end(data, encoding, cb) {
+        if (typeof data === "function") { cb = data; data = undefined; }
+        if (data) this.write(data, encoding);
+        if (this._gs) this._gs.end();
+        this.writable = false;
+        if (cb) cb();
+        return this;
+      }
+      destroy(err) {
+        if (this.destroyed) return this;
+        this.destroyed = true;
+        if (this._gs) this._gs.destroy(err);
+        if (err) this.emit("error", err);
+        this.emit("close");
+        return this;
+      }
+      // pipe() inherited from Readable — proper backpressure and buffering
       setNoDelay() { return this; }
       setKeepAlive() { return this; }
-      setTimeout() { if (this._gs) return this._gs.setTimeout.apply(this._gs, arguments); return this; }
+      setTimeout(ms, cb) { if (this._gs) this._gs.setTimeout(ms, cb); return this; }
       ref() { return this; }
       unref() { return this; }
       cork() {}
       uncork() {}
       get remoteAddress() { return this._gs ? this._gs.remoteAddress : undefined; }
       get remotePort() { return this._gs ? this._gs.remotePort : undefined; }
-      get writable() { return this._gs ? this._gs.writable : false; }
     }
     export const createConnection = (...args) => { const s = new Socket(); s.connect(args[0], args[1]); return s; };
     export const connect = createConnection;
