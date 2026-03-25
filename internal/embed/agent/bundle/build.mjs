@@ -791,6 +791,8 @@ const moduleStubs = {
     export const listenerCount = p.listenerCount || (() => 0);
   `,
   "buffer": `
+    // Fallback Buffer — only used if globalThis.Buffer is NOT set by embed.go's
+    // runtimeGlobalsJS. In practice, embed.go always sets it before the bundle loads.
     export const Buffer = globalThis.Buffer || {
       from: (v, enc) => {
         if (typeof v === "string") {
@@ -1017,41 +1019,7 @@ const moduleStubs = {
     export const deflate = notAvailable("deflate");
     export const inflate = notAvailable("inflate");
     export const gzipSync = notAvailable("gzipSync");
-    // gunzipSync — delegates to Go's compress/gzip via __go_zlib_gunzip_sync.
-    // Required by @mongodb-js/saslprep to decompress Unicode code point tables
-    // for SCRAM-SHA-256 authentication.
-    export const gunzipSync = (data) => {
-      if (typeof __go_zlib_gunzip_sync !== "function") throw new Error("gunzipSync: Go bridge not available");
-      // Convert Buffer/Uint8Array to base64 for the Go bridge
-      var bytes;
-      if (typeof data === "string") { bytes = new TextEncoder().encode(data); }
-      else if (data instanceof Uint8Array) { bytes = data; }
-      else if (data && data._isBuffer) { bytes = data; }
-      else if (data && data.buffer) { bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength); }
-      else { throw new Error("gunzipSync: unsupported input type"); }
-      var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-      var b64 = "";
-      for (var i = 0; i < bytes.length; i += 3) {
-        var b0 = bytes[i], b1 = i+1 < bytes.length ? bytes[i+1] : 0, b2 = i+2 < bytes.length ? bytes[i+2] : 0;
-        b64 += chars[(b0>>2)&0x3f]; b64 += chars[((b0<<4)|(b1>>4))&0x3f];
-        b64 += (i+1<bytes.length) ? chars[((b1<<2)|(b2>>6))&0x3f] : "=";
-        b64 += (i+2<bytes.length) ? chars[b2&0x3f] : "=";
-      }
-      var resultB64 = __go_zlib_gunzip_sync(b64);
-      // Decode base64 result back to Buffer
-      var lookup = {}; for (var ci = 0; ci < chars.length; ci++) lookup[chars[ci]] = ci;
-      var bufLen = Math.floor(resultB64.length * 3 / 4);
-      if (resultB64.length > 1 && resultB64[resultB64.length-1] === "=") bufLen--;
-      if (resultB64.length > 2 && resultB64[resultB64.length-2] === "=") bufLen--;
-      var result = new Uint8Array(bufLen); var p = 0;
-      for (var ci = 0; ci < resultB64.length; ci += 4) {
-        var a = lookup[resultB64[ci]]||0, b = lookup[resultB64[ci+1]]||0, c = lookup[resultB64[ci+2]]||0, d = lookup[resultB64[ci+3]]||0;
-        result[p++] = (a<<2)|(b>>4);
-        if (resultB64[ci+2] !== "=") result[p++] = ((b<<4)|(c>>2))&0xff;
-        if (resultB64[ci+3] !== "=") result[p++] = ((c<<6)|d)&0xff;
-      }
-      return globalThis.Buffer ? globalThis.Buffer.from(result) : result;
-    };
+    export const gunzipSync = notAvailable("gunzipSync");
     export const deflateSync = notAvailable("deflateSync");
     export const inflateSync = notAvailable("inflateSync");
     export const brotliCompressSync = notAvailable("brotliCompressSync");

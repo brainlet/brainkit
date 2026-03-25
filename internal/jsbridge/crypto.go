@@ -1,8 +1,6 @@
 package jsbridge
 
 import (
-	"bytes"
-	"compress/gzip"
 	"crypto/hmac"
 	"crypto/md5"
 	crand "crypto/rand"
@@ -13,7 +11,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
-	"io"
 
 	"golang.org/x/crypto/pbkdf2"
 
@@ -191,30 +188,6 @@ func (p *CryptoPolyfill) Setup(ctx *quickjs.Context) error {
 			return ctx.ThrowError(fmt.Errorf("getRandomValues: %w", err))
 		}
 		return ctx.NewString(base64.StdEncoding.EncodeToString(buf))
-	}))
-
-	// __go_zlib_gunzip_sync(base64data) → base64result
-	// Synchronous gzip decompression. Used by @mongodb-js/saslprep to decompress
-	// Unicode code point tables needed for SCRAM-SHA-256 authentication.
-	ctx.Globals().Set("__go_zlib_gunzip_sync", ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
-		if len(args) < 1 {
-			return ctx.ThrowError(fmt.Errorf("gunzipSync: requires data"))
-		}
-		b64 := args[0].String()
-		compressed, err := base64.StdEncoding.DecodeString(b64)
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("gunzipSync: invalid base64: %w", err))
-		}
-		r, err := gzip.NewReader(bytes.NewReader(compressed))
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("gunzipSync: %w", err))
-		}
-		defer r.Close()
-		decompressed, err := io.ReadAll(r)
-		if err != nil {
-			return ctx.ThrowError(fmt.Errorf("gunzipSync: decompress: %w", err))
-		}
-		return ctx.NewString(base64.StdEncoding.EncodeToString(decompressed))
 	}))
 
 	return evalJS(ctx, `
