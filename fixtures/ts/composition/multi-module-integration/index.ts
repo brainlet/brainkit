@@ -1,0 +1,15 @@
+import { Agent, createTool, createWorkflow, createStep, z, Memory, InMemoryStore } from "agent";
+import { model, tools, bus, kit, output } from "kit";
+const greet = createTool({ id: "greet", description: "Generate a greeting", inputSchema: z.object({ name: z.string() }), execute: async ({ name }) => ({ greeting: "Hello, " + name + "!" }) });
+kit.register("tool", "greet", greet);
+const step1 = createStep({ id: "prepare", inputSchema: z.object({ name: z.string() }), outputSchema: z.object({ prepared: z.string() }), execute: async ({ inputData }) => ({ prepared: inputData.name.toUpperCase() }) });
+const wf = createWorkflow({ id: "integration-wf", inputSchema: z.object({ name: z.string() }), outputSchema: z.object({ prepared: z.string() }) }).then(step1).commit();
+const run = await wf.createRun();
+const wfResult = await run.start({ inputData: { name: "brainkit" } });
+const toolResult = await tools.call("greet", { name: "world" });
+const store = new InMemoryStore();
+const mem = new Memory({ storage: store });
+const agent = new Agent({ name: "integration", model: model("openai", "gpt-4o-mini"), instructions: "You are helpful.", memory: mem, tools: { greet } });
+const agentResult = await agent.generate("Say hello to brainkit");
+const pubResult = bus.publish("integration.test", { done: true });
+output({ workflowStatus: wfResult.status, toolGreeting: (toolResult as any)?.greeting, agentHasText: agentResult.text.length > 0, busHasReplyTo: pubResult.replyTo.length > 0, allPassed: true });
