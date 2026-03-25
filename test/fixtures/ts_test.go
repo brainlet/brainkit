@@ -108,12 +108,15 @@ func TestTSFixturesE2E(t *testing.T) {
 			os.Setenv("POSTGRES_URL", pgURL)
 			t.Logf("Postgres container started: %s", pgURL)
 
-			// Start MongoDB without authentication — SCRAM-SHA-256 auth is not yet
-			// working (conn.command hangs during the authenticated handshake).
-			// No-auth mode tests the full driver wire protocol end-to-end.
+			// Start MongoDB WITH SCRAM-SHA-256 authentication.
+			// The MongoDB driver performs the full SCRAM handshake (hello → saslStart → saslContinue)
+			// using jsbridge polyfills: pbkdf2Sync (crypto.go), Node streams (nodestreams.go),
+			// Socket extends Duplex (net.go), Buffer (buffer.go).
 			mongoAddr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
-				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second))
-			os.Setenv("MONGODB_URL", "mongodb://"+mongoAddr)
+				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
+				"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
+			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr)
+			os.Setenv("MONGODB_LOG_ALL", "off") // prevent driver logger crash on missing env vars
 			t.Logf("MongoDB container started: %s", mongoAddr)
 
 			// TCP health probe — verify ports actually accept connections
