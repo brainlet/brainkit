@@ -85,6 +85,8 @@ func fixtureNeedsContainer(category, name string) bool {
 			"semantic-recall", "working-memory":
 			return true
 		}
+	case "agent":
+		return name == "with-memory-postgres" || name == "with-memory-mongodb"
 	case "vector":
 		return true // all vector fixtures need containers
 	case "rag":
@@ -195,16 +197,17 @@ func TestTSFixturesE2E(t *testing.T) {
 					}
 					startContainers()
 				}
-				if category == "memory" && name == "upstash-basic" && os.Getenv("UPSTASH_REDIS_REST_URL") == "" {
+				// Skip fixtures needing cloud credentials
+				if strings.Contains(name, "upstash") && os.Getenv("UPSTASH_REDIS_REST_URL") == "" {
 					t.Skipf("needs UPSTASH_REDIS_REST_URL in .env")
 				}
 
 				// 1. Read raw .ts source
 				tsSource := loadTSFixtureRaw(t, category, name)
 
-				// 2. Create kernel — mcp/call-tool gets a kernel with an in-process MCP server
+				// 2. Create kernel — mcp fixtures get a kernel with an in-process MCP server
 				var tk *testutil.TestKernel
-				if category == "mcp" && name == "call-tool" {
+				if category == "mcp" {
 					tk = newTestKernelWithMCP(t)
 				} else {
 					tk = testutil.NewTestKernelFull(t)
@@ -212,7 +215,7 @@ func TestTSFixturesE2E(t *testing.T) {
 				registerFixtureTools(t, tk, category, name)
 
 				// 3. Inject infra URLs into env
-				if category == "memory" && strings.HasPrefix(name, "libsql") {
+				if (category == "memory" || category == "agent") && strings.Contains(name, "libsql") {
 					libsqlURL := tk.StorageURL("default")
 					if libsqlURL != "" {
 						os.Setenv("LIBSQL_URL", libsqlURL)
