@@ -242,6 +242,9 @@ class GoSocket {
         if (b64[ci+3] !== "=") bytes[p++] = ((c << 6) | d) & 0xff;
       }
       var buf = globalThis.Buffer ? globalThis.Buffer.from(bytes) : bytes;
+      // Emit data synchronously. The pipe chain (transform → push → emit) runs inline.
+      // If this causes issues with async iterators, the stream stub's push() or
+      // the pipe implementation needs fixing, not the data delivery.
       self._emit("data", buf);
     };
     this._onError = function(msg) {

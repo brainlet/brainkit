@@ -644,7 +644,8 @@
         if (_realRandom) wrapper.random = _realRandom;
         return wrapper;
       })(),
-      // Node.js compat — Buffer, EventEmitter, process, child_process, fs, path
+      // Node.js compat — Buffer, EventEmitter, GoSocket, process
+      GoSocket: globalThis.GoSocket,
       process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
