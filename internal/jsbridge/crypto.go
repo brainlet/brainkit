@@ -424,6 +424,71 @@ globalThis.crypto.getRandomValues = function(arr) {
       };
     },
     webcrypto: globalThis.crypto,
+
+    // pbkdf2Sync — synchronous PBKDF2 key derivation (MongoDB SCRAM needs this)
+    pbkdf2Sync: function(password, salt, iterations, keylen, hash) {
+      var pwB64 = toB64(bytesOf(password));
+      var saltB64 = toB64(bytesOf(salt));
+      var hashName = hash === "sha1" ? "SHA-1" : hash === "sha256" ? "SHA-256" : hash === "sha512" ? "SHA-512" : hash.toUpperCase();
+      var resultB64 = __go_crypto_subtle_deriveBits(pwB64, saltB64, iterations, keylen * 8, hashName);
+      var raw = fromB64(resultB64);
+      // Return a Buffer if available, otherwise Uint8Array
+      if (typeof globalThis.Buffer !== "undefined" && globalThis.Buffer.from) {
+        return globalThis.Buffer.from(raw);
+      }
+      return raw;
+    },
+
+    // pbkdf2 — async callback form
+    pbkdf2: function(password, salt, iterations, keylen, hash, callback) {
+      try {
+        var result = globalThis.__node_crypto.pbkdf2Sync(password, salt, iterations, keylen, hash);
+        if (typeof callback === "function") callback(null, result);
+      } catch(e) {
+        if (typeof callback === "function") callback(e);
+      }
+    },
+
+    // randomBytes — sync + Node.js callback form
+    randomBytes: function(n, cb) {
+      var b = new Uint8Array(n);
+      if (globalThis.crypto && globalThis.crypto.getRandomValues) {
+        globalThis.crypto.getRandomValues(b);
+      }
+      // Wrap as Buffer if available
+      if (typeof globalThis.Buffer !== "undefined" && globalThis.Buffer.from) {
+        b = globalThis.Buffer.from(b);
+      }
+      // Support Node.js callback form: crypto.randomBytes(size, (err, buf) => {...})
+      if (typeof cb === "function") { cb(null, b); }
+      return b;
+    },
+
+    // randomFillSync
+    randomFillSync: function(buf) {
+      if (globalThis.crypto && globalThis.crypto.getRandomValues) {
+        globalThis.crypto.getRandomValues(buf);
+      }
+      return buf;
+    },
+
+    // randomInt
+    randomInt: function(min, max) {
+      if (max === undefined) { max = min; min = 0; }
+      return min + Math.floor(Math.random() * (max - min));
+    },
+
+    // timingSafeEqual — constant-time comparison
+    timingSafeEqual: function(a, b) {
+      if (a.length !== b.length) return false;
+      var r = 0;
+      for (var i = 0; i < a.length; i++) r |= a[i] ^ b[i];
+      return r === 0;
+    },
+
+    // getHashes / getCiphers — feature detection
+    getHashes: function() { return ["md5", "sha1", "sha256", "sha512"]; },
+    getCiphers: function() { return []; },
   };
 })();
 `)
