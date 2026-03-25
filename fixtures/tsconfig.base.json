@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "kit": ["../kit/runtime/kit.d.ts"],
+      "ai": ["../kit/runtime/ai.d.ts"],
+      "agent": ["../kit/runtime/agent.d.ts"],
+      "compiler": ["../kit/runtime/compiler.d.ts"]
+    }
+  }
+}

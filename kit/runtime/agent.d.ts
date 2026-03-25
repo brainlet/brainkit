@@ -44,12 +44,12 @@ declare module "agent" {
     id?: string;
     /** Description. */
     description?: string;
-    /** System instructions. */
-    instructions?: string;
-    /** Language model (use model() from "kit" to resolve). */
-    model: import("ai").LanguageModel;
-    /** Tool definitions. */
-    tools?: Record<string, Tool>;
+    /** System instructions (static string or dynamic resolver). */
+    instructions?: string | ((ctx: { requestContext?: RequestContext }) => string | Promise<string>);
+    /** Language model (use model() from "kit" to resolve). Accepts static or dynamic resolver. */
+    model: any;
+    /** Tool definitions (static or dynamic resolver). */
+    tools?: Record<string, Tool> | ((ctx: { requestContext?: RequestContext }) => Record<string, Tool> | Promise<Record<string, Tool>>);
     /** Max tool-call rounds (default: 5). */
     maxSteps?: number;
     /** Tool selection strategy. */
@@ -83,6 +83,18 @@ declare module "agent" {
     memory?: { thread?: string | { id: string }; resource?: string };
     /** Request context for dynamic resolvers. */
     requestContext?: RequestContext;
+    /** Model-specific settings (temperature, etc). */
+    modelSettings?: Record<string, any>;
+    /** Callback when a step finishes. */
+    onStepFinish?: (event: any) => void | Promise<void>;
+    /** Callback when generation finishes. */
+    onFinish?: (event: any) => void | Promise<void>;
+    /** Output schema for structured output. */
+    output?: import("ai").ZodType;
+    /** Limit which tools are active. */
+    activeTools?: string[];
+    /** Extra options passthrough. */
+    [key: string]: any;
   }
 
   interface AgentResult {
@@ -96,6 +108,7 @@ declare module "agent" {
     steps: AgentStepResult[];
     response: { id: string; modelId: string; timestamp: string };
     runId?: string;
+    traceId?: string;
     suspendPayload?: unknown;
     providerMetadata?: Record<string, unknown>;
   }
@@ -162,8 +175,8 @@ declare module "agent" {
     inputSchema?: import("ai").ZodType;
     /** Output schema (Zod). */
     outputSchema?: import("ai").ZodType;
-    /** Execute function. */
-    execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
+    /** Execute function. Input is the Zod-validated data. */
+    execute?: (input: any, context?: ToolExecutionContext) => Promise<unknown>;
     /** Suspend schema (for tool approval workflows). */
     suspendSchema?: import("ai").ZodType;
     /** Resume schema. */
@@ -203,25 +216,41 @@ declare module "agent" {
     id: string;
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
+    stateSchema?: import("ai").ZodType;
   }
 
   interface StepConfig {
     id: string;
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
+    stateSchema?: import("ai").ZodType;
     execute?: (context: StepExecutionContext) => Promise<unknown>;
   }
 
   interface StepExecutionContext {
-    inputData: Record<string, unknown>;
+    inputData: Record<string, any>;
     mapiData?: Record<string, unknown>;
+    /** Shared workflow state (read). */
+    state: Record<string, any>;
+    /** Update shared workflow state. */
+    setState(keyOrUpdates: string | Record<string, any>, value?: any): void;
+    /** Get result of a previous step by step ID. */
+    getStepResult(stepId: string): any;
+    /** Suspend the workflow (HITL pattern). */
+    suspend(data?: unknown): void;
+    /** Data passed when resuming a suspended workflow. */
+    resumeData?: Record<string, any>;
   }
 
   interface WorkflowBuilder {
     then(step: Step): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
-    branch(config: BranchConfig): WorkflowBuilder;
-    forEach(config: ForEachConfig): WorkflowBuilder;
+    branch(config: BranchConfig | Step[][]): WorkflowBuilder;
+    foreach(config: ForEachConfig): WorkflowBuilder;
+    /** Loop until condition is met. */
+    dountil(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
+    /** Pause execution for a duration (ms). */
+    sleep(ms: number): WorkflowBuilder;
     commit(): Workflow;
   }
 
@@ -245,7 +274,7 @@ declare module "agent" {
   interface WorkflowRun {
     runId: string;
     start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
-    resume(params: { resumeData: Record<string, unknown>; step?: string }): Promise<WorkflowRunResult>;
+    resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string }, resumeData?: Record<string, unknown>): Promise<WorkflowRunResult>;
     cancel(): void;
     readonly status: string;
     readonly currentStep: string;
@@ -269,9 +298,12 @@ declare module "agent" {
   export class Memory {
     constructor(config: MemoryConfig);
     createThread(opts?: { resourceId?: string }): Promise<{ id: string }>;
+    saveThread(opts: { thread: { id: string; resourceId?: string; title?: string; createdAt?: string; [key: string]: any } }): Promise<Thread>;
     getThreadById(opts: { threadId: string }): Promise<Thread | null>;
+    updateThread(opts: { threadId: string; title?: string }): Promise<Thread>;
     listThreads(filter?: { resourceId?: string }): Promise<Thread[]>;
     saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    deleteMessages(opts: { threadId: string }): Promise<void>;
     recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
     deleteThread(threadId: string): Promise<void>;
   }
@@ -292,11 +324,11 @@ declare module "agent" {
   interface MemoryConfig {
     storage?: StorageInstance;
     vector?: VectorStoreInstance | false;
-    embedder?: import("ai").EmbeddingModel;
+    embedder?: any;
     options?: {
       lastMessages?: number;
       semanticRecall?: boolean | { topK?: number; messageRange?: number };
-      workingMemory?: boolean | { enabled: boolean };
+      workingMemory?: boolean | { enabled: boolean; template?: string };
       generateTitle?: boolean;
       observationalMemory?: boolean | { enabled: boolean };
     };
@@ -327,11 +359,13 @@ declare module "agent" {
   export class PostgresStore implements StorageInstance {
     readonly __storageType: "postgres";
     constructor(config: { id?: string; connectionString: string });
+    init(): Promise<void>;
   }
 
   export class MongoDBStore implements StorageInstance {
     readonly __storageType: "mongodb";
-    constructor(config: { id?: string; uri: string; dbName?: string });
+    constructor(config: { id?: string; uri?: string; url?: string; dbName?: string });
+    init(): Promise<void>;
   }
 
   // ── Vector stores ─────────────────────────────────────────────
@@ -341,15 +375,17 @@ declare module "agent" {
     /** @internal */ readonly __vectorType: string;
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
   interface VectorEntry {
     id?: string;
     vector: number[];
     metadata?: Record<string, unknown>;
+    [key: string]: any;
   }
 
   interface VectorQueryResult {
@@ -364,9 +400,10 @@ declare module "agent" {
     constructor(config: { id?: string; connectionUrl?: string; url?: string; authToken?: string; storage?: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
   export class PgVector implements VectorStoreInstance {
@@ -374,9 +411,10 @@ declare module "agent" {
     constructor(config: { id?: string; connectionString: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
   export class MongoDBVector implements VectorStoreInstance {
@@ -384,9 +422,10 @@ declare module "agent" {
     constructor(config: { id?: string; uri: string; dbName?: string });
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: VectorEntry[] }): Promise<string[]>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number }): Promise<VectorQueryResult[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
   // ── Embedding model router ────────────────────────────────────
@@ -464,8 +503,11 @@ declare module "agent" {
   interface ChunkOptions {
     strategy?: "recursive" | "character" | "token" | "markdown" | "html";
     size?: number;
+    maxSize?: number;
     overlap?: number;
     separator?: string;
+    headers?: [string, string][] | Record<string, string>;
+    [key: string]: any;
   }
 
   interface DocumentChunk {

@@ -62,6 +62,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 
 	b, err := jsbridge.New(bridgeCfg,
 		jsbridge.Console(),
+		jsbridge.Process(),
 		jsbridge.Encoding(),
 		jsbridge.Streams(),
 		jsbridge.Crypto(),

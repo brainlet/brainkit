@@ -105,6 +105,21 @@ func LoadPrelude(b *jsbridge.Bridge) error {
 }
 
 const runtimeGlobalsJS = `
+// ─── Pre-lockdown captures ──────────────────────────────────────────────
+// SES lockdown() tames Math.random, Date.now, Date() as "ambient authority".
+// Capture the real implementations NOW, before lockdown freezes them.
+// kit_runtime.js uses these to build Compartment endowments that restore access.
+(function() {
+  var _origMathRandom = Math.random.bind(Math);
+  var _origDateNow = Date.now.bind(Date);
+  var _origDate = Date;
+  globalThis.__brainkit_pre_lockdown = {
+    mathRandom: _origMathRandom,
+    dateNow: _origDateNow,
+    Date: _origDate,
+  };
+})();
+
 // ─── global ─────────────────────────────────────────────────────────────
 // Node.js "global" — alias for globalThis. Required by the pg npm package.
 if (typeof global === "undefined") {

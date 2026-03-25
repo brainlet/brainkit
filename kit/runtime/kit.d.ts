@@ -61,8 +61,11 @@ declare module "kit" {
 
   // ── Model Resolution ─────────────────────────────────────────
 
-  /** Resolve a model from the provider registry. Returns an AI SDK LanguageModel instance. */
-  export function model(provider: string, modelId: string): import("ai").LanguageModel;
+  /** Resolve a language model from the provider registry. For generateText, streamText, Agent. */
+  export function model(provider: string, modelId: string): any;
+
+  /** Resolve an embedding model from the provider registry. For embed, embedMany. */
+  export function embeddingModel(provider: string, modelId: string): any;
 
   /** Resolve a provider factory from the registry. */
   export function provider(name: string): ProviderFactory;
@@ -158,6 +161,11 @@ declare module "kit" {
     server: string;
     description: string;
   }
+
+  // ── Tool Resolution ──────────────────────────────────────────
+
+  /** Resolve a registered tool by name. Returns a tool reference usable with Agent. */
+  export function tool(name: string): any;
 
   // ── Output ───────────────────────────────────────────────────
 

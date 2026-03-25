@@ -57,10 +57,14 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 			var conn net.Conn
 			var err error
 
+			// Use context-aware dialer so connections respect bridge cancellation.
+			// Without this, net.Dial blocks indefinitely if the server isn't ready.
+			dialer := &net.Dialer{Timeout: 30 * time.Second}
+
 			if useTLS {
-				conn, err = tls.Dial("tcp", addr, &tls.Config{ServerName: host})
+				conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{ServerName: host})
 			} else {
-				conn, err = net.Dial("tcp", addr)
+				conn, err = dialer.DialContext(goCtx, "tcp", addr)
 			}
 
 			if err != nil {
@@ -83,10 +87,11 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onConnect()`, id))
 			})
 
-			// Read loop — use short read deadline so we can check for cancellation
+			// Read loop — use short read deadline so we can check for cancellation.
+			// The 500ms deadline keeps the goroutine responsive to cancellation
+			// (gc.done / goCtx) while avoiding busy-spinning.
 			buf := make([]byte, 16384)
 			for {
-				// Set a short read deadline so Read() doesn't block forever
 				conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 				n, readErr := conn.Read(buf)
 
@@ -108,7 +113,6 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 				}
 
 				if n > 0 {
-					// Send data as base64 to avoid escaping issues
 					data := base64.StdEncoding.EncodeToString(buf[:n])
 					qctx.Schedule(func(qctx *quickjs.Context) {
 						qctx.Eval(fmt.Sprintf(
@@ -238,6 +242,9 @@ class GoSocket {
         if (b64[ci+3] !== "=") bytes[p++] = ((c << 6) | d) & 0xff;
       }
       var buf = globalThis.Buffer ? globalThis.Buffer.from(bytes) : bytes;
+      // Emit data synchronously. The pipe chain (transform → push → emit) runs inline.
+      // If this causes issues with async iterators, the stream stub's push() or
+      // the pipe implementation needs fixing, not the data delivery.
       self._emit("data", buf);
     };
     this._onError = function(msg) {

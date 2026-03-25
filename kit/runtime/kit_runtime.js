@@ -112,6 +112,20 @@
     return embed[factoryName](opts)(modelId);
   }
 
+  function resolveEmbeddingModel(providerName, modelId) {
+    var providers = globalThis.__kit_providers || {};
+    var pc = providers[providerName];
+    if (!pc) throw new Error("embeddingModel: provider '" + providerName + "' not registered");
+    var factoryName = providerFactories[providerName];
+    if (!factoryName || !embed[factoryName]) throw new Error("embeddingModel: provider '" + providerName + "' not available");
+    var opts = { apiKey: pc.APIKey || pc.apiKey };
+    if (pc.BaseURL || pc.baseURL) opts.baseURL = pc.BaseURL || pc.baseURL;
+    var prov = embed[factoryName](opts);
+    if (typeof prov.embedding === "function") return prov.embedding(modelId);
+    if (typeof prov.textEmbeddingModel === "function") return prov.textEmbeddingModel(modelId);
+    throw new Error("embeddingModel: provider '" + providerName + "' does not support embeddings");
+  }
+
   var _providerCache = {};
   function resolveProvider(name) {
     if (_providerCache[name]) return _providerCache[name];
@@ -405,6 +419,7 @@
     bus: bus,
     kit: kit,
     model: resolveModel,
+    embeddingModel: resolveEmbeddingModel,
     provider: resolveProvider,
     storage: resolveStorage,
     vectorStore: resolveVectorStore,
@@ -465,16 +480,42 @@
       get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
     };
 
+    // ── Compartment Endowments ─────────────────────────────────────
+    // Everything a deployed .ts file can access as a global variable.
+    // SES Compartments don't inherit globals — they ONLY see what's here.
+    //
+    // For SES-tamed builtins (Date, Math), we use pre-lockdown captures
+    // stored in globalThis.__brainkit_pre_lockdown by agent-embed-setup.js.
+    // This runs BEFORE lockdown() so the real implementations are captured
+    // before SES freezes them as "ambient authority".
+    //
+    // For bridge functions (__go_process_env, etc.), the jsbridge polyfills
+    // capture references in closures before SES can remove them from globalThis.
     var endowments = {
       // brainkit infrastructure ("kit" module)
       bus: scopedBus,
       kit: scopedKit,
       model: _kitObj.model,
+      embeddingModel: _kitObj.embeddingModel,
       provider: _kitObj.provider,
       storage: _kitObj.storage,
       vectorStore: _kitObj.vectorStore,
       registry: _kitObj.registry,
       tools: _kitObj.tools,
+      // tool() resolver — wraps a Go-registered tool as a Mastra-compatible tool object
+      // so Agent can use it: const t = tool("name"); new Agent({ tools: { name: t } })
+      tool: function(name) {
+        var info = _kitObj.tools.resolve(name);
+        if (!info) throw new Error("tool '" + name + "' not found");
+        return embed.createTool({
+          id: info.shortName || name,
+          description: info.description || "",
+          inputSchema: info.inputSchema ? embed.z.object(info.inputSchema) : embed.z.any(),
+          execute: async function(input) {
+            return await _kitObj.tools.call(name, input);
+          },
+        });
+      },
       fs: _kitObj.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,
@@ -516,6 +557,23 @@
       DefaultExporter: embed.DefaultExporter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
+      // Compiler ("compiler" module)
+      compile: async function(source, opts) {
+        var raw = await (typeof __go_brainkit_request_async === "function"
+          ? __go_brainkit_request_async("wasm.compile", JSON.stringify({ source: source, options: opts || {} }))
+          : __go_brainkit_request("wasm.compile", JSON.stringify({ source: source, options: opts || {} })));
+        var result = JSON.parse(raw);
+        if (result && result.error) throw new Error("compiler: " + result.error);
+        result.run = async function(input) {
+          var runRaw = await (typeof __go_brainkit_request_async === "function"
+            ? __go_brainkit_request_async("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null }))
+            : __go_brainkit_request("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null })));
+          var runResult = JSON.parse(runRaw);
+          if (runResult && runResult.error) throw new Error("wasm.run: " + runResult.error);
+          return runResult;
+        };
+        return result;
+      },
       // JS built-ins — per-source tagged console
       console: {
         log:   function() { __go_console_log_tagged(source, "log", Array.prototype.slice.call(arguments).map(String).join(' ')); },
@@ -551,7 +609,44 @@
       btoa: globalThis.btoa,
       crypto: globalThis.crypto,
       structuredClone: globalThis.structuredClone,
-      // Node.js compat — Buffer, EventEmitter, child_process, fs, path
+      // Date — SES blocks Date.now() and new Date() in Compartments.
+      // Uses pre-lockdown capture from __brainkit_pre_lockdown (set before SES runs).
+      Date: (function() {
+        var _pre = globalThis.__brainkit_pre_lockdown || {};
+        var _realDateNow = _pre.dateNow || Date.now.bind(Date);
+        var _RealDate = _pre.Date || Date;
+        function BrainkitDate() {
+          if (arguments.length === 0) return new _RealDate(_realDateNow());
+          return new (Function.prototype.bind.apply(_RealDate, [null].concat(Array.prototype.slice.call(arguments))))();
+        }
+        BrainkitDate.now = _realDateNow;
+        BrainkitDate.parse = _RealDate.parse;
+        BrainkitDate.UTC = _RealDate.UTC;
+        BrainkitDate.prototype = _RealDate.prototype;
+        return BrainkitDate;
+      })(),
+      // Math — SES blocks Math.random() in Compartments (ambient authority).
+      // Uses pre-lockdown capture from __brainkit_pre_lockdown.
+      Math: (function() {
+        var _pre = globalThis.__brainkit_pre_lockdown || {};
+        var _realRandom = _pre.mathRandom;
+        var wrapper = {};
+        // Copy all Math properties (floor, ceil, abs, PI, etc.)
+        var names = Object.getOwnPropertyNames(Math);
+        for (var i = 0; i < names.length; i++) {
+          var k = names[i];
+          try {
+            var v = Math[k];
+            wrapper[k] = typeof v === "function" ? v : v;
+          } catch(e) {}
+        }
+        // Override random with pre-lockdown capture
+        if (_realRandom) wrapper.random = _realRandom;
+        return wrapper;
+      })(),
+      // Node.js compat — Buffer, EventEmitter, GoSocket, process
+      GoSocket: globalThis.GoSocket,
+      process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
     };

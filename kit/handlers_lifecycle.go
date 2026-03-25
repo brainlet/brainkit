@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"time"
 
+	typescript "github.com/brainlet/brainkit/vendor_typescript"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -115,6 +118,17 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInf
 	}
 	k.mu.Unlock()
 
+	// If source is .ts, transpile to JS first: strip type annotations, interfaces,
+	// generics, type aliases. Then strip ES import statements since the Compartment
+	// injects all symbols as endowments (globals), not ES modules.
+	if strings.HasSuffix(source, ".ts") {
+		js, transpileErr := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
+		if transpileErr != nil {
+			return nil, fmt.Errorf("deploy %s: transpile: %w", source, transpileErr)
+		}
+		code = stripESImports(js)
+	}
+
 	// EvalTS handles: IsEvalBusy reentrant guard, async promise resolution,
 	// Value.Free on return. Wraps code in Compartment with per-source endowments.
 	evalCode := fmt.Sprintf(`
@@ -211,4 +225,14 @@ func (k *Kernel) ListDeployments() []deploymentInfo {
 		}
 	}
 	return result
+}
+
+// esImportRe matches ES import lines (value and type imports).
+// Stripped because kit.Deploy runs code in a SES Compartment where
+// all symbols are injected as endowments (globals), not ES modules.
+var esImportRe = regexp.MustCompile(`(?m)^import\s+(type\s+)?(\{[^}]*\}|[^\s]+)\s+from\s+"[^"]+";\s*\n?`)
+
+// stripESImports removes ES import/export-from lines from transpiled JS.
+func stripESImports(js string) string {
+	return esImportRe.ReplaceAllString(js, "")
 }
