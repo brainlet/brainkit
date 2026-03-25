@@ -786,7 +786,33 @@ const moduleStubs = {
   `,
   "buffer": `
     export const Buffer = globalThis.Buffer || {
-      from: (v, enc) => typeof v === "string" ? new TextEncoder().encode(v) : new Uint8Array(v),
+      from: (v, enc) => {
+        if (typeof v === "string") {
+          // Handle base64 and hex encoding — saslprep code-points use Buffer.from(data, 'base64')
+          if (enc === "base64") {
+            var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            var lookup = {}; for (var i = 0; i < chars.length; i++) lookup[chars[i]] = i;
+            var bufLen = Math.floor(v.length * 3 / 4);
+            if (v.length > 1 && v[v.length-1] === "=") bufLen--;
+            if (v.length > 2 && v[v.length-2] === "=") bufLen--;
+            var bytes = new Uint8Array(bufLen); var p = 0;
+            for (var i = 0; i < v.length; i += 4) {
+              var a = lookup[v[i]]||0, b = lookup[v[i+1]]||0, c = lookup[v[i+2]]||0, d = lookup[v[i+3]]||0;
+              bytes[p++] = (a<<2)|(b>>4);
+              if (v[i+2] !== "=") bytes[p++] = ((b<<4)|(c>>2))&0xff;
+              if (v[i+3] !== "=") bytes[p++] = ((c<<6)|d)&0xff;
+            }
+            return bytes;
+          }
+          if (enc === "hex") {
+            var bytes = new Uint8Array(v.length / 2);
+            for (var i = 0; i < v.length; i += 2) bytes[i/2] = parseInt(v.substr(i, 2), 16);
+            return bytes;
+          }
+          return new TextEncoder().encode(v);
+        }
+        return new Uint8Array(v);
+      },
       alloc: (n, fill) => { const b = new Uint8Array(n); if (fill) b.fill(typeof fill === "number" ? fill : 0); return b; },
       allocUnsafe: (n) => new Uint8Array(n),
       allocUnsafeSlow: (n) => new Uint8Array(n),
