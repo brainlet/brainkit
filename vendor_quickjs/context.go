@@ -1014,9 +1014,33 @@ func (ctx *Context) Await(v *Value) *Value {
 	runtimeRef := ctx.runtime.ref
 
 	for {
-		// Drain Go-scheduled work (resolve/reject from goroutines)
+		// 1. Drain Go-scheduled work (resolve/reject from goroutines).
+		//    Schedule callbacks may resolve Promises (e.g., GoSocket data delivery),
+		//    which enqueue JS microtasks.
 		ctx.ProcessJobs()
 
+		// 2. Drain ALL pending JS microtasks before checking state.
+		//    This is critical for nested for-await chains (like MongoDB's
+		//    conn.command → sendWire → readMany → onData, 4 levels deep).
+		//    Each yield/await in the chain is a separate microtask. If we only
+		//    run one microtask then go back to ProcessJobs, other connections'
+		//    Schedule callbacks can interleave and starve the chain.
+		for {
+			executed := C.JS_ExecutePendingJob(runtimeRef, nil)
+			if hook := awaitExecutePendingJobHook; hook != nil {
+				if override, ok := hook(ctx, promise, int(executed)); ok {
+					executed = C.int(override)
+				}
+			}
+			if executed < 0 {
+				return ctx.ThrowInternalError("failed to execute pending job")
+			}
+			if executed == 0 {
+				break // all microtasks drained
+			}
+		}
+
+		// 3. Check top-level promise state.
 		state := C.JS_PromiseState(ctx.ref, promise.ref)
 		if hook := awaitPromiseStateHook; hook != nil {
 			if override, ok := hook(ctx, promise, int(state)); ok {
@@ -1030,34 +1054,22 @@ func (ctx *Context) Await(v *Value) *Value {
 			reason := C.JS_PromiseResult(ctx.ref, promise.ref)
 			return &Value{ctx: ctx, ref: C.JS_Throw(ctx.ref, reason)}
 		case pendingState:
-			// Process JS microtasks (Promise.then callbacks, queueMicrotask)
-			executed := C.JS_ExecutePendingJob(runtimeRef, nil)
-			if hook := awaitExecutePendingJobHook; hook != nil {
-				if override, ok := hook(ctx, promise, int(executed)); ok {
-					executed = C.int(override)
-				}
-			}
-			if executed < 0 {
-				return ctx.ThrowInternalError("failed to execute pending job")
-			}
-			if executed == 0 {
-				// No JS microtasks pending. Check for Go-scheduled work first.
-				ctx.ProcessJobs()
+			// All microtasks drained, promise still pending.
+			// Check for new Go-scheduled work.
+			ctx.ProcessJobs()
 
-				// Re-check promise state — Go jobs may have resolved it.
-				newState := C.JS_PromiseState(ctx.ref, promise.ref)
-				if newState != pendingState {
-					continue // resolved — loop back to handle it
-				}
-
-				// Still pending. Check if there are pending Go jobs in the queue.
-				// If so, keep polling. If not, yield briefly — a goroutine will
-				// Schedule work soon (HTTP response, storage result, etc.)
-				if len(ctx.jobQueue) > 0 {
-					continue // more Go jobs to process
-				}
-				time.Sleep(awaitPollInterval)
+			// Re-check after processing Go jobs (they may have resolved it).
+			newState := C.JS_PromiseState(ctx.ref, promise.ref)
+			if newState != pendingState {
+				continue // resolved — loop back to handle it
 			}
+
+			// Still pending. If Go jobs are queued, keep polling.
+			// Otherwise yield briefly — a goroutine will Schedule work soon.
+			if len(ctx.jobQueue) > 0 {
+				continue
+			}
+			time.Sleep(awaitPollInterval)
 		default:
 			return v
 		}
