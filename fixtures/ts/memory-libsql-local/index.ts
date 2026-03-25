@@ -1,9 +1,12 @@
 // Test: agent memory with local SQLite via Kit's embedded bridge.
-// No URL needed — LibSQLStore auto-connects to the Kit's embedded bridge.
+// Uses LIBSQL_URL from env (injected by test runner from embedded bridge).
 import { Agent, Memory, LibSQLStore } from "agent";
 import { model, output } from "kit";
 
-const store = new LibSQLStore({ id: "local-store" });
+const url = process.env.LIBSQL_URL;
+if (!url) throw new Error("LIBSQL_URL not set — embedded bridge URL should be injected by test");
+
+const store = new LibSQLStore({ id: "local-store", url: url });
 const mem = new Memory({
   storage: store,
   options: { lastMessages: 10 },

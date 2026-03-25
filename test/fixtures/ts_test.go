@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,7 +75,7 @@ func fixtureNeedsVectorExtensions(name string) bool {
 }
 
 // TestTSFixturesE2E runs the full pipeline: transpile → deploy → get output → assert.
-// Uses real OpenAI API key from .env. Skips fixtures that need missing infra.
+// Uses real OpenAI API key from .env. Starts containers once upfront (shared across subtests).
 func TestTSFixturesE2E(t *testing.T) {
 	testutil.LoadEnv(t)
 
@@ -82,6 +83,28 @@ func TestTSFixturesE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	hasAI := testutil.HasAIKey()
+	hasPodman := testutil.PodmanAvailable()
+
+	// Lazy container startup — only start when the first fixture that needs them runs.
+	var containersOnce sync.Once
+	startContainers := func() {
+		containersOnce.Do(func() {
+			if !hasPodman {
+				return
+			}
+			testutil.CleanupOrphanedContainers(t)
+
+			pgURL := testutil.StartPgVectorContainer(t)
+			os.Setenv("POSTGRES_URL", pgURL)
+			t.Logf("Postgres ready: %s", pgURL)
+
+			mongoAddr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
+				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
+				"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
+			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr)
+			t.Logf("MongoDB ready: %s", mongoAddr)
+		})
+	}
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -92,8 +115,11 @@ func TestTSFixturesE2E(t *testing.T) {
 			if fixtureNeedsAI(name) && !hasAI {
 				t.Skipf("needs OPENAI_API_KEY")
 			}
-			if fixtureNeedsContainer(name) && !testutil.PodmanAvailable() {
-				t.Skipf("needs Podman for containers")
+			if fixtureNeedsContainer(name) {
+				if !hasPodman {
+					t.Skipf("needs Podman for containers")
+				}
+				startContainers()
 			}
 			if fixtureNeedsVectorExtensions(name) {
 				t.Skipf("needs libsql-server with vector extensions")
@@ -105,22 +131,22 @@ func TestTSFixturesE2E(t *testing.T) {
 				t.Skipf("needs Upstash cloud credentials")
 			}
 
-			// 1. Start containers if needed — injects env vars (POSTGRES_URL, etc.)
-			setupFixtureInfra(t, name)
-
-			// 2. Read raw .ts source — Deploy handles transpile + import strip
+			// 1. Read raw .ts source — Deploy handles transpile + import strip
 			tsSource := loadTSFixtureRaw(t, name)
 
 			// 3. Create kernel with tools the fixtures expect
 			tk := testutil.NewTestKernelFull(t)
 			registerFixtureTools(t, tk, name)
 
-			// 4. Inject infra URLs into env (process.env reads from os.Getenv)
+			// 3. Inject infra URLs into env (process.env reads from os.Getenv)
 			if strings.HasPrefix(name, "memory-libsql") || name == "vector-methods" || name == "rag-vector-query-tool" {
 				libsqlURL := tk.StorageURL("default")
 				if libsqlURL != "" {
 					os.Setenv("LIBSQL_URL", libsqlURL)
 				}
+			}
+			if name == "vector-pgvector" || name == "vector-mongodb" {
+				// POSTGRES_URL and MONGODB_URL already set upfront from containers
 			}
 
 			// 5. Deploy .ts directly — Kernel detects .ts, transpiles, strips imports
@@ -245,20 +271,8 @@ func registerFixtureTools(t *testing.T, tk *testutil.TestKernel, name string) {
 	}
 }
 
-// setupFixtureInfra starts containers and sets env vars for fixtures that need them.
-func setupFixtureInfra(t *testing.T, name string) {
-	t.Helper()
-	switch name {
-	case "memory-postgres", "memory-postgres-scram":
-		url := testutil.StartPgVectorContainer(t)
-		os.Setenv("POSTGRES_URL", url)
-	case "memory-mongodb":
-		addr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
-			wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
-			"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
-		os.Setenv("MONGODB_URL", "mongodb://test:test@"+addr)
-	}
-}
+// Containers are started once in TestTSFixturesE2E() before subtests run.
+// No per-fixture container setup needed.
 
 func truncate(s string, n int) string {
 	if len(s) <= n {
