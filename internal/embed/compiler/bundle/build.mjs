@@ -72,10 +72,13 @@ const stubs = {
       if (args.path === "as-float") {
         return { contents: "export const f64_pow = Math.pow;", loader: "js" };
       }
-      return {
-        contents: "export default {}; export const readFileSync = () => null;",
-        loader: "js",
-      };
+      if (args.path === "fs") {
+        return { contents: "export default globalThis.fs || {}; export const readFileSync = () => null;", loader: "js" };
+      }
+      if (args.path === "crypto") {
+        return { contents: "export default globalThis.__node_crypto || {};", loader: "js" };
+      }
+      return { contents: "export default {};", loader: "js" };
     });
   },
 };
