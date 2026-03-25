@@ -3,6 +3,7 @@ package fixtures_test
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,13 +97,18 @@ func TestTSFixturesE2E(t *testing.T) {
 
 			pgURL := testutil.StartPgVectorContainer(t)
 			os.Setenv("POSTGRES_URL", pgURL)
-			t.Logf("Postgres ready: %s", pgURL)
+			t.Logf("Postgres container started: %s", pgURL)
 
 			mongoAddr := testutil.StartContainer(t, "mongo:7", "27017/tcp", nil,
 				wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
 				"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test")
 			os.Setenv("MONGODB_URL", "mongodb://test:test@"+mongoAddr)
-			t.Logf("MongoDB ready: %s", mongoAddr)
+			t.Logf("MongoDB container started: %s", mongoAddr)
+
+			// TCP health probe — verify ports actually accept connections
+			// Container log messages can appear before the service is truly ready.
+			waitForTCP(t, mongoAddr, 15*time.Second)
+			t.Logf("MongoDB TCP probe passed")
 		})
 	}
 
@@ -271,8 +277,21 @@ func registerFixtureTools(t *testing.T, tk *testutil.TestKernel, name string) {
 	}
 }
 
-// Containers are started once in TestTSFixturesE2E() before subtests run.
-// No per-fixture container setup needed.
+// waitForTCP probes a TCP address until it accepts a connection or timeout expires.
+// This catches the gap between container log readiness and actual port availability.
+func waitForTCP(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("TCP probe failed: %s not accepting connections after %v", addr, timeout)
+}
 
 func truncate(s string, n int) string {
 	if len(s) <= n {

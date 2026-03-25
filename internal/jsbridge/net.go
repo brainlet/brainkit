@@ -57,10 +57,14 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 			var conn net.Conn
 			var err error
 
+			// Use context-aware dialer so connections respect bridge cancellation.
+			// Without this, net.Dial blocks indefinitely if the server isn't ready.
+			dialer := &net.Dialer{Timeout: 30 * time.Second}
+
 			if useTLS {
-				conn, err = tls.Dial("tcp", addr, &tls.Config{ServerName: host})
+				conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{ServerName: host})
 			} else {
-				conn, err = net.Dial("tcp", addr)
+				conn, err = dialer.DialContext(goCtx, "tcp", addr)
 			}
 
 			if err != nil {
