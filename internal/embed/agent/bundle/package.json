@@ -26,6 +26,7 @@
     "@mastra/upstash": "^1.0.4",
     "ai": "^6.0.116",
     "events": "^3.3.0",
+    "mongodb": "^7.1.1",
     "pg": "^8.20.0",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.17.5"

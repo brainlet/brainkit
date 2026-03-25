@@ -199,7 +199,13 @@ const moduleStubs = {
       }
       push(chunk) {
         if (chunk === null) { this.emit("end"); return false; }
-        if (this._paused) { this._buffer.push(chunk); return true; }
+        // Buffer if paused OR no 'data' listeners — prevents data loss between
+        // consecutive readMany() calls when the old listener is removed before
+        // the new one is added.
+        if (this._paused || !this._events["data"] || !this._events["data"].length) {
+          this._buffer.push(chunk);
+          return true;
+        }
         this.emit("data", chunk);
         return true;
       }
