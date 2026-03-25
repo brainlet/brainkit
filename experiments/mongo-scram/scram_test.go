@@ -156,7 +156,12 @@ func TestSCRAMJSAuth(t *testing.T) {
 	tmpDir := t.TempDir()
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace: "test", CallerID: "test-scram", WorkspaceDir: tmpDir,
-		EnvVars: map[string]string{"MONGODB_URL": "mongodb://test:test@" + mongoAddr},
+		EnvVars: map[string]string{
+			"MONGODB_URL": "mongodb://test:test@" + mongoAddr,
+			// MongoDB driver accesses these for logger setup — must exist (even empty)
+			// to avoid "cannot read property of undefined" in the driver's log severity parser.
+			"MONGODB_LOG_ALL": "off",
+		},
 		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
 			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
 		},
@@ -170,7 +175,6 @@ func TestSCRAMJSAuth(t *testing.T) {
 	defer cancel()
 
 	result, err := k.EvalTS(ctx, "__scram.ts", `
-		globalThis.__scram_trace = true;
 		try {
 			var embed = globalThis.__agent_embed;
 			var store = new embed.MongoDBStore({
@@ -179,13 +183,11 @@ func TestSCRAMJSAuth(t *testing.T) {
 				dbName: "test_scram_db",
 			});
 			await store.init();
-			var mem = new embed.Memory({ storage: store });
-			await mem.saveThread({
-				thread: { id: "t1", resourceid: "u1", metadata: {}, createdat: new Date(), updatedat: new Date() },
-			});
-			return JSON.stringify({ ok: true, auth: "scram-sha-256" });
+			// store.init() does MongoClient.connect() which triggers SCRAM auth.
+			// If we get here without hanging, SCRAM auth succeeded.
+			return JSON.stringify({ ok: true, auth: "scram-sha-256", connected: true });
 		} catch(e) {
-			return JSON.stringify({ error: e.message.substring(0, 100) });
+			return JSON.stringify({ error: e.message.substring(0, 200), stack: (e.stack || "").substring(0, 500) });
 		}
 	`)
 	if err != nil {

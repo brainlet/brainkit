@@ -199,7 +199,19 @@ const moduleStubs = {
     export default { URL: globalThis.URL, URLSearchParams: globalThis.URLSearchParams, fileURLToPath, pathToFileURL };
   `,
   "process": `
-    export default globalThis.process || {};
+    var _p = globalThis.process || {};
+    export var env = _p.env || {};
+    export var version = _p.version || "v20.0.0";
+    export var versions = _p.versions || {};
+    export var platform = _p.platform || "linux";
+    export var arch = _p.arch || "x64";
+    export var pid = _p.pid || 1;
+    export var argv = _p.argv || [];
+    export var cwd = _p.cwd || function() { return "/"; };
+    export var nextTick = _p.nextTick || function(fn) { queueMicrotask(fn); };
+    export var stdout = _p.stdout || { write: function() { return true; } };
+    export var stderr = _p.stderr || { write: function() { return true; } };
+    export default _p;
   `,
   "util": `
     export var promisify = function(fn) { return function() { var args = Array.prototype.slice.call(arguments); return new Promise(function(resolve, reject) { args.push(function(err, result) { if (err) reject(err); else resolve(result); }); fn.apply(null, args); }); }; };
