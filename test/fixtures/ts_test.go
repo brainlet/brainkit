@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,13 @@ import (
 	"testing"
 	"time"
 
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/kit"
+	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -150,9 +156,6 @@ func TestTSFixturesE2E(t *testing.T) {
 				}
 				startContainers()
 			}
-			if name == "mcp-tools" {
-				t.Skipf("needs running MCP server")
-			}
 			if name == "memory-upstash" && os.Getenv("UPSTASH_REDIS_REST_URL") == "" {
 				t.Skipf("needs UPSTASH_REDIS_REST_URL in .env")
 			}
@@ -160,8 +163,13 @@ func TestTSFixturesE2E(t *testing.T) {
 			// 1. Read raw .ts source — Deploy handles transpile + import strip
 			tsSource := loadTSFixtureRaw(t, name)
 
-			// 3. Create kernel with tools the fixtures expect
-			tk := testutil.NewTestKernelFull(t)
+			// 2. Create kernel — mcp-tools gets a kernel with an in-process MCP server
+			var tk *testutil.TestKernel
+			if name == "mcp-tools" {
+				tk = newTestKernelWithMCP(t)
+			} else {
+				tk = testutil.NewTestKernelFull(t)
+			}
 			registerFixtureTools(t, tk, name)
 
 			// 3. Inject infra URLs into env (process.env reads from os.Getenv)
@@ -326,4 +334,74 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// newTestKernelWithMCP creates a Kernel with an in-process MCP server for the mcp-tools fixture.
+// The MCP server exposes a single "echo" tool and is served over HTTP using mcp-go's
+// StreamableHTTPServer. The Kernel connects to it via the HTTP transport.
+func newTestKernelWithMCP(t *testing.T) *testutil.TestKernel {
+	t.Helper()
+
+	// 1. Create MCP server with an echo tool
+	s := mcpserver.NewMCPServer("testmcp", "1.0.0")
+	s.AddTool(
+		mcp.Tool{
+			Name:        "echo",
+			Description: "Echoes the input message",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"message": map[string]any{"type": "string", "description": "Message to echo"},
+				},
+			},
+		},
+		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := request.GetArguments()
+			msg, _ := args["message"].(string)
+			result, _ := json.Marshal(map[string]string{"echoed": msg, "server": "testmcp"})
+			return mcp.NewToolResultText(string(result)), nil
+		},
+	)
+
+	// 2. Serve over HTTP using StreamableHTTPServer
+	httpServer := mcpserver.NewStreamableHTTPServer(s)
+	ts := httptest.NewServer(httpServer)
+	t.Cleanup(ts.Close)
+
+	mcpURL := ts.URL + "/mcp"
+	t.Logf("MCP server started at %s", mcpURL)
+
+	// 3. Create kernel with MCP server config
+	testutil.LoadEnv(t)
+	tmpDir := t.TempDir()
+
+	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	envVars := make(map[string]string)
+	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		aiProviders["openai"] = provreg.AIProviderRegistration{
+			Type:   provreg.AIProviderOpenAI,
+			Config: provreg.OpenAIProviderConfig{APIKey: key},
+		}
+		envVars["OPENAI_API_KEY"] = key
+	}
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace:    "test",
+		CallerID:     "test-mcp",
+		WorkspaceDir: tmpDir,
+		AIProviders:  aiProviders,
+		EnvVars:      envVars,
+		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
+			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		},
+		MCPServers: map[string]mcppkg.ServerConfig{
+			"test": {URL: mcpURL},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewKernel with MCP: %v", err)
+	}
+	t.Cleanup(func() { k.Close() })
+
+	return &testutil.TestKernel{Kernel: k}
 }
