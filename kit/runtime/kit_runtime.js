@@ -480,6 +480,17 @@
       get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
     };
 
+    // ── Compartment Endowments ─────────────────────────────────────
+    // Everything a deployed .ts file can access as a global variable.
+    // SES Compartments don't inherit globals — they ONLY see what's here.
+    //
+    // For SES-tamed builtins (Date, Math), we use pre-lockdown captures
+    // stored in globalThis.__brainkit_pre_lockdown by agent-embed-setup.js.
+    // This runs BEFORE lockdown() so the real implementations are captured
+    // before SES freezes them as "ambient authority".
+    //
+    // For bridge functions (__go_process_env, etc.), the jsbridge polyfills
+    // capture references in closures before SES can remove them from globalThis.
     var endowments = {
       // brainkit infrastructure ("kit" module)
       bus: scopedBus,
@@ -599,19 +610,39 @@
       crypto: globalThis.crypto,
       structuredClone: globalThis.structuredClone,
       // Date — SES blocks Date.now() and new Date() in Compartments.
-      // We re-grant it as an endowment so .ts services can use time.
+      // Uses pre-lockdown capture from __brainkit_pre_lockdown (set before SES runs).
       Date: (function() {
-        var _OrigDate = globalThis.Date;
-        var _now = function() { return _OrigDate.now(); };
+        var _pre = globalThis.__brainkit_pre_lockdown || {};
+        var _realDateNow = _pre.dateNow || Date.now.bind(Date);
+        var _RealDate = _pre.Date || Date;
         function BrainkitDate() {
-          if (arguments.length === 0) return new _OrigDate(_now());
-          return new (Function.prototype.bind.apply(_OrigDate, [null].concat(Array.prototype.slice.call(arguments))))();
+          if (arguments.length === 0) return new _RealDate(_realDateNow());
+          return new (Function.prototype.bind.apply(_RealDate, [null].concat(Array.prototype.slice.call(arguments))))();
         }
-        BrainkitDate.now = _now;
-        BrainkitDate.parse = _OrigDate.parse;
-        BrainkitDate.UTC = _OrigDate.UTC;
-        BrainkitDate.prototype = _OrigDate.prototype;
+        BrainkitDate.now = _realDateNow;
+        BrainkitDate.parse = _RealDate.parse;
+        BrainkitDate.UTC = _RealDate.UTC;
+        BrainkitDate.prototype = _RealDate.prototype;
         return BrainkitDate;
+      })(),
+      // Math — SES blocks Math.random() in Compartments (ambient authority).
+      // Uses pre-lockdown capture from __brainkit_pre_lockdown.
+      Math: (function() {
+        var _pre = globalThis.__brainkit_pre_lockdown || {};
+        var _realRandom = _pre.mathRandom;
+        var wrapper = {};
+        // Copy all Math properties (floor, ceil, abs, PI, etc.)
+        var names = Object.getOwnPropertyNames(Math);
+        for (var i = 0; i < names.length; i++) {
+          var k = names[i];
+          try {
+            var v = Math[k];
+            wrapper[k] = typeof v === "function" ? v : v;
+          } catch(e) {}
+        }
+        // Override random with pre-lockdown capture
+        if (_realRandom) wrapper.random = _realRandom;
+        return wrapper;
       })(),
       // Node.js compat — Buffer, EventEmitter, process, child_process, fs, path
       process: globalThis.process,

@@ -53,12 +53,11 @@ func fixtureNeedsAI(name string) bool {
 // fixtureNeedsContainer returns true if the fixture needs an external container (Podman).
 func fixtureNeedsContainer(name string) bool {
 	containers := map[string]bool{
-		"memory-postgres":      true, // needs Postgres
-		"memory-postgres-scram": true, // needs Postgres
-		"memory-mongodb":       true, // needs MongoDB
-		"memory-upstash":       true, // needs Upstash cloud creds
+		"memory-postgres":      true, // needs Postgres container
+		"memory-postgres-scram": true, // needs Postgres container
+		"memory-mongodb":       true, // needs MongoDB container
 		"vector-pgvector":      true, // needs Postgres with pgvector
-		"vector-mongodb":       true, // needs MongoDB
+		"vector-mongodb":       true, // needs MongoDB container
 	}
 	return containers[name]
 }
@@ -133,8 +132,8 @@ func TestTSFixturesE2E(t *testing.T) {
 			if name == "mcp-tools" {
 				t.Skipf("needs running MCP server")
 			}
-			if name == "memory-upstash" {
-				t.Skipf("needs Upstash cloud credentials")
+			if name == "memory-upstash" && os.Getenv("UPSTASH_REDIS_REST_URL") == "" {
+				t.Skipf("needs UPSTASH_REDIS_REST_URL in .env")
 			}
 
 			// 1. Read raw .ts source — Deploy handles transpile + import strip
