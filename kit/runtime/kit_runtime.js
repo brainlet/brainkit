@@ -748,13 +748,6 @@
       dns: globalThis.__node_dns,
       zlib: globalThis.__node_zlib,
       child_process: globalThis.child_process,
-      // Keep internal names too for backward compat with existing code
-      __node_stream: globalThis.__node_stream,
-      __node_crypto: globalThis.__node_crypto,
-      __node_net: globalThis.__node_net,
-      __node_os: globalThis.__node_os,
-      __node_dns: globalThis.__node_dns,
-      __node_zlib: globalThis.__node_zlib,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
   };
