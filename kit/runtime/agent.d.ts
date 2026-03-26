@@ -90,6 +90,10 @@ declare module "agent" {
     providerOptions?: Record<string, Record<string, unknown>>;
     /** Schema for validating request context. */
     requestContextSchema?: import("ai").ZodType;
+    /** Max steps for tool-call loops (convenience — flows through defaultOptions). */
+    maxSteps?: number;
+    /** Extra properties passthrough. */
+    [key: string]: any;
   }
 
   export interface AgentCallOptions {
