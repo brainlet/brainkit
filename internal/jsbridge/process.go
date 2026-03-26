@@ -151,6 +151,7 @@ func (p *ProcessPolyfill) Setup(ctx *quickjs.Context) error {
   if (!p.prependListener) p.prependListener = p.on;
   if (!p.prependOnceListener) p.prependOnceListener = p.once;
 
+  if (!p.emitWarning) p.emitWarning = function() {};
   if (!p.features) p.features = {};
   if (!p.allowedNodeEnvironmentFlags) p.allowedNodeEnvironmentFlags = new Set();
 })();

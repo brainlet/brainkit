@@ -46,6 +46,7 @@ const moduleStubs = {
     export var timingSafeEqual = C.timingSafeEqual || function(a, b) { if (a.length !== b.length) return false; var r = 0; for (var i = 0; i < a.length; i++) r |= a[i] ^ b[i]; return r === 0; };
     export var getHashes = C.getHashes || function() { return ["sha256", "sha512"]; };
     export var getCiphers = C.getCiphers || function() { return []; };
+    export var getFips = C.getFips || function() { return 0; };
     export var createCipheriv = ${throwFn("createCipheriv")};
     export var createDecipheriv = ${throwFn("createDecipheriv")};
     export var createSign = ${throwFn("createSign")};
@@ -56,7 +57,7 @@ const moduleStubs = {
     export var webcrypto = globalThis.crypto;
     export default { randomUUID, randomBytes, randomFillSync, randomInt, createHash, createHmac,
       createCipheriv, createDecipheriv, createSign, createVerify, pbkdf2, pbkdf2Sync,
-      scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers };
+      scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers, getFips };
   `,
   "stream": `
     var S = globalThis.__node_stream || {};
@@ -218,7 +219,7 @@ const moduleStubs = {
     export var inherits = function(ctor, superCtor) { ctor.prototype = Object.create(superCtor.prototype); ctor.prototype.constructor = ctor; };
     export var deprecate = function(fn) { return fn; };
     export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; }, isDate: function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); }, isArrayBuffer: function(v) { return v instanceof ArrayBuffer; } };
-    export var inspect = function(v) { return JSON.stringify(v); };
+    export var inspect = function(v, opts) { try { return JSON.stringify(v, null, opts && opts.compact === false ? 2 : undefined) || String(v); } catch(e) { return String(v); } };
     export var format = function(fmt) { var args = Array.prototype.slice.call(arguments, 1); var i = 0; return String(fmt).replace(/%[sdj%]/g, function(m) { if (m === "%%") return "%"; if (i >= args.length) return m; return String(args[i++]); }); };
     export var TextEncoder = globalThis.TextEncoder;
     export var TextDecoder = globalThis.TextDecoder;
@@ -304,11 +305,17 @@ const moduleStubs = {
     export default { createRequire };
   `,
   "dns": `
-    export var lookup = ${throwFn("dns.lookup")};
-    export var resolve4 = ${throwFn("dns.resolve4")};
-    export var Resolver = class Resolver {};
-    export var promises = { lookup: ${throwFn("dns.lookup")}, resolve4: ${throwFn("dns.resolve4")} };
-    export default { lookup, resolve4, Resolver, promises };
+    var D = globalThis.__node_dns || {};
+    export var lookup = D.lookup || ${throwFn("dns.lookup")};
+    export var resolve4 = D.resolve4 || ${throwFn("dns.resolve4")};
+    export var Resolver = D.Resolver || class Resolver {};
+    export var promises = D.promises || { lookup: ${throwFn("dns.lookup")}, resolve4: ${throwFn("dns.resolve4")} };
+    export var ADDRCONFIG = D.ADDRCONFIG || 0;
+    export var V4MAPPED = D.V4MAPPED || 0;
+    export var NODATA = D.NODATA || "ENODATA";
+    export var NOTFOUND = D.NOTFOUND || "ENOTFOUND";
+    export var TIMEOUT = D.TIMEOUT || "ETIMEOUT";
+    export default { lookup, resolve4, Resolver, promises, ADDRCONFIG, V4MAPPED, NODATA, NOTFOUND, TIMEOUT };
   `,
   "async_hooks": `
     export var createHook = function() { return { enable: function() {}, disable: function() {} }; };

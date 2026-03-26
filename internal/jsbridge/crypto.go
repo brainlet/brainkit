@@ -486,9 +486,10 @@ globalThis.crypto.getRandomValues = function(arr) {
       return r === 0;
     },
 
-    // getHashes / getCiphers — feature detection
+    // getHashes / getCiphers / getFips — feature detection
     getHashes: function() { return ["md5", "sha1", "sha256", "sha512"]; },
     getCiphers: function() { return []; },
+    getFips: function() { return 0; },
   };
 })();
 `)
