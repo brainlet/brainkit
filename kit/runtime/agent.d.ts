@@ -50,75 +50,103 @@ declare module "agent" {
   }
 
   export interface AgentConfig {
-    /** Display name. */
-    name?: string;
-    /** Unique ID. */
+    /** Agent identifier. Defaults to name if omitted. */
     id?: string;
-    /** Description. */
+    /** Display name. */
+    name: string;
+    /** Description of the agent's purpose and capabilities. */
     description?: string;
-    /** System instructions (static string or dynamic resolver). */
-    instructions?: string | ((ctx: { requestContext?: RequestContext }) => string | Promise<string>);
-    /** Language model (use model() from "kit" to resolve). Accepts static or dynamic resolver. */
+    /** Instructions that guide behavior. String, string[], or dynamic resolver. */
+    instructions: string | string[] | ((ctx: { requestContext?: RequestContext }) => string | string[] | Promise<string | string[]>);
+    /** Language model. Use model() from "kit", or a dynamic resolver, or model-with-retries array. */
     model: any;
-    /** Tool definitions (static or dynamic resolver). */
+    /** Max retries for model calls on failure. @default 0 */
+    maxRetries?: number;
+    /** Tool definitions. Static map or dynamic resolver. */
     tools?: Record<string, Tool> | ((ctx: { requestContext?: RequestContext }) => Record<string, Tool> | Promise<Record<string, Tool>>);
-    /** Max tool-call rounds (default: 5). */
-    maxSteps?: number;
-    /** Tool selection strategy. */
-    toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
-    /** Memory instance for conversation persistence. */
-    memory?: Memory;
-    /** Sub-agents for supervisor/network pattern. */
-    agents?: Record<string, Agent>;
-    /** Default call options. */
+    /** Workflows the agent can execute. Static or dynamic. */
+    workflows?: Record<string, Workflow> | (() => Record<string, Workflow>);
+    /** Default options for generate/stream calls. */
     defaultOptions?: Partial<AgentCallOptions>;
-    /** Dynamic model resolver. */
-    modelResolver?: (ctx: RequestContext) => import("ai").LanguageModel | Promise<import("ai").LanguageModel>;
-    /** Dynamic tools resolver. */
-    toolsResolver?: (ctx: RequestContext) => Record<string, Tool> | Promise<Record<string, Tool>>;
-    /** Dynamic instructions resolver. */
-    instructionsResolver?: (ctx: RequestContext) => string | Promise<string>;
-    /** Scorer definitions for evals. */
-    scorers?: Scorer[];
-    /** Workspace instance. */
-    workspace?: Workspace;
-    /** Workflow definitions. */
-    workflows?: Record<string, Workflow>;
+    /** Sub-agents for supervisor/network pattern. Static or dynamic. */
+    agents?: Record<string, Agent> | (() => Record<string, Agent>);
+    /** Scoring configuration for evaluation. */
+    scorers?: Record<string, { scorer: Scorer; sampling?: any }>;
+    /** Memory module for conversation persistence. */
+    memory?: Memory | (() => Memory);
+    /** Format for skill injection. @default 'xml' */
+    skillsFormat?: "xml" | "json";
+    /** Voice settings for speech input/output. */
+    voice?: any;
+    /** Workspace for file storage and code execution. */
+    workspace?: Workspace | (() => Workspace | undefined);
+    /** Input processors — middleware before the LLM. */
+    inputProcessors?: any[];
+    /** Output processors — middleware after the LLM. */
+    outputProcessors?: any[];
+    /** Max processor retry count per generation. */
+    maxProcessorRetries?: number;
     /** Provider-specific options. */
     providerOptions?: Record<string, Record<string, unknown>>;
+    /** Schema for validating request context. */
+    requestContextSchema?: import("ai").ZodType;
   }
 
   export interface AgentCallOptions {
-    /** Override max steps for this call. */
-    maxSteps?: number;
-    /** Memory options. */
+    /** Per-call instructions override. */
+    instructions?: string | string[];
+    /** Custom system message. */
+    system?: string;
+    /** Context messages to prepend. */
+    context?: Message[];
+    /** Memory options: which thread and resource to use. */
     memory?: { thread?: string | { id: string }; resource?: string };
+    /** Unique run ID for this execution. */
+    runId?: string;
+    /** Save messages incrementally per step. @default false */
+    savePerStep?: boolean;
     /** Request context for dynamic resolvers. */
     requestContext?: RequestContext;
-    /** Model-specific settings (temperature, etc). */
-    modelSettings?: Record<string, any>;
+    /** Override max steps for this call. */
+    maxSteps?: number;
+    /** Provider-specific options. */
+    providerOptions?: Record<string, Record<string, unknown>>;
     /** Callback when a step finishes. */
     onStepFinish?: (event: any) => void | Promise<void>;
     /** Callback when generation finishes. */
     onFinish?: (event: any) => void | Promise<void>;
-    /** Output schema for structured output. */
-    output?: import("ai").ZodType;
+    /** Callback for each streaming chunk. */
+    onChunk?: (event: any) => void | Promise<void>;
+    /** Callback when an error occurs during streaming. */
+    onError?: (event: any) => void | Promise<void>;
     /** Limit which tools are active. */
     activeTools?: string[];
-    /** Require human approval for tool calls before execution. HITL. */
-    requireToolApproval?: boolean;
-    /** Per-call instructions override. */
-    instructions?: string;
-    /** Context messages to prepend. */
-    context?: Message[];
+    /** Abort signal for cancelling execution. */
+    abortSignal?: AbortSignal;
+    /** Input processors override. */
+    inputProcessors?: any[];
+    /** Output processors override. */
+    outputProcessors?: any[];
+    /** Max processor retries override. */
+    maxProcessorRetries?: number;
+    /** Additional tool sets. */
+    toolsets?: Record<string, Record<string, Tool>>;
+    /** Tool selection strategy. */
+    toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
+    /** Model-specific settings (temperature, maxTokens, topP, etc). */
+    modelSettings?: Record<string, any>;
     /** Per-call scorers for evaluation. */
     scorers?: Record<string, { scorer: any; sampling?: any }>;
     /** Return data needed for scoring. */
     returnScorerData?: boolean;
-    /** Temperature override. */
-    temperature?: number;
-    /** Provider-specific options. */
-    providerOptions?: Record<string, Record<string, unknown>>;
+    /** Require human approval for all tool calls. HITL. */
+    requireToolApproval?: boolean;
+    /** Automatically resume suspended tools. */
+    autoResumeSuspendedTools?: boolean;
+    /** Max concurrent tool calls. @default 1 when approval required, 10 otherwise */
+    toolCallConcurrency?: number;
+    /** Output schema for structured output. */
+    output?: import("ai").ZodType;
     /** Extra options passthrough. */
     [key: string]: any;
   }
@@ -322,26 +350,40 @@ declare module "agent" {
 
   // ── Memory ────────────────────────────────────────────────────
 
-  /** Memory class — conversation persistence. */
+  /** Memory class — conversation persistence (@mastra/memory). */
   export class Memory {
     constructor(config: MemoryConfig);
-    createThread(opts?: { resourceId?: string }): Promise<{ id: string }>;
-    saveThread(opts: { thread: { id: string; resourceId?: string; title?: string; createdAt?: string; [key: string]: any } }): Promise<Thread>;
+    /** Create a new thread. resourceId is required. */
+    createThread(opts: { resourceId: string; threadId?: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
+    /** Save/upsert a thread. */
+    saveThread(opts: { thread: Thread }): Promise<Thread>;
+    /** Get thread by ID. Returns null if not found. */
     getThreadById(opts: { threadId: string }): Promise<Thread | null>;
-    updateThread(opts: { threadId: string; title?: string }): Promise<Thread>;
-    listThreads(filter?: { resourceId?: string }): Promise<Thread[]>;
+    /** Update thread title or metadata. */
+    updateThread(opts: { threadId: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
+    /** List threads with optional filter. */
+    listThreads(filter?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
+    /** Save messages to a thread. */
     saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    /** Delete messages from a thread. */
     deleteMessages(opts: { threadId: string }): Promise<void>;
+    /** Recall messages from a thread with optional semantic search. */
     recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
+    /** Delete a thread and its messages. */
     deleteThread(threadId: string): Promise<void>;
+    /** Set storage adapter after construction. */
+    setStorage(storage: StorageInstance): void;
+    /** Set vector store after construction. */
+    setVector(vector: VectorStoreInstance): void;
   }
 
   export interface Thread {
     id: string;
-    resourceId?: string;
+    resourceId: string;
     title?: string;
-    createdAt: string;
-    updatedAt: string;
+    createdAt: Date;
+    updatedAt: Date;
+    metadata?: Record<string, unknown>;
   }
 
   export interface RecallResult {
