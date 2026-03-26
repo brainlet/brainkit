@@ -41,9 +41,10 @@ try {
   if (isSuspended && hasRunId) {
     // Phase 2: approve the tool call
     try {
-      const approved = await (agent as any).approveToolCallGenerate({
-        runId: suspended.runId,
-        toolCallId: (suspended.suspendPayload as any)?.toolCallId,
+      const payload = suspended.suspendPayload as { toolCallId: string };
+      const approved = await agent.approveToolCallGenerate({
+        runId: suspended.runId!,
+        toolCallId: payload.toolCallId,
       });
 
       output({

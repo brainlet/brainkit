@@ -35,6 +35,18 @@ declare module "agent" {
 
     /** Supervisor mode — delegates to sub-agents. */
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
+
+    /** Resume a suspended tool call with approval. HITL pattern. */
+    approveToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+
+    /** Decline a suspended tool call. HITL pattern. */
+    declineToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+
+    /** Resume a suspended tool call with approval (streaming). */
+    approveToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+
+    /** Decline a suspended tool call (streaming). */
+    declineToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
   }
 
   export interface AgentConfig {
@@ -93,6 +105,20 @@ declare module "agent" {
     output?: import("ai").ZodType;
     /** Limit which tools are active. */
     activeTools?: string[];
+    /** Require human approval for tool calls before execution. HITL. */
+    requireToolApproval?: boolean;
+    /** Per-call instructions override. */
+    instructions?: string;
+    /** Context messages to prepend. */
+    context?: Message[];
+    /** Per-call scorers for evaluation. */
+    scorers?: Record<string, { scorer: any; sampling?: any }>;
+    /** Return data needed for scoring. */
+    returnScorerData?: boolean;
+    /** Temperature override. */
+    temperature?: number;
+    /** Provider-specific options. */
+    providerOptions?: Record<string, Record<string, unknown>>;
     /** Extra options passthrough. */
     [key: string]: any;
   }
@@ -181,6 +207,8 @@ declare module "agent" {
     suspendSchema?: import("ai").ZodType;
     /** Resume schema. */
     resumeSchema?: import("ai").ZodType;
+    /** When true, tool calls suspend for human approval before execution. */
+    requireApproval?: boolean;
   }
 
   export interface ToolExecutionContext {
