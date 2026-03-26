@@ -347,6 +347,8 @@ const bufferJS = `
     value: function(obj) { return !!(obj && obj._isBuffer); }
   });
 
+  _Buffer.poolSize = 8192;
+
   globalThis.Buffer = _Buffer;
 })();
 `

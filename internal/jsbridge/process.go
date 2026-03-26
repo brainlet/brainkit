@@ -102,6 +102,12 @@ func (p *ProcessPolyfill) Setup(ctx *quickjs.Context) error {
   if (!p.exit) p.exit = function() {};
   if (!p.kill) p.kill = function() {};
   if (!p.abort) p.abort = function() {};
+  if (!p.getuid) p.getuid = function() { return 0; };
+  if (!p.getgid) p.getgid = function() { return 0; };
+  if (!p.geteuid) p.geteuid = function() { return 0; };
+  if (!p.getegid) p.getegid = function() { return 0; };
+  if (!p.setuid) p.setuid = function() {};
+  if (!p.setgid) p.setgid = function() {};
   if (!p.umask) p.umask = function() { return 0o22; };
   if (!p.uptime) p.uptime = function() { return 0; };
   if (!p.cpuUsage) p.cpuUsage = function() { return { user: 0, system: 0 }; };

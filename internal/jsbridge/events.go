@@ -60,4 +60,8 @@ globalThis.EventEmitter = class EventEmitter {
   rawListeners(ev) { return (this._e[ev] || []).slice(); }
   eventNames() { return Object.keys(this._e).filter(k => this._e[k] && this._e[k].length > 0); }
 };
+EventEmitter.captureRejections = false;
+EventEmitter.defaultMaxListeners = 10;
+EventEmitter.setMaxListeners = function() {};
+EventEmitter.listenerCount = function(emitter, ev) { return emitter.listenerCount ? emitter.listenerCount(ev) : 0; };
 `

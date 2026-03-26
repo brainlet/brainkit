@@ -69,6 +69,9 @@ const moduleStubs = {
     export var pipeline = S.pipeline || function() { var cb = arguments[arguments.length - 1]; if (typeof cb === "function") cb(); };
     export var finished = S.finished || function(stream, cb) { if (cb) cb(); };
     export var Stream = S.Stream || Readable;
+    if (!Readable.from) Readable.from = function(iterable) { var r = new Readable(); if (iterable && iterable[Symbol.iterator]) { for (var v of iterable) r.push(v); r.push(null); } return r; };
+    if (!Readable.toWeb) Readable.toWeb = function(nodeStream) { return new ReadableStream({ start(ctrl) { nodeStream.on("data", function(c) { ctrl.enqueue(c); }); nodeStream.on("end", function() { ctrl.close(); }); } }); };
+    if (!Readable.fromWeb) Readable.fromWeb = function(webStream) { var r = new Readable(); var reader = webStream.getReader(); (async function pump() { var res = await reader.read(); if (res.done) { r.push(null); return; } r.push(res.value); pump(); })(); return r; };
     export default { Readable, Writable, Duplex, Transform, PassThrough, pipeline, finished, Stream };
   `,
   "stream/web": `

@@ -79,50 +79,34 @@ Will cause failures in specific code paths (auth methods, discovery, logging).
 ### 6. `util.inspect(obj, options)` — DONE (2026-03-26)
 - **Fixed in:** build.mjs util stub — accepts opts param, handles compact flag
 
-### 7. `os.release()` — real value
-- **Used by:** MongoDB client metadata (`os.release()` in handshake)
-- **Current:** Returns `"0.0.0"` stub
-- **Fix:** Back with Go `runtime.GOOS` version or `syscall.Uname`
-- **Layer:** jsbridge/os.go
+### 7. `os.release()` — DONE (2026-03-26)
+- **Fixed in:** jsbridge/os.go — uses `uname -r` for real kernel version
 
-### 8. `tls.connect()` with socket wrapping
-- **Used by:** pg SSL connections — upgrades plain TCP to TLS after negotiation
-- **Current:** build.mjs tls stub throws
-- **Fix:** New jsbridge polyfill backed by Go `crypto/tls`. Accept `{ socket }` option to wrap existing connection.
-- **Layer:** New jsbridge/tls.go + build.mjs tls stub update
-- **Note:** Only needed for SSL PostgreSQL connections. Non-SSL works fine.
+### 8. `tls.connect()` — DONE (2026-03-26)
+- **Fixed in:** net.go (__go_net_tls_upgrade) + build.mjs tls stub
 
-### 9. `stream.Readable.toWeb()` / `stream.Readable.fromWeb()`
-- **Used by:** Possible AI SDK or Mastra usage for stream conversion
-- **Current:** Missing
-- **Fix:** Stubs that convert between Node.js streams and Web Streams
-- **Layer:** jsbridge/nodestreams.go or build.mjs stream stub
+### 9. `stream.Readable.toWeb/fromWeb` — DONE (2026-03-26)
+- **Fixed in:** build.mjs stream stub — Readable.from, Readable.toWeb, Readable.fromWeb
 
 ---
 
-## Gaps — LOW
+## Gaps — LOW — ALL DONE (2026-03-26)
 
-Unlikely to be hit but good for completeness.
+### 10. `util.types.isRegExp/isMap/isSet/isTypedArray` — DONE
+- **Fixed in:** build.mjs util + util/types stubs
 
-### 10. `util.types.isRegExp/isMap/isSet/isTypedArray`
-- **Used by:** Possible runtime type checks
-- **Fix:** Simple `instanceof` checks in build.mjs util/types stub
+### 11. `EventEmitter.captureRejections` — DONE
+- **Fixed in:** jsbridge/events.go — static props: captureRejections, defaultMaxListeners, setMaxListeners, listenerCount
 
-### 11. `EventEmitter.captureRejections`
-- **Used by:** Node.js 12+ feature, some libraries check for it
-- **Fix:** Static property `EventEmitter.captureRejections = false`
+### 12. `process.getuid()/getgid()` — DONE
+- **Fixed in:** jsbridge/process.go — getuid, getgid, geteuid, getegid, setuid, setgid
 
-### 12. `process.getuid()/getgid()`
-- **Used by:** Possible POSIX permission checks
-- **Fix:** `function() { return 0; }` in jsbridge/process.go
-
-### 13. `Buffer.poolSize`
-- **Used by:** Node.js internals
-- **Fix:** Static property `Buffer.poolSize = 8192`
+### 13. `Buffer.poolSize` — DONE
+- **Fixed in:** jsbridge/buffer.go — `Buffer.poolSize = 8192`
 
 ### 14. `child_process.execFileSync`
-- **Used by:** Mastra workspace operations
-- **Fix:** Implement with Go `os/exec` (synchronous, blocks QuickJS thread)
+- **Status:** Still throws. Not yet needed at runtime — Mastra workspace is optional.
+- **Fix when needed:** Go `os/exec` backed, synchronous
 
 ---
 

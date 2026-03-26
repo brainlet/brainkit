@@ -3,7 +3,9 @@ package jsbridge
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -71,6 +73,12 @@ func (p *OSPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 	}))
 
+	// Get real OS release via uname -r
+	osRelease := "0.0.0"
+	if out, err := exec.Command("uname", "-r").Output(); err == nil {
+		osRelease = strings.TrimSpace(string(out))
+	}
+
 	eol := "\n"
 	if runtime.GOOS == "windows" {
 		eol = "\r\n"
@@ -92,7 +100,7 @@ globalThis.__node_os = {
   },
   EOL: %q,
   endianness: function() { return "LE"; },
-  release: function() { return "0.0.0"; },
+  release: function() { return %q; },
   totalmem: function() { return 0; },
   freemem: function() { return 0; },
   uptime: function() { return 0; },
@@ -100,5 +108,5 @@ globalThis.__node_os = {
   networkInterfaces: function() { return {}; },
   userInfo: function() { return { username: "", uid: -1, gid: -1, shell: "", homedir: __go_os_homedir() }; },
 };
-`, eol))
+`, eol, osRelease))
 }
