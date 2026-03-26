@@ -267,11 +267,8 @@ func TestBusAPI_DeployWithBusOn(t *testing.T) {
 		t.Fatal("timeout deploying")
 	}
 
-	// Send to the mailbox topic: ts.greeter.greet
-	pubResult, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.greeter.greet",
-		Payload: json.RawMessage(`{"name":"world"}`),
-	})
+	// Send to the greeter service's mailbox
+	pubResult, err := sdk.SendToService(rt, ctx, "greeter.ts", "greet", json.RawMessage(`{"name":"world"}`))
 	require.NoError(t, err)
 
 	// Get reply
@@ -325,11 +322,8 @@ func TestBusAPI_StreamingChunks(t *testing.T) {
 	})
 	defer replyUnsub()
 
-	// Send message with known replyTo
-	_, err = sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.streamer.stream",
-		Payload: json.RawMessage(`{}`),
-	}, sdk.WithReplyTo(replyTopic))
+	// Send to the streamer service with a known replyTo
+	_, err = sdk.SendToService(rt, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
 	require.NoError(t, err)
 
 	var chunks []messages.Message

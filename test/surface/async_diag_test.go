@@ -43,10 +43,7 @@ func TestDiag_BusOn_AwaitPromiseResolve(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.diag-promise-resolve.test",
-		Payload: json.RawMessage(`{}`),
-	})
+	pr2, err := sdk.SendToService(rt, ctx, "diag-promise-resolve.ts", "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
 	unsub2, _ := rt.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
@@ -93,10 +90,7 @@ func TestDiag_BusOn_AwaitSetTimeout(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.diag-settimeout.test",
-		Payload: json.RawMessage(`{}`),
-	})
+	pr2, err := sdk.SendToService(rt, ctx, "diag-settimeout.ts", "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
 	unsub2, _ := rt.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
@@ -143,10 +137,7 @@ func TestDiag_BusOn_AwaitToolsCall(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.diag-tools-call.test",
-		Payload: json.RawMessage(`{}`),
-	})
+	pr2, err := sdk.SendToService(rt, ctx, "diag-tools-call.ts", "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
 	unsub2, _ := rt.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
@@ -205,10 +196,7 @@ func TestDiag_BusOn_AwaitFetch(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.diag-fetch.test",
-		Payload: json.RawMessage(`{}`),
-	})
+	pr2, err := sdk.SendToService(rt, ctx, "diag-fetch.ts", "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
 	unsub2, _ := rt.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
@@ -274,10 +262,7 @@ func TestDiag_BusOn_AwaitGenerateText(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.diag-generatetext.test",
-		Payload: json.RawMessage(`{}`),
-	})
+	pr2, err := sdk.SendToService(rt, ctx, "diag-generatetext.ts", "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
 	unsub2, _ := rt.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {

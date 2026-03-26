@@ -311,11 +311,8 @@ func TestTS_DeployWithBusService(t *testing.T) {
 	// Wait for subscription to be active
 	time.Sleep(100 * time.Millisecond)
 
-	// Send a message to the .ts service mailbox: ts.surface-service.greet
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.surface-service.greet",
-		Payload: json.RawMessage(`{"name":"Go"}`),
-	})
+	// Send to the .ts service mailbox
+	pr2, err := sdk.SendToService(rt, ctx, "surface-service.ts", "greet", json.RawMessage(`{"name":"Go"}`))
 	require.NoError(t, err)
 
 	// Subscribe for the reply
@@ -369,11 +366,8 @@ func TestTS_DeployWithStreaming(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Send message to the streaming service
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.surface-streamer.stream",
-		Payload: json.RawMessage(`{}`),
-	})
+	// Send to the streaming service
+	pr2, err := sdk.SendToService(rt, ctx, "surface-streamer.ts", "stream", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	// Wait for the final message (done=true) on the reply topic
@@ -646,11 +640,8 @@ func TestTS_BusServiceAsAIProxy(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Go sends a message to the .ts AI service
-	pr2, err := sdk.Publish(rt, ctx, messages.CustomMsg{
-		Topic:   "ts.ai-service.generate",
-		Payload: json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`),
-	})
+	// Go sends to the .ts AI service
+	pr2, err := sdk.SendToService(rt, ctx, "ai-service.ts", "generate", json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`))
 	require.NoError(t, err)
 
 	replyCh := make(chan messages.Message, 1)
