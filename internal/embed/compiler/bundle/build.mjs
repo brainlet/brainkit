@@ -76,7 +76,7 @@ const stubs = {
         return { contents: "export default globalThis.fs || {}; export const readFileSync = () => null;", loader: "js" };
       }
       if (args.path === "crypto") {
-        return { contents: "export default globalThis.__node_crypto || {};", loader: "js" };
+        return { contents: "export default globalThis.crypto || {};", loader: "js" };
       }
       return { contents: "export default {};", loader: "js" };
     });

@@ -4,7 +4,7 @@ import { statSync, writeFileSync } from "node:fs";
 // Node.js built-ins that Mastra imports.
 // We stub them at build time so esbuild can resolve named imports.
 // At runtime in QuickJS, jsbridge polyfills provide the real implementations
-// on globalThis (__node_stream, __node_crypto, __node_net, __node_os, Buffer, etc.).
+// on globalThis (stream, crypto, net, os, Buffer, etc.).
 // These stubs are THIN RE-EXPORTS — no logic, just wiring for esbuild resolution.
 
 const nodeBuiltins = new Set([
@@ -34,7 +34,7 @@ const throwFn = (name) => `function() { throw new Error("${name}: not available 
 // ─── Module stubs: thin re-exports from jsbridge polyfills on globalThis ──
 const moduleStubs = {
   "crypto": `
-    var C = globalThis.__node_crypto || {};
+    var C = globalThis.crypto || {};
     export var randomUUID = function() { return globalThis.crypto.randomUUID(); };
     export var randomBytes = C.randomBytes || function(n) { return new Uint8Array(n); };
     export var randomFillSync = C.randomFillSync || function(buf) { return buf; };
@@ -60,7 +60,7 @@ const moduleStubs = {
       scrypt, scryptSync, timingSafeEqual, constants, webcrypto, getHashes, getCiphers, getFips };
   `,
   "stream": `
-    var S = globalThis.__node_stream || {};
+    var S = globalThis.stream || {};
     export var Readable = S.Readable || class Readable {};
     export var Writable = S.Writable || class Writable {};
     export var Duplex = S.Duplex || class Duplex {};
@@ -86,7 +86,7 @@ const moduleStubs = {
     export default { pipeline, finished };
   `,
   "net": `
-    var N = globalThis.__node_net || {};
+    var N = globalThis.net || {};
     export var Socket = N.Socket || class Socket {};
     export var createConnection = N.createConnection || function() { return new Socket(); };
     export var connect = N.connect || createConnection;
@@ -159,7 +159,7 @@ const moduleStubs = {
     export default { join, resolve, dirname, basename, extname, sep };
   `,
   "os": `
-    var O = globalThis.__node_os || {};
+    var O = globalThis.os || {};
     export var platform = O.platform || function() { return "linux"; };
     export var arch = O.arch || function() { return "x64"; };
     export var tmpdir = O.tmpdir || function() { return "/tmp"; };
@@ -334,7 +334,7 @@ const moduleStubs = {
     export default { createRequire };
   `,
   "dns": `
-    var D = globalThis.__node_dns || {};
+    var D = globalThis.dns || {};
     export var lookup = D.lookup || ${throwFn("dns.lookup")};
     export var resolve4 = D.resolve4 || ${throwFn("dns.resolve4")};
     export var Resolver = D.Resolver || class Resolver {};
@@ -386,7 +386,7 @@ const moduleStubs = {
     export default { isMainThread, parentPort, workerData, threadId, Worker, MessageChannel, MessagePort };
   `,
   "zlib": `
-    var Z = globalThis.__node_zlib || {};
+    var Z = globalThis.zlib || {};
     export var createGzip = Z.createGzip || ${throwFn("createGzip")};
     export var createGunzip = Z.createGunzip || ${throwFn("createGunzip")};
     export var createDeflate = Z.createDeflate || ${throwFn("createDeflate")};

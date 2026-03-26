@@ -520,14 +520,14 @@ globalThis.GoSocket = GoSocket;
 
 // ─── Socket extends Duplex ──────────────────────────────────────────
 // net.Socket wraps GoSocket (raw TCP transport) with proper Node.js Duplex
-// inheritance from __node_stream. This gives us Readable.pipe() with
+// inheritance from globalThis.stream. This gives us Readable.pipe() with
 // pause/resume/buffer semantics, Symbol.asyncIterator with correct data
 // handoff, and the full Node.js stream contract.
 //
 // GoSocket pushes data INTO the Duplex via this.push(chunk).
 // Writes go through GoSocket.write() directly (bypass Duplex._write).
 (function() {
-  var Duplex = globalThis.__node_stream && globalThis.__node_stream.Duplex;
+  var Duplex = globalThis.stream && globalThis.stream.Duplex;
   if (!Duplex) return; // NodeStreams not loaded yet
 
   class Socket extends Duplex {
@@ -588,7 +588,7 @@ globalThis.GoSocket = GoSocket;
   var notAvailable = function(name) { return function() { throw new Error(name + ": not available in QuickJS"); }; };
   var isIP = function(input) { try { return input.includes(":") ? 6 : input.match(/^\d+\.\d+\.\d+\.\d+$/) ? 4 : 0; } catch(e) { return 0; } };
 
-  globalThis.__node_net = {
+  globalThis.net = {
     Socket: Socket,
     createConnection: createConnection,
     connect: createConnection,

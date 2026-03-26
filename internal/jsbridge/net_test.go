@@ -35,7 +35,7 @@ func TestNetJoinHostPort_Hostname(t *testing.T) {
 func TestSocket_ExtendsDuplex(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
 	result := evalString(t, b, `
-		var s = new globalThis.__node_net.Socket();
+		var s = new globalThis.net.Socket();
 		JSON.stringify({
 			isReadable: typeof s.pipe === "function",
 			isDuplex: typeof s.write === "function" && typeof s.push === "function",
@@ -53,7 +53,7 @@ func TestSocket_ExtendsDuplex(t *testing.T) {
 func TestSocket_CreateConnection(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams(), Timers(), Net())
 	result := evalString(t, b, `
-		var N = globalThis.__node_net;
+		var N = globalThis.net;
 		JSON.stringify({
 			hasSocket: typeof N.Socket === "function",
 			hasCreateConnection: typeof N.createConnection === "function",

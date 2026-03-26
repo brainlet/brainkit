@@ -99,7 +99,7 @@ func TestCryptoRandomUUID(t *testing.T) {
 
 func TestCryptoHash(t *testing.T) {
 	b := newTestBridge(t, Crypto())
-	result := evalString(t, b, `__node_crypto.createHash('sha256').update('hello world').digest('hex')`)
+	result := evalString(t, b, `crypto.createHash('sha256').update('hello world').digest('hex')`)
 	// Known SHA-256 of "hello world"
 	want := "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 	if result != want {
@@ -109,7 +109,7 @@ func TestCryptoHash(t *testing.T) {
 
 func TestCryptoHmac(t *testing.T) {
 	b := newTestBridge(t, Crypto())
-	result := evalString(t, b, `__node_crypto.createHmac('sha256', 'secret').update('hello').digest('hex')`)
+	result := evalString(t, b, `crypto.createHmac('sha256', 'secret').update('hello').digest('hex')`)
 	// Known HMAC-SHA256 of "hello" with key "secret"
 	want := "88aab3ede8d3adf94d26ab90d3bafd4a2083070c3bcce9c014ee04a443847c0b"
 	if result != want {
@@ -1144,7 +1144,7 @@ func TestAllPolyfills(t *testing.T) {
 	result := evalString(t, b, `
 		// Test all polyfills together
 		const uuid = crypto.randomUUID();
-		const hash = __node_crypto.createHash('sha256').update('test').digest('hex');
+		const hash = crypto.createHash('sha256').update('test').digest('hex');
 		const encoded = btoa('hello');
 		const decoded = atob(encoded);
 		const url = new URL('https://example.com/path');

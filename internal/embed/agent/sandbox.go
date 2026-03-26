@@ -66,7 +66,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.Process(),        // process.env (Go-backed), process.version, nextTick, stdout
 		jsbridge.Encoding(),       // TextEncoder, TextDecoder, btoa, atob
 		jsbridge.Streams(),        // Web Streams (ReadableStream/WritableStream/TransformStream)
-		jsbridge.Crypto(),         // crypto.subtle, __node_crypto (createHash, pbkdf2Sync, etc.)
+		jsbridge.Crypto(),         // crypto.subtle + createHash, pbkdf2Sync merged onto globalThis.crypto
 		jsbridge.URL(),            // URL, URLSearchParams
 		jsbridge.Timers(),         // setTimeout, clearTimeout (Go-backed)
 		jsbridge.Scheduling(),     // setImmediate, clearImmediate, setInterval, clearInterval

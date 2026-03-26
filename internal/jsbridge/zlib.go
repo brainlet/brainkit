@@ -213,7 +213,7 @@ const zlibJS = `
   }
 
   // Callback-style wrappers (Node.js convention: zlib.inflate(buf, cb))
-  globalThis.__node_zlib = {
+  globalThis.zlib = {
     inflate: function(buf, cb) {
       try {
         var result = fromB64(__go_zlib_inflate(toB64(bytesOf(buf))));
@@ -281,7 +281,7 @@ const zlibJS = `
     },
     // Stream creators (return Transform-like objects)
     createGzip: function() {
-      var S = globalThis.__node_stream;
+      var S = globalThis.stream;
       if (!S) throw new Error("createGzip: streams not available");
       return new S.Transform({
         transform: function(chunk, enc, cb) {
@@ -294,7 +294,7 @@ const zlibJS = `
       });
     },
     createGunzip: function() {
-      var S = globalThis.__node_stream;
+      var S = globalThis.stream;
       if (!S) throw new Error("createGunzip: streams not available");
       return new S.Transform({
         transform: function(chunk, enc, cb) {
@@ -307,7 +307,7 @@ const zlibJS = `
       });
     },
     createDeflate: function(opts) {
-      var S = globalThis.__node_stream;
+      var S = globalThis.stream;
       if (!S) throw new Error("createDeflate: streams not available");
       var level = (opts && opts.level !== undefined) ? opts.level : -1;
       return new S.Transform({
@@ -321,7 +321,7 @@ const zlibJS = `
       });
     },
     createInflate: function() {
-      var S = globalThis.__node_stream;
+      var S = globalThis.stream;
       if (!S) throw new Error("createInflate: streams not available");
       return new S.Transform({
         transform: function(chunk, enc, cb) {

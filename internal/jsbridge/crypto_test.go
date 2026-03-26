@@ -5,7 +5,7 @@ import "testing"
 func TestCrypto_Pbkdf2Sync(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Buffer(), Crypto())
 	result := evalString(t, b, `
-		var derived = globalThis.__node_crypto.pbkdf2Sync(
+		var derived = globalThis.crypto.pbkdf2Sync(
 			"pencil",
 			Buffer.from("W22ZaJ0SNY7soEsUEjb6gQ==", "base64"),
 			4096, 32, "sha256"
@@ -22,7 +22,7 @@ func TestCrypto_Pbkdf2Async(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Buffer(), Crypto(), Timers())
 	val, err := b.EvalAsync("test.js", `(async () => {
 		var result = await new Promise(function(resolve, reject) {
-			globalThis.__node_crypto.pbkdf2("pencil", Buffer.from("salt"), 1000, 32, "sha256", function(err, key) {
+			globalThis.crypto.pbkdf2("pencil", Buffer.from("salt"), 1000, 32, "sha256", function(err, key) {
 				if (err) reject(err);
 				else resolve(key);
 			});
@@ -46,8 +46,8 @@ func TestCrypto_TimingSafeEqual(t *testing.T) {
 		var b = Buffer.from("hello");
 		var c = Buffer.from("world");
 		JSON.stringify({
-			eq: globalThis.__node_crypto.timingSafeEqual(a, b),
-			neq: globalThis.__node_crypto.timingSafeEqual(a, c),
+			eq: globalThis.crypto.timingSafeEqual(a, b),
+			neq: globalThis.crypto.timingSafeEqual(a, c),
 		});
 	`)
 	expected := `{"eq":true,"neq":false}`
@@ -59,9 +59,9 @@ func TestCrypto_TimingSafeEqual(t *testing.T) {
 func TestCrypto_RandomBytes(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Buffer(), Crypto())
 	result := evalString(t, b, `
-		var sync = globalThis.__node_crypto.randomBytes(16);
+		var sync = globalThis.crypto.randomBytes(16);
 		var cbResult = null;
-		globalThis.__node_crypto.randomBytes(16, function(err, buf) { cbResult = buf; });
+		globalThis.crypto.randomBytes(16, function(err, buf) { cbResult = buf; });
 		JSON.stringify({
 			syncLen: sync.length,
 			cbLen: cbResult ? cbResult.length : -1,
@@ -77,7 +77,7 @@ func TestCrypto_SCRAMSequence(t *testing.T) {
 	// Full SCRAM-SHA-256 crypto chain as MongoDB driver would call it
 	b := newTestBridge(t, Console(), Encoding(), Buffer(), Crypto())
 	result := evalString(t, b, `
-		var c = globalThis.__node_crypto;
+		var c = globalThis.crypto;
 		// 1. pbkdf2Sync (SaltedPassword)
 		var saltedPw = c.pbkdf2Sync("pencil", Buffer.from("W22ZaJ0SNY7soEsUEjb6gQ==", "base64"), 4096, 32, "sha256");
 		// 2. HMAC (ClientKey)
@@ -103,7 +103,7 @@ func TestCrypto_SCRAMSequence(t *testing.T) {
 func TestCrypto_GetHashes(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Crypto())
 	result := evalString(t, b, `
-		var h = globalThis.__node_crypto.getHashes();
+		var h = globalThis.crypto.getHashes();
 		JSON.stringify(h.includes("sha256") && h.includes("sha512") && h.includes("md5"));
 	`)
 	if result != "true" {

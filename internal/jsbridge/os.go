@@ -85,7 +85,7 @@ func (p *OSPolyfill) Setup(ctx *quickjs.Context) error {
 	}
 
 	return evalJS(ctx, fmt.Sprintf(`
-globalThis.__node_os = {
+globalThis.os = {
   platform: function() { return __go_os_platform(); },
   arch: function() { return __go_os_arch(); },
   tmpdir: function() { return __go_os_tmpdir(); },

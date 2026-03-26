@@ -26,7 +26,7 @@ func TestDNS_JSLookupCallback(t *testing.T) {
 	b := newTestBridge(t, DNS())
 	val, err := b.Eval("test.js", `
 		var result = null;
-		globalThis.__node_dns.lookup("localhost", function(err, addr, family) {
+		globalThis.dns.lookup("localhost", function(err, addr, family) {
 			if (err) throw err;
 			result = { addr: addr, family: family };
 		});

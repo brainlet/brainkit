@@ -72,8 +72,8 @@ func TestCrypto_GetFips(t *testing.T) {
 	b := newTestBridge(t, Crypto())
 	val, err := b.Eval("test.js", `
 		JSON.stringify({
-			fips: globalThis.__node_crypto.getFips(),
-			hasFn: typeof globalThis.__node_crypto.getFips === "function",
+			fips: globalThis.crypto.getFips(),
+			hasFn: typeof globalThis.crypto.getFips === "function",
 		});
 	`)
 	if err != nil {
@@ -112,7 +112,7 @@ func TestProcess_EmitWarning(t *testing.T) {
 func TestOS_Release(t *testing.T) {
 	b := newTestBridge(t, OS())
 	val, err := b.Eval("test.js", `
-		var r = globalThis.__node_os.release();
+		var r = globalThis.os.release();
 		JSON.stringify({ release: r, notStub: r !== "0.0.0" });
 	`)
 	if err != nil {

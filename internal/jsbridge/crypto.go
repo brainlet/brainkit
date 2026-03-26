@@ -327,7 +327,7 @@ globalThis.crypto.getRandomValues = function(arr) {
   };
 })();
 
-// __node_crypto — Node.js createHash/createHmac with binary data support.
+// Node.js crypto methods merged onto globalThis.crypto alongside WebCrypto.
 // MongoDB SCRAM auth passes Uint8Array keys and data. We accumulate bytes
 // and encode to base64 before calling Go bridges to avoid null-byte truncation.
 (function() {
@@ -383,13 +383,16 @@ globalThis.crypto.getRandomValues = function(arr) {
     return r;
   }
 
-  globalThis.__node_crypto = {
+  // Merge Node.js crypto methods onto globalThis.crypto (which already has WebCrypto: subtle, randomUUID, getRandomValues).
+  // This matches Node.js behavior where require('crypto') returns one object with both WebCrypto and Node.js APIs.
+  var _cryptoTarget = globalThis.crypto || {};
+  Object.assign(_cryptoTarget, {
     createHash: function(alg) {
       var _bytes = new Uint8Array(0);
       return {
         update: function(d, enc) { _bytes = concatBytes(_bytes, bytesOf(d)); return this; },
         copy: function() {
-          var c = globalThis.__node_crypto.createHash(alg);
+          var c = _cryptoTarget.createHash(alg);
           c._bytes = _bytes.slice(); return c;
         },
         digest: function(enc) {
@@ -423,8 +426,6 @@ globalThis.crypto.getRandomValues = function(arr) {
         }
       };
     },
-    webcrypto: globalThis.crypto,
-
     // pbkdf2Sync — synchronous PBKDF2 key derivation (MongoDB SCRAM needs this)
     pbkdf2Sync: function(password, salt, iterations, keylen, hash) {
       var pwB64 = toB64(bytesOf(password));
@@ -442,7 +443,7 @@ globalThis.crypto.getRandomValues = function(arr) {
     // pbkdf2 — async callback form
     pbkdf2: function(password, salt, iterations, keylen, hash, callback) {
       try {
-        var result = globalThis.__node_crypto.pbkdf2Sync(password, salt, iterations, keylen, hash);
+        var result = _cryptoTarget.pbkdf2Sync(password, salt, iterations, keylen, hash);
         if (typeof callback === "function") callback(null, result);
       } catch(e) {
         if (typeof callback === "function") callback(e);
@@ -490,7 +491,8 @@ globalThis.crypto.getRandomValues = function(arr) {
     getHashes: function() { return ["md5", "sha1", "sha256", "sha512"]; },
     getCiphers: function() { return []; },
     getFips: function() { return 0; },
-  };
+  });
+  if (!globalThis.crypto) globalThis.crypto = _cryptoTarget;
 })();
 `)
 }

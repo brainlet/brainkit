@@ -72,7 +72,7 @@ declare class EventEmitter {
 }
 
 // ── Node.js module globals (available in SES Compartments) ─────
-// These match real Node.js module names. Internal __node_* aliases also exist.
+// These match real Node.js module names. Set directly by jsbridge polyfills.
 
 declare var stream: {
   Readable: any;

@@ -1,7 +1,6 @@
 // Test: util.types.isDate, isRegExp, isMap, isSet, isTypedArray, isUint8Array
 import { output } from "kit";
 
-// Access through __node_crypto for isDate test (same pattern as pg driver)
 // util.types is in the bundle stub but we test through globalThis access
 
 output({

@@ -12,9 +12,9 @@ internal/embed/compiler/deps/
 /wasmgen
 
 decisions/
-docs/s*
+docs/sup*
 C*.md
-M*.md
+
 I*.md
 .s*
 .c*

@@ -95,7 +95,7 @@ const dnsJS = `
   var _lookup = __go_dns_lookup;
   var _lookupAsync = __go_dns_lookup_async;
 
-  globalThis.__node_dns = {
+  globalThis.dns = {
     lookup: function(hostname, optionsOrCb, cb) {
       if (typeof optionsOrCb === "function") { cb = optionsOrCb; }
       if (typeof cb !== "function") { cb = function() {}; }

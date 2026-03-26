@@ -737,16 +737,18 @@
       })(),
       // Node.js compat — available as globals in .ts Compartments
       // Names match real Node.js module names so code reads naturally.
+      // jsbridge polyfills set these directly on globalThis (stream, net, os, dns, zlib).
+      // crypto (line above in Web APIs) is the merged WebCrypto + Node.js object
+      // (subtle + createHash + pbkdf2Sync on same object).
       GoSocket: globalThis.GoSocket,
       process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
-      stream: globalThis.__node_stream,
-      crypto: globalThis.__node_crypto,
-      net: globalThis.__node_net,
-      os: globalThis.__node_os,
-      dns: globalThis.__node_dns,
-      zlib: globalThis.__node_zlib,
+      stream: globalThis.stream,
+      net: globalThis.net,
+      os: globalThis.os,
+      dns: globalThis.dns,
+      zlib: globalThis.zlib,
       child_process: globalThis.child_process,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;

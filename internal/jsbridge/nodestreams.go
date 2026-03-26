@@ -22,7 +22,7 @@ func (p *NodeStreamsPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, nodeStreamsJS)
 }
 
-// nodeStreamsJS implements Node.js stream classes on globalThis.__node_stream.
+// nodeStreamsJS implements Node.js stream classes on globalThis.stream.
 //
 // Key design decisions for MongoDB SCRAM compatibility:
 //
@@ -341,7 +341,7 @@ const nodeStreamsJS = `
   }
 
   // ─── Export on globalThis ──────────────────────────────────────
-  globalThis.__node_stream = {
+  globalThis.stream = {
     Readable: Readable,
     Writable: Writable,
     Duplex: Duplex,

@@ -11,3 +11,4 @@ export const tools = globalThis.__kit.tools;
 export const fs = globalThis.__kit.fs;
 export const mcp = globalThis.__kit.mcp;
 export const output = globalThis.__kit.output;
+export const generateWithApproval = globalThis.__kit.generateWithApproval;

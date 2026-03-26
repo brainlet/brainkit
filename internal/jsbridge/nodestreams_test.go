@@ -6,7 +6,7 @@ func TestNodeReadable_PushAndData(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
 	val, err := b.Eval("test.js", `
 		var chunks = [];
-		var r = new globalThis.__node_stream.Readable();
+		var r = new globalThis.stream.Readable();
 		r.on("data", function(chunk) { chunks.push(chunk); });
 		r.push("hello");
 		r.push("world");
@@ -25,7 +25,7 @@ func TestNodeReadable_PushAndData(t *testing.T) {
 func TestNodeReadable_Pipe(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
 	val, err := b.Eval("test.js", `
-		var NS = globalThis.__node_stream;
+		var NS = globalThis.stream;
 		var output = [];
 		var src = new NS.Readable();
 		var transform = new NS.Transform({
@@ -54,7 +54,7 @@ func TestNodeStream_ConsecutiveAsyncIterators(t *testing.T) {
 	// Simulates: command1 reads from transform via for-await, exits, command2 reads next message.
 	// Data for command2 must NOT be lost when command1's iterator exits.
 	setup, err := b.Eval("setup.js", `
-		var NS = globalThis.__node_stream;
+		var NS = globalThis.stream;
 		var src = new NS.Readable();
 		var transform = new NS.Transform({
 			transform: function(chunk, enc, cb) { this.push(chunk); cb(); }
@@ -95,7 +95,7 @@ func TestNodeStream_ConsecutiveAsyncIterators(t *testing.T) {
 func TestNodeTransform_WriteThrough(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
 	val, err := b.Eval("test.js", `
-		var NS = globalThis.__node_stream;
+		var NS = globalThis.stream;
 		var output = [];
 		var pt = new NS.PassThrough();
 		pt.on("data", function(chunk) { output.push(chunk); });
@@ -116,7 +116,7 @@ func TestNodeTransform_WriteThrough(t *testing.T) {
 func TestNodeReadable_BufferWhenPaused(t *testing.T) {
 	b := newTestBridge(t, Console(), Encoding(), Events(), NodeStreams())
 	val, err := b.Eval("test.js", `
-		var NS = globalThis.__node_stream;
+		var NS = globalThis.stream;
 		var r = new NS.Readable();
 		// Push data BEFORE adding listener — should buffer
 		r.push("buffered1");
