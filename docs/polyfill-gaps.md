@@ -104,9 +104,11 @@ Will cause failures in specific code paths (auth methods, discovery, logging).
 ### 13. `Buffer.poolSize` — DONE
 - **Fixed in:** jsbridge/buffer.go — `Buffer.poolSize = 8192`
 
-### 14. `child_process.execFileSync`
-- **Status:** Still throws. Not yet needed at runtime — Mastra workspace is optional.
-- **Fix when needed:** Go `os/exec` backed, synchronous
+### 14. `child_process.execSync/execFileSync/spawnSync` — DONE (2026-03-26)
+- **Fixed in:** jsbridge/exec.go — Go `os/exec` backed, synchronous
+- execSync: runs shell command, returns stdout as Buffer
+- execFileSync: runs file with args, returns stdout as Buffer
+- spawnSync: runs command, returns { stdout, stderr, status }
 
 ---
 

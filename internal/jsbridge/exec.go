@@ -345,9 +345,111 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		return ctx.Undefined()
 	}))
 
+	// __go_exec_sync(command) → JSON { stdout, stderr, exitCode }
+	ctx.Globals().Set("__go_exec_sync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return qctx.ThrowError(fmt.Errorf("execSync: command argument required"))
+		}
+		command := args[0].ToString()
+
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", command)
+		} else {
+			cmd = exec.Command("sh", "-c", command)
+		}
+
+		var stdoutBuf, stderrBuf strings.Builder
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+
+		exitCode := 0
+		err := cmd.Run()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				return qctx.ThrowError(fmt.Errorf("execSync: %w", err))
+			}
+		}
+
+		b, _ := json.Marshal(map[string]interface{}{
+			"stdout":   stdoutBuf.String(),
+			"stderr":   stderrBuf.String(),
+			"exitCode": exitCode,
+		})
+		return qctx.NewString(string(b))
+	}))
+
+	// __go_exec_file_sync(file, argsJSON, cwd) → JSON { stdout, stderr, exitCode }
+	ctx.Globals().Set("__go_exec_file_sync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 1 {
+			return qctx.ThrowError(fmt.Errorf("execFileSync: file argument required"))
+		}
+		file := args[0].ToString()
+		var cmdArgs []string
+		if len(args) >= 2 && args[1].ToString() != "[]" {
+			json.Unmarshal([]byte(args[1].ToString()), &cmdArgs)
+		}
+
+		cmd := exec.Command(file, cmdArgs...)
+		if len(args) >= 3 && args[2].ToString() != "" {
+			cmd.Dir = args[2].ToString()
+		}
+
+		var stdoutBuf, stderrBuf strings.Builder
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
+
+		exitCode := 0
+		err := cmd.Run()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				return qctx.ThrowError(fmt.Errorf("execFileSync %s: %w", file, err))
+			}
+		}
+
+		b, _ := json.Marshal(map[string]interface{}{
+			"stdout":   stdoutBuf.String(),
+			"stderr":   stderrBuf.String(),
+			"exitCode": exitCode,
+		})
+		return qctx.NewString(string(b))
+	}))
+
 	return evalJS(ctx, `
 globalThis.child_process = {
   async exec(command) { return JSON.parse(await __go_exec(command)); },
+  execSync: function(command) {
+    var result = JSON.parse(__go_exec_sync(command));
+    if (result.exitCode !== 0) {
+      var err = new Error("Command failed: " + command + "\n" + result.stderr);
+      err.status = result.exitCode;
+      err.stderr = result.stderr;
+      err.stdout = result.stdout;
+      throw err;
+    }
+    return typeof Buffer !== "undefined" ? Buffer.from(result.stdout) : result.stdout;
+  },
+  execFileSync: function(file, args, options) {
+    var cwd = (options && options.cwd) || "";
+    var result = JSON.parse(__go_exec_file_sync(file, JSON.stringify(args || []), cwd));
+    if (result.exitCode !== 0) {
+      var err = new Error("Command failed: " + file + "\n" + result.stderr);
+      err.status = result.exitCode;
+      err.stderr = result.stderr;
+      err.stdout = result.stdout;
+      throw err;
+    }
+    return typeof Buffer !== "undefined" ? Buffer.from(result.stdout) : result.stdout;
+  },
+  spawnSync: function(command, args, options) {
+    var cwd = (options && options.cwd) || "";
+    var result = JSON.parse(__go_exec_file_sync(command, JSON.stringify(args || []), cwd));
+    return { stdout: result.stdout, stderr: result.stderr, status: result.exitCode, error: null };
+  },
   spawn(command, args, cwd) {
     const id = __go_spawn(command, args ? JSON.stringify(args) : '[]', cwd || '');
     return {

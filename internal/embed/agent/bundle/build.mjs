@@ -259,12 +259,14 @@ const moduleStubs = {
     export default { isUint8Array, isArrayBuffer, isDate, isRegExp, isMap, isSet, isTypedArray };
   `,
   "child_process": `
-    export var exec = globalThis.child_process ? globalThis.child_process.exec : ${throwFn("child_process.exec")};
-    export var spawn = globalThis.child_process ? globalThis.child_process.spawn : ${throwFn("child_process.spawn")};
-    export var execSync = ${throwFn("child_process.execSync")};
-    export var execFile = globalThis.child_process ? globalThis.child_process.exec : ${throwFn("child_process.execFile")};
-    export var execFileSync = ${throwFn("child_process.execFileSync")};
-    export default { exec, spawn, execSync, execFile, execFileSync };
+    var CP = globalThis.child_process || {};
+    export var exec = CP.exec || ${throwFn("child_process.exec")};
+    export var spawn = CP.spawn || ${throwFn("child_process.spawn")};
+    export var execSync = CP.execSync || ${throwFn("child_process.execSync")};
+    export var execFile = CP.exec || ${throwFn("child_process.execFile")};
+    export var execFileSync = CP.execFileSync || ${throwFn("child_process.execFileSync")};
+    export var spawnSync = CP.spawnSync || ${throwFn("child_process.spawnSync")};
+    export default { exec, spawn, execSync, execFile, execFileSync, spawnSync };
   `,
   "http": `
     export var createServer = ${throwFn("http.createServer")};
