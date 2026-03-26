@@ -97,9 +97,18 @@ declare module "ai" {
   type FinishReason = "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
 
   export interface Usage {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
+    /** Input (prompt) tokens. AI SDK v5 name. */
+    inputTokens?: number;
+    /** Output (completion) tokens. AI SDK v5 name. */
+    outputTokens?: number;
+    /** Total tokens used. */
+    totalTokens?: number;
+    /** @deprecated Use inputTokens. Mastra-mapped alias. */
+    promptTokens?: number;
+    /** @deprecated Use outputTokens. Mastra-mapped alias. */
+    completionTokens?: number;
+    /** Reasoning tokens (for models that support reasoning). */
+    reasoningTokens?: number;
   }
 
   export interface ResponseMeta {
@@ -203,43 +212,53 @@ declare module "ai" {
     toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
     /** Limit which tools are active per step. */
     activeTools?: string[];
-    /** Max steps for multi-step generation. */
-    maxSteps?: number;
+    /** Stop condition. @default stepCountIs(1) (single step). Use maxSteps-like behavior via stopWhen. */
+    stopWhen?: any;
     /** Provider-specific options. */
     providerOptions?: ProviderOptions;
     /** Structured output specification. */
-    output?: ZodType | { type: "object" | "array" | "enum" | "no-schema" };
+    output?: ZodType | any;
+    /** Optional function to configure each step differently. */
+    prepareStep?: (ctx: { model: LanguageModel; steps: StepResult[]; stepNumber: number }) => any;
     /** Callback: each step finishes. */
     onStepFinish?: (event: StepResult) => void | Promise<void>;
     /** Callback: all steps done. */
     onFinish?: (event: GenerateTextResult) => void | Promise<void>;
+    /** @deprecated Use stopWhen. */
+    maxSteps?: number;
   }
 
   export interface GenerateTextResult {
     /** Generated text from the last step. */
-    text: string;
-    /** Reasoning text (if extractReasoningMiddleware used). */
-    reasoningText?: string;
+    readonly text: string;
+    /** Reasoning output (structured). */
+    readonly reasoning: Array<{ type: string; text?: string }>;
+    /** Concatenated reasoning text. */
+    readonly reasoningText: string | undefined;
     /** Tool calls made in the last step. */
-    toolCalls: ToolCall[];
+    readonly toolCalls: ToolCall[];
     /** Tool results from the last step. */
-    toolResults: ToolResult[];
+    readonly toolResults: ToolResult[];
     /** Why generation stopped. */
-    finishReason: FinishReason;
-    /** Token usage. */
-    usage: Usage;
+    readonly finishReason: FinishReason;
+    /** Token usage of the last step. */
+    readonly usage: Usage;
+    /** Total token usage across all steps. */
+    readonly totalUsage: Usage;
     /** All steps in multi-step generation. */
-    steps: StepResult[];
+    readonly steps: StepResult[];
     /** Response metadata. */
-    response: ResponseMeta;
-    /** Generated files (images, etc). */
-    files: GeneratedFile[];
+    readonly response: ResponseMeta & { messages: any[]; body?: unknown };
+    /** Generated files (images, audio, etc). */
+    readonly files: GeneratedFile[];
     /** Source attributions. */
-    sources: Source[];
+    readonly sources: Source[];
     /** Warnings from the provider. */
-    warnings: Warning[];
+    readonly warnings: Warning[] | undefined;
     /** Provider-specific metadata. */
-    providerMetadata?: ProviderMetadata;
+    readonly providerMetadata?: ProviderMetadata;
+    /** Structured output (when output specification used). */
+    readonly output: unknown;
   }
 
   export function generateText(params: GenerateTextParams): Promise<GenerateTextResult>;
