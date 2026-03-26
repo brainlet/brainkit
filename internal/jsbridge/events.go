@@ -16,15 +16,25 @@ func (p *EventsPolyfill) Setup(ctx *quickjs.Context) error {
 
 const eventsJS = `
 globalThis.EventEmitter = class EventEmitter {
-  constructor() { this._e = {}; }
+  constructor() { this._e = {}; this._maxListeners = 0; }
   on(ev, fn) {
     (this._e[ev] = this._e[ev] || []).push(fn);
+    return this;
+  }
+  addListener(ev, fn) { return this.on(ev, fn); }
+  prependListener(ev, fn) {
+    (this._e[ev] = this._e[ev] || []).unshift(fn);
     return this;
   }
   once(ev, fn) {
     const w = (...a) => { this.removeListener(ev, w); fn.apply(this, a); };
     w._orig = fn;
     return this.on(ev, w);
+  }
+  prependOnceListener(ev, fn) {
+    const w = (...a) => { this.removeListener(ev, w); fn.apply(this, a); };
+    w._orig = fn;
+    return this.prependListener(ev, w);
   }
   emit(ev, ...a) {
     const ls = this._e[ev];
@@ -38,11 +48,16 @@ globalThis.EventEmitter = class EventEmitter {
     this._e[ev] = ls.filter(l => l !== fn && l._orig !== fn);
     return this;
   }
+  off(ev, fn) { return this.removeListener(ev, fn); }
   removeAllListeners(ev) {
     if (ev) delete this._e[ev]; else this._e = {};
     return this;
   }
+  setMaxListeners(n) { this._maxListeners = n; return this; }
+  getMaxListeners() { return this._maxListeners || 10; }
   listenerCount(ev) { return (this._e[ev] || []).length; }
   listeners(ev) { return (this._e[ev] || []).slice(); }
+  rawListeners(ev) { return (this._e[ev] || []).slice(); }
+  eventNames() { return Object.keys(this._e).filter(k => this._e[k] && this._e[k].length > 0); }
 };
 `

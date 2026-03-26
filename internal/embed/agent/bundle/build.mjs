@@ -217,7 +217,7 @@ const moduleStubs = {
     export var promisify = function(fn) { return function() { var args = Array.prototype.slice.call(arguments); return new Promise(function(resolve, reject) { args.push(function(err, result) { if (err) reject(err); else resolve(result); }); fn.apply(null, args); }); }; };
     export var inherits = function(ctor, superCtor) { ctor.prototype = Object.create(superCtor.prototype); ctor.prototype.constructor = ctor; };
     export var deprecate = function(fn) { return fn; };
-    export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; } };
+    export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; }, isDate: function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); }, isArrayBuffer: function(v) { return v instanceof ArrayBuffer; } };
     export var inspect = function(v) { return JSON.stringify(v); };
     export var format = function(fmt) { var args = Array.prototype.slice.call(arguments, 1); var i = 0; return String(fmt).replace(/%[sdj%]/g, function(m) { if (m === "%%") return "%"; if (i >= args.length) return m; return String(args[i++]); }); };
     export var TextEncoder = globalThis.TextEncoder;
@@ -227,7 +227,8 @@ const moduleStubs = {
   "util/types": `
     export var isUint8Array = function(v) { return v instanceof Uint8Array; };
     export var isArrayBuffer = function(v) { return v instanceof ArrayBuffer; };
-    export default { isUint8Array, isArrayBuffer };
+    export var isDate = function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); };
+    export default { isUint8Array, isArrayBuffer, isDate };
   `,
   "child_process": `
     export var exec = globalThis.child_process ? globalThis.child_process.exec : ${throwFn("child_process.exec")};
