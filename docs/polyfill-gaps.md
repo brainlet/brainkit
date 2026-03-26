@@ -50,33 +50,22 @@ Bundled libraries that depend on Node.js APIs:
 
 Will cause immediate runtime failures when the code path is hit.
 
-### 1. `crypto.getFips()`
-- **Used by:** MongoDB SCRAM auth (checks FIPS mode before using MD5)
-- **Location:** `node-mongodb-native/src/cmap/auth/mongo_credentials.ts:236`
-- **Current:** Missing — throws "not a function"
-- **Fix:** Add `getFips: function() { return 0; }` to `__node_crypto` in jsbridge/crypto.go
-- **Layer:** jsbridge + build.mjs crypto stub
+### 1. `crypto.getFips()` — DONE (2026-03-26)
+- **Fixed in:** jsbridge/crypto.go + build.mjs crypto stub
+- Returns 0 (not FIPS mode)
 
-### 2. `dns.lookup(host, callback)`
-- **Used by:** pg connection-parameters.js:163 — resolves hostname before TCP connect
-- **Current:** build.mjs dns stub throws
-- **Fix:** New jsbridge polyfill backed by Go `net.LookupHost()`. Return `{ address, family }`.
-- **Layer:** New jsbridge/dns.go + build.mjs dns stub update
-- **Note:** pg falls back to direct TCP connect if dns.lookup fails, so may not block basic use. But production configs with hostnames will fail.
+### 2. `dns.lookup(host, callback)` — DONE (2026-03-26)
+- **Fixed in:** New jsbridge/dns.go + build.mjs dns stub
+- Go `net.LookupHost()` backed, sync + async (Promises)
 
-### 3. `process.emitWarning(msg)`
-- **Used by:** MongoDB driver — deprecation warnings for old options
-- **Current:** Missing on process object
-- **Fix:** Add `if (!p.emitWarning) p.emitWarning = function() {};` in jsbridge/process.go
-- **Layer:** jsbridge/process.go
+### 3. `process.emitWarning(msg)` — DONE (2026-03-26)
+- **Fixed in:** jsbridge/process.go
+- No-op stub
 
-### 4. `zlib.inflate(buf, callback)` + `zlib.deflate(buf, options, callback)`
-- **Used by:** MongoDB wire protocol compression (snappy/zlib/zstd)
-- **Location:** `node-mongodb-native/src/cmap/wire_protocol/compression.ts:46-57`
-- **Current:** build.mjs zlib stub throws
-- **Fix:** New jsbridge polyfill backed by Go `compress/flate` or `compress/zlib`
-- **Layer:** New jsbridge/zlib.go + build.mjs zlib stub update
-- **Note:** Only needed if MongoDB server has compression enabled. Default: no compression.
+### 4. `zlib.inflate/deflate` — DONE (2026-03-26)
+- **Fixed in:** New jsbridge/zlib.go + build.mjs zlib stub
+- Go `compress/zlib`, `compress/flate`, `compress/gzip` backed
+- Sync + async callback + Transform stream variants
 
 ---
 
@@ -84,17 +73,11 @@ Will cause immediate runtime failures when the code path is hit.
 
 Will cause failures in specific code paths (auth methods, discovery, logging).
 
-### 5. `dns.promises.lookup/resolveSrv/resolveCname/resolvePtr`
-- **Used by:** MongoDB SRV discovery (`mongodb+srv://` URLs), GSSAPI/Kerberos auth
-- **Current:** build.mjs dns stub throws
-- **Fix:** Same jsbridge/dns.go as #2, add Promise-based wrappers
-- **Layer:** jsbridge/dns.go + build.mjs dns stub
+### 5. `dns.promises.lookup/resolveSrv/resolveCname/resolvePtr` — DONE (2026-03-26)
+- **Fixed in:** jsbridge/dns.go — promises.lookup is Go-backed, SRV/CNAME/PTR return empty (stubs)
 
-### 6. `util.inspect(obj, options)` — options parameter
-- **Used by:** MongoDB logger (`mongo_logger.ts`) with `{ compact: true, breakLength: Infinity }`
-- **Current:** build.mjs has `function(v) { return JSON.stringify(v); }` — ignores options
-- **Fix:** Accept second parameter, still use JSON.stringify but handle edge cases (circular refs, depth)
-- **Layer:** build.mjs util stub
+### 6. `util.inspect(obj, options)` — DONE (2026-03-26)
+- **Fixed in:** build.mjs util stub — accepts opts param, handles compact flag
 
 ### 7. `os.release()` — real value
 - **Used by:** MongoDB client metadata (`os.release()` in handshake)

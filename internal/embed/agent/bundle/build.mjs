@@ -96,7 +96,27 @@ const moduleStubs = {
   `,
   "tls": `
     export var createServer = ${throwFn("tls.createServer")};
-    export var connect = ${throwFn("tls.connect")};
+    export var connect = function(options) {
+      // pg SSL upgrade: tls.connect({ socket: existingSocket, servername: host })
+      // Upgrades existing TCP connection to TLS via Go crypto/tls
+      if (options && options.socket && options.socket._gs && options.socket._gs._id) {
+        var servername = options.servername || options.host || "";
+        var ok = __go_net_tls_upgrade(options.socket._gs._id, servername);
+        if (!ok) throw new Error("tls.connect: TLS upgrade failed");
+        // Return the same socket — its underlying Go conn is now TLS
+        options.socket.emit("secureConnect");
+        return options.socket;
+      }
+      // Raw GoSocket (not wrapped in Duplex Socket)
+      if (options && options.socket && options.socket._id) {
+        var servername = options.servername || options.host || "";
+        var ok = __go_net_tls_upgrade(options.socket._id, servername);
+        if (!ok) throw new Error("tls.connect: TLS upgrade failed");
+        options.socket._emit && options.socket._emit("secureConnect");
+        return options.socket;
+      }
+      throw new Error("tls.connect: requires options.socket (TLS upgrade of existing connection)");
+    };
     export var TLSSocket = class TLSSocket {};
     export var DEFAULT_ECDH_CURVE = "auto";
     export var DEFAULT_MIN_VERSION = "TLSv1.2";

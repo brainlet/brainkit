@@ -24,9 +24,10 @@ type NetPolyfill struct {
 }
 
 type goConn struct {
-	id   int64
-	conn net.Conn
-	done chan struct{}
+	id       int64
+	conn     net.Conn
+	done     chan struct{}
+	upgraded chan struct{} // closed when TLS upgrade completes; read loop restarts
 }
 
 // Net creates a net polyfill.
@@ -196,6 +197,95 @@ func (p *NetPolyfill) Setup(ctx *quickjs.Context) error {
 			close(gc.done)
 		}
 		return qctx.NewUndefined()
+	}))
+
+	// __go_net_tls_upgrade(connID, servername) → bool
+	// Upgrades an existing TCP connection to TLS. Used by pg SSL upgrade.
+	// Stops the read loop, wraps conn in crypto/tls.Client, restarts read loop.
+	ctx.Globals().Set("__go_net_tls_upgrade", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+		if len(args) < 2 {
+			return qctx.NewBool(false)
+		}
+		id := args[0].ToInt64()
+		servername := args[1].String()
+
+		polyfill.mu.Lock()
+		gc, ok := polyfill.conns[id]
+		polyfill.mu.Unlock()
+		if !ok {
+			return qctx.NewBool(false)
+		}
+
+		// 1. Stop the current read loop
+		close(gc.done)
+
+		// 2. Wrap the raw TCP connection in TLS
+		tlsConn := tls.Client(gc.conn, &tls.Config{
+			ServerName:         servername,
+			InsecureSkipVerify: true, // Containers use self-signed certs
+		})
+
+		// 3. Perform TLS handshake (blocks until complete)
+		if err := tlsConn.Handshake(); err != nil {
+			// Handshake failed — close and signal error
+			qctx.Schedule(func(qctx *quickjs.Context) {
+				qctx.Eval(fmt.Sprintf(
+					`globalThis.__net_sockets[%d]?._onError(%q)`,
+					id, err.Error(),
+				))
+			})
+			return qctx.NewBool(false)
+		}
+
+		// 4. Create new goConn with TLS connection, start new read loop
+		newGC := &goConn{id: id, conn: tlsConn, done: make(chan struct{})}
+		polyfill.mu.Lock()
+		polyfill.conns[id] = newGC
+		polyfill.mu.Unlock()
+
+		polyfill.bridge.Go(func(goCtx context.Context) {
+			buf := make([]byte, 16384)
+			for {
+				tlsConn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+				n, readErr := tlsConn.Read(buf)
+
+				if goCtx.Err() != nil {
+					return
+				}
+				select {
+				case <-newGC.done:
+					return
+				default:
+				}
+
+				if netErr, ok := readErr.(net.Error); ok && netErr.Timeout() {
+					continue
+				}
+
+				if n > 0 {
+					// For TLS connections, don't try to split by wire protocol
+					// length — TLS handles framing. Just forward the decrypted data.
+					msg := make([]byte, n)
+					copy(msg, buf[:n])
+					data := base64.StdEncoding.EncodeToString(msg)
+					qctx.Schedule(func(qctx *quickjs.Context) {
+						qctx.Eval(fmt.Sprintf(
+							`globalThis.__net_sockets[%d]?._onData("%s")`,
+							id, data,
+						))
+					})
+				}
+
+				if readErr != nil {
+					qctx.Schedule(func(qctx *quickjs.Context) {
+						qctx.Eval(fmt.Sprintf(`globalThis.__net_sockets[%d]?._onClose()`, id))
+					})
+					return
+				}
+			}
+		})
+
+		return qctx.NewBool(true)
 	}))
 
 	// JS-side net.Socket implementation
