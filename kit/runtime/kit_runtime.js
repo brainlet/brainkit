@@ -644,11 +644,18 @@
         if (_realRandom) wrapper.random = _realRandom;
         return wrapper;
       })(),
-      // Node.js compat — Buffer, EventEmitter, GoSocket, process
+      // Node.js compat — polyfill namespaces for .ts code in Compartments
       GoSocket: globalThis.GoSocket,
       process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
+      __node_stream: globalThis.__node_stream,
+      __node_crypto: globalThis.__node_crypto,
+      __node_net: globalThis.__node_net,
+      __node_os: globalThis.__node_os,
+      __node_dns: globalThis.__node_dns,
+      __node_zlib: globalThis.__node_zlib,
+      child_process: globalThis.child_process,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
   };
