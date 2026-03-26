@@ -218,7 +218,7 @@ const moduleStubs = {
     export var promisify = function(fn) { return function() { var args = Array.prototype.slice.call(arguments); return new Promise(function(resolve, reject) { args.push(function(err, result) { if (err) reject(err); else resolve(result); }); fn.apply(null, args); }); }; };
     export var inherits = function(ctor, superCtor) { ctor.prototype = Object.create(superCtor.prototype); ctor.prototype.constructor = ctor; };
     export var deprecate = function(fn) { return fn; };
-    export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; }, isDate: function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); }, isArrayBuffer: function(v) { return v instanceof ArrayBuffer; } };
+    export var types = { isUint8Array: function(v) { return v instanceof Uint8Array; }, isDate: function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); }, isArrayBuffer: function(v) { return v instanceof ArrayBuffer; }, isRegExp: function(v) { return v instanceof RegExp; }, isMap: function(v) { return v instanceof Map; }, isSet: function(v) { return v instanceof Set; }, isTypedArray: function(v) { return ArrayBuffer.isView(v) && !(v instanceof DataView); } };
     export var inspect = function(v, opts) { try { return JSON.stringify(v, null, opts && opts.compact === false ? 2 : undefined) || String(v); } catch(e) { return String(v); } };
     export var format = function(fmt) { var args = Array.prototype.slice.call(arguments, 1); var i = 0; return String(fmt).replace(/%[sdj%]/g, function(m) { if (m === "%%") return "%"; if (i >= args.length) return m; return String(args[i++]); }); };
     export var TextEncoder = globalThis.TextEncoder;
@@ -229,7 +229,11 @@ const moduleStubs = {
     export var isUint8Array = function(v) { return v instanceof Uint8Array; };
     export var isArrayBuffer = function(v) { return v instanceof ArrayBuffer; };
     export var isDate = function(v) { return v instanceof Date || (v !== null && typeof v === "object" && typeof v.getTime === "function" && typeof v.toISOString === "function"); };
-    export default { isUint8Array, isArrayBuffer, isDate };
+    export var isRegExp = function(v) { return v instanceof RegExp; };
+    export var isMap = function(v) { return v instanceof Map; };
+    export var isSet = function(v) { return v instanceof Set; };
+    export var isTypedArray = function(v) { return ArrayBuffer.isView(v) && !(v instanceof DataView); };
+    export default { isUint8Array, isArrayBuffer, isDate, isRegExp, isMap, isSet, isTypedArray };
   `,
   "child_process": `
     export var exec = globalThis.child_process ? globalThis.child_process.exec : ${throwFn("child_process.exec")};
@@ -357,23 +361,29 @@ const moduleStubs = {
     export default { isMainThread, parentPort, workerData, threadId, Worker, MessageChannel, MessagePort };
   `,
   "zlib": `
-    export var createGzip = ${throwFn("createGzip")};
-    export var createGunzip = ${throwFn("createGunzip")};
-    export var createDeflate = ${throwFn("createDeflate")};
-    export var createInflate = ${throwFn("createInflate")};
-    export var gzip = ${throwFn("gzip")};
-    export var gunzip = ${throwFn("gunzip")};
-    export var deflate = ${throwFn("deflate")};
-    export var inflate = ${throwFn("inflate")};
-    export var gzipSync = ${throwFn("gzipSync")};
-    export var gunzipSync = ${throwFn("gunzipSync")};
-    export var deflateSync = ${throwFn("deflateSync")};
-    export var inflateSync = ${throwFn("inflateSync")};
+    var Z = globalThis.__node_zlib || {};
+    export var createGzip = Z.createGzip || ${throwFn("createGzip")};
+    export var createGunzip = Z.createGunzip || ${throwFn("createGunzip")};
+    export var createDeflate = Z.createDeflate || ${throwFn("createDeflate")};
+    export var createInflate = Z.createInflate || ${throwFn("createInflate")};
+    export var gzip = Z.gzip || ${throwFn("gzip")};
+    export var gunzip = Z.gunzip || ${throwFn("gunzip")};
+    export var deflate = Z.deflate || ${throwFn("deflate")};
+    export var inflate = Z.inflate || ${throwFn("inflate")};
+    export var gzipSync = Z.gzipSync || ${throwFn("gzipSync")};
+    export var gunzipSync = Z.gunzipSync || ${throwFn("gunzipSync")};
+    export var deflateSync = Z.deflateSync || ${throwFn("deflateSync")};
+    export var inflateSync = Z.inflateSync || ${throwFn("inflateSync")};
+    export var inflateRaw = Z.inflateRaw || ${throwFn("inflateRaw")};
+    export var deflateRaw = Z.deflateRaw || ${throwFn("deflateRaw")};
+    export var inflateRawSync = Z.inflateRawSync || ${throwFn("inflateRawSync")};
+    export var deflateRawSync = Z.deflateRawSync || ${throwFn("deflateRawSync")};
     export var brotliCompressSync = ${throwFn("brotliCompressSync")};
     export var brotliDecompressSync = ${throwFn("brotliDecompressSync")};
-    export var constants = {};
+    export var constants = Z.constants || {};
     export default { createGzip, createGunzip, createDeflate, createInflate, gzip, gunzip, deflate, inflate,
-      gzipSync, gunzipSync, deflateSync, inflateSync, brotliCompressSync, brotliDecompressSync, constants };
+      gzipSync, gunzipSync, deflateSync, inflateSync, inflateRaw, deflateRaw, inflateRawSync, deflateRawSync,
+      brotliCompressSync, brotliDecompressSync, constants };
   `,
 };
 

@@ -84,6 +84,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.OS(),             // os.platform, arch, tmpdir, homedir
 		jsbridge.Net(),            // Socket extends Duplex — must be after NodeStreams + Buffer
 		jsbridge.DNS(),            // dns.lookup, dns.promises — must be after Net
+		jsbridge.Zlib(),           // zlib.inflate/deflate, gzip — must be after Buffer
 		jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
 		jsbridge.FS(),             // fs.readFile, writeFile, etc.
 		jsbridge.Exec(),           // child_process.exec, spawn
