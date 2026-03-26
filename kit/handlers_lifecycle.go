@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	typescript "github.com/brainlet/brainkit/vendor_typescript"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
+	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )
 
 // LifecycleDomain handles Deploy/Teardown/Redeploy/List operations.
@@ -113,7 +114,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInf
 	if k.deployments != nil {
 		if _, exists := k.deployments[source]; exists {
 			k.mu.Unlock()
-			return nil, fmt.Errorf("%s is already deployed (use Redeploy)", source)
+			return nil, &sdk.AlreadyExistsError{Resource: "deployment", Name: source, Hint: "use Redeploy"}
 		}
 	}
 	k.mu.Unlock()

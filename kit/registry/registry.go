@@ -1,9 +1,10 @@
 package registry
 
 import (
-	"fmt"
 	"sync"
 	"time"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // AIProviderRegistration wraps a typed config for registration.
@@ -111,7 +112,7 @@ func New(cfg ProbeConfig) *ProviderRegistry {
 
 func (r *ProviderRegistry) RegisterAIProvider(name string, reg AIProviderRegistration) error {
 	if name == "" {
-		return fmt.Errorf("registry: provider name is required")
+		return &sdk.ValidationError{Field: "name", Message: "provider name is required"}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -168,7 +169,7 @@ func (r *ProviderRegistry) HasAIProvider(name string) bool {
 
 func (r *ProviderRegistry) RegisterVectorStore(name string, reg VectorStoreRegistration) error {
 	if name == "" {
-		return fmt.Errorf("registry: vector store name is required")
+		return &sdk.ValidationError{Field: "name", Message: "vector store name is required"}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -225,7 +226,7 @@ func (r *ProviderRegistry) HasVectorStore(name string) bool {
 
 func (r *ProviderRegistry) RegisterStorage(name string, reg StorageRegistration) error {
 	if name == "" {
-		return fmt.Errorf("registry: storage name is required")
+		return &sdk.ValidationError{Field: "name", Message: "storage name is required"}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

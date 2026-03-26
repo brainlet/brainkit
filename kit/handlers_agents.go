@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -63,7 +64,7 @@ func newAgentsDomain(k *Kernel) *AgentsDomain {
 // Register adds an agent to the registry.
 func (d *AgentsDomain) Register(_ context.Context, info AgentInfo) error {
 	if info.Name == "" {
-		return fmt.Errorf("agents.register: name is required")
+		return &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
 	if info.Status == "" {
 		info.Status = "idle"
@@ -77,7 +78,7 @@ func (d *AgentsDomain) Register(_ context.Context, info AgentInfo) error {
 // Unregister removes an agent from the registry.
 func (d *AgentsDomain) Unregister(_ context.Context, name string) error {
 	if name == "" {
-		return fmt.Errorf("agents.unregister: name is required")
+		return &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
 	d.mu.Lock()
 	_, ok := d.reg[name]
@@ -86,7 +87,7 @@ func (d *AgentsDomain) Unregister(_ context.Context, name string) error {
 	}
 	d.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("agents.unregister: agent %q not found", name)
+		return &sdk.NotFoundError{Resource: "agent", Name: name}
 	}
 	return nil
 }
@@ -128,13 +129,13 @@ func (d *AgentsDomain) Discover(_ context.Context, req messages.AgentDiscoverMsg
 // GetStatus returns the status of a named agent.
 func (d *AgentsDomain) GetStatus(_ context.Context, req messages.AgentGetStatusMsg) (*messages.AgentGetStatusResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("agents.get-status: name is required")
+		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
 	d.mu.RLock()
 	info, ok := d.reg[req.Name]
 	d.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("agents.get-status: agent %q not found", req.Name)
+		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
 	return &messages.AgentGetStatusResp{Name: info.Name, Status: info.Status}, nil
 }
@@ -142,15 +143,15 @@ func (d *AgentsDomain) GetStatus(_ context.Context, req messages.AgentGetStatusM
 // SetStatus updates the status of a named agent.
 func (d *AgentsDomain) SetStatus(_ context.Context, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("agents.set-status: name is required")
+		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
 	if req.Status == "" {
-		return nil, fmt.Errorf("agents.set-status: status is required")
+		return nil, &sdk.ValidationError{Field: "status", Message: "is required"}
 	}
 	switch req.Status {
 	case "idle", "busy", "error":
 	default:
-		return nil, fmt.Errorf("agents.set-status: invalid status %q (must be idle|busy|error)", req.Status)
+		return nil, &sdk.ValidationError{Field: "status", Message: fmt.Sprintf("invalid value %q (must be idle|busy|error)", req.Status)}
 	}
 	d.mu.Lock()
 	info, ok := d.reg[req.Name]
@@ -159,7 +160,7 @@ func (d *AgentsDomain) SetStatus(_ context.Context, req messages.AgentSetStatusM
 	}
 	d.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("agents.set-status: agent %q not found", req.Name)
+		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
 	return &messages.AgentSetStatusResp{OK: true}, nil
 }

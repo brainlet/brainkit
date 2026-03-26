@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 const (
@@ -62,7 +64,7 @@ func (d *Multicast) Resolve(name string) (string, error) {
 	defer d.mu.RUnlock()
 	peer, ok := d.peers[name]
 	if !ok {
-		return "", fmt.Errorf("multicast: peer %q not found", name)
+		return "", &sdk.NotFoundError{Resource: "peer", Name: name}
 	}
 	return peer.Address, nil
 }

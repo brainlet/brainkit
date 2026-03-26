@@ -3,7 +3,6 @@ package kit
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -21,7 +20,7 @@ func newMCPDomain(k *Kernel, mgr *mcppkg.MCPManager) *MCPDomain {
 
 func (d *MCPDomain) ListTools(_ context.Context, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
 	if d.mgr == nil {
-		return nil, fmt.Errorf("mcp: no MCP servers configured")
+		return nil, ErrMCPNotConfigured
 	}
 	tools := d.mgr.ListTools()
 	var infos []messages.McpToolInfo
@@ -37,7 +36,7 @@ func (d *MCPDomain) ListTools(_ context.Context, req messages.McpListToolsMsg) (
 
 func (d *MCPDomain) CallTool(ctx context.Context, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
 	if d.mgr == nil {
-		return nil, fmt.Errorf("mcp: no MCP servers configured")
+		return nil, ErrMCPNotConfigured
 	}
 	argsJSON, _ := json.Marshal(req.Args)
 	result, err := d.mgr.CallTool(ctx, req.Server, req.Tool, argsJSON)

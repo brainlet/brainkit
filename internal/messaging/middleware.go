@@ -19,7 +19,7 @@ func DepthMiddleware(h message.HandlerFunc) message.HandlerFunc {
 		if depthStr != "" {
 			depth, _ := strconv.Atoi(depthStr)
 			if depth >= MaxDepth {
-				return nil, fmt.Errorf("messaging: cycle detected (depth %d >= max %d)", depth, MaxDepth)
+				return nil, fmt.Errorf("%w (depth %d >= max %d)", ErrCycleDetected, depth, MaxDepth)
 			}
 		}
 		return h(msg)

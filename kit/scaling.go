@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // PoolConfig configures a Kit pool.
@@ -45,7 +46,7 @@ func (im *InstanceManager) SpawnPool(name string, cfg PoolConfig) error {
 	defer im.mu.Unlock()
 
 	if _, exists := im.pools[name]; exists {
-		return fmt.Errorf("scaling: pool %q already exists", name)
+		return &sdk.AlreadyExistsError{Resource: "pool", Name: name}
 	}
 
 	count := cfg.InitialCount
@@ -84,7 +85,7 @@ func (im *InstanceManager) Scale(name string, delta int) error {
 	im.mu.Unlock()
 
 	if !ok {
-		return fmt.Errorf("scaling: pool %q not found", name)
+		return &sdk.NotFoundError{Resource: "pool", Name: name}
 	}
 
 	p.mu.Lock()
@@ -122,7 +123,7 @@ func (im *InstanceManager) KillPool(name string) error {
 	p, ok := im.pools[name]
 	if !ok {
 		im.mu.Unlock()
-		return fmt.Errorf("scaling: pool %q not found", name)
+		return &sdk.NotFoundError{Resource: "pool", Name: name}
 	}
 	delete(im.pools, name)
 	im.mu.Unlock()
@@ -146,7 +147,7 @@ func (im *InstanceManager) PoolInfo(name string) (PoolInfo, error) {
 	im.mu.Unlock()
 
 	if !ok {
-		return PoolInfo{}, fmt.Errorf("scaling: pool %q not found", name)
+		return PoolInfo{}, &sdk.NotFoundError{Resource: "pool", Name: name}
 	}
 
 	p.mu.Lock()

@@ -434,6 +434,10 @@
   //   });
   //
   // The approver subscribes to the topic and calls msg.reply({ approved: true/false }).
+  //
+  // Bus lifecycle (publish, subscribe, wait, timeout, cleanup) is handled entirely
+  // by the Go bridge (__go_brainkit_await_approval). JS only handles agent.generate
+  // and agent.approve/decline — which must stay JS because the Agent lives in QuickJS.
   async function generateWithApproval(agent, promptOrMessages, options) {
     if (!options || !options.approvalTopic) {
       throw new Error("generateWithApproval: approvalTopic is required");
@@ -451,53 +455,40 @@
     }
     agentOptions.requireToolApproval = true;
 
-    // Phase 1: generate — may suspend
+    // Phase 1: agent.generate — may suspend on tool call needing approval
     var result = await agent.generate(promptOrMessages, agentOptions);
 
     if (result.finishReason !== "suspended" || !result.runId) {
       return result; // Not suspended — tool wasn't called or no approval needed
     }
 
-    // Phase 2: publish approval request to the bus
-    var pub = bus.publish(approvalTopic, {
+    // Phase 2: Go bridge handles the full bus lifecycle
+    // Publishes approval request to approvalTopic with replyTo.
+    // Subscribes to replyTo. Waits with context.WithTimeout.
+    // Returns response JSON. On timeout returns {"approved":false,"reason":"timeout"}.
+    // No JS closures, no setTimeout, no GC risk during wait.
+    var approvalPayload = JSON.stringify({
       runId: result.runId,
       toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
       toolName: result.suspendPayload && result.suspendPayload.toolName,
       args: result.suspendPayload && result.suspendPayload.args,
     });
 
-    // Phase 3: wait for approval response via bus
-    return new Promise(function(resolve, reject) {
-      var done = false;
+    var responseJSON = await __go_brainkit_await_approval(approvalTopic, approvalPayload, timeout);
+    var response = JSON.parse(responseJSON);
 
-      var timeoutId = setTimeout(function() {
-        if (done) return;
-        done = true;
-        bus.unsubscribe(subId);
-        // Auto-decline on timeout
-        agent.declineToolCallGenerate({
-          runId: result.runId,
-          toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
-        }).then(resolve, reject);
-      }, timeout);
+    // Phase 3: resume agent based on approval decision (must stay JS — Agent lives in QuickJS)
+    var approved = response.approved !== false;
+    var resumeOpts = {
+      runId: result.runId,
+      toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
+    };
 
-      var subId = bus.subscribe(pub.replyTo, function(msg) {
-        if (done) return;
-        done = true;
-        clearTimeout(timeoutId);
-        bus.unsubscribe(subId);
-
-        var approved = msg.payload && msg.payload.approved !== false;
-        var resumeFn = approved
-          ? agent.approveToolCallGenerate.bind(agent)
-          : agent.declineToolCallGenerate.bind(agent);
-
-        resumeFn({
-          runId: result.runId,
-          toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
-        }).then(resolve, reject);
-      });
-    });
+    if (approved) {
+      return await agent.approveToolCallGenerate(resumeOpts);
+    } else {
+      return await agent.declineToolCallGenerate(resumeOpts);
+    }
   }
 
   // ─── Export to globalThis.__kit ───────────────────────────────

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	asembed "github.com/brainlet/brainkit/internal/embed/compiler"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/tetratelabs/wazero"
 )
 
@@ -313,7 +314,7 @@ func (s *WASMService) handleRun(ctx context.Context, payload json.RawMessage) (j
 	mod, ok := s.modules[moduleName]
 	s.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("wasm.run: module %q not found", moduleName)
+		return nil, &sdk.NotFoundError{Resource: "module", Name: moduleName}
 	}
 
 	// Execute with wazero + host functions
@@ -441,7 +442,7 @@ func (s *WASMService) handleRemove(ctx context.Context, payload json.RawMessage)
 	s.mu.Lock()
 	if _, deployed := s.shards[req.Name]; deployed {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("wasm.remove: cannot remove module %q: shard is deployed (undeploy first)", req.Name)
+		return nil, &sdk.AlreadyExistsError{Resource: "shard", Name: req.Name, Hint: "undeploy shard first before removing module"}
 	}
 	_, ok := s.modules[req.Name]
 	if ok {

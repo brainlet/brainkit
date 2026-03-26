@@ -3,6 +3,8 @@ package registry
 import (
 	"fmt"
 	"sync"
+
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 )
 
 // ToolRegistry manages all tools across the platform.
@@ -91,7 +93,7 @@ func (r *ToolRegistry) Resolve(name string) (*RegisteredTool, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("registry: tool %q not found", name)
+	return nil, &sdkerrors.NotFoundError{Resource: "tool", Name: name}
 }
 
 // resolveNewFormat handles "/" separated names through levels 2-4.
@@ -104,7 +106,7 @@ func (r *ToolRegistry) resolveNewFormat(name string) (*RegisteredTool, error) {
 		if t, ok := r.tools[candidate]; ok {
 			return t, nil
 		}
-		return nil, fmt.Errorf("registry: tool %q not found (tried brainlet/%s@%s/%s)", name, pkg, version, tool)
+		return nil, &sdkerrors.NotFoundError{Resource: "tool", Name: name}
 	}
 
 	// Level 3: No version -> find highest semver
@@ -112,7 +114,7 @@ func (r *ToolRegistry) resolveNewFormat(name string) (*RegisteredTool, error) {
 		if t := r.findHighestVersion(owner, pkg, tool); t != nil {
 			return t, nil
 		}
-		return nil, fmt.Errorf("registry: tool %q not found (no versions of %s/%s installed)", name, owner, pkg)
+		return nil, &sdkerrors.NotFoundError{Resource: "tool", Name: name}
 	}
 
 	// Level 4: Bare package/tool (no owner, no version)
@@ -123,10 +125,10 @@ func (r *ToolRegistry) resolveNewFormat(name string) (*RegisteredTool, error) {
 		if t := r.findHighestVersionAnyOwner(pkg, tool); t != nil {
 			return t, nil
 		}
-		return nil, fmt.Errorf("registry: tool %q not found", name)
+		return nil, &sdkerrors.NotFoundError{Resource: "tool", Name: name}
 	}
 
-	return nil, fmt.Errorf("registry: tool %q not found", name)
+	return nil, &sdkerrors.NotFoundError{Resource: "tool", Name: name}
 }
 
 func (r *ToolRegistry) findHighestVersion(owner, pkg, tool string) *RegisteredTool {

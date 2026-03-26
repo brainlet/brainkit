@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -125,7 +126,7 @@ func (s *shardStateStore) releaseState(state map[string]string) {
 
 func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
 	if desc.Mode != "stateless" && desc.Mode != "persistent" {
-		return fmt.Errorf("invalid shard mode: %q (must be \"stateless\" or \"persistent\")", desc.Mode)
+		return &sdk.ValidationError{Field: "mode", Message: fmt.Sprintf("invalid value %q (must be stateless or persistent)", desc.Mode)}
 	}
 	exportSet := make(map[string]bool, len(exports))
 	for _, e := range exports {
@@ -133,7 +134,7 @@ func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
 	}
 	for topic, funcName := range desc.Handlers {
 		if !exportSet[funcName] {
-			return fmt.Errorf("handler %q for topic %q not found in module exports", funcName, topic)
+			return &sdk.ValidationError{Field: "handlers", Message: fmt.Sprintf("handler %q for topic %q not found in module exports", funcName, topic)}
 		}
 	}
 	return nil
@@ -152,7 +153,7 @@ func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic s
 	shard, ok := s.shards[shardName]
 	if !ok {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("shard %q not deployed", shardName)
+		return nil, &sdk.NotFoundError{Resource: "shard", Name: shardName}
 	}
 	// Find handler function for this topic
 	funcName := ""
@@ -263,11 +264,11 @@ func (s *WASMService) handleDeploy(ctx context.Context, payload json.RawMessage)
 	mod, ok := s.modules[req.Name]
 	if !ok {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("wasm.deploy: module %q not found (compile first)", req.Name)
+		return nil, &sdk.NotFoundError{Resource: "module", Name: req.Name}
 	}
 	if _, deployed := s.shards[req.Name]; deployed {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("wasm.deploy: shard %q already deployed (undeploy first)", req.Name)
+		return nil, &sdk.AlreadyExistsError{Resource: "shard", Name: req.Name, Hint: "undeploy first"}
 	}
 	binary := mod.Binary
 	exports := mod.Exports
@@ -351,7 +352,7 @@ func (s *WASMService) handleUndeploy(ctx context.Context, payload json.RawMessag
 	shard, ok := s.shards[req.Name]
 	if !ok {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("wasm.undeploy: shard %q not deployed", req.Name)
+		return nil, &sdk.NotFoundError{Resource: "shard", Name: req.Name}
 	}
 	delete(s.shards, req.Name)
 	s.mu.Unlock()

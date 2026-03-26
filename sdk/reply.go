@@ -31,11 +31,11 @@ func SendChunk(rt Runtime, ctx context.Context, msg messages.Message, payload an
 func replyInternal(rt Runtime, ctx context.Context, msg messages.Message, payload any, done bool) error {
 	replier, ok := rt.(Replier)
 	if !ok {
-		return fmt.Errorf("sdk: runtime does not support Reply (does not implement Replier)")
+		return ErrNotReplier
 	}
 	replyTo := msg.Metadata["replyTo"]
 	if replyTo == "" {
-		return fmt.Errorf("sdk: message has no replyTo metadata")
+		return ErrNoReplyTo
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error) {
 	xrt, ok := rt.(CrossNamespaceRuntime)
 	if !ok {
-		return PublishResult{}, fmt.Errorf("runtime does not support cross-namespace operations")
+		return PublishResult{}, ErrNotCrossNamespace
 	}
 
 	cfg := publishConfig{}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -142,7 +143,7 @@ func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, 
 	m.mu.RUnlock()
 
 	if !ok {
-		return nil, fmt.Errorf("mcp: server %q not connected", serverName)
+		return nil, &sdk.NotFoundError{Resource: "mcp-server", Name: serverName}
 	}
 
 	var argsMap map[string]interface{}

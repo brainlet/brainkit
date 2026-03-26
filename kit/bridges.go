@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"time"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	quickjs "github.com/buke/quickjs-go"
@@ -444,6 +446,81 @@ func (k *Kernel) registerBridges() {
 			}
 			b, _ := json.Marshal(result)
 			return qctx.NewString(string(b))
+		}))
+
+	// __go_brainkit_await_approval(approvalTopic, payloadJSON, timeoutMs) → Promise<responseJSON>
+	// Publishes an approval request to approvalTopic with auto-generated replyTo.
+	// Subscribes to replyTo and waits for a response with context.WithTimeout.
+	// Returns the response payload JSON. On timeout, returns {"approved":false,"reason":"timeout"}.
+	// All bus lifecycle (publish, subscribe, wait, cleanup) happens in Go — no JS closures,
+	// no setTimeout, no GC risk during the wait.
+	qctx.Globals().Set("__go_brainkit_await_approval",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 3 {
+				return qctx.ThrowError(fmt.Errorf("await_approval: expected 3 args (approvalTopic, payload, timeoutMs)"))
+			}
+			approvalTopic := args[0].String()
+			payload := json.RawMessage(args[1].String())
+			timeoutMs := args[2].ToInt64()
+			if timeoutMs <= 0 {
+				timeoutMs = 30000
+			}
+
+			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+				k.bridge.Go(func(goCtx context.Context) {
+					timeout := time.Duration(timeoutMs) * time.Millisecond
+					waitCtx, waitCancel := context.WithTimeout(goCtx, timeout)
+					defer waitCancel()
+
+					// Generate replyTo
+					correlationID := uuid.NewString()
+					replyTo := approvalTopic + ".reply." + correlationID
+
+					// Subscribe BEFORE publishing (avoid race)
+					replyCh := make(chan messages.Message, 1)
+					unsub, subErr := k.remote.SubscribeRaw(waitCtx, replyTo, func(msg messages.Message) {
+						select {
+						case replyCh <- msg:
+						default:
+						}
+					})
+					if subErr != nil {
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							errVal := qctx.NewError(fmt.Errorf("await_approval: subscribe: %w", subErr))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+					defer unsub()
+
+					// Publish approval request with replyTo
+					pubCtx := messaging.WithPublishMeta(waitCtx, correlationID, replyTo)
+					if _, pubErr := k.remote.PublishRaw(pubCtx, approvalTopic, payload); pubErr != nil {
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							errVal := qctx.NewError(fmt.Errorf("await_approval: publish: %w", pubErr))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+
+					// Wait for response or timeout
+					select {
+					case msg := <-replyCh:
+						responseJSON := string(msg.Payload)
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							resolve(qctx.NewString(responseJSON))
+						})
+					case <-waitCtx.Done():
+						// Timeout — return timeout indicator so JS can auto-decline
+						timeoutJSON := `{"approved":false,"reason":"timeout"}`
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							resolve(qctx.NewString(timeoutJSON))
+						})
+					}
+				})
+			})
 		}))
 
 	// Set context globals

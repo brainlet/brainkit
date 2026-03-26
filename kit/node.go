@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 )
@@ -92,7 +93,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	case <-kernel.router.Running():
 		// All handlers subscribed
 	case <-time.After(2 * time.Minute):
-		return nil, fmt.Errorf("brainkit: router start timeout (NATS JetStream provisioning may be slow)")
+		return nil, &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}
 	}
 
 	return node, nil
@@ -115,7 +116,7 @@ func (n *Node) Start(ctx context.Context) error {
 
 	if n.plugins != nil {
 		if n.config.Messaging.Transport == "" || n.config.Messaging.Transport == "memory" {
-			return fmt.Errorf("brainkit: plugins require nats transport")
+			return &sdk.ValidationError{Field: "transport", Message: "plugins require nats transport"}
 		}
 		n.plugins.startAll(n.config.Plugins)
 	}

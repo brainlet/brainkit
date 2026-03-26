@@ -11,6 +11,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // pluginManager manages plugin subprocesses for a Node.
@@ -22,11 +24,15 @@ type pluginManager struct {
 
 // pluginConn tracks one connected plugin subprocess.
 type pluginConn struct {
-	config  PluginConfig
+	config   PluginConfig
 	identity string
-	cmd     *exec.Cmd
-	cancel  context.CancelFunc
-	done    chan struct{}
+	cmd      *exec.Cmd
+	cancel   context.CancelFunc
+	done     chan struct{} // closed when process exits AND no restart will happen
+
+	mu       sync.Mutex
+	restarts int  // number of times restarted after crash
+	stopping bool // true when stopPlugin was called — prevents auto-restart
 }
 
 func newPluginManager(node *Node) *pluginManager {
@@ -40,13 +46,15 @@ func (pm *pluginManager) startAll(configs []PluginConfig) {
 	for i := range configs {
 		cfg := configs[i]
 		pluginDefaults(&cfg)
-		if err := pm.startPlugin(cfg); err != nil {
+		if err := pm.startPlugin(cfg, 0); err != nil {
 			log.Printf("[plugin:%s] failed to start: %v", cfg.Name, err)
 		}
 	}
 }
 
-func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
+// startPlugin launches the plugin subprocess. restartCount tracks how many
+// times this plugin has been restarted (0 for initial start).
+func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
@@ -97,7 +105,7 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 	case <-time.After(cfg.StartTimeout):
 		cancel()
 		cmd.Process.Kill()
-		return fmt.Errorf("timeout waiting for READY line")
+		return &sdk.TimeoutError{Operation: "plugin READY"}
 	}
 
 	pc := &pluginConn{
@@ -106,20 +114,102 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig) error {
 		cmd:      cmd,
 		cancel:   cancel,
 		done:     make(chan struct{}),
+		restarts: restartCount,
 	}
-
-	// Watch for process exit
-	go func() {
-		cmd.Wait()
-		close(pc.done)
-	}()
 
 	pm.mu.Lock()
 	pm.plugins[cfg.Name] = pc
 	pm.mu.Unlock()
 
-	log.Printf("[plugin:%s] started (pid=%d)", cfg.Name, cmd.Process.Pid)
+	// Watch for process exit — log reason and auto-restart if configured
+	go pm.watchProcess(pc)
+
+	if restartCount > 0 {
+		log.Printf("[plugin:%s] restarted (pid=%d, restart #%d)", cfg.Name, cmd.Process.Pid, restartCount)
+	} else {
+		log.Printf("[plugin:%s] started (pid=%d)", cfg.Name, cmd.Process.Pid)
+	}
 	return nil
+}
+
+// watchProcess waits for the plugin to exit, logs the reason, and auto-restarts
+// if configured. Runs in its own goroutine.
+func (pm *pluginManager) watchProcess(pc *pluginConn) {
+	err := pc.cmd.Wait()
+
+	// Log exit reason
+	exitCode := -1
+	exitSignal := ""
+	if pc.cmd.ProcessState != nil {
+		exitCode = pc.cmd.ProcessState.ExitCode()
+		if ws, ok := pc.cmd.ProcessState.Sys().(syscall.WaitStatus); ok {
+			if ws.Signaled() {
+				exitSignal = ws.Signal().String()
+			}
+		}
+	}
+
+	pc.mu.Lock()
+	stopping := pc.stopping
+	pc.mu.Unlock()
+
+	if stopping {
+		// Intentional shutdown — don't restart
+		close(pc.done)
+		return
+	}
+
+	// Unexpected exit — log it
+	if exitSignal != "" {
+		log.Printf("[plugin:%s] crashed: signal %s (exit code %d)", pc.config.Name, exitSignal, exitCode)
+	} else if err != nil {
+		log.Printf("[plugin:%s] crashed: %v (exit code %d)", pc.config.Name, err, exitCode)
+	} else {
+		log.Printf("[plugin:%s] exited: code %d", pc.config.Name, exitCode)
+	}
+
+	// Auto-restart if configured
+	if !pc.config.AutoRestart {
+		log.Printf("[plugin:%s] auto-restart disabled, not restarting", pc.config.Name)
+		close(pc.done)
+		return
+	}
+
+	nextRestart := pc.restarts + 1
+	if nextRestart > pc.config.MaxRestarts {
+		log.Printf("[plugin:%s] max restarts reached (%d/%d), giving up", pc.config.Name, pc.restarts, pc.config.MaxRestarts)
+		close(pc.done)
+		return
+	}
+
+	// Exponential backoff: 1s, 2s, 4s, 8s, 16s, capped at 30s
+	backoff := time.Duration(1<<uint(pc.restarts)) * time.Second
+	if backoff > 30*time.Second {
+		backoff = 30 * time.Second
+	}
+	log.Printf("[plugin:%s] restarting in %s (%d/%d)", pc.config.Name, backoff, nextRestart, pc.config.MaxRestarts)
+
+	time.Sleep(backoff)
+
+	// Check again — node may have shut down during backoff
+	pc.mu.Lock()
+	stopping = pc.stopping
+	pc.mu.Unlock()
+	if stopping {
+		close(pc.done)
+		return
+	}
+
+	// Clean up old cancel context
+	pc.cancel()
+
+	if restartErr := pm.startPlugin(pc.config, nextRestart); restartErr != nil {
+		log.Printf("[plugin:%s] restart failed: %v", pc.config.Name, restartErr)
+		close(pc.done)
+	}
+	// If restart succeeded, startPlugin registered a new pluginConn with a new done channel.
+	// The old pc.done is never closed — that's fine, nobody is waiting on it except stopPlugin
+	// which already set stopping=true before this path.
 }
 
 func (pm *pluginManager) stopAll() {
@@ -136,6 +226,11 @@ func (pm *pluginManager) stopAll() {
 }
 
 func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
+	// Mark as stopping — prevents auto-restart
+	pc.mu.Lock()
+	pc.stopping = true
+	pc.mu.Unlock()
+
 	// Send SIGTERM
 	if pc.cmd.Process != nil {
 		pc.cmd.Process.Signal(syscall.SIGTERM)
@@ -148,6 +243,8 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 		if pc.cmd.Process != nil {
 			pc.cmd.Process.Kill()
 		}
+		// Wait for watchProcess to finish
+		<-pc.done
 	}
 
 	pc.cancel()

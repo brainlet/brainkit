@@ -1,8 +1,9 @@
 package discovery
 
 import (
-	"fmt"
 	"sync"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // Static resolves peers from a fixed configuration.
@@ -39,7 +40,7 @@ func (d *Static) Resolve(name string) (string, error) {
 	defer d.mu.RUnlock()
 	peer, ok := d.peers[name]
 	if !ok {
-		return "", fmt.Errorf("discovery: peer %q not found", name)
+		return "", &sdk.NotFoundError{Resource: "peer", Name: name}
 	}
 	// Return namespace if set, otherwise address (backward compat)
 	if peer.Namespace != "" {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/nats-io/nats.go"
 )
 
@@ -107,7 +108,7 @@ func newPluginStateStore(cfg NodeConfig) (PluginStateStore, error) {
 	case "nats":
 		return newNATSPluginStateStore(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported plugin state transport: %s", cfg.Messaging.Transport)
+		return nil, &sdk.ValidationError{Field: "transport", Message: fmt.Sprintf("unsupported plugin state transport: %s", cfg.Messaging.Transport)}
 	}
 }
 

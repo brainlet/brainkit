@@ -17,6 +17,7 @@ import (
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
 	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -389,7 +390,7 @@ func (k *Kernel) AddStorage(name string, cfg EmbeddedStorageConfig) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if _, exists := k.storages[name]; exists {
-		return fmt.Errorf("brainkit: storage %q already exists", name)
+		return &sdk.AlreadyExistsError{Resource: "storage", Name: name}
 	}
 	return k.addStorageInternal(name, cfg)
 }
@@ -400,7 +401,7 @@ func (k *Kernel) RemoveStorage(name string) error {
 	defer k.mu.Unlock()
 	srv, ok := k.storages[name]
 	if !ok {
-		return fmt.Errorf("brainkit: storage %q not found", name)
+		return &sdk.NotFoundError{Resource: "storage", Name: name}
 	}
 	_ = srv.Close()
 	delete(k.storages, name)

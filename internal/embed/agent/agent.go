@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	quickjs "github.com/buke/quickjs-go"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // AgentConfig configures a persistent agent.
@@ -60,7 +62,7 @@ func (s *Sandbox) CreateAgent(cfg AgentConfig) (*Agent, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("agent-embed: sandbox is closed")
+		return nil, ErrSandboxClosed
 	}
 	s.mu.Unlock()
 
@@ -160,7 +162,7 @@ func (s *Sandbox) CreateAgent(cfg AgentConfig) (*Agent, error) {
 // Generate calls the agent's generate method.
 func (a *Agent) Generate(ctx context.Context, params GenerateParams) (*GenerateResult, error) {
 	if a.closed {
-		return nil, fmt.Errorf("agent-embed: agent %q is closed", a.name)
+		return nil, ErrAgentClosed
 	}
 
 	maxSteps := params.MaxSteps
@@ -177,7 +179,7 @@ func (a *Agent) Generate(ctx context.Context, params GenerateParams) (*GenerateR
 		msgsJSON, _ := json.Marshal(params.Messages)
 		inputJS = string(msgsJSON)
 	} else {
-		return nil, fmt.Errorf("agent-embed: either Prompt or Messages is required")
+		return nil, &sdk.ValidationError{Field: "prompt", Message: "either Prompt or Messages is required"}
 	}
 
 	js := fmt.Sprintf(`(async () => {
@@ -244,7 +246,7 @@ func (a *Agent) Generate(ctx context.Context, params GenerateParams) (*GenerateR
 // Each text chunk is delivered to OnToken as it arrives via SSE.
 func (a *Agent) Stream(ctx context.Context, params StreamParams) (*StreamResult, error) {
 	if a.closed {
-		return nil, fmt.Errorf("agent-embed: agent %q is closed", a.name)
+		return nil, ErrAgentClosed
 	}
 
 	// Register streaming callback on globalThis
@@ -269,7 +271,7 @@ func (a *Agent) Stream(ctx context.Context, params StreamParams) (*StreamResult,
 		msgsJSON, _ := json.Marshal(params.Messages)
 		inputJS = string(msgsJSON)
 	} else {
-		return nil, fmt.Errorf("agent-embed: either Prompt or Messages is required")
+		return nil, &sdk.ValidationError{Field: "prompt", Message: "either Prompt or Messages is required"}
 	}
 
 	js := fmt.Sprintf(`(async () => {

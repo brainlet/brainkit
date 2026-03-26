@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -120,12 +121,12 @@ func (d *FSDomain) Mkdir(_ context.Context, req messages.FsMkdirMsg) (*messages.
 func (d *FSDomain) resolveWorkspacePath(path string) (string, error) {
 	workspace := d.kit.config.WorkspaceDir
 	if workspace == "" {
-		return "", fmt.Errorf("workspace not configured")
+		return "", ErrNoWorkspace
 	}
 	abs := filepath.Join(workspace, filepath.Clean("/"+path))
 	cleanWorkspace := filepath.Clean(workspace)
 	if abs != cleanWorkspace && !strings.HasPrefix(abs, cleanWorkspace+string(filepath.Separator)) {
-		return "", fmt.Errorf("path %q escapes workspace", path)
+		return "", &sdk.WorkspaceEscapeError{Path: path}
 	}
 	return abs, nil
 }

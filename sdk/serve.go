@@ -146,7 +146,7 @@ func (p *Plugin) Run() error {
 			return regErr
 		}
 	case <-time.After(30 * time.Second):
-		return fmt.Errorf("sdk: manifest registration timeout")
+		return &TimeoutError{Operation: "plugin manifest registration"}
 	}
 
 	// Call OnStart

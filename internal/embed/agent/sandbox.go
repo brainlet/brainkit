@@ -250,7 +250,7 @@ func (s *Sandbox) Eval(ctx context.Context, filename, code string) (string, erro
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return "", fmt.Errorf("agent-embed: sandbox is closed")
+		return "", ErrSandboxClosed
 	}
 	s.mu.Unlock()
 

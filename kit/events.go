@@ -19,7 +19,7 @@ type knownEventRegistry struct {
 
 func (r *knownEventRegistry) Validate(topic string, payload json.RawMessage) error {
 	if commandCatalog().HasCommand(topic) {
-		return fmt.Errorf("brainkit: %s is a command topic, not an event topic", topic)
+		return fmt.Errorf("%w: %s", ErrCommandTopic, topic)
 	}
 	spec, ok := r.byTopic[topic]
 	if !ok {
