@@ -350,15 +350,48 @@ declare module "agent" {
   }
 
   export interface MemoryConfig {
+    /** Storage adapter for threads, messages, working memory. */
     storage?: StorageInstance;
+    /** Vector database for semantic recall. false to disable. */
     vector?: VectorStoreInstance | false;
-    embedder?: any;
-    options?: {
-      lastMessages?: number;
-      semanticRecall?: boolean | { topK?: number; messageRange?: number };
-      workingMemory?: boolean | { enabled: boolean; template?: string };
-      generateTitle?: boolean;
-      observationalMemory?: boolean | { enabled: boolean };
+    /** Embedding model for semantic recall. String "provider/model" or EmbeddingModel. */
+    embedder?: string | any;
+    /** Embedding options. */
+    embedderOptions?: { dimensions?: number };
+    /** Memory behavior options. */
+    options?: MemoryOptions;
+  }
+
+  export interface MemoryOptions {
+    /** Prevent memory from saving new messages. @default false */
+    readOnly?: boolean;
+    /** Number of recent messages to include. false to disable. @default 10 */
+    lastMessages?: number | false;
+    /** Semantic recall via vector embeddings. */
+    semanticRecall?: boolean | {
+      topK?: number;
+      messageRange?: number;
+      scope?: "thread" | "resource";
+    };
+    /** Working memory for persistent user data. */
+    workingMemory?: boolean | {
+      enabled: boolean;
+      scope?: "thread" | "resource";
+      template?: string;
+      schema?: import("ai").ZodType;
+      version?: "vnext";
+    };
+    /** Auto-generate thread titles from first message. */
+    generateTitle?: boolean | {
+      model?: any;
+      instructions?: string;
+    };
+    /** Observational memory — 3-tier compression. */
+    observationalMemory?: boolean | {
+      scope?: "thread" | "resource";
+      model?: string;
+      observation?: { messageTokens?: number };
+      reflection?: { observationTokens?: number };
     };
   }
 
@@ -606,42 +639,100 @@ declare module "agent" {
 
   // ── Evals ─────────────────────────────────────────────────────
 
-  /** Create a custom scorer for agent evaluation. */
-  export function createScorer(config: {
-    id?: string;
+  /**
+   * Create a custom scorer — builder pattern.
+   *
+   * @example
+   * ```ts
+   * const scorer = createScorer({
+   *   id: "quality",
+   *   name: "Quality Scorer",
+   *   description: "Scores output quality",
+   * }).preprocess(({ run }) => {
+   *   return { normalized: run.output.text.toLowerCase() };
+   * }).generateScore(({ results, run }) => {
+   *   return results.preprocessStepResult.normalized.length > 10 ? 1 : 0;
+   * }).generateReason(({ results }) => {
+   *   return results.generateScoreStepResult >= 1 ? "Good" : "Too short";
+   * });
+   *
+   * const result = await scorer.run({
+   *   input: [{ role: "user", content: "question" }],
+   *   output: { role: "assistant", text: "answer" },
+   * });
+   * ```
+   */
+  export function createScorer(config: ScorerConfig): ScorerBuilder;
+
+  export interface ScorerConfig {
+    id: string;
     name?: string;
     description?: string;
-    judge?: { model: import("ai").LanguageModel };
-    execute?: (input: ScorerInput) => Promise<ScorerResult>;
-  }): Scorer;
-
-  export interface ScorerInput {
-    input: string;
-    output: string;
-    groundTruth?: string;
+    /** Scorer type shortcut: "agent" for agent-style input/output. */
+    type?: "agent" | { input: import("ai").ZodType; output: import("ai").ZodType };
+    /** LLM judge config (for prompt-based scoring). */
+    judge?: { model: any; instructions?: string };
   }
 
-  export interface ScorerResult {
+  /** Builder for chaining scorer steps. Each method returns a new builder. */
+  export interface ScorerBuilder {
+    /** Preprocess step — transform input/output before scoring. */
+    preprocess(fn: (ctx: { run: ScorerRunContext; results?: any }) => any | Promise<any>): ScorerBuilder;
+    /** Analyze step — extract features from preprocessed data. */
+    analyze(fn: (ctx: { results: any; run: ScorerRunContext }) => any | Promise<any>): ScorerBuilder;
+    /** Generate a numeric score (0-1). Function or prompt-based. */
+    generateScore(fnOrConfig: ((ctx: { results: any; run: ScorerRunContext }) => number | Promise<number>) | {
+      description: string;
+      judge?: { model: any; instructions: string };
+      createPrompt: (ctx: { results: any; run: ScorerRunContext }) => string | Promise<string>;
+    }): ScorerBuilder;
+    /** Generate a text explanation for the score. */
+    generateReason(fnOrConfig: ((ctx: { results: any; run: ScorerRunContext }) => string | Promise<string>) | {
+      description: string;
+      judge?: { model: any; instructions: string };
+      createPrompt: (ctx: { results: any; run: ScorerRunContext }) => string | Promise<string>;
+    }): ScorerBuilder;
+    /** Run the scorer on input/output. */
+    run(input: ScorerRunInput): Promise<ScorerRunResult>;
+  }
+
+  export interface ScorerRunContext {
+    input: any;
+    output: any;
+  }
+
+  export interface ScorerRunInput {
+    input: Array<{ role: string; content: string }>;
+    output: { role: string; text: string };
+  }
+
+  export interface ScorerRunResult {
     score: number;
-    details?: Record<string, unknown>;
+    reason?: string;
+    runId: string;
+    [key: string]: any;
   }
 
-  /** Run evaluations against an agent. */
+  /** Scorer instance (result of builder chain). */
+  export type Scorer = ScorerBuilder;
+
+  /** Run batch evaluations. */
   export function runEvals(config: {
-    target: Agent;
-    scorers: Scorer[];
-    dataset: Array<{ input: string; output?: string; groundTruth?: string }>;
+    scorers: Record<string, { scorer: Scorer; sampling?: any }>;
+    dataset: Array<{ input: any; output: any }>;
   }): Promise<EvalRunResult>;
 
   export interface EvalRunResult {
     results: Array<{
-      input: string;
-      output: string;
-      scores: Record<string, ScorerResult>;
+      input: any;
+      output: any;
+      scores: Record<string, ScorerRunResult>;
     }>;
   }
 
-  export interface Scorer {
-    run(input: ScorerInput): Promise<ScorerResult>;
+  // ── Observability extras ────────────────────────────────────────
+
+  export class SensitiveDataFilter {
+    constructor(config?: { patterns?: RegExp[]; replacement?: string });
   }
 }
