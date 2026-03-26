@@ -17,6 +17,8 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/kit"
 	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
@@ -326,6 +328,19 @@ func registerFixtureTools(t *testing.T, tk *testutil.TestKernel, category, name 
 				return map[string]float64{"result": input.A * input.B}, nil
 			},
 		})
+	case "agent/hitl-bus-approval":
+		// Go-side auto-approver: subscribes to the approval topic and auto-approves.
+		// Uses sdk.Reply — the clean Go equivalent of JS msg.reply().
+		cancel, subErr := sdk.SubscribeTo[json.RawMessage](tk, context.Background(), "test.approvals",
+			func(payload json.RawMessage, msg messages.Message) {
+				t.Logf("HITL: approval request received — auto-approving via sdk.Reply")
+				sdk.Reply(tk, context.Background(), msg, map[string]bool{"approved": true})
+			})
+		if subErr != nil {
+			t.Logf("HITL: failed to subscribe: %v", subErr)
+		} else {
+			t.Cleanup(func() { cancel() })
+		}
 	case "composition/full-agent-workflow-memory":
 		registry.Register(tk.Tools, "reverse", registry.TypedTool[struct {
 			Text string `json:"text"`
