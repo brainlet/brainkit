@@ -319,6 +319,13 @@
       delete globalThis.__bus_subs[subId];
       _resourceRegistry.unregister("subscription", subId);
     },
+    sendTo: function(service, localTopic, data) {
+      var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
+      return bus.publish("ts." + name + "." + localTopic, data);
+    },
+    sendToShard: function(shard, topic, data) {
+      return bus.publish(topic, data);
+    },
   };
 
   // ─── kit.register ─────────────────────────────────────────────
@@ -413,6 +420,86 @@
     globalThis.__module_result = typeof value === "string" ? value : JSON.stringify(value);
   }
 
+  // ─── Bus-based HITL ─────────────────────────────────────────
+
+  // generateWithApproval: thin layer over Agent.generate that routes
+  // tool approval through the bus. Any surface (Go, .ts, plugin, gateway)
+  // can approve or decline by replying to the approval topic.
+  //
+  // Usage:
+  //   const result = await generateWithApproval(agent, "delete record X", {
+  //     approvalTopic: "approvals.pending",
+  //     timeout: 30000,
+  //     memory: { thread: { id: tid }, resource: "user" },
+  //   });
+  //
+  // The approver subscribes to the topic and calls msg.reply({ approved: true/false }).
+  async function generateWithApproval(agent, promptOrMessages, options) {
+    if (!options || !options.approvalTopic) {
+      throw new Error("generateWithApproval: approvalTopic is required");
+    }
+
+    var approvalTopic = options.approvalTopic;
+    var timeout = options.timeout || 30000;
+
+    // Strip brainkit-specific options, pass rest to Mastra
+    var agentOptions = {};
+    for (var key in options) {
+      if (key !== "approvalTopic" && key !== "timeout") {
+        agentOptions[key] = options[key];
+      }
+    }
+    agentOptions.requireToolApproval = true;
+
+    // Phase 1: generate — may suspend
+    var result = await agent.generate(promptOrMessages, agentOptions);
+
+    if (result.finishReason !== "suspended" || !result.runId) {
+      return result; // Not suspended — tool wasn't called or no approval needed
+    }
+
+    // Phase 2: publish approval request to the bus
+    var pub = bus.publish(approvalTopic, {
+      runId: result.runId,
+      toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
+      toolName: result.suspendPayload && result.suspendPayload.toolName,
+      args: result.suspendPayload && result.suspendPayload.args,
+    });
+
+    // Phase 3: wait for approval response via bus
+    return new Promise(function(resolve, reject) {
+      var done = false;
+
+      var timeoutId = setTimeout(function() {
+        if (done) return;
+        done = true;
+        bus.unsubscribe(subId);
+        // Auto-decline on timeout
+        agent.declineToolCallGenerate({
+          runId: result.runId,
+          toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
+        }).then(resolve, reject);
+      }, timeout);
+
+      var subId = bus.subscribe(pub.replyTo, function(msg) {
+        if (done) return;
+        done = true;
+        clearTimeout(timeoutId);
+        bus.unsubscribe(subId);
+
+        var approved = msg.payload && msg.payload.approved !== false;
+        var resumeFn = approved
+          ? agent.approveToolCallGenerate.bind(agent)
+          : agent.declineToolCallGenerate.bind(agent);
+
+        resumeFn({
+          runId: result.runId,
+          toolCallId: result.suspendPayload && result.suspendPayload.toolCallId,
+        }).then(resolve, reject);
+      });
+    });
+  }
+
   // ─── Export to globalThis.__kit ───────────────────────────────
 
   globalThis.__kit = {
@@ -428,6 +515,7 @@
     fs: fs,
     mcp: mcp,
     output: output,
+    generateWithApproval: generateWithApproval,
   };
 
   // ─── Compartment Endowments ───────────────────────────────────
@@ -469,6 +557,8 @@
         return scopedBus.subscribe(ns + "." + localTopic, handler);
       },
       unsubscribe: _kitObj.bus.unsubscribe,
+      sendTo: _kitObj.bus.sendTo,
+      sendToShard: _kitObj.bus.sendToShard,
     };
 
     var scopedKit = {
@@ -519,6 +609,7 @@
       fs: _kitObj.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,
+      generateWithApproval: _kitObj.generateWithApproval,
       // AI SDK ("ai" module) — also available as endowments for Compartment code
       generateText: embed.generateText,
       streamText: embed.streamText,
