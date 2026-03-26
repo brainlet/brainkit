@@ -142,6 +142,11 @@ func (n *Node) SubscribeRawTo(ctx context.Context, targetNamespace, topic string
 	return n.Kernel.SubscribeRawTo(ctx, targetNamespace, topic, handler)
 }
 
+// ReplyRaw delegates to Kernel's ReplyRaw.
+func (n *Node) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {
+	return n.Kernel.ReplyRaw(ctx, replyTo, correlationID, payload, done)
+}
+
 // Close shuts down plugins, plugin state, then the wrapped Kernel.
 func (n *Node) Close() error {
 	n.mu.Lock()

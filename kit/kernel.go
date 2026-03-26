@@ -297,6 +297,22 @@ func (k *Kernel) subscribe(topic string, handler func(messages.Message)) (func()
 	return k.remote.SubscribeRaw(context.Background(), topic, handler)
 }
 
+// ReplyRaw publishes directly to a resolved replyTo topic without namespace prefixing.
+// This is the Go equivalent of __go_brainkit_bus_reply in bridges.go.
+// Used by sdk.Reply and sdk.SendChunk.
+func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {
+	if replyTo == "" {
+		return nil
+	}
+	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
+	wmsg.Metadata.Set("correlationId", correlationID)
+	if done {
+		wmsg.Metadata.Set("done", "true")
+	}
+	// replyTo is already namespaced+sanitized — publish directly to transport
+	return k.transport.Publisher.Publish(replyTo, wmsg)
+}
+
 // Close shuts down the runtime and all local services.
 func (k *Kernel) Close() error {
 	k.mu.Lock()
