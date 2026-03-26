@@ -1,31 +1,76 @@
-// Test: tool with suspend — HITL pattern where tool pauses for human approval
-import { generateText, z } from "ai";
-import { createTool } from "agent";
+// Test: Agent HITL — tool with requireApproval suspends, then approve/decline resumes
+// Mastra pattern: createTool({ requireApproval: true }) → agent.generate returns
+// finishReason:"suspended" with suspendPayload → agent.approveToolCallGenerate resumes
+import { Agent, createTool, z, InMemoryStore, Memory } from "agent";
 import { model, output } from "kit";
 
-let suspendCalled = false;
-
-const riskyTool = createTool({
-  id: "risky-action",
-  description: "Performs a risky action that needs approval",
-  inputSchema: z.object({ action: z.string() }),
-  execute: async ({ action }: any, context: any) => {
-    // In a real HITL flow, this would call context.suspend()
-    // For testing, we just verify the tool executes
-    suspendCalled = true;
-    return { performed: action, approved: true };
+const deleteTool = createTool({
+  id: "delete-record",
+  description: "Delete a record by ID — requires human approval",
+  inputSchema: z.object({ id: z.string() }),
+  outputSchema: z.object({ deleted: z.boolean() }),
+  requireApproval: true,
+  execute: async ({ id }: any) => {
+    return { deleted: true };
   },
 });
 
-const result = await generateText({
+// HITL requires a storage provider for snapshot persistence
+const store = new InMemoryStore();
+const mem = new Memory({ storage: store });
+
+const agent = new Agent({
+  name: "hitl-agent",
   model: model("openai", "gpt-4o-mini"),
-  tools: { riskyAction: riskyTool },
+  instructions: "When asked to delete, use the delete-record tool.",
+  tools: { "delete-record": deleteTool },
+  memory: mem,
   maxSteps: 3,
-  prompt: "Perform the risky action 'deploy-v2'. Use the riskyAction tool.",
 });
 
-output({
-  hasText: result.text.length > 0,
-  toolCalled: suspendCalled,
-  hasSteps: result.steps.length > 0,
-});
+try {
+  // Phase 1: generate — should suspend because tool requires approval
+  const suspended = await agent.generate("Delete record abc-123", {
+    requireToolApproval: true,
+  });
+
+  const isSuspended = suspended.finishReason === "suspended";
+  const hasSuspendPayload = suspended.suspendPayload !== undefined && suspended.suspendPayload !== null;
+  const hasRunId = typeof suspended.runId === "string" && suspended.runId.length > 0;
+
+  if (isSuspended && hasRunId) {
+    // Phase 2: approve the tool call
+    try {
+      const approved = await (agent as any).approveToolCallGenerate({
+        runId: suspended.runId,
+        toolCallId: (suspended.suspendPayload as any)?.toolCallId,
+      });
+
+      output({
+        suspended: true,
+        hasSuspendPayload,
+        hasRunId,
+        approved: true,
+        finalText: approved?.text?.substring(0, 100) || "",
+      });
+    } catch (e: any) {
+      // Approve might fail if snapshot storage isn't fully wired
+      output({
+        suspended: true,
+        hasSuspendPayload,
+        hasRunId,
+        approveError: e.message.substring(0, 200),
+      });
+    }
+  } else {
+    // Model didn't suspend — might not have called the tool
+    output({
+      suspended: false,
+      finishReason: suspended.finishReason,
+      hasText: suspended.text.length > 0,
+      text: suspended.text.substring(0, 100),
+    });
+  }
+} catch (e: any) {
+  output({ error: e.message.substring(0, 200) });
+}
