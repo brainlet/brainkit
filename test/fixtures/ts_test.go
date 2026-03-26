@@ -260,7 +260,7 @@ func TestTSFixturesE2E(t *testing.T) {
 					t.Logf("%s output (raw): %s", fullName, raw)
 					return
 				}
-				t.Logf("%s output: %s", fullName, truncate(raw, 200))
+				t.Logf("%s output: %s", fullName, truncate(raw, 2000))
 
 				// 7. Assert against expect.json if present
 				expect := loadExpect(t, category, name)
