@@ -71,9 +71,10 @@ declare class EventEmitter {
   static listenerCount(emitter: EventEmitter, event: string): number;
 }
 
-// ── Polyfill namespaces (globalThis.__node_*) ──────────────────
+// ── Node.js module globals (available in SES Compartments) ─────
+// These match real Node.js module names. Internal __node_* aliases also exist.
 
-declare var __node_stream: {
+declare var stream: {
   Readable: any;
   Writable: any;
   Duplex: any;
@@ -84,7 +85,7 @@ declare var __node_stream: {
   Stream: any;
 };
 
-declare var __node_crypto: {
+declare var crypto: {
   createHash(alg: string): { update(data: any, enc?: string): any; digest(enc?: string): any; copy(): any };
   createHmac(alg: string, key: any): { update(data: any, enc?: string): any; digest(enc?: string): any };
   pbkdf2Sync(password: any, salt: any, iterations: number, keylen: number, hash: string): any;
@@ -99,7 +100,7 @@ declare var __node_crypto: {
   webcrypto: typeof crypto;
 };
 
-declare var __node_net: {
+declare var net: {
   Socket: any;
   createConnection: (...args: any[]) => any;
   connect: (...args: any[]) => any;
@@ -110,7 +111,7 @@ declare var __node_net: {
   isIPv6(input: string): boolean;
 };
 
-declare var __node_os: {
+declare var os: {
   platform(): string;
   arch(): string;
   tmpdir(): string;
@@ -129,7 +130,7 @@ declare var __node_os: {
   userInfo(): { username: string; uid: number; gid: number; shell: string; homedir: string };
 };
 
-declare var __node_dns: {
+declare var dns: {
   lookup(hostname: string, cb: (err: any, addr: string, family: number) => void): void;
   lookup(hostname: string, options: any, cb: (err: any, addr: string, family: number) => void): void;
   resolve4(hostname: string, cb: (err: any, addrs: string[]) => void): void;
@@ -143,7 +144,7 @@ declare var __node_dns: {
   };
 };
 
-declare var __node_zlib: {
+declare var zlib: {
   inflate(buf: any, cb: (err: any, result: any) => void): void;
   deflate(buf: any, cb: (err: any, result: any) => void): void;
   deflate(buf: any, opts: any, cb: (err: any, result: any) => void): void;

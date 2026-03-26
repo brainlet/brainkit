@@ -644,18 +644,26 @@
         if (_realRandom) wrapper.random = _realRandom;
         return wrapper;
       })(),
-      // Node.js compat — polyfill namespaces for .ts code in Compartments
+      // Node.js compat — available as globals in .ts Compartments
+      // Names match real Node.js module names so code reads naturally.
       GoSocket: globalThis.GoSocket,
       process: globalThis.process,
       Buffer: globalThis.Buffer,
       EventEmitter: globalThis.EventEmitter,
+      stream: globalThis.__node_stream,
+      crypto: globalThis.__node_crypto,
+      net: globalThis.__node_net,
+      os: globalThis.__node_os,
+      dns: globalThis.__node_dns,
+      zlib: globalThis.__node_zlib,
+      child_process: globalThis.child_process,
+      // Keep internal names too for backward compat with existing code
       __node_stream: globalThis.__node_stream,
       __node_crypto: globalThis.__node_crypto,
       __node_net: globalThis.__node_net,
       __node_os: globalThis.__node_os,
       __node_dns: globalThis.__node_dns,
       __node_zlib: globalThis.__node_zlib,
-      child_process: globalThis.child_process,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
   };

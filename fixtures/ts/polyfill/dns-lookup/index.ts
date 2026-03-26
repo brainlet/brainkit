@@ -1,8 +1,6 @@
 // Test: dns.lookup resolves hostnames via Go net.LookupHost
 import { output } from "kit";
 
-const dns = globalThis.__node_dns;
-
 // Sync lookup
 let syncResult: any = null;
 dns.lookup("localhost", (err: any, addr: string, family: number) => {
