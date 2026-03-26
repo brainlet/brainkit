@@ -17,5 +17,5 @@
       "compiler": ["../../kit/runtime/compiler.d.ts"]
     }
   },
-  "files": ["globals.d.ts"]
+  "files": ["../../kit/runtime/globals.d.ts"]
 }

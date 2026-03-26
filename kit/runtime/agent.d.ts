@@ -37,7 +37,7 @@ declare module "agent" {
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
   }
 
-  interface AgentConfig {
+  export interface AgentConfig {
     /** Display name. */
     name?: string;
     /** Unique ID. */
@@ -76,7 +76,7 @@ declare module "agent" {
     providerOptions?: Record<string, Record<string, unknown>>;
   }
 
-  interface AgentCallOptions {
+  export interface AgentCallOptions {
     /** Override max steps for this call. */
     maxSteps?: number;
     /** Memory options. */
@@ -97,7 +97,7 @@ declare module "agent" {
     [key: string]: any;
   }
 
-  interface AgentResult {
+  export interface AgentResult {
     text: string;
     reasoningText?: string;
     object?: unknown;
@@ -113,7 +113,7 @@ declare module "agent" {
     providerMetadata?: Record<string, unknown>;
   }
 
-  interface AgentStepResult {
+  export interface AgentStepResult {
     text: string;
     reasoning?: string;
     toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
@@ -124,7 +124,7 @@ declare module "agent" {
     isContinued: boolean;
   }
 
-  interface AgentStreamResult {
+  export interface AgentStreamResult {
     /** Async iterable of text chunks. */
     textStream: AsyncIterable<string>;
     /** Async iterable of typed stream parts. */
@@ -143,7 +143,7 @@ declare module "agent" {
     steps: Promise<AgentStepResult[]>;
   }
 
-  interface Message {
+  export interface Message {
     role: "system" | "user" | "assistant" | "tool";
     content: import("ai").MessageContent;
   }
@@ -166,7 +166,7 @@ declare module "agent" {
    */
   export function createTool(config: ToolConfig): Tool;
 
-  interface ToolConfig {
+  export interface ToolConfig {
     /** Tool ID / name. */
     id: string;
     /** Human-readable description. */
@@ -183,11 +183,11 @@ declare module "agent" {
     resumeSchema?: import("ai").ZodType;
   }
 
-  interface ToolExecutionContext {
+  export interface ToolExecutionContext {
     requestContext?: RequestContext;
   }
 
-  interface Tool {
+  export interface Tool {
     id: string;
     description?: string;
     execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
@@ -212,14 +212,14 @@ declare module "agent" {
   /** Create a workflow step. */
   export function createStep(config: StepConfig): Step;
 
-  interface WorkflowConfig {
+  export interface WorkflowConfig {
     id: string;
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
     stateSchema?: import("ai").ZodType;
   }
 
-  interface StepConfig {
+  export interface StepConfig {
     id: string;
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
@@ -227,7 +227,7 @@ declare module "agent" {
     execute?: (context: StepExecutionContext) => Promise<unknown>;
   }
 
-  interface StepExecutionContext {
+  export interface StepExecutionContext {
     inputData: Record<string, any>;
     mapiData?: Record<string, unknown>;
     /** Shared workflow state (read). */
@@ -242,7 +242,7 @@ declare module "agent" {
     resumeData?: Record<string, any>;
   }
 
-  interface WorkflowBuilder {
+  export interface WorkflowBuilder {
     then(step: Step): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
     branch(config: BranchConfig | Step[][]): WorkflowBuilder;
@@ -254,24 +254,24 @@ declare module "agent" {
     commit(): Workflow;
   }
 
-  interface BranchConfig {
+  export interface BranchConfig {
     condition: (data: Record<string, unknown>) => boolean;
     trueStep: Step;
     falseStep?: Step;
   }
 
-  interface ForEachConfig {
+  export interface ForEachConfig {
     items: string;
     step: Step;
   }
 
-  interface Step {}
+  export interface Step {}
 
-  interface Workflow {
+  export interface Workflow {
     createRun(opts?: { runId?: string }): Promise<WorkflowRun>;
   }
 
-  interface WorkflowRun {
+  export interface WorkflowRun {
     runId: string;
     start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
     resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string }, resumeData?: Record<string, unknown>): Promise<WorkflowRunResult>;
@@ -280,14 +280,14 @@ declare module "agent" {
     readonly currentStep: string;
   }
 
-  interface WorkflowRunResult {
+  export interface WorkflowRunResult {
     status: "completed" | "suspended" | "failed" | "success";
     result?: Record<string, unknown>;
     runId?: string;
     steps?: Record<string, StepRunResult>;
   }
 
-  interface StepRunResult {
+  export interface StepRunResult {
     status: string;
     output?: unknown;
   }
@@ -308,7 +308,7 @@ declare module "agent" {
     deleteThread(threadId: string): Promise<void>;
   }
 
-  interface Thread {
+  export interface Thread {
     id: string;
     resourceId?: string;
     title?: string;
@@ -316,12 +316,12 @@ declare module "agent" {
     updatedAt: string;
   }
 
-  interface RecallResult {
+  export interface RecallResult {
     messages: Message[];
     workingMemory?: string;
   }
 
-  interface MemoryConfig {
+  export interface MemoryConfig {
     storage?: StorageInstance;
     vector?: VectorStoreInstance | false;
     embedder?: any;
@@ -337,7 +337,7 @@ declare module "agent" {
   // ── Storage backends ──────────────────────────────────────────
 
   /** Marker type for resolved storage instances. */
-  interface StorageInstance {
+  export interface StorageInstance {
     /** @internal */ readonly __storageType: string;
   }
 
@@ -371,7 +371,7 @@ declare module "agent" {
   // ── Vector stores ─────────────────────────────────────────────
 
   /** Marker type for resolved vector store instances. */
-  interface VectorStoreInstance {
+  export interface VectorStoreInstance {
     /** @internal */ readonly __vectorType: string;
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
@@ -381,14 +381,14 @@ declare module "agent" {
     query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
-  interface VectorEntry {
+  export interface VectorEntry {
     id?: string;
     vector: number[];
     metadata?: Record<string, unknown>;
     [key: string]: any;
   }
 
-  interface VectorQueryResult {
+  export interface VectorQueryResult {
     id: string;
     score: number;
     metadata?: Record<string, unknown>;
@@ -457,13 +457,13 @@ declare module "agent" {
     getInstructions(): string;
   }
 
-  interface WorkspaceSearchResult {
+  export interface WorkspaceSearchResult {
     path: string;
     content: string;
     score: number;
   }
 
-  interface WorkspaceInfo {
+  export interface WorkspaceInfo {
     id: string;
     name?: string;
     basePath: string;
@@ -477,7 +477,7 @@ declare module "agent" {
     constructor(config?: { workingDirectory?: string; env?: Record<string, string>; defaultShell?: string });
   }
 
-  interface WorkspaceConfig {
+  export interface WorkspaceConfig {
     id?: string;
     name?: string;
     filesystem: LocalFilesystem;
@@ -500,7 +500,7 @@ declare module "agent" {
     chunk(options?: ChunkOptions): Promise<DocumentChunk[]>;
   }
 
-  interface ChunkOptions {
+  export interface ChunkOptions {
     strategy?: "recursive" | "character" | "token" | "markdown" | "html";
     size?: number;
     maxSize?: number;
@@ -510,7 +510,7 @@ declare module "agent" {
     [key: string]: any;
   }
 
-  interface DocumentChunk {
+  export interface DocumentChunk {
     text: string;
     metadata: Record<string, unknown>;
   }
@@ -521,7 +521,7 @@ declare module "agent" {
     query(query: string, options?: { topK?: number }): Promise<GraphRAGResult>;
   }
 
-  interface GraphRAGResult {
+  export interface GraphRAGResult {
     answer: string;
     sources: Array<{ text: string; score: number }>;
   }
@@ -565,7 +565,7 @@ declare module "agent" {
     constructor(config: ObservabilityConfig);
   }
 
-  interface ObservabilityConfig {
+  export interface ObservabilityConfig {
     configs: Record<string, {
       serviceName: string;
       exporters: DefaultExporter[];
@@ -587,13 +587,13 @@ declare module "agent" {
     execute?: (input: ScorerInput) => Promise<ScorerResult>;
   }): Scorer;
 
-  interface ScorerInput {
+  export interface ScorerInput {
     input: string;
     output: string;
     groundTruth?: string;
   }
 
-  interface ScorerResult {
+  export interface ScorerResult {
     score: number;
     details?: Record<string, unknown>;
   }
@@ -605,7 +605,7 @@ declare module "agent" {
     dataset: Array<{ input: string; output?: string; groundTruth?: string }>;
   }): Promise<EvalRunResult>;
 
-  interface EvalRunResult {
+  export interface EvalRunResult {
     results: Array<{
       input: string;
       output: string;
@@ -613,7 +613,7 @@ declare module "agent" {
     }>;
   }
 
-  interface Scorer {
+  export interface Scorer {
     run(input: ScorerInput): Promise<ScorerResult>;
   }
 }

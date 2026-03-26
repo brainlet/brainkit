@@ -21,7 +21,7 @@ declare module "ai" {
   /** Zod schema builder — re-exported from AI SDK. */
   export const z: Zod;
 
-  interface Zod {
+  export interface Zod {
     string(): ZodType;
     number(): ZodType;
     boolean(): ZodType;
@@ -44,7 +44,7 @@ declare module "ai" {
     nullable(schema: ZodType): ZodType;
   }
 
-  interface ZodType {
+  export interface ZodType {
     optional(): ZodType;
     nullable(): ZodType;
     default(value: unknown): ZodType;
@@ -58,14 +58,14 @@ declare module "ai" {
     safeParse(value: unknown): { success: boolean; data?: unknown; error?: ZodError };
   }
 
-  interface ZodError {
+  export interface ZodError {
     issues: Array<{ message: string; path: (string | number)[] }>;
     message: string;
   }
 
   // ── CallSettings (shared across all functions) ────────────────
 
-  interface CallSettings {
+  export interface CallSettings {
     /** Maximum number of tokens to generate. */
     maxOutputTokens?: number;
     /** Temperature setting. Range depends on provider/model. */
@@ -96,33 +96,33 @@ declare module "ai" {
 
   type FinishReason = "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
 
-  interface Usage {
+  export interface Usage {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
   }
 
-  interface ResponseMeta {
+  export interface ResponseMeta {
     id: string;
     modelId: string;
     timestamp: Date;
     headers?: Record<string, string>;
   }
 
-  interface ToolCall {
+  export interface ToolCall {
     toolCallId: string;
     toolName: string;
     args: Record<string, unknown>;
   }
 
-  interface ToolResult {
+  export interface ToolResult {
     toolCallId: string;
     toolName: string;
     args: Record<string, unknown>;
     result: unknown;
   }
 
-  interface StepResult {
+  export interface StepResult {
     text: string;
     reasoning?: string;
     toolCalls: ToolCall[];
@@ -133,7 +133,7 @@ declare module "ai" {
     isContinued: boolean;
   }
 
-  interface Source {
+  export interface Source {
     id: string;
     url?: string;
     title?: string;
@@ -152,13 +152,13 @@ declare module "ai" {
   type MessageContent = string | ContentPart[];
 
   /** Generated file from the model (images, audio, etc). */
-  interface GeneratedFile {
+  export interface GeneratedFile {
     data: Uint8Array;
     mimeType: string;
   }
 
   /** Warning from the provider. */
-  interface Warning {
+  export interface Warning {
     type: string;
     message: string;
   }
@@ -167,17 +167,17 @@ declare module "ai" {
   type ProviderMetadata = Record<string, Record<string, unknown>>;
 
   /** Language model instance (opaque — returned by provider factory). */
-  interface LanguageModel {
+  export interface LanguageModel {
     /** @internal */ readonly __brand: "LanguageModel";
   }
 
   /** Embedding model instance (opaque — returned by provider factory). */
-  interface EmbeddingModel {
+  export interface EmbeddingModel {
     /** @internal */ readonly __brand: "EmbeddingModel";
   }
 
   /** Tool definition for AI SDK. */
-  interface ToolDefinition {
+  export interface ToolDefinition {
     description?: string;
     parameters: ZodType;
     execute?: (args: Record<string, unknown>, options?: { abortSignal?: AbortSignal }) => Promise<unknown>;
@@ -188,7 +188,7 @@ declare module "ai" {
 
   // ── generateText ──────────────────────────────────────────────
 
-  interface GenerateTextParams extends CallSettings {
+  export interface GenerateTextParams extends CallSettings {
     /** The language model to use. */
     model: LanguageModel;
     /** Simple text prompt. */
@@ -215,7 +215,7 @@ declare module "ai" {
     onFinish?: (event: GenerateTextResult) => void | Promise<void>;
   }
 
-  interface GenerateTextResult {
+  export interface GenerateTextResult {
     /** Generated text from the last step. */
     text: string;
     /** Reasoning text (if extractReasoningMiddleware used). */
@@ -246,14 +246,14 @@ declare module "ai" {
 
   // ── streamText ────────────────────────────────────────────────
 
-  interface StreamTextParams extends GenerateTextParams {
+  export interface StreamTextParams extends GenerateTextParams {
     /** Callback per stream chunk. */
     onChunk?: (event: { chunk: StreamPart }) => void;
     /** Error callback. */
     onError?: (event: { error: unknown }) => void;
   }
 
-  interface StreamTextResult {
+  export interface StreamTextResult {
     /** Async iterable of text deltas. */
     textStream: AsyncIterable<string>;
     /** Async iterable of typed stream parts (text-delta, tool-call, tool-result, etc). */
@@ -291,7 +291,7 @@ declare module "ai" {
 
   // ── generateObject ────────────────────────────────────────────
 
-  interface GenerateObjectParams extends CallSettings {
+  export interface GenerateObjectParams extends CallSettings {
     /** The language model to use. */
     model: LanguageModel;
     /** Simple text prompt. */
@@ -316,7 +316,7 @@ declare module "ai" {
     providerOptions?: ProviderOptions;
   }
 
-  interface GenerateObjectResult<T = unknown> {
+  export interface GenerateObjectResult<T = unknown> {
     /** The generated object. */
     object: T;
     /** Why generation stopped. */
@@ -335,14 +335,14 @@ declare module "ai" {
 
   // ── streamObject ──────────────────────────────────────────────
 
-  interface StreamObjectParams extends GenerateObjectParams {
+  export interface StreamObjectParams extends GenerateObjectParams {
     /** Error callback. */
     onError?: (event: { error: unknown }) => void;
     /** Finish callback. */
     onFinish?: (event: { object: unknown; usage: Usage }) => void;
   }
 
-  interface StreamObjectResult<T = unknown> {
+  export interface StreamObjectResult<T = unknown> {
     /** Async iterable of partial objects as they build. */
     partialObjectStream: AsyncIterable<Partial<T>>;
     /** Async iterable of elements (for output: "array"). */
@@ -359,7 +359,7 @@ declare module "ai" {
 
   // ── embed ─────────────────────────────────────────────────────
 
-  interface EmbedParams {
+  export interface EmbedParams {
     /** The embedding model to use. */
     model: EmbeddingModel;
     /** The value to embed. */
@@ -374,7 +374,7 @@ declare module "ai" {
     providerOptions?: ProviderOptions;
   }
 
-  interface EmbedResult {
+  export interface EmbedResult {
     /** The embedding vector. */
     embedding: number[];
     /** Token usage. */
@@ -385,7 +385,7 @@ declare module "ai" {
 
   // ── embedMany ─────────────────────────────────────────────────
 
-  interface EmbedManyParams {
+  export interface EmbedManyParams {
     /** The embedding model to use. */
     model: EmbeddingModel;
     /** The values to embed. */
@@ -402,7 +402,7 @@ declare module "ai" {
     providerOptions?: ProviderOptions;
   }
 
-  interface EmbedManyResult {
+  export interface EmbedManyResult {
     /** The embedding vectors. */
     embeddings: number[][];
     /** Token usage. */
@@ -423,7 +423,7 @@ declare module "ai" {
   export function wrapLanguageModel(options: { model: LanguageModel; middleware: LanguageModelMiddleware | LanguageModelMiddleware[] }): LanguageModel;
 
   /** Language model middleware (opaque). */
-  interface LanguageModelMiddleware {
+  export interface LanguageModelMiddleware {
     /** @internal */ readonly __brand: "LanguageModelMiddleware";
   }
 

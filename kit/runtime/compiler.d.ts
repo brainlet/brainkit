@@ -21,14 +21,14 @@ declare module "compiler" {
    */
   export function compile(source: string, opts?: CompileOptions): Promise<CompileResult>;
 
-  interface CompileOptions {
+  export interface CompileOptions {
     /** Module name (auto-generated if empty). */
     name?: string;
     /** AssemblyScript runtime type. */
     runtime?: string;
   }
 
-  interface CompileResult {
+  export interface CompileResult {
     /** Module ID (same as name). */
     moduleId: string;
     /** Module name. */

@@ -22,7 +22,7 @@ declare module "kit" {
     unsubscribe(subId: string): void;
   };
 
-  interface BusMessage {
+  export interface BusMessage {
     payload: unknown;
     replyTo: string;
     correlationId: string;
@@ -51,7 +51,7 @@ declare module "kit" {
     readonly callerId: string;
   };
 
-  interface ResourceEntry {
+  export interface ResourceEntry {
     type: string;
     id: string;
     name: string;
@@ -71,7 +71,7 @@ declare module "kit" {
   export function provider(name: string): ProviderFactory;
 
   /** Provider factory — call with model ID to get a LanguageModel. */
-  interface ProviderFactory {
+  export interface ProviderFactory {
     (modelId: string): import("ai").LanguageModel;
   }
 
@@ -85,7 +85,7 @@ declare module "kit" {
     unregister(category: string, name: string): void;
   };
 
-  interface RegistryEntry {
+  export interface RegistryEntry {
     name: string;
     type: string;
     healthy: boolean;
@@ -93,7 +93,7 @@ declare module "kit" {
     lastError: string;
   }
 
-  interface RegistryConfig {
+  export interface RegistryConfig {
     type: string;
     name: string;
     config: Record<string, unknown>;
@@ -118,14 +118,14 @@ declare module "kit" {
     resolve(name: string): ToolResolveResult;
   };
 
-  interface ToolInfo {
+  export interface ToolInfo {
     name: string;
     shortName: string;
     namespace: string;
     description: string;
   }
 
-  interface ToolResolveResult {
+  export interface ToolResolveResult {
     name: string;
     shortName: string;
     description: string;
@@ -143,7 +143,7 @@ declare module "kit" {
     mkdir(path: string): Promise<{ ok: boolean }>;
   };
 
-  interface FileInfo {
+  export interface FileInfo {
     name: string;
     size: number;
     isDir: boolean;
@@ -156,7 +156,7 @@ declare module "kit" {
     callTool(server: string, tool: string, args?: Record<string, unknown>): Promise<unknown>;
   };
 
-  interface McpToolInfo {
+  export interface McpToolInfo {
     name: string;
     server: string;
     description: string;
