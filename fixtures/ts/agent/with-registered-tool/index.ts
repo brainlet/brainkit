@@ -14,7 +14,13 @@ const a = new Agent({
 
 const result = await a.generate("What is 6 times 7? Use the multiply tool.", { maxSteps: 3 });
 
+// Check tool results (deterministic) rather than text (AI-dependent)
+const toolResult = result.steps?.find(
+  (s: any) => s.toolResults && s.toolResults.length > 0
+)?.toolResults?.[0]?.result;
+
 output({
-  text: result.text,
-  toolCalls: result.toolCalls?.length || 0,
+  usedTool: (result.steps || []).some((s: any) => s.toolCalls && s.toolCalls.length > 0),
+  toolResult: toolResult,
+  hasText: result.text.length > 0,
 });
