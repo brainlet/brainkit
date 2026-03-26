@@ -20,6 +20,11 @@ declare module "kit" {
     on(localTopic: string, handler: (msg: BusMessage) => void | Promise<void>): string;
     /** Remove a subscription. */
     unsubscribe(subId: string): void;
+    /** Send to a deployed .ts service by name.
+     *  Resolves "my-agent.ts" + "ask" → publishes to ts.my-agent.ask */
+    sendTo(service: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
+    /** Send to a deployed WASM shard's handler topic. */
+    sendToShard(shard: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
   };
 
   export interface BusMessage {
@@ -171,4 +176,43 @@ declare module "kit" {
 
   /** Set the module's output value. Passes results back to Go. */
   export function output(value: unknown): void;
+
+  // ── HITL (bus-based approval) ───────────────────────────────
+
+  /**
+   * Generate with bus-based tool approval (HITL).
+   *
+   * Thin layer over Agent.generate that routes tool approval through the bus.
+   * Any surface (Go, .ts, plugin, gateway) can approve or decline by subscribing
+   * to the approvalTopic and calling msg.reply({ approved: true/false }).
+   *
+   * @example
+   * ```ts
+   * // .ts service
+   * const result = await generateWithApproval(agent, "Delete record X", {
+   *   approvalTopic: "approvals.pending",
+   *   timeout: 30000,
+   * });
+   *
+   * // Go/plugin/gateway — subscribes and approves
+   * bus.subscribe("approvals.pending", (msg) => {
+   *   console.log("Tool:", msg.payload.toolName, "Args:", msg.payload.args);
+   *   msg.reply({ approved: true });
+   * });
+   * ```
+   */
+  export function generateWithApproval(
+    agent: import("agent").Agent,
+    promptOrMessages: string | import("agent").Message[],
+    options: {
+      /** Bus topic to publish approval requests to. Required. */
+      approvalTopic: string;
+      /** Timeout in ms before auto-declining. @default 30000 */
+      timeout?: number;
+      /** Memory options (thread, resource). */
+      memory?: { thread?: string | { id: string }; resource?: string };
+      /** Any other AgentCallOptions. */
+      [key: string]: any;
+    },
+  ): Promise<import("agent").AgentResult>;
 }
