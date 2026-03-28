@@ -281,6 +281,11 @@ func (k *Kernel) registerBridges() {
 			topic := args[0].String()
 			subID := uuid.NewString()
 			cancel, err := k.subscribe(topic, func(msg messages.Message) {
+				// Reject if draining (graceful shutdown)
+				if !k.enterHandler() {
+					return
+				}
+
 				// Build full message JSON with metadata for JS handlers
 				msgObj := map[string]any{
 					"topic": msg.Topic,
@@ -306,13 +311,12 @@ func (k *Kernel) registerBridges() {
 				quoted := strconv.Quote(string(msgJSON))
 
 				qctx.Schedule(func(qctx *quickjs.Context) {
+					defer k.exitHandler() // fires after JS handler completes (including Await)
+
 					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { fn(JSON.parse(%s)); } })()`, subID, quoted)
 					val := qctx.Eval(script)
 					if val != nil {
 						if val.IsPromise() {
-							// Async handler — await it so streaming, agent calls, etc. complete.
-							// ctx.Await is reentrant: it polls ProcessJobs + JS_ExecutePendingJob,
-							// so nested Schedule'd work (fetch chunks, other bus messages) fires.
 							awaited := qctx.Await(val)
 							if awaited != nil {
 								awaited.Free()

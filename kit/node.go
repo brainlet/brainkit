@@ -148,12 +148,20 @@ func (n *Node) ReplyRaw(ctx context.Context, replyTo, correlationID string, payl
 	return n.Kernel.ReplyRaw(ctx, replyTo, correlationID, payload, done)
 }
 
-// Close shuts down plugins, plugin state, then the wrapped Kernel.
-func (n *Node) Close() error {
+// Shutdown drains plugins and handlers, then closes everything.
+func (n *Node) Shutdown(ctx context.Context) error {
+	n.Kernel.draining.Store(true)
+
 	n.mu.Lock()
 	started := n.started
 	n.started = false
 	n.mu.Unlock()
+
+	if started && n.plugins != nil {
+		n.plugins.stopAll()
+	}
+
+	n.Kernel.waitForDrain(ctx)
 
 	var firstErr error
 	collect := func(err error) {
@@ -161,18 +169,25 @@ func (n *Node) Close() error {
 			firstErr = err
 		}
 	}
-
-	if started && n.plugins != nil {
-		n.plugins.stopAll()
-	}
 	if n.pluginState != nil {
 		collect(n.pluginState.Close())
 	}
-	// Kernel.Close() handles router + transport shutdown
 	if n.Kernel != nil {
-		collect(n.Kernel.Close())
+		collect(n.Kernel.close())
 	}
 	return firstErr
+}
+
+// Close shuts down with a short drain timeout (5s).
+func (n *Node) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return n.Shutdown(ctx)
+}
+
+// IsDraining returns true during the drain phase.
+func (n *Node) IsDraining() bool {
+	return n.Kernel.IsDraining()
 }
 
 // --- Node-specific command handlers ---

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -58,6 +60,63 @@ type Kernel struct {
 
 	mu     sync.Mutex
 	closed bool
+
+	// Graceful shutdown
+	activeHandlers atomic.Int64
+	draining       atomic.Bool
+
+	// Deployment ordering (for persistence)
+	deployOrder atomic.Int32
+}
+
+// enterHandler marks a bus handler as active.
+// Returns false if draining — caller should drop the message.
+func (k *Kernel) enterHandler() bool {
+	if k.draining.Load() {
+		return false
+	}
+	k.activeHandlers.Add(1)
+	return true
+}
+
+// exitHandler marks a bus handler as complete.
+func (k *Kernel) exitHandler() {
+	k.activeHandlers.Add(-1)
+}
+
+// IsDraining returns true during the drain phase of Shutdown.
+func (k *Kernel) IsDraining() bool {
+	return k.draining.Load()
+}
+
+// SetDraining sets the draining state. Used for testing.
+func (k *Kernel) SetDraining(v bool) {
+	k.draining.Store(v)
+}
+
+// waitForDrain polls until all active handlers finish or ctx expires.
+func (k *Kernel) waitForDrain(ctx context.Context) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			active := k.activeHandlers.Load()
+			if active > 0 {
+				log.Printf("[brainkit] drain timeout: %d handlers still active, forcing shutdown", active)
+			}
+			return
+		case <-ticker.C:
+			if k.activeHandlers.Load() == 0 {
+				log.Printf("[brainkit] drain complete")
+				return
+			}
+		}
+	}
+}
+
+func (k *Kernel) nextDeployOrder() int {
+	return int(k.deployOrder.Add(1))
 }
 
 // autoDetectProviders scans os.Getenv and cfg.EnvVars for known API key patterns
@@ -316,7 +375,39 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// receive bus messages asynchronously.
 	kernel.startJobPump()
 
+	// Auto-redeploy persisted .ts deployments
+	if cfg.Store != nil {
+		kernel.redeployPersistedDeployments()
+	}
+
 	return kernel, nil
+}
+
+// redeployPersistedDeployments loads and re-deploys all persisted .ts deployments.
+func (k *Kernel) redeployPersistedDeployments() {
+	deployments, err := k.config.Store.LoadDeployments()
+	if err != nil {
+		log.Printf("[brainkit] warning: failed to load persisted deployments: %v", err)
+		return
+	}
+	if len(deployments) == 0 {
+		return
+	}
+
+	sort.Slice(deployments, func(i, j int) bool {
+		return deployments[i].Order < deployments[j].Order
+	})
+
+	maxOrder := int32(deployments[len(deployments)-1].Order)
+	k.deployOrder.Store(maxOrder)
+
+	for _, d := range deployments {
+		if _, err := k.Deploy(context.Background(), d.Source, d.Code); err != nil {
+			log.Printf("[brainkit] warning: failed to redeploy %s: %v", d.Source, err)
+		}
+	}
+
+	log.Printf("[brainkit] redeployed %d persisted deployments", len(deployments))
 }
 
 // --- sdk.Runtime implementation ---
@@ -370,8 +461,23 @@ func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, pa
 	return k.transport.Publisher.Publish(replyTo, wmsg)
 }
 
-// Close shuts down the runtime and all local services.
+// Shutdown drains in-flight handlers, then closes everything.
+// The context controls the drain timeout — when ctx expires, force-close proceeds.
+func (k *Kernel) Shutdown(ctx context.Context) error {
+	k.draining.Store(true)
+	k.waitForDrain(ctx)
+	return k.close()
+}
+
+// Close shuts down with a short drain timeout (5s).
 func (k *Kernel) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return k.Shutdown(ctx)
+}
+
+// close is the internal shutdown logic.
+func (k *Kernel) close() error {
 	k.mu.Lock()
 	if k.closed {
 		k.mu.Unlock()

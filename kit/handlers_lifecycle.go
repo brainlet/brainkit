@@ -104,12 +104,15 @@ type deploymentInfo struct {
 	Source    string         `json:"source"`
 	CreatedAt time.Time     `json:"createdAt"`
 	Resources []ResourceInfo `json:"resources,omitempty"`
+	Order     int            `json:"order"`
 }
 
 // Deploy evaluates code in a new SES Compartment with isolated globals.
 // Resources created inside the compartment are tracked by source name.
 // Uses EvalTS internally — handles reentrant calls (IsEvalBusy) and Value.Free.
 func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInfo, error) {
+	originalCode := code // capture before transpilation for persistence
+
 	k.mu.Lock()
 	if k.deployments != nil {
 		if _, exists := k.deployments[source]; exists {
@@ -158,16 +161,29 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInf
 		log.Printf("[kit] deploy %s: failed to enumerate resources: %v", source, err)
 	}
 
+	order := k.nextDeployOrder()
+	now := time.Now()
 	k.mu.Lock()
 	if k.deployments == nil {
 		k.deployments = make(map[string]*deploymentInfo)
 	}
 	k.deployments[source] = &deploymentInfo{
 		Source:    source,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
 		Resources: resources,
+		Order:     order,
 	}
 	k.mu.Unlock()
+
+	// Persist to KitStore (original .ts source, not transpiled JS)
+	if k.config.Store != nil {
+		k.config.Store.SaveDeployment(PersistedDeployment{
+			Source:     source,
+			Code:       originalCode,
+			Order:      order,
+			DeployedAt: now,
+		})
+	}
 
 	return resources, nil
 }
@@ -190,16 +206,51 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 	delete(k.deployments, source)
 	k.mu.Unlock()
 
+	// Remove from persistence
+	if k.config.Store != nil {
+		k.config.Store.DeleteDeployment(source)
+	}
+
 	return removed, nil
 }
 
 // Redeploy tears down old deployment and deploys new code.
 // If teardown fails, it's logged but deploy proceeds (old resources may be gone).
 func (k *Kernel) Redeploy(ctx context.Context, source, code string) ([]ResourceInfo, error) {
+	// Capture original order before teardown
+	k.mu.Lock()
+	originalOrder := 0
+	if d, ok := k.deployments[source]; ok {
+		originalOrder = d.Order
+	}
+	k.mu.Unlock()
+
 	if _, err := k.Teardown(ctx, source); err != nil {
 		log.Printf("redeploy teardown %s: %v", source, err)
 	}
-	return k.Deploy(ctx, source, code)
+	resources, err := k.Deploy(ctx, source, code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Restore original order (Deploy assigned a new one)
+	if originalOrder > 0 {
+		k.mu.Lock()
+		if d, ok := k.deployments[source]; ok {
+			d.Order = originalOrder
+		}
+		k.mu.Unlock()
+		if k.config.Store != nil {
+			k.config.Store.SaveDeployment(PersistedDeployment{
+				Source:     source,
+				Code:       code,
+				Order:      originalOrder,
+				DeployedAt: time.Now(),
+			})
+		}
+	}
+
+	return resources, nil
 }
 
 // ListDeployments returns all currently deployed files with their resources.

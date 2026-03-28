@@ -29,8 +29,21 @@ type KitStore interface {
 	LoadState(shardName, key string) (map[string]string, error)
 	DeleteState(shardName string) error // delete all state for a shard
 
+	// Deployments
+	SaveDeployment(d PersistedDeployment) error
+	LoadDeployments() ([]PersistedDeployment, error)
+	DeleteDeployment(source string) error
+
 	// Lifecycle
 	Close() error
+}
+
+// PersistedDeployment is the on-disk format for a .ts deployment.
+type PersistedDeployment struct {
+	Source     string    `json:"source"`
+	Code       string    `json:"code"`
+	Order      int       `json:"order"`
+	DeployedAt time.Time `json:"deployedAt"`
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +74,13 @@ CREATE TABLE IF NOT EXISTS shard_state (
     state TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (shard_name, state_key)
+);
+
+CREATE TABLE IF NOT EXISTS deployments (
+    source TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    deploy_order INTEGER NOT NULL DEFAULT 0,
+    deployed_at TEXT NOT NULL
 );
 `
 
@@ -244,5 +264,43 @@ func (s *SQLiteStore) LoadState(shardName, key string) (map[string]string, error
 
 func (s *SQLiteStore) DeleteState(shardName string) error {
 	_, err := s.db.Exec("DELETE FROM shard_state WHERE shard_name = ?", shardName)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Deployments
+// ---------------------------------------------------------------------------
+
+func (s *SQLiteStore) SaveDeployment(d PersistedDeployment) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at)
+		 VALUES (?, ?, ?, ?)`,
+		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
+	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at FROM deployments ORDER BY deploy_order")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []PersistedDeployment
+	for rows.Next() {
+		var d PersistedDeployment
+		var deployedAtStr string
+		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr); err != nil {
+			return nil, err
+		}
+		d.DeployedAt, _ = time.Parse(time.RFC3339, deployedAtStr)
+		deployments = append(deployments, d)
+	}
+	return deployments, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteDeployment(source string) error {
+	_, err := s.db.Exec("DELETE FROM deployments WHERE source = ?", source)
 	return err
 }
