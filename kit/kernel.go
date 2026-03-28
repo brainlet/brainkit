@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -59,6 +60,55 @@ type Kernel struct {
 	closed bool
 }
 
+// autoDetectProviders scans os.Getenv and cfg.EnvVars for known API key patterns
+// and registers AI providers that aren't already explicitly configured.
+// Priority: explicit AIProviders > EnvVars > os.Getenv.
+func autoDetectProviders(cfg *KernelConfig) {
+	if cfg.AIProviders == nil {
+		cfg.AIProviders = make(map[string]provreg.AIProviderRegistration)
+	}
+
+	type providerMapping struct {
+		name string
+		typ  provreg.AIProviderType
+		make func(apiKey string) any
+	}
+
+	mappings := map[string]providerMapping{
+		"OPENAI_API_KEY":     {"openai", provreg.AIProviderOpenAI, func(k string) any { return provreg.OpenAIProviderConfig{APIKey: k} }},
+		"ANTHROPIC_API_KEY":  {"anthropic", provreg.AIProviderAnthropic, func(k string) any { return provreg.AnthropicProviderConfig{APIKey: k} }},
+		"GOOGLE_API_KEY":     {"google", provreg.AIProviderGoogle, func(k string) any { return provreg.GoogleProviderConfig{APIKey: k} }},
+		"MISTRAL_API_KEY":    {"mistral", provreg.AIProviderMistral, func(k string) any { return provreg.MistralProviderConfig{APIKey: k} }},
+		"GROQ_API_KEY":       {"groq", provreg.AIProviderGroq, func(k string) any { return provreg.GroqProviderConfig{APIKey: k} }},
+		"DEEPSEEK_API_KEY":   {"deepseek", provreg.AIProviderDeepSeek, func(k string) any { return provreg.DeepSeekProviderConfig{APIKey: k} }},
+		"XAI_API_KEY":        {"xai", provreg.AIProviderXAI, func(k string) any { return provreg.XAIProviderConfig{APIKey: k} }},
+		"COHERE_API_KEY":     {"cohere", provreg.AIProviderCohere, func(k string) any { return provreg.CohereProviderConfig{APIKey: k} }},
+		"PERPLEXITY_API_KEY": {"perplexity", provreg.AIProviderPerplexity, func(k string) any { return provreg.PerplexityProviderConfig{APIKey: k} }},
+		"TOGETHER_API_KEY":   {"togetherai", provreg.AIProviderTogetherAI, func(k string) any { return provreg.TogetherAIProviderConfig{APIKey: k} }},
+		"FIREWORKS_API_KEY":  {"fireworks", provreg.AIProviderFireworks, func(k string) any { return provreg.FireworksProviderConfig{APIKey: k} }},
+		"CEREBRAS_API_KEY":   {"cerebras", provreg.AIProviderCerebras, func(k string) any { return provreg.CerebrasProviderConfig{APIKey: k} }},
+	}
+
+	for envKey, mapping := range mappings {
+		if _, explicit := cfg.AIProviders[mapping.name]; explicit {
+			continue
+		}
+		apiKey := ""
+		if v, ok := cfg.EnvVars[envKey]; ok && v != "" {
+			apiKey = v
+		} else {
+			apiKey = os.Getenv(envKey)
+		}
+		if apiKey == "" {
+			continue
+		}
+		cfg.AIProviders[mapping.name] = provreg.AIProviderRegistration{
+			Type:   mapping.typ,
+			Config: mapping.make(apiKey),
+		}
+	}
+}
+
 // NewKernel creates a local runtime with no attached transport.
 func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if cfg.Namespace == "" {
@@ -67,6 +117,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if cfg.CallerID == "" {
 		cfg.CallerID = cfg.Namespace
 	}
+
+	// Auto-detect AI providers from OS env + EnvVars before sandbox creation
+	autoDetectProviders(&cfg)
 
 	sharedTools := cfg.SharedTools
 	if sharedTools == nil {
@@ -105,14 +158,14 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	kernel.registerBridges()
 
-	for name, scfg := range cfg.EmbeddedStorages {
-		if err := kernel.addStorageInternal(name, scfg); err != nil {
-			for _, srv := range kernel.storages {
-				_ = srv.Close()
-			}
-			agentSandbox.Close()
-			return nil, fmt.Errorf("brainkit: start storage %q: %w", name, err)
+	// Start sqlite storage bridges (must happen before loadRuntime)
+	bridgeURLs, err := kernel.initStorages(cfg)
+	if err != nil {
+		for _, srv := range kernel.storages {
+			_ = srv.Close()
 		}
+		agentSandbox.Close()
+		return nil, fmt.Errorf("brainkit: start storage: %w", err)
 	}
 
 	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
@@ -158,11 +211,14 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	for name, reg := range cfg.AIProviders {
 		kernel.providers.RegisterAIProvider(name, reg)
 	}
-	for name, reg := range cfg.VectorStores {
-		kernel.providers.RegisterVectorStore(name, reg)
-	}
-	for name, reg := range cfg.MastraStorages {
-		kernel.providers.RegisterStorage(name, reg)
+	// Register all storages and vectors in the provider registry
+	kernel.registerStorages(cfg, bridgeURLs)
+	if err := kernel.registerVectors(cfg, bridgeURLs); err != nil {
+		for _, srv := range kernel.storages {
+			_ = srv.Close()
+		}
+		agentSandbox.Close()
+		return nil, fmt.Errorf("brainkit: register vectors: %w", err)
 	}
 
 	kernel.wasm = newWASMService(kernel)
@@ -385,29 +441,39 @@ func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, err
 	return k.agents.CreateAgent(cfg)
 }
 
-// AddStorage starts a new named embedded SQLite storage and makes it available to JS.
-func (k *Kernel) AddStorage(name string, cfg EmbeddedStorageConfig) error {
+// AddStorage registers a new named storage at runtime.
+// For sqlite: starts a libsql bridge + registers in provider registry.
+// For others: registers in provider registry only.
+func (k *Kernel) AddStorage(name string, cfg StorageConfig) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	if _, exists := k.storages[name]; exists {
-		return &sdk.AlreadyExistsError{Resource: "storage", Name: name}
+	if cfg.Type == "sqlite" {
+		if _, exists := k.storages[name]; exists {
+			return &sdk.AlreadyExistsError{Resource: "storage", Name: name}
+		}
+		srv, err := libsql.NewServer(cfg.Path)
+		if err != nil {
+			return err
+		}
+		k.storages[name] = srv
+		reg := storageToRegistration(cfg, srv.URL())
+		k.providers.RegisterStorage(name, reg)
+	} else {
+		reg := storageToRegistration(cfg, "")
+		k.providers.RegisterStorage(name, reg)
 	}
-	return k.addStorageInternal(name, cfg)
+	return nil
 }
 
 // RemoveStorage stops and removes a named storage.
 func (k *Kernel) RemoveStorage(name string) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	srv, ok := k.storages[name]
-	if !ok {
-		return &sdk.NotFoundError{Resource: "storage", Name: name}
+	if srv, ok := k.storages[name]; ok {
+		_ = srv.Close()
+		delete(k.storages, name)
 	}
-	_ = srv.Close()
-	delete(k.storages, name)
-	k.bridge.Eval("__storage_remove.js", fmt.Sprintf(
-		`delete globalThis.__brainkit_storages[%q]`, name,
-	))
+	k.providers.UnregisterStorage(name)
 	return nil
 }
 
@@ -569,16 +635,56 @@ func (k *Kernel) InjectWASMEvent(shardName, topic string, payload json.RawMessag
 	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload)
 }
 
-func (k *Kernel) addStorageInternal(name string, cfg EmbeddedStorageConfig) error {
-	srv, err := libsql.NewServer(cfg.Path)
-	if err != nil {
-		return err
+// initStorages starts sqlite bridges for all sqlite storage entries.
+// Must be called before loadRuntime — libsql servers need to be running.
+// Returns a path→URL map for sqlite bridge sharing with vectors.
+func (k *Kernel) initStorages(cfg KernelConfig) (map[string]string, error) {
+	bridgeURLs := make(map[string]string)
+	for name, scfg := range cfg.Storages {
+		if scfg.Type == "sqlite" {
+			srv, err := libsql.NewServer(scfg.Path)
+			if err != nil {
+				return nil, fmt.Errorf("storage %q: %w", name, err)
+			}
+			k.storages[name] = srv
+			bridgeURLs[scfg.Path] = srv.URL()
+		}
 	}
-	k.storages[name] = srv
-	k.bridge.Eval("__storage_add.js", fmt.Sprintf(
-		`if (!globalThis.__brainkit_storages) globalThis.__brainkit_storages = {};
-		 globalThis.__brainkit_storages[%q] = %q;`, name, srv.URL(),
-	))
+	return bridgeURLs, nil
+}
+
+// registerStorages registers all storages in the provider registry.
+func (k *Kernel) registerStorages(cfg KernelConfig, bridgeURLs map[string]string) {
+	for name, scfg := range cfg.Storages {
+		bridgeURL := ""
+		if scfg.Type == "sqlite" {
+			bridgeURL = bridgeURLs[scfg.Path]
+		}
+		reg := storageToRegistration(scfg, bridgeURL)
+		k.providers.RegisterStorage(name, reg)
+	}
+}
+
+// registerVectors registers all vector stores in the provider registry.
+// For sqlite vectors, reuses the bridge URL from a matching storage path.
+func (k *Kernel) registerVectors(cfg KernelConfig, bridgeURLs map[string]string) error {
+	for name, vcfg := range cfg.Vectors {
+		bridgeURL := ""
+		if vcfg.Type == "sqlite" {
+			bridgeURL = bridgeURLs[vcfg.Path]
+			if bridgeURL == "" {
+				srv, err := libsql.NewServer(vcfg.Path)
+				if err != nil {
+					return fmt.Errorf("vector %q: %w", name, err)
+				}
+				k.storages["vec_"+name] = srv
+				bridgeURL = srv.URL()
+				bridgeURLs[vcfg.Path] = bridgeURL
+			}
+		}
+		reg := vectorToRegistration(vcfg, bridgeURL)
+		k.providers.RegisterVectorStore(name, reg)
+	}
 	return nil
 }
 
@@ -668,11 +774,7 @@ func (k *Kernel) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJS
 // Injects env vars into the JS runtime's process.env.
 func (k *Kernel) RegisterAIProvider(name string, typ provreg.AIProviderType, config any) error {
 	reg := provreg.AIProviderRegistration{Type: typ, Config: config}
-	if err := k.providers.RegisterAIProvider(name, reg); err != nil {
-		return err
-	}
-	k.injectRegistryEnvVars("PROVIDER", name, config)
-	return nil
+	return k.providers.RegisterAIProvider(name, reg)
 }
 
 // UnregisterAIProvider removes an AI provider.
@@ -683,11 +785,7 @@ func (k *Kernel) ListAIProviders() []provreg.ProviderInfo { return k.providers.L
 
 // RegisterVectorStore registers a typed vector store at runtime.
 func (k *Kernel) RegisterVectorStore(name string, typ provreg.VectorStoreType, config any) error {
-	if err := k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config}); err != nil {
-		return err
-	}
-	k.injectRegistryEnvVars("VECTORSTORE", name, config)
-	return nil
+	return k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
 }
 
 // UnregisterVectorStore removes a vector store.
@@ -698,11 +796,7 @@ func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo { return k.provide
 
 // RegisterStorage registers a typed Mastra storage at runtime.
 func (k *Kernel) RegisterStorage(name string, typ provreg.StorageType, config any) error {
-	if err := k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config}); err != nil {
-		return err
-	}
-	k.injectRegistryEnvVars("STORAGE", name, config)
-	return nil
+	return k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
 }
 
 // UnregisterStorage removes a Mastra storage.
@@ -711,15 +805,6 @@ func (k *Kernel) UnregisterStorage(name string) { k.providers.UnregisterStorage(
 // ListStorages returns all registered Mastra storages.
 func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListStorages() }
 
-// injectRegistryEnvVars injects BRAINKIT_* env vars into the JS runtime's process.env.
-func (k *Kernel) injectRegistryEnvVars(category, name string, config any) {
-	envVars := provreg.EnvVarsForRegistration(category, name, config)
-	for envKey, envVal := range envVars {
-		k.bridge.Eval("__env_inject.js", fmt.Sprintf(
-			`globalThis.process.env[%q] = %q`, envKey, envVal,
-		))
-	}
-}
 
 // --- Kernel-level probing (uses JS runtime for vector/storage) ---
 
@@ -835,33 +920,39 @@ func (k *Kernel) startPeriodicProbing() {
 	}()
 }
 
-// startJobPump starts a background goroutine that periodically processes
-// QuickJS scheduled callbacks AND JS microtasks. This enables deployed .ts
-// services to receive bus messages and run async handlers (fetch, generateText)
-// even when no EvalTS/EvalAsync is active.
+// startJobPump starts a background goroutine that processes QuickJS scheduled
+// callbacks AND JS microtasks. Wakes immediately when Schedule'd callbacks are
+// pending (via pumpSignal), with a 100ms fallback for pure-JS microtasks.
 //
 // Uses bridge.Go() so the goroutine is tracked by bridge.wg — Close() waits
-// for it to finish before touching the QuickJS context. Without this, the
-// pump can be inside ctx.Loop() when Close frees the context -> SIGSEGV.
+// for it to finish before touching the QuickJS context.
 func (k *Kernel) startJobPump() {
-	ticker := time.NewTicker(10 * time.Millisecond)
+	fallback := time.NewTicker(100 * time.Millisecond)
+	pumpSignal := k.bridge.PumpSignal()
+
 	k.bridge.Go(func(goCtx context.Context) {
-		defer ticker.Stop()
+		defer fallback.Stop()
 		for {
 			select {
-			case <-ticker.C:
-				k.mu.Lock()
-				closed := k.closed
-				k.mu.Unlock()
-				if closed {
-					return
-				}
-				k.bridge.ProcessScheduledJobs()
+			case <-pumpSignal:
+				k.processScheduledJobs()
+			case <-fallback.C:
+				k.processScheduledJobs()
 			case <-goCtx.Done():
 				return
 			}
 		}
 	})
+}
+
+func (k *Kernel) processScheduledJobs() {
+	k.mu.Lock()
+	closed := k.closed
+	k.mu.Unlock()
+	if closed {
+		return
+	}
+	k.bridge.ProcessScheduledJobs()
 }
 
 // extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.

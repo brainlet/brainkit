@@ -96,17 +96,15 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	embeddedStorages := map[string]kit.EmbeddedStorageConfig{
-		"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
-	}
-
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:        "test",
-		CallerID:         "test-caller",
-		WorkspaceDir:     tmpDir,
-		AIProviders:      aiProviders,
-		EmbeddedStorages: embeddedStorages,
-		EnvVars:          envVars,
+		Namespace:   "test",
+		CallerID:    "test-caller",
+		FSRoot:      tmpDir,
+		AIProviders: aiProviders,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		},
+		EnvVars: envVars,
 	})
 	if err != nil {
 		t.Fatalf("NewKernel: %v", err)
@@ -161,13 +159,13 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 
 	n, err := kit.NewNode(kit.NodeConfig{
 		Kernel: kit.KernelConfig{
-			Namespace:    "test",
-			CallerID:     "test-node",
-			WorkspaceDir: tmpDir,
-			AIProviders:  nodeProviders,
-			EnvVars:      nodeEnvVars,
-			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+			Namespace:   "test",
+			CallerID:    "test-node",
+			FSRoot:      tmpDir,
+			AIProviders: nodeProviders,
+			EnvVars:     nodeEnvVars,
+			Storages: map[string]kit.StorageConfig{
+				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		},
 		Messaging: kit.MessagingConfig{
@@ -232,12 +230,12 @@ func NewTestKernelWithStorage(t *testing.T) *TestKernel {
 	}
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-storage",
-		WorkspaceDir: tmpDir,
-		AIProviders:  storageProviders,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace:   "test",
+		CallerID:    "test-storage",
+		FSRoot:      tmpDir,
+		AIProviders: storageProviders,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars: storageEnvVars,
 	})

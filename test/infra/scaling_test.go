@@ -22,7 +22,7 @@ func poolNodeConfig(t *testing.T) kit.NodeConfig {
 		Kernel: kit.KernelConfig{
 			Namespace:    "pool-test",
 			CallerID:     "pool-test",
-			WorkspaceDir: t.TempDir(),
+			FSRoot: t.TempDir(),
 		},
 		Messaging: kit.MessagingConfig{
 			Transport: "memory",

@@ -119,7 +119,7 @@ func (d *FSDomain) Mkdir(_ context.Context, req messages.FsMkdirMsg) (*messages.
 }
 
 func (d *FSDomain) resolveWorkspacePath(path string) (string, error) {
-	workspace := d.kit.config.WorkspaceDir
+	workspace := d.kit.config.FSRoot
 	if workspace == "" {
 		return "", ErrNoWorkspace
 	}

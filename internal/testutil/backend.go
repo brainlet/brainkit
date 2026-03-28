@@ -65,10 +65,10 @@ func NewTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	cfg := TransportConfigForBackend(t, backend)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-" + backend,
-		WorkspaceDir: tmpDir,
-		Transport:    MustCreateTransport(t, cfg),
+		Namespace: "test",
+		CallerID:  "test-" + backend,
+		FSRoot:    tmpDir,
+		Transport: MustCreateTransport(t, cfg),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel(%s): %v", backend, err)
@@ -101,10 +101,10 @@ func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
 	cfg := TransportConfigForBackend(t, backend)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    namespace,
-		CallerID:     namespace + "-caller",
-		WorkspaceDir: tmpDir,
-		Transport:    MustCreateTransport(t, cfg),
+		Namespace: namespace,
+		CallerID:  namespace + "-caller",
+		FSRoot:    tmpDir,
+		Transport: MustCreateTransport(t, cfg),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
@@ -317,10 +317,10 @@ func NewTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 	makeKit := func(namespace string) sdk.Runtime {
 		tmpDir := t.TempDir()
 		k, err := kit.NewKernel(kit.KernelConfig{
-			Namespace:    namespace,
-			CallerID:     namespace + "-caller",
-			WorkspaceDir: tmpDir,
-			Transport:    transport,
+			Namespace: namespace,
+			CallerID:  namespace + "-caller",
+			FSRoot:    tmpDir,
+			Transport: transport,
 		})
 		if err != nil {
 			t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
@@ -359,17 +359,14 @@ func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKern
 	makeKit := func(namespace string) *TestKernel {
 		tmpDir := t.TempDir()
 		k, err := kit.NewKernel(kit.KernelConfig{
-			Namespace:    namespace,
-			CallerID:     namespace + "-caller",
-			WorkspaceDir: tmpDir,
-			Transport:    transport,
-			AIProviders:  aiProviders,
-			EnvVars:      envVars,
-			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
-			},
-			MastraStorages: map[string]provreg.StorageRegistration{
-				"default": {Type: provreg.StorageInMemory, Config: provreg.InMemoryStorageConfig{}},
+			Namespace:   namespace,
+			CallerID:    namespace + "-caller",
+			FSRoot:      tmpDir,
+			Transport:   transport,
+			AIProviders: aiProviders,
+			EnvVars:     envVars,
+			Storages: map[string]kit.StorageConfig{
+				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		})
 		if err != nil {
@@ -425,12 +422,12 @@ func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	WaitForBackendReady(t, transport)
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-" + backend,
-		WorkspaceDir: tmpDir,
-		AIProviders:  aiProviders,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace:   "test",
+		CallerID:    "test-" + backend,
+		FSRoot:      tmpDir,
+		AIProviders: aiProviders,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:   envVars,
 		Transport: transport,
@@ -478,12 +475,12 @@ func NewTestKernelWithStorageAndBackend(t *testing.T, backend string) *TestKerne
 	t.Cleanup(func() { transport.Close() })
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-storage-" + backend,
-		WorkspaceDir: tmpDir,
-		AIProviders:  storageProviders,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace:   "test",
+		CallerID:    "test-storage-" + backend,
+		FSRoot:      tmpDir,
+		AIProviders: storageProviders,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:   storageEnvVars,
 		Transport: transport,

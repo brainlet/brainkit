@@ -77,12 +77,12 @@ func newKernel(t *testing.T, envVars map[string]string) *kit.Kernel {
 	t.Helper()
 	tmpDir := t.TempDir()
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "auth-test",
-		WorkspaceDir: tmpDir,
-		EnvVars:      envVars,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace: "test",
+		CallerID:  "auth-test",
+		FSRoot:    tmpDir,
+		EnvVars:   envVars,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	require.NoError(t, err)
@@ -290,7 +290,7 @@ func TestUpstash_TokenAuth(t *testing.T) {
 func TestLibSQL_EmbeddedNoAuth(t *testing.T) {
 	k := newKernel(t, map[string]string{})
 
-	// Use the embedded libsql bridge (started by Kernel from EmbeddedStorages)
+	// Use the embedded libsql bridge (started by Kernel from Storages)
 	url := k.StorageURL("default")
 	require.NotEmpty(t, url, "embedded storage URL should be set")
 	os.Setenv("LIBSQL_URL", url)

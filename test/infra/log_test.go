@@ -21,7 +21,7 @@ func TestLogHandler_TSCompartment(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-log",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		LogHandler: func(e kit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
@@ -71,7 +71,7 @@ func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-log-multi",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		LogHandler: func(e kit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
@@ -136,7 +136,7 @@ func TestLogHandler_WASMModule(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-wasm-log",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		LogHandler: func(e kit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
@@ -201,7 +201,7 @@ func TestLogHandler_NilDefault(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-nil-log",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		// LogHandler: nil — default
 	})
 	require.NoError(t, err)

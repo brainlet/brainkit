@@ -16,12 +16,13 @@ import "C"
 
 // Context represents a Javascript context (or Realm). Each JSContext has its own global objects and system objects. There can be several JSContexts per JSRuntime and they can share objects, similar to frames of the same origin sharing Javascript objects in a web browser.
 type Context struct {
-	runtime     *Runtime
-	ref         *C.JSContext
-	globals     *Value
-	handleStore *handleStore //  function handle storage
-	jobQueue    chan func(*Context)
-	jobClosed   chan struct{}
+	runtime      *Runtime
+	ref          *C.JSContext
+	globals      *Value
+	handleStore  *handleStore //  function handle storage
+	jobQueue     chan func(*Context)
+	jobClosed    chan struct{}
+	scheduleHook func() // called after a job is enqueued via Schedule; must be goroutine-safe
 }
 
 const defaultJobQueueSize = 1024
@@ -43,6 +44,13 @@ func (ctx *Context) initScheduler() {
 	ctx.jobClosed = make(chan struct{})
 }
 
+// SetScheduleHook sets a callback that fires after each successful Schedule.
+// The hook is called from the goroutine that calls Schedule — it must be goroutine-safe.
+// Set to nil to disable.
+func (ctx *Context) SetScheduleHook(fn func()) {
+	ctx.scheduleHook = fn
+}
+
 // Schedule enqueues a job to be executed on the Context's thread.
 // Jobs run sequentially via ProcessJobs to keep QuickJS access single-threaded.
 func (ctx *Context) Schedule(job func(*Context)) bool {
@@ -56,6 +64,9 @@ func (ctx *Context) Schedule(job func(*Context)) bool {
 	}
 	select {
 	case ctx.jobQueue <- job:
+		if ctx.scheduleHook != nil {
+			ctx.scheduleHook()
+		}
 		return true
 	case <-ctx.jobClosed:
 		return false

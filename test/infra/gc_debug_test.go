@@ -14,7 +14,7 @@ func TestGC_SingleKernelCleanClose(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "gc-test",
 		CallerID:     "gc-test",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel: %v", err)
@@ -30,7 +30,7 @@ func TestGC_MultipleKernelCleanClose(t *testing.T) {
 		k, err := kit.NewKernel(kit.KernelConfig{
 			Namespace:    "gc-multi",
 			CallerID:     "gc-multi",
-			WorkspaceDir: t.TempDir(),
+			FSRoot: t.TempDir(),
 		})
 		if err != nil {
 			t.Fatalf("NewKernel %d: %v", i, err)
@@ -47,7 +47,7 @@ func TestGC_TenKernelCleanClose(t *testing.T) {
 		k, err := kit.NewKernel(kit.KernelConfig{
 			Namespace:    "gc-stress",
 			CallerID:     "gc-stress",
-			WorkspaceDir: t.TempDir(),
+			FSRoot: t.TempDir(),
 		})
 		if err != nil {
 			t.Fatalf("NewKernel %d: %v", i, err)
@@ -96,7 +96,7 @@ func TestGC_ZeroLeak_SESRuntime(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "gc-leak-test",
 		CallerID:     "gc-leak-test",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("NewKernel: %v", err)

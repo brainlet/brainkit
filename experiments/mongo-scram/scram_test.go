@@ -22,9 +22,9 @@ func TestSCRAMCrypto(t *testing.T) {
 	testutil.LoadEnv(t)
 	tmpDir := t.TempDir()
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace: "test", CallerID: "test-scram", WorkspaceDir: tmpDir,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	if err != nil {
@@ -155,15 +155,15 @@ func TestSCRAMJSAuth(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace: "test", CallerID: "test-scram", WorkspaceDir: tmpDir,
+		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
 		EnvVars: map[string]string{
 			"MONGODB_URL": "mongodb://test:test@" + mongoAddr,
 			// MongoDB driver accesses these for logger setup — must exist (even empty)
 			// to avoid "cannot read property of undefined" in the driver's log severity parser.
 			"MONGODB_LOG_ALL": "off",
 		},
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	if err != nil {

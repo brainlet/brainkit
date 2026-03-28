@@ -73,7 +73,7 @@ func TestCross_Plugin_Go(t *testing.T) {
 				Kernel: kit.KernelConfig{
 					Namespace:    "plugin-cross",
 					CallerID:     "host",
-					WorkspaceDir: tmpDir,
+					FSRoot: tmpDir,
 				},
 				Messaging: kit.MessagingConfig{
 					Transport: "nats",

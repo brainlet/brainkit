@@ -221,7 +221,7 @@ func (im *InstanceManager) EvaluateAndScale() {
 
 func (im *InstanceManager) spawnInstance(p *pool, idx int) (*Node, error) {
 	cfg := p.config.Base
-	cfg.Kernel.Name = fmt.Sprintf("%s-%s-%d", p.name, cfg.Kernel.Name, idx)
+	cfg.Kernel.Namespace = fmt.Sprintf("%s-%s-%d", p.name, cfg.Kernel.Namespace, idx)
 	cfg.Kernel.SharedTools = p.sharedTools
 
 	node, err := NewNode(cfg)

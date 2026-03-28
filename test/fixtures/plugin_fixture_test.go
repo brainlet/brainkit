@@ -50,13 +50,13 @@ func TestPluginFixtures(t *testing.T) {
 	// Create a Node with the plugin
 	node, err := kit.NewNode(kit.NodeConfig{
 		Kernel: kit.KernelConfig{
-			Namespace:    "test-plugin",
-			CallerID:     "test-plugin-caller",
-			WorkspaceDir: tmpDir,
-			AIProviders:  aiProviders,
-			EnvVars:      envVars,
-			EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-				"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+			Namespace:   "test-plugin",
+			CallerID:    "test-plugin-caller",
+			FSRoot:      tmpDir,
+			AIProviders: aiProviders,
+			EnvVars:     envVars,
+			Storages: map[string]kit.StorageConfig{
+				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		},
 		Messaging: kit.MessagingConfig{

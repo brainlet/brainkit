@@ -53,6 +53,10 @@ type Bridge struct {
 	goCtx    context.Context    // cancelled on Close — all goroutines stop
 	goCancel context.CancelFunc // triggers cancellation
 	wg       sync.WaitGroup    // tracks active goroutines
+
+	// Pump signal — fires when Schedule'd callbacks are pending.
+	// Buffered 1: coalesces rapid-fire Schedule calls into one pump wake.
+	pumpSignal chan struct{}
 }
 
 // New creates a Bridge, sets up all polyfills, and returns it ready for use.
@@ -83,13 +87,23 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 	goCtx, goCancel := context.WithCancel(context.Background())
 
 	b := &Bridge{
-		runtime:  rt,
-		ctx:      ctx,
-		stdout:   cfg.Stdout,
-		stderr:   cfg.Stderr,
-		goCtx:    goCtx,
-		goCancel: goCancel,
+		runtime:    rt,
+		ctx:        ctx,
+		stdout:     cfg.Stdout,
+		stderr:     cfg.Stderr,
+		goCtx:      goCtx,
+		goCancel:   goCancel,
+		pumpSignal: make(chan struct{}, 1),
 	}
+
+	// Signal the pump when Schedule'd callbacks are pending.
+	// Non-blocking send: if channel is full, pump already has a pending signal.
+	ctx.SetScheduleHook(func() {
+		select {
+		case b.pumpSignal <- struct{}{}:
+		default:
+		}
+	})
 
 	for _, p := range polyfills {
 		// Give polyfills access to the bridge for tracked goroutines
@@ -134,7 +148,6 @@ func (b *Bridge) Close() {
 			if(typeof globalThis.__kit_compartments!=="undefined") globalThis.__kit_compartments=null;
 			if(typeof globalThis.__kit_providers!=="undefined") globalThis.__kit_providers=null;
 			if(typeof globalThis.__brainkit_obs_config!=="undefined") globalThis.__brainkit_obs_config=null;
-			if(typeof globalThis.__brainkit_storages!=="undefined") globalThis.__brainkit_storages=null;
 		})()`)
 		// Run GC after nullification to free cycles broken by the nullification.
 		b.runtime.RunGC()
@@ -170,6 +183,10 @@ func (b *Bridge) Go(fn func(ctx context.Context)) {
 
 // GoContext returns the context for goroutines. Cancelled on Close.
 func (b *Bridge) GoContext() context.Context { return b.goCtx }
+
+// PumpSignal returns a channel that fires when Schedule'd callbacks are pending.
+// Used by the Kernel's job pump to wake immediately instead of polling.
+func (b *Bridge) PumpSignal() <-chan struct{} { return b.pumpSignal }
 
 // Context returns the QuickJS execution context.
 func (b *Bridge) Context() *quickjs.Context { return b.ctx }

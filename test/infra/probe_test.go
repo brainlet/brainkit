@@ -23,7 +23,7 @@ func TestProbe_AIProvider_Real_OpenAI(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {
 				Type:   provreg.AIProviderOpenAI,
@@ -57,7 +57,7 @@ func TestProbe_AIProvider_BadKey(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-bad",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {
 				Type:   provreg.AIProviderOpenAI,
@@ -82,7 +82,7 @@ func TestProbe_AIProvider_NotRegistered(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-notfound",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -97,9 +97,9 @@ func TestProbe_Storage_InMemory(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-storage",
-		WorkspaceDir: t.TempDir(),
-		MastraStorages: map[string]provreg.StorageRegistration{
-			"default": {Type: provreg.StorageInMemory, Config: provreg.InMemoryStorageConfig{}},
+		FSRoot: t.TempDir(),
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -122,12 +122,9 @@ func TestProbe_VectorStore_Real_PgVector(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-vector",
-		WorkspaceDir: t.TempDir(),
-		VectorStores: map[string]provreg.VectorStoreRegistration{
-			"main": {
-				Type:   provreg.VectorStorePg,
-				Config: provreg.PgVectorConfig{ConnectionString: pgConnStr},
-			},
+		FSRoot: t.TempDir(),
+		Vectors: map[string]kit.VectorConfig{
+			"main": kit.PgVectorStore(pgConnStr),
 		},
 	})
 	require.NoError(t, err)
@@ -153,15 +150,15 @@ func TestProbe_ProbeAll(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probeall",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {
 				Type:   provreg.AIProviderOpenAI,
 				Config: provreg.OpenAIProviderConfig{APIKey: key},
 			},
 		},
-		MastraStorages: map[string]provreg.StorageRegistration{
-			"default": {Type: provreg.StorageInMemory, Config: provreg.InMemoryStorageConfig{}},
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -189,7 +186,7 @@ func TestProbe_PeriodicTicker(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-periodic",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {
 				Type:   provreg.AIProviderOpenAI,

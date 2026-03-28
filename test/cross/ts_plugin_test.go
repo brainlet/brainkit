@@ -46,7 +46,7 @@ func TestCross_TS_Plugin(t *testing.T) {
 				Kernel: kit.KernelConfig{
 					Namespace:    "ts-plugin-cross",
 					CallerID:     "host",
-					WorkspaceDir: tmpDir,
+					FSRoot: tmpDir,
 				},
 				Messaging: kit.MessagingConfig{
 					Transport: "nats",

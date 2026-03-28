@@ -5,7 +5,7 @@ import "fmt"
 // ── Sentinel errors ──────────────────────────────────────────────────────────
 
 // ErrNoWorkspace is returned when a filesystem operation is attempted
-// but KernelConfig.WorkspaceDir is not configured.
+// but KernelConfig.FSRoot is not configured.
 var ErrNoWorkspace = fmt.Errorf("workspace not configured")
 
 // ErrMCPNotConfigured is returned when an MCP operation is attempted

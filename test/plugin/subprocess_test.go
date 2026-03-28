@@ -110,7 +110,7 @@ func TestPlugin_Subprocess(t *testing.T) {
 		Kernel: kit.KernelConfig{
 			Namespace:    "plugin-e2e",
 			CallerID:     "host",
-			WorkspaceDir: tmpDir,
+			FSRoot: tmpDir,
 		},
 		Messaging: kit.MessagingConfig{
 			Transport: "nats",

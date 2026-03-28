@@ -26,7 +26,7 @@ func TestGoDirect_MCP(t *testing.T) {
 			k, err := kit.NewKernel(kit.KernelConfig{
 				Namespace:    "test-mcp",
 				CallerID:     "test-mcp-caller",
-				WorkspaceDir: tmpDir,
+				FSRoot: tmpDir,
 				MCPServers: map[string]mcppkg.ServerConfig{
 					"testmcp": {
 						Command: mcpBinary,

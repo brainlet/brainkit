@@ -3,6 +3,7 @@ package infra_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -18,15 +19,15 @@ func TestRegistry_GoSide_RegisterAndList(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "test-key"}},
 		},
-		VectorStores: map[string]provreg.VectorStoreRegistration{
-			"main": {Type: provreg.VectorStorePg, Config: provreg.PgVectorConfig{ConnectionString: "pg://test"}},
+		Vectors: map[string]kit.VectorConfig{
+			"main": kit.PgVectorStore("pg://test"),
 		},
-		MastraStorages: map[string]provreg.StorageRegistration{
-			"default": {Type: provreg.StorageInMemory, Config: provreg.InMemoryStorageConfig{}},
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -54,15 +55,24 @@ func TestRegistry_GoSide_RegisterAndList(t *testing.T) {
 }
 
 func TestRegistry_GoSide_RuntimeRegisterUnregister(t *testing.T) {
+	// Clear env vars so auto-detect doesn't register providers
+	origKey := os.Getenv("OPENAI_API_KEY")
+	os.Unsetenv("OPENAI_API_KEY")
+	defer func() {
+		if origKey != "" {
+			os.Setenv("OPENAI_API_KEY", origKey)
+		}
+	}()
+
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-registry-dynamic",
-		WorkspaceDir: t.TempDir(),
+		Namespace: "test",
+		CallerID:  "test-registry-dynamic",
+		FSRoot:    t.TempDir(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	// Initially empty
+	// Initially empty (no auto-detected providers since env was cleared)
 	assert.Empty(t, k.ListAIProviders())
 	assert.Empty(t, k.ListVectorStores())
 	assert.Empty(t, k.ListStorages())
@@ -88,7 +98,7 @@ func TestRegistry_JSBridge_Has(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-js",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "test"}},
 		},
@@ -114,7 +124,7 @@ func TestRegistry_JSBridge_List(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-list",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai":    {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "test1"}},
 			"anthropic": {Type: provreg.AIProviderAnthropic, Config: provreg.AnthropicProviderConfig{APIKey: "test2"}},
@@ -140,7 +150,7 @@ func TestRegistry_JSBridge_Resolve(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-resolve",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "sk-test-key"}},
 		},
@@ -168,7 +178,7 @@ func TestRegistry_WithDeployedTS(t *testing.T) {
 	k, err := kit.NewKernel(kit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-deploy",
-		WorkspaceDir: t.TempDir(),
+		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "test"}},
 		},

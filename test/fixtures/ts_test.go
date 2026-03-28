@@ -426,13 +426,13 @@ func newTestKernelWithMCP(t *testing.T) *testutil.TestKernel {
 	}
 
 	k, err := kit.NewKernel(kit.KernelConfig{
-		Namespace:    "test",
-		CallerID:     "test-mcp",
-		WorkspaceDir: tmpDir,
-		AIProviders:  aiProviders,
-		EnvVars:      envVars,
-		EmbeddedStorages: map[string]kit.EmbeddedStorageConfig{
-			"default": {Path: filepath.Join(tmpDir, "brainkit.db")},
+		Namespace:   "test",
+		CallerID:    "test-mcp",
+		FSRoot:      tmpDir,
+		AIProviders: aiProviders,
+		EnvVars:     envVars,
+		Storages: map[string]kit.StorageConfig{
+			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		MCPServers: map[string]mcppkg.ServerConfig{
 			"test": {URL: mcpURL},

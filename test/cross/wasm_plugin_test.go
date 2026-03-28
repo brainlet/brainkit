@@ -40,7 +40,7 @@ func TestCross_WASM_Plugin(t *testing.T) {
 				Kernel: kit.KernelConfig{
 					Namespace:    "wasm-plugin-cross",
 					CallerID:     "host",
-					WorkspaceDir: tmpDir,
+					FSRoot: tmpDir,
 				},
 				Messaging: kit.MessagingConfig{
 					Transport: "nats",
