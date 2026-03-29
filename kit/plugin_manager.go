@@ -15,20 +15,32 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
+// RunningPlugin describes a running plugin process.
+type RunningPlugin struct {
+	Name     string
+	PID      int
+	Uptime   time.Duration
+	Status   string // "running"
+	Restarts int
+	Config   PluginConfig
+}
+
 // pluginManager manages plugin subprocesses for a Node.
 type pluginManager struct {
-	node    *Node
-	plugins map[string]*pluginConn
-	mu      sync.Mutex
+	node         *Node
+	plugins      map[string]*pluginConn
+	mu           sync.Mutex
+	startCounter int32
 }
 
 // pluginConn tracks one connected plugin subprocess.
 type pluginConn struct {
-	config   PluginConfig
-	identity string
-	cmd      *exec.Cmd
-	cancel   context.CancelFunc
-	done     chan struct{} // closed when process exits AND no restart will happen
+	config    PluginConfig
+	identity  string
+	cmd       *exec.Cmd
+	cancel    context.CancelFunc
+	done      chan struct{} // closed when process exits AND no restart will happen
+	startedAt time.Time
 
 	mu       sync.Mutex
 	restarts int  // number of times restarted after crash
@@ -109,12 +121,13 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	}
 
 	pc := &pluginConn{
-		config:   cfg,
-		identity: cfg.Name,
-		cmd:      cmd,
-		cancel:   cancel,
-		done:     make(chan struct{}),
-		restarts: restartCount,
+		config:    cfg,
+		identity:  cfg.Name,
+		cmd:       cmd,
+		cancel:    cancel,
+		done:      make(chan struct{}),
+		restarts:  restartCount,
+		startedAt: time.Now(),
 	}
 
 	pm.mu.Lock()
@@ -254,6 +267,35 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 	pm.mu.Unlock()
 
 	log.Printf("[plugin:%s] stopped", name)
+}
+
+func (pm *pluginManager) listPlugins() []RunningPlugin {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	result := make([]RunningPlugin, 0, len(pm.plugins))
+	for name, pc := range pm.plugins {
+		pid := 0
+		if pc.cmd != nil && pc.cmd.Process != nil {
+			pid = pc.cmd.Process.Pid
+		}
+		result = append(result, RunningPlugin{
+			Name:     name,
+			PID:      pid,
+			Uptime:   time.Since(pc.startedAt),
+			Status:   "running",
+			Restarts: pc.restarts,
+			Config:   pc.config,
+		})
+	}
+	return result
+}
+
+func (pm *pluginManager) nextStartOrder() int {
+	pm.mu.Lock()
+	pm.startCounter++
+	order := pm.startCounter
+	pm.mu.Unlock()
+	return int(order)
 }
 
 type logWriter struct {

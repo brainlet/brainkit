@@ -39,8 +39,40 @@ type KitStore interface {
 	LoadSchedules() ([]PersistedSchedule, error)
 	DeleteSchedule(id string) error
 
+	// Installed plugins
+	SaveInstalledPlugin(p InstalledPlugin) error
+	LoadInstalledPlugins() ([]InstalledPlugin, error)
+	DeleteInstalledPlugin(name string) error
+
+	// Running plugins (for restart recovery)
+	SaveRunningPlugin(p RunningPluginRecord) error
+	LoadRunningPlugins() ([]RunningPluginRecord, error)
+	DeleteRunningPlugin(name string) error
+
 	// Lifecycle
 	Close() error
+}
+
+// InstalledPlugin is the on-disk format for an installed plugin binary.
+type InstalledPlugin struct {
+	Name        string    `json:"name"`
+	Owner       string    `json:"owner"`
+	Version     string    `json:"version"`
+	BinaryPath  string    `json:"binaryPath"`
+	Manifest    string    `json:"manifest"` // raw JSON
+	InstalledAt time.Time `json:"installedAt"`
+}
+
+// RunningPluginRecord is the on-disk format for a running plugin (for restart recovery).
+type RunningPluginRecord struct {
+	Name       string            `json:"name"`
+	Owner      string            `json:"owner"`
+	Version    string            `json:"version"`
+	BinaryPath string            `json:"binaryPath"`
+	Env        map[string]string `json:"env"`
+	Config     json.RawMessage   `json:"config,omitempty"`
+	StartOrder int               `json:"startOrder"`
+	StartedAt  time.Time         `json:"startedAt"`
 }
 
 // PersistedDeployment is the on-disk format for a .ts deployment.
@@ -111,6 +143,27 @@ CREATE TABLE IF NOT EXISTS schedules (
     created_at TEXT NOT NULL,
     next_fire TEXT NOT NULL,
     one_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS installed_plugins (
+    name TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    version TEXT NOT NULL,
+    binary_path TEXT NOT NULL,
+    manifest TEXT NOT NULL,
+    installed_at TEXT NOT NULL,
+    PRIMARY KEY (owner, name)
+);
+
+CREATE TABLE IF NOT EXISTS running_plugins (
+    name TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    version TEXT NOT NULL,
+    binary_path TEXT NOT NULL,
+    env TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    start_order INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL
 );
 `
 
@@ -387,4 +440,86 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ---------------------------------------------------------------------------
+// Installed Plugins
+// ---------------------------------------------------------------------------
+
+func (s *SQLiteStore) SaveInstalledPlugin(p InstalledPlugin) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO installed_plugins (name, owner, version, binary_path, manifest, installed_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		p.Name, p.Owner, p.Version, p.BinaryPath, p.Manifest, p.InstalledAt.Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *SQLiteStore) LoadInstalledPlugins() ([]InstalledPlugin, error) {
+	rows, err := s.db.Query("SELECT name, owner, version, binary_path, manifest, installed_at FROM installed_plugins")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var plugins []InstalledPlugin
+	for rows.Next() {
+		var p InstalledPlugin
+		var installedAtStr string
+		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &p.Manifest, &installedAtStr); err != nil {
+			return nil, err
+		}
+		p.InstalledAt, _ = time.Parse(time.RFC3339, installedAtStr)
+		plugins = append(plugins, p)
+	}
+	return plugins, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteInstalledPlugin(name string) error {
+	_, err := s.db.Exec("DELETE FROM installed_plugins WHERE name = ?", name)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Running Plugins
+// ---------------------------------------------------------------------------
+
+func (s *SQLiteStore) SaveRunningPlugin(p RunningPluginRecord) error {
+	envJSON, _ := json.Marshal(p.Env)
+	configStr := "{}"
+	if len(p.Config) > 0 {
+		configStr = string(p.Config)
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.Name, p.Owner, p.Version, p.BinaryPath, string(envJSON), configStr,
+		p.StartOrder, p.StartedAt.Format(time.RFC3339),
+	)
+	return err
+}
+
+func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
+	rows, err := s.db.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at FROM running_plugins ORDER BY start_order")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var plugins []RunningPluginRecord
+	for rows.Next() {
+		var p RunningPluginRecord
+		var envStr, configStr, startedAtStr string
+		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &envStr, &configStr, &p.StartOrder, &startedAtStr); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(envStr), &p.Env)
+		p.Config = json.RawMessage(configStr)
+		p.StartedAt, _ = time.Parse(time.RFC3339, startedAtStr)
+		plugins = append(plugins, p)
+	}
+	return plugins, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteRunningPlugin(name string) error {
+	_, err := s.db.Exec("DELETE FROM running_plugins WHERE name = ?", name)
+	return err
 }

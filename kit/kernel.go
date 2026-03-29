@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/jsbridge"
+	"github.com/brainlet/brainkit/kit/packages"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
@@ -39,8 +41,10 @@ type Kernel struct {
 	lifecycle      *LifecycleDomain
 	mcpDomainInst  *MCPDomain
 	registryDomain *RegistryDomain
+	packagesDomain *PackagesDomain
 
 	Tools     *toolreg.ToolRegistry
+	packages  *packages.Manager
 	mcp       *mcppkg.MCPManager
 	providers *provreg.ProviderRegistry
 
@@ -569,6 +573,32 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		agentSandbox.Close()
 		return nil, fmt.Errorf("brainkit: register vectors: %w", err)
 	}
+
+	// Initialize package manager
+	registries := cfg.PluginRegistries
+	if len(registries) == 0 {
+		registries = []RegistryConfig{DefaultRegistry}
+	}
+	pluginDir := cfg.PluginDir
+	if pluginDir == "" && cfg.FSRoot != "" {
+		pluginDir = filepath.Join(cfg.FSRoot, "plugins")
+	} else if pluginDir == "" {
+		pluginDir = filepath.Join(os.TempDir(), "brainkit-plugins")
+	}
+	var pkgStore packages.PluginStore
+	if cfg.Store != nil {
+		pkgStore = &kitStoreAdapter{store: cfg.Store}
+	}
+	regSources := make([]packages.RegistrySource, len(registries))
+	for i, r := range registries {
+		regSources[i] = packages.RegistrySource{Name: r.Name, URL: r.URL, AuthToken: r.AuthToken}
+	}
+	kernel.packages = packages.NewManager(
+		packages.NewRegistryClient(regSources),
+		pluginDir,
+		pkgStore,
+	)
+	kernel.packagesDomain = newPackagesDomain(kernel)
 
 	kernel.wasm = newWASMService(kernel)
 	kernel.wasmDomainInst = newWASMDomain(kernel, kernel.wasm)

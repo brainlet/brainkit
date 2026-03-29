@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -18,10 +19,11 @@ import (
 type Node struct {
 	Kernel *Kernel
 
-	config      NodeConfig
-	nodeID      string
-	plugins     *pluginManager
-	pluginState PluginStateStore
+	config          NodeConfig
+	nodeID          string
+	plugins         *pluginManager
+	pluginState     PluginStateStore
+	pluginLifecycle *PluginLifecycleDomain
 
 	mu      sync.Mutex
 	started bool
@@ -76,9 +78,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		pluginState: stateStore,
 	}
 
-	if len(cfg.Plugins) > 0 {
-		node.plugins = newPluginManager(node)
-	}
+	node.plugins = newPluginManager(node)
 
 	// Register ALL command bindings (kernel + node-specific) on the Kernel's router
 	kernel.host.RegisterCommands(commandBindingsForNode(node))
@@ -114,9 +114,12 @@ func (n *Node) Start(ctx context.Context) error {
 		return err
 	}
 
-	if n.plugins != nil {
+	// Restore dynamically-started plugins from previous session
+	n.restoreRunningPlugins()
+
+	if len(n.config.Plugins) > 0 {
 		if n.config.Messaging.Transport == "" || n.config.Messaging.Transport == "memory" {
-			return &sdk.ValidationError{Field: "transport", Message: "plugins require nats transport"}
+			return &sdk.ValidationError{Field: "transport", Message: "plugins require non-memory transport"}
 		}
 		n.plugins.startAll(n.config.Plugins)
 	}
@@ -188,6 +191,120 @@ func (n *Node) Close() error {
 // IsDraining returns true during the drain phase.
 func (n *Node) IsDraining() bool {
 	return n.Kernel.IsDraining()
+}
+
+// --- Dynamic plugin lifecycle ---
+
+// StartPlugin starts a plugin dynamically at runtime.
+func (n *Node) StartPlugin(ctx context.Context, cfg PluginConfig) error {
+	if n.config.Messaging.Transport == "" || n.config.Messaging.Transport == "memory" {
+		return &sdk.ValidationError{Field: "transport", Message: "plugins require non-memory transport"}
+	}
+	pluginDefaults(&cfg)
+	if err := n.plugins.startPlugin(cfg, 0); err != nil {
+		return err
+	}
+	// Persist running state
+	if n.Kernel.config.Store != nil {
+		record := RunningPluginRecord{
+			Name:       cfg.Name,
+			BinaryPath: cfg.Binary,
+			Env:        cfg.Env,
+			Config:     cfg.Config,
+			StartOrder: n.plugins.nextStartOrder(),
+			StartedAt:  time.Now(),
+		}
+		n.Kernel.config.Store.SaveRunningPlugin(record)
+	}
+	// Emit event
+	pid := 0
+	for _, p := range n.plugins.listPlugins() {
+		if p.Name == cfg.Name {
+			pid = p.PID
+			break
+		}
+	}
+	n.Kernel.publish(ctx, "plugin.started", mustMarshalJSON(messages.PluginStartedEvent{
+		Name: cfg.Name, PID: pid,
+	}))
+	return nil
+}
+
+// StopPlugin stops a running plugin gracefully.
+func (n *Node) StopPlugin(ctx context.Context, name string) error {
+	n.plugins.mu.Lock()
+	pc, ok := n.plugins.plugins[name]
+	n.plugins.mu.Unlock()
+	if !ok {
+		return &sdk.NotFoundError{Resource: "plugin", Name: name}
+	}
+	n.plugins.stopPlugin(name, pc)
+	if n.Kernel.config.Store != nil {
+		n.Kernel.config.Store.DeleteRunningPlugin(name)
+	}
+	n.Kernel.publish(ctx, "plugin.stopped", mustMarshalJSON(messages.PluginStoppedEvent{
+		Name: name, Reason: "stopped",
+	}))
+	return nil
+}
+
+// RestartPlugin stops and re-starts a plugin.
+func (n *Node) RestartPlugin(ctx context.Context, name string) error {
+	n.plugins.mu.Lock()
+	pc, ok := n.plugins.plugins[name]
+	n.plugins.mu.Unlock()
+	if !ok {
+		return &sdk.NotFoundError{Resource: "plugin", Name: name}
+	}
+	cfg := pc.config
+	n.plugins.stopPlugin(name, pc)
+	return n.plugins.startPlugin(cfg, 0)
+}
+
+// ListRunningPlugins returns all running plugins.
+func (n *Node) ListRunningPlugins() []RunningPlugin {
+	return n.plugins.listPlugins()
+}
+
+// restoreRunningPlugins restores plugins that were running before shutdown.
+func (n *Node) restoreRunningPlugins() {
+	if n.Kernel.config.Store == nil {
+		return
+	}
+	records, err := n.Kernel.config.Store.LoadRunningPlugins()
+	if err != nil {
+		log.Printf("[brainkit] warning: failed to load running plugins: %v", err)
+		return
+	}
+	if len(records) == 0 {
+		return
+	}
+	restored := 0
+	for _, r := range records {
+		// Skip if already running (from NodeConfig.Plugins static config)
+		n.plugins.mu.Lock()
+		_, alreadyRunning := n.plugins.plugins[r.Name]
+		n.plugins.mu.Unlock()
+		if alreadyRunning {
+			continue
+		}
+
+		cfg := PluginConfig{
+			Name:   r.Name,
+			Binary: r.BinaryPath,
+			Env:    r.Env,
+			Config: r.Config,
+		}
+		pluginDefaults(&cfg)
+		if err := n.plugins.startPlugin(cfg, 0); err != nil {
+			log.Printf("[brainkit] warning: failed to restore plugin %s: %v", r.Name, err)
+			continue
+		}
+		restored++
+	}
+	if restored > 0 {
+		log.Printf("[brainkit] restored %d running plugins", restored)
+	}
 }
 
 // --- Node-specific command handlers ---

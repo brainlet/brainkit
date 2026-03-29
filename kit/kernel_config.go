@@ -83,6 +83,26 @@ type KernelConfig struct {
 	// DeferRouterStart skips starting the router during NewKernel.
 	// Used by Node to register node-specific command bindings before starting.
 	DeferRouterStart bool
+
+	// Plugin registries — searched in order for packages.search/install.
+	// Defaults to the official brainlet registry if empty.
+	PluginRegistries []RegistryConfig
+
+	// Local plugin cache directory. Defaults to <FSRoot>/plugins/ if FSRoot is set.
+	PluginDir string
+}
+
+// RegistryConfig configures a plugin registry source.
+type RegistryConfig struct {
+	Name      string // "official", "company", "community"
+	URL       string // "https://raw.githubusercontent.com/brainlet/plugins-registry/main/v1"
+	AuthToken string // optional — sent as Authorization: Bearer <token>
+}
+
+// DefaultRegistry is the official brainlet plugin registry.
+var DefaultRegistry = RegistryConfig{
+	Name: "official",
+	URL:  "https://raw.githubusercontent.com/brainlet/plugins-registry/main/v1",
 }
 
 // ObservabilityConfig configures the tracing/observability system.

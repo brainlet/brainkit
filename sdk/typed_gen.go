@@ -176,6 +176,76 @@ func SubscribeMcpListToolsResp(rt Runtime, ctx context.Context, topic string, ha
 	return SubscribeTo[messages.McpListToolsResp](rt, ctx, topic, handler)
 }
 
+// PublishPackagesInfo publishes a PackagesInfoMsg and returns routing info for the response.
+func PublishPackagesInfo(rt Runtime, ctx context.Context, msg messages.PackagesInfoMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesInfoResp subscribes to the response topic for a PackagesInfoMsg command.
+func SubscribePackagesInfoResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesInfoResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesInfoResp](rt, ctx, topic, handler)
+}
+
+// PublishPackagesInstall publishes a PackagesInstallMsg and returns routing info for the response.
+func PublishPackagesInstall(rt Runtime, ctx context.Context, msg messages.PackagesInstallMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesInstallResp subscribes to the response topic for a PackagesInstallMsg command.
+func SubscribePackagesInstallResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesInstallResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesInstallResp](rt, ctx, topic, handler)
+}
+
+// PublishPackagesList publishes a PackagesListMsg and returns routing info for the response.
+func PublishPackagesList(rt Runtime, ctx context.Context, msg messages.PackagesListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesListResp subscribes to the response topic for a PackagesListMsg command.
+func SubscribePackagesListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesListResp](rt, ctx, topic, handler)
+}
+
+// PublishPackagesRemove publishes a PackagesRemoveMsg and returns routing info for the response.
+func PublishPackagesRemove(rt Runtime, ctx context.Context, msg messages.PackagesRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesRemoveResp subscribes to the response topic for a PackagesRemoveMsg command.
+func SubscribePackagesRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesRemoveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesRemoveResp](rt, ctx, topic, handler)
+}
+
+// PublishPackagesSearch publishes a PackagesSearchMsg and returns routing info for the response.
+func PublishPackagesSearch(rt Runtime, ctx context.Context, msg messages.PackagesSearchMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesSearchResp subscribes to the response topic for a PackagesSearchMsg command.
+func SubscribePackagesSearchResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesSearchResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesSearchResp](rt, ctx, topic, handler)
+}
+
+// PublishPackagesUpdate publishes a PackagesUpdateMsg and returns routing info for the response.
+func PublishPackagesUpdate(rt Runtime, ctx context.Context, msg messages.PackagesUpdateMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackagesUpdateResp subscribes to the response topic for a PackagesUpdateMsg command.
+func SubscribePackagesUpdateResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesUpdateResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackagesUpdateResp](rt, ctx, topic, handler)
+}
+
+// PublishPluginListRunning publishes a PluginListRunningMsg and returns routing info for the response.
+func PublishPluginListRunning(rt Runtime, ctx context.Context, msg messages.PluginListRunningMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePluginListRunningResp subscribes to the response topic for a PluginListRunningMsg command.
+func SubscribePluginListRunningResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginListRunningResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginListRunningResp](rt, ctx, topic, handler)
+}
+
 // PublishPluginManifest publishes a PluginManifestMsg and returns routing info for the response.
 func PublishPluginManifest(rt Runtime, ctx context.Context, msg messages.PluginManifestMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -184,6 +254,26 @@ func PublishPluginManifest(rt Runtime, ctx context.Context, msg messages.PluginM
 // SubscribePluginManifestResp subscribes to the response topic for a PluginManifestMsg command.
 func SubscribePluginManifestResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginManifestResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.PluginManifestResp](rt, ctx, topic, handler)
+}
+
+// PublishPluginRestart publishes a PluginRestartMsg and returns routing info for the response.
+func PublishPluginRestart(rt Runtime, ctx context.Context, msg messages.PluginRestartMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePluginRestartResp subscribes to the response topic for a PluginRestartMsg command.
+func SubscribePluginRestartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginRestartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginRestartResp](rt, ctx, topic, handler)
+}
+
+// PublishPluginStart publishes a PluginStartMsg and returns routing info for the response.
+func PublishPluginStart(rt Runtime, ctx context.Context, msg messages.PluginStartMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePluginStartResp subscribes to the response topic for a PluginStartMsg command.
+func SubscribePluginStartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginStartResp](rt, ctx, topic, handler)
 }
 
 // PublishPluginStateGet publishes a PluginStateGetMsg and returns routing info for the response.
@@ -204,6 +294,26 @@ func PublishPluginStateSet(rt Runtime, ctx context.Context, msg messages.PluginS
 // SubscribePluginStateSetResp subscribes to the response topic for a PluginStateSetMsg command.
 func SubscribePluginStateSetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStateSetResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.PluginStateSetResp](rt, ctx, topic, handler)
+}
+
+// PublishPluginStatus publishes a PluginStatusMsg and returns routing info for the response.
+func PublishPluginStatus(rt Runtime, ctx context.Context, msg messages.PluginStatusMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePluginStatusResp subscribes to the response topic for a PluginStatusMsg command.
+func SubscribePluginStatusResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStatusResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginStatusResp](rt, ctx, topic, handler)
+}
+
+// PublishPluginStop publishes a PluginStopMsg and returns routing info for the response.
+func PublishPluginStop(rt Runtime, ctx context.Context, msg messages.PluginStopMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePluginStopResp subscribes to the response topic for a PluginStopMsg command.
+func SubscribePluginStopResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStopResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginStopResp](rt, ctx, topic, handler)
 }
 
 // PublishRegistryHas publishes a RegistryHasMsg and returns routing info for the response.
@@ -394,5 +504,25 @@ func EmitPluginRegistered(rt Runtime, ctx context.Context, msg messages.PluginRe
 // SubscribePluginRegistered listens for PluginRegisteredEvent events.
 func SubscribePluginRegistered(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginRegisteredEvent, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.PluginRegisteredEvent](rt, ctx, topic, handler)
+}
+
+// EmitPluginStarted fires a PluginStartedEvent event (no response expected).
+func EmitPluginStarted(rt Runtime, ctx context.Context, msg messages.PluginStartedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribePluginStarted listens for PluginStartedEvent events.
+func SubscribePluginStarted(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStartedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginStartedEvent](rt, ctx, topic, handler)
+}
+
+// EmitPluginStopped fires a PluginStoppedEvent event (no response expected).
+func EmitPluginStopped(rt Runtime, ctx context.Context, msg messages.PluginStoppedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribePluginStopped listens for PluginStoppedEvent events.
+func SubscribePluginStopped(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStoppedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PluginStoppedEvent](rt, ctx, topic, handler)
 }
 

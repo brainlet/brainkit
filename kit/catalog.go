@@ -233,6 +233,25 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
 				return kernel.registryDomain.Resolve(ctx, req)
 			}),
+			// ── Package Manager ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesSearchMsg) (*messages.PackagesSearchResp, error) {
+				return kernel.packagesDomain.Search(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesInstallMsg) (*messages.PackagesInstallResp, error) {
+				return kernel.packagesDomain.Install(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesRemoveMsg) (*messages.PackagesRemoveResp, error) {
+				return kernel.packagesDomain.Remove(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesUpdateMsg) (*messages.PackagesUpdateResp, error) {
+				return kernel.packagesDomain.Update(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesListMsg) (*messages.PackagesListResp, error) {
+				return kernel.packagesDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesInfoMsg) (*messages.PackagesInfoResp, error) {
+				return kernel.packagesDomain.Info(ctx, req)
+			}),
 			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
 				return node.processPluginManifest(ctx, req)
 			}),
@@ -241,6 +260,37 @@ func commandCatalog() *commandRegistry {
 			}),
 			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStateSetMsg) (*messages.PluginStateSetResp, error) {
 				return node.setPluginState(ctx, req)
+			}),
+			// ── Plugin Lifecycle ──
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStartMsg) (*messages.PluginStartResp, error) {
+				if node.pluginLifecycle == nil {
+					node.pluginLifecycle = newPluginLifecycleDomain(node)
+				}
+				return node.pluginLifecycle.Start(ctx, req)
+			}),
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStopMsg) (*messages.PluginStopResp, error) {
+				if node.pluginLifecycle == nil {
+					node.pluginLifecycle = newPluginLifecycleDomain(node)
+				}
+				return node.pluginLifecycle.Stop(ctx, req)
+			}),
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginRestartMsg) (*messages.PluginRestartResp, error) {
+				if node.pluginLifecycle == nil {
+					node.pluginLifecycle = newPluginLifecycleDomain(node)
+				}
+				return node.pluginLifecycle.Restart(ctx, req)
+			}),
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginListRunningMsg) (*messages.PluginListRunningResp, error) {
+				if node.pluginLifecycle == nil {
+					node.pluginLifecycle = newPluginLifecycleDomain(node)
+				}
+				return node.pluginLifecycle.List(ctx, req)
+			}),
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStatusMsg) (*messages.PluginStatusResp, error) {
+				if node.pluginLifecycle == nil {
+					node.pluginLifecycle = newPluginLifecycleDomain(node)
+				}
+				return node.pluginLifecycle.Status(ctx, req)
 			}),
 		}
 

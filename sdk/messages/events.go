@@ -55,3 +55,20 @@ type HandlerExhaustedEvent struct {
 }
 
 func (HandlerExhaustedEvent) BusTopic() string { return "bus.handler.exhausted" }
+
+// PluginStartedEvent is emitted when a plugin is started dynamically.
+type PluginStartedEvent struct {
+	Name    string `json:"name"`
+	PID     int    `json:"pid"`
+	Version string `json:"version,omitempty"`
+}
+
+func (PluginStartedEvent) BusTopic() string { return "plugin.started" }
+
+// PluginStoppedEvent is emitted when a plugin is stopped.
+type PluginStoppedEvent struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason,omitempty"`
+}
+
+func (PluginStoppedEvent) BusTopic() string { return "plugin.stopped" }
