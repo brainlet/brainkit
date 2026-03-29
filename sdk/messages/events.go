@@ -34,3 +34,24 @@ type CustomEvent struct {
 }
 
 func (e CustomEvent) BusTopic() string { return e.Topic }
+
+// HandlerFailedEvent is emitted when a bus handler throws an exception.
+type HandlerFailedEvent struct {
+	Topic      string `json:"topic"`
+	Source     string `json:"source"`
+	Error      string `json:"error"`
+	RetryCount int    `json:"retryCount"`
+	WillRetry  bool   `json:"willRetry"`
+}
+
+func (HandlerFailedEvent) BusTopic() string { return "bus.handler.failed" }
+
+// HandlerExhaustedEvent is emitted when retries are exhausted for a failed handler.
+type HandlerExhaustedEvent struct {
+	Topic      string `json:"topic"`
+	Source     string `json:"source"`
+	Error      string `json:"error"`
+	RetryCount int    `json:"retryCount"`
+}
+
+func (HandlerExhaustedEvent) BusTopic() string { return "bus.handler.exhausted" }

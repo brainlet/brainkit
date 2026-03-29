@@ -299,7 +299,7 @@
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);
       globalThis.__bus_subs[subId] = function(rawMsg) {
-        handler(wrapMsg(rawMsg));
+        return handler(wrapMsg(rawMsg));
       };
       _resourceRegistry.register("subscription", subId, subId, null, function() {
         __go_brainkit_unsubscribe(subId);

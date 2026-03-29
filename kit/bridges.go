@@ -311,19 +311,37 @@ func (k *Kernel) registerBridges() {
 				quoted := strconv.Quote(string(msgJSON))
 
 				qctx.Schedule(func(qctx *quickjs.Context) {
-					defer k.exitHandler() // fires after JS handler completes (including Await)
+					defer k.exitHandler()
 
-					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { fn(JSON.parse(%s)); } })()`, subID, quoted)
+					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { return fn(JSON.parse(%s)); } })()`, subID, quoted)
 					val := qctx.Eval(script)
-					if val != nil {
-						if val.IsPromise() {
-							awaited := qctx.Await(val)
-							if awaited != nil {
-								awaited.Free()
-							}
-						} else {
-							val.Free()
+					if val == nil {
+						return
+					}
+
+					// Sync exception
+					if val.IsException() {
+						handlerErr := qctx.Exception()
+						val.Free()
+						k.handleHandlerFailure(msg, topic, handlerErr)
+						return
+					}
+
+					if val.IsPromise() {
+						awaited := qctx.Await(val)
+						if awaited == nil {
+							return
 						}
+						// Async rejection
+						if awaited.IsException() || qctx.HasException() {
+							handlerErr := qctx.Exception()
+							awaited.Free()
+							k.handleHandlerFailure(msg, topic, handlerErr)
+							return
+						}
+						awaited.Free()
+					} else {
+						val.Free()
 					}
 				})
 			})

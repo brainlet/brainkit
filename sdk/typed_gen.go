@@ -346,6 +346,26 @@ func SubscribeWasmUndeployResp(rt Runtime, ctx context.Context, topic string, ha
 	return SubscribeTo[messages.WasmUndeployResp](rt, ctx, topic, handler)
 }
 
+// EmitHandlerExhausted fires a HandlerExhaustedEvent event (no response expected).
+func EmitHandlerExhausted(rt Runtime, ctx context.Context, msg messages.HandlerExhaustedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeHandlerExhausted listens for HandlerExhaustedEvent events.
+func SubscribeHandlerExhausted(rt Runtime, ctx context.Context, topic string, handler func(messages.HandlerExhaustedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.HandlerExhaustedEvent](rt, ctx, topic, handler)
+}
+
+// EmitHandlerFailed fires a HandlerFailedEvent event (no response expected).
+func EmitHandlerFailed(rt Runtime, ctx context.Context, msg messages.HandlerFailedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeHandlerFailed listens for HandlerFailedEvent events.
+func SubscribeHandlerFailed(rt Runtime, ctx context.Context, topic string, handler func(messages.HandlerFailedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.HandlerFailedEvent](rt, ctx, topic, handler)
+}
+
 // EmitKitDeployed fires a KitDeployedEvent event (no response expected).
 func EmitKitDeployed(rt Runtime, ctx context.Context, msg messages.KitDeployedEvent) error {
 	return Emit(rt, ctx, msg)

@@ -153,6 +153,34 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 	return correlationID, nil
 }
 
+// PublishRawWithMeta sends a message with extra metadata (e.g., retryCount for failure handling).
+// Extra metadata keys are stamped directly — replyTo in extra is NOT namespace-resolved
+// (used for retry re-publishes where replyTo is already resolved).
+func (c *RemoteClient) PublishRawWithMeta(ctx context.Context, logicalTopic string, payload json.RawMessage, extra map[string]string) (string, error) {
+	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
+	wmsg.SetContext(ctx)
+	if c.callerID != "" {
+		wmsg.Metadata.Set("callerId", c.callerID)
+	}
+
+	correlationID := CorrelationIDFromContext(ctx)
+	if correlationID == "" {
+		correlationID = uuid.NewString()
+	}
+	wmsg.Metadata.Set("correlationId", correlationID)
+
+	// Stamp extra metadata AFTER defaults — extras can override correlationId/replyTo
+	// (used by retry to pass already-resolved values without re-namespacing)
+	for k, v := range extra {
+		wmsg.Metadata.Set(k, v)
+	}
+
+	if err := c.pub.Publish(c.resolvedTopic(logicalTopic), wmsg); err != nil {
+		return "", err
+	}
+	return wmsg.Metadata.Get("correlationId"), nil
+}
+
 func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID string) (messages.Message, error) {
 	resultCh, err := c.sub.Subscribe(ctx, c.resolvedTopic(logicalTopic))
 	if err != nil {

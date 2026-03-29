@@ -1,11 +1,22 @@
 package kit
 
 import (
+	"time"
+
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/messaging"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit/registry"
 )
+
+// RetryPolicy configures retry behavior for failed bus handlers.
+type RetryPolicy struct {
+	MaxRetries      int           // 0 = no retry
+	InitialDelay    time.Duration // delay before first retry (default: 1s)
+	MaxDelay        time.Duration // cap on exponential backoff (default: 30s)
+	BackoffFactor   float64       // multiplier per retry (default: 2.0)
+	DeadLetterTopic string        // where exhausted messages go ("" = discard)
+}
 
 // KernelConfig configures the local runtime.
 // The Kernel is a resource pool — the Go developer fills it with providers,
@@ -44,6 +55,11 @@ type KernelConfig struct {
 	Observability ObservabilityConfig
 	Store         KitStore
 	Probe         registry.ProbeConfig
+
+	// RetryPolicies maps topic glob patterns to retry configurations.
+	// When a bus handler throws, the matching policy determines retry behavior.
+	// If no policy matches, an error response is sent immediately to the caller.
+	RetryPolicies map[string]RetryPolicy
 
 	// LogHandler receives tagged log entries from .ts Compartments, WASM modules,
 	// and the Kernel. Called concurrently from multiple goroutines — must be safe.
