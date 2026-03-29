@@ -84,6 +84,20 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	if len(cfg.Config) > 0 {
 		env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_CONFIG=%s", string(cfg.Config)))
 	}
+	// Resolve $secret: references in env
+	if pm.node.Kernel.secretStore != nil {
+		for i, e := range env {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 && strings.HasPrefix(parts[1], "$secret:") {
+				secretName := strings.TrimPrefix(parts[1], "$secret:")
+				val, err := pm.node.Kernel.secretStore.Get(context.Background(), secretName)
+				if err == nil && val != "" {
+					env[i] = parts[0] + "=" + val
+				}
+			}
+		}
+	}
+
 	cmd.Env = append(cmd.Environ(), env...)
 
 	stdout, err := cmd.StdoutPipe()

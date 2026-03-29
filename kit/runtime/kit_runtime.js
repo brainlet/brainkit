@@ -285,50 +285,53 @@
           __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false);
         }
       },
-      stream: {
-        text: function(chunk) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "text", data: chunk }),
-              msg.correlationId, false);
-          }
-        },
-        progress: function(value, message) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "progress", data: { value: value, message: message || "" } }),
-              msg.correlationId, false);
-          }
-        },
-        object: function(partial) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "object", data: partial }),
-              msg.correlationId, false);
-          }
-        },
-        event: function(name, data) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "event", event: name, data: data || null }),
-              msg.correlationId, false);
-          }
-        },
-        error: function(message) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "error", data: { message: typeof message === "string" ? message : String(message) } }),
-              msg.correlationId, true);
-          }
-        },
-        end: function(finalData) {
-          if (msg.replyTo) {
-            __go_brainkit_bus_reply(msg.replyTo,
-              JSON.stringify({ type: "end", data: finalData || null }),
-              msg.correlationId, true);
-          }
-        },
-      },
+      stream: (function() {
+        var _seq = 0;
+        return {
+          text: function(chunk) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "text", data: chunk, seq: _seq++ }),
+                msg.correlationId, false);
+            }
+          },
+          progress: function(value, message) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "progress", data: { value: value, message: message || "" }, seq: _seq++ }),
+                msg.correlationId, false);
+            }
+          },
+          object: function(partial) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "object", data: partial, seq: _seq++ }),
+                msg.correlationId, false);
+            }
+          },
+          event: function(name, data) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "event", event: name, data: data || null, seq: _seq++ }),
+                msg.correlationId, false);
+            }
+          },
+          error: function(message) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "error", data: { message: typeof message === "string" ? message : String(message) }, seq: _seq++ }),
+                msg.correlationId, true);
+            }
+          },
+          end: function(finalData) {
+            if (msg.replyTo) {
+              __go_brainkit_bus_reply(msg.replyTo,
+                JSON.stringify({ type: "end", data: finalData || null, seq: _seq++ }),
+                msg.correlationId, true);
+            }
+          },
+        };
+      })(),
     };
     return msg;
   }
@@ -405,14 +408,11 @@
 
       var cleanupFn = null;
       if (type === "tool") {
-        try {
-          bridgeControl("tools.register", { name: name, description: (ref && ref.description) || "", inputSchema: {} });
-        } catch(e) {}
+        // No try/catch — let RBAC errors propagate to caller
+        bridgeControl("tools.register", { name: name, description: (ref && ref.description) || "", inputSchema: {} });
         cleanupFn = function() { try { bridgeControl("tools.unregister", { name: name }); } catch(e) {} };
       } else if (type === "agent") {
-        try {
-          bridgeControl("agents.register", { name: name, capabilities: [], model: "", kit: globalThis.__brainkit_sandbox_id || "" });
-        } catch(e) {}
+        bridgeControl("agents.register", { name: name, capabilities: [], model: "", kit: globalThis.__brainkit_sandbox_id || "" });
         cleanupFn = function() { try { bridgeControl("agents.unregister", { name: name }); } catch(e) {} };
       }
       _resourceRegistry.register(type, name, name, ref, cleanupFn);
@@ -465,6 +465,17 @@
     resolve: function(category, name) { var r = __go_registry_resolve(category, name); return r ? JSON.parse(r) : null; },
     register: function(category, name, config) { bridgeControl("registry.register", { category: category, name: name, config: config }); },
     unregister: function(category, name) { bridgeControl("registry.unregister", { category: category, name: name }); },
+  };
+
+  // ─── Secrets ─────────────────────────────────────────────────
+
+  var secretsAPI = {
+    get: function(name) {
+      if (typeof __go_brainkit_secret_get === "function") {
+        return __go_brainkit_secret_get(name);
+      }
+      return "";
+    },
   };
 
   // ─── Output ───────────────────────────────────────────────────
@@ -562,6 +573,7 @@
     fs: fs,
     mcp: mcp,
     output: output,
+    secrets: secretsAPI,
     generateWithApproval: generateWithApproval,
   };
 
@@ -660,6 +672,7 @@
       fs: _kitObj.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,
+      secrets: _kitObj.secrets,
       generateWithApproval: _kitObj.generateWithApproval,
       // AI SDK ("ai" module) — also available as endowments for Compartment code
       generateText: embed.generateText,
@@ -803,5 +816,123 @@
       child_process: globalThis.child_process,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
+  };
+
+  // ─── Test Framework Setup ──────────────────────────────────────
+  // Sets up globalThis.__test for the "test" module exports.
+
+  var _testResults = [];
+  var _testHooks = { beforeAll: [], afterAll: [], beforeEach: [], afterEach: [] };
+  var _testDeployments = [];
+
+  globalThis.__test = {
+    test: function(name, fn) { _testResults.push({ name: name, fn: fn }); },
+    describe: function(name, fn) { fn(); },
+    beforeAll: function(fn) { _testHooks.beforeAll.push(fn); },
+    afterAll: function(fn) { _testHooks.afterAll.push(fn); },
+    beforeEach: function(fn) { _testHooks.beforeEach.push(fn); },
+    afterEach: function(fn) { _testHooks.afterEach.push(fn); },
+    expect: function(value) {
+      return {
+        toBe: function(expected) { if (value !== expected) throw new Error("Expected " + JSON.stringify(value) + " to be " + JSON.stringify(expected)); },
+        toEqual: function(expected) { if (JSON.stringify(value) !== JSON.stringify(expected)) throw new Error("Expected deep equal failed"); },
+        toContain: function(sub) { var s = typeof value === "string" ? value : JSON.stringify(value); if (s.indexOf(sub) === -1) throw new Error("Expected to contain " + JSON.stringify(sub)); },
+        toMatch: function(pat) { if (!new RegExp(pat).test(String(value))) throw new Error("Expected to match " + pat); },
+        toBeTruthy: function() { if (!value) throw new Error("Expected truthy, got " + JSON.stringify(value)); },
+        toBeFalsy: function() { if (value) throw new Error("Expected falsy, got " + JSON.stringify(value)); },
+        toBeDefined: function() { if (value === undefined || value === null) throw new Error("Expected defined"); },
+        toBeGreaterThan: function(n) { if (!(value > n)) throw new Error(value + " not > " + n); },
+        toBeLessThan: function(n) { if (!(value < n)) throw new Error(value + " not < " + n); },
+        toHaveLength: function(n) { var l = value && value.length !== undefined ? value.length : 0; if (l !== n) throw new Error("Expected length " + n + ", got " + l); },
+        not: {
+          toBe: function(expected) { if (value === expected) throw new Error("Expected NOT " + JSON.stringify(expected)); },
+          toContain: function(sub) { var s = typeof value === "string" ? value : JSON.stringify(value); if (s.indexOf(sub) !== -1) throw new Error("Expected NOT to contain " + JSON.stringify(sub)); },
+        },
+      };
+    },
+    deploy: async function(source, code) {
+      var raw = await __go_brainkit_request_async("kit.deploy", JSON.stringify({ source: source, code: code }));
+      var result = JSON.parse(raw);
+      if (result && result.error) throw new Error("deploy: " + result.error);
+      _testDeployments.push(source);
+      return result;
+    },
+    sleep: function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); },
+    evaluate: async function(service, topic, cases) {
+      var results = { total: cases.length, passed: 0, failed: 0, cases: [] };
+      var start = Date.now();
+      for (var i = 0; i < cases.length; i++) {
+        var c = cases[i];
+        var caseStart = Date.now();
+        try {
+          var resp = bus.sendTo(service, topic, c.input);
+          // Wait for reply
+          await globalThis.__test.sleep(100);
+          var passed = true;
+          if (c.expect) {
+            for (var key in c.expect) {
+              var expected = c.expect[key];
+              if (expected instanceof RegExp) {
+                if (!expected.test(String(resp[key]))) passed = false;
+              } else if (resp[key] !== expected) {
+                passed = false;
+              }
+            }
+          }
+          if (passed) results.passed++; else results.failed++;
+          results.cases.push({ input: c.input, passed: passed, duration: Date.now() - caseStart });
+        } catch(e) {
+          results.failed++;
+          results.cases.push({ input: c.input, passed: false, error: e.message, duration: Date.now() - caseStart });
+        }
+      }
+      results.passRate = results.total > 0 ? results.passed / results.total : 0;
+      results.totalDuration = Date.now() - start;
+      return results;
+    },
+    runWorkflow: async function(workflowId, opts) {
+      var input = opts && opts.input ? JSON.stringify(opts.input) : "{}";
+      var raw = await __go_brainkit_request_async("workflow.run", JSON.stringify({ workflowId: workflowId, input: JSON.parse(input) }));
+      var resp = JSON.parse(raw);
+      if (resp && resp.error) throw new Error("runWorkflow: " + resp.error);
+      // Wait for completion
+      var runId = resp.runId;
+      for (var i = 0; i < 100; i++) {
+        await globalThis.__test.sleep(100);
+        var statusRaw = await __go_brainkit_request_async("workflow.status", JSON.stringify({ runId: runId }));
+        var status = JSON.parse(statusRaw);
+        if (status.status === "completed" || status.status === "failed") {
+          // Get journal
+          var histRaw = await __go_brainkit_request_async("workflow.history", JSON.stringify({ runId: runId }));
+          var hist = JSON.parse(histRaw);
+          return { status: status.status, output: status.output, steps: hist.entries || [], journal: hist.entries || [], runId: runId };
+        }
+      }
+      return { status: "timeout", runId: runId };
+    },
+  };
+
+  globalThis.__runTests = async function() {
+    var results = [];
+    for (var i = 0; i < _testHooks.beforeAll.length; i++) await _testHooks.beforeAll[i]();
+    for (var t = 0; t < _testResults.length; t++) {
+      for (var j = 0; j < _testHooks.beforeEach.length; j++) await _testHooks.beforeEach[j]();
+      var start = Date.now();
+      try {
+        await _testResults[t].fn();
+        results.push({ name: _testResults[t].name, passed: true, duration: Date.now() - start });
+      } catch(e) {
+        results.push({ name: _testResults[t].name, passed: false, error: e.message || String(e), duration: Date.now() - start });
+      }
+      for (var d = _testDeployments.length - 1; d >= 0; d--) {
+        try { __go_brainkit_request("kit.teardown", JSON.stringify({ source: _testDeployments[d] })); } catch(e) {}
+      }
+      _testDeployments = [];
+      for (var k = 0; k < _testHooks.afterEach.length; k++) await _testHooks.afterEach[k]();
+    }
+    for (var m = 0; m < _testHooks.afterAll.length; m++) await _testHooks.afterAll[m]();
+    _testResults = [];
+    _testHooks = { beforeAll: [], afterAll: [], beforeEach: [], afterEach: [] };
+    return JSON.stringify(results);
   };
 })();

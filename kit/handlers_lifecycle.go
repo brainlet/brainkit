@@ -110,8 +110,39 @@ type deploymentInfo struct {
 // Deploy evaluates code in a new SES Compartment with isolated globals.
 // Resources created inside the compartment are tracked by source name.
 // Uses EvalTS internally — handles reentrant calls (IsEvalBusy) and Value.Free.
-func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInfo, error) {
+// DeployOption configures a Deploy call.
+type DeployOption func(*deployConfig)
+
+type deployConfig struct {
+	role        string
+	packageName string
+}
+
+// WithRole assigns an RBAC role to the deployment.
+func WithRole(role string) DeployOption {
+	return func(c *deployConfig) { c.role = role }
+}
+
+// WithPackageName tags the deployment as part of a package.
+func WithPackageName(name string) DeployOption {
+	return func(c *deployConfig) { c.packageName = name }
+}
+
+func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
+	var cfg deployConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	originalCode := code // capture before transpilation for persistence
+
+	// Set Go-side source for RBAC — subscribe calls during deployment capture this
+	k.setCurrentSource(source)
+	defer k.setCurrentSource("")
+
+	// Assign role if specified
+	if cfg.role != "" && k.rbac != nil {
+		k.rbac.Assign(source, cfg.role)
+	}
 
 	k.mu.Lock()
 	if k.deployments != nil {
@@ -181,7 +212,9 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string) ([]ResourceInf
 			Source:     source,
 			Code:       originalCode,
 			Order:      order,
-			DeployedAt: now,
+			DeployedAt:  now,
+			Role:        cfg.role,
+			PackageName: cfg.packageName,
 		})
 	}
 

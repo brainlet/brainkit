@@ -7,7 +7,10 @@ import (
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/messaging"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/kit/rbac"
 	"github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit/kit/secrets"
+	"github.com/brainlet/brainkit/kit/tracing"
 )
 
 // RetryPolicy configures retry behavior for failed bus handlers.
@@ -57,6 +60,18 @@ type KernelConfig struct {
 
 	// Filesystem sandbox root — deployments access via fs.read/write/list.
 	FSRoot string
+
+	// Secrets
+	SecretStore secrets.SecretStore // pluggable secret backend; nil = auto-create from SecretKey
+	SecretKey   string             // master key for EncryptedKVStore; "" = unencrypted dev mode
+
+	// RBAC — bus-level role-based access control
+	Roles       map[string]rbac.Role // named permission sets; nil = no enforcement
+	DefaultRole string               // applied when Deploy doesn't specify a role; "" = "service"
+
+	// Tracing
+	TraceStore      tracing.TraceStore // nil = no tracing
+	TraceSampleRate float64            // 0.0-1.0, default 1.0
 
 	// Infrastructure
 	MaxStackSize  int

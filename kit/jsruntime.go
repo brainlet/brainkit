@@ -22,9 +22,12 @@ var agentModuleJS string
 //go:embed runtime/compiler_module.js
 var compilerModuleJS string
 
+//go:embed runtime/test_module.js
+var testModuleJS string
+
 // loadRuntime sets up the kit runtime:
 // 1. Evaluates kit_runtime.js (sets globalThis.__kit)
-// 2. Registers four ES modules: "kit", "ai", "agent", "compiler"
+// 2. Registers five ES modules: "kit", "ai", "agent", "compiler", "test"
 func (k *Kernel) loadRuntime() error {
 	val, err := k.bridge.Eval("kit-runtime.js", kitRuntimeJS)
 	if err != nil {
@@ -42,6 +45,7 @@ func (k *Kernel) loadRuntime() error {
 		{aiModuleJS, "ai"},
 		{agentModuleJS, "agent"},
 		{compilerModuleJS, "compiler"},
+		{testModuleJS, "test"},
 	}
 
 	for _, mod := range modules {

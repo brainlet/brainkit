@@ -218,6 +218,16 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitListMsg) (*messages.KitListResp, error) {
 				return kernel.lifecycle.List(ctx, req)
 			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitDeployFileMsg) (*messages.KitDeployResp, error) {
+				resources, err := DeployFile(ctx, kernel, req.Path)
+				if err != nil {
+					return nil, err
+				}
+				return &messages.KitDeployResp{
+					Deployed:  true,
+					Resources: resourceInfosToMessages(resources),
+				}, nil
+			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
 				return kernel.mcpDomainInst.ListTools(ctx, req)
 			}),
@@ -232,6 +242,71 @@ func commandCatalog() *commandRegistry {
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
 				return kernel.registryDomain.Resolve(ctx, req)
+			}),
+			// ── Workflow Engine ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowRunMsg) (*messages.WorkflowRunResp, error) {
+				return kernel.workflowDomain.Run(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStatusMsg) (*messages.WorkflowStatusResp, error) {
+				return kernel.workflowDomain.Status(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowCancelMsg) (*messages.WorkflowCancelResp, error) {
+				return kernel.workflowDomain.Cancel(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowListMsg) (*messages.WorkflowListResp, error) {
+				return kernel.workflowDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowHistoryMsg) (*messages.WorkflowHistoryResp, error) {
+				return kernel.workflowDomain.History(ctx, req)
+			}),
+			// ── Automations ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationDeployMsg) (*messages.AutomationDeployResp, error) {
+				return kernel.automationDomain.Deploy(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationTeardownMsg) (*messages.AutomationTeardownResp, error) {
+				return kernel.automationDomain.Teardown(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationListMsg) (*messages.AutomationListResp, error) {
+				return kernel.automationDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationInfoMsg) (*messages.AutomationInfoResp, error) {
+				return kernel.automationDomain.Info(ctx, req)
+			}),
+			// ── Tracing ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceGetMsg) (*messages.TraceGetResp, error) {
+				return kernel.tracingDomain.Get(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceListMsg) (*messages.TraceListResp, error) {
+				return kernel.tracingDomain.List(ctx, req)
+			}),
+			// ── RBAC Administration ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACAssignMsg) (*messages.RBACAssignResp, error) {
+				return kernel.rbacDomain.Assign(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRevokeMsg) (*messages.RBACRevokeResp, error) {
+				return kernel.rbacDomain.Revoke(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACListMsg) (*messages.RBACListResp, error) {
+				return kernel.rbacDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRolesMsg) (*messages.RBACRolesResp, error) {
+				return kernel.rbacDomain.Roles(ctx, req)
+			}),
+			// ── Secrets ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
+				return kernel.secretsDomain.Set(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsGetMsg) (*messages.SecretsGetResp, error) {
+				return kernel.secretsDomain.Get(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsDeleteMsg) (*messages.SecretsDeleteResp, error) {
+				return kernel.secretsDomain.Delete(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsListMsg) (*messages.SecretsListResp, error) {
+				return kernel.secretsDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsRotateMsg) (*messages.SecretsRotateResp, error) {
+				return kernel.secretsDomain.Rotate(ctx, req)
 			}),
 			// ── Package Manager ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesSearchMsg) (*messages.PackagesSearchResp, error) {
@@ -251,6 +326,22 @@ func commandCatalog() *commandRegistry {
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesInfoMsg) (*messages.PackagesInfoResp, error) {
 				return kernel.packagesDomain.Info(ctx, req)
+			}),
+			// ── Package Deployment ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageDeployMsg) (*messages.PackageDeployResp, error) {
+				return kernel.packageDeployDomain.Deploy(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageTeardownMsg) (*messages.PackageTeardownResp, error) {
+				return kernel.packageDeployDomain.Teardown(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageRedeployMsg) (*messages.PackageRedeployResp, error) {
+				return kernel.packageDeployDomain.Redeploy(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageListDeployedMsg) (*messages.PackageListDeployedResp, error) {
+				return kernel.packageDeployDomain.List(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageDeployInfoMsg) (*messages.PackageDeployInfoResp, error) {
+				return kernel.packageDeployDomain.Info(ctx, req)
 			}),
 			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
 				return node.processPluginManifest(ctx, req)

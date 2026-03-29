@@ -31,7 +31,15 @@ func (k *Kernel) registerBridges() {
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
+			// RBAC enforcement on command
+			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
+				return qctx.ThrowError(err)
+			}
+
+			// Tracing
+			span := k.tracer.StartSpan("command:"+topic, context.Background())
 			resp, err := invoker.Invoke(context.Background(), topic, payload)
+			span.End(err)
 			if err != nil {
 				return qctx.ThrowError(fmt.Errorf("brainkit_request %s: %w", topic, err))
 			}
@@ -48,9 +56,16 @@ func (k *Kernel) registerBridges() {
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
+			// RBAC enforcement on command
+			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
+				return qctx.ThrowError(err)
+			}
+
 			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 				k.bridge.Go(func(goCtx context.Context) {
+					span := k.tracer.StartSpan("command:"+topic, goCtx)
 					resp, err := invoker.Invoke(goCtx, topic, payload)
+					span.End(err)
 					if err != nil {
 						if goCtx.Err() != nil {
 							return
@@ -80,6 +95,18 @@ func (k *Kernel) registerBridges() {
 			}
 			action := args[0].String()
 			payload := json.RawMessage(args[1].String())
+
+			// RBAC enforcement on registration
+			source := k.currentDeploymentSource()
+			if action == "tools.register" || action == "tools.unregister" {
+				if err := k.checkRegistrationPermission(source, "tool"); err != nil {
+					return qctx.ThrowError(err)
+				}
+			} else if action == "agents.register" || action == "agents.unregister" {
+				if err := k.checkRegistrationPermission(source, "agent"); err != nil {
+					return qctx.ThrowError(err)
+				}
+			}
 
 			var resp json.RawMessage
 			var err error
@@ -211,6 +238,11 @@ func (k *Kernel) registerBridges() {
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
+			// RBAC enforcement
+			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "publish"); err != nil {
+				return qctx.ThrowError(err)
+			}
+
 			correlationID := uuid.NewString()
 			replyTo := topic + ".reply." + correlationID
 
@@ -236,6 +268,11 @@ func (k *Kernel) registerBridges() {
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
+
+			// RBAC enforcement
+			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "emit"); err != nil {
+				return qctx.ThrowError(err)
+			}
 
 			if err := k.publish(context.Background(), topic, payload); err != nil {
 				return qctx.ThrowError(fmt.Errorf("bus_emit %s: %w", topic, err))
@@ -279,12 +316,25 @@ func (k *Kernel) registerBridges() {
 				return qctx.ThrowError(fmt.Errorf("brainkit_subscribe: expected topic pattern"))
 			}
 			topic := args[0].String()
+
+			// Capture deployment source at subscribe time for RBAC during callbacks
+			subscriberSource := k.currentDeploymentSource()
+
+			// RBAC enforcement
+			if err := k.checkBusPermission(subscriberSource, topic, "subscribe"); err != nil {
+				return qctx.ThrowError(err)
+			}
+
 			subID := uuid.NewString()
 			cancel, err := k.subscribe(topic, func(msg messages.Message) {
 				// Reject if draining (graceful shutdown)
 				if !k.enterHandler() {
 					return
 				}
+
+				// Tracing — span for handler invocation
+				handlerSpan := k.tracer.StartSpan("handler:"+topic, context.Background())
+				handlerSpan.SetSource(subscriberSource)
 
 				// Build full message JSON with metadata for JS handlers
 				msgObj := map[string]any{
@@ -312,6 +362,11 @@ func (k *Kernel) registerBridges() {
 
 				qctx.Schedule(func(qctx *quickjs.Context) {
 					defer k.exitHandler()
+					defer handlerSpan.End(nil)
+					// Set source for RBAC inside the scheduled callback (JS thread).
+					// Must be here, not in subscriber goroutine, to avoid races.
+					k.setCurrentSource(subscriberSource)
+					defer k.setCurrentSource("")
 
 					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { return fn(JSON.parse(%s)); } })()`, subID, quoted)
 					val := qctx.Eval(script)
@@ -576,6 +631,23 @@ func (k *Kernel) registerBridges() {
 			}
 			k.Unschedule(context.Background(), args[0].String())
 			return qctx.NewUndefined()
+		}))
+
+	// __go_brainkit_secret_get(name) → value or ""
+	qctx.Globals().Set("__go_brainkit_secret_get",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 1 {
+				return qctx.NewString("")
+			}
+			name := args[0].String()
+			if k.secretStore == nil {
+				return qctx.NewString("")
+			}
+			val, err := k.secretStore.Get(context.Background(), name)
+			if err != nil || val == "" {
+				return qctx.NewString("")
+			}
+			return qctx.NewString(val)
 		}))
 
 	// Set context globals

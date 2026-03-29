@@ -72,3 +72,14 @@ type PluginStoppedEvent struct {
 }
 
 func (PluginStoppedEvent) BusTopic() string { return "plugin.stopped" }
+
+// PermissionDeniedEvent is emitted when RBAC denies a bus/command/registration operation.
+type PermissionDeniedEvent struct {
+	Source string `json:"source"` // deployment or plugin name
+	Topic  string `json:"topic"`  // topic or command that was denied
+	Action string `json:"action"` // "publish", "subscribe", "emit", "command", "register"
+	Role   string `json:"role"`   // role that denied it
+	Reason string `json:"reason"` // human-readable
+}
+
+func (PermissionDeniedEvent) BusTopic() string { return "bus.permission.denied" }

@@ -26,6 +26,12 @@ type KitRedeployMsg struct {
 
 func (KitRedeployMsg) BusTopic() string { return "kit.redeploy" }
 
+type KitDeployFileMsg struct {
+	Path string `json:"path"`
+}
+
+func (KitDeployFileMsg) BusTopic() string { return "kit.deploy.file" }
+
 // ── Responses ──
 
 type KitDeployResp struct {

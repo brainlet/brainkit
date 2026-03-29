@@ -22,6 +22,10 @@ import (
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/kit/packages"
+	"github.com/brainlet/brainkit/kit/rbac"
+	"github.com/brainlet/brainkit/kit/secrets"
+	"github.com/brainlet/brainkit/kit/tracing"
+	"github.com/brainlet/brainkit/kit/workflow"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
@@ -41,12 +45,22 @@ type Kernel struct {
 	lifecycle      *LifecycleDomain
 	mcpDomainInst  *MCPDomain
 	registryDomain *RegistryDomain
-	packagesDomain *PackagesDomain
+	packagesDomain       *PackagesDomain
+	packageDeployDomain  *PackageDeployDomain
+	secretsDomain        *SecretsDomain
+	workflowDomain *WorkflowDomain
+	rbacDomain     *RBACDomain
+	tracingDomain    *TracingDomain
+	automationDomain *AutomationDomain
 
 	Tools     *toolreg.ToolRegistry
-	packages  *packages.Manager
-	mcp       *mcppkg.MCPManager
+	packages       *packages.Manager
+	workflowEngine *workflow.Engine
+	hostFunctions  *workflow.HostFunctionRegistry
+	mcp            *mcppkg.MCPManager
 	providers *provreg.ProviderRegistry
+	rbac      *rbac.Manager
+	tracer    *tracing.Tracer
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -62,6 +76,10 @@ type Kernel struct {
 	agents    *agentembed.Sandbox
 	wasm      *WASMService
 	storages  map[string]*libsql.Server
+
+	secretStore   secrets.SecretStore
+	node          *Node   // optional back-reference, set by Node after creation
+	currentSource string  // active deployment source for RBAC — set by subscribe callback
 
 	deployments map[string]*deploymentInfo
 	bridgeSubs  map[string]func()
@@ -599,6 +617,78 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		pkgStore,
 	)
 	kernel.packagesDomain = newPackagesDomain(kernel)
+	kernel.packageDeployDomain = newPackageDeployDomain(kernel)
+
+	// Initialize secret store
+	if cfg.SecretStore != nil {
+		kernel.secretStore = cfg.SecretStore
+	} else {
+		secretKey := cfg.SecretKey
+		if secretKey == "" {
+			secretKey = os.Getenv("BRAINKIT_SECRET_KEY")
+		}
+		if secretKey != "" && cfg.Store != nil {
+			store, ok := cfg.Store.(*SQLiteStore)
+			if ok {
+				encStore, err := secrets.NewEncryptedKVStore(store.db, secretKey)
+				if err != nil {
+					log.Printf("[brainkit] warning: failed to create encrypted secret store: %v", err)
+					kernel.secretStore = secrets.NewEnvStore()
+				} else {
+					kernel.secretStore = encStore
+				}
+			} else {
+				kernel.secretStore = secrets.NewEnvStore()
+			}
+		} else {
+			if secretKey == "" && cfg.Store != nil {
+				log.Printf("[brainkit] WARNING: SecretKey not set — secrets stored without encryption")
+				store, ok := cfg.Store.(*SQLiteStore)
+				if ok {
+					encStore, _ := secrets.NewEncryptedKVStore(store.db, "")
+					if encStore != nil {
+						kernel.secretStore = encStore
+					} else {
+						kernel.secretStore = secrets.NewEnvStore()
+					}
+				} else {
+					kernel.secretStore = secrets.NewEnvStore()
+				}
+			} else {
+				kernel.secretStore = secrets.NewEnvStore()
+			}
+		}
+	}
+	kernel.secretsDomain = newSecretsDomain(kernel)
+
+	// Initialize RBAC
+	if len(cfg.Roles) > 0 {
+		kernel.rbac = rbac.NewManager(cfg.Roles, cfg.DefaultRole)
+	}
+	kernel.rbacDomain = newRBACDomain(kernel)
+
+	// Initialize tracer
+	sampleRate := cfg.TraceSampleRate
+	if sampleRate == 0 {
+		sampleRate = 1.0
+	}
+	kernel.tracer = tracing.NewTracer(cfg.TraceStore, sampleRate)
+	kernel.tracingDomain = newTracingDomain(kernel)
+
+	// Initialize workflow engine with persistence if KitStore available
+	kernel.hostFunctions = workflow.NewHostFunctionRegistry()
+	var wfStore workflow.RunStore
+	if sqlStore, ok := cfg.Store.(*SQLiteStore); ok {
+		wfStore = &workflowStoreAdapter{store: sqlStore}
+	}
+	kernel.workflowEngine = workflow.NewEngine(kernel.hostFunctions, wfStore)
+	kernel.workflowDomain = newWorkflowDomain(kernel, kernel.workflowEngine)
+	kernel.automationDomain = newAutomationDomain(kernel)
+
+	// Restore active workflow runs from previous session
+	if wfStore != nil {
+		kernel.workflowEngine.RestoreActiveRuns(context.Background())
+	}
 
 	kernel.wasm = newWASMService(kernel)
 	kernel.wasmDomainInst = newWASMDomain(kernel, kernel.wasm)
@@ -729,7 +819,11 @@ func (k *Kernel) redeployPersistedDeployments() {
 	k.deployOrder.Store(maxOrder)
 
 	for _, d := range deployments {
-		if _, err := k.Deploy(context.Background(), d.Source, d.Code); err != nil {
+		var opts []DeployOption
+		if d.Role != "" && d.Role != "service" {
+			opts = append(opts, WithRole(d.Role))
+		}
+		if _, err := k.Deploy(context.Background(), d.Source, d.Code, opts...); err != nil {
 			log.Printf("[brainkit] warning: failed to redeploy %s: %v", d.Source, err)
 		}
 	}
@@ -1148,7 +1242,7 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
 	wrapped := fmt.Sprintf(`(async () => {
 		return await globalThis.__kitRunWithSource(%q, async () => {
-			const { bus, kit, model, provider, storage, vectorStore, registry, tools, fs, mcp, output } = globalThis.__kit;
+			const { bus, kit, model, provider, storage, vectorStore, registry, tools, fs, mcp, output, secrets } = globalThis.__kit;
 			%s
 		});
 	})()`, filename, code)

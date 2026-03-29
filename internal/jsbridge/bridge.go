@@ -53,6 +53,7 @@ type Bridge struct {
 	goCtx    context.Context    // cancelled on Close — all goroutines stop
 	goCancel context.CancelFunc // triggers cancellation
 	wg       sync.WaitGroup    // tracks active goroutines
+	closing  atomic.Bool       // set during Close — interrupt handler checks this
 
 	// Pump signal — fires when Schedule'd callbacks are pending.
 	// Buffered 1: coalesces rapid-fire Schedule calls into one pump wake.
@@ -96,6 +97,15 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		pumpSignal: make(chan struct{}, 1),
 	}
 
+	// Interrupt handler: checked by QuickJS periodically during eval.
+	// Returns true when closing → aborts running JS immediately.
+	rt.SetInterruptHandler(func() int {
+		if b.closing.Load() {
+			return 1 // interrupt
+		}
+		return 0
+	})
+
 	// Signal the pump when Schedule'd callbacks are pending.
 	// Non-blocking send: if channel is full, pump already has a pending signal.
 	ctx.SetScheduleHook(func() {
@@ -124,11 +134,18 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 // Tolerates unreleased JS objects (ReadableStream controllers from streaming
 // fetch, large bundle object graphs) by skipping JS_FreeRuntime's assertion.
 func (b *Bridge) Close() {
-	// 1. Cancel all goroutines (HTTP calls abort, reads return error)
+	// 1. Set closing flag — the interrupt handler aborts running JS evals,
+	// and the Await loop checks it in the pending-poll path to break out
+	// of Promises waiting on cancelled Go goroutines (timers, fetch).
+	b.closing.Store(true)
+	// 2. Cancel all goroutines (HTTP calls abort, timer goroutines exit)
 	b.goCancel()
-	// 2. Wait for all goroutines to finish (no goroutine touches QuickJS after this)
+	// 3. Wait for all goroutines to finish. Safe because:
+	//    - The interrupt handler aborts any running JS eval (~1000 opcodes)
+	//    - The Await loop breaks immediately when interrupt fires
+	//    - The pump goroutine releases the mutex and exits promptly
 	b.wg.Wait()
-	// 3. Now safe to free QuickJS
+	// 4. All goroutines done — safe to free QuickJS
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.ctx != nil {
@@ -386,9 +403,15 @@ func (b *Bridge) evalAsync(file string, code string, module bool) (result *quick
 // via the Await loop). This enables deployed .ts services to receive
 // bus messages asynchronously — handlers can await fetch, generateText, etc.
 //
-// Uses ctx.Loop() instead of ctx.ProcessJobs() because Loop also runs
-// js_std_loop (which calls JS_ExecutePendingJob), enabling JS microtasks
-// like Promise continuations and async function resumptions to execute.
+// ProcessScheduledJobs drains the QuickJS job queue, executing pending
+// Schedule'd callbacks AND JS microtasks (Promise continuations).
+// Uses ctx.Loop() which runs handlers to completion — required for
+// streaming (text/text/end must execute in sequence within one pump cycle).
+//
+// Shutdown safety: bridge.Close() sets the closing flag. The interrupt
+// handler (set in New) returns 1, and the Await loop checks it in the
+// pending-poll path. This causes any blocked Await to throw InternalError,
+// Loop to exit, and the pump goroutine to release the mutex promptly.
 func (b *Bridge) ProcessScheduledJobs() {
 	if b.IsEvalBusy() {
 		return // Await loop is processing jobs already

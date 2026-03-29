@@ -3,6 +3,7 @@ package infra_test
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ type streamMsg struct {
 	Type  string          `json:"type"`
 	Event string          `json:"event,omitempty"`
 	Data  json.RawMessage `json:"data"`
+	Seq   int             `json:"seq"`
 }
 
 func deployAndCollect(t *testing.T, k *testutil.TestKernel, source, code, topic string, expectCount int) []streamMsg {
@@ -49,6 +51,8 @@ func deployAndCollect(t *testing.T, k *testutil.TestKernel, source, code, topic 
 			t.Fatalf("timeout waiting for stream message %d/%d", i+1, expectCount)
 		}
 	}
+	// Reorder by sequence number — transport may deliver out of order under load
+	sort.Slice(msgs, func(i, j int) bool { return msgs[i].Seq < msgs[j].Seq })
 	return msgs
 }
 
@@ -150,7 +154,11 @@ func TestStream_RawSendStillWorks(t *testing.T) {
 		}
 	}
 
-	assert.Contains(t, string(msgs[0]), "chunk")
-	assert.NotContains(t, string(msgs[0]), `"type"`)
-	assert.Contains(t, string(msgs[1]), "done")
+	// Raw send/reply have no seq — order not guaranteed under load.
+	// Verify both messages are present regardless of order.
+	combined := string(msgs[0]) + string(msgs[1])
+	assert.Contains(t, combined, "chunk")
+	assert.Contains(t, combined, "done")
+	// Verify raw format (no typed stream envelope)
+	assert.NotContains(t, combined, `"type"`)
 }

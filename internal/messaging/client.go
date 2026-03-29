@@ -129,6 +129,14 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
 
+	// Stamp trace context for cross-service propagation
+	if traceID := TraceIDFromContext(ctx); traceID != "" {
+		wmsg.Metadata.Set("traceId", traceID)
+	}
+	if spanID := SpanIDFromContext(ctx); spanID != "" {
+		wmsg.Metadata.Set("parentSpanId", spanID)
+	}
+
 	// Stamp replyTo if present in context (set by sdk.Publish).
 	// Namespace it so the handler can publish to the absolute topic.
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {

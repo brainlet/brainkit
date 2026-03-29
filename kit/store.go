@@ -77,10 +77,12 @@ type RunningPluginRecord struct {
 
 // PersistedDeployment is the on-disk format for a .ts deployment.
 type PersistedDeployment struct {
-	Source     string    `json:"source"`
-	Code       string    `json:"code"`
-	Order      int       `json:"order"`
-	DeployedAt time.Time `json:"deployedAt"`
+	Source      string    `json:"source"`
+	Code        string    `json:"code"`
+	Order       int       `json:"order"`
+	DeployedAt  time.Time `json:"deployedAt"`
+	Role        string    `json:"role,omitempty"`
+	PackageName string    `json:"packageName,omitempty"`
 }
 
 // PersistedSchedule is the on-disk format for a scheduled bus message.
@@ -130,7 +132,9 @@ CREATE TABLE IF NOT EXISTS deployments (
     source TEXT PRIMARY KEY,
     code TEXT NOT NULL,
     deploy_order INTEGER NOT NULL DEFAULT 0,
-    deployed_at TEXT NOT NULL
+    deployed_at TEXT NOT NULL,
+    package_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'service'
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
@@ -164,6 +168,34 @@ CREATE TABLE IF NOT EXISTS running_plugins (
     config TEXT NOT NULL DEFAULT '{}',
     start_order INTEGER NOT NULL DEFAULT 0,
     started_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    workflow_id TEXT NOT NULL,
+    run_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    input TEXT NOT NULL,
+    output TEXT,
+    current_step INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    suspended_event TEXT,
+    suspended_timeout INTEGER,
+    error TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS workflow_journal (
+    workflow_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    step_index INTEGER NOT NULL,
+    step_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    calls TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    error TEXT,
+    PRIMARY KEY (workflow_id, run_id, step_index)
 );
 `
 
@@ -356,15 +388,15 @@ func (s *SQLiteStore) DeleteState(shardName string) error {
 
 func (s *SQLiteStore) SaveDeployment(d PersistedDeployment) error {
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at)
-		 VALUES (?, ?, ?, ?)`,
-		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339),
+		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName, d.Role,
 	)
 	return err
 }
 
 func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
-	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at FROM deployments ORDER BY deploy_order")
+	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments ORDER BY deploy_order")
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +406,7 @@ func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
 	for rows.Next() {
 		var d PersistedDeployment
 		var deployedAtStr string
-		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr); err != nil {
+		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName, &d.Role); err != nil {
 			return nil, err
 		}
 		d.DeployedAt, _ = time.Parse(time.RFC3339, deployedAtStr)

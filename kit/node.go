@@ -10,6 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/kit/workflow"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
@@ -79,6 +80,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	}
 
 	node.plugins = newPluginManager(node)
+	kernel.node = node // back-reference for secrets rotation
 
 	// Register ALL command bindings (kernel + node-specific) on the Kernel's router
 	kernel.host.RegisterCommands(commandBindingsForNode(node))
@@ -310,6 +312,16 @@ func (n *Node) restoreRunningPlugins() {
 // --- Node-specific command handlers ---
 
 func (n *Node) processPluginManifest(ctx context.Context, manifest messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
+	// RBAC: validate manifest subscriptions against plugin's assigned role
+	if n.Kernel.rbac != nil {
+		role := n.Kernel.rbac.RoleForPlugin(manifest.Name)
+		for _, sub := range manifest.Subscriptions {
+			if !role.Bus.Subscribe.Allows(sub) {
+				return nil, fmt.Errorf("plugin %s: subscription to %q denied by role %s", manifest.Name, sub, role.Name)
+			}
+		}
+	}
+
 	for _, tool := range manifest.Tools {
 		tool := tool
 		fullName := registry.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
@@ -365,6 +377,29 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 				},
 			},
 		})
+	}
+
+	// Register host functions for WASM workflows
+	if n.Kernel.hostFunctions != nil {
+		for _, hf := range manifest.HostFunctions {
+			toolTopic := hf.ToolTopic
+			if toolTopic == "" {
+				toolTopic = pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, hf.Name)
+			}
+			params := make([]workflow.HostParam, len(hf.Params))
+			for i, p := range hf.Params {
+				params[i] = workflow.HostParam{Name: p.Name, Type: p.Type}
+			}
+			n.Kernel.hostFunctions.Register(workflow.HostFunctionDef{
+				Module:      hf.Module,
+				Name:        hf.Name,
+				Description: hf.Description,
+				Params:      params,
+				Returns:     hf.Returns,
+				PluginName:  manifest.Name,
+				PluginTopic: toolTopic,
+			})
+		}
 	}
 
 	_ = n.Kernel.publish(ctx, messages.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(messages.PluginRegisteredEvent{

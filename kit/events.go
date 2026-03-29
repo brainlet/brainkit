@@ -54,6 +54,11 @@ func eventCatalog() *knownEventRegistry {
 			eventOf[messages.HandlerExhaustedEvent](),
 			eventOf[messages.PluginStartedEvent](),
 			eventOf[messages.PluginStoppedEvent](),
+			eventOf[messages.SecretsAccessedEvent](),
+			eventOf[messages.SecretsStoredEvent](),
+			eventOf[messages.SecretsRotatedEvent](),
+			eventOf[messages.SecretsDeletedEvent](),
+			eventOf[messages.PermissionDeniedEvent](),
 		}
 		byTopic := make(map[string]eventSpec, len(specs))
 		for _, spec := range specs {

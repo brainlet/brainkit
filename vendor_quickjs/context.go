@@ -1092,6 +1092,12 @@ func (ctx *Context) Await(v *Value) *Value {
 			if len(ctx.jobQueue) > 0 {
 				continue
 			}
+			// Check interrupt handler — if it signals abort, break out of Await.
+			// This prevents infinite polling when the bridge is closing and
+			// pending goroutines (timers, fetch) were cancelled via goCtx.
+			if ctx.runtime.callInterruptHandler() != 0 {
+				return ctx.ThrowInternalError("interrupted")
+			}
 			// No Go jobs, no microtasks. Yield briefly for goroutines.
 			time.Sleep(awaitPollInterval)
 		default:
