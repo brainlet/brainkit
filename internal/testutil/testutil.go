@@ -103,6 +103,10 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		AIProviders: aiProviders,
 		Storages: map[string]kit.StorageConfig{
 			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+			"mem":     kit.InMemoryStorage(),
+		},
+		Vectors: map[string]kit.VectorConfig{
+			"default": kit.SQLiteVector(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars: envVars,
 	})
