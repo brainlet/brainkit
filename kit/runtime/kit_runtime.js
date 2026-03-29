@@ -269,23 +269,68 @@
   });
 
   function wrapMsg(rawMsg) {
-    return {
+    var msg = {
       payload: rawMsg.payload,
       replyTo: rawMsg.replyTo || "",
       correlationId: rawMsg.correlationId || "",
       topic: rawMsg.topic || "",
       callerId: rawMsg.callerId || "",
       reply: function(data) {
-        if (this.replyTo) {
-          __go_brainkit_bus_reply(this.replyTo, JSON.stringify(data), this.correlationId, true);
+        if (msg.replyTo) {
+          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, true);
         }
       },
       send: function(data) {
-        if (this.replyTo) {
-          __go_brainkit_bus_reply(this.replyTo, JSON.stringify(data), this.correlationId, false);
+        if (msg.replyTo) {
+          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false);
         }
       },
+      stream: {
+        text: function(chunk) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "text", data: chunk }),
+              msg.correlationId, false);
+          }
+        },
+        progress: function(value, message) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "progress", data: { value: value, message: message || "" } }),
+              msg.correlationId, false);
+          }
+        },
+        object: function(partial) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "object", data: partial }),
+              msg.correlationId, false);
+          }
+        },
+        event: function(name, data) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "event", event: name, data: data || null }),
+              msg.correlationId, false);
+          }
+        },
+        error: function(message) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "error", data: { message: typeof message === "string" ? message : String(message) } }),
+              msg.correlationId, true);
+          }
+        },
+        end: function(finalData) {
+          if (msg.replyTo) {
+            __go_brainkit_bus_reply(msg.replyTo,
+              JSON.stringify({ type: "end", data: finalData || null }),
+              msg.correlationId, true);
+          }
+        },
+      },
     };
+    return msg;
   }
 
   var bus = {
