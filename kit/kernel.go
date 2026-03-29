@@ -74,6 +74,9 @@ type Kernel struct {
 
 	// Schedules
 	schedules map[string]*scheduleEntry
+
+	// Health
+	startedAt time.Time
 }
 
 type scheduleEntry struct {
@@ -671,6 +674,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if cfg.Store != nil {
 		kernel.restoreSchedules()
 	}
+
+	kernel.startedAt = time.Now()
 
 	return kernel, nil
 }
