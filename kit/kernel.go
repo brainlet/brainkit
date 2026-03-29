@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
@@ -69,6 +71,14 @@ type Kernel struct {
 
 	// Deployment ordering (for persistence)
 	deployOrder atomic.Int32
+
+	// Schedules
+	schedules map[string]*scheduleEntry
+}
+
+type scheduleEntry struct {
+	PersistedSchedule
+	timer *time.Timer
 }
 
 // enterHandler marks a bus handler as active.
@@ -119,6 +129,145 @@ func (k *Kernel) waitForDrain(ctx context.Context) {
 
 func (k *Kernel) nextDeployOrder() int {
 	return int(k.deployOrder.Add(1))
+}
+
+// --- Scheduling ---
+
+func parseScheduleExpression(expr string) (time.Duration, bool, error) {
+	if strings.HasPrefix(expr, "every ") {
+		d, err := time.ParseDuration(strings.TrimPrefix(expr, "every "))
+		return d, false, err
+	}
+	if strings.HasPrefix(expr, "in ") {
+		d, err := time.ParseDuration(strings.TrimPrefix(expr, "in "))
+		return d, true, err
+	}
+	return 0, false, fmt.Errorf("unsupported schedule expression: %q (use 'every <duration>' or 'in <duration>')", expr)
+}
+
+func (k *Kernel) addSchedule(ps PersistedSchedule) {
+	delay := time.Until(ps.NextFire)
+	if delay < 0 {
+		delay = 0
+	}
+	entry := &scheduleEntry{PersistedSchedule: ps}
+	entry.timer = time.AfterFunc(delay, func() {
+		k.fireSchedule(entry)
+	})
+	k.mu.Lock()
+	k.schedules[ps.ID] = entry
+	k.mu.Unlock()
+}
+
+func (k *Kernel) fireSchedule(entry *scheduleEntry) {
+	if k.IsDraining() {
+		return
+	}
+	k.publish(context.Background(), entry.Topic, entry.Payload)
+
+	if entry.OneTime {
+		k.mu.Lock()
+		delete(k.schedules, entry.ID)
+		k.mu.Unlock()
+		if k.config.Store != nil {
+			k.config.Store.DeleteSchedule(entry.ID)
+		}
+		return
+	}
+
+	entry.NextFire = time.Now().Add(entry.Duration)
+	entry.timer.Reset(entry.Duration)
+	if k.config.Store != nil {
+		k.config.Store.SaveSchedule(entry.PersistedSchedule)
+	}
+}
+
+func (k *Kernel) removeSchedule(id string) {
+	k.mu.Lock()
+	entry, ok := k.schedules[id]
+	if ok {
+		entry.timer.Stop()
+		delete(k.schedules, id)
+	}
+	k.mu.Unlock()
+	if ok && k.config.Store != nil {
+		k.config.Store.DeleteSchedule(id)
+	}
+}
+
+// Schedule creates a new scheduled bus message.
+func (k *Kernel) Schedule(ctx context.Context, cfg ScheduleConfig) (string, error) {
+	duration, oneTime, err := parseScheduleExpression(cfg.Expression)
+	if err != nil {
+		return "", err
+	}
+	id := cfg.ID
+	if id == "" {
+		id = uuid.NewString()
+	}
+	ps := PersistedSchedule{
+		ID:         id,
+		Expression: cfg.Expression,
+		Duration:   duration,
+		Topic:      cfg.Topic,
+		Payload:    cfg.Payload,
+		Source:     cfg.Source,
+		CreatedAt:  time.Now(),
+		NextFire:   time.Now().Add(duration),
+		OneTime:    oneTime,
+	}
+	k.addSchedule(ps)
+	if k.config.Store != nil {
+		k.config.Store.SaveSchedule(ps)
+	}
+	return id, nil
+}
+
+// Unschedule cancels and removes a schedule.
+func (k *Kernel) Unschedule(ctx context.Context, id string) error {
+	k.removeSchedule(id)
+	return nil
+}
+
+// ListSchedules returns all active schedules.
+func (k *Kernel) ListSchedules() []PersistedSchedule {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	result := make([]PersistedSchedule, 0, len(k.schedules))
+	for _, entry := range k.schedules {
+		result = append(result, entry.PersistedSchedule)
+	}
+	return result
+}
+
+func (k *Kernel) restoreSchedules() {
+	schedules, err := k.config.Store.LoadSchedules()
+	if err != nil {
+		log.Printf("[brainkit] warning: failed to load persisted schedules: %v", err)
+		return
+	}
+	now := time.Now()
+	restored := 0
+	for _, s := range schedules {
+		if s.OneTime {
+			if s.NextFire.Before(now) {
+				k.publish(context.Background(), s.Topic, s.Payload)
+				k.config.Store.DeleteSchedule(s.ID)
+				continue
+			}
+		} else {
+			if s.NextFire.Before(now) {
+				k.publish(context.Background(), s.Topic, s.Payload)
+				s.NextFire = now.Add(s.Duration)
+				k.config.Store.SaveSchedule(s)
+			}
+		}
+		k.addSchedule(s)
+		restored++
+	}
+	if restored > 0 {
+		log.Printf("[brainkit] restored %d persisted schedules", restored)
+	}
 }
 
 // handleHandlerFailure is called when a bus handler throws a JS exception.
@@ -330,6 +479,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		storages:    make(map[string]*libsql.Server),
 		deployments: make(map[string]*deploymentInfo),
 		bridgeSubs:  make(map[string]func()),
+		schedules:   make(map[string]*scheduleEntry),
 	}
 	providers := make(map[string]agentembed.ProviderConfig)
 	for name, reg := range cfg.AIProviders {
@@ -517,6 +667,11 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.redeployPersistedDeployments()
 	}
 
+	// Restore persisted schedules
+	if cfg.Store != nil {
+		kernel.restoreSchedules()
+	}
+
 	return kernel, nil
 }
 
@@ -631,6 +786,14 @@ func (k *Kernel) close() error {
 	for _, cancel := range subs {
 		cancel()
 	}
+
+	// Stop all schedule timers
+	k.mu.Lock()
+	for _, entry := range k.schedules {
+		entry.timer.Stop()
+	}
+	k.schedules = nil
+	k.mu.Unlock()
 
 	var firstErr error
 	collect := func(err error) {

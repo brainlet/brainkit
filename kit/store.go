@@ -34,6 +34,11 @@ type KitStore interface {
 	LoadDeployments() ([]PersistedDeployment, error)
 	DeleteDeployment(source string) error
 
+	// Schedules
+	SaveSchedule(s PersistedSchedule) error
+	LoadSchedules() ([]PersistedSchedule, error)
+	DeleteSchedule(id string) error
+
 	// Lifecycle
 	Close() error
 }
@@ -44,6 +49,19 @@ type PersistedDeployment struct {
 	Code       string    `json:"code"`
 	Order      int       `json:"order"`
 	DeployedAt time.Time `json:"deployedAt"`
+}
+
+// PersistedSchedule is the on-disk format for a scheduled bus message.
+type PersistedSchedule struct {
+	ID         string          `json:"id"`
+	Expression string          `json:"expression"`
+	Duration   time.Duration   `json:"duration"`
+	Topic      string          `json:"topic"`
+	Payload    json.RawMessage `json:"payload"`
+	Source     string          `json:"source"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	NextFire   time.Time       `json:"nextFire"`
+	OneTime    bool            `json:"oneTime"`
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +99,18 @@ CREATE TABLE IF NOT EXISTS deployments (
     code TEXT NOT NULL,
     deploy_order INTEGER NOT NULL DEFAULT 0,
     deployed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id TEXT PRIMARY KEY,
+    expression TEXT NOT NULL,
+    duration_ns INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    next_fire TEXT NOT NULL,
+    one_time INTEGER NOT NULL DEFAULT 0
 );
 `
 
@@ -303,4 +333,58 @@ func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
 func (s *SQLiteStore) DeleteDeployment(source string) error {
 	_, err := s.db.Exec("DELETE FROM deployments WHERE source = ?", source)
 	return err
+}
+
+// ---------------------------------------------------------------------------
+// Schedules
+// ---------------------------------------------------------------------------
+
+func (s *SQLiteStore) SaveSchedule(sc PersistedSchedule) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO schedules (id, expression, duration_ns, topic, payload, source, created_at, next_fire, one_time)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sc.ID, sc.Expression, int64(sc.Duration), sc.Topic, string(sc.Payload),
+		sc.Source, sc.CreatedAt.Format(time.RFC3339), sc.NextFire.Format(time.RFC3339),
+		boolToInt(sc.OneTime),
+	)
+	return err
+}
+
+func (s *SQLiteStore) LoadSchedules() ([]PersistedSchedule, error) {
+	rows, err := s.db.Query("SELECT id, expression, duration_ns, topic, payload, source, created_at, next_fire, one_time FROM schedules")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []PersistedSchedule
+	for rows.Next() {
+		var sc PersistedSchedule
+		var durationNs int64
+		var payloadStr, createdAtStr, nextFireStr string
+		var oneTimeInt int
+		if err := rows.Scan(&sc.ID, &sc.Expression, &durationNs, &sc.Topic, &payloadStr,
+			&sc.Source, &createdAtStr, &nextFireStr, &oneTimeInt); err != nil {
+			return nil, err
+		}
+		sc.Duration = time.Duration(durationNs)
+		sc.Payload = json.RawMessage(payloadStr)
+		sc.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+		sc.NextFire, _ = time.Parse(time.RFC3339, nextFireStr)
+		sc.OneTime = oneTimeInt != 0
+		schedules = append(schedules, sc)
+	}
+	return schedules, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteSchedule(id string) error {
+	_, err := s.db.Exec("DELETE FROM schedules WHERE id = ?", id)
+	return err
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

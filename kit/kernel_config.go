@@ -1,6 +1,7 @@
 package kit
 
 import (
+	"encoding/json"
 	"time"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
@@ -16,6 +17,15 @@ type RetryPolicy struct {
 	MaxDelay        time.Duration // cap on exponential backoff (default: 30s)
 	BackoffFactor   float64       // multiplier per retry (default: 2.0)
 	DeadLetterTopic string        // where exhausted messages go ("" = discard)
+}
+
+// ScheduleConfig configures a new schedule via Kernel.Schedule().
+type ScheduleConfig struct {
+	ID         string          // optional — auto-generated if empty
+	Expression string          // "every 5m" or "in 30s"
+	Topic      string          // bus topic to publish to
+	Payload    json.RawMessage // message payload
+	Source     string          // deployment source (auto-set from .ts)
 }
 
 // KernelConfig configures the local runtime.

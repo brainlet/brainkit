@@ -326,6 +326,17 @@
     sendToShard: function(shard, topic, data) {
       return bus.publish(topic, data);
     },
+    schedule: function(expression, topic, data) {
+      var id = __go_brainkit_bus_schedule(expression, topic, JSON.stringify(data || null), _currentSource || "go");
+      _resourceRegistry.register("schedule", id, id, null, function() {
+        __go_brainkit_bus_unschedule(id);
+      });
+      return id;
+    },
+    unschedule: function(scheduleId) {
+      __go_brainkit_bus_unschedule(scheduleId);
+      _resourceRegistry.unregister("schedule", scheduleId);
+    },
   };
 
   // ─── kit.register ─────────────────────────────────────────────
@@ -550,6 +561,10 @@
       unsubscribe: _kitObj.bus.unsubscribe,
       sendTo: _kitObj.bus.sendTo,
       sendToShard: _kitObj.bus.sendToShard,
+      schedule: ws(function(expression, topic, data) {
+        return _kitObj.bus.schedule(expression, ns + "." + topic, data);
+      }),
+      unschedule: _kitObj.bus.unschedule,
     };
 
     var scopedKit = {

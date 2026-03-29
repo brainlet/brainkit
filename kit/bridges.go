@@ -545,6 +545,39 @@ func (k *Kernel) registerBridges() {
 			})
 		}))
 
+	// __go_brainkit_bus_schedule(expression, topic, payloadJSON, source) → scheduleID
+	qctx.Globals().Set("__go_brainkit_bus_schedule",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 4 {
+				return qctx.ThrowError(fmt.Errorf("bus_schedule: expected 4 args (expression, topic, payload, source)"))
+			}
+			expression := args[0].String()
+			topic := args[1].String()
+			payload := json.RawMessage(args[2].String())
+			source := args[3].String()
+
+			id, err := k.Schedule(context.Background(), ScheduleConfig{
+				Expression: expression,
+				Topic:      topic,
+				Payload:    payload,
+				Source:     source,
+			})
+			if err != nil {
+				return qctx.ThrowError(fmt.Errorf("bus_schedule: %w", err))
+			}
+			return qctx.NewString(id)
+		}))
+
+	// __go_brainkit_bus_unschedule(scheduleID)
+	qctx.Globals().Set("__go_brainkit_bus_unschedule",
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 1 {
+				return qctx.ThrowError(fmt.Errorf("bus_unschedule: expected 1 arg (scheduleID)"))
+			}
+			k.Unschedule(context.Background(), args[0].String())
+			return qctx.NewUndefined()
+		}))
+
 	// Set context globals
 	qctx.Globals().Set("__brainkit_sandbox_id", qctx.NewString(k.agents.ID()))
 	qctx.Globals().Set("__brainkit_sandbox_namespace", qctx.NewString(k.namespace))
