@@ -116,6 +116,46 @@ func SubscribeFsWriteResp(rt Runtime, ctx context.Context, topic string, handler
 	return SubscribeTo[messages.FsWriteResp](rt, ctx, topic, handler)
 }
 
+// PublishGatewayRouteAdd publishes a GatewayRouteAddMsg and returns routing info for the response.
+func PublishGatewayRouteAdd(rt Runtime, ctx context.Context, msg messages.GatewayRouteAddMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeGatewayRouteAddResp subscribes to the response topic for a GatewayRouteAddMsg command.
+func SubscribeGatewayRouteAddResp(rt Runtime, ctx context.Context, topic string, handler func(messages.GatewayRouteAddResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.GatewayRouteAddResp](rt, ctx, topic, handler)
+}
+
+// PublishGatewayRouteList publishes a GatewayRouteListMsg and returns routing info for the response.
+func PublishGatewayRouteList(rt Runtime, ctx context.Context, msg messages.GatewayRouteListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeGatewayRouteListResp subscribes to the response topic for a GatewayRouteListMsg command.
+func SubscribeGatewayRouteListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.GatewayRouteListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.GatewayRouteListResp](rt, ctx, topic, handler)
+}
+
+// PublishGatewayRouteRemove publishes a GatewayRouteRemoveMsg and returns routing info for the response.
+func PublishGatewayRouteRemove(rt Runtime, ctx context.Context, msg messages.GatewayRouteRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeGatewayRouteRemoveResp subscribes to the response topic for a GatewayRouteRemoveMsg command.
+func SubscribeGatewayRouteRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.GatewayRouteRemoveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.GatewayRouteRemoveResp](rt, ctx, topic, handler)
+}
+
+// PublishGatewayStatus publishes a GatewayStatusMsg and returns routing info for the response.
+func PublishGatewayStatus(rt Runtime, ctx context.Context, msg messages.GatewayStatusMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeGatewayStatusResp subscribes to the response topic for a GatewayStatusMsg command.
+func SubscribeGatewayStatusResp(rt Runtime, ctx context.Context, topic string, handler func(messages.GatewayStatusResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.GatewayStatusResp](rt, ctx, topic, handler)
+}
+
 // PublishKitDeploy publishes a KitDeployMsg and returns routing info for the response.
 func PublishKitDeploy(rt Runtime, ctx context.Context, msg messages.KitDeployMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
