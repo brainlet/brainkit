@@ -28,7 +28,12 @@
 
   globalThis.__kit_parseBridgeResponse = function(raw) {
     var result = JSON.parse(raw);
-    if (result && result.error) throw new Error("brainkit: " + result.error);
+    if (result && result.error) {
+      var e = new Error("brainkit: " + result.error);
+      e.code = result.code || "INTERNAL_ERROR";
+      e.details = result.details || {};
+      throw e;
+    }
     return result;
   };
 })();

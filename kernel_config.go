@@ -91,6 +91,12 @@ type KernelConfig struct {
 	// nil = default (print to stdout via log.Printf).
 	LogHandler func(LogEntry)
 
+	// ErrorHandler receives non-fatal errors that would otherwise be swallowed.
+	// Called for persistence failures, plugin restore errors, degraded startup, etc.
+	// The error always implements sdkerrors.BrainkitError (use errors.As to inspect).
+	// nil = default (log.Printf with component and operation context).
+	ErrorHandler func(error, ErrorContext)
+
 	// Transport is an optional external transport. If set, Kernel uses it instead of
 	// creating its own internal GoChannel transport. Used by Node to inject NATS.
 	Transport *messaging.Transport

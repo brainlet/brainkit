@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/secrets"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -31,7 +32,7 @@ func (d *SecretsDomain) emitSecretEvent(ctx context.Context, event messages.Brai
 
 func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("secrets.set: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 	if err := d.store.Set(ctx, req.Name, req.Value); err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*m
 
 func (d *SecretsDomain) Get(ctx context.Context, req messages.SecretsGetMsg) (*messages.SecretsGetResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("secrets.get: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 	val, err := d.store.Get(ctx, req.Name)
 	if err != nil {
@@ -70,7 +71,7 @@ func (d *SecretsDomain) Get(ctx context.Context, req messages.SecretsGetMsg) (*m
 
 func (d *SecretsDomain) Delete(ctx context.Context, req messages.SecretsDeleteMsg) (*messages.SecretsDeleteResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("secrets.delete: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 	if err := d.store.Delete(ctx, req.Name); err != nil {
 		return nil, err
@@ -101,7 +102,7 @@ func (d *SecretsDomain) List(ctx context.Context, _ messages.SecretsListMsg) (*m
 
 func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMsg) (*messages.SecretsRotateResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("secrets.rotate: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 
 	// 1. Update the secret

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -34,7 +35,7 @@ func (k *Kernel) checkBusPermission(source, topic, action string) error {
 
 	if !allowed {
 		k.emitPermissionDenied(source, topic, action, role.Name)
-		return fmt.Errorf("permission denied: %s cannot %s on %q (role: %s)", source, action, topic, role.Name)
+		return &sdkerrors.PermissionDeniedError{Source: source, Action: action, Topic: topic, Role: role.Name}
 	}
 	return nil
 }
@@ -47,7 +48,7 @@ func (k *Kernel) checkCommandPermission(source, command string) error {
 	role := k.rbac.RoleForSource(source)
 	if !role.Commands.AllowsCommand(command) {
 		k.emitPermissionDenied(source, command, "command", role.Name)
-		return fmt.Errorf("permission denied: %s cannot call %q (role: %s)", source, command, role.Name)
+		return &sdkerrors.PermissionDeniedError{Source: source, Action: "command", Topic: command, Role: role.Name}
 	}
 	return nil
 }
@@ -62,12 +63,12 @@ func (k *Kernel) checkRegistrationPermission(source, resourceType string) error 
 	case "tool":
 		if !role.Registration.Tools {
 			k.emitPermissionDenied(source, resourceType, "register", role.Name)
-			return fmt.Errorf("permission denied: %s cannot register tools (role: %s)", source, role.Name)
+			return &sdkerrors.PermissionDeniedError{Source: source, Action: "register", Topic: resourceType, Role: role.Name}
 		}
 	case "agent":
 		if !role.Registration.Agents {
 			k.emitPermissionDenied(source, resourceType, "register", role.Name)
-			return fmt.Errorf("permission denied: %s cannot register agents (role: %s)", source, role.Name)
+			return &sdkerrors.PermissionDeniedError{Source: source, Action: "register", Topic: resourceType, Role: role.Name}
 		}
 	}
 	return nil

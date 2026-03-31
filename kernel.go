@@ -20,6 +20,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/packages"
 	"github.com/brainlet/brainkit/rbac"
@@ -277,7 +278,9 @@ func (k *Kernel) ListSchedules() []PersistedSchedule {
 func (k *Kernel) restoreSchedules() {
 	schedules, err := k.config.Store.LoadSchedules()
 	if err != nil {
-		log.Printf("[brainkit] warning: failed to load persisted schedules: %v", err)
+		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "LoadSchedules", Cause: err,
+		}, ErrorContext{Operation: "LoadSchedules", Component: "kernel"})
 		return
 	}
 	now := time.Now()
@@ -655,7 +658,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 			if ok {
 				encStore, err := secrets.NewEncryptedKVStore(store.db, secretKey)
 				if err != nil {
-					log.Printf("[brainkit] warning: failed to create encrypted secret store: %v", err)
+					InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
+						Operation: "CreateEncryptedSecretStore", Cause: err,
+					}, ErrorContext{Operation: "CreateEncryptedSecretStore", Component: "kernel"})
 					kernel.secretStore = secrets.NewEnvStore()
 				} else {
 					kernel.secretStore = encStore
@@ -800,7 +805,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	if cfg.Store != nil {
 		if err := kernel.wasm.loadFromStore(cfg.Store); err != nil {
-			log.Printf("[brainkit] warning: failed to load persisted data: %v", err)
+			InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
+				Operation: "LoadFromStore", Cause: err,
+			}, ErrorContext{Operation: "LoadFromStore", Component: "kernel"})
 		}
 	}
 
@@ -909,7 +916,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 func (k *Kernel) redeployPersistedDeployments() {
 	deployments, err := k.config.Store.LoadDeployments()
 	if err != nil {
-		log.Printf("[brainkit] warning: failed to load persisted deployments: %v", err)
+		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "LoadDeployments", Cause: err,
+		}, ErrorContext{Operation: "LoadDeployments", Component: "kernel"})
 		return
 	}
 	if len(deployments) == 0 {
@@ -933,7 +942,9 @@ func (k *Kernel) redeployPersistedDeployments() {
 			opts = append(opts, WithPackageName(d.PackageName))
 		}
 		if _, err := k.Deploy(context.Background(), d.Source, d.Code, opts...); err != nil {
-			log.Printf("[brainkit] warning: failed to redeploy %s: %v", d.Source, err)
+			InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.DeployError{
+				Source: d.Source, Phase: "redeploy", Cause: err,
+			}, ErrorContext{Operation: "RedeployPersisted", Component: "kernel", Source: d.Source})
 		}
 	}
 
@@ -954,10 +965,13 @@ func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(me
 
 // --- sdk.CrossNamespaceRuntime implementation ---
 
-// persistenceError logs a warning and emits a bus event when a persistence operation fails.
+// persistenceError routes a persistence failure through the ErrorHandler and emits a bus event.
 // The original operation still succeeds in memory — persistence is best-effort.
 func (k *Kernel) persistenceError(ctx context.Context, operation, source string, err error) {
-	log.Printf("[brainkit] warning: %s %s: %v", operation, source, err)
+	typedErr := &sdkerrors.PersistenceError{Operation: operation, Source: source, Cause: err}
+	InvokeErrorHandler(k.config.ErrorHandler, typedErr, ErrorContext{
+		Operation: operation, Component: "persistence", Source: source,
+	})
 	payload, _ := json.Marshal(map[string]any{
 		"operation": operation,
 		"source":    source,

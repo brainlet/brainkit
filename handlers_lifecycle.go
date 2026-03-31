@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
@@ -166,7 +167,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	if strings.HasSuffix(source, ".ts") {
 		js, transpileErr := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
 		if transpileErr != nil {
-			return nil, fmt.Errorf("deploy %s: transpile: %w", source, transpileErr)
+			return nil, &sdkerrors.DeployError{Source: source, Phase: "transpile", Cause: transpileErr}
 		}
 		code = stripESImports(js)
 	}
@@ -191,7 +192,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 		// Remove compartment reference if it was stored
 		k.EvalTS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
 			`delete globalThis.__kit_compartments[%q]; return "ok";`, source))
-		return nil, fmt.Errorf("deploy %s: %w", source, err)
+		return nil, &sdkerrors.DeployError{Source: source, Phase: "eval", Cause: err}
 	}
 
 	resources, err := k.ResourcesFrom(source)

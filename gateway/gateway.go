@@ -324,9 +324,27 @@ func mapHTTPStatus(resp []byte, err error) int {
 	}
 	var parsed struct {
 		Error string `json:"error"`
+		Code  string `json:"code"`
 	}
 	if json.Unmarshal(resp, &parsed) == nil && parsed.Error != "" {
-		return http.StatusInternalServerError
+		switch parsed.Code {
+		case "VALIDATION_ERROR", "DECODE_ERROR":
+			return http.StatusBadRequest
+		case "PERMISSION_DENIED":
+			return http.StatusForbidden
+		case "NOT_FOUND":
+			return http.StatusNotFound
+		case "ALREADY_EXISTS":
+			return http.StatusConflict
+		case "RATE_LIMITED":
+			return http.StatusTooManyRequests
+		case "NOT_CONFIGURED":
+			return http.StatusNotImplemented
+		case "TIMEOUT":
+			return http.StatusGatewayTimeout
+		default:
+			return http.StatusInternalServerError
+		}
 	}
 	return http.StatusOK
 }

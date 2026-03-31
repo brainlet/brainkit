@@ -59,7 +59,9 @@ func (pm *pluginManager) startAll(configs []PluginConfig) {
 		cfg := configs[i]
 		pluginDefaults(&cfg)
 		if err := pm.startPlugin(cfg, 0); err != nil {
-			log.Printf("[plugin:%s] failed to start: %v", cfg.Name, err)
+			InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", cfg.Name, err), ErrorContext{
+				Operation: "StartPlugin", Component: "plugin", Source: cfg.Name,
+			})
 		}
 	}
 }
@@ -231,7 +233,9 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	pc.cancel()
 
 	if restartErr := pm.startPlugin(pc.config, nextRestart); restartErr != nil {
-		log.Printf("[plugin:%s] restart failed: %v", pc.config.Name, restartErr)
+		InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), ErrorContext{
+			Operation: "RestartPlugin", Component: "plugin", Source: pc.config.Name,
+		})
 		close(pc.done)
 	}
 	// If restart succeeded, startPlugin registered a new pluginConn with a new done channel.

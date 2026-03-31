@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/packages"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -69,7 +70,7 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDe
 	}
 
 	if req.Path == "" {
-		return nil, fmt.Errorf("package.deploy: path or files is required")
+		return nil, &sdkerrors.ValidationError{Field: "path", Message: "path or files is required"}
 	}
 
 	// Read manifest first to get package name for persistence tagging
@@ -113,7 +114,7 @@ func (d *PackageDeployDomain) Teardown(ctx context.Context, req messages.Package
 	pkg, ok := d.deployed[req.Name]
 	if !ok {
 		d.mu.Unlock()
-		return nil, fmt.Errorf("package %q not deployed", req.Name)
+		return nil, &sdkerrors.NotFoundError{Resource: "package", Name: req.Name}
 	}
 	delete(d.deployed, req.Name)
 	d.mu.Unlock()
@@ -169,7 +170,7 @@ func (d *PackageDeployDomain) Info(_ context.Context, req messages.PackageDeploy
 	pkg, ok := d.deployed[req.Name]
 	d.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("package %q not deployed", req.Name)
+		return nil, &sdkerrors.NotFoundError{Resource: "package", Name: req.Name}
 	}
 	return &messages.PackageDeployInfoResp{
 		Name:     pkg.Name,

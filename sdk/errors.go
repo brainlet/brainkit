@@ -39,3 +39,36 @@ type TimeoutError = sdkerrors.TimeoutError
 
 // WorkspaceEscapeError is returned when a file path escapes the workspace boundary.
 type WorkspaceEscapeError = sdkerrors.WorkspaceEscapeError
+
+// BrainkitError is the interface all brainkit errors implement.
+type BrainkitError = sdkerrors.BrainkitError
+
+// PermissionDeniedError is returned when RBAC denies an operation.
+type PermissionDeniedError = sdkerrors.PermissionDeniedError
+
+// RateLimitedError is returned when a rate limit is exceeded.
+type RateLimitedError = sdkerrors.RateLimitedError
+
+// NotConfiguredError is returned when a required feature is not configured.
+type NotConfiguredError = sdkerrors.NotConfiguredError
+
+// TransportError is returned when a transport operation fails.
+type TransportError = sdkerrors.TransportError
+
+// PersistenceError is returned when a persistence operation fails.
+type PersistenceError = sdkerrors.PersistenceError
+
+// DeployError is returned when a .ts deployment fails.
+type DeployError = sdkerrors.DeployError
+
+// BridgeError is returned when a Go↔JS bridge function fails.
+type BridgeError = sdkerrors.BridgeError
+
+// CompilerError is returned when the AssemblyScript compiler fails.
+type CompilerError = sdkerrors.CompilerError
+
+// CycleDetectedError is returned when message cascading exceeds max depth.
+type CycleDetectedError = sdkerrors.CycleDetectedError
+
+// DecodeError is returned when a message payload can't be decoded.
+type DecodeError = sdkerrors.DecodeError

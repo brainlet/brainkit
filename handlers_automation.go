@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/workflow"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -40,11 +41,11 @@ func (d *AutomationDomain) Deploy(ctx context.Context, req messages.AutomationDe
 			return nil, fmt.Errorf("automation.deploy: invalid manifest: %w", err)
 		}
 	} else {
-		return nil, fmt.Errorf("automation.deploy: manifest is required")
+		return nil, &sdkerrors.ValidationError{Field: "manifest", Message: "is required"}
 	}
 
 	if manifest.Name == "" {
-		return nil, fmt.Errorf("automation.deploy: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 
 	// Validate requires (plugins installed+running, secrets available)
@@ -84,7 +85,7 @@ func (d *AutomationDomain) Deploy(ctx context.Context, req messages.AutomationDe
 	// Compile workflow source to WASM via the AS compiler
 	workflowSource := req.WorkflowSource
 	if workflowSource == "" {
-		return nil, fmt.Errorf("automation.deploy: workflowSource is required")
+		return nil, &sdkerrors.ValidationError{Field: "workflowSource", Message: "is required"}
 	}
 
 	compileResp, err := d.kit.wasmDomainInst.Compile(ctx, messages.WasmCompileMsg{
@@ -200,7 +201,7 @@ func (d *AutomationDomain) Teardown(ctx context.Context, req messages.Automation
 	deployed, ok := d.deployed[req.Name]
 	if !ok {
 		d.mu.Unlock()
-		return nil, fmt.Errorf("automation %q not deployed", req.Name)
+		return nil, &sdkerrors.NotFoundError{Resource: "automation", Name: req.Name}
 	}
 	delete(d.deployed, req.Name)
 	d.mu.Unlock()
@@ -251,7 +252,7 @@ func (d *AutomationDomain) Info(_ context.Context, req messages.AutomationInfoMs
 	dep, ok := d.deployed[req.Name]
 	d.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("automation %q not deployed", req.Name)
+		return nil, &sdkerrors.NotFoundError{Resource: "automation", Name: req.Name}
 	}
 	manifestJSON, _ := json.Marshal(dep.Manifest)
 	return &messages.AutomationInfoResp{

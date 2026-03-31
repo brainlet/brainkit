@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -366,10 +367,10 @@ func commandCatalog() *commandRegistry {
 			// ── RBAC Administration (inlined — no domain type needed) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACAssignMsg) (*messages.RBACAssignResp, error) {
 				if kernel.rbac == nil {
-					return nil, fmt.Errorf("rbac: not configured (no Roles in KernelConfig)")
+					return nil, &sdkerrors.NotConfiguredError{Feature: "rbac"}
 				}
 				if req.Source == "" {
-					return nil, fmt.Errorf("rbac.assign: source is required")
+					return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
 				}
 				if err := kernel.rbac.Assign(req.Source, req.Role); err != nil {
 					return nil, err
@@ -378,7 +379,7 @@ func commandCatalog() *commandRegistry {
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRevokeMsg) (*messages.RBACRevokeResp, error) {
 				if kernel.rbac == nil {
-					return nil, fmt.Errorf("rbac: not configured")
+					return nil, &sdkerrors.NotConfiguredError{Feature: "rbac"}
 				}
 				kernel.rbac.Revoke(req.Source)
 				return &messages.RBACRevokeResp{Revoked: true}, nil
@@ -517,7 +518,7 @@ func commandCatalog() *commandRegistry {
 			}),
 			nodeCommand(func(ctx context.Context, node *Node, req messages.PeersResolveMsg) (*messages.PeersResolveResp, error) {
 				if node.discovery == nil {
-					return nil, fmt.Errorf("discovery not configured")
+					return nil, &sdkerrors.NotConfiguredError{Feature: "discovery"}
 				}
 				addr, err := node.discovery.Resolve(req.Name)
 				if err != nil {

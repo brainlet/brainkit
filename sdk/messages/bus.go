@@ -15,11 +15,19 @@ type BrainkitMessage interface {
 // ResultMeta carries the common typed failure shape for transport-visible
 // command results.
 type ResultMeta struct {
-	Error string `json:"error,omitempty"`
+	Error   string         `json:"error,omitempty"`
+	Code    string         `json:"code,omitempty"`
+	Details map[string]any `json:"details,omitempty"`
 }
 
 func (m *ResultMeta) SetError(err string) {
 	m.Error = err
+}
+
+func (m *ResultMeta) SetErrorWithCode(err, code string, details map[string]any) {
+	m.Error = err
+	m.Code = code
+	m.Details = details
 }
 
 func (m ResultMeta) ResultError() string {

@@ -79,13 +79,13 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 					return nil
 				}
 
-				// Build response payload — on error, wrap in generic error response
+				// Build response payload — on error, wrap in structured error response
 				var responsePayload []byte
 				if err != nil {
 					if IsDecodeFailure(err) {
 						return err
 					}
-					responsePayload, _ = json.Marshal(map[string]string{"error": err.Error()})
+					responsePayload = SerializeBrainkitError(err)
 				} else if payload != nil {
 					responsePayload = payload
 				} else {
@@ -103,6 +103,29 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 			},
 		)
 	}
+}
+
+// SerializeBrainkitError converts an error to a JSON response with code and details.
+// If the error implements BrainkitError (Code() + Details()), those are included.
+// Otherwise, falls back to INTERNAL_ERROR with the error message.
+func SerializeBrainkitError(err error) []byte {
+	type brainkitError interface {
+		Code() string
+		Details() map[string]any
+	}
+	if bk, ok := err.(brainkitError); ok {
+		payload, _ := json.Marshal(map[string]any{
+			"error":   err.Error(),
+			"code":    bk.Code(),
+			"details": bk.Details(),
+		})
+		return payload
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"error": err.Error(),
+		"code":  "INTERNAL_ERROR",
+	})
+	return payload
 }
 
 func rawHandlerName(name, topic string) string {

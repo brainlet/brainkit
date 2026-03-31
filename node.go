@@ -10,6 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/discovery"
 	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/workflow"
 	"github.com/brainlet/brainkit/sdk"
@@ -98,7 +99,9 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		case "multicast":
 			disc, discErr = discovery.NewMulticast(cfg.Discovery.ServiceName)
 			if discErr != nil {
-				log.Printf("[brainkit] warning: multicast discovery: %v", discErr)
+				InvokeErrorHandler(cfg.Kernel.ErrorHandler, &sdkerrors.TransportError{
+					Operation: "MulticastDiscovery", Cause: discErr,
+				}, ErrorContext{Operation: "MulticastDiscovery", Component: "node"})
 			}
 		}
 		if disc != nil {
@@ -307,7 +310,9 @@ func (n *Node) restoreRunningPlugins() {
 	}
 	records, err := n.Kernel.config.Store.LoadRunningPlugins()
 	if err != nil {
-		log.Printf("[brainkit] warning: failed to load running plugins: %v", err)
+		InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "LoadRunningPlugins", Cause: err,
+		}, ErrorContext{Operation: "LoadRunningPlugins", Component: "node"})
 		return
 	}
 	if len(records) == 0 {
@@ -332,7 +337,9 @@ func (n *Node) restoreRunningPlugins() {
 		}
 		pluginDefaults(&cfg)
 		if err := n.plugins.startPlugin(cfg, 0); err != nil {
-			log.Printf("[brainkit] warning: failed to restore plugin %s: %v", r.Name, err)
+			InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
+				Operation: "RestorePlugin", Source: r.Name, Cause: err,
+			}, ErrorContext{Operation: "RestorePlugin", Component: "node", Source: r.Name})
 			continue
 		}
 		if r.Role != "" && n.Kernel.rbac != nil {

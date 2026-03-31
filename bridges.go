@@ -13,9 +13,11 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
 	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"errors"
 )
 
 // registerBridges adds Go bridge functions to the Kernel's QuickJS context.
@@ -27,14 +29,14 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_request",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_request: expected 2 args (topic, payload)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_request: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
 			// RBAC enforcement on command
 			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			// Tracing
@@ -42,7 +44,7 @@ func (k *Kernel) registerBridges() {
 			resp, err := invoker.Invoke(context.Background(), topic, payload)
 			span.End(err)
 			if err != nil {
-				return qctx.ThrowError(fmt.Errorf("brainkit_request %s: %w", topic, err))
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			return qctx.NewString(string(resp))
@@ -52,14 +54,14 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_request_async",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_request_async: expected 2 args"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_request_async: expected 2 args"})
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
 			// RBAC enforcement on command
 			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
@@ -92,7 +94,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_control",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_control: expected 2 args (action, payload)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_control: expected 2 args (action, payload)"})
 			}
 			action := args[0].String()
 			payload := json.RawMessage(args[1].String())
@@ -101,11 +103,11 @@ func (k *Kernel) registerBridges() {
 			source := k.currentDeploymentSource()
 			if action == "tools.register" || action == "tools.unregister" {
 				if err := k.checkRegistrationPermission(source, "tool"); err != nil {
-					return qctx.ThrowError(err)
+					return k.throwBrainkitError(qctx, err)
 				}
 			} else if action == "agents.register" || action == "agents.unregister" {
 				if err := k.checkRegistrationPermission(source, "agent"); err != nil {
-					return qctx.ThrowError(err)
+					return k.throwBrainkitError(qctx, err)
 				}
 			}
 
@@ -119,11 +121,11 @@ func (k *Kernel) registerBridges() {
 					InputSchema json.RawMessage `json:"inputSchema"`
 				}
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("tools.register: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				fullName, regErr := k.toolsDomain.Register(context.Background(), req.Name, req.Description, req.InputSchema, k.callerID)
 				if regErr != nil {
-					return qctx.ThrowError(fmt.Errorf("tools.register: %w", regErr))
+					return k.throwBrainkitError(qctx, regErr)
 				}
 				resp, _ = json.Marshal(map[string]string{"registered": fullName})
 			case "tools.unregister":
@@ -131,19 +133,19 @@ func (k *Kernel) registerBridges() {
 					Name string `json:"name"`
 				}
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("tools.unregister: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				if err = k.toolsDomain.Unregister(context.Background(), req.Name); err != nil {
-					return qctx.ThrowError(fmt.Errorf("tools.unregister: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			case "agents.register":
 				var req AgentInfo
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("agents.register: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				if err = k.agentsDomain.Register(context.Background(), req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("agents.register: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]string{"registered": req.Name})
 			case "agents.unregister":
@@ -151,10 +153,10 @@ func (k *Kernel) registerBridges() {
 					Name string `json:"name"`
 				}
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("agents.unregister: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				if err = k.agentsDomain.Unregister(context.Background(), req.Name); err != nil {
-					return qctx.ThrowError(fmt.Errorf("agents.unregister: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			case "registry.register":
@@ -164,7 +166,7 @@ func (k *Kernel) registerBridges() {
 					Config   json.RawMessage `json:"config"`
 				}
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("registry.register: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				// Two-pass unmarshal: read type from config, then register
 				var typeHolder struct {
@@ -192,7 +194,7 @@ func (k *Kernel) registerBridges() {
 					Name     string `json:"name"`
 				}
 				if err = json.Unmarshal(payload, &req); err != nil {
-					return qctx.ThrowError(fmt.Errorf("registry.unregister: %w", err))
+					return k.throwBrainkitError(qctx, err)
 				}
 				switch req.Category {
 				case "provider":
@@ -204,7 +206,7 @@ func (k *Kernel) registerBridges() {
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			default:
-				return qctx.ThrowError(fmt.Errorf("unknown control action: %s", action))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "action", Message: "unknown control action: " + action})
 			}
 			return qctx.NewString(string(resp))
 		}))
@@ -212,19 +214,19 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_send",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_bus_send: expected 2 args (topic, payload)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.send: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
 			if commandCatalog().HasCommand(topic) {
-				return qctx.ThrowError(fmt.Errorf("brainkit_bus_send: %s is a command topic; bus.publish only sends events", topic))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
 			}
 			if err := eventCatalog().Validate(topic, payload); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 			if err := k.publish(context.Background(), topic, payload); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 			return qctx.NewUndefined()
 		}))
@@ -234,14 +236,14 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_publish",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("bus_publish: expected 2 args (topic, payload)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.publish: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
 			// RBAC enforcement
 			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "publish"); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			// Bus rate limiting — per-role token bucket
@@ -251,7 +253,7 @@ func (k *Kernel) registerBridges() {
 					role := k.rbac.RoleForSource(source)
 					if limiter, ok := k.busRateLimiters[role.Name]; ok {
 						if !limiter.Allow() {
-							return qctx.ThrowError(fmt.Errorf("bus rate limit exceeded for role %q", role.Name))
+							return k.throwBrainkitError(qctx, &sdkerrors.RateLimitedError{Role: role.Name, Limit: float64(limiter.Limit())})
 						}
 					}
 				}
@@ -267,7 +269,7 @@ func (k *Kernel) registerBridges() {
 			_, err := k.remote.PublishRaw(ctx, topic, payload)
 			span.End(err)
 			if err != nil {
-				return qctx.ThrowError(fmt.Errorf("bus_publish %s: %w", topic, err))
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			result, _ := json.Marshal(map[string]string{
@@ -282,18 +284,18 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_emit",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
-				return qctx.ThrowError(fmt.Errorf("bus_emit: expected 2 args (topic, payload)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.emit: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
 			// RBAC enforcement
 			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "emit"); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			if err := k.publish(context.Background(), topic, payload); err != nil {
-				return qctx.ThrowError(fmt.Errorf("bus_emit %s: %w", topic, err))
+				return k.throwBrainkitError(qctx, err)
 			}
 			return qctx.NewUndefined()
 		}))
@@ -304,7 +306,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_reply",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 4 {
-				return qctx.ThrowError(fmt.Errorf("bus_reply: expected 4 args (replyTo, payload, correlationId, done)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.reply: expected 4 args"})
 			}
 			replyTo := args[0].String()
 			payload := args[1].String()
@@ -323,7 +325,7 @@ func (k *Kernel) registerBridges() {
 
 			// replyTo is already namespaced+sanitized by the publisher
 			if err := k.transport.Publisher.Publish(replyTo, wmsg); err != nil {
-				return qctx.ThrowError(fmt.Errorf("bus_reply to %s: %w", replyTo, err))
+				return k.throwBrainkitError(qctx, &sdkerrors.TransportError{Operation: "bus.reply", Cause: err})
 			}
 			return qctx.NewUndefined()
 		}))
@@ -331,7 +333,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_subscribe",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_subscribe: expected topic pattern"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "subscribe: expected topic pattern"})
 			}
 			topic := args[0].String()
 
@@ -340,7 +342,7 @@ func (k *Kernel) registerBridges() {
 
 			// RBAC enforcement
 			if err := k.checkBusPermission(subscriberSource, topic, "subscribe"); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			subID := uuid.NewString()
@@ -432,7 +434,7 @@ func (k *Kernel) registerBridges() {
 				})
 			})
 			if err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 			k.mu.Lock()
 			k.bridgeSubs[subID] = cancel
@@ -443,7 +445,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_unsubscribe",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
-				return qctx.ThrowError(fmt.Errorf("brainkit_unsubscribe: expected subscription ID"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "subscriptionId", Message: "unsubscribe: expected subscription ID"})
 			}
 			subID := args[0].String()
 			k.mu.Lock()
@@ -565,7 +567,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_await_approval",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 3 {
-				return qctx.ThrowError(fmt.Errorf("await_approval: expected 3 args (approvalTopic, payload, timeoutMs)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "await_approval: expected 3 args"})
 			}
 			approvalTopic := args[0].String()
 			payload := json.RawMessage(args[1].String())
@@ -635,7 +637,7 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_schedule",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 4 {
-				return qctx.ThrowError(fmt.Errorf("bus_schedule: expected 4 args (expression, topic, payload, source)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.schedule: expected 4 args"})
 			}
 			expression := args[0].String()
 			topic := args[1].String()
@@ -649,7 +651,7 @@ func (k *Kernel) registerBridges() {
 				Source:     source,
 			})
 			if err != nil {
-				return qctx.ThrowError(fmt.Errorf("bus_schedule: %w", err))
+				return k.throwBrainkitError(qctx, err)
 			}
 			return qctx.NewString(id)
 		}))
@@ -658,31 +660,35 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__go_brainkit_bus_unschedule",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
-				return qctx.ThrowError(fmt.Errorf("bus_unschedule: expected 1 arg (scheduleID)"))
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "scheduleId", Message: "bus.unschedule: expected 1 arg"})
 			}
 			k.Unschedule(context.Background(), args[0].String())
 			return qctx.NewUndefined()
 		}))
 
-	// __go_brainkit_secret_get(name) → value or ""
+	// __go_brainkit_secret_get(name) → value or "" (not found)
+	// Throws on: no args, store nil, store error. Returns "" only for "not found".
 	qctx.Globals().Set("__go_brainkit_secret_get",
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
-				return qctx.NewString("")
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "name", Message: "is required"})
 			}
 			name := args[0].String()
 
 			// RBAC enforcement — must have secrets.get permission
 			if err := k.checkCommandPermission(k.currentDeploymentSource(), "secrets.get"); err != nil {
-				return qctx.ThrowError(err)
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			if k.secretStore == nil {
-				return qctx.NewString("")
+				return k.throwBrainkitError(qctx, &sdkerrors.NotConfiguredError{Feature: "secrets"})
 			}
 			val, err := k.secretStore.Get(context.Background(), name)
-			if err != nil || val == "" {
-				return qctx.NewString("")
+			if err != nil {
+				return k.throwBrainkitError(qctx, &sdkerrors.BridgeError{Function: "secret_get", Cause: err})
+			}
+			if val == "" {
+				return qctx.NewString("") // legitimate "not found"
 			}
 			// Audit: emit secrets.accessed event
 			source := k.currentDeploymentSource()
@@ -701,4 +707,37 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__brainkit_sandbox_id", qctx.NewString(k.agents.ID()))
 	qctx.Globals().Set("__brainkit_sandbox_namespace", qctx.NewString(k.namespace))
 	qctx.Globals().Set("__brainkit_sandbox_callerID", qctx.NewString(k.callerID))
+}
+
+// throwBrainkitError constructs a structured JS error with .code and .details properties.
+// If err implements BrainkitError, code and details are populated from it.
+// Otherwise, code defaults to "INTERNAL_ERROR" with the error message.
+func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.Value {
+	var bkErr sdkerrors.BrainkitError
+	code := "INTERNAL_ERROR"
+	detailsJSON := "{}"
+	msg := err.Error()
+
+	if errors.As(err, &bkErr) {
+		code = bkErr.Code()
+		if d := bkErr.Details(); d != nil {
+			if b, e := json.Marshal(d); e == nil {
+				detailsJSON = string(b)
+			}
+		}
+	}
+
+	script := fmt.Sprintf(`(function() {
+		var e = new Error(%q);
+		e.code = %q;
+		e.details = JSON.parse(%q);
+		return e;
+	})()`, msg, code, detailsJSON)
+
+	errVal := qctx.Eval(script)
+	if errVal.IsException() {
+		// Fallback if JS construction fails
+		return qctx.ThrowError(err)
+	}
+	return qctx.Throw(errVal)
 }

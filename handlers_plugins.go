@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -19,7 +20,7 @@ func newPluginLifecycleDomain(n *Node) *PluginLifecycleDomain {
 
 func (d *PluginLifecycleDomain) Start(ctx context.Context, req messages.PluginStartMsg) (*messages.PluginStartResp, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("plugin.start: name is required")
+		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
 	binary := req.Binary
 	// If no binary specified, look up from installed plugins
