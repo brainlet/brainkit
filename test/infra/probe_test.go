@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func TestProbe_AIProvider_Real_OpenAI(t *testing.T) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe",
 		FSRoot: t.TempDir(),
@@ -54,7 +54,7 @@ func TestProbe_AIProvider_Real_OpenAI(t *testing.T) {
 
 // TestProbe_AIProvider_BadKey verifies probe detects invalid credentials.
 func TestProbe_AIProvider_BadKey(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-bad",
 		FSRoot: t.TempDir(),
@@ -79,7 +79,7 @@ func TestProbe_AIProvider_BadKey(t *testing.T) {
 
 // TestProbe_AIProvider_NotRegistered verifies error for unknown provider.
 func TestProbe_AIProvider_NotRegistered(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-notfound",
 		FSRoot: t.TempDir(),
@@ -94,12 +94,12 @@ func TestProbe_AIProvider_NotRegistered(t *testing.T) {
 
 // TestProbe_Storage_InMemory verifies in-memory storage is always healthy.
 func TestProbe_Storage_InMemory(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-storage",
 		FSRoot: t.TempDir(),
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.InMemoryStorage(),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -119,12 +119,12 @@ func TestProbe_VectorStore_Real_PgVector(t *testing.T) {
 
 	pgConnStr := testutil.StartPgVectorContainer(t)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probe-vector",
 		FSRoot: t.TempDir(),
-		Vectors: map[string]kit.VectorConfig{
-			"main": kit.PgVectorStore(pgConnStr),
+		Vectors: map[string]brainkit.VectorConfig{
+			"main": brainkit.PgVectorStore(pgConnStr),
 		},
 	})
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestProbe_ProbeAll(t *testing.T) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-probeall",
 		FSRoot: t.TempDir(),
@@ -157,8 +157,8 @@ func TestProbe_ProbeAll(t *testing.T) {
 				Config: provreg.OpenAIProviderConfig{APIKey: key},
 			},
 		},
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.InMemoryStorage(),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -183,7 +183,7 @@ func TestProbe_PeriodicTicker(t *testing.T) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-periodic",
 		FSRoot: t.TempDir(),

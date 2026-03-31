@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -16,18 +16,18 @@ import (
 )
 
 func TestRegistry_GoSide_RegisterAndList(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry",
 		FSRoot: t.TempDir(),
 		AIProviders: map[string]provreg.AIProviderRegistration{
 			"openai": {Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: "test-key"}},
 		},
-		Vectors: map[string]kit.VectorConfig{
-			"main": kit.PgVectorStore("pg://test"),
+		Vectors: map[string]brainkit.VectorConfig{
+			"main": brainkit.PgVectorStore("pg://test"),
 		},
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.InMemoryStorage(),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.InMemoryStorage(),
 		},
 	})
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestRegistry_GoSide_RuntimeRegisterUnregister(t *testing.T) {
 		}
 	}()
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test-registry-dynamic",
 		FSRoot:    t.TempDir(),
@@ -95,7 +95,7 @@ func TestRegistry_GoSide_RuntimeRegisterUnregister(t *testing.T) {
 }
 
 func TestRegistry_JSBridge_Has(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-js",
 		FSRoot: t.TempDir(),
@@ -121,7 +121,7 @@ func TestRegistry_JSBridge_Has(t *testing.T) {
 }
 
 func TestRegistry_JSBridge_List(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-list",
 		FSRoot: t.TempDir(),
@@ -147,7 +147,7 @@ func TestRegistry_JSBridge_List(t *testing.T) {
 }
 
 func TestRegistry_JSBridge_Resolve(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-resolve",
 		FSRoot: t.TempDir(),
@@ -175,7 +175,7 @@ func TestRegistry_JSBridge_Resolve(t *testing.T) {
 }
 
 func TestRegistry_WithDeployedTS(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-registry-deploy",
 		FSRoot: t.TempDir(),

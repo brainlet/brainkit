@@ -13,18 +13,18 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
-	_ "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	_ "github.com/brainlet/brainkit/registry"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestSCRAMCrypto(t *testing.T) {
 	testutil.LoadEnv(t)
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	if err != nil {
@@ -36,7 +36,7 @@ func TestSCRAMCrypto(t *testing.T) {
 
 	// Test crypto primitives used by SCRAM-SHA-256
 	result, err := k.EvalTS(ctx, "__scram_crypto.ts", `
-		var crypto = globalThis.__node_crypto;
+		var crypto = globalThis.crypto;
 		var results = {};
 
 		// 1. PBKDF2 via Go bridge
@@ -154,7 +154,7 @@ func TestSCRAMJSAuth(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
 		EnvVars: map[string]string{
 			"MONGODB_URL": "mongodb://test:test@" + mongoAddr,
@@ -162,8 +162,8 @@ func TestSCRAMJSAuth(t *testing.T) {
 			// to avoid "cannot read property of undefined" in the driver's log severity parser.
 			"MONGODB_LOG_ALL": "off",
 		},
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	if err != nil {

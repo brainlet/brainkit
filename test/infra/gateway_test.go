@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit/gateway"
+	"github.com/brainlet/brainkit/gateway"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/coder/websocket"

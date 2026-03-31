@@ -6,21 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/tracing"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func startKernelWithTracing(t *testing.T) (*kit.Kernel, *tracing.MemoryTraceStore) {
+func startKernelWithTracing(t *testing.T) (*brainkit.Kernel, *tracing.MemoryTraceStore) {
 	t.Helper()
 	store := tracing.NewMemoryTraceStore(1000)
 	storePath := t.TempDir() + "/trace-test.db"
-	kitStore, err := kit.NewSQLiteStore(storePath)
+	kitStore, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store:      kitStore,
 		TraceStore: store,
 	})
@@ -111,7 +111,7 @@ func TestTracing_QueryViaBus(t *testing.T) {
 
 func TestTracing_NoStoreNoOp(t *testing.T) {
 	// Kernel without TraceStore — tracing should be no-op
-	k, err := kit.NewKernel(kit.KernelConfig{})
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{})
 	require.NoError(t, err)
 	defer k.Close()
 	ctx := context.Background()

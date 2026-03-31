@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -36,18 +36,18 @@ func TestCross_WASM_Plugin(t *testing.T) {
 			defer cancel()
 
 			tmpDir := t.TempDir()
-			node, err := kit.NewNode(kit.NodeConfig{
-				Kernel: kit.KernelConfig{
+			node, err := brainkit.NewNode(brainkit.NodeConfig{
+				Kernel: brainkit.KernelConfig{
 					Namespace:    "wasm-plugin-cross",
 					CallerID:     "host",
 					FSRoot: tmpDir,
 				},
-				Messaging: kit.MessagingConfig{
+				Messaging: brainkit.MessagingConfig{
 					Transport: "nats",
 					NATSURL:   natsURL,
 					NATSName:  "brainkit-wasm-plugin",
 				},
-				Plugins: []kit.PluginConfig{
+				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
 						Binary:       pluginBinary,

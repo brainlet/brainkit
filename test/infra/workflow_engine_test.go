@@ -7,20 +7,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/tracing"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/tracing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestWorkflowEngine_CompileRunAndJournal(t *testing.T) {
 	storePath := t.TempDir() + "/wf-test.db"
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 
 	traceStore := tracing.NewMemoryTraceStore(100)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store:      store,
 		TraceStore: traceStore,
 	})
@@ -132,7 +132,7 @@ export function run(inputPtr: string): void {
 // evalBusCommand calls a Kernel bus command via EvalTS (JS bridge path).
 // Uses JSON.stringify on the Go side and JSON.parse on the JS side to avoid
 // template literal escaping issues with newlines in payloads.
-func evalBusCommand(k *kit.Kernel, ctx context.Context, topic string, payload map[string]any) (map[string]any, error) {
+func evalBusCommand(k *brainkit.Kernel, ctx context.Context, topic string, payload map[string]any) (map[string]any, error) {
 	payloadJSON, _ := json.Marshal(payload)
 	// Double-encode: Go JSON → JS string literal → JSON.parse inside JS
 	quotedPayload, _ := json.Marshal(string(payloadJSON))

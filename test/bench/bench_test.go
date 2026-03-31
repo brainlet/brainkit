@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -120,8 +120,8 @@ func BenchmarkRestartRecovery(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				storePath := filepath.Join(b.TempDir(), "restart-bench.db")
-				store, _ := kit.NewSQLiteStore(storePath)
-				k, _ := kit.NewKernel(kit.KernelConfig{Store: store, Namespace: "bench", CallerID: "bench"})
+				store, _ := brainkit.NewSQLiteStore(storePath)
+				k, _ := brainkit.NewKernel(brainkit.KernelConfig{Store: store, Namespace: "bench", CallerID: "bench"})
 				for j := 0; j < n; j++ {
 					k.Deploy(context.Background(), fmt.Sprintf("svc-%d.ts", j),
 						`bus.on("x", (msg) => msg.reply({}));`)
@@ -129,8 +129,8 @@ func BenchmarkRestartRecovery(b *testing.B) {
 				k.Close()
 
 				b.StartTimer()
-				store2, _ := kit.NewSQLiteStore(storePath)
-				k2, _ := kit.NewKernel(kit.KernelConfig{Store: store2, Namespace: "bench", CallerID: "bench"})
+				store2, _ := brainkit.NewSQLiteStore(storePath)
+				k2, _ := brainkit.NewKernel(brainkit.KernelConfig{Store: store2, Namespace: "bench", CallerID: "bench"})
 				k2.Close()
 			}
 		})
@@ -139,10 +139,10 @@ func BenchmarkRestartRecovery(b *testing.B) {
 
 // benchKernel creates a minimal Kernel for benchmarks.
 // Does NOT use testutil.NewTestKernelFull because it takes *testing.T.
-func benchKernel(b *testing.B) *kit.Kernel {
+func benchKernel(b *testing.B) *brainkit.Kernel {
 	b.Helper()
 	tmpDir := b.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
@@ -152,7 +152,7 @@ func benchKernel(b *testing.B) *kit.Kernel {
 	}
 
 	// Register echo tool for BenchmarkToolCall
-	kit.RegisterTool(k, "echo", struct {
+	brainkit.RegisterTool(k, "echo", struct {
 		Description string
 		Execute     func(ctx context.Context, input struct{ Message string }) (any, error)
 	}{

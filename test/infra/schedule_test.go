@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +28,7 @@ func TestSchedule_EveryFiresRepeatedly(t *testing.T) {
 	require.NoError(t, err)
 	defer unsub()
 
-	id, err := k.Schedule(ctx, kit.ScheduleConfig{
+	id, err := k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 200ms",
 		Topic:      "test.tick",
 		Payload:    json.RawMessage(`{"tick":true}`),
@@ -53,7 +53,7 @@ func TestSchedule_InFiresOnce(t *testing.T) {
 	})
 	defer unsub()
 
-	_, err := k.Schedule(ctx, kit.ScheduleConfig{
+	_, err := k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "in 100ms",
 		Topic:      "test.once",
 		Payload:    json.RawMessage(`{"once":true}`),
@@ -77,7 +77,7 @@ func TestSchedule_Unschedule(t *testing.T) {
 	})
 	defer unsub()
 
-	id, _ := k.Schedule(ctx, kit.ScheduleConfig{
+	id, _ := k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 100ms",
 		Topic:      "test.cancel",
 		Payload:    json.RawMessage(`{}`),
@@ -96,7 +96,7 @@ func TestSchedule_InvalidExpression(t *testing.T) {
 	k := testutil.NewTestKernelFull(t)
 	ctx := context.Background()
 
-	_, err := k.Schedule(ctx, kit.ScheduleConfig{
+	_, err := k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "cron 0 9 * * *",
 		Topic:      "test.invalid",
 		Source:     "test",
@@ -109,14 +109,14 @@ func TestSchedule_SurvivesRestart(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store1, _ := kit.NewSQLiteStore(storePath)
-	k1, err := kit.NewKernel(kit.KernelConfig{
+	store1, _ := brainkit.NewSQLiteStore(storePath)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	_, err = k1.Schedule(ctx, kit.ScheduleConfig{
+	_, err = k1.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 1h",
 		Topic:      "test.hourly",
 		Payload:    json.RawMessage(`{"hourly":true}`),
@@ -126,8 +126,8 @@ func TestSchedule_SurvivesRestart(t *testing.T) {
 	assert.Len(t, k1.ListSchedules(), 1)
 	k1.Close()
 
-	store2, _ := kit.NewSQLiteStore(storePath)
-	k2, err := kit.NewKernel(kit.KernelConfig{
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -142,8 +142,8 @@ func TestSchedule_MissedRecurringCatchUp(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store, _ := kit.NewSQLiteStore(storePath)
-	store.SaveSchedule(kit.PersistedSchedule{
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	store.SaveSchedule(brainkit.PersistedSchedule{
 		ID:         "missed-1",
 		Expression: "every 1h",
 		Duration:   time.Hour,
@@ -156,8 +156,8 @@ func TestSchedule_MissedRecurringCatchUp(t *testing.T) {
 	})
 	store.Close()
 
-	store2, _ := kit.NewSQLiteStore(storePath)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -172,8 +172,8 @@ func TestSchedule_ExpiredOneTimeFires(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store, _ := kit.NewSQLiteStore(storePath)
-	store.SaveSchedule(kit.PersistedSchedule{
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	store.SaveSchedule(brainkit.PersistedSchedule{
 		ID:         "expired-1",
 		Expression: "in 30s",
 		Duration:   30 * time.Second,
@@ -186,8 +186,8 @@ func TestSchedule_ExpiredOneTimeFires(t *testing.T) {
 	})
 	store.Close()
 
-	store2, _ := kit.NewSQLiteStore(storePath)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -238,7 +238,7 @@ func TestSchedule_DrainSkipsFiring(t *testing.T) {
 	})
 	defer unsub()
 
-	k.Schedule(ctx, kit.ScheduleConfig{
+	k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 100ms",
 		Topic:      "test.drain",
 		Payload:    json.RawMessage(`{}`),

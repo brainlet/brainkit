@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/registry"
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/rbac"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -24,7 +24,7 @@ import (
 
 // TestKernel wraps a Kernel and exposes both sdk.Runtime and *Kernel for setup.
 type TestKernel struct {
-	*kit.Kernel
+	*brainkit.Kernel
 }
 
 // EchoInput is the input type for the echo test tool.
@@ -99,17 +99,17 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test-caller",
 		FSRoot:      tmpDir,
 		AIProviders: aiProviders,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
-			"mem":     kit.InMemoryStorage(),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+			"mem":     brainkit.InMemoryStorage(),
 		},
-		Vectors: map[string]kit.VectorConfig{
-			"default": kit.SQLiteVector(filepath.Join(tmpDir, "brainkit.db")),
+		Vectors: map[string]brainkit.VectorConfig{
+			"default": brainkit.SQLiteVector(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars: envVars,
 	})
@@ -119,7 +119,7 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 	t.Cleanup(func() { k.Close() })
 
 	// Register test tools
-	err = kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	err = brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
@@ -129,7 +129,7 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		t.Fatalf("RegisterTool echo: %v", err)
 	}
 
-	err = kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	err = brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -164,18 +164,18 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 		nodeEnvVars["OPENAI_API_KEY"] = key
 	}
 
-	n, err := kit.NewNode(kit.NodeConfig{
-		Kernel: kit.KernelConfig{
+	n, err := brainkit.NewNode(brainkit.NodeConfig{
+		Kernel: brainkit.KernelConfig{
 			Namespace:   "test",
 			CallerID:    "test-node",
 			FSRoot:      tmpDir,
 			AIProviders: nodeProviders,
 			EnvVars:     nodeEnvVars,
-			Storages: map[string]kit.StorageConfig{
-				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+			Storages: map[string]brainkit.StorageConfig{
+				"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		},
-		Messaging: kit.MessagingConfig{
+		Messaging: brainkit.MessagingConfig{
 			Transport: "memory",
 		},
 	})
@@ -184,13 +184,13 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 	}
 
 	// Register test tools on Node's kernel
-	kit.RegisterTool(n.Kernel, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(n.Kernel, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(n.Kernel, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(n.Kernel, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -236,13 +236,13 @@ func NewTestKernelWithStorage(t *testing.T) *TestKernel {
 		storageEnvVars["OPENAI_API_KEY"] = key
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test-storage",
 		FSRoot:      tmpDir,
 		AIProviders: storageProviders,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars: storageEnvVars,
 	})
@@ -252,13 +252,13 @@ func NewTestKernelWithStorage(t *testing.T) *TestKernel {
 	t.Cleanup(func() { k.Close() })
 
 	// Register standard test tools
-	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -305,11 +305,11 @@ func StartPgVectorContainer(t *testing.T) string {
 // RestartKernel creates a Kernel with SQLiteStore, runs setup, closes it,
 // creates a new Kernel with the same store path. Returns (closed k1, running k2).
 // k2 is registered with t.Cleanup.
-func RestartKernel(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) (*kit.Kernel, *kit.Kernel) {
+func RestartKernel(t *testing.T, cfg brainkit.KernelConfig, setup func(*brainkit.Kernel)) (*brainkit.Kernel, *brainkit.Kernel) {
 	t.Helper()
 	storePath := filepath.Join(t.TempDir(), "restart-test.db")
 
-	store1, err := kit.NewSQLiteStore(storePath)
+	store1, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatalf("RestartKernel: open store1: %v", err)
 	}
@@ -321,7 +321,7 @@ func RestartKernel(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) 
 		cfg.CallerID = "test"
 	}
 
-	k1, err := kit.NewKernel(cfg)
+	k1, err := brainkit.NewKernel(cfg)
 	if err != nil {
 		t.Fatalf("RestartKernel: create k1: %v", err)
 	}
@@ -329,13 +329,13 @@ func RestartKernel(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) 
 	setup(k1)
 	k1.Close()
 
-	store2, err := kit.NewSQLiteStore(storePath)
+	store2, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatalf("RestartKernel: open store2: %v", err)
 	}
 	cfg.Store = store2
 
-	k2, err := kit.NewKernel(cfg)
+	k2, err := brainkit.NewKernel(cfg)
 	if err != nil {
 		t.Fatalf("RestartKernel: create k2: %v", err)
 	}
@@ -346,11 +346,11 @@ func RestartKernel(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) 
 
 // RestartKernelWithStore is like RestartKernel but returns the store path
 // for callers that need to inspect the DB directly.
-func RestartKernelWithStore(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) (string, *kit.Kernel) {
+func RestartKernelWithStore(t *testing.T, cfg brainkit.KernelConfig, setup func(*brainkit.Kernel)) (string, *brainkit.Kernel) {
 	t.Helper()
 	storePath := filepath.Join(t.TempDir(), "restart-test.db")
 
-	store1, err := kit.NewSQLiteStore(storePath)
+	store1, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatalf("RestartKernelWithStore: open store1: %v", err)
 	}
@@ -362,7 +362,7 @@ func RestartKernelWithStore(t *testing.T, cfg kit.KernelConfig, setup func(*kit.
 		cfg.CallerID = "test"
 	}
 
-	k1, err := kit.NewKernel(cfg)
+	k1, err := brainkit.NewKernel(cfg)
 	if err != nil {
 		t.Fatalf("RestartKernelWithStore: create k1: %v", err)
 	}
@@ -370,13 +370,13 @@ func RestartKernelWithStore(t *testing.T, cfg kit.KernelConfig, setup func(*kit.
 	setup(k1)
 	k1.Close()
 
-	store2, err := kit.NewSQLiteStore(storePath)
+	store2, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatalf("RestartKernelWithStore: open store2: %v", err)
 	}
 	cfg.Store = store2
 
-	k2, err := kit.NewKernel(cfg)
+	k2, err := brainkit.NewKernel(cfg)
 	if err != nil {
 		t.Fatalf("RestartKernelWithStore: create k2: %v", err)
 	}
@@ -407,7 +407,7 @@ func ConcurrentDo(t *testing.T, n int, fn func(i int)) {
 
 // WaitForBusMessage subscribes to a topic, waits for one message, unsubscribes, returns it.
 // Fails with timeout if no message arrives within the deadline.
-func WaitForBusMessage(t *testing.T, k *kit.Kernel, topic string, timeout time.Duration) messages.Message {
+func WaitForBusMessage(t *testing.T, k *brainkit.Kernel, topic string, timeout time.Duration) messages.Message {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -439,12 +439,12 @@ func NewTestKernelWithRBAC(t *testing.T, roles map[string]rbac.Role, defaultRole
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "rbac-test.db")
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatalf("NewTestKernelWithRBAC: open store: %v", err)
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test",
 		Store:       store,

@@ -9,22 +9,22 @@ import (
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func poolNodeConfig(t *testing.T) kit.NodeConfig {
+func poolNodeConfig(t *testing.T) brainkit.NodeConfig {
 	t.Helper()
-	return kit.NodeConfig{
-		Kernel: kit.KernelConfig{
+	return brainkit.NodeConfig{
+		Kernel: brainkit.KernelConfig{
 			Namespace:    "pool-test",
 			CallerID:     "pool-test",
 			FSRoot: t.TempDir(),
 		},
-		Messaging: kit.MessagingConfig{
+		Messaging: brainkit.MessagingConfig{
 			Transport: "memory",
 		},
 	}
@@ -33,9 +33,9 @@ func poolNodeConfig(t *testing.T) kit.NodeConfig {
 // TestPool_SpawnAndKill creates a pool with 2 instances, verifies both
 // are running, then kills the pool and verifies cleanup.
 func TestPool_SpawnAndKill(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
-	err := im.SpawnPool("test-pool", kit.PoolConfig{
+	err := im.SpawnPool("test-pool", brainkit.PoolConfig{
 		Base:         poolNodeConfig(t),
 		InitialCount: 2,
 	})
@@ -69,9 +69,9 @@ func TestPool_SpawnAndKill(t *testing.T) {
 // TestPool_ScaleUpDown creates a pool with 1 instance, scales to 3,
 // verifies all 3 work, scales back to 1, verifies cleanup.
 func TestPool_ScaleUpDown(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
-	err := im.SpawnPool("scale-pool", kit.PoolConfig{
+	err := im.SpawnPool("scale-pool", brainkit.PoolConfig{
 		Base:         poolNodeConfig(t),
 		InitialCount: 1,
 	})
@@ -106,9 +106,9 @@ func TestPool_ScaleUpDown(t *testing.T) {
 
 // TestPool_DuplicateAndNotFound verifies error types for edge cases.
 func TestPool_DuplicateAndNotFound(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
-	err := im.SpawnPool("dup-pool", kit.PoolConfig{
+	err := im.SpawnPool("dup-pool", brainkit.PoolConfig{
 		Base:         poolNodeConfig(t),
 		InitialCount: 1,
 	})
@@ -116,7 +116,7 @@ func TestPool_DuplicateAndNotFound(t *testing.T) {
 	t.Cleanup(func() { im.KillPool("dup-pool") })
 
 	// Duplicate spawn
-	err = im.SpawnPool("dup-pool", kit.PoolConfig{
+	err = im.SpawnPool("dup-pool", brainkit.PoolConfig{
 		Base:         poolNodeConfig(t),
 		InitialCount: 1,
 	})
@@ -142,7 +142,7 @@ func TestPool_DuplicateAndNotFound(t *testing.T) {
 // TestPool_SharedTools verifies that tools registered on the shared
 // registry are accessible from all instances in the pool.
 func TestPool_SharedTools(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
 	cfg := poolNodeConfig(t)
 	sharedTools := registry.New()
@@ -160,7 +160,7 @@ func TestPool_SharedTools(t *testing.T) {
 		},
 	})
 
-	err := im.SpawnPool("tools-pool", kit.PoolConfig{
+	err := im.SpawnPool("tools-pool", brainkit.PoolConfig{
 		Base:         cfg,
 		InitialCount: 2,
 	})
@@ -180,7 +180,7 @@ func TestPool_SharedTools(t *testing.T) {
 
 // TestStrategy_Static verifies StaticStrategy returns correct decisions.
 func TestStrategy_Static(t *testing.T) {
-	s := kit.NewStaticStrategy(3)
+	s := brainkit.NewStaticStrategy(3)
 	metrics := messaging.MetricsSnapshot{
 		Published: make(map[string]int),
 		Handled:   make(map[string]int),
@@ -188,23 +188,23 @@ func TestStrategy_Static(t *testing.T) {
 	}
 
 	// Below target → scale up
-	d := s.Evaluate(metrics, kit.PoolInfo{Current: 1})
+	d := s.Evaluate(metrics, brainkit.PoolInfo{Current: 1})
 	assert.Equal(t, "scale-up", d.Action)
 	assert.Equal(t, 2, d.Delta)
 
 	// At target → none
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 3})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 3})
 	assert.Equal(t, "none", d.Action)
 
 	// Above target → scale down
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 5})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 5})
 	assert.Equal(t, "scale-down", d.Action)
 	assert.Equal(t, 2, d.Delta)
 }
 
 // TestStrategy_Threshold verifies ThresholdStrategy respects min/max bounds.
 func TestStrategy_Threshold(t *testing.T) {
-	s := kit.NewThresholdStrategy(10, 2)
+	s := brainkit.NewThresholdStrategy(10, 2)
 	metrics := messaging.MetricsSnapshot{
 		Published: make(map[string]int),
 		Handled:   make(map[string]int),
@@ -212,49 +212,49 @@ func TestStrategy_Threshold(t *testing.T) {
 	}
 
 	// Pending > threshold, below max → scale up
-	d := s.Evaluate(metrics, kit.PoolInfo{Current: 2, Pending: 15, Min: 1, Max: 5})
+	d := s.Evaluate(metrics, brainkit.PoolInfo{Current: 2, Pending: 15, Min: 1, Max: 5})
 	assert.Equal(t, "scale-up", d.Action)
 	assert.Equal(t, 1, d.Delta)
 
 	// Pending > threshold, AT max → no action
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 5, Pending: 15, Min: 1, Max: 5})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 5, Pending: 15, Min: 1, Max: 5})
 	assert.Equal(t, "none", d.Action)
 
 	// Pending < scale-down threshold, above min → scale down
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 3, Pending: 1, Min: 1, Max: 5})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 1, Min: 1, Max: 5})
 	assert.Equal(t, "scale-down", d.Action)
 	assert.Equal(t, 1, d.Delta)
 
 	// Pending < scale-down threshold, AT min → no action
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 1, Pending: 0, Min: 1, Max: 5})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 1, Pending: 0, Min: 1, Max: 5})
 	assert.Equal(t, "none", d.Action)
 
 	// Pending between thresholds → no action
-	d = s.Evaluate(metrics, kit.PoolInfo{Current: 2, Pending: 5, Min: 1, Max: 5})
+	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 2, Pending: 5, Min: 1, Max: 5})
 	assert.Equal(t, "none", d.Action)
 
 	// Scale up capped by max
-	s2 := &kit.ThresholdStrategy{ScaleUpThreshold: 5, ScaleUpStep: 10, ScaleDownThreshold: 0, ScaleDownStep: 1}
-	d = s2.Evaluate(metrics, kit.PoolInfo{Current: 3, Pending: 20, Min: 1, Max: 5})
+	s2 := &brainkit.ThresholdStrategy{ScaleUpThreshold: 5, ScaleUpStep: 10, ScaleDownThreshold: 0, ScaleDownStep: 1}
+	d = s2.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 20, Min: 1, Max: 5})
 	assert.Equal(t, "scale-up", d.Action)
 	assert.Equal(t, 2, d.Delta) // capped: max(5) - current(3) = 2, not step(10)
 
 	// Scale down capped by min
-	s3 := &kit.ThresholdStrategy{ScaleUpThreshold: 100, ScaleDownThreshold: 5, ScaleUpStep: 1, ScaleDownStep: 10}
-	d = s3.Evaluate(metrics, kit.PoolInfo{Current: 3, Pending: 0, Min: 2, Max: 10})
+	s3 := &brainkit.ThresholdStrategy{ScaleUpThreshold: 100, ScaleDownThreshold: 5, ScaleUpStep: 1, ScaleDownStep: 10}
+	d = s3.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 0, Min: 2, Max: 10})
 	assert.Equal(t, "scale-down", d.Action)
 	assert.Equal(t, 1, d.Delta) // capped: current(3) - min(2) = 1, not step(10)
 }
 
 // TestPool_EvaluateAndScale verifies the automatic scaling loop applies strategy decisions.
 func TestPool_EvaluateAndScale(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
 	// Use static strategy targeting 3 instances, start with 1
-	err := im.SpawnPool("auto-pool", kit.PoolConfig{
+	err := im.SpawnPool("auto-pool", brainkit.PoolConfig{
 		Base:         poolNodeConfig(t),
 		InitialCount: 1,
-		Strategy:     kit.NewStaticStrategy(3),
+		Strategy:     brainkit.NewStaticStrategy(3),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { im.KillPool("auto-pool") })
@@ -278,7 +278,7 @@ func TestPool_EvaluateAndScale(t *testing.T) {
 // TestPool_InstancesProcessMessages verifies that pool instances can actually
 // process bus messages — not just that the count is right.
 func TestPool_InstancesProcessMessages(t *testing.T) {
-	im := kit.NewInstanceManager()
+	im := brainkit.NewInstanceManager()
 
 	cfg := poolNodeConfig(t)
 	sharedTools := registry.New()
@@ -291,7 +291,7 @@ func TestPool_InstancesProcessMessages(t *testing.T) {
 		},
 	})
 
-	err := im.SpawnPool("msg-pool", kit.PoolConfig{
+	err := im.SpawnPool("msg-pool", brainkit.PoolConfig{
 		Base:         cfg,
 		InitialCount: 1,
 	})

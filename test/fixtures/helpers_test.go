@@ -21,7 +21,7 @@ func fixturesRoot(t *testing.T) string {
 }
 
 // loadTSFixtureRaw reads the raw .ts source for a fixture at fixtures/ts/<category>/<name>/index.ts.
-// Pass directly to kit.Deploy — it handles transpile + import stripping.
+// Pass directly to brainkit.Deploy — it handles transpile + import stripping.
 func loadTSFixtureRaw(t *testing.T, category, name string) string {
 	t.Helper()
 	path := filepath.Join(fixturesRoot(t), "ts", category, name, "index.ts")

@@ -6,20 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/rbac"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func startKernelWithRBAC(t *testing.T) *kit.Kernel {
+func startKernelWithRBAC(t *testing.T) *brainkit.Kernel {
 	t.Helper()
 	storePath := t.TempDir() + "/rbac-test.db"
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store,
 		Roles: map[string]rbac.Role{
 			// custom restricted role: can only publish to own mailbox + events.*
@@ -151,8 +151,8 @@ func TestRBAC_OwnMailboxAlwaysAllowed(t *testing.T) {
 
 func TestRBAC_AdminRoleCanDoEverything(t *testing.T) {
 	storePath := t.TempDir() + "/rbac-admin.db"
-	store, _ := kit.NewSQLiteStore(storePath)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store:       store,
 		Roles:       map[string]rbac.Role{}, // use built-in presets
 		DefaultRole: "admin",                // everything gets admin
@@ -306,7 +306,7 @@ func TestRBAC_WithRoleOnDeploy(t *testing.T) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, kit.WithRole("observer"))
+	`, brainkit.WithRole("observer"))
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
@@ -333,9 +333,9 @@ func TestRBAC_RolePersistenceAcrossRestart(t *testing.T) {
 	storePath := t.TempDir() + "/rbac-persist.db"
 
 	// Phase 1: Create kernel, deploy with role, close
-	store1, err := kit.NewSQLiteStore(storePath)
+	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := kit.NewKernel(kit.KernelConfig{
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store1,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -344,7 +344,7 @@ func TestRBAC_RolePersistenceAcrossRestart(t *testing.T) {
 	require.NoError(t, err)
 
 	code := `bus.on("ping", (msg) => msg.reply({ pong: true }));`
-	_, err = k1.Deploy(context.Background(), "watched.ts", code, kit.WithRole("observer"))
+	_, err = k1.Deploy(context.Background(), "watched.ts", code, brainkit.WithRole("observer"))
 	require.NoError(t, err)
 
 	// Verify deployment exists
@@ -354,9 +354,9 @@ func TestRBAC_RolePersistenceAcrossRestart(t *testing.T) {
 	k1.Close()
 
 	// Phase 2: New kernel with same store — deployment auto-redeploys with persisted role
-	store2, err := kit.NewSQLiteStore(storePath)
+	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k2, err := kit.NewKernel(kit.KernelConfig{
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store2,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -382,7 +382,7 @@ func TestRBAC_RolePersistenceAcrossRestart(t *testing.T) {
 			}
 		});
 	`
-	_, err = k2.Deploy(context.Background(), "admin-checker.ts", adminCode, kit.WithRole("admin"))
+	_, err = k2.Deploy(context.Background(), "admin-checker.ts", adminCode, brainkit.WithRole("admin"))
 	require.NoError(t, err)
 
 	// The observer's deployment was restored — verify it's functional
@@ -517,8 +517,8 @@ func TestRBAC_CommandMatrix(t *testing.T) {
 
 func TestRBAC_MultiDeploymentIsolation(t *testing.T) {
 	storePath := t.TempDir() + "/isolation.db"
-	store, _ := kit.NewSQLiteStore(storePath)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store,
 		Roles: map[string]rbac.Role{
 			// Must provide at least one role to activate RBAC (len > 0 check in NewKernel)
@@ -540,7 +540,7 @@ func TestRBAC_MultiDeploymentIsolation(t *testing.T) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, kit.WithRole("admin"))
+	`, brainkit.WithRole("admin"))
 	require.NoError(t, err)
 
 	// Deploy B with observer — cannot emit
@@ -553,7 +553,7 @@ func TestRBAC_MultiDeploymentIsolation(t *testing.T) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, kit.WithRole("observer"))
+	`, brainkit.WithRole("observer"))
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 

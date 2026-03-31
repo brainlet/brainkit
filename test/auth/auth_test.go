@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -24,7 +24,7 @@ func init() {
 
 // evalStore deploys a minimal .ts that connects to a store, writes a thread,
 // reads it back, and returns the result as JSON.
-func evalStore(t *testing.T, k *kit.Kernel, storeType, storeCode string) string {
+func evalStore(t *testing.T, k *brainkit.Kernel, storeType, storeCode string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -73,16 +73,16 @@ func waitForTCP(t *testing.T, addr string, timeout time.Duration) {
 	t.Fatalf("TCP probe failed: %s not accepting connections after %v", addr, timeout)
 }
 
-func newKernel(t *testing.T, envVars map[string]string) *kit.Kernel {
+func newKernel(t *testing.T, envVars map[string]string) *brainkit.Kernel {
 	t.Helper()
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "auth-test",
 		FSRoot:    tmpDir,
 		EnvVars:   envVars,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 	})
 	require.NoError(t, err)

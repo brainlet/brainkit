@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ func TestMetrics_ReflectsState(t *testing.T) {
 	require.NoError(t, err)
 
 	// Schedule something
-	_, err = k.Schedule(ctx, kit.ScheduleConfig{
+	_, err = k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 1h", Topic: "metrics.tick",
 		Payload: json.RawMessage(`{}`), Source: "test",
 	})

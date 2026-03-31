@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/rbac"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -19,10 +19,10 @@ func TestPersistence_DeploySurvivesRestart(t *testing.T) {
 	storePath := filepath.Join(tmpDir, "test.db")
 
 	// Kernel 1: deploy a service
-	store1, err := kit.NewSQLiteStore(storePath)
+	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 
-	k1, err := kit.NewKernel(kit.KernelConfig{
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store1,
@@ -56,10 +56,10 @@ func TestPersistence_DeploySurvivesRestart(t *testing.T) {
 	k1.Close()
 
 	// Kernel 2: same store — service should auto-redeploy
-	store2, err := kit.NewSQLiteStore(storePath)
+	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 
-	k2, err := kit.NewKernel(kit.KernelConfig{
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -85,9 +85,9 @@ func TestPersistence_DeploySurvivesRestart(t *testing.T) {
 func TestPersistence_TeardownRemovesFromStore(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := kit.NewSQLiteStore(storePath)
+	store, _ := brainkit.NewSQLiteStore(storePath)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -110,8 +110,8 @@ func TestPersistence_TeardownRemovesFromStore(t *testing.T) {
 	k.Close()
 
 	// Kernel 2: should have NO deployments
-	store2, _ := kit.NewSQLiteStore(storePath)
-	k2, _ := kit.NewKernel(kit.KernelConfig{
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, _ := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -125,9 +125,9 @@ func TestPersistence_TeardownRemovesFromStore(t *testing.T) {
 func TestPersistence_OrderPreserved(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := kit.NewSQLiteStore(storePath)
+	store, _ := brainkit.NewSQLiteStore(storePath)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -148,7 +148,7 @@ func TestPersistence_OrderPreserved(t *testing.T) {
 	k.Close()
 
 	// Verify order in store
-	store2, _ := kit.NewSQLiteStore(storePath)
+	store2, _ := brainkit.NewSQLiteStore(storePath)
 	deps, _ := store2.LoadDeployments()
 	store2.Close()
 
@@ -163,9 +163,9 @@ func TestPersistence_OrderPreserved(t *testing.T) {
 func TestPersistence_FailedRedeployDoesNotBlock(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := kit.NewSQLiteStore(storePath)
+	store, _ := brainkit.NewSQLiteStore(storePath)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -185,7 +185,7 @@ func TestPersistence_FailedRedeployDoesNotBlock(t *testing.T) {
 	u1()
 
 	// Persist a broken deployment directly into the store
-	store.SaveDeployment(kit.PersistedDeployment{
+	store.SaveDeployment(brainkit.PersistedDeployment{
 		Source: "broken.ts", Code: `throw new Error("intentional failure");`,
 		Order: 99, DeployedAt: time.Now(),
 	})
@@ -193,8 +193,8 @@ func TestPersistence_FailedRedeployDoesNotBlock(t *testing.T) {
 	k.Close()
 
 	// Kernel 2: should start even though broken.ts fails to redeploy
-	store2, _ := kit.NewSQLiteStore(storePath)
-	k2, err := kit.NewKernel(kit.KernelConfig{
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -223,22 +223,22 @@ func TestPersistence_PackageNameSurvivesRestart(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "pkg-restart.db")
 
 	// Phase 1: deploy with package name
-	store1, err := kit.NewSQLiteStore(storePath)
+	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := kit.NewKernel(kit.KernelConfig{
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
 
 	_, err = k1.Deploy(context.Background(), "svc.ts",
 		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
-		kit.WithPackageName("my-package"),
+		brainkit.WithPackageName("my-package"),
 	)
 	require.NoError(t, err)
 	k1.Close()
 
 	// Phase 2: verify package name survived in store
-	store2, err := kit.NewSQLiteStore(storePath)
+	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	deps, err := store2.LoadDeployments()
 	require.NoError(t, err)
@@ -249,9 +249,9 @@ func TestPersistence_PackageNameSurvivesRestart(t *testing.T) {
 
 func TestPersistence_RedeployPreservesMetadata(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "redeploy-meta.db")
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
@@ -261,7 +261,7 @@ func TestPersistence_RedeployPreservesMetadata(t *testing.T) {
 	ctx := context.Background()
 	_, err = k.Deploy(ctx, "svc.ts",
 		`bus.on("v1", (msg) => msg.reply({ v: 1 }));`,
-		kit.WithPackageName("my-pkg"), kit.WithRole("admin"),
+		brainkit.WithPackageName("my-pkg"), brainkit.WithRole("admin"),
 	)
 	require.NoError(t, err)
 
@@ -279,9 +279,9 @@ func TestPersistence_RedeployPreservesMetadata(t *testing.T) {
 
 func TestPersistence_WithRestoringSkipsPersist(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "restoring.db")
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test", CallerID: "test", Store: store,
 	})
 	require.NoError(t, err)
@@ -290,7 +290,7 @@ func TestPersistence_WithRestoringSkipsPersist(t *testing.T) {
 	// Deploy with WithRestoring — should NOT persist
 	_, err = k.Deploy(context.Background(), "ephemeral.ts",
 		`bus.on("x", (msg) => msg.reply({}));`,
-		kit.WithRestoring(),
+		brainkit.WithRestoring(),
 	)
 	require.NoError(t, err)
 

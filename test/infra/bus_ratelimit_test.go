@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
-	"github.com/brainlet/brainkit/kit/rbac"
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -16,9 +16,9 @@ import (
 
 func TestBusRateLimit_ExceedsLimit(t *testing.T) {
 	storePath := t.TempDir() + "/ratelimit.db"
-	store, _ := kit.NewSQLiteStore(storePath)
+	store, _ := brainkit.NewSQLiteStore(storePath)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store,
 		Roles: map[string]rbac.Role{
 			"limited": {
@@ -54,7 +54,7 @@ func TestBusRateLimit_ExceedsLimit(t *testing.T) {
 			}
 			msg.reply({ results: results });
 		});
-	`, kit.WithRole("limited"))
+	`, brainkit.WithRole("limited"))
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 

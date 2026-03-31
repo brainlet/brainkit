@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -22,12 +22,12 @@ func writePackageFile(t *testing.T, dir, name, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
 }
 
-func startKernelForPackages(t *testing.T) *kit.Kernel {
+func startKernelForPackages(t *testing.T) *brainkit.Kernel {
 	t.Helper()
 	storePath := t.TempDir() + "/pkg-test.db"
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store:     store,
 		SecretKey: "test-key-for-packages",
 	})

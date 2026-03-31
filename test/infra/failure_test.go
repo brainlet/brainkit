@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -116,11 +116,11 @@ func TestFailure_HandlerFailedEvent_Emitted(t *testing.T) {
 
 func TestFailure_RetryPolicy_Retries(t *testing.T) {
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    tmpDir,
-		RetryPolicies: map[string]kit.RetryPolicy{
+		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test.*": {
 				MaxRetries:    2,
 				InitialDelay:  100 * time.Millisecond,
@@ -172,11 +172,11 @@ func TestFailure_RetryPolicy_Retries(t *testing.T) {
 
 func TestFailure_RetryExhausted_DeadLetter(t *testing.T) {
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    tmpDir,
-		RetryPolicies: map[string]kit.RetryPolicy{
+		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.dl-test.*": {
 				MaxRetries:      1,
 				InitialDelay:    50 * time.Millisecond,
@@ -236,11 +236,11 @@ func TestFailure_RetryExhausted_DeadLetter(t *testing.T) {
 
 func TestFailure_ExhaustedEvent_Emitted(t *testing.T) {
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    tmpDir,
-		RetryPolicies: map[string]kit.RetryPolicy{
+		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.exhaust-evt.*": {
 				MaxRetries:   1,
 				InitialDelay: 50 * time.Millisecond,
@@ -282,11 +282,11 @@ func TestFailure_ExhaustedEvent_Emitted(t *testing.T) {
 
 func TestFailure_RetryPreservesReplyTo(t *testing.T) {
 	tmpDir := t.TempDir()
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    tmpDir,
-		RetryPolicies: map[string]kit.RetryPolicy{
+		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.replyto-test.*": {
 				MaxRetries:   1,
 				InitialDelay: 100 * time.Millisecond,

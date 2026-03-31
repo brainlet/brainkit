@@ -7,19 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
-func startKernelWithSecrets(t *testing.T) *kit.Kernel {
+func startKernelWithSecrets(t *testing.T) *brainkit.Kernel {
 	t.Helper()
 	storePath := t.TempDir() + "/secrets-test.db"
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatal("store:", err)
 	}
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store:     store,
 		SecretKey: "test-master-key-for-secrets!!!",
 	})
@@ -325,11 +325,11 @@ func TestSecrets_ConcurrentAccess(t *testing.T) {
 func TestSecrets_DevMode_NoEncryption(t *testing.T) {
 	// No SecretKey → secrets stored without encryption (dev mode)
 	storePath := t.TempDir() + "/devmode.db"
-	store, err := kit.NewSQLiteStore(storePath)
+	store, err := brainkit.NewSQLiteStore(storePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Store: store,
 		// No SecretKey — dev mode
 	})

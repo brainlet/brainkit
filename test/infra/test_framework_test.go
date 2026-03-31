@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func startKernelForTesting(t *testing.T) *kit.Kernel {
+func startKernelForTesting(t *testing.T) *brainkit.Kernel {
 	t.Helper()
 	storePath := t.TempDir() + "/test-fw.db"
-	store, _ := kit.NewSQLiteStore(storePath)
-	k, err := kit.NewKernel(kit.KernelConfig{Store: store})
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{Store: store})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
 	return k
@@ -27,7 +27,7 @@ type testResult struct {
 	Duration int    `json:"duration"`
 }
 
-func runTestFile(t *testing.T, k *kit.Kernel, code string) []testResult {
+func runTestFile(t *testing.T, k *brainkit.Kernel, code string) []testResult {
 	t.Helper()
 	ctx := context.Background()
 

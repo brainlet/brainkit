@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/discovery"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -14,12 +14,12 @@ import (
 )
 
 func TestDiscovery_StaticPeers(t *testing.T) {
-	node, err := kit.NewNode(kit.NodeConfig{
-		Kernel: kit.KernelConfig{
+	node, err := brainkit.NewNode(brainkit.NodeConfig{
+		Kernel: brainkit.KernelConfig{
 			Namespace: "test",
 			CallerID:  "test-node",
 		},
-		Messaging: kit.MessagingConfig{Transport: "memory"},
+		Messaging: brainkit.MessagingConfig{Transport: "memory"},
 		Discovery: discovery.Config{
 			Type: "static",
 			StaticPeers: []discovery.PeerConfig{

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -83,7 +83,7 @@ func TestIntegration_ScheduleDuringDrain(t *testing.T) {
 	})
 	defer unsub()
 
-	_, err := k.Schedule(ctx, kit.ScheduleConfig{
+	_, err := k.Schedule(ctx, brainkit.ScheduleConfig{
 		Expression: "every 100ms", Topic: "drain.test.tick",
 		Payload: json.RawMessage(`{}`), Source: "test",
 	})
@@ -146,7 +146,7 @@ func TestIntegration_SecretsRotation(t *testing.T) {
 }
 
 func TestIntegration_DeployOrderPreservedAfterRestart(t *testing.T) {
-	_, k2 := testutil.RestartKernel(t, kit.KernelConfig{}, func(k1 *kit.Kernel) {
+	_, k2 := testutil.RestartKernel(t, brainkit.KernelConfig{}, func(k1 *brainkit.Kernel) {
 		ctx := context.Background()
 		for i, name := range []string{"alpha.ts", "beta.ts", "gamma.ts"} {
 			_, err := k1.Deploy(ctx, name, fmt.Sprintf(`bus.on("ping", (msg) => msg.reply({ order: %d }));`, i))

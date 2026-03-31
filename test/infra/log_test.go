@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -16,13 +16,13 @@ import (
 
 func TestLogHandler_TSCompartment(t *testing.T) {
 	var mu sync.Mutex
-	var logs []kit.LogEntry
+	var logs []brainkit.LogEntry
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-log",
 		FSRoot: t.TempDir(),
-		LogHandler: func(e kit.LogEntry) {
+		LogHandler: func(e brainkit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
 			mu.Unlock()
@@ -66,13 +66,13 @@ func TestLogHandler_TSCompartment(t *testing.T) {
 
 func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 	var mu sync.Mutex
-	var logs []kit.LogEntry
+	var logs []brainkit.LogEntry
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-log-multi",
 		FSRoot: t.TempDir(),
-		LogHandler: func(e kit.LogEntry) {
+		LogHandler: func(e brainkit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
 			mu.Unlock()
@@ -131,13 +131,13 @@ func TestLogHandler_TSCompartment_MultipleFiles(t *testing.T) {
 
 func TestLogHandler_WASMModule(t *testing.T) {
 	var mu sync.Mutex
-	var logs []kit.LogEntry
+	var logs []brainkit.LogEntry
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-wasm-log",
 		FSRoot: t.TempDir(),
-		LogHandler: func(e kit.LogEntry) {
+		LogHandler: func(e brainkit.LogEntry) {
 			mu.Lock()
 			logs = append(logs, e)
 			mu.Unlock()
@@ -198,7 +198,7 @@ func TestLogHandler_WASMModule(t *testing.T) {
 
 func TestLogHandler_NilDefault(t *testing.T) {
 	// When LogHandler is nil, logs should go to default (stdout) without panicking
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "test",
 		CallerID:     "test-nil-log",
 		FSRoot: t.TempDir(),

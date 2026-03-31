@@ -15,8 +15,8 @@ import (
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -425,14 +425,14 @@ func newTestKernelWithMCP(t *testing.T) *testutil.TestKernel {
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test-mcp",
 		FSRoot:      tmpDir,
 		AIProviders: aiProviders,
 		EnvVars:     envVars,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		MCPServers: map[string]mcppkg.ServerConfig{
 			"test": {URL: mcpURL},

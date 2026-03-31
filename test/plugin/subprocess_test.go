@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -27,9 +28,9 @@ func TestPlugin_Subprocess(t *testing.T) {
 		t.Skip("skipping subprocess plugin test in short mode")
 	}
 
-	// Check Podman availability
-	if _, err := exec.LookPath("podman"); err != nil {
-		t.Skip("podman not available")
+	// Check Podman availability — must be installed AND machine running
+	if !testutil.PodmanAvailable() {
+		t.Fatal("podman not available or machine not running — start with: podman machine start")
 	}
 
 	// Build the test plugin binary
@@ -46,21 +47,16 @@ func TestPlugin_Subprocess(t *testing.T) {
 
 	// Set DOCKER_HOST to Podman socket if not already set
 	if os.Getenv("DOCKER_HOST") == "" {
-		// Try to find Podman socket
-		socketPaths := []string{
-			"/var/folders/h2/lww7d7p5049dx4qzhxgk33640000gn/T/podman/podman-machine-default-api.sock",
-		}
-		// Also try `podman machine inspect`
 		if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
-			socketPaths = append([]string{string(out[:len(out)-1])}, socketPaths...) // prepend
-		}
-		for _, sp := range socketPaths {
-			if _, err := os.Stat(sp); err == nil {
+			sp := strings.TrimSpace(string(out))
+			if _, statErr := os.Stat(sp); statErr == nil {
 				os.Setenv("DOCKER_HOST", "unix://"+sp)
 				t.Logf("Set DOCKER_HOST to unix://%s", sp)
-				break
 			}
 		}
+	}
+	if os.Getenv("DOCKER_HOST") == "" {
+		t.Fatal("DOCKER_HOST not set and podman socket not found — cannot start containers")
 	}
 
 	// Start NATS via Podman
@@ -106,18 +102,18 @@ func TestPlugin_Subprocess(t *testing.T) {
 	t.Log("Creating Node with NATS transport...")
 
 	// Create Node with NATS transport and plugin config
-	node, err := kit.NewNode(kit.NodeConfig{
-		Kernel: kit.KernelConfig{
+	node, err := brainkit.NewNode(brainkit.NodeConfig{
+		Kernel: brainkit.KernelConfig{
 			Namespace:    "plugin-e2e",
 			CallerID:     "host",
 			FSRoot: tmpDir,
 		},
-		Messaging: kit.MessagingConfig{
+		Messaging: brainkit.MessagingConfig{
 			Transport: "nats",
 			NATSURL:   natsURL,
 			NATSName:  "brainkit-test",
 		},
-		Plugins: []kit.PluginConfig{
+		Plugins: []brainkit.PluginConfig{
 			{
 				Name:         "testplugin",
 				Binary:       pluginBinary,
@@ -129,7 +125,7 @@ func TestPlugin_Subprocess(t *testing.T) {
 	defer node.Close()
 
 	// Register a host-side tool
-	kit.RegisterTool(node.Kernel, "host-add", registry.TypedTool[testutil.AddInput]{
+	brainkit.RegisterTool(node.Kernel, "host-add", registry.TypedTool[testutil.AddInput]{
 		Description: "adds two numbers (host-side)",
 		Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +46,7 @@ func TestHealth_StatusRunning(t *testing.T) {
 	assert.Greater(t, health.Uptime, time.Duration(0))
 	assert.GreaterOrEqual(t, len(health.Checks), 4)
 
-	var runtimeCheck *kit.HealthCheck
+	var runtimeCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "runtime" {
 			runtimeCheck = &health.Checks[i]
@@ -65,7 +65,7 @@ func TestHealth_TransportProbe(t *testing.T) {
 
 	health := k.Health(ctx)
 
-	var transportCheck *kit.HealthCheck
+	var transportCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "transport" {
 			transportCheck = &health.Checks[i]
@@ -83,7 +83,7 @@ func TestHealth_StorageBridgeCheck(t *testing.T) {
 
 	health := k.Health(ctx)
 
-	var storageCheck *kit.HealthCheck
+	var storageCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "storage:default" {
 			storageCheck = &health.Checks[i]
@@ -112,7 +112,7 @@ func TestHealth_DeploymentsCount(t *testing.T) {
 
 	health := k.Health(ctx)
 
-	var deploymentsCheck *kit.HealthCheck
+	var deploymentsCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "deployments" {
 			deploymentsCheck = &health.Checks[i]

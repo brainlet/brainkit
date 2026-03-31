@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,23 +48,23 @@ func TestPluginFixtures(t *testing.T) {
 	}
 
 	// Create a Node with the plugin
-	node, err := kit.NewNode(kit.NodeConfig{
-		Kernel: kit.KernelConfig{
+	node, err := brainkit.NewNode(brainkit.NodeConfig{
+		Kernel: brainkit.KernelConfig{
 			Namespace:   "test-plugin",
 			CallerID:    "test-plugin-caller",
 			FSRoot:      tmpDir,
 			AIProviders: aiProviders,
 			EnvVars:     envVars,
-			Storages: map[string]kit.StorageConfig{
-				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+			Storages: map[string]brainkit.StorageConfig{
+				"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		},
-		Messaging: kit.MessagingConfig{
+		Messaging: brainkit.MessagingConfig{
 			Transport: natsCfg.Type,
 			NATSURL:   natsCfg.NATSURL,
 			NATSName:  "test-plugin",
 		},
-		Plugins: []kit.PluginConfig{
+		Plugins: []brainkit.PluginConfig{
 			{
 				Name:   "testplugin",
 				Binary: pluginBinary,

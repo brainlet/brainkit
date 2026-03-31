@@ -8,7 +8,7 @@ import (
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +23,7 @@ func TestGoDirect_MCP(t *testing.T) {
 		t.Run(backend, func(t *testing.T) {
 			tmpDir := t.TempDir()
 
-			k, err := kit.NewKernel(kit.KernelConfig{
+			k, err := brainkit.NewKernel(brainkit.KernelConfig{
 				Namespace:    "test-mcp",
 				CallerID:     "test-mcp-caller",
 				FSRoot: tmpDir,

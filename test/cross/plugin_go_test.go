@@ -11,7 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -69,18 +69,18 @@ func TestCross_Plugin_Go(t *testing.T) {
 
 			tmpDir := t.TempDir()
 
-			node, err := kit.NewNode(kit.NodeConfig{
-				Kernel: kit.KernelConfig{
+			node, err := brainkit.NewNode(brainkit.NodeConfig{
+				Kernel: brainkit.KernelConfig{
 					Namespace:    "plugin-cross",
 					CallerID:     "host",
 					FSRoot: tmpDir,
 				},
-				Messaging: kit.MessagingConfig{
+				Messaging: brainkit.MessagingConfig{
 					Transport: "nats",
 					NATSURL:   natsURL,
 					NATSName:  "brainkit-cross-plugin",
 				},
-				Plugins: []kit.PluginConfig{
+				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
 						Binary:       pluginBinary,
@@ -92,7 +92,7 @@ func TestCross_Plugin_Go(t *testing.T) {
 			defer node.Close()
 
 			// Register a host-side tool
-			kit.RegisterTool(node.Kernel, "host-multiply", registry.TypedTool[struct {
+			brainkit.RegisterTool(node.Kernel, "host-multiply", registry.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{

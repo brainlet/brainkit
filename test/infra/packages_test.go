@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/brainlet/brainkit/kit/packages"
+	"github.com/brainlet/brainkit/packages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

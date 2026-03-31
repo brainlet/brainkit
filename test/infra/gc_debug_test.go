@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	quickjs "github.com/buke/quickjs-go"
-	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestGC_SingleKernelCleanClose creates a single Kernel and closes it.
 func TestGC_SingleKernelCleanClose(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "gc-test",
 		CallerID:     "gc-test",
 		FSRoot: t.TempDir(),
@@ -27,7 +27,7 @@ func TestGC_SingleKernelCleanClose(t *testing.T) {
 // TestGC_MultipleKernelCleanClose creates and destroys 5 Kernels sequentially.
 func TestGC_MultipleKernelCleanClose(t *testing.T) {
 	for i := 0; i < 5; i++ {
-		k, err := kit.NewKernel(kit.KernelConfig{
+		k, err := brainkit.NewKernel(brainkit.KernelConfig{
 			Namespace:    "gc-multi",
 			CallerID:     "gc-multi",
 			FSRoot: t.TempDir(),
@@ -44,7 +44,7 @@ func TestGC_MultipleKernelCleanClose(t *testing.T) {
 // TestGC_TenKernelCleanClose stress test — 10 sequential Kernels.
 func TestGC_TenKernelCleanClose(t *testing.T) {
 	for i := 0; i < 10; i++ {
-		k, err := kit.NewKernel(kit.KernelConfig{
+		k, err := brainkit.NewKernel(brainkit.KernelConfig{
 			Namespace:    "gc-stress",
 			CallerID:     "gc-stress",
 			FSRoot: t.TempDir(),
@@ -93,7 +93,7 @@ func TestGC_ZeroLeak_QuickJSMemory(t *testing.T) {
 // The bridge.Close cleanup nullifies global references before JS_FreeContext,
 // breaking closure chains that hold the IIFE scope alive.
 func TestGC_ZeroLeak_SESRuntime(t *testing.T) {
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:    "gc-leak-test",
 		CallerID:     "gc-leak-test",
 		FSRoot: t.TempDir(),

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/kit/gateway"
+	"github.com/brainlet/brainkit/gateway"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

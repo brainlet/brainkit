@@ -14,21 +14,24 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
-	"github.com/brainlet/brainkit/kit"
-	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit"
+	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// PodmanAvailable returns true if Podman is installed and running.
+// PodmanAvailable returns true if Podman is installed AND the machine is running.
+// `podman info` returns exit 0 even when the machine is stopped (it reports client info).
+// We need to actually verify the runtime is reachable by running a real container operation.
 func PodmanAvailable() bool {
 	if _, err := exec.LookPath("podman"); err != nil {
 		return false
 	}
-	out, err := exec.Command("podman", "info").CombinedOutput()
-	return err == nil && len(out) > 0
+	// `podman ps` requires a running machine — fails if stopped or missing
+	err := exec.Command("podman", "ps", "--noheading").Run()
+	return err == nil
 }
 
 // AllBackends returns backends available for testing.
@@ -64,7 +67,7 @@ func NewTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	tmpDir := t.TempDir()
 	cfg := TransportConfigForBackend(t, backend)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: "test",
 		CallerID:  "test-" + backend,
 		FSRoot:    tmpDir,
@@ -76,13 +79,13 @@ func NewTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
 	t.Cleanup(func() { k.Close() })
 
 	// Register test tools
-	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -100,7 +103,7 @@ func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
 	tmpDir := t.TempDir()
 	cfg := TransportConfigForBackend(t, backend)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace: namespace,
 		CallerID:  namespace + "-caller",
 		FSRoot:    tmpDir,
@@ -111,7 +114,7 @@ func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message, "from": namespace}, nil
@@ -316,7 +319,7 @@ func NewTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 
 	makeKit := func(namespace string) sdk.Runtime {
 		tmpDir := t.TempDir()
-		k, err := kit.NewKernel(kit.KernelConfig{
+		k, err := brainkit.NewKernel(brainkit.KernelConfig{
 			Namespace: namespace,
 			CallerID:  namespace + "-caller",
 			FSRoot:    tmpDir,
@@ -327,7 +330,7 @@ func NewTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) 
 		}
 		t.Cleanup(func() { k.Close() })
 
-		kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+		brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 			Description: "echoes the input message",
 			Execute: func(ctx context.Context, input EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message, "from": namespace}, nil
@@ -358,15 +361,15 @@ func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKern
 
 	makeKit := func(namespace string) *TestKernel {
 		tmpDir := t.TempDir()
-		k, err := kit.NewKernel(kit.KernelConfig{
+		k, err := brainkit.NewKernel(brainkit.KernelConfig{
 			Namespace:   namespace,
 			CallerID:    namespace + "-caller",
 			FSRoot:      tmpDir,
 			Transport:   transport,
 			AIProviders: aiProviders,
 			EnvVars:     envVars,
-			Storages: map[string]kit.StorageConfig{
-				"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+			Storages: map[string]brainkit.StorageConfig{
+				"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			},
 		})
 		if err != nil {
@@ -374,7 +377,7 @@ func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKern
 		}
 		t.Cleanup(func() { k.Close() })
 
-		kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+		brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 			Description: "echoes the input message",
 			Execute: func(ctx context.Context, input EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message, "from": namespace}, nil
@@ -421,13 +424,13 @@ func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	// queue binding, all of which may take time after container start.
 	WaitForBackendReady(t, transport)
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test-" + backend,
 		FSRoot:      tmpDir,
 		AIProviders: aiProviders,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:   envVars,
 		Transport: transport,
@@ -437,13 +440,13 @@ func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -474,13 +477,13 @@ func NewTestKernelWithStorageAndBackend(t *testing.T, backend string) *TestKerne
 	transport := MustCreateTransport(t, cfg)
 	t.Cleanup(func() { transport.Close() })
 
-	k, err := kit.NewKernel(kit.KernelConfig{
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
 		Namespace:   "test",
 		CallerID:    "test-storage-" + backend,
 		FSRoot:      tmpDir,
 		AIProviders: storageProviders,
-		Storages: map[string]kit.StorageConfig{
-			"default": kit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:   storageEnvVars,
 		Transport: transport,
@@ -490,13 +493,13 @@ func NewTestKernelWithStorageAndBackend(t *testing.T, backend string) *TestKerne
 	}
 	t.Cleanup(func() { k.Close() })
 
-	kit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
