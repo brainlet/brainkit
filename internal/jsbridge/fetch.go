@@ -12,13 +12,18 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 )
 
+// FetchSpanHook is called around each fetch request for tracing.
+// start is called before the request, returns a finish function called after.
+type FetchSpanHook func(method, url string) (finish func(statusCode int, err error))
+
 // FetchPolyfill provides globalThis.fetch with async non-blocking I/O.
 // HTTP calls run in tracked goroutines via Bridge.Go().
 // For SSE/streaming responses, chunks are delivered incrementally
 // via ReadableStream backed by Go goroutine reads.
 type FetchPolyfill struct {
-	client *http.Client
-	bridge *Bridge // set during Setup
+	client   *http.Client
+	bridge   *Bridge // set during Setup
+	spanHook FetchSpanHook
 }
 
 // FetchOption configures a FetchPolyfill.
@@ -27,6 +32,11 @@ type FetchOption func(*FetchPolyfill)
 // FetchClient sets the HTTP client used for requests.
 func FetchClient(c *http.Client) FetchOption {
 	return func(p *FetchPolyfill) { p.client = c }
+}
+
+// FetchWithSpanHook sets a tracing hook called around each fetch request.
+func FetchWithSpanHook(hook FetchSpanHook) FetchOption {
+	return func(p *FetchPolyfill) { p.spanHook = hook }
 }
 
 // Fetch creates a fetch polyfill.
@@ -90,8 +100,17 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 					httpReq.Header.Set(k, v)
 				}
 
+				// Tracing span hook (if configured)
+				var finishSpan func(int, error)
+				if polyfill.spanHook != nil {
+					finishSpan = polyfill.spanHook(req.Method, req.URL)
+				}
+
 				resp, err := client.Do(httpReq)
 				if err != nil {
+					if finishSpan != nil {
+						finishSpan(0, err)
+					}
 					if goCtx.Err() != nil {
 						return // bridge closing — don't schedule
 					}
@@ -101,6 +120,10 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 						reject(errVal)
 					})
 					return
+				}
+
+				if finishSpan != nil {
+					finishSpan(resp.StatusCode, nil)
 				}
 
 				respHeaders := make(map[string]string)

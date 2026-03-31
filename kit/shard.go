@@ -149,6 +149,12 @@ func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
 // Reply via reply() host function. Async invocation callbacks run after handler returns.
 // (module-protocol §12.1)
 func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
+	// Tracing span for WASM handler invocation
+	span := s.kit.tracer.StartSpan("wasm.handler:"+shardName, ctx)
+	span.SetAttribute("shard", shardName)
+	span.SetAttribute("topic", topic)
+	defer span.End(nil)
+
 	s.mu.Lock()
 	shard, ok := s.shards[shardName]
 	if !ok {

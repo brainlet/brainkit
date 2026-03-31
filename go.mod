@@ -13,6 +13,7 @@ require (
 	github.com/buke/quickjs-go v0.6.10
 	github.com/coder/websocket v1.8.14
 	github.com/docker/go-connections v0.6.0
+	github.com/evanw/esbuild v0.27.4
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.0
 	github.com/mark3labs/mcp-go v0.45.0
@@ -23,6 +24,7 @@ require (
 	github.com/tetratelabs/wazero v1.11.0
 	github.com/xdg-go/scram v1.2.0
 	golang.org/x/crypto v0.48.0
+	golang.org/x/time v0.15.0
 	modernc.org/sqlite v1.46.2
 )
 
@@ -50,7 +52,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/evanw/esbuild v0.27.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

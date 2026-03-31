@@ -5,8 +5,9 @@ import "encoding/json"
 // ── Package Deployment ──
 
 type PackageDeployMsg struct {
-	Path     string          `json:"path,omitempty"`     // filesystem path to package dir
-	Manifest json.RawMessage `json:"manifest,omitempty"` // inline manifest JSON
+	Path     string            `json:"path,omitempty"`     // filesystem path to package dir
+	Manifest json.RawMessage   `json:"manifest,omitempty"` // inline manifest JSON
+	Files    map[string]string `json:"files,omitempty"`    // inline file map: filename → code (no filesystem needed)
 }
 
 func (PackageDeployMsg) BusTopic() string { return "package.deploy" }
@@ -55,6 +56,7 @@ type DeployedPackageInfo struct {
 	Name     string   `json:"name"`
 	Version  string   `json:"version"`
 	Services []string `json:"services"`
+	Status   string   `json:"status"` // "active", "degraded"
 }
 
 type PackageDeployInfoMsg struct {

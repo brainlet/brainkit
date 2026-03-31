@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,18 +12,24 @@ import (
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
+// deployedAutomationState extends DeployedAutomation with runtime state (trigger subscriptions).
+type deployedAutomationState struct {
+	workflow.DeployedAutomation
+	triggerUnsubs []func() // cancel functions for trigger subscriptions
+}
+
 // AutomationDomain handles automation.deploy/teardown/list/info bus commands.
 type AutomationDomain struct {
 	kit *Kernel
 
 	mu        sync.Mutex
-	deployed  map[string]*workflow.DeployedAutomation
+	deployed  map[string]*deployedAutomationState
 }
 
 func newAutomationDomain(k *Kernel) *AutomationDomain {
 	return &AutomationDomain{
 		kit:      k,
-		deployed: make(map[string]*workflow.DeployedAutomation),
+		deployed: make(map[string]*deployedAutomationState),
 	}
 }
 
@@ -38,6 +45,40 @@ func (d *AutomationDomain) Deploy(ctx context.Context, req messages.AutomationDe
 
 	if manifest.Name == "" {
 		return nil, fmt.Errorf("automation.deploy: name is required")
+	}
+
+	// Validate requires (plugins installed+running, secrets available)
+	if manifest.Requires != nil {
+		if d.kit.secretStore != nil {
+			for _, secretName := range manifest.Requires.Secrets {
+				val, _ := d.kit.secretStore.Get(ctx, secretName)
+				if val == "" {
+					return nil, fmt.Errorf("automation %q requires secret %q which is not set", manifest.Name, secretName)
+				}
+			}
+		}
+		if d.kit.node != nil {
+			for _, pluginReq := range manifest.Requires.Plugins {
+				// Strip version/owner to get plugin name
+				name := pluginReq
+				if idx := strings.Index(name, "@"); idx != -1 {
+					name = name[:idx]
+				}
+				parts := strings.Split(name, "/")
+				name = parts[len(parts)-1]
+
+				found := false
+				for _, p := range d.kit.node.ListRunningPlugins() {
+					if p.Name == name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("automation %q requires plugin %q which is not running", manifest.Name, pluginReq)
+				}
+			}
+		}
 	}
 
 	// Compile workflow source to WASM via the AS compiler
@@ -77,11 +118,50 @@ func (d *AutomationDomain) Deploy(ctx context.Context, req messages.AutomationDe
 		ID:        workflowID,
 		Name:      manifest.Name,
 		Binary:    binary,
-		EntryFunc: "processLead", // default, could be configurable
+		EntryFunc: "", // Engine defaults to "run" if empty
 		Triggers:  manifest.Workflow.Triggers,
 		Timeout:   timeout,
 		MaxRetries: manifest.Workflow.Retries,
 	})
+
+	// Wire trigger subscriptions (bus events and schedules)
+	var triggerUnsubs []func()
+	for _, trigger := range manifest.Workflow.Triggers {
+		switch trigger.Type {
+		case "bus":
+			if trigger.Topic != "" {
+				topic := trigger.Topic
+				unsub, subErr := d.kit.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+					d.kit.workflowEngine.Run(context.Background(), workflowID, msg.Payload)
+				})
+				if subErr == nil {
+					triggerUnsubs = append(triggerUnsubs, unsub)
+				}
+			}
+		case "schedule":
+			if trigger.Expression != "" && trigger.Topic != "" {
+				schedID, _ := d.kit.Schedule(ctx, ScheduleConfig{
+					Expression: trigger.Expression,
+					Topic:      trigger.Topic,
+					Payload:    json.RawMessage(`{}`),
+					Source:     manifest.Name,
+				})
+				if schedID != "" {
+					sid := schedID
+					triggerUnsubs = append(triggerUnsubs, func() {
+						d.kit.Unschedule(context.Background(), sid)
+					})
+				}
+				// Subscribe to the schedule topic to trigger the workflow
+				unsub, subErr := d.kit.SubscribeRaw(ctx, trigger.Topic, func(msg messages.Message) {
+					d.kit.workflowEngine.Run(context.Background(), workflowID, msg.Payload)
+				})
+				if subErr == nil {
+					triggerUnsubs = append(triggerUnsubs, unsub)
+				}
+			}
+		}
+	}
 
 	// Deploy admin .ts if provided
 	adminSource := ""
@@ -92,12 +172,15 @@ func (d *AutomationDomain) Deploy(ctx context.Context, req messages.AutomationDe
 		}
 	}
 
-	deployed := &workflow.DeployedAutomation{
-		Manifest:    manifest,
-		WorkflowID:  workflowID,
-		AdminSource: adminSource,
-		DeployedAt:  time.Now(),
-		Status:      "active",
+	deployed := &deployedAutomationState{
+		DeployedAutomation: workflow.DeployedAutomation{
+			Manifest:    manifest,
+			WorkflowID:  workflowID,
+			AdminSource: adminSource,
+			DeployedAt:  time.Now(),
+			Status:      "active",
+		},
+		triggerUnsubs: triggerUnsubs,
 	}
 
 	d.mu.Lock()
@@ -121,6 +204,11 @@ func (d *AutomationDomain) Teardown(ctx context.Context, req messages.Automation
 	}
 	delete(d.deployed, req.Name)
 	d.mu.Unlock()
+
+	// Cancel trigger subscriptions
+	for _, unsub := range deployed.triggerUnsubs {
+		unsub()
+	}
 
 	// Unregister workflow
 	d.kit.workflowEngine.UnregisterWorkflow(deployed.WorkflowID)

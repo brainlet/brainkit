@@ -30,6 +30,9 @@ type SandboxConfig struct {
 
 	// MaxStackSize for the QuickJS runtime in bytes. 0 = use jsbridge default.
 	MaxStackSize int
+
+	// FetchSpanHook is called around each fetch request for tracing.
+	FetchSpanHook jsbridge.FetchSpanHook
 }
 
 // Sandbox is an isolated execution environment with its own QuickJS runtime.
@@ -53,6 +56,9 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 	fetchOpts := []jsbridge.FetchOption{}
 	if cfg.HTTPClient != nil {
 		fetchOpts = append(fetchOpts, jsbridge.FetchClient(cfg.HTTPClient))
+	}
+	if cfg.FetchSpanHook != nil {
+		fetchOpts = append(fetchOpts, jsbridge.FetchWithSpanHook(cfg.FetchSpanHook))
 	}
 
 	bridgeCfg := jsbridge.Config{}

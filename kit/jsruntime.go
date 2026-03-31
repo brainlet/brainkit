@@ -25,15 +25,51 @@ var compilerModuleJS string
 //go:embed runtime/test_module.js
 var testModuleJS string
 
+//go:embed runtime/test_runtime.js
+var testRuntimeJS string
+
+//go:embed runtime/patches.js
+var patchesJS string
+
+//go:embed runtime/bridges.js
+var bridgesJS string
+
+//go:embed runtime/approval.js
+var approvalJS string
+
+//go:embed runtime/infrastructure.js
+var infrastructureJS string
+
+//go:embed runtime/resolve.js
+var resolveJS string
+
+//go:embed runtime/bus.js
+var busJS string
+
 // loadRuntime sets up the kit runtime:
-// 1. Evaluates kit_runtime.js (sets globalThis.__kit)
-// 2. Registers five ES modules: "kit", "ai", "agent", "compiler", "test"
+// Loads 8 JS files in dependency order, then registers 5 ES modules.
 func (k *Kernel) loadRuntime() error {
-	val, err := k.bridge.Eval("kit-runtime.js", kitRuntimeJS)
-	if err != nil {
-		return fmt.Errorf("brainkit: load runtime: %w", err)
+	// Load runtime files in dependency order
+	runtimeFiles := []struct {
+		source string
+		name   string
+	}{
+		{patchesJS, "patches.js"},              // 1. prototype patches (before Mastra)
+		{bridgesJS, "bridges.js"},              // 2. bridge helpers
+		{approvalJS, "approval.js"},            // 3. HITL
+		{infrastructureJS, "infrastructure.js"}, // 4. tools, fs, mcp, registry, secrets, output
+		{resolveJS, "resolve.js"},              // 5. model/provider/storage/vector resolution
+		{busJS, "bus.js"},                      // 6. resource registry, bus API, kit.register
+		{kitRuntimeJS, "kit-runtime.js"},       // 7. export + endowments
+		{testRuntimeJS, "test-runtime.js"},     // 8. test framework
 	}
-	val.Free()
+	for _, rf := range runtimeFiles {
+		val, err := k.bridge.Eval(rf.name, rf.source)
+		if err != nil {
+			return fmt.Errorf("brainkit: load %s: %w", rf.name, err)
+		}
+		val.Free()
+	}
 
 	ctx := k.bridge.Context()
 

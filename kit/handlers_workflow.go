@@ -3,24 +3,48 @@ package kit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/brainlet/brainkit/kit/workflow"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
+// kernelAIGenerator adapts the Kernel's EvalTS to the workflow.AIGenerator interface.
+type kernelAIGenerator struct {
+	kernel *Kernel
+}
+
+func (g *kernelAIGenerator) GenerateText(ctx context.Context, prompt string) (string, error) {
+	script := fmt.Sprintf(
+		`var __r = await globalThis.__agent_embed.generateText({model: model("openai","gpt-4o-mini"), prompt: %q}); return __r.text;`,
+		prompt)
+	return g.kernel.EvalTS(ctx, "__wf_ai_generate.ts", script)
+}
+
+func (g *kernelAIGenerator) EmbedText(ctx context.Context, text string) (string, error) {
+	script := fmt.Sprintf(
+		`var __r = await globalThis.__agent_embed.embed({model: embeddingModel("openai","text-embedding-3-small"), value: %q}); return JSON.stringify(__r.embedding);`,
+		text)
+	return g.kernel.EvalTS(ctx, "__wf_ai_embed.ts", script)
+}
+
 // WorkflowDomain handles workflow.run/status/cancel/list/history bus commands.
+// Note: kernelAIGenerator (also in this file) stays on *Kernel for EvalTS.
 type WorkflowDomain struct {
-	kit    *Kernel
 	engine *workflow.Engine
 }
 
-func newWorkflowDomain(k *Kernel, engine *workflow.Engine) *WorkflowDomain {
-	return &WorkflowDomain{kit: k, engine: engine}
+func newWorkflowDomain(engine *workflow.Engine) *WorkflowDomain {
+	return &WorkflowDomain{engine: engine}
 }
 
 func (d *WorkflowDomain) Run(ctx context.Context, req messages.WorkflowRunMsg) (*messages.WorkflowRunResp, error) {
-	runID, err := d.engine.Run(ctx, req.WorkflowID, req.Input)
+	var opts []workflow.RunOption
+	if len(req.HostResults) > 0 {
+		opts = append(opts, workflow.WithHostResults(req.HostResults))
+	}
+	runID, err := d.engine.Run(ctx, req.WorkflowID, req.Input, opts...)
 	if err != nil {
 		return nil, err
 	}

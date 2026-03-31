@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit/kit/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
@@ -214,4 +215,86 @@ func TestPersistence_FailedRedeployDoesNotBlock(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("good.ts should work even when broken.ts fails to redeploy")
 	}
+}
+
+// ── Phase 1: New persistence tests ──────────────────────────────────────
+
+func TestPersistence_PackageNameSurvivesRestart(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "pkg-restart.db")
+
+	// Phase 1: deploy with package name
+	store1, err := kit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := kit.NewKernel(kit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	_, err = k1.Deploy(context.Background(), "svc.ts",
+		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
+		kit.WithPackageName("my-package"),
+	)
+	require.NoError(t, err)
+	k1.Close()
+
+	// Phase 2: verify package name survived in store
+	store2, err := kit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 1)
+	assert.Equal(t, "my-package", deps[0].PackageName, "packageName must survive restart")
+	store2.Close()
+}
+
+func TestPersistence_RedeployPreservesMetadata(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "redeploy-meta.db")
+	store, err := kit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store,
+		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx := context.Background()
+	_, err = k.Deploy(ctx, "svc.ts",
+		`bus.on("v1", (msg) => msg.reply({ v: 1 }));`,
+		kit.WithPackageName("my-pkg"), kit.WithRole("admin"),
+	)
+	require.NoError(t, err)
+
+	// Redeploy with new code — metadata should be preserved
+	_, err = k.Redeploy(ctx, "svc.ts",
+		`bus.on("v2", (msg) => msg.reply({ v: 2 }));`)
+	require.NoError(t, err)
+
+	// Check store directly
+	deps, _ := store.LoadDeployments()
+	require.Len(t, deps, 1)
+	assert.Equal(t, "my-pkg", deps[0].PackageName, "packageName must survive redeploy")
+	assert.Equal(t, "admin", deps[0].Role, "role must survive redeploy")
+}
+
+func TestPersistence_WithRestoringSkipsPersist(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "restoring.db")
+	store, err := kit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store,
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	// Deploy with WithRestoring — should NOT persist
+	_, err = k.Deploy(context.Background(), "ephemeral.ts",
+		`bus.on("x", (msg) => msg.reply({}));`,
+		kit.WithRestoring(),
+	)
+	require.NoError(t, err)
+
+	// Store should be empty (WithRestoring skips SaveDeployment)
+	deps, _ := store.LoadDeployments()
+	assert.Empty(t, deps, "WithRestoring should skip SaveDeployment")
 }

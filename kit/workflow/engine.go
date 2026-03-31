@@ -16,6 +16,7 @@ import (
 // AIGenerator abstracts AI text generation for the engine (avoids kit import cycle).
 type AIGenerator interface {
 	GenerateText(ctx context.Context, prompt string) (string, error)
+	EmbedText(ctx context.Context, text string) (string, error) // returns JSON array of floats
 }
 
 // RunStore persists workflow runs and journal entries.
@@ -32,14 +33,35 @@ type RunStore interface {
 }
 
 // Engine manages workflow definitions, runs, and replay.
+// BusSubscriber subscribes to a bus topic for workflow event resumption.
+// Returns a cancel function to unsubscribe.
+type BusSubscriber func(topic string, handler func(json.RawMessage)) (cancel func(), err error)
+
+// PluginCaller calls a plugin tool topic via the bus and returns the result.
+// Used by workflow host functions to route calls to plugins.
+type PluginCaller func(ctx context.Context, topic string, args json.RawMessage) (json.RawMessage, error)
+
+// SpanRecorder records trace spans from workflow journal entries.
+// Called when a workflow completes — converts journal entries to trace spans.
+type SpanRecorder func(workflowID, runID string, entries []JournalEntry)
+
+// BusPublisher publishes a message to the bus from a workflow.
+type BusPublisher func(ctx context.Context, topic string, payload json.RawMessage) error
+
+// Engine manages workflow definitions, runs, and replay.
 type Engine struct {
-	hostRegistry *HostFunctionRegistry
-	store        RunStore      // optional persistence
-	ai           AIGenerator   // optional AI provider
+	hostRegistry  *HostFunctionRegistry
+	store         RunStore       // optional persistence
+	ai            AIGenerator    // optional AI provider
+	busSubscriber BusSubscriber  // optional — for waitForEvent resumption
+	pluginCaller  PluginCaller   // optional — for routing host function calls to plugins
+	spanRecorder  SpanRecorder   // optional — converts journal entries to trace spans
+	busPublisher  BusPublisher   // optional — for bus.publish/emit from workflows
 
 	mu        sync.Mutex
 	workflows map[string]*WorkflowDef // workflowId → definition
 	runs      map[string]*activeRun   // runId → active run state
+	unsubs    map[string]func()       // runId → event subscription cancel
 }
 
 // activeRun tracks an in-flight workflow execution.
@@ -66,6 +88,7 @@ func NewEngine(hostRegistry *HostFunctionRegistry, store RunStore, opts ...Engin
 		store:        store,
 		workflows:    make(map[string]*WorkflowDef),
 		runs:         make(map[string]*activeRun),
+		unsubs:       make(map[string]func()),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -75,6 +98,50 @@ func NewEngine(hostRegistry *HostFunctionRegistry, store RunStore, opts ...Engin
 
 // EngineOption configures the engine.
 type EngineOption func(*Engine)
+
+// WithBusSubscriber sets the bus subscriber for waitForEvent resumption.
+func WithBusSubscriber(sub BusSubscriber) EngineOption {
+	return func(e *Engine) { e.busSubscriber = sub }
+}
+
+// WithPluginCaller sets the plugin call function for routing host function calls to plugins.
+func WithPluginCaller(caller PluginCaller) EngineOption {
+	return func(e *Engine) { e.pluginCaller = caller }
+}
+
+// WithSpanRecorder sets the trace span recorder for journal→span conversion.
+func WithSpanRecorder(recorder SpanRecorder) EngineOption {
+	return func(e *Engine) { e.spanRecorder = recorder }
+}
+
+// WithBusPublisher sets the bus publisher for workflow→bus communication.
+func WithBusPublisher(pub BusPublisher) EngineOption {
+	return func(e *Engine) { e.busPublisher = pub }
+}
+
+// registerBusHostFunctions registers "bus" module with publish and emit.
+func (e *Engine) registerBusHostFunctions(ctx context.Context, rt wazero.Runtime, ar *activeRun) {
+	if e.busPublisher == nil {
+		return
+	}
+	pub := e.busPublisher
+	rt.NewHostModuleBuilder("bus").
+		// bus.publish(topic: string, payload: string)
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, topicPtr, payloadPtr uint32) {
+			topic := readASString(m, topicPtr)
+			payload := json.RawMessage(readASString(m, payloadPtr))
+			pub(ctx, topic, payload)
+		}).Export("publish").
+		// bus.emit(topic: string, payload: string)
+		NewFunctionBuilder().
+		WithFunc(func(ctx context.Context, m api.Module, topicPtr, payloadPtr uint32) {
+			topic := readASString(m, topicPtr)
+			payload := json.RawMessage(readASString(m, payloadPtr))
+			pub(ctx, topic, payload)
+		}).Export("emit").
+		Instantiate(ctx)
+}
 
 // WithAI sets the AI text generation provider for workflows.
 func WithAI(ai AIGenerator) EngineOption {
@@ -104,8 +171,26 @@ func (e *Engine) UnregisterWorkflow(id string) {
 	e.mu.Unlock()
 }
 
+// RunOption configures a single workflow run.
+type RunOption func(*runConfig)
+
+type runConfig struct {
+	hostResults map[string][]json.RawMessage // "module.func" → recorded results in order
+}
+
+// WithHostResults pre-loads host function results for replay testing.
+// Each key is "module.func" (e.g., "ai.generate", "telegram.send").
+// Results are consumed in order — first call gets results[0], second gets results[1].
+func WithHostResults(results map[string][]json.RawMessage) RunOption {
+	return func(c *runConfig) { c.hostResults = results }
+}
+
 // Run starts a new workflow execution.
-func (e *Engine) Run(ctx context.Context, workflowID string, input json.RawMessage) (string, error) {
+func (e *Engine) Run(ctx context.Context, workflowID string, input json.RawMessage, opts ...RunOption) (string, error) {
+	var cfg runConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	e.mu.Lock()
 	def, ok := e.workflows[workflowID]
 	if !ok {
@@ -128,7 +213,30 @@ func (e *Engine) Run(ctx context.Context, workflowID string, input json.RawMessa
 		StartedAt:   time.Now(),
 	}
 
-	journal := NewJournal(workflowID, runID)
+	var journal *Journal
+	if len(cfg.hostResults) > 0 {
+		// Replay testing mode: pre-populate journal with recorded host function results.
+		// Build a single step with all recorded calls so GetRecordedResult returns them.
+		var calls []HostCallRecord
+		for funcName, results := range cfg.hostResults {
+			for _, result := range results {
+				calls = append(calls, HostCallRecord{
+					Function: funcName,
+					Result:   result,
+				})
+			}
+		}
+		entries := []JournalEntry{{
+			StepName:  "__replay_test",
+			StepIndex: 0,
+			Status:    "completed",
+			Calls:     calls,
+			StartedAt: time.Now(),
+		}}
+		journal = NewJournalFromEntries(workflowID, runID, entries)
+	} else {
+		journal = NewJournal(workflowID, runID)
+	}
 
 	runCtx, runCancel := context.WithTimeout(ctx, timeout)
 	ar := &activeRun{
@@ -171,10 +279,16 @@ func (e *Engine) executeWorkflow(ctx context.Context, ar *activeRun, binary []by
 	// Register brainkit built-in host functions
 	e.registerBuiltinHostFunctions(ctx, rt, ar)
 
+	// Register bus host functions (publish, emit) for workflow→bus communication
+	e.registerBusHostFunctions(ctx, rt, ar)
+
 	// Register AI host functions (ai.generate, ai.embed)
 	if e.ai != nil {
 		e.registerAIHostFunctions(ctx, rt, ar)
 	}
+
+	// Register plugin-provided host functions (telegram.send, db.query, etc.)
+	e.registerPluginHostFunctions(ctx, rt, ar)
 
 	// Compile and instantiate
 	compiled, err := rt.CompileModule(ctx, binary)
@@ -337,22 +451,68 @@ func (e *Engine) registerBuiltinHostFunctions(ctx context.Context, rt wazero.Run
 }
 
 func (e *Engine) completeRun(ar *activeRun, result string, err error) {
-	now := time.Now()
-	ar.run.CompletedAt = &now
-
 	if err != nil {
+		// Check if we should retry
+		e.mu.Lock()
+		def, hasDef := e.workflows[ar.run.WorkflowID]
+		e.mu.Unlock()
+
+		if hasDef && def.MaxRetries > 0 && ar.run.RetryCount < def.MaxRetries {
+			ar.run.RetryCount++
+			log.Printf("[workflow] run %s failed (attempt %d/%d), retrying: %v",
+				ar.run.RunID, ar.run.RetryCount, def.MaxRetries, err)
+
+			// Reset for fresh execution
+			ar.journal = NewJournal(ar.run.WorkflowID, ar.run.RunID)
+			ar.run.Status = RunRunning
+			ar.run.CurrentStep = 0
+			ar.run.Error = ""
+			ar.mu.Lock()
+			ar.completed = false
+			ar.failed = false
+			ar.suspended = false
+			ar.result = ""
+			ar.err = ""
+			ar.mu.Unlock()
+
+			if e.store != nil {
+				e.store.SaveRun(ar.run)
+			}
+
+			binary := make([]byte, len(def.Binary))
+			copy(binary, def.Binary)
+			runCtx, runCancel := context.WithTimeout(context.Background(), def.Timeout)
+			ar.cancel = runCancel
+			go func() {
+				defer runCancel()
+				e.executeWorkflow(runCtx, ar, binary, def.EntryFunc, ar.run.Input)
+			}()
+			return
+		}
+
+		now := time.Now()
+		ar.run.CompletedAt = &now
 		ar.run.Status = RunFailed
 		ar.run.Error = err.Error()
 	} else {
+		now := time.Now()
+		ar.run.CompletedAt = &now
 		ar.run.Status = RunCompleted
 		ar.run.Output = result
 	}
 
+	entries := ar.journal.Entries()
+
 	if e.store != nil {
 		e.store.SaveRun(ar.run)
-		for _, entry := range ar.journal.Entries() {
+		for _, entry := range entries {
 			e.store.SaveJournalEntry(ar.run.WorkflowID, ar.run.RunID, entry)
 		}
+	}
+
+	// Convert journal entries to trace spans
+	if e.spanRecorder != nil {
+		e.spanRecorder(ar.run.WorkflowID, ar.run.RunID, entries)
 	}
 
 	e.mu.Lock()
@@ -372,7 +532,60 @@ func (e *Engine) suspendRun(ar *activeRun) {
 		}
 	}
 
-	// Keep in runs map for status queries
+	// Subscribe to the event topic for resumption
+	if ar.suspendTopic != "" && e.busSubscriber != nil {
+		cancel, err := e.busSubscriber(ar.suspendTopic, func(payload json.RawMessage) {
+			// Record the event result in journal so replay can return it
+			ar.journal.RecordCall("brainkit", "waitForEvent", nil, payload, nil, 0)
+			// Clean up subscription
+			e.mu.Lock()
+			if unsub, ok := e.unsubs[ar.run.RunID]; ok {
+				unsub()
+				delete(e.unsubs, ar.run.RunID)
+			}
+			e.mu.Unlock()
+			// Resume by re-executing (journal replay skips to wait point)
+			e.resumeRun(ar)
+		})
+		if err == nil && cancel != nil {
+			e.mu.Lock()
+			e.unsubs[ar.run.RunID] = cancel
+			e.mu.Unlock()
+		}
+	}
+}
+
+// resumeRun re-executes a suspended workflow from journal replay.
+func (e *Engine) resumeRun(ar *activeRun) {
+	e.mu.Lock()
+	def, ok := e.workflows[ar.run.WorkflowID]
+	if !ok {
+		e.mu.Unlock()
+		log.Printf("[workflow] cannot resume run %s: workflow %q not registered", ar.run.RunID, ar.run.WorkflowID)
+		return
+	}
+	binary := make([]byte, len(def.Binary))
+	copy(binary, def.Binary)
+	entryFunc := def.EntryFunc
+	timeout := def.Timeout
+	e.mu.Unlock()
+
+	ar.run.Status = RunReplaying
+	ar.mu.Lock()
+	ar.suspended = false
+	ar.mu.Unlock()
+
+	if e.store != nil {
+		e.store.SaveRun(ar.run)
+	}
+
+	runCtx, runCancel := context.WithTimeout(context.Background(), timeout)
+	ar.cancel = runCancel
+
+	go func() {
+		defer runCancel()
+		e.executeWorkflow(runCtx, ar, binary, entryFunc, ar.run.Input)
+	}()
 }
 
 // GetRun returns the current state of a workflow run.

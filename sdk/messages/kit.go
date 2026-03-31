@@ -1,5 +1,7 @@
 package messages
 
+import "encoding/json"
+
 // ── Kit lifecycle messages ──
 
 type KitDeployMsg struct {
@@ -74,4 +76,45 @@ type DeploymentInfo struct {
 	Source    string         `json:"source"`
 	CreatedAt string         `json:"createdAt"`
 	Resources []ResourceInfo `json:"resources,omitempty"`
+}
+
+// ── Metrics ──
+
+type MetricsGetMsg struct{}
+
+func (MetricsGetMsg) BusTopic() string { return "metrics.get" }
+
+type MetricsGetResp struct {
+	ResultMeta
+	Metrics json.RawMessage `json:"metrics"`
+}
+
+// ── Peer Discovery ──
+
+type PeersListMsg struct{}
+
+func (PeersListMsg) BusTopic() string { return "peers.list" }
+
+type PeersListResp struct {
+	ResultMeta
+	Peers []PeerInfo `json:"peers"`
+}
+
+type PeerInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Address   string            `json:"address"`
+	Meta      map[string]string `json:"meta,omitempty"`
+}
+
+type PeersResolveMsg struct {
+	Name string `json:"name"`
+}
+
+func (PeersResolveMsg) BusTopic() string { return "peers.resolve" }
+
+type PeersResolveResp struct {
+	ResultMeta
+	Namespace string `json:"namespace"`
+	Address   string `json:"address"`
 }

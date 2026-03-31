@@ -32,26 +32,27 @@ import (
 	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"golang.org/x/time/rate"
 )
 
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
 // It owns JS/WASM/runtime state and an internal Watermill transport.
 type Kernel struct {
 	// Domain handlers (internal — accessed via command catalog, not directly)
+	// Category B: take interfaces, not *Kernel
 	toolsDomain    *ToolsDomain
 	agentsDomain   *AgentsDomain
 	fsDomain       *FSDomain
-	wasmDomainInst *WASMDomain
-	lifecycle      *LifecycleDomain
-	mcpDomainInst  *MCPDomain
-	registryDomain *RegistryDomain
-	packagesDomain       *PackagesDomain
-	packageDeployDomain  *PackageDeployDomain
-	secretsDomain        *SecretsDomain
+	packagesDomain *PackagesDomain
+	secretsDomain  *SecretsDomain
 	workflowDomain *WorkflowDomain
-	rbacDomain     *RBACDomain
-	tracingDomain    *TracingDomain
-	automationDomain *AutomationDomain
+	// Category C: stay on *Kernel (touch too many subsystems)
+	wasmDomainInst      *WASMDomain
+	lifecycle           *LifecycleDomain
+	packageDeployDomain *PackageDeployDomain
+	automationDomain    *AutomationDomain
+	testingDomain       *TestingDomain
+	// Eliminated (inlined into catalog): RBACDomain, TracingDomain, MCPDomain, RegistryDomain
 
 	Tools     *toolreg.ToolRegistry
 	packages       *packages.Manager
@@ -59,8 +60,9 @@ type Kernel struct {
 	hostFunctions  *workflow.HostFunctionRegistry
 	mcp            *mcppkg.MCPManager
 	providers *provreg.ProviderRegistry
-	rbac      *rbac.Manager
-	tracer    *tracing.Tracer
+	rbac             *rbac.Manager
+	tracer           *tracing.Tracer
+	busRateLimiters  map[string]*rate.Limiter // role → limiter
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -93,6 +95,9 @@ type Kernel struct {
 
 	// Deployment ordering (for persistence)
 	deployOrder atomic.Int32
+
+	// Metrics
+	pumpCycles atomic.Int64
 
 	// Schedules
 	schedules map[string]*scheduleEntry
@@ -203,7 +208,9 @@ func (k *Kernel) fireSchedule(entry *scheduleEntry) {
 	entry.NextFire = time.Now().Add(entry.Duration)
 	entry.timer.Reset(entry.Duration)
 	if k.config.Store != nil {
-		k.config.Store.SaveSchedule(entry.PersistedSchedule)
+		if err := k.config.Store.SaveSchedule(entry.PersistedSchedule); err != nil {
+			k.persistenceError(context.Background(), "SaveSchedule", entry.ID, err)
+		}
 	}
 }
 
@@ -243,7 +250,9 @@ func (k *Kernel) Schedule(ctx context.Context, cfg ScheduleConfig) (string, erro
 	}
 	k.addSchedule(ps)
 	if k.config.Store != nil {
-		k.config.Store.SaveSchedule(ps)
+		if err := k.config.Store.SaveSchedule(ps); err != nil {
+			k.persistenceError(ctx, "SaveSchedule", id, err)
+		}
 	}
 	return id, nil
 }
@@ -516,6 +525,21 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		Providers:    providers,
 		EnvVars:      cfg.EnvVars,
 		MaxStackSize: cfg.MaxStackSize,
+		FetchSpanHook: func(method, url string) func(int, error) {
+			// Lazy reference — tracer is initialized after sandbox creation
+			if kernel.tracer == nil {
+				return nil
+			}
+			span := kernel.tracer.StartSpan("fetch", context.Background())
+			span.SetAttribute("method", method)
+			span.SetAttribute("url", url)
+			return func(statusCode int, err error) {
+				if statusCode > 0 {
+					span.SetAttribute("status", strconv.Itoa(statusCode))
+				}
+				span.End(err)
+			}
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("brainkit: create runtime: %w", err)
@@ -523,9 +547,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.agents = agentSandbox
 	kernel.bridge = agentSandbox.Bridge()
 
-	kernel.toolsDomain = newToolsDomain(kernel)
-	kernel.agentsDomain = newAgentsDomain(kernel)
-	kernel.fsDomain = newFSDomain(kernel)
+	kernel.agentsDomain = newAgentsDomain()
+	kernel.fsDomain = newFSDomain(cfg.FSRoot)
 
 	kernel.registerBridges()
 
@@ -616,7 +639,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		pluginDir,
 		pkgStore,
 	)
-	kernel.packagesDomain = newPackagesDomain(kernel)
+	kernel.packagesDomain = newPackagesDomain(kernel.packages)
 	kernel.packageDeployDomain = newPackageDeployDomain(kernel)
 
 	// Initialize secret store
@@ -659,13 +682,21 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 			}
 		}
 	}
-	kernel.secretsDomain = newSecretsDomain(kernel)
+	// SecretsDomain constructed later (needs kernel.remote for bus publishing)
 
 	// Initialize RBAC
 	if len(cfg.Roles) > 0 {
 		kernel.rbac = rbac.NewManager(cfg.Roles, cfg.DefaultRole)
 	}
-	kernel.rbacDomain = newRBACDomain(kernel)
+	// (RBACDomain eliminated — inlined into catalog)
+
+	// Initialize bus rate limiters (per-role token buckets)
+	if len(cfg.BusRateLimits) > 0 {
+		kernel.busRateLimiters = make(map[string]*rate.Limiter, len(cfg.BusRateLimits))
+		for role, rps := range cfg.BusRateLimits {
+			kernel.busRateLimiters[role] = rate.NewLimiter(rate.Limit(rps), int(rps))
+		}
+	}
 
 	// Initialize tracer
 	sampleRate := cfg.TraceSampleRate
@@ -673,7 +704,10 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		sampleRate = 1.0
 	}
 	kernel.tracer = tracing.NewTracer(cfg.TraceStore, sampleRate)
-	kernel.tracingDomain = newTracingDomain(kernel)
+	// (TracingDomain eliminated — inlined into catalog)
+
+	// ToolsDomain needs tracer — constructed here after tracer init
+	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, cfg.CallerID)
 
 	// Initialize workflow engine with persistence if KitStore available
 	kernel.hostFunctions = workflow.NewHostFunctionRegistry()
@@ -681,9 +715,72 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if sqlStore, ok := cfg.Store.(*SQLiteStore); ok {
 		wfStore = &workflowStoreAdapter{store: sqlStore}
 	}
-	kernel.workflowEngine = workflow.NewEngine(kernel.hostFunctions, wfStore)
-	kernel.workflowDomain = newWorkflowDomain(kernel, kernel.workflowEngine)
+	kernel.workflowEngine = workflow.NewEngine(kernel.hostFunctions, wfStore,
+		workflow.WithAI(&kernelAIGenerator{kernel: kernel}),
+		workflow.WithBusSubscriber(func(topic string, handler func(json.RawMessage)) (func(), error) {
+			return kernel.remote.SubscribeRaw(context.Background(), topic, func(msg messages.Message) {
+				handler(msg.Payload)
+			})
+		}),
+		workflow.WithBusPublisher(func(ctx context.Context, topic string, payload json.RawMessage) error {
+			return kernel.publish(ctx, topic, payload)
+		}),
+		workflow.WithSpanRecorder(func(workflowID, runID string, entries []workflow.JournalEntry) {
+			if kernel.tracer == nil {
+				return
+			}
+			for _, entry := range entries {
+				span := kernel.tracer.StartSpan("workflow.step:"+entry.StepName, context.Background())
+				span.SetAttribute("workflowId", workflowID)
+				span.SetAttribute("runId", runID)
+				span.SetAttribute("stepIndex", strconv.Itoa(entry.StepIndex))
+				span.SetSource(workflowID)
+				// Record host calls within the step as child attributes
+				for _, call := range entry.Calls {
+					span.SetAttribute("call:"+call.Function, call.Duration.String())
+				}
+				if entry.Error != "" {
+					span.End(fmt.Errorf("%s", entry.Error))
+				} else {
+					span.End(nil)
+				}
+			}
+		}),
+		workflow.WithPluginCaller(func(ctx context.Context, topic string, args json.RawMessage) (json.RawMessage, error) {
+			resultTopic := topic + ".result"
+			correlationID := uuid.NewString()
+			waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			resultCh := make(chan json.RawMessage, 1)
+			unsub, err := kernel.remote.SubscribeRaw(waitCtx, resultTopic, func(msg messages.Message) {
+				if msg.Metadata["correlationId"] == correlationID {
+					select {
+					case resultCh <- json.RawMessage(msg.Payload):
+					default:
+					}
+					cancel()
+				}
+			})
+			if err != nil {
+				return nil, err
+			}
+			defer unsub()
+
+			if _, err := kernel.remote.PublishRaw(messaging.ContextWithCorrelationID(waitCtx, correlationID), topic, args); err != nil {
+				return nil, err
+			}
+			select {
+			case result := <-resultCh:
+				return result, nil
+			case <-waitCtx.Done():
+				return nil, fmt.Errorf("plugin call %s: timeout", topic)
+			}
+		}),
+	)
+	kernel.workflowDomain = newWorkflowDomain(kernel.workflowEngine)
 	kernel.automationDomain = newAutomationDomain(kernel)
+	kernel.testingDomain = newTestingDomain(kernel)
 
 	// Restore active workflow runs from previous session
 	if wfStore != nil {
@@ -693,10 +790,13 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.wasm = newWASMService(kernel)
 	kernel.wasmDomainInst = newWASMDomain(kernel, kernel.wasm)
 	kernel.lifecycle = newLifecycleDomain(kernel)
-	kernel.registryDomain = newRegistryDomain(kernel)
+	// (RegistryDomain eliminated — inlined into catalog)
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()
+
+	// Initial probe — don't wait for first periodic tick
+	go kernel.ProbeAll()
 
 	if cfg.Store != nil {
 		if err := kernel.wasm.loadFromStore(cfg.Store); err != nil {
@@ -706,7 +806,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	if len(cfg.MCPServers) > 0 {
 		kernel.mcp = mcppkg.New()
-		kernel.mcpDomainInst = newMCPDomain(kernel, kernel.mcp)
+		// (MCPDomain eliminated — inlined into catalog)
 		for name, serverCfg := range cfg.MCPServers {
 			if err := kernel.mcp.Connect(context.Background(), name, serverCfg); err != nil {
 				continue
@@ -730,9 +830,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 				})
 			}
 		}
-	} else {
-		kernel.mcpDomainInst = newMCPDomain(kernel, nil)
 	}
+	// (MCPDomain eliminated — no else branch needed)
 
 	// Set up internal Watermill transport + router
 	if cfg.Transport != nil {
@@ -750,6 +849,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	kernel.remote = messaging.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, kernel.transport)
 
+	// SecretsDomain — needs kernel.remote for bus event publishing
+	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, cfg.CallerID, nil, kernel.refreshProviderIfSecret)
+
 	logger := watermill.NopLogger{}
 	router, err := message.NewRouter(message.RouterConfig{}, logger)
 	if err != nil {
@@ -766,6 +868,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		messaging.CallerIDMiddleware(cfg.CallerID),
 		messaging.MetricsMiddleware(metrics),
 	)
+	if cfg.MaxConcurrency > 0 {
+		router.AddMiddleware(messaging.MaxConcurrencyMiddleware(cfg.MaxConcurrency))
+	}
 
 	kernel.router = router
 	kernel.host = messaging.NewHostWithTransport(cfg.Namespace, router, kernel.transport)
@@ -820,8 +925,12 @@ func (k *Kernel) redeployPersistedDeployments() {
 
 	for _, d := range deployments {
 		var opts []DeployOption
-		if d.Role != "" && d.Role != "service" {
+		opts = append(opts, WithRestoring()) // don't re-persist what was just loaded
+		if d.Role != "" {
 			opts = append(opts, WithRole(d.Role))
+		}
+		if d.PackageName != "" {
+			opts = append(opts, WithPackageName(d.PackageName))
 		}
 		if _, err := k.Deploy(context.Background(), d.Source, d.Code, opts...); err != nil {
 			log.Printf("[brainkit] warning: failed to redeploy %s: %v", d.Source, err)
@@ -844,6 +953,19 @@ func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(me
 }
 
 // --- sdk.CrossNamespaceRuntime implementation ---
+
+// persistenceError logs a warning and emits a bus event when a persistence operation fails.
+// The original operation still succeeds in memory — persistence is best-effort.
+func (k *Kernel) persistenceError(ctx context.Context, operation, source string, err error) {
+	log.Printf("[brainkit] warning: %s %s: %v", operation, source, err)
+	payload, _ := json.Marshal(map[string]any{
+		"operation": operation,
+		"source":    source,
+		"error":     err.Error(),
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+	k.publish(ctx, "kit.persistence.error", payload)
+}
 
 // PublishRawTo publishes to a specific Kit's namespace.
 func (k *Kernel) PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
@@ -1487,6 +1609,7 @@ func (k *Kernel) processScheduledJobs() {
 	if closed {
 		return
 	}
+	k.pumpCycles.Add(1)
 	k.bridge.ProcessScheduledJobs()
 }
 

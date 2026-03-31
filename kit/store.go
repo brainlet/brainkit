@@ -73,6 +73,7 @@ type RunningPluginRecord struct {
 	Config     json.RawMessage   `json:"config,omitempty"`
 	StartOrder int               `json:"startOrder"`
 	StartedAt  time.Time         `json:"startedAt"`
+	Role       string            `json:"role,omitempty"`
 }
 
 // PersistedDeployment is the on-disk format for a .ts deployment.
@@ -167,7 +168,8 @@ CREATE TABLE IF NOT EXISTS running_plugins (
     env TEXT NOT NULL,
     config TEXT NOT NULL DEFAULT '{}',
     start_order INTEGER NOT NULL DEFAULT 0,
-    started_at TEXT NOT NULL
+    started_at TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'service'
 );
 
 CREATE TABLE IF NOT EXISTS workflow_runs (
@@ -521,17 +523,21 @@ func (s *SQLiteStore) SaveRunningPlugin(p RunningPluginRecord) error {
 	if len(p.Config) > 0 {
 		configStr = string(p.Config)
 	}
+	role := p.Role
+	if role == "" {
+		role = "service"
+	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.Name, p.Owner, p.Version, p.BinaryPath, string(envJSON), configStr,
-		p.StartOrder, p.StartedAt.Format(time.RFC3339),
+		p.StartOrder, p.StartedAt.Format(time.RFC3339), role,
 	)
 	return err
 }
 
 func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
-	rows, err := s.db.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at FROM running_plugins ORDER BY start_order")
+	rows, err := s.db.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at, role FROM running_plugins ORDER BY start_order")
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +546,7 @@ func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
 	for rows.Next() {
 		var p RunningPluginRecord
 		var envStr, configStr, startedAtStr string
-		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &envStr, &configStr, &p.StartOrder, &startedAtStr); err != nil {
+		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &envStr, &configStr, &p.StartOrder, &startedAtStr, &p.Role); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(envStr), &p.Env)

@@ -7,26 +7,35 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/kit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // ToolsDomain handles tool registry operations: call, resolve, register, list.
 type ToolsDomain struct {
-	kit *Kernel
+	tools    *registry.ToolRegistry
+	eval     JSEvaluator
+	tracer   *tracing.Tracer
+	callerID string
 }
 
-func newToolsDomain(k *Kernel) *ToolsDomain {
-	return &ToolsDomain{kit: k}
+func newToolsDomain(tools *registry.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID string) *ToolsDomain {
+	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, callerID: callerID}
 }
 
 // Call executes a registered tool by name and returns the typed response.
 func (d *ToolsDomain) Call(ctx context.Context, req messages.ToolCallMsg) (*messages.ToolCallResp, error) {
-	tool, err := d.kit.Tools.Resolve(req.Name)
+	tool, err := d.tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
 	}
+
+	span := d.tracer.StartSpan("tools.call:"+tool.ShortName, ctx)
+	span.SetAttribute("tool", tool.Name)
+
 	inputJSON, _ := json.Marshal(req.Input)
-	result, err := tool.Executor.Call(ctx, d.kit.callerID, inputJSON)
+	result, err := tool.Executor.Call(ctx, d.callerID, inputJSON)
+	span.End(err)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +44,7 @@ func (d *ToolsDomain) Call(ctx context.Context, req messages.ToolCallMsg) (*mess
 
 // Resolve looks up a tool by name and returns its registration info.
 func (d *ToolsDomain) Resolve(_ context.Context, req messages.ToolResolveMsg) (*messages.ToolResolveResp, error) {
-	tool, err := d.kit.Tools.Resolve(req.Name)
+	tool, err := d.tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +70,7 @@ func (d *ToolsDomain) Register(_ context.Context, name, description string, inpu
 		fullName = registry.ComposeName(callerID, callerID, "0.0.0", name)
 	}
 
-	if err := d.kit.Tools.Register(registry.RegisteredTool{
+	if err := d.tools.Register(registry.RegisteredTool{
 		Name:        fullName,
 		ShortName:   shortName,
 		Description: description,
@@ -94,7 +103,7 @@ func (d *ToolsDomain) Register(_ context.Context, name, description string, inpu
 					var result = await execFn(__wrapped, { requestContext: null });
 					return JSON.stringify(result === undefined ? null : result);
 				})()`, shortName, shortName, rawInput)
-				out, err := d.kit.bridge.EvalOnJSThread("__brainkit_tool_exec__.js", script)
+				out, err := d.eval.EvalOnJSThread("__brainkit_tool_exec__.js", script)
 				if err != nil {
 					return nil, err
 				}
@@ -112,17 +121,17 @@ func (d *ToolsDomain) Register(_ context.Context, name, description string, inpu
 }
 
 func (d *ToolsDomain) Unregister(_ context.Context, name string) error {
-	tool, err := d.kit.Tools.Resolve(name)
+	tool, err := d.tools.Resolve(name)
 	if err != nil {
 		return err
 	}
-	d.kit.Tools.Unregister(tool.Name)
+	d.tools.Unregister(tool.Name)
 	return nil
 }
 
 // List returns all registered tools, optionally filtered.
 func (d *ToolsDomain) List(_ context.Context, req messages.ToolListMsg) (*messages.ToolListResp, error) {
-	toolList := d.kit.Tools.List(req.Namespace)
+	toolList := d.tools.List(req.Namespace)
 	var infos []messages.ToolInfo
 	for _, t := range toolList {
 		infos = append(infos, messages.ToolInfo{

@@ -116,6 +116,13 @@ type DeployOption func(*deployConfig)
 type deployConfig struct {
 	role        string
 	packageName string
+	restoring   bool
+}
+
+// WithRestoring marks this Deploy as a restore from persistence — skips re-persist.
+// Short-term fix: long-term the restore path should be a separate method.
+func WithRestoring() DeployOption {
+	return func(c *deployConfig) { c.restoring = true }
 }
 
 // WithRole assigns an RBAC role to the deployment.
@@ -207,15 +214,18 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	k.mu.Unlock()
 
 	// Persist to KitStore (original .ts source, not transpiled JS)
-	if k.config.Store != nil {
-		k.config.Store.SaveDeployment(PersistedDeployment{
-			Source:     source,
-			Code:       originalCode,
-			Order:      order,
+	// Skip when restoring from persistence — don't overwrite stored metadata with defaults.
+	if k.config.Store != nil && !cfg.restoring {
+		if err := k.config.Store.SaveDeployment(PersistedDeployment{
+			Source:      source,
+			Code:        originalCode,
+			Order:       order,
 			DeployedAt:  now,
 			Role:        cfg.role,
 			PackageName: cfg.packageName,
-		})
+		}); err != nil {
+			k.persistenceError(ctx, "SaveDeployment", source, err)
+		}
 	}
 
 	return resources, nil
@@ -248,9 +258,9 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 }
 
 // Redeploy tears down old deployment and deploys new code.
-// If teardown fails, it's logged but deploy proceeds (old resources may be gone).
-func (k *Kernel) Redeploy(ctx context.Context, source, code string) ([]ResourceInfo, error) {
-	// Capture original order before teardown
+// Preserves original metadata (role, packageName, order) across the teardown+deploy cycle.
+func (k *Kernel) Redeploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
+	// Capture original metadata before teardown
 	k.mu.Lock()
 	originalOrder := 0
 	if d, ok := k.deployments[source]; ok {
@@ -258,15 +268,40 @@ func (k *Kernel) Redeploy(ctx context.Context, source, code string) ([]ResourceI
 	}
 	k.mu.Unlock()
 
+	// Read persisted metadata (in-memory deploymentInfo doesn't store role/packageName)
+	originalRole := ""
+	originalPkgName := ""
+	if k.config.Store != nil {
+		deps, _ := k.config.Store.LoadDeployments()
+		for _, d := range deps {
+			if d.Source == source {
+				originalRole = d.Role
+				originalPkgName = d.PackageName
+				break
+			}
+		}
+	}
+
 	if _, err := k.Teardown(ctx, source); err != nil {
 		log.Printf("redeploy teardown %s: %v", source, err)
 	}
-	resources, err := k.Deploy(ctx, source, code)
+
+	// Merge original metadata with any explicit opts (explicit opts win)
+	var mergedOpts []DeployOption
+	if originalRole != "" {
+		mergedOpts = append(mergedOpts, WithRole(originalRole))
+	}
+	if originalPkgName != "" {
+		mergedOpts = append(mergedOpts, WithPackageName(originalPkgName))
+	}
+	mergedOpts = append(mergedOpts, opts...) // explicit opts override originals
+	resources, err := k.Deploy(ctx, source, code, mergedOpts...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Restore original order (Deploy assigned a new one)
+	// Restore original order (Deploy assigned a new one).
+	// Only update order — Deploy already persisted the correct role/packageName.
 	if originalOrder > 0 {
 		k.mu.Lock()
 		if d, ok := k.deployments[source]; ok {
@@ -274,12 +309,15 @@ func (k *Kernel) Redeploy(ctx context.Context, source, code string) ([]ResourceI
 		}
 		k.mu.Unlock()
 		if k.config.Store != nil {
-			k.config.Store.SaveDeployment(PersistedDeployment{
-				Source:     source,
-				Code:       code,
-				Order:      originalOrder,
-				DeployedAt: time.Now(),
-			})
+			// Read back what Deploy saved, just update the order
+			deps, _ := k.config.Store.LoadDeployments()
+			for _, d := range deps {
+				if d.Source == source {
+					d.Order = originalOrder
+					k.config.Store.SaveDeployment(d)
+					break
+				}
+			}
 		}
 	}
 

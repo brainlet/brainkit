@@ -43,6 +43,7 @@ func (d *PluginLifecycleDomain) Start(ctx context.Context, req messages.PluginSt
 		Binary: binary,
 		Env:    req.Env,
 		Config: req.Config,
+		Role:   req.Role,
 	}
 	if err := d.node.StartPlugin(ctx, cfg); err != nil {
 		return nil, err

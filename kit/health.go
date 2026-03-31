@@ -2,6 +2,7 @@ package kit
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -181,7 +182,8 @@ func (k *Kernel) checkStorage(ctx context.Context, name string) HealthCheck {
 	start := time.Now()
 	url := k.StorageURL(name)
 	if url == "" {
-		return HealthCheck{Name: "storage:" + name, Healthy: false, Error: "no URL"}
+		// InMemory or non-bridge storage — always healthy
+		return HealthCheck{Name: "storage:" + name, Healthy: true, Details: "in-memory"}
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -201,4 +203,12 @@ func criticalCheckFailed(checks []HealthCheck) bool {
 		}
 	}
 	return false
+}
+
+// HealthJSON returns the full health status as JSON.
+// Used by the gateway to avoid concrete type dependency.
+func (k *Kernel) HealthJSON(ctx context.Context) json.RawMessage {
+	status := k.Health(ctx)
+	data, _ := json.Marshal(status)
+	return data
 }

@@ -107,6 +107,51 @@ func (e *Expectation) ToHaveLength(n int) error {
 	return e.check(pass, fmt.Sprintf("expected length %d, got %d", n, length))
 }
 
+// ToBeNull checks value is nil/null.
+func (e *Expectation) ToBeNull() error {
+	pass := e.value == nil
+	return e.check(pass, fmt.Sprintf("expected %v to be null", e.value))
+}
+
+// ToHaveProperty checks that a map has a specific key.
+func (e *Expectation) ToHaveProperty(key string) error {
+	m, ok := e.value.(map[string]any)
+	if !ok {
+		return e.check(false, fmt.Sprintf("expected object with property %q, got %T", key, e.value))
+	}
+	_, has := m[key]
+	return e.check(has, fmt.Sprintf("expected object to have property %q", key))
+}
+
+// ToThrow checks that a function panics when called.
+// If message is provided, also checks that the panic message contains it.
+func (e *Expectation) ToThrow(message ...string) error {
+	fn, ok := e.value.(func())
+	if !ok {
+		return fmt.Errorf("toThrow: expected a func(), got %T", e.value)
+	}
+	var panicked bool
+	var panicMsg string
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+				panicMsg = fmt.Sprintf("%v", r)
+			}
+		}()
+		fn()
+	}()
+	if err := e.check(panicked, "expected function to throw/panic"); err != nil {
+		return err
+	}
+	if len(message) > 0 && message[0] != "" {
+		if !strings.Contains(panicMsg, message[0]) {
+			return e.check(false, fmt.Sprintf("expected panic message to contain %q, got %q", message[0], panicMsg))
+		}
+	}
+	return nil
+}
+
 func isTruthy(v any) bool {
 	if v == nil {
 		return false

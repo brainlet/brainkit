@@ -47,16 +47,14 @@ func (f *agentFilter) matches(info *AgentInfo) bool {
 	return true
 }
 
-// AgentsDomain handles agent lifecycle.
+// AgentsDomain handles agent lifecycle. Self-contained — no Kernel dependency.
 type AgentsDomain struct {
-	kit *Kernel
 	mu  sync.RWMutex
 	reg map[string]*AgentInfo
 }
 
-func newAgentsDomain(k *Kernel) *AgentsDomain {
+func newAgentsDomain() *AgentsDomain {
 	return &AgentsDomain{
-		kit: k,
 		reg: make(map[string]*AgentInfo),
 	}
 }

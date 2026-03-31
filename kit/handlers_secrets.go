@@ -12,24 +12,34 @@ import (
 
 // SecretsDomain handles secrets.set/get/delete/list/rotate bus commands.
 type SecretsDomain struct {
-	kit *Kernel
+	store           secrets.SecretStore
+	bus             BusPublisher
+	callerID        string
+	pluginRestarter PluginRestarter    // nil on standalone Kernel
+	providerRefresh func(string, string) // refreshProviderIfSecret
 }
 
-func newSecretsDomain(k *Kernel) *SecretsDomain {
-	return &SecretsDomain{kit: k}
+func newSecretsDomain(store secrets.SecretStore, bus BusPublisher, callerID string, restarter PluginRestarter, providerRefresh func(string, string)) *SecretsDomain {
+	return &SecretsDomain{store: store, bus: bus, callerID: callerID, pluginRestarter: restarter, providerRefresh: providerRefresh}
+}
+
+// emitSecretEvent publishes a secrets audit event.
+func (d *SecretsDomain) emitSecretEvent(ctx context.Context, event messages.BrainkitMessage) {
+	payload, _ := json.Marshal(event)
+	d.bus.PublishRaw(ctx, event.BusTopic(), payload)
 }
 
 func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("secrets.set: name is required")
 	}
-	if err := d.kit.secretStore.Set(ctx, req.Name, req.Value); err != nil {
+	if err := d.store.Set(ctx, req.Name, req.Value); err != nil {
 		return nil, err
 	}
 
 	// Get version from metadata
 	version := 1
-	metas, _ := d.kit.secretStore.List(ctx)
+	metas, _ := d.store.List(ctx)
 	for _, m := range metas {
 		if m.Name == req.Name {
 			version = m.Version
@@ -38,7 +48,7 @@ func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*m
 	}
 
 	// Audit event
-	d.kit.emitSecretEvent(ctx, messages.SecretsStoredEvent{Name: req.Name, Version: version})
+	d.emitSecretEvent(ctx, messages.SecretsStoredEvent{Name: req.Name, Version: version, Timestamp: time.Now().Format(time.RFC3339)})
 
 	return &messages.SecretsSetResp{Stored: true, Version: version}, nil
 }
@@ -47,13 +57,13 @@ func (d *SecretsDomain) Get(ctx context.Context, req messages.SecretsGetMsg) (*m
 	if req.Name == "" {
 		return nil, fmt.Errorf("secrets.get: name is required")
 	}
-	val, err := d.kit.secretStore.Get(ctx, req.Name)
+	val, err := d.store.Get(ctx, req.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	// Audit event
-	d.kit.emitSecretEvent(ctx, messages.SecretsAccessedEvent{Name: req.Name, Accessor: d.kit.callerID})
+	d.emitSecretEvent(ctx, messages.SecretsAccessedEvent{Name: req.Name, Accessor: d.callerID, Timestamp: time.Now().Format(time.RFC3339)})
 
 	return &messages.SecretsGetResp{Value: val}, nil
 }
@@ -62,18 +72,18 @@ func (d *SecretsDomain) Delete(ctx context.Context, req messages.SecretsDeleteMs
 	if req.Name == "" {
 		return nil, fmt.Errorf("secrets.delete: name is required")
 	}
-	if err := d.kit.secretStore.Delete(ctx, req.Name); err != nil {
+	if err := d.store.Delete(ctx, req.Name); err != nil {
 		return nil, err
 	}
 
 	// Audit event
-	d.kit.emitSecretEvent(ctx, messages.SecretsDeletedEvent{Name: req.Name})
+	d.emitSecretEvent(ctx, messages.SecretsDeletedEvent{Name: req.Name, Timestamp: time.Now().Format(time.RFC3339)})
 
 	return &messages.SecretsDeleteResp{Deleted: true}, nil
 }
 
 func (d *SecretsDomain) List(ctx context.Context, _ messages.SecretsListMsg) (*messages.SecretsListResp, error) {
-	metas, err := d.kit.secretStore.List(ctx)
+	metas, err := d.store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,12 +105,12 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMs
 	}
 
 	// 1. Update the secret
-	if err := d.kit.secretStore.Set(ctx, req.Name, req.NewValue); err != nil {
+	if err := d.store.Set(ctx, req.Name, req.NewValue); err != nil {
 		return nil, err
 	}
 
 	version := 1
-	metas, _ := d.kit.secretStore.List(ctx)
+	metas, _ := d.store.List(ctx)
 	for _, m := range metas {
 		if m.Name == req.Name {
 			version = m.Version
@@ -111,10 +121,10 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMs
 	var restartedPlugins []string
 
 	// 2. Restart plugins that reference this secret (if requested)
-	if req.Restart && d.kit.node != nil {
-		for _, p := range d.kit.node.ListRunningPlugins() {
+	if req.Restart && d.pluginRestarter != nil {
+		for _, p := range d.pluginRestarter.ListRunningPlugins() {
 			if pluginUsesSecret(p, req.Name) {
-				if err := d.kit.node.RestartPlugin(ctx, p.Name); err == nil {
+				if err := d.pluginRestarter.RestartPlugin(ctx, p.Name); err == nil {
 					restartedPlugins = append(restartedPlugins, p.Name)
 				}
 			}
@@ -122,11 +132,14 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMs
 	}
 
 	// 3. If it's a provider key, refresh JS-side cache
-	d.kit.refreshProviderIfSecret(req.Name, req.NewValue)
+	if d.providerRefresh != nil {
+		d.providerRefresh(req.Name, req.NewValue)
+	}
 
 	// 4. Audit event
-	d.kit.emitSecretEvent(ctx, messages.SecretsRotatedEvent{
+	d.emitSecretEvent(ctx, messages.SecretsRotatedEvent{
 		Name: req.Name, Version: version, RestartedPlugins: restartedPlugins,
+		Timestamp: time.Now().Format(time.RFC3339),
 	})
 
 	return &messages.SecretsRotateResp{
@@ -150,23 +163,29 @@ func (k *Kernel) emitSecretEvent(ctx context.Context, event messages.BrainkitMes
 	k.publish(ctx, event.BusTopic(), payload)
 }
 
-// refreshProviderIfSecret checks if a secret name matches a known provider key pattern
-// and refreshes the JS-side provider cache if so.
-func (k *Kernel) refreshProviderIfSecret(name, newValue string) {
-	// Map secret names to provider env patterns
-	providerKeys := map[string]string{
-		"OPENAI_API_KEY":    "openai",
-		"ANTHROPIC_API_KEY": "anthropic",
-		"GOOGLE_API_KEY":    "google",
-		"MISTRAL_API_KEY":   "mistral",
-		"GROQ_API_KEY":      "groq",
-		"DEEPSEEK_API_KEY":  "deepseek",
-		"XAI_API_KEY":       "xai",
-		"COHERE_API_KEY":    "cohere",
-	}
-	// TODO: meed a way to add more from configuration, e.g. for custom providers or new ones
+// defaultProviderKeyMapping is the built-in mapping from secret names to AI provider names.
+// Used by refreshProviderIfSecret when KernelConfig.ProviderKeyMapping is nil.
+var defaultProviderKeyMapping = map[string]string{
+	"OPENAI_API_KEY":    "openai",
+	"ANTHROPIC_API_KEY": "anthropic",
+	"GOOGLE_API_KEY":    "google",
+	"MISTRAL_API_KEY":   "mistral",
+	"GROQ_API_KEY":      "groq",
+	"DEEPSEEK_API_KEY":  "deepseek",
+	"XAI_API_KEY":       "xai",
+	"COHERE_API_KEY":    "cohere",
+}
 
-	provName, ok := providerKeys[name]
+// refreshProviderIfSecret checks if a secret name matches a provider key pattern
+// and refreshes the JS-side provider cache if so.
+// Uses KernelConfig.ProviderKeyMapping if set, otherwise defaultProviderKeyMapping.
+func (k *Kernel) refreshProviderIfSecret(name, newValue string) {
+	mapping := k.config.ProviderKeyMapping
+	if mapping == nil {
+		mapping = defaultProviderKeyMapping
+	}
+
+	provName, ok := mapping[name]
 	if !ok {
 		return
 	}
@@ -178,7 +197,9 @@ func (k *Kernel) refreshProviderIfSecret(name, newValue string) {
 		`if (globalThis.__kit_providers && globalThis.__kit_providers[%q]) {
 			globalThis.__kit_providers[%q].APIKey = %q;
 			globalThis.__kit_providers[%q].apiKey = %q;
-			// Clear provider cache so next model() call re-creates with new key
-			delete globalThis.__kit_provider_cache;
-		}`, provName, provName, newValue, provName, newValue))
+			// Clear provider cache so next provider()/model() call re-creates with new key
+			if (globalThis.__kit && globalThis.__kit.__clearProviderCache) {
+				globalThis.__kit.__clearProviderCache(%q);
+			}
+		}`, provName, provName, newValue, provName, newValue, provName))
 }

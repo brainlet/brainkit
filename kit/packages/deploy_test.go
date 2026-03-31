@@ -32,10 +32,17 @@ func (m *mockDeployer) Teardown(_ context.Context, source string) error {
 type mockPluginChecker struct {
 	installed map[string]bool
 	running   map[string]bool
+	versions  map[string]string
 }
 
 func (m *mockPluginChecker) IsPluginInstalled(name string) bool { return m.installed[name] }
 func (m *mockPluginChecker) IsPluginRunning(name string) bool   { return m.running[name] }
+func (m *mockPluginChecker) InstalledVersion(name string) string {
+	if m.versions != nil {
+		return m.versions[name]
+	}
+	return "1.0.0"
+}
 
 type mockSecretChecker struct {
 	secrets map[string]bool

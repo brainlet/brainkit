@@ -15,6 +15,12 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.add
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.add", func(msg messages.Message) {
+		if gw.rbacChecker != nil {
+			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.add"); err != nil {
+				gw.replyError(msg, "permission denied: "+err.Error())
+				return
+			}
+		}
 		var req messages.GatewayRouteAddMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
@@ -33,6 +39,12 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.remove
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.remove", func(msg messages.Message) {
+		if gw.rbacChecker != nil {
+			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.remove"); err != nil {
+				gw.replyError(msg, "permission denied: "+err.Error())
+				return
+			}
+		}
 		var req messages.GatewayRouteRemoveMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())

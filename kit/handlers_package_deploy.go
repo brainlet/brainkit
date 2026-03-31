@@ -48,8 +48,28 @@ func newPackageDeployDomain(k *Kernel) *PackageDeployDomain {
 }
 
 func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDeployMsg) (*messages.PackageDeployResp, error) {
+	// Inline deploy mode: write files to temp dir, then deploy from there
+	if req.Path == "" && len(req.Files) > 0 {
+		tmpDir, err := os.MkdirTemp("", "brainkit-pkg-*")
+		if err != nil {
+			return nil, fmt.Errorf("package.deploy: create temp dir: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+		// Write manifest
+		if len(req.Manifest) > 0 {
+			os.WriteFile(filepath.Join(tmpDir, "manifest.json"), req.Manifest, 0644)
+		}
+		// Write files
+		for name, code := range req.Files {
+			filePath := filepath.Join(tmpDir, name)
+			os.MkdirAll(filepath.Dir(filePath), 0755)
+			os.WriteFile(filePath, []byte(code), 0644)
+		}
+		req.Path = tmpDir
+	}
+
 	if req.Path == "" {
-		return nil, fmt.Errorf("package.deploy: path is required")
+		return nil, fmt.Errorf("package.deploy: path or files is required")
 	}
 
 	// Read manifest first to get package name for persistence tagging
@@ -138,6 +158,7 @@ func (d *PackageDeployDomain) List(_ context.Context, _ messages.PackageListDepl
 			Name:     pkg.Name,
 			Version:  pkg.Version,
 			Services: pkg.Services,
+			Status:   "active",
 		})
 	}
 	return &messages.PackageListDeployedResp{Packages: pkgs}, nil
@@ -185,6 +206,19 @@ func (c *kernelPluginChecker) IsPluginRunning(name string) bool {
 		}
 	}
 	return false
+}
+
+func (c *kernelPluginChecker) InstalledVersion(name string) string {
+	installed, err := c.kit.packages.ListInstalled()
+	if err != nil {
+		return ""
+	}
+	for _, p := range installed {
+		if p.Name == name {
+			return p.Version
+		}
+	}
+	return ""
 }
 
 // kernelSecretChecker checks secrets via the Kernel's secret store.

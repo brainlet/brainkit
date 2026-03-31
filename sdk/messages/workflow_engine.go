@@ -5,8 +5,9 @@ import "encoding/json"
 // ── Workflow Execution ──
 
 type WorkflowRunMsg struct {
-	WorkflowID string          `json:"workflowId"`
-	Input      json.RawMessage `json:"input,omitempty"`
+	WorkflowID  string                       `json:"workflowId"`
+	Input       json.RawMessage              `json:"input,omitempty"`
+	HostResults map[string][]json.RawMessage `json:"hostResults,omitempty"` // replay testing: pre-recorded results
 }
 
 func (WorkflowRunMsg) BusTopic() string { return "workflow.run" }

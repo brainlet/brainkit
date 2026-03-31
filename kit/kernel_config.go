@@ -99,6 +99,20 @@ type KernelConfig struct {
 	// Used by Node to register node-specific command bindings before starting.
 	DeferRouterStart bool
 
+	// MaxConcurrency limits concurrent bus handler invocations.
+	// 0 = unlimited (default). Recommended: 100-1000 for production.
+	MaxConcurrency int
+
+	// BusRateLimits maps RBAC role names to publish rate limits (requests/second).
+	// When a deployment's role exceeds its limit, bus.publish throws an error.
+	// Roles not in this map have no rate limit. Example: {"service": 100, "gateway": 50}.
+	BusRateLimits map[string]float64
+
+	// ProviderKeyMapping maps secret names to AI provider names for rotation cache invalidation.
+	// When secrets.rotate updates a key matching this map, the JS-side provider cache is refreshed.
+	// If nil, uses built-in defaults (OPENAI_API_KEY→openai, ANTHROPIC_API_KEY→anthropic, etc.).
+	ProviderKeyMapping map[string]string
+
 	// Plugin registries — searched in order for packages.search/install.
 	// Defaults to the official brainlet registry if empty.
 	PluginRegistries []RegistryConfig

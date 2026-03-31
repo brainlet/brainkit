@@ -16,6 +16,7 @@ type PluginConfig struct {
 	MaxRestarts     int               // max restarts before giving up (default: 5)
 	StartTimeout    time.Duration     // max time to wait for READY line (default: 10s)
 	ShutdownTimeout time.Duration     // max time to wait for graceful stop (default: 5s)
+	Role            string            // RBAC role (default: "service")
 }
 
 func pluginDefaults(cfg *PluginConfig) {

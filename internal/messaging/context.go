@@ -16,6 +16,7 @@ const (
 	traceIDContextKey       contextKey = "brainkit.messaging.trace_id"
 	spanIDContextKey        contextKey = "brainkit.messaging.span_id"
 	parentSpanIDContextKey  contextKey = "brainkit.messaging.parent_span_id"
+	sampledContextKey       contextKey = "brainkit.messaging.sampled"
 )
 
 func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopic string) context.Context {
@@ -40,6 +41,9 @@ func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopi
 	}
 	if spanID := wmsg.Metadata.Get("parentSpanId"); spanID != "" {
 		ctx = context.WithValue(ctx, parentSpanIDContextKey, spanID)
+	}
+	if sampled := wmsg.Metadata.Get("traceSampled"); sampled != "" {
+		ctx = context.WithValue(ctx, sampledContextKey, sampled)
 	}
 	return ctx
 }
@@ -143,4 +147,18 @@ func ParentSpanIDFromContext(ctx context.Context) string {
 	}
 	v, _ := ctx.Value(parentSpanIDContextKey).(string)
 	return v
+}
+
+// SampledFromContext returns the trace sampling flag from context.
+func SampledFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(sampledContextKey).(string)
+	return v
+}
+
+// WithSampled sets the trace sampling flag in context.
+func WithSampled(ctx context.Context, sampled string) context.Context {
+	return context.WithValue(ctx, sampledContextKey, sampled)
 }

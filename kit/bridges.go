@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/brainlet/brainkit/internal/messaging"
 	provreg "github.com/brainlet/brainkit/kit/registry"
+	"github.com/brainlet/brainkit/kit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -243,11 +244,28 @@ func (k *Kernel) registerBridges() {
 				return qctx.ThrowError(err)
 			}
 
+			// Bus rate limiting — per-role token bucket
+			if len(k.busRateLimiters) > 0 {
+				source := k.currentDeploymentSource()
+				if source != "" && k.rbac != nil {
+					role := k.rbac.RoleForSource(source)
+					if limiter, ok := k.busRateLimiters[role.Name]; ok {
+						if !limiter.Allow() {
+							return qctx.ThrowError(fmt.Errorf("bus rate limit exceeded for role %q", role.Name))
+						}
+					}
+				}
+			}
+
+			// Tracing
+			span := k.tracer.StartSpan("bus.publish:"+topic, context.Background())
+
 			correlationID := uuid.NewString()
 			replyTo := topic + ".reply." + correlationID
 
 			ctx := messaging.WithPublishMeta(context.Background(), correlationID, replyTo)
 			_, err := k.remote.PublishRaw(ctx, topic, payload)
+			span.End(err)
 			if err != nil {
 				return qctx.ThrowError(fmt.Errorf("bus_publish %s: %w", topic, err))
 			}
@@ -332,8 +350,18 @@ func (k *Kernel) registerBridges() {
 					return
 				}
 
-				// Tracing — span for handler invocation
-				handlerSpan := k.tracer.StartSpan("handler:"+topic, context.Background())
+				// Tracing — build span context from inbound message metadata
+				spanCtx := context.Background()
+				if traceID := msg.Metadata["traceId"]; traceID != "" {
+					spanCtx = tracing.WithTraceContext(spanCtx, tracing.TraceContext{
+						TraceID:  traceID,
+						ParentID: msg.Metadata["parentSpanId"],
+					})
+				}
+				if msg.Metadata["traceSampled"] == "false" {
+					spanCtx = tracing.WithSampled(spanCtx, false)
+				}
+				handlerSpan := k.tracer.StartSpan("handler:"+topic, spanCtx)
 				handlerSpan.SetSource(subscriberSource)
 
 				// Build full message JSON with metadata for JS handlers
@@ -355,6 +383,9 @@ func (k *Kernel) registerBridges() {
 					}
 					if v := msg.Metadata["correlationId"]; v != "" {
 						msgObj["correlationId"] = v
+					}
+					if v := msg.Metadata["traceId"]; v != "" {
+						msgObj["traceId"] = v
 					}
 				}
 				msgJSON, _ := json.Marshal(msgObj)
@@ -640,6 +671,12 @@ func (k *Kernel) registerBridges() {
 				return qctx.NewString("")
 			}
 			name := args[0].String()
+
+			// RBAC enforcement — must have secrets.get permission
+			if err := k.checkCommandPermission(k.currentDeploymentSource(), "secrets.get"); err != nil {
+				return qctx.ThrowError(err)
+			}
+
 			if k.secretStore == nil {
 				return qctx.NewString("")
 			}
@@ -647,6 +684,16 @@ func (k *Kernel) registerBridges() {
 			if err != nil || val == "" {
 				return qctx.NewString("")
 			}
+			// Audit: emit secrets.accessed event
+			source := k.currentDeploymentSource()
+			if source == "" {
+				source = k.callerID
+			}
+			k.emitSecretEvent(context.Background(), messages.SecretsAccessedEvent{
+				Name:      name,
+				Accessor:  source,
+				Timestamp: time.Now().Format(time.RFC3339),
+			})
 			return qctx.NewString(val)
 		}))
 

@@ -59,10 +59,17 @@ type TraceSummary struct {
 }
 
 type traceCtxKey struct{}
+type sampledCtxKey struct{}
 
 // WithTraceContext injects trace context into a Go context.
 func WithTraceContext(ctx context.Context, tc TraceContext) context.Context {
 	return context.WithValue(ctx, traceCtxKey{}, tc)
+}
+
+// WithSampled marks the context with an explicit sampling decision.
+// When sampled=false, StartSpan returns a no-op handle.
+func WithSampled(ctx context.Context, sampled bool) context.Context {
+	return context.WithValue(ctx, sampledCtxKey{}, sampled)
 }
 
 // TraceContextFromCtx extracts trace context from a Go context.
@@ -90,6 +97,11 @@ func NewTracer(store TraceStore, sampleRate float64) *Tracer {
 // Child spans (with existing traceID in context) are always sampled if the parent was.
 func (t *Tracer) StartSpan(name string, ctx context.Context) *SpanHandle {
 	if t.store == nil {
+		return &SpanHandle{}
+	}
+
+	// Explicit sampled=false from inbound message — suppress span creation
+	if sampled, ok := ctx.Value(sampledCtxKey{}).(bool); ok && !sampled {
 		return &SpanHandle{}
 	}
 

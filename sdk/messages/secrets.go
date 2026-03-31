@@ -71,15 +71,17 @@ type SecretsRotateResp struct {
 // ── Secret Events ──
 
 type SecretsAccessedEvent struct {
-	Name     string `json:"name"`
-	Accessor string `json:"accessor"`
+	Name      string `json:"name"`
+	Accessor  string `json:"accessor"`
+	Timestamp string `json:"timestamp"`
 }
 
 func (SecretsAccessedEvent) BusTopic() string { return "secrets.accessed" }
 
 type SecretsStoredEvent struct {
-	Name    string `json:"name"`
-	Version int    `json:"version"`
+	Name      string `json:"name"`
+	Version   int    `json:"version"`
+	Timestamp string `json:"timestamp"`
 }
 
 func (SecretsStoredEvent) BusTopic() string { return "secrets.stored" }
@@ -88,12 +90,14 @@ type SecretsRotatedEvent struct {
 	Name             string   `json:"name"`
 	Version          int      `json:"version"`
 	RestartedPlugins []string `json:"restartedPlugins,omitempty"`
+	Timestamp        string   `json:"timestamp"`
 }
 
 func (SecretsRotatedEvent) BusTopic() string { return "secrets.rotated" }
 
 type SecretsDeletedEvent struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	Timestamp string `json:"timestamp"`
 }
 
 func (SecretsDeletedEvent) BusTopic() string { return "secrets.deleted" }

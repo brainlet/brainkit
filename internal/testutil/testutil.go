@@ -9,13 +9,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit"
+	"github.com/brainlet/brainkit/kit/rbac"
 	provreg "github.com/brainlet/brainkit/kit/registry"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -295,4 +298,163 @@ func StartPgVectorContainer(t *testing.T) string {
 		"POSTGRES_DB=brainkit",
 	)
 	return fmt.Sprintf("postgresql://test:test@%s/brainkit", addr)
+}
+
+// ── Phase 1 Test Helpers ─────────────────────────────────────────────────
+
+// RestartKernel creates a Kernel with SQLiteStore, runs setup, closes it,
+// creates a new Kernel with the same store path. Returns (closed k1, running k2).
+// k2 is registered with t.Cleanup.
+func RestartKernel(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) (*kit.Kernel, *kit.Kernel) {
+	t.Helper()
+	storePath := filepath.Join(t.TempDir(), "restart-test.db")
+
+	store1, err := kit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("RestartKernel: open store1: %v", err)
+	}
+	cfg.Store = store1
+	if cfg.Namespace == "" {
+		cfg.Namespace = "test"
+	}
+	if cfg.CallerID == "" {
+		cfg.CallerID = "test"
+	}
+
+	k1, err := kit.NewKernel(cfg)
+	if err != nil {
+		t.Fatalf("RestartKernel: create k1: %v", err)
+	}
+
+	setup(k1)
+	k1.Close()
+
+	store2, err := kit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("RestartKernel: open store2: %v", err)
+	}
+	cfg.Store = store2
+
+	k2, err := kit.NewKernel(cfg)
+	if err != nil {
+		t.Fatalf("RestartKernel: create k2: %v", err)
+	}
+	t.Cleanup(func() { k2.Close() })
+
+	return k1, k2
+}
+
+// RestartKernelWithStore is like RestartKernel but returns the store path
+// for callers that need to inspect the DB directly.
+func RestartKernelWithStore(t *testing.T, cfg kit.KernelConfig, setup func(*kit.Kernel)) (string, *kit.Kernel) {
+	t.Helper()
+	storePath := filepath.Join(t.TempDir(), "restart-test.db")
+
+	store1, err := kit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("RestartKernelWithStore: open store1: %v", err)
+	}
+	cfg.Store = store1
+	if cfg.Namespace == "" {
+		cfg.Namespace = "test"
+	}
+	if cfg.CallerID == "" {
+		cfg.CallerID = "test"
+	}
+
+	k1, err := kit.NewKernel(cfg)
+	if err != nil {
+		t.Fatalf("RestartKernelWithStore: create k1: %v", err)
+	}
+
+	setup(k1)
+	k1.Close()
+
+	store2, err := kit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("RestartKernelWithStore: open store2: %v", err)
+	}
+	cfg.Store = store2
+
+	k2, err := kit.NewKernel(cfg)
+	if err != nil {
+		t.Fatalf("RestartKernelWithStore: create k2: %v", err)
+	}
+	t.Cleanup(func() { k2.Close() })
+
+	return storePath, k2
+}
+
+// ConcurrentDo runs fn in n goroutines and waits for all to complete.
+// Captures panics and reports which goroutine (by index) failed.
+func ConcurrentDo(t *testing.T, n int, fn func(i int)) {
+	t.Helper()
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("goroutine %d panicked: %v", idx, r)
+				}
+			}()
+			fn(idx)
+		}(i)
+	}
+	wg.Wait()
+}
+
+// WaitForBusMessage subscribes to a topic, waits for one message, unsubscribes, returns it.
+// Fails with timeout if no message arrives within the deadline.
+func WaitForBusMessage(t *testing.T, k *kit.Kernel, topic string, timeout time.Duration) messages.Message {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ch := make(chan messages.Message, 1)
+	unsub, err := k.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+		select {
+		case ch <- msg:
+		default:
+		}
+	})
+	if err != nil {
+		t.Fatalf("WaitForBusMessage: subscribe %s: %v", topic, err)
+	}
+	defer unsub()
+
+	select {
+	case msg := <-ch:
+		return msg
+	case <-ctx.Done():
+		t.Fatalf("WaitForBusMessage: timeout waiting for message on %s", topic)
+		return messages.Message{} // unreachable
+	}
+}
+
+// NewTestKernelWithRBAC creates a Kernel with RBAC roles and a SQLiteStore.
+func NewTestKernelWithRBAC(t *testing.T, roles map[string]rbac.Role, defaultRole string) *TestKernel {
+	t.Helper()
+	LoadEnv(t)
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "rbac-test.db")
+	store, err := kit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("NewTestKernelWithRBAC: open store: %v", err)
+	}
+
+	k, err := kit.NewKernel(kit.KernelConfig{
+		Namespace:   "test",
+		CallerID:    "test",
+		Store:       store,
+		Roles:       roles,
+		DefaultRole: defaultRole,
+		FSRoot:      tmpDir,
+	})
+	if err != nil {
+		t.Fatalf("NewTestKernelWithRBAC: create kernel: %v", err)
+	}
+	t.Cleanup(func() { k.Close() })
+	return &TestKernel{k}
 }

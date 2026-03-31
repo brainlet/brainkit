@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/kit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -107,6 +109,9 @@ func (r *commandRegistry) BindingsForNode(node *Node) []messaging.RawCommandBind
 	for _, spec := range r.ordered {
 		spec := spec
 		if spec.invokeNode == nil && spec.invokeKernel == nil {
+			continue
+		}
+		if shouldSkipCommand(spec.topic, node.Kernel) {
 			continue
 		}
 		bindings = append(bindings, messaging.RawCommandBinding{
@@ -228,20 +233,74 @@ func commandCatalog() *commandRegistry {
 					Resources: resourceInfosToMessages(resources),
 				}, nil
 			}),
+			// ── MCP (inlined) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
-				return kernel.mcpDomainInst.ListTools(ctx, req)
+				if kernel.mcp == nil {
+					return nil, ErrMCPNotConfigured
+				}
+				tools := kernel.mcp.ListTools()
+				var infos []messages.McpToolInfo
+				for _, t := range tools {
+					infos = append(infos, messages.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
+				}
+				return &messages.McpListToolsResp{Tools: infos}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
-				return kernel.mcpDomainInst.CallTool(ctx, req)
+				if kernel.mcp == nil {
+					return nil, ErrMCPNotConfigured
+				}
+				argsJSON, _ := json.Marshal(req.Args)
+				result, err := kernel.mcp.CallTool(ctx, req.Server, req.Tool, argsJSON)
+				if err != nil {
+					return nil, err
+				}
+				return &messages.McpCallToolResp{Result: result}, nil
 			}),
+			// ── Registry (inlined) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryHasMsg) (*messages.RegistryHasResp, error) {
-				return kernel.registryDomain.Has(ctx, req)
+				var found bool
+				switch req.Category {
+				case "provider":
+					found = kernel.providers.HasAIProvider(req.Name)
+				case "vectorStore":
+					found = kernel.providers.HasVectorStore(req.Name)
+				case "storage":
+					found = kernel.providers.HasStorage(req.Name)
+				}
+				return &messages.RegistryHasResp{Found: found}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryListMsg) (*messages.RegistryListResp, error) {
-				return kernel.registryDomain.List(ctx, req)
+				var result any
+				switch req.Category {
+				case "provider":
+					result = kernel.providers.ListAIProviders()
+				case "vectorStore":
+					result = kernel.providers.ListVectorStores()
+				case "storage":
+					result = kernel.providers.ListStorages()
+				default:
+					result = []any{}
+				}
+				b, _ := json.Marshal(result)
+				return &messages.RegistryListResp{Items: b}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
-				return kernel.registryDomain.Resolve(ctx, req)
+				var configJSON []byte
+				switch req.Category {
+				case "provider":
+					if reg, ok := kernel.providers.GetAIProvider(req.Name); ok {
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+					}
+				case "vectorStore":
+					if reg, ok := kernel.providers.GetVectorStore(req.Name); ok {
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+					}
+				case "storage":
+					if reg, ok := kernel.providers.GetStorage(req.Name); ok {
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+					}
+				}
+				return &messages.RegistryResolveResp{Config: configJSON}, nil
 			}),
 			// ── Workflow Engine ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowRunMsg) (*messages.WorkflowRunResp, error) {
@@ -272,25 +331,79 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationInfoMsg) (*messages.AutomationInfoResp, error) {
 				return kernel.automationDomain.Info(ctx, req)
 			}),
-			// ── Tracing ──
+			// ── Metrics ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MetricsGetMsg) (*messages.MetricsGetResp, error) {
+				data, _ := json.Marshal(kernel.Metrics())
+				return &messages.MetricsGetResp{Metrics: data}, nil
+			}),
+			// ── Tracing (inlined) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceGetMsg) (*messages.TraceGetResp, error) {
-				return kernel.tracingDomain.Get(ctx, req)
+				if kernel.config.TraceStore == nil {
+					return &messages.TraceGetResp{Spans: json.RawMessage("[]")}, nil
+				}
+				spans, err := kernel.config.TraceStore.GetTrace(req.TraceID)
+				if err != nil {
+					return nil, err
+				}
+				data, _ := json.Marshal(spans)
+				return &messages.TraceGetResp{Spans: data}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceListMsg) (*messages.TraceListResp, error) {
-				return kernel.tracingDomain.List(ctx, req)
+				if kernel.config.TraceStore == nil {
+					return &messages.TraceListResp{Traces: json.RawMessage("[]")}, nil
+				}
+				query := tracing.TraceQuery{Source: req.Source, Status: req.Status, Limit: req.Limit}
+				if req.MinDuration > 0 {
+					query.MinDuration = time.Duration(req.MinDuration) * time.Millisecond
+				}
+				traces, err := kernel.config.TraceStore.ListTraces(query)
+				if err != nil {
+					return nil, err
+				}
+				data, _ := json.Marshal(traces)
+				return &messages.TraceListResp{Traces: data}, nil
 			}),
-			// ── RBAC Administration ──
+			// ── RBAC Administration (inlined — no domain type needed) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACAssignMsg) (*messages.RBACAssignResp, error) {
-				return kernel.rbacDomain.Assign(ctx, req)
+				if kernel.rbac == nil {
+					return nil, fmt.Errorf("rbac: not configured (no Roles in KernelConfig)")
+				}
+				if req.Source == "" {
+					return nil, fmt.Errorf("rbac.assign: source is required")
+				}
+				if err := kernel.rbac.Assign(req.Source, req.Role); err != nil {
+					return nil, err
+				}
+				return &messages.RBACAssignResp{Assigned: true}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRevokeMsg) (*messages.RBACRevokeResp, error) {
-				return kernel.rbacDomain.Revoke(ctx, req)
+				if kernel.rbac == nil {
+					return nil, fmt.Errorf("rbac: not configured")
+				}
+				kernel.rbac.Revoke(req.Source)
+				return &messages.RBACRevokeResp{Revoked: true}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACListMsg) (*messages.RBACListResp, error) {
-				return kernel.rbacDomain.List(ctx, req)
+				if kernel.rbac == nil {
+					return &messages.RBACListResp{Assignments: []messages.RBACAssignmentInfo{}}, nil
+				}
+				assignments := kernel.rbac.ListAssignments()
+				infos := make([]messages.RBACAssignmentInfo, len(assignments))
+				for i, a := range assignments {
+					infos[i] = messages.RBACAssignmentInfo{
+						Source: a.Source, Role: a.Role,
+						AssignedAt: a.AssignedAt.Format(time.RFC3339),
+					}
+				}
+				return &messages.RBACListResp{Assignments: infos}, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRolesMsg) (*messages.RBACRolesResp, error) {
-				return kernel.rbacDomain.Roles(ctx, req)
+				if kernel.rbac == nil {
+					return &messages.RBACRolesResp{Roles: json.RawMessage("[]")}, nil
+				}
+				roles := kernel.rbac.ListRoles()
+				data, _ := json.Marshal(roles)
+				return &messages.RBACRolesResp{Roles: data}, nil
 			}),
 			// ── Secrets ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
@@ -383,6 +496,35 @@ func commandCatalog() *commandRegistry {
 				}
 				return node.pluginLifecycle.Status(ctx, req)
 			}),
+			// ── Testing ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TestRunMsg) (*messages.TestRunResp, error) {
+				return kernel.testingDomain.Run(ctx, req)
+			}),
+			// ── Peer Discovery ──
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PeersListMsg) (*messages.PeersListResp, error) {
+				if node.discovery == nil {
+					return &messages.PeersListResp{Peers: []messages.PeerInfo{}}, nil
+				}
+				peers, err := node.discovery.Browse()
+				if err != nil {
+					return nil, err
+				}
+				infos := make([]messages.PeerInfo, len(peers))
+				for i, p := range peers {
+					infos[i] = messages.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
+				}
+				return &messages.PeersListResp{Peers: infos}, nil
+			}),
+			nodeCommand(func(ctx context.Context, node *Node, req messages.PeersResolveMsg) (*messages.PeersResolveResp, error) {
+				if node.discovery == nil {
+					return nil, fmt.Errorf("discovery not configured")
+				}
+				addr, err := node.discovery.Resolve(req.Name)
+				if err != nil {
+					return nil, err
+				}
+				return &messages.PeersResolveResp{Namespace: addr}, nil
+			}),
 		}
 
 		byTopic := make(map[string]commandSpec, len(specs))
@@ -404,8 +546,25 @@ func commandCatalog() *commandRegistry {
 	return commandCatalogInst
 }
 
+// shouldSkipCommand returns true if the command topic targets an unconfigured domain.
+func shouldSkipCommand(topic string, kernel *Kernel) bool {
+	if strings.HasPrefix(topic, "wasm.") && kernel.wasm == nil {
+		return true
+	}
+	if strings.HasPrefix(topic, "mcp.") && kernel.mcp == nil {
+		return true
+	}
+	if strings.HasPrefix(topic, "rbac.") && kernel.rbac == nil {
+		return true
+	}
+	if strings.HasPrefix(topic, "trace.") && kernel.config.TraceStore == nil {
+		return true
+	}
+	return false
+}
+
 // commandBindingsForKernel generates router bindings for a standalone Kernel.
-// Kernel-only commands are bound; node-only commands (plugin.*) are skipped.
+// Kernel-only commands are bound; node-only and unconfigured-domain commands are skipped.
 func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
 	catalog := commandCatalog()
 	bindings := make([]messaging.RawCommandBinding, 0, len(catalog.ordered))
@@ -413,6 +572,9 @@ func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
 		spec := spec
 		if spec.invokeKernel == nil {
 			continue // node-only command
+		}
+		if shouldSkipCommand(spec.topic, kernel) {
+			continue // domain not configured
 		}
 		bindings = append(bindings, messaging.RawCommandBinding{
 			Name:  spec.topic,

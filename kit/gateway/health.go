@@ -49,56 +49,44 @@ func registerHealthRoutes(mux *http.ServeMux, rt any) {
 		})
 	}
 
-	// For /health, we need to call a method that returns the full status.
-	// Use reflection-free approach: try to call Health via interface assertion.
-	// kit.Kernel has Health(ctx) HealthStatus — we JSON-encode whatever it returns.
-	type fullHealther interface {
-		Alive(ctx context.Context) bool
-		Ready(ctx context.Context) bool
-		Health(ctx context.Context) any
+	// /health — full health status. Uses HealthJSON interface to avoid
+	// concrete type dependency on kit.HealthStatus.
+	type healthJSONer interface {
+		HealthJSON(ctx context.Context) json.RawMessage
 	}
 
-	// kit.Kernel.Health returns kit.HealthStatus (concrete), not any.
-	// Go interfaces require exact return type match. So we use a helper:
-	if _, ok := rt.(healther); ok {
+	if hj, ok := rt.(healthJSONer); ok {
 		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-
-			// Call Health via reflection-free method: try known types
-			var statusJSON []byte
-			var healthy bool
-
-			// Try kit.Kernel / kit.Node (they embed Kernel)
-			type kernelHealther interface {
-				Health(ctx context.Context) struct {
-					Healthy bool          `json:"healthy"`
-					Status  string        `json:"status"`
-					Uptime  time.Duration `json:"uptime"`
-					Checks  []struct {
-						Name    string        `json:"name"`
-						Healthy bool          `json:"healthy"`
-						Latency time.Duration `json:"latency,omitempty"`
-						Error   string        `json:"error,omitempty"`
-						Details any           `json:"details,omitempty"`
-					} `json:"checks"`
-				}
+			data := hj.HealthJSON(ctx)
+			w.Header().Set("Content-Type", "application/json")
+			var parsed struct{ Healthy bool }
+			json.Unmarshal(data, &parsed)
+			if parsed.Healthy {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
 			}
-			// This won't match either since the struct is anonymous.
-			// Simplest solution: call Alive and Ready, build a minimal health response.
+			w.Write(data)
+		})
+	} else if _, ok := rt.(healther); ok {
+		// Fallback: alive + ready only (runtime without HealthJSON)
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
 			a := rt.(aliver)
 			rd := rt.(readier)
 			alive := a.Alive(ctx)
 			ready := rd.Ready(ctx)
-			healthy = alive && ready
+			healthy := alive && ready
 			status := "running"
 			if !alive {
 				status = "unhealthy"
 			} else if !ready {
 				status = "degraded"
 			}
-
-			statusJSON, _ = json.Marshal(map[string]any{
+			statusJSON, _ := json.Marshal(map[string]any{
 				"healthy": healthy,
 				"status":  status,
 				"checks": []map[string]any{
@@ -106,7 +94,6 @@ func registerHealthRoutes(mux *http.ServeMux, rt any) {
 					{"name": "ready", "healthy": ready},
 				},
 			})
-
 			w.Header().Set("Content-Type", "application/json")
 			if healthy {
 				w.WriteHeader(http.StatusOK)

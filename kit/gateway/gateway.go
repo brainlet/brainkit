@@ -25,13 +25,33 @@ type CORSConfig struct {
 	AllowHeaders []string
 }
 
+// RBACChecker validates bus command permissions for .ts callers.
+// When set on Config, gateway bus command handlers check caller permissions.
+// Go-originated messages (no callerId metadata) bypass RBAC by design.
+type RBACChecker interface {
+	CheckCommand(source, command string) error
+}
+
 // Config configures the HTTP gateway.
 type Config struct {
-	Listen     string
-	Timeout    time.Duration
-	Middleware []Middleware
-	CORS       *CORSConfig
-	NoHealth   bool
+	Listen      string
+	Timeout     time.Duration
+	Middleware  []Middleware
+	CORS        *CORSConfig
+	NoHealth    bool
+	Tracer      Tracer           // optional — creates root spans for requests
+	RBACChecker RBACChecker      // optional — checks caller permissions on bus commands
+	RateLimit   *RateLimitConfig // optional — global rate limiter (429 when exceeded)
+}
+
+// Tracer is a minimal tracing interface to avoid importing kit/tracing.
+type Tracer interface {
+	StartSpan(name string, attrs map[string]string) TracerSpan
+}
+
+// TracerSpan is a span handle.
+type TracerSpan interface {
+	End(err error)
 }
 
 // Drainable is an optional interface for runtimes that support drain state.
@@ -50,13 +70,14 @@ type HealthChecker interface {
 
 // Gateway is the HTTP/WS/SSE protocol bridge to the bus.
 type Gateway struct {
-	rt        sdk.Runtime
-	config    Config
-	routes    *routeTable
-	srv       *http.Server
-	ln        net.Listener
-	active    atomic.Int64
-	busUnsubs []func()
+	rt          sdk.Runtime
+	config      Config
+	routes      *routeTable
+	srv         *http.Server
+	ln          net.Listener
+	active      atomic.Int64
+	busUnsubs   []func()
+	rbacChecker RBACChecker
 }
 
 // New creates an HTTP gateway.
@@ -68,9 +89,10 @@ func New(rt sdk.Runtime, cfg Config) *Gateway {
 		cfg.Listen = ":8080"
 	}
 	return &Gateway{
-		rt:     rt,
-		config: cfg,
-		routes: newRouteTable(),
+		rt:          rt,
+		config:      cfg,
+		routes:      newRouteTable(),
+		rbacChecker: cfg.RBACChecker,
 	}
 }
 
@@ -140,6 +162,10 @@ func (gw *Gateway) Start() error {
 	for i := len(gw.config.Middleware) - 1; i >= 0; i-- {
 		handler = gw.config.Middleware[i](handler)
 	}
+	// Rate limiter wraps outermost — applies before all other middleware
+	if gw.config.RateLimit != nil {
+		handler = RateLimiter(*gw.config.RateLimit)(handler)
+	}
 
 	ln, err := net.Listen("tcp", gw.config.Listen)
 	if err != nil {
@@ -200,6 +226,21 @@ func (gw *Gateway) dispatch(w http.ResponseWriter, r *http.Request) {
 
 	gw.active.Add(1)
 	defer gw.active.Add(-1)
+
+	// Root span for the request. Reads X-Trace-ID from header if present.
+	var span TracerSpan
+	if gw.config.Tracer != nil {
+		attrs := map[string]string{
+			"method": r.Method,
+			"path":   r.URL.Path,
+			"topic":  matched.Topic,
+		}
+		if traceID := r.Header.Get("X-Trace-ID"); traceID != "" {
+			attrs["traceId"] = traceID
+		}
+		span = gw.config.Tracer.StartSpan("gateway.request", attrs)
+		defer span.End(nil)
+	}
 
 	switch matched.Type {
 	case routeHandle:

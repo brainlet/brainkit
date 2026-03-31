@@ -100,6 +100,9 @@ func New(cfg ProbeConfig) *ProviderRegistry {
 	if cfg.ProbeTimeout == 0 {
 		cfg.ProbeTimeout = 5 * time.Second
 	}
+	if cfg.PeriodicInterval == 0 {
+		cfg.PeriodicInterval = 60 * time.Second
+	}
 	return &ProviderRegistry{
 		aiProviders:  make(map[string]*entry),
 		vectorStores: make(map[string]*entry),
@@ -115,10 +118,13 @@ func (r *ProviderRegistry) RegisterAIProvider(name string, reg AIProviderRegistr
 		return &sdk.ValidationError{Field: "name", Message: "provider name is required"}
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.aiProviders[name] = &entry{
 		registration: reg,
 		lastErr:      "probe pending",
+	}
+	r.mu.Unlock()
+	if r.probeConfig.ProbeOnRegister {
+		go r.ProbeAIProvider(name)
 	}
 	return nil
 }

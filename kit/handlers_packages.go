@@ -12,15 +12,15 @@ import (
 
 // PackagesDomain handles packages.search/install/remove/update/list/info bus commands.
 type PackagesDomain struct {
-	kit *Kernel
+	packages *packages.Manager
 }
 
-func newPackagesDomain(k *Kernel) *PackagesDomain {
-	return &PackagesDomain{kit: k}
+func newPackagesDomain(mgr *packages.Manager) *PackagesDomain {
+	return &PackagesDomain{packages: mgr}
 }
 
 func (d *PackagesDomain) Search(_ context.Context, req messages.PackagesSearchMsg) (*messages.PackagesSearchResp, error) {
-	results, err := d.kit.packages.Search(req.Query, req.Capabilities)
+	results, err := d.packages.Search(req.Query, req.Capabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (d *PackagesDomain) Search(_ context.Context, req messages.PackagesSearchMs
 
 func (d *PackagesDomain) Install(_ context.Context, req messages.PackagesInstallMsg) (*messages.PackagesInstallResp, error) {
 	owner, name := parsePluginName(req.Name)
-	installed, err := d.kit.packages.Install(owner, name, req.Version)
+	installed, err := d.packages.Install(owner, name, req.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (d *PackagesDomain) Install(_ context.Context, req messages.PackagesInstall
 }
 
 func (d *PackagesDomain) Remove(_ context.Context, req messages.PackagesRemoveMsg) (*messages.PackagesRemoveResp, error) {
-	if err := d.kit.packages.Remove(req.Name); err != nil {
+	if err := d.packages.Remove(req.Name); err != nil {
 		return nil, err
 	}
 	return &messages.PackagesRemoveResp{Removed: true}, nil
@@ -55,7 +55,7 @@ func (d *PackagesDomain) Remove(_ context.Context, req messages.PackagesRemoveMs
 
 func (d *PackagesDomain) Update(_ context.Context, req messages.PackagesUpdateMsg) (*messages.PackagesUpdateResp, error) {
 	owner, name := parsePluginName(req.Name)
-	old, newVer, err := d.kit.packages.Update(owner, name)
+	old, newVer, err := d.packages.Update(owner, name)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (d *PackagesDomain) Update(_ context.Context, req messages.PackagesUpdateMs
 }
 
 func (d *PackagesDomain) List(_ context.Context, _ messages.PackagesListMsg) (*messages.PackagesListResp, error) {
-	installed, err := d.kit.packages.ListInstalled()
+	installed, err := d.packages.ListInstalled()
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (d *PackagesDomain) List(_ context.Context, _ messages.PackagesListMsg) (*m
 }
 
 func (d *PackagesDomain) Info(_ context.Context, req messages.PackagesInfoMsg) (*messages.PackagesInfoResp, error) {
-	installed, err := d.kit.packages.GetInstalled(req.Name)
+	installed, err := d.packages.GetInstalled(req.Name)
 	if err != nil {
 		return nil, err
 	}

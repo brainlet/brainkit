@@ -51,6 +51,22 @@ func MetricsMiddleware(m *Metrics) func(message.HandlerFunc) message.HandlerFunc
 	}
 }
 
+// MaxConcurrencyMiddleware limits concurrent handler invocations.
+// When the limit is reached, new messages block until a slot is available.
+func MaxConcurrencyMiddleware(n int) func(message.HandlerFunc) message.HandlerFunc {
+	if n <= 0 {
+		return func(h message.HandlerFunc) message.HandlerFunc { return h }
+	}
+	sem := make(chan struct{}, n)
+	return func(h message.HandlerFunc) message.HandlerFunc {
+		return func(msg *message.Message) ([]*message.Message, error) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			return h(msg)
+		}
+	}
+}
+
 // Metrics tracks message processing statistics (thread-safe).
 type Metrics struct {
 	mu        sync.Mutex

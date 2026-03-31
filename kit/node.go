@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/discovery"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/kit/workflow"
@@ -25,6 +26,7 @@ type Node struct {
 	plugins         *pluginManager
 	pluginState     PluginStateStore
 	pluginLifecycle *PluginLifecycleDomain
+	discovery       discovery.Provider // nil if not configured
 
 	mu      sync.Mutex
 	started bool
@@ -81,6 +83,32 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 
 	node.plugins = newPluginManager(node)
 	kernel.node = node // back-reference for secrets rotation
+	// Wire PluginRestarter for SecretsDomain's rotation restart
+	if kernel.secretsDomain != nil {
+		kernel.secretsDomain.pluginRestarter = node
+	}
+
+	// Wire discovery if configured
+	if cfg.Discovery.Type != "" {
+		var disc discovery.Provider
+		var discErr error
+		switch cfg.Discovery.Type {
+		case "static":
+			disc = discovery.NewStaticFromConfig(cfg.Discovery.StaticPeers)
+		case "multicast":
+			disc, discErr = discovery.NewMulticast(cfg.Discovery.ServiceName)
+			if discErr != nil {
+				log.Printf("[brainkit] warning: multicast discovery: %v", discErr)
+			}
+		}
+		if disc != nil {
+			node.discovery = disc
+			_ = disc.Register(discovery.Peer{
+				Name:      cfg.NodeID,
+				Namespace: kernelCfg.Namespace,
+			})
+		}
+	}
 
 	// Register ALL command bindings (kernel + node-specific) on the Kernel's router
 	kernel.host.RegisterCommands(commandBindingsForNode(node))
@@ -174,6 +202,9 @@ func (n *Node) Shutdown(ctx context.Context) error {
 			firstErr = err
 		}
 	}
+	if n.discovery != nil {
+		collect(n.discovery.Close())
+	}
 	if n.pluginState != nil {
 		collect(n.pluginState.Close())
 	}
@@ -215,6 +246,7 @@ func (n *Node) StartPlugin(ctx context.Context, cfg PluginConfig) error {
 			Config:     cfg.Config,
 			StartOrder: n.plugins.nextStartOrder(),
 			StartedAt:  time.Now(),
+			Role:       cfg.Role,
 		}
 		n.Kernel.config.Store.SaveRunningPlugin(record)
 	}
@@ -296,11 +328,15 @@ func (n *Node) restoreRunningPlugins() {
 			Binary: r.BinaryPath,
 			Env:    r.Env,
 			Config: r.Config,
+			Role:   r.Role,
 		}
 		pluginDefaults(&cfg)
 		if err := n.plugins.startPlugin(cfg, 0); err != nil {
 			log.Printf("[brainkit] warning: failed to restore plugin %s: %v", r.Name, err)
 			continue
+		}
+		if r.Role != "" && n.Kernel.rbac != nil {
+			n.Kernel.rbac.Assign(r.Name, r.Role)
 		}
 		restored++
 	}
@@ -338,6 +374,11 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 					topic := pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
 					resultTopic := topic + ".result"
 
+					// Tracing: span around plugin tool call
+					span := n.Kernel.tracer.StartSpan("plugin.tool:"+tool.Name, callCtx)
+					span.SetAttribute("plugin", manifest.Name)
+					span.SetAttribute("topic", topic)
+
 					correlationID := uuid.NewString()
 					waitCtx, cancel := context.WithCancel(callCtx)
 					defer cancel()
@@ -353,25 +394,32 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 						}
 					})
 					if err != nil {
+						span.End(err)
 						return nil, err
 					}
 					defer stop()
 
 					if _, err := n.Kernel.remote.PublishRaw(messaging.ContextWithCorrelationID(callCtx, correlationID), topic, input); err != nil {
+						span.End(err)
 						return nil, fmt.Errorf("publish plugin tool %s: %w", topic, err)
 					}
 
 					select {
 					case <-callCtx.Done():
+						span.End(callCtx.Err())
 						return nil, callCtx.Err()
 					case msg := <-resultCh:
 						var result messages.ToolCallResp
 						if err := json.Unmarshal(msg.Payload, &result); err != nil {
+							span.End(err)
 							return nil, fmt.Errorf("brainkit: decode plugin tool result: %w", err)
 						}
 						if resultErr := messages.ResultErrorOf(result); resultErr != "" {
-							return nil, fmt.Errorf("%s", resultErr)
+							retErr := fmt.Errorf("%s", resultErr)
+							span.End(retErr)
+							return nil, retErr
 						}
+						span.End(nil)
 						return result.Result, nil
 					}
 				},

@@ -11,13 +11,13 @@ import (
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
-// FSDomain handles sandboxed filesystem operations.
+// FSDomain handles sandboxed filesystem operations. Takes fsRoot, not *Kernel.
 type FSDomain struct {
-	kit *Kernel
+	fsRoot string
 }
 
-func newFSDomain(k *Kernel) *FSDomain {
-	return &FSDomain{kit: k}
+func newFSDomain(fsRoot string) *FSDomain {
+	return &FSDomain{fsRoot: fsRoot}
 }
 
 func (d *FSDomain) Read(_ context.Context, req messages.FsReadMsg) (*messages.FsReadResp, error) {
@@ -119,7 +119,7 @@ func (d *FSDomain) Mkdir(_ context.Context, req messages.FsMkdirMsg) (*messages.
 }
 
 func (d *FSDomain) resolveWorkspacePath(path string) (string, error) {
-	workspace := d.kit.config.FSRoot
+	workspace := d.fsRoot
 	if workspace == "" {
 		return "", ErrNoWorkspace
 	}

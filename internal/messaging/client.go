@@ -69,6 +69,17 @@ func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespac
 	}
 	wmsg.Metadata.Set("correlationId", correlationID)
 
+	// Stamp trace context for cross-service propagation (same as PublishRaw)
+	if traceID := TraceIDFromContext(ctx); traceID != "" {
+		wmsg.Metadata.Set("traceId", traceID)
+	}
+	if spanID := SpanIDFromContext(ctx); spanID != "" {
+		wmsg.Metadata.Set("parentSpanId", spanID)
+	}
+	if sampled := SampledFromContext(ctx); sampled != "" {
+		wmsg.Metadata.Set("traceSampled", sampled)
+	}
+
 	// Stamp replyTo — resolve with publisher's namespace so the handler publishes to the right topic
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
 		wmsg.Metadata.Set("replyTo", c.resolvedTopic(replyTo))
@@ -135,6 +146,9 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 	}
 	if spanID := SpanIDFromContext(ctx); spanID != "" {
 		wmsg.Metadata.Set("parentSpanId", spanID)
+	}
+	if sampled := SampledFromContext(ctx); sampled != "" {
+		wmsg.Metadata.Set("traceSampled", sampled)
 	}
 
 	// Stamp replyTo if present in context (set by sdk.Publish).

@@ -1,6 +1,9 @@
 package kit
 
-import "github.com/brainlet/brainkit/internal/messaging"
+import (
+	"github.com/brainlet/brainkit/internal/discovery"
+	"github.com/brainlet/brainkit/internal/messaging"
+)
 
 // MessagingConfig configures the transport-backed runtime host.
 type MessagingConfig struct {
@@ -32,4 +35,5 @@ type NodeConfig struct {
 	NodeID    string
 	Namespace string
 	Plugins   []PluginConfig
+	Discovery discovery.Config // optional — peer discovery for cross-Kit
 }
