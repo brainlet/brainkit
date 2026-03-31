@@ -12,14 +12,9 @@ internal/embed/compiler/deps/
 /wasmgen
 
 decisions/
-docs/sup*
-C*.md
+internal/docs/*
 
-I*.md
 .s*
 .c*
 .omc
-
-SCOPE.md
-MAP.md
-FEATURES.md
+CLAUDE.md
