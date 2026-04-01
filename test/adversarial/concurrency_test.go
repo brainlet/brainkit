@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -295,6 +296,86 @@ func TestConcurrency_MetricsDuringChurn(t *testing.T) {
 
 	close(stop)
 	wg.Wait()
+}
+
+// E11: Two Kernels sharing same SQLite store file
+func TestConcurrency_SharedSQLiteStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "shared.db")
+
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "kit1", CallerID: "kit1", FSRoot: tmpDir, Store: store1,
+	})
+	require.NoError(t, err)
+	defer k1.Close()
+
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "kit2", CallerID: "kit2", FSRoot: tmpDir, Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+
+	// Both kernels deploy and schedule simultaneously on same store
+	for i := 0; i < 5; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			k1.Deploy(ctx, fmt.Sprintf("k1-%d.ts", n), `output("k1");`)
+		}(i)
+		go func(n int) {
+			defer wg.Done()
+			k2.Deploy(ctx, fmt.Sprintf("k2-%d.ts", n), `output("k2");`)
+		}(i)
+	}
+	wg.Wait()
+
+	// Both kernels should be alive — SQLite WAL handles concurrent access
+	assert.True(t, k1.Alive(ctx))
+	assert.True(t, k2.Alive(ctx))
+}
+
+// E12: Deploy during restorePersistedDeployments
+func TestConcurrency_DeployDuringRestore(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "store.db")
+
+	// Phase 1: Persist several deployments
+	store1, _ := brainkit.NewSQLiteStore(storePath)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		k1.Deploy(context.Background(), fmt.Sprintf("restore-%d.ts", i), fmt.Sprintf(`output("restore-%d");`, i))
+	}
+	k1.Close()
+
+	// Phase 2: Reopen — while persisted deployments are restoring, also deploy new ones
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// Immediately deploy new ones (restore may still be in progress on the JS thread)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		_, err := k2.Deploy(ctx, fmt.Sprintf("new-%d.ts", i), fmt.Sprintf(`output("new-%d");`, i))
+		// May succeed or fail with AlreadyExists — both are fine, no panic
+		_ = err
+	}
+
+	// Kernel should be healthy
+	assert.True(t, k2.Alive(ctx))
 }
 
 // E04: RBAC assign + checkPermission simultaneously
