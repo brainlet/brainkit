@@ -2,6 +2,10 @@ package brainkit
 
 import (
 	"context"
+	"crypto/hmac"
+	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -63,8 +67,9 @@ type Kernel struct {
 	providers *provreg.ProviderRegistry
 	rbac                *rbac.Manager
 	tracer              *tracing.Tracer
-	busRateLimiters     map[string]*rate.Limiter // role → limiter
+	busRateLimiters      map[string]*rate.Limiter // role → limiter
 	wasmCommandAllowlist map[string]bool          // live — protected by mu
+	replyHMACKey         []byte                   // 32-byte key for reply token HMAC; nil if RBAC not configured
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -312,6 +317,43 @@ func (k *Kernel) restoreSchedules() {
 	if restored > 0 {
 		log.Printf("[brainkit] restored %d persisted schedules", restored)
 	}
+}
+
+// --- Reply Tokens ---
+
+// generateReplyToken creates an HMAC token for a specific reply context.
+// Returns "" if RBAC is not configured (no signing needed).
+func (k *Kernel) generateReplyToken(correlationID, replyTo, source string) string {
+	if k.replyHMACKey == nil {
+		return ""
+	}
+	mac := hmac.New(sha256.New, k.replyHMACKey)
+	mac.Write([]byte(correlationID + "\x00" + replyTo + "\x00" + source))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// validateReplyToken checks if a reply token is valid for the given context.
+// Returns nil if valid, error if invalid. Always valid if RBAC is not configured.
+func (k *Kernel) validateReplyToken(correlationID, replyTo, source, token string) error {
+	if k.replyHMACKey == nil {
+		return nil // no RBAC = no token enforcement
+	}
+	if token == "" {
+		return &sdkerrors.ReplyDeniedError{Source: source, ReplyTo: replyTo, CorrelationID: correlationID}
+	}
+	expected := k.generateReplyToken(correlationID, replyTo, source)
+	if !hmac.Equal([]byte(token), []byte(expected)) {
+		return &sdkerrors.ReplyDeniedError{Source: source, ReplyTo: replyTo, CorrelationID: correlationID}
+	}
+	return nil
+}
+
+// emitReplyDenied publishes the bus.reply.denied audit event.
+func (k *Kernel) emitReplyDenied(replyTo, correlationID, source, reason string) {
+	payload, _ := json.Marshal(messages.ReplyDeniedEvent{
+		Source: source, Topic: replyTo, CorrelationID: correlationID, Reason: reason,
+	})
+	k.remote.PublishRaw(context.Background(), "bus.reply.denied", payload)
 }
 
 // handleHandlerFailure is called when a bus handler throws a JS exception.
@@ -710,7 +752,15 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if len(cfg.Roles) > 0 {
 		kernel.rbac = rbac.NewManager(cfg.Roles, cfg.DefaultRole)
 	}
-	// (RBACDomain eliminated — inlined into catalog)
+
+	// Generate reply token HMAC key when RBAC is active
+	if kernel.rbac != nil {
+		key := make([]byte, 32)
+		if _, err := cryptorand.Read(key); err != nil {
+			return nil, fmt.Errorf("brainkit: generate reply HMAC key: %w", err)
+		}
+		kernel.replyHMACKey = key
+	}
 
 	// Initialize bus rate limiters (per-role token buckets)
 	if len(cfg.BusRateLimits) > 0 {
@@ -1331,7 +1381,7 @@ func (k *Kernel) ListDeployedWASM() []ShardDescriptor {
 
 // InjectWASMEvent manually triggers a shard handler.
 func (k *Kernel) InjectWASMEvent(shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
-	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload)
+	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload, nil)
 }
 
 // initStorages starts sqlite bridges for all sqlite storage entries.

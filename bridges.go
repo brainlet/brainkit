@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/rbac"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -344,9 +345,19 @@ func (k *Kernel) registerBridges() {
 			payload := args[1].String()
 			correlationID := args[2].String()
 			done := args[3].ToBool()
+			replyToken := ""
+			if len(args) >= 5 {
+				replyToken = args[4].String()
+			}
 
 			if replyTo == "" {
 				return qctx.NewUndefined()
+			}
+
+			// Validate reply token when RBAC is active
+			if err := k.validateReplyToken(correlationID, replyTo, k.currentDeploymentSource(), replyToken); err != nil {
+				k.emitReplyDenied(replyTo, correlationID, k.currentDeploymentSource(), "invalid reply token")
+				return k.throwBrainkitError(qctx, err)
 			}
 
 			wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
@@ -422,6 +433,21 @@ func (k *Kernel) registerBridges() {
 						msgObj["traceId"] = v
 					}
 				}
+
+				// Generate reply token — ONLY own-mailbox subscribers get tokens.
+				// Wildcard/foreign subscribers get empty token → cannot reply.
+				if msg.Metadata != nil && msg.Metadata["replyTo"] != "" &&
+					subscriberSource != "" && rbac.IsOwnMailbox(subscriberSource, topic) {
+					replyToken := k.generateReplyToken(
+						msg.Metadata["correlationId"],
+						msg.Metadata["replyTo"],
+						subscriberSource,
+					)
+					if replyToken != "" {
+						msgObj["replyToken"] = replyToken
+					}
+				}
+
 				msgJSON, _ := json.Marshal(msgObj)
 				quoted := strconv.Quote(string(msgJSON))
 

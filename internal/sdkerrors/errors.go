@@ -213,3 +213,18 @@ func (e *DecodeError) Error() string           { return fmt.Sprintf("decode %s: 
 func (e *DecodeError) Unwrap() error           { return e.Cause }
 func (e *DecodeError) Code() string            { return "DECODE_ERROR" }
 func (e *DecodeError) Details() map[string]any { return map[string]any{"topic": e.Topic} }
+
+// ReplyDeniedError is returned when a reply is rejected due to invalid/missing token.
+type ReplyDeniedError struct {
+	Source        string
+	ReplyTo       string
+	CorrelationID string
+}
+
+func (e *ReplyDeniedError) Error() string {
+	return fmt.Sprintf("reply denied: %s cannot reply to %s (correlationId: %s)", e.Source, e.ReplyTo, e.CorrelationID)
+}
+func (e *ReplyDeniedError) Code() string { return "REPLY_DENIED" }
+func (e *ReplyDeniedError) Details() map[string]any {
+	return map[string]any{"source": e.Source, "replyTo": e.ReplyTo, "correlationId": e.CorrelationID}
+}

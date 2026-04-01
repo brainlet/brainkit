@@ -148,7 +148,7 @@ func validateShardDescriptor(desc *ShardDescriptor, exports []string) error {
 // Handler signature: (topicPtr: u32, payloadPtr: u32) → void
 // Reply via reply() host function. Async invocation callbacks run after handler returns.
 // (module-protocol §12.1)
-func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
+func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic string, payload json.RawMessage, metadata map[string]string) (*WASMEventResult, error) {
 	// Tracing span for WASM handler invocation
 	span := s.kit.tracer.StartSpan("wasm.handler:"+shardName, ctx)
 	span.SetAttribute("shard", shardName)
@@ -186,6 +186,13 @@ func (s *WASMService) invokeShardHandler(ctx context.Context, shardName, topic s
 	// Register host functions
 	hs := newHostState(s.kit, nil)
 	hs.state = state
+	hs.currentShardName = shardName
+	if metadata != nil {
+		hs.currentCorrelationID = metadata["correlationId"]
+		if metadata["replyTo"] != "" {
+			hs.currentReplyToken = s.kit.generateReplyToken(metadata["correlationId"], metadata["replyTo"], shardName)
+		}
+	}
 
 	// Set up async callback context for cancellation
 	invokeCtx, invokeCancel := context.WithCancel(ctx)
@@ -439,9 +446,19 @@ func (s *WASMService) bindShardSubscriptions(shardName string, shard *deployedSh
 			return fmt.Errorf("shard %q uses unsupported wildcard subscription %q on transport-backed runtime", shardName, topic)
 		}
 		cancel, err := s.kit.subscribe(topic, func(msg messages.Message) {
-			if _, invokeErr := s.invokeShardHandler(context.Background(), shardName, topic, json.RawMessage(msg.Payload)); invokeErr != nil {
+			// Generate reply token for the shard (own-mailbox concept for WASM shards)
+			replyToken := ""
+			correlationID := ""
+			if msg.Metadata != nil {
+				correlationID = msg.Metadata["correlationId"]
+				if msg.Metadata["replyTo"] != "" {
+					replyToken = s.kit.generateReplyToken(correlationID, msg.Metadata["replyTo"], shardName)
+				}
+			}
+			if _, invokeErr := s.invokeShardHandler(context.Background(), shardName, topic, json.RawMessage(msg.Payload), msg.Metadata); invokeErr != nil {
 				log.Printf("[brainkit] shard %q handler for %s failed: %v", shardName, topic, invokeErr)
 			}
+			_ = replyToken // used via metadata passed to invokeShardHandler
 		})
 		if err != nil {
 			s.cancelShardSubscriptions(shard)

@@ -32,9 +32,12 @@ type hostState struct {
 	shardTools    map[string]string // tool name → exported func name
 
 	// Reply mechanism
-	currentReplyTo string // replyTo topic for the inbound message being handled
-	replyPayload   string // captured payload from reply() call
-	hasReplied     bool
+	currentReplyTo       string // replyTo topic for the inbound message being handled
+	currentCorrelationID string // correlationId from inbound message
+	currentReplyToken    string // reply token from subscriber delivery
+	currentShardName     string // shard name for token validation
+	replyPayload         string // captured payload from reply() call
+	hasReplied           bool
 
 	// Async callback tracking
 	pendingInvokes sync.WaitGroup
@@ -361,6 +364,13 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 			hs.hasReplied = true
 
 			if hs.currentReplyTo != "" {
+				// Validate reply token when RBAC is active
+				if err := hs.kit.validateReplyToken(
+					hs.currentCorrelationID, hs.currentReplyTo, hs.currentShardName, hs.currentReplyToken,
+				); err != nil {
+					hs.kit.emitReplyDenied(hs.currentReplyTo, hs.currentCorrelationID, hs.currentShardName, "wasm: invalid reply token")
+					return
+				}
 				if err := hs.kit.publish(ctx, hs.currentReplyTo, json.RawMessage(payload)); err != nil {
 					log.Printf("[wasm:reply] publish to %s failed: %v", hs.currentReplyTo, err)
 				}

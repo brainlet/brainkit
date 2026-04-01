@@ -83,3 +83,13 @@ type PermissionDeniedEvent struct {
 }
 
 func (PermissionDeniedEvent) BusTopic() string { return "bus.permission.denied" }
+
+// ReplyDeniedEvent is emitted when a reply is rejected due to invalid/missing token.
+type ReplyDeniedEvent struct {
+	Source        string `json:"source"`
+	Topic         string `json:"topic"`
+	CorrelationID string `json:"correlationId"`
+	Reason        string `json:"reason"`
+}
+
+func (ReplyDeniedEvent) BusTopic() string { return "bus.reply.denied" }

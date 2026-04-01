@@ -72,3 +72,6 @@ type CycleDetectedError = sdkerrors.CycleDetectedError
 
 // DecodeError is returned when a message payload can't be decoded.
 type DecodeError = sdkerrors.DecodeError
+
+// ReplyDeniedError is returned when a bus reply is rejected due to invalid/missing token.
+type ReplyDeniedError = sdkerrors.ReplyDeniedError
