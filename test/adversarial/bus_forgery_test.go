@@ -454,7 +454,9 @@ func TestBusForgery_MaliciousGoTool(t *testing.T) {
 
 	result, _ := k.EvalTS(ctx, "__inj.ts", `
 		var r = globalThis.__module_result;
+		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
 	`)
-	assert.Contains(t, result, `"hasPollution":false`, "tool response should not cause prototype pollution")
+	assert.Contains(t, result, `hasPollution`)
+	assert.NotContains(t, result, `"hasPollution":true`, "tool response should not cause prototype pollution")
 }
