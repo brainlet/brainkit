@@ -49,6 +49,11 @@ type KitStore interface {
 	LoadRunningPlugins() ([]RunningPluginRecord, error)
 	DeleteRunningPlugin(name string) error
 
+	// Plugin KV state (per-plugin key-value storage)
+	SavePluginState(pluginID, key, value string) error
+	LoadPluginState(pluginID, key string) (string, error)
+	DeletePluginState(pluginID string) error
+
 	// Lifecycle
 	Close() error
 }
@@ -198,6 +203,14 @@ CREATE TABLE IF NOT EXISTS workflow_journal (
     completed_at TEXT,
     error TEXT,
     PRIMARY KEY (workflow_id, run_id, step_index)
+);
+
+CREATE TABLE IF NOT EXISTS plugin_state (
+    plugin_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (plugin_id, key)
 );
 `
 
@@ -559,5 +572,36 @@ func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
 
 func (s *SQLiteStore) DeleteRunningPlugin(name string) error {
 	_, err := s.db.Exec("DELETE FROM running_plugins WHERE name = ?", name)
+	return err
+}
+
+// ---------------------------------------------------------------------------
+// Plugin KV State
+// ---------------------------------------------------------------------------
+
+func (s *SQLiteStore) SavePluginState(pluginID, key, value string) error {
+	now := time.Now().Format(time.RFC3339)
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO plugin_state (plugin_id, key, value, updated_at)
+		 VALUES (?, ?, ?, ?)`,
+		pluginID, key, value, now,
+	)
+	return err
+}
+
+func (s *SQLiteStore) LoadPluginState(pluginID, key string) (string, error) {
+	var value string
+	err := s.db.QueryRow(
+		"SELECT value FROM plugin_state WHERE plugin_id = ? AND key = ?",
+		pluginID, key,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return value, err
+}
+
+func (s *SQLiteStore) DeletePluginState(pluginID string) error {
+	_, err := s.db.Exec("DELETE FROM plugin_state WHERE plugin_id = ?", pluginID)
 	return err
 }

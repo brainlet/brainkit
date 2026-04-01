@@ -101,17 +101,32 @@ func (s *natsPluginStateStore) Close() error {
 }
 
 func newPluginStateStore(cfg NodeConfig) (PluginStateStore, error) {
+	// If KitStore is available, use it for persistent plugin state (survives restarts).
+	if cfg.Kernel.Store != nil {
+		return &kitStorePluginState{store: cfg.Kernel.Store}, nil
+	}
 	switch cfg.Messaging.Transport {
-	case "", "memory":
-		return newMemoryPluginStateStore(), nil
 	case "nats":
 		return newNATSPluginStateStore(cfg)
 	default:
-		// Non-NATS transports (AMQP, Redis, Postgres, SQLite) use in-memory plugin state.
-		// Plugin state is optional — plugins work without persistence across restarts.
 		return newMemoryPluginStateStore(), nil
 	}
 }
+
+// kitStorePluginState wraps KitStore as a PluginStateStore.
+type kitStorePluginState struct {
+	store KitStore
+}
+
+func (s *kitStorePluginState) Get(_ context.Context, pluginID, key string) (string, error) {
+	return s.store.LoadPluginState(pluginID, key)
+}
+
+func (s *kitStorePluginState) Set(_ context.Context, pluginID, key, value string) error {
+	return s.store.SavePluginState(pluginID, key, value)
+}
+
+func (s *kitStorePluginState) Close() error { return nil }
 
 func pluginStateKey(pluginID, key string) string {
 	if pluginID == "" {
