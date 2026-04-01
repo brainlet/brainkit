@@ -14,17 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// crossKitBackends returns backends verified for cross-Kit operation.
-// Currently only NATS is verified. AMQP/Redis/Postgres cross-Kit publish
-// times out — likely needs exchange/stream/table pre-provisioning for
-// cross-namespace routing. These are real findings, not test bugs.
-// TODO: Investigate AMQP/Redis/Postgres cross-namespace support.
+// crossKitBackends returns backends available for cross-Kit tests.
+// FIXED (bug #5): all backends now work — the root cause was missing replyTo
+// pre-declaration in PublishRawToNamespace (AMQP fanout discarded responses).
 func crossKitBackends(t *testing.T) []string {
 	t.Helper()
 	if !testutil.PodmanAvailable() {
-		t.Skip("cross-Kit tests need Podman (NATS)")
+		t.Skip("cross-Kit tests need Podman")
 	}
-	return []string{"nats"}
+	return []string{"nats", "amqp", "redis", "sql-postgres"}
 }
 
 func messagingCfgForBackend(t *testing.T, backend string) brainkit.MessagingConfig {

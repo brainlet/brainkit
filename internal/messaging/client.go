@@ -82,7 +82,16 @@ func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespac
 
 	// Stamp replyTo — resolve with publisher's namespace so the handler publishes to the right topic
 	if replyTo := ReplyToFromContext(ctx); replyTo != "" {
-		wmsg.Metadata.Set("replyTo", c.resolvedTopic(replyTo))
+		resolvedReplyTo := c.resolvedTopic(replyTo)
+		wmsg.Metadata.Set("replyTo", resolvedReplyTo)
+
+		// Pre-declare the replyTo queue/exchange BEFORE publishing (same as PublishRaw).
+		// Without this, AMQP fanout exchanges discard the response because no queue is bound.
+		// This was the root cause of cross-Kit failures on AMQP/Redis/Postgres (bug #5).
+		preCtx, preCancel := context.WithCancel(ctx)
+		_, subErr := c.sub.Subscribe(preCtx, resolvedReplyTo)
+		preCancel()
+		_ = subErr
 	}
 
 	if err := c.pub.Publish(c.resolvedTopicForNamespace(targetNamespace, logicalTopic), wmsg); err != nil {

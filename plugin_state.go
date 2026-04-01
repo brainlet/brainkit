@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/nats-io/nats.go"
 )
 
@@ -108,7 +107,9 @@ func newPluginStateStore(cfg NodeConfig) (PluginStateStore, error) {
 	case "nats":
 		return newNATSPluginStateStore(cfg)
 	default:
-		return nil, &sdk.ValidationError{Field: "transport", Message: fmt.Sprintf("unsupported plugin state transport: %s", cfg.Messaging.Transport)}
+		// Non-NATS transports (AMQP, Redis, Postgres, SQLite) use in-memory plugin state.
+		// Plugin state is optional — plugins work without persistence across restarts.
+		return newMemoryPluginStateStore(), nil
 	}
 }
 
