@@ -67,7 +67,9 @@ func TestGatewayErrors_NotFound(t *testing.T) {
 	gw.Handle("GET", "/not-found-test", "ts.gw-404.call-ghost")
 
 	status, body := gwGet(t, gw, "/not-found-test")
-	assert.Equal(t, 500, status) // handler returns error in response body, gateway sees it
+	// Handler catches NOT_FOUND from tools.call, replies with {code: "NOT_FOUND"}.
+	// Gateway mapHTTPStatus maps NOT_FOUND → 404 (correct behavior after SES .code fix).
+	assert.Equal(t, 404, status)
 	assert.Contains(t, body, "not found")
 }
 
