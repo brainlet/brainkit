@@ -420,7 +420,18 @@ func (b *Bridge) ProcessScheduledJobs() {
 		return // Await loop is processing jobs already
 	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	// Set depth + jsGorID so that EvalOnJSThread from tool executor goroutines
+	// takes the Schedule path (Case 2) instead of trying to acquire b.mu (Case 0).
+	// Without this, a bus handler calling a JS-registered tool deadlocks:
+	// ProcessScheduledJobs holds mu → handler Awaits → tool goroutine → EvalOnJSThread
+	// → EvalAsync → mu.Lock() → DEADLOCK.
+	atomic.StoreInt64(&b.jsGorID, goid())
+	atomic.AddInt32(&b.depth, 1)
+	defer func() {
+		atomic.AddInt32(&b.depth, -1)
+		atomic.StoreInt64(&b.jsGorID, 0)
+		b.mu.Unlock()
+	}()
 	if b.ctx == nil {
 		return
 	}
