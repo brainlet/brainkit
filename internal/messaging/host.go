@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -108,6 +109,7 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 // SerializeBrainkitError converts an error to a JSON response with code and details.
 // If the error implements BrainkitError (Code() + Details()), those are included.
 // Otherwise, falls back to INTERNAL_ERROR with the error message.
+// Error messages are sanitized to remove absolute paths and credential patterns.
 func SerializeBrainkitError(err error) []byte {
 	type brainkitError interface {
 		Code() string
@@ -115,17 +117,43 @@ func SerializeBrainkitError(err error) []byte {
 	}
 	if bk, ok := err.(brainkitError); ok {
 		payload, _ := json.Marshal(map[string]any{
-			"error":   err.Error(),
+			"error":   sanitizeErrorMessage(err.Error()),
 			"code":    bk.Code(),
 			"details": bk.Details(),
 		})
 		return payload
 	}
 	payload, _ := json.Marshal(map[string]any{
-		"error": err.Error(),
+		"error": sanitizeErrorMessage(err.Error()),
 		"code":  "INTERNAL_ERROR",
 	})
 	return payload
+}
+
+// absolutePathRe matches absolute filesystem paths (/foo/bar/baz or C:\foo\bar).
+var absolutePathRe = regexp.MustCompile(`(?:/[a-zA-Z0-9_.~-]+){3,}`)
+
+// connectionStringRe matches connection strings with credentials (postgres://user:pass@host, amqp://...).
+var connectionStringRe = regexp.MustCompile(`\w+://[^\s]+:[^\s]+@[^\s]+`)
+
+// sanitizeErrorMessage removes sensitive information from error messages
+// before they're returned to callers via bus or HTTP.
+// Strips: absolute filesystem paths, connection strings with credentials.
+func sanitizeErrorMessage(msg string) string {
+	// Replace absolute paths (3+ segments) with just the last component
+	msg = absolutePathRe.ReplaceAllStringFunc(msg, func(path string) string {
+		parts := strings.Split(path, "/")
+		return "<path>/" + parts[len(parts)-1]
+	})
+	// Redact connection strings (postgres://user:pass@host → postgres://****@****)
+	msg = connectionStringRe.ReplaceAllStringFunc(msg, func(cs string) string {
+		idx := strings.Index(cs, "://")
+		if idx < 0 {
+			return "****"
+		}
+		return cs[:idx] + "://****"
+	})
+	return msg
 }
 
 func rawHandlerName(name, topic string) string {

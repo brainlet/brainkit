@@ -924,6 +924,17 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.restoreSchedules()
 	}
 
+	// Wire WASM shard bus subscriptions for standalone Kernel.
+	// Node.Start() does this separately after transport provisioning.
+	// Without this, shard bus.on handlers don't fire on standalone Kernel (bug #9).
+	if !cfg.DeferRouterStart && kernel.wasm != nil {
+		if err := kernel.wasm.restoreTransportSubscriptions(); err != nil {
+			InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
+				Operation: "RestoreShardSubscriptions", Cause: err,
+			}, ErrorContext{Operation: "RestoreShardSubscriptions", Component: "kernel"})
+		}
+	}
+
 	kernel.startedAt = time.Now()
 
 	return kernel, nil

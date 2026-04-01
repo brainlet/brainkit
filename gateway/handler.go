@@ -50,7 +50,12 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		w.Write(msg.Payload)
+		// Sanitize error responses before sending to HTTP clients
+		if status >= 400 {
+			w.Write(sanitizeErrorPayload(msg.Payload))
+		} else {
+			w.Write(msg.Payload)
+		}
 	case <-ctx.Done():
 		if r.Context().Err() != nil {
 			return
