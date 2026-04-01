@@ -1,0 +1,1 @@
+{"toolCall":"brainkit_request tools.call: tool \"absolutely-does-not-exist\" not found","hasReplyTo":"yes","emit":"ok"}
