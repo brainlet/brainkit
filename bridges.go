@@ -73,8 +73,26 @@ func (k *Kernel) registerBridges() {
 						if goCtx.Err() != nil {
 							return
 						}
+						// Extract BrainkitError code if available
+						var bkErr sdkerrors.BrainkitError
+						errCode := "INTERNAL_ERROR"
+						errDetailsJSON := "{}"
+						if errors.As(err, &bkErr) {
+							errCode = bkErr.Code()
+							if d := bkErr.Details(); d != nil {
+								if b, e := json.Marshal(d); e == nil {
+									errDetailsJSON = string(b)
+								}
+							}
+						}
+						errMsg := fmt.Sprintf("brainkit_request %s: %s", topic, err.Error())
 						qctx.Schedule(func(qctx *quickjs.Context) {
-							errVal := qctx.NewError(fmt.Errorf("brainkit_request %s: %w", topic, err))
+							script := fmt.Sprintf(`(typeof BrainkitError === "function") ? new BrainkitError(%q, %q, JSON.parse(%q)) : new Error(%q)`,
+								errMsg, errCode, errDetailsJSON, errMsg)
+							errVal := qctx.Eval(script)
+							if errVal.IsException() {
+								errVal = qctx.NewError(fmt.Errorf("%s", errMsg))
+							}
 							defer errVal.Free()
 							reject(errVal)
 						})
@@ -723,9 +741,10 @@ func (k *Kernel) registerBridges() {
 	qctx.Globals().Set("__brainkit_sandbox_callerID", qctx.NewString(k.callerID))
 }
 
-// throwBrainkitError constructs a structured JS error with .code and .details properties.
-// If err implements BrainkitError, code and details are populated from it.
-// Otherwise, code defaults to "INTERNAL_ERROR" with the error message.
+// throwBrainkitError constructs a JS error and throws it.
+// Encodes code and details INTO the error message string as "[CODE] message {{details_json}}".
+// The rewrapErrors wrappers in kit_runtime.js parse this back out when the error
+// crosses the SES Compartment boundary (where custom properties like .code are stripped).
 func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.Value {
 	var bkErr sdkerrors.BrainkitError
 	code := "INTERNAL_ERROR"
@@ -741,12 +760,19 @@ func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.V
 		}
 	}
 
+	// Encode code + details in message: "[PERMISSION_DENIED] message {{json}}"
+	// rewrapErrors in kit_runtime.js parses this format back into BrainkitError.
+	encodedMsg := "[" + code + "] " + msg
+	if detailsJSON != "{}" {
+		encodedMsg += " {{" + detailsJSON + "}}"
+	}
+
 	script := fmt.Sprintf(`(function() {
 		var e = new Error(%q);
 		e.code = %q;
-		e.details = JSON.parse(%q);
+		try { e.details = JSON.parse(%q); } catch(x) {}
 		return e;
-	})()`, msg, code, detailsJSON)
+	})()`, encodedMsg, code, detailsJSON)
 
 	errVal := qctx.Eval(script)
 	if errVal.IsException() {

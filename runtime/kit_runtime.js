@@ -95,9 +95,65 @@
       get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
     };
 
+    // Parse "[CODE] message {{details_json}}" format from error messages.
+    // This format is set by throwBrainkitError in bridges.go to survive
+    // QuickJS error wrapping and SES Compartment boundaries.
+    var _BKE = globalThis.BrainkitError;
+    var _codeRe = /^\[([A-Z_]+)\]\s/;
+    var _detailsRe = /\s\{\{(.+)\}\}$/;
+    function _parseError(e) {
+      var msg = e && e.message ? e.message : String(e);
+      var codeMatch = _codeRe.exec(msg);
+      if (!codeMatch) return null;
+      var code = codeMatch[1];
+      var cleanMsg = msg.replace(_codeRe, "");
+      var details = {};
+      var detailsMatch = _detailsRe.exec(cleanMsg);
+      if (detailsMatch) {
+        try { details = JSON.parse(detailsMatch[1]); } catch(x) {}
+        cleanMsg = cleanMsg.replace(_detailsRe, "");
+      }
+      return { message: cleanMsg, code: code, details: details };
+    }
+
+    function rewrapErrors(fn) {
+      return function() {
+        try { return fn.apply(this, arguments); }
+        catch(e) {
+          var parsed = _parseError(e);
+          if (parsed) throw new _BKE(parsed.message, parsed.code, parsed.details);
+          if (e && e.code) throw new _BKE(e.message, e.code, e.details || {});
+          throw e;
+        }
+      };
+    }
+    function rewrapErrorsAsync(fn) {
+      return async function() {
+        try { return await fn.apply(this, arguments); }
+        catch(e) {
+          var parsed = _parseError(e);
+          if (parsed) throw new _BKE(parsed.message, parsed.code, parsed.details);
+          if (e && e.code) throw new _BKE(e.message, e.code, e.details || {});
+          throw e;
+        }
+      };
+    }
+
     var endowments = {
+      // Error class — must be in endowments so Compartment code can catch with instanceof
+      BrainkitError: _BKE,
       // brainkit infrastructure ("kit" module)
-      bus: scopedBus,
+      bus: {
+        publish: rewrapErrors(scopedBus.publish),
+        emit: rewrapErrors(scopedBus.emit),
+        subscribe: scopedBus.subscribe,
+        on: scopedBus.on,
+        unsubscribe: scopedBus.unsubscribe,
+        sendTo: rewrapErrors(scopedBus.sendTo),
+        sendToShard: rewrapErrors(scopedBus.sendToShard),
+        schedule: rewrapErrors(scopedBus.schedule),
+        unschedule: scopedBus.unschedule,
+      },
       kit: scopedKit,
       model: _kitObj.model,
       embeddingModel: _kitObj.embeddingModel,
@@ -105,7 +161,11 @@
       storage: _kitObj.storage,
       vectorStore: _kitObj.vectorStore,
       registry: _kitObj.registry,
-      tools: _kitObj.tools,
+      tools: {
+        call: rewrapErrorsAsync(_kitObj.tools.call),
+        list: rewrapErrors(_kitObj.tools.list),
+        resolve: rewrapErrors(_kitObj.tools.resolve),
+      },
       tool: function(name) {
         var info = _kitObj.tools.resolve(name);
         if (!info) throw new Error("tool '" + name + "' not found");
@@ -121,7 +181,9 @@
       fs: _kitObj.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,
-      secrets: _kitObj.secrets,
+      secrets: {
+        get: rewrapErrors(_kitObj.secrets.get),
+      },
       generateWithApproval: _kitObj.generateWithApproval,
       // AI SDK
       generateText: embed.generateText,
