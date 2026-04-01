@@ -61,9 +61,10 @@ type Kernel struct {
 	hostFunctions  *workflow.HostFunctionRegistry
 	mcp            *mcppkg.MCPManager
 	providers *provreg.ProviderRegistry
-	rbac             *rbac.Manager
-	tracer           *tracing.Tracer
-	busRateLimiters  map[string]*rate.Limiter // role → limiter
+	rbac                *rbac.Manager
+	tracer              *tracing.Tracer
+	busRateLimiters     map[string]*rate.Limiter // role → limiter
+	wasmCommandAllowlist map[string]bool          // live — protected by mu
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -230,6 +231,12 @@ func (k *Kernel) removeSchedule(id string) {
 
 // Schedule creates a new scheduled bus message.
 func (k *Kernel) Schedule(ctx context.Context, cfg ScheduleConfig) (string, error) {
+	// Block scheduling to command topics — scheduled messages fire from Go
+	// with no RBAC context, so they'd bypass all permission checks.
+	if commandCatalog().HasCommand(cfg.Topic) {
+		return "", &sdkerrors.ValidationError{Field: "topic", Message: cfg.Topic + " is a command topic; schedules cannot target commands"}
+	}
+
 	duration, oneTime, err := parseScheduleExpression(cfg.Expression)
 	if err != nil {
 		return "", err
@@ -508,15 +515,25 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		sharedTools = toolreg.New()
 	}
 
+	wasmAllowlist := cfg.WASMCommandAllowlist
+	if wasmAllowlist == nil {
+		// Copy default so runtime mutations don't modify the package-level var
+		wasmAllowlist = make(map[string]bool, len(DefaultWASMCommandAllowlist))
+		for k, v := range DefaultWASMCommandAllowlist {
+			wasmAllowlist[k] = v
+		}
+	}
+
 	kernel := &Kernel{
-		Tools:       sharedTools,
-		config:      cfg,
-		namespace:   cfg.Namespace,
-		callerID:    cfg.CallerID,
-		storages:    make(map[string]*libsql.Server),
-		deployments: make(map[string]*deploymentInfo),
-		bridgeSubs:  make(map[string]func()),
-		schedules:   make(map[string]*scheduleEntry),
+		Tools:                sharedTools,
+		config:               cfg,
+		namespace:            cfg.Namespace,
+		callerID:             cfg.CallerID,
+		storages:             make(map[string]*libsql.Server),
+		deployments:          make(map[string]*deploymentInfo),
+		bridgeSubs:           make(map[string]func()),
+		schedules:            make(map[string]*scheduleEntry),
+		wasmCommandAllowlist: wasmAllowlist,
 	}
 	providers := make(map[string]agentembed.ProviderConfig)
 	for name, reg := range cfg.AIProviders {

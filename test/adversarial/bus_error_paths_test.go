@@ -26,11 +26,7 @@ func TestBusErrors_PublishToCommandTopic(t *testing.T) {
 	assert.NotEqual(t, "none", result, "publishing to command topic should error")
 }
 
-// FINDING #8: bus.emit doesn't validate against command topics.
-// bus_send checks commandCatalog().HasCommand() but bus_emit does NOT.
-// Emitting to "tools.call" goes through to the transport and the host handler
-// processes it as a tool call with empty name, logging an error.
-// TODO: Add command topic check to bus_emit bridge, same as bus_send.
+// FIXED (bug #8): bus.emit now validates against command topics, same as bus_send.
 func TestBusErrors_EmitToCommandTopic(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	result, err := tk.EvalTS(context.Background(), "__emit_cmd.ts", `
@@ -40,8 +36,7 @@ func TestBusErrors_EmitToCommandTopic(t *testing.T) {
 		return caught;
 	`)
 	require.NoError(t, err)
-	// FINDING: bus.emit accepts command topics — should be blocked like bus_send
-	assert.Equal(t, "none", result, "bus.emit currently accepts command topics (finding #8)")
+	assert.Equal(t, "error", result, "bus.emit should block command topics (bug #8 fixed)")
 }
 
 func TestBusErrors_SubscribeReceivesMetadata(t *testing.T) {

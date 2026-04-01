@@ -214,6 +214,11 @@
       _resourceRegistry.register(type, name, name, ref, cleanupFn);
     },
     unregister: function(type, name) {
+      // Only allow unregistering resources owned by the current deployment
+      var entry = _resourceRegistry.get(type, name);
+      if (entry && entry.source !== globalThis.__kit_currentSource && globalThis.__kit_currentSource !== "") {
+        throw new Error("kit.unregister: cannot unregister " + type + " '" + name + "' owned by " + entry.source);
+      }
       _resourceRegistry.unregister(type, name);
     },
     list: function(type) {

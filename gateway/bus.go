@@ -51,11 +51,25 @@ func (gw *Gateway) subscribeBusCommands() {
 			return
 		}
 		removed := 0
+		callerSource := msg.CallerID
 		if req.Owner != "" {
-			removed = gw.routes.removeByOwner(req.Owner)
+			// Only allow removing routes you own (or if you're the kernel callerID)
+			if req.Owner == callerSource || callerSource == "" {
+				removed = gw.routes.removeByOwner(req.Owner)
+			} else {
+				gw.replyError(msg, "cannot remove routes owned by "+req.Owner)
+				return
+			}
 		} else if req.Method != "" && req.Path != "" {
-			if gw.routes.remove(req.Method, req.Path) {
-				removed = 1
+			// Look up route owner — only allow removal if caller owns it
+			matched, _ := gw.routes.match(req.Method, req.Path)
+			if matched != nil && (matched.Owner == callerSource || matched.Owner == "" || callerSource == "") {
+				if gw.routes.remove(req.Method, req.Path) {
+					removed = 1
+				}
+			} else if matched != nil {
+				gw.replyError(msg, "cannot remove route owned by "+matched.Owner)
+				return
 			}
 		}
 		log.Printf("[gateway] routes removed via bus: %d", removed)

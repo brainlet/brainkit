@@ -149,14 +149,9 @@ func TestRBACMatrix_BusSubscribe(t *testing.T) {
 	type expectation struct {
 		admin, service, gateway, observer bool
 	}
-	// FINDING: *.reply.* pattern in service/gateway roles doesn't match
-	// topics like "tools.call.reply.abc123" because the matcher treats
-	// leading * as literal. Only trailing * is a glob.
-	// The pattern actually matches nothing — service/gateway can't subscribe
-	// to reply topics unless they use their own mailbox.
-	// TODO: Fix matcher to support * at any position, or fix the preset patterns.
+	// FIXED (bug #2): *.reply.* now matches — service/gateway CAN subscribe to reply topics.
 	expected := map[string]expectation{
-		"tools.call.reply.abc123": {true, false, false, true}, // FINDING: service/gateway CAN'T match *.reply.*
+		"tools.call.reply.abc123": {true, true, true, true},   // *.reply.* now works for service/gateway
 		"events.test":             {true, false, false, true},  // observer=* matches
 		"incoming.user.msg":       {true, false, false, true},  // observer=* matches
 		"random.unknown.topic":    {true, false, false, true},  // observer=* matches

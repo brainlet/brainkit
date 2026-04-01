@@ -57,6 +57,50 @@ type WasmDescribeMsg struct {
 
 func (WasmDescribeMsg) BusTopic() string { return "wasm.describe" }
 
+// ── WASM Command Allowlist ──
+
+type WasmAllowlistGetMsg struct{}
+
+func (WasmAllowlistGetMsg) BusTopic() string { return "wasm.allowlist.get" }
+
+type WasmAllowlistGetResp struct {
+	ResultMeta
+	Allowlist map[string]bool `json:"allowlist"`
+}
+
+type WasmAllowlistSetMsg struct {
+	Allowlist map[string]bool `json:"allowlist"`
+}
+
+func (WasmAllowlistSetMsg) BusTopic() string { return "wasm.allowlist.set" }
+
+type WasmAllowlistSetResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+type WasmAllowlistAddMsg struct {
+	Command string `json:"command"`
+}
+
+func (WasmAllowlistAddMsg) BusTopic() string { return "wasm.allowlist.add" }
+
+type WasmAllowlistAddResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
+type WasmAllowlistRemoveMsg struct {
+	Command string `json:"command"`
+}
+
+func (WasmAllowlistRemoveMsg) BusTopic() string { return "wasm.allowlist.remove" }
+
+type WasmAllowlistRemoveResp struct {
+	ResultMeta
+	OK bool `json:"ok"`
+}
+
 // ── Responses ──
 
 type WasmCompileResp struct {

@@ -289,6 +289,11 @@ func (k *Kernel) registerBridges() {
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
+			// Block command topics — same check as bus_send (fixes bug #8)
+			if commandCatalog().HasCommand(topic) {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
+			}
+
 			// RBAC enforcement
 			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "emit"); err != nil {
 				return k.throwBrainkitError(qctx, err)
@@ -487,7 +492,7 @@ func (k *Kernel) registerBridges() {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
-						"config": reg.Config,
+						"config": redactCredentials(reg.Config),
 					})
 				}
 			case "vectorStore":
@@ -495,7 +500,7 @@ func (k *Kernel) registerBridges() {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
-						"config": reg.Config,
+						"config": redactCredentials(reg.Config),
 					})
 				}
 			case "storage":
@@ -503,7 +508,7 @@ func (k *Kernel) registerBridges() {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
-						"config": reg.Config,
+						"config": redactCredentials(reg.Config),
 					})
 				}
 			}
@@ -740,4 +745,34 @@ func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.V
 		return qctx.ThrowError(err)
 	}
 	return qctx.Throw(errVal)
+}
+
+// redactCredentials strips sensitive fields (API keys, tokens, passwords, secrets)
+// from a config struct before returning it to JS. Marshal → strip → unmarshal.
+func redactCredentials(config any) any {
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return config
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return config
+	}
+	sensitiveKeys := map[string]bool{
+		"APIKey": true, "apiKey": true, "api_key": true,
+		"AuthToken": true, "authToken": true, "auth_token": true,
+		"AccessKey": true, "accessKey": true, "access_key": true,
+		"SecretKey": true, "secretKey": true, "secret_key": true,
+		"Password": true, "password": true,
+		"Token": true, "token": true,
+		"AdminKey": true, "adminKey": true,
+	}
+	for k := range m {
+		if sensitiveKeys[k] {
+			if s, ok := m[k].(string); ok && len(s) > 0 {
+				m[k] = "****"
+			}
+		}
+	}
+	return m
 }

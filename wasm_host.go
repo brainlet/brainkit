@@ -264,8 +264,14 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 					invokeCtx = ctx
 				}
 
-				// First try the catalog (for infrastructure commands like tools.call, fs.read)
+				// Command topics: only allow safe read-only commands from WASM.
+				// Dangerous commands (kit.deploy, secrets.set, rbac.assign, etc.) are blocked.
 				if spec, ok := commandCatalog().Lookup(topic); ok && spec.invokeKernel != nil {
+					if !hs.kit.wasmAllowedCommand(topic) {
+						errPayload, _ := json.Marshal(map[string]string{"error": "wasm: command " + topic + " not allowed from WASM modules"})
+						hs.callExportedFunc(callbackName, topic+".result", string(errPayload))
+						return
+					}
 					resultPayload, err := invoker.Invoke(invokeCtx, topic, json.RawMessage(payload))
 					resultTopic := topic + ".result"
 					if err != nil {
@@ -406,4 +412,45 @@ func (hs *hostState) registerHostFunctions(ctx context.Context, rt wazero.Runtim
 		}).Export("set_mode").
 		Instantiate(ctx)
 	return err
+}
+
+// wasmAllowedCommand returns true if a command topic is allowed for WASM modules.
+// Reads from the live allowlist (protected by k.mu), not the static config.
+func (k *Kernel) wasmAllowedCommand(topic string) bool {
+	k.mu.Lock()
+	allowed := k.wasmCommandAllowlist[topic]
+	k.mu.Unlock()
+	return allowed
+}
+
+// WASMAllowlistAdd adds a command topic to the WASM allowlist at runtime.
+func (k *Kernel) WASMAllowlistAdd(topic string) {
+	k.mu.Lock()
+	k.wasmCommandAllowlist[topic] = true
+	k.mu.Unlock()
+}
+
+// WASMAllowlistRemove removes a command topic from the WASM allowlist at runtime.
+func (k *Kernel) WASMAllowlistRemove(topic string) {
+	k.mu.Lock()
+	delete(k.wasmCommandAllowlist, topic)
+	k.mu.Unlock()
+}
+
+// WASMAllowlistSet replaces the entire WASM allowlist at runtime.
+func (k *Kernel) WASMAllowlistSet(allowlist map[string]bool) {
+	k.mu.Lock()
+	k.wasmCommandAllowlist = allowlist
+	k.mu.Unlock()
+}
+
+// WASMAllowlistGet returns a copy of the current WASM command allowlist.
+func (k *Kernel) WASMAllowlistGet() map[string]bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	cp := make(map[string]bool, len(k.wasmCommandAllowlist))
+	for k, v := range k.wasmCommandAllowlist {
+		cp[k] = v
+	}
+	return cp
 }

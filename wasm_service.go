@@ -45,10 +45,11 @@ type WASMService struct {
 	kit      *Kernel
 	compiler *asembed.Compiler
 
-	mu      sync.Mutex
-	modules map[string]*WASMModule    // name → module
-	shards  map[string]*deployedShard // name → active shard
-	counter int                       // for auto-naming unnamed modules
+	mu        sync.Mutex
+	compileMu sync.Mutex // serializes Compile() calls — Binaryen is NOT thread-safe
+	modules   map[string]*WASMModule    // name → module
+	shards    map[string]*deployedShard // name → active shard
+	counter   int                       // for auto-naming unnamed modules
 }
 
 func newWASMService(kit *Kernel) *WASMService {
@@ -186,6 +187,11 @@ func (s *WASMService) handleCompile(ctx context.Context, payload json.RawMessage
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("wasm.compile: invalid request: %w", err)
 	}
+
+	// Serialize all compilations — Binaryen C library is NOT thread-safe.
+	// Concurrent Compile() calls cause SIGSEGV in BinaryenModuleAllocateAndWrite.
+	s.compileMu.Lock()
+	defer s.compileMu.Unlock()
 
 	compiler, err := s.ensureCompiler()
 	if err != nil {

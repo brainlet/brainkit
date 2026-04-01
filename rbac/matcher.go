@@ -52,9 +52,14 @@ func (c CommandPermissions) AllowsCommand(command string) bool {
 	return false
 }
 
-// matchGlob matches a topic against a pattern.
-// "*" matches everything. "prefix.*" matches any topic starting with "prefix.".
-// Exact match is checked first.
+// matchGlob matches a topic against a pattern using segment-based wildcards.
+// "*" alone matches everything. A "*" segment matches one or more topic segments.
+// Examples:
+//
+//	"*"           matches everything
+//	"incoming.*"  matches "incoming.foo", "incoming.foo.bar"
+//	"*.reply.*"   matches "tools.call.reply.abc", "foo.reply.bar"
+//	"events.*"    matches "events.deploy", "events.test.sub"
 func matchGlob(pattern, topic string) bool {
 	if pattern == "*" {
 		return true
@@ -62,9 +67,33 @@ func matchGlob(pattern, topic string) bool {
 	if pattern == topic {
 		return true
 	}
-	if strings.HasSuffix(pattern, ".*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(topic, prefix)
+	// Split pattern on "*" to get fixed segments that must appear in order.
+	// E.g., "*.reply.*" → ["", ".reply.", ""]
+	//        "incoming.*" → ["incoming.", ""]
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return false // no wildcards and not exact match
 	}
-	return false
+	// Walk the topic string, matching each fixed part in sequence.
+	// Empty parts (from leading/trailing *) match zero or more characters.
+	remaining := topic
+	for i, part := range parts {
+		if part == "" {
+			continue // wildcard consumes characters — handled by next fixed part
+		}
+		idx := strings.Index(remaining, part)
+		if idx < 0 {
+			return false // fixed part not found
+		}
+		if i == 0 && idx != 0 {
+			return false // pattern doesn't start with * but topic has extra prefix
+		}
+		remaining = remaining[idx+len(part):]
+	}
+	// If the pattern ends with *, remaining can be anything (including empty).
+	// If the pattern doesn't end with *, remaining must be empty.
+	if parts[len(parts)-1] != "" {
+		return len(remaining) == 0
+	}
+	return true
 }

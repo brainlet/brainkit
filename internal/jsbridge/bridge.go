@@ -27,7 +27,7 @@ func goid() int64 {
 // Config configures a Bridge.
 type Config struct {
 	MemoryLimit  int       // bytes; default 256MB
-	MaxStackSize int       // bytes; default 4MB
+	MaxStackSize int       // bytes; default 1MB (safe against native stack overflow)
 	GCThreshold  int64     // bytes; auto-GC trigger threshold; -1 disables (default: -1)
 	Stdout       io.Writer // default os.Stdout
 	Stderr       io.Writer // default os.Stderr
@@ -66,7 +66,10 @@ func New(cfg Config, polyfills ...Polyfill) (*Bridge, error) {
 		cfg.MemoryLimit = 256 * 1024 * 1024
 	}
 	if cfg.MaxStackSize == 0 {
-		cfg.MaxStackSize = 64 * 1024 * 1024 // 64MB
+		// 1MB JS stack — enough for normal code, small enough that QuickJS's
+		// InternalError: stack overflow fires before the native C stack overflows.
+		// Previous value (64MB) allowed deep recursion to SIGBUS-crash the process.
+		cfg.MaxStackSize = 1024 * 1024 // 1MB
 	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = os.Stdout

@@ -74,6 +74,10 @@ type KernelConfig struct {
 	TraceSampleRate float64            // 0.0-1.0, default 1.0
 
 	// Infrastructure
+	// MaxStackSize is the QuickJS call stack size in bytes. Default: 1MB.
+	// Controls maximum recursion depth (~5K-10K nested calls at 1MB).
+	// Has no effect on heap memory (objects, arrays, strings) — that's MemoryLimit.
+	// Values above 4MB risk exceeding the native goroutine stack, causing a process crash.
 	MaxStackSize  int
 	SharedTools   *toolreg.ToolRegistry
 	MCPServers    map[string]mcppkg.ServerConfig
@@ -119,12 +123,36 @@ type KernelConfig struct {
 	// If nil, uses built-in defaults (OPENAI_API_KEY→openai, ANTHROPIC_API_KEY→anthropic, etc.).
 	ProviderKeyMapping map[string]string
 
+	// WASMCommandAllowlist controls which bus command topics WASM modules can call
+	// via the bus_publish host function. If nil, uses DefaultWASMCommandAllowlist
+	// (tools.call, tools.list, fs.read, fs.list, etc. — safe read-only commands).
+	// Set to an empty map to block all commands. Set to specific topics to customize.
+	WASMCommandAllowlist map[string]bool
+
 	// Plugin registries — searched in order for packages.search/install.
 	// Defaults to the official brainlet registry if empty.
 	PluginRegistries []RegistryConfig
 
 	// Local plugin cache directory. Defaults to <FSRoot>/plugins/ if FSRoot is set.
 	PluginDir string
+}
+
+// DefaultWASMCommandAllowlist is the default set of commands WASM modules can call.
+// Read-only operations only — no state mutation, no deployment, no secrets write.
+var DefaultWASMCommandAllowlist = map[string]bool{
+	"tools.call":       true,
+	"tools.list":       true,
+	"tools.resolve":    true,
+	"fs.read":          true,
+	"fs.list":          true,
+	"fs.stat":          true,
+	"registry.has":     true,
+	"registry.list":    true,
+	"registry.resolve": true,
+	"agents.list":      true,
+	"agents.discover":  true,
+	"agents.get-status": true,
+	"metrics.get":      true,
 }
 
 // RegistryConfig configures a plugin registry source.

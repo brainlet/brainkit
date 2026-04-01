@@ -212,6 +212,22 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmDescribeMsg) (*messages.WasmDescribeResp, error) {
 				return kernel.wasmDomainInst.Describe(ctx, req)
 			}),
+			// ── WASM Command Allowlist ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistGetMsg) (*messages.WasmAllowlistGetResp, error) {
+				return &messages.WasmAllowlistGetResp{Allowlist: kernel.WASMAllowlistGet()}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistSetMsg) (*messages.WasmAllowlistSetResp, error) {
+				kernel.WASMAllowlistSet(req.Allowlist)
+				return &messages.WasmAllowlistSetResp{OK: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistAddMsg) (*messages.WasmAllowlistAddResp, error) {
+				kernel.WASMAllowlistAdd(req.Command)
+				return &messages.WasmAllowlistAddResp{OK: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistRemoveMsg) (*messages.WasmAllowlistRemoveResp, error) {
+				kernel.WASMAllowlistRemove(req.Command)
+				return &messages.WasmAllowlistRemoveResp{OK: true}, nil
+			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
 				return kernel.lifecycle.Deploy(ctx, req)
 			}),
@@ -290,15 +306,15 @@ func commandCatalog() *commandRegistry {
 				switch req.Category {
 				case "provider":
 					if reg, ok := kernel.providers.GetAIProvider(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
 					}
 				case "vectorStore":
 					if reg, ok := kernel.providers.GetVectorStore(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
 					}
 				case "storage":
 					if reg, ok := kernel.providers.GetStorage(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": reg.Config})
+						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
 					}
 				}
 				return &messages.RegistryResolveResp{Config: configJSON}, nil
