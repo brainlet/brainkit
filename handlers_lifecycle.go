@@ -137,6 +137,15 @@ func WithPackageName(name string) DeployOption {
 }
 
 func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
+	if strings.TrimSpace(source) == "" {
+		return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
+	}
+
+	// Tracing
+	span := k.tracer.StartSpan("kit.deploy:"+source, ctx)
+	span.SetSource(source)
+	defer func() { span.End(nil) }()
+
 	var cfg deployConfig
 	for _, opt := range opts {
 		opt(&cfg)
@@ -235,6 +244,10 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 // Teardown removes all resources from a deployed file and drops the compartment.
 // Idempotent — returns 0 if source was not deployed.
 func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
+	span := k.tracer.StartSpan("kit.teardown:"+source, ctx)
+	span.SetSource(source)
+	defer span.End(nil)
+
 	removed, err := k.TeardownFile(source)
 	if err != nil {
 		return 0, err
@@ -261,6 +274,10 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 // Redeploy tears down old deployment and deploys new code.
 // Preserves original metadata (role, packageName, order) across the teardown+deploy cycle.
 func (k *Kernel) Redeploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
+	span := k.tracer.StartSpan("kit.redeploy:"+source, ctx)
+	span.SetSource(source)
+	defer span.End(nil)
+
 	// Capture original metadata before teardown
 	k.mu.Lock()
 	originalOrder := 0

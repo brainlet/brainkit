@@ -217,6 +217,9 @@ func (k *Kernel) registerBridges() {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.send: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
+			if topic == "" {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "is required"})
+			}
 			payload := json.RawMessage(args[1].String())
 
 			if commandCatalog().HasCommand(topic) {
@@ -239,6 +242,9 @@ func (k *Kernel) registerBridges() {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.publish: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
+			if topic == "" {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "is required"})
+			}
 			payload := json.RawMessage(args[1].String())
 
 			// RBAC enforcement
@@ -287,6 +293,9 @@ func (k *Kernel) registerBridges() {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.emit: expected 2 args (topic, payload)"})
 			}
 			topic := args[0].String()
+			if topic == "" {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "is required"})
+			}
 			payload := json.RawMessage(args[1].String())
 
 			// Block command topics — same check as bus_send (fixes bug #8)

@@ -17,18 +17,13 @@ import (
 
 // === B01-B06: Deploy abuse ===
 
+// FIXED (bug #3): empty source name is now rejected.
 func TestInputAbuse_Deploy_EmptySource(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	_, err := tk.Deploy(context.Background(), "", `output("hello");`)
-	// FINDING: brainkit accepts empty source names. Not ideal but not a crash.
-	// The deployment works and can be torn down with Teardown("").
-	// TODO: Add validation in Deploy to reject empty source.
-	if err != nil {
-		return // If validation is added later, this test still passes
-	}
-	// Verify it can be cleaned up
-	_, tearErr := tk.Teardown(context.Background(), "")
-	assert.NoError(t, tearErr)
+	assert.Error(t, err, "empty source should be rejected")
+	_, err2 := tk.Deploy(context.Background(), "   ", `output("hello");`)
+	assert.Error(t, err2, "whitespace-only source should be rejected")
 }
 
 func TestInputAbuse_Deploy_SpecialChars(t *testing.T) {
@@ -171,10 +166,8 @@ func TestInputAbuse_Bus_EmptyTopic(t *testing.T) {
 		return caught;
 	`)
 	require.NoError(t, err)
-	// FINDING: brainkit accepts empty topic on bus.publish. Watermill handles it.
-	// TODO: Consider adding topic validation.
-	// The key assertion: no panic, no hang — the operation completes.
-	_ = result
+	// FIXED (bug #4): empty topic is now rejected with VALIDATION_ERROR
+	assert.NotEqual(t, "none", result, "empty topic should throw an error")
 }
 
 func TestInputAbuse_Bus_LargePayload(t *testing.T) {

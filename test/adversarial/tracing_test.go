@@ -60,10 +60,8 @@ func TestTracing_ToolCallCreatesSpan(t *testing.T) {
 }
 
 // TestTracing_DeployDoesNotCreateSpan — FINDING: deploy is not traced.
-// Deploy calls EvalTS internally which doesn't create trace spans.
-// Only bus command handlers (tools.call, etc.) create spans.
-// TODO: Consider adding deploy span in handlers_lifecycle.go.
-func TestTracing_DeployDoesNotCreateSpan(t *testing.T) {
+// FIXED (bug #7): Deploy now creates trace spans.
+func TestTracing_DeployCreatesSpan(t *testing.T) {
 	k, store := kernelWithTracing(t)
 	ctx := context.Background()
 
@@ -73,8 +71,20 @@ func TestTracing_DeployDoesNotCreateSpan(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	traces, _ := store.ListTraces(tracing.TraceQuery{Limit: 10})
-	// FINDING: Deploy doesn't create spans — only bus commands do
-	assert.Equal(t, 0, len(traces), "deploy currently doesn't create trace spans (finding)")
+	assert.Greater(t, len(traces), 0, "deploy should create trace spans")
+
+	// Verify the span has the right name pattern
+	if len(traces) > 0 {
+		spans, _ := store.GetTrace(traces[0].TraceID)
+		foundDeploy := false
+		for _, s := range spans {
+			if s.Name == "kit.deploy:traced-deploy.ts" {
+				foundDeploy = true
+				assert.Equal(t, "traced-deploy.ts", s.Source)
+			}
+		}
+		assert.True(t, foundDeploy, "should find a kit.deploy span")
+	}
 }
 
 // TestTracing_QueryBySource — trace.list filters by source.
