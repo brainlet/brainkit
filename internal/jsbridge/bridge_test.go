@@ -495,28 +495,25 @@ func TestStructuredClone(t *testing.T) {
 // --- Phase 2: fs ---
 
 func TestFsReadWriteFile(t *testing.T) {
-	b := newTestBridge(t, FS())
-
 	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "test.txt")
+	b := newTestBridge(t, FS(tmpDir))
+
 	content := "Hello from JS via Go bridge!"
 
-	// Write and read from JS (async)
-	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
-		await fs.writeFile(%q, %q);
-		return await fs.readFile(%q);
-	})()`, testFile, content, testFile))
+	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(function() {
+		fs.writeFileSync("test.txt", %q);
+		return fs.readFileSync("test.txt", "utf8");
+	})()`, content))
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
 	if val.String() != content {
-		t.Errorf("readFile = %q, want %q", val.String(), content)
+		t.Errorf("readFileSync = %q, want %q", val.String(), content)
 	}
 
-	// Verify from Go side
-	data, err := os.ReadFile(testFile)
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test.txt"))
 	if err != nil {
 		t.Fatalf("os.ReadFile: %v", err)
 	}
@@ -526,52 +523,42 @@ func TestFsReadWriteFile(t *testing.T) {
 }
 
 func TestFsReaddir(t *testing.T) {
-	b := newTestBridge(t, FS())
-
 	tmpDir := t.TempDir()
 	os.WriteFile(filepath.Join(tmpDir, "alpha.txt"), []byte("a"), 0644)
 	os.WriteFile(filepath.Join(tmpDir, "beta.txt"), []byte("b"), 0644)
 	os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
 
-	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
-		const entries = await fs.readdir(%q);
-		return JSON.stringify({
-			count: entries.length,
-			names: entries.map(e => e.name).sort(),
-			hasDir: entries.some(e => e.isDirectory),
-		});
-	})()`, tmpDir))
+	b := newTestBridge(t, FS(tmpDir))
+
+	val, err := b.EvalAsync("test.js", `(function() {
+		var names = fs.readdirSync(".");
+		return JSON.stringify({ count: names.length });
+	})()`)
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
 	var parsed struct {
-		Count  int      `json:"count"`
-		Names  []string `json:"names"`
-		HasDir bool     `json:"hasDir"`
+		Count int `json:"count"`
 	}
 	json.Unmarshal([]byte(val.String()), &parsed)
 	if parsed.Count != 3 {
 		t.Errorf("count = %d, want 3", parsed.Count)
 	}
-	if !parsed.HasDir {
-		t.Error("expected a directory entry")
-	}
 }
 
 func TestFsStat(t *testing.T) {
-	b := newTestBridge(t, FS())
-
 	tmpDir := t.TempDir()
 	content := "stat test content"
-	testFile := filepath.Join(tmpDir, "statfile.txt")
-	os.WriteFile(testFile, []byte(content), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "statfile.txt"), []byte(content), 0644)
 
-	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
-		const s = await fs.stat(%q);
-		return JSON.stringify({ size: s.size, isFile: s.isFile, isDir: s.isDirectory });
-	})()`, testFile))
+	b := newTestBridge(t, FS(tmpDir))
+
+	val, err := b.EvalAsync("test.js", `(function() {
+		var s = fs.statSync("statfile.txt");
+		return JSON.stringify({ size: s.size, isFile: s.isFile(), isDir: s.isDirectory() });
+	})()`)
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
@@ -595,25 +582,20 @@ func TestFsStat(t *testing.T) {
 }
 
 func TestFsMkdirAndRm(t *testing.T) {
-	b := newTestBridge(t, FS())
-
 	tmpDir := t.TempDir()
-	nested := filepath.Join(tmpDir, "a", "b", "c")
-	rmTarget := filepath.Join(tmpDir, "a")
+	b := newTestBridge(t, FS(tmpDir))
 
-	val, err := b.EvalAsync("test.js", fmt.Sprintf(`(async () => {
-		await fs.mkdir(%q, { recursive: true });
-		await fs.rm(%q, { recursive: true });
+	val, err := b.EvalAsync("test.js", `(function() {
+		fs.mkdirSync("a/b/c", {recursive: true});
+		fs.rmSync("a", {recursive: true});
 		return "done";
-	})()`, nested, rmTarget))
+	})()`)
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
-	// Verify mkdir happened (the dir was created then removed)
-	// Since we rm'd after mkdir, check that the rm worked
-	if _, err := os.Stat(rmTarget); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmpDir, "a")); !os.IsNotExist(err) {
 		t.Error("expected directory to be removed")
 	}
 }

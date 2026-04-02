@@ -20,7 +20,6 @@ func TestRBACMatrix_CommandPermissions(t *testing.T) {
 	commands := []string{
 		"tools.call", "tools.list", "tools.resolve",
 		"agents.list", "agents.discover", "agents.get-status", "agents.set-status",
-		"fs.read", "fs.write", "fs.list", "fs.stat", "fs.delete", "fs.mkdir",
 		"kit.deploy", "kit.teardown", "kit.list", "kit.redeploy",
 		"secrets.set", "secrets.get", "secrets.delete", "secrets.list", "secrets.rotate",
 		"registry.has", "registry.list", "registry.resolve",
@@ -54,7 +53,6 @@ func TestRBACMatrix_CommandPermissions(t *testing.T) {
 	// Service: explicit allowlist
 	serviceAllowed := map[string]bool{
 		"tools.call": true, "tools.list": true, "tools.resolve": true,
-		"fs.read": true, "fs.write": true, "fs.list": true, "fs.stat": true,
 		"secrets.get": true,
 	}
 	t.Run("service", func(t *testing.T) {

@@ -336,7 +336,7 @@ func TestSandboxEscape_FSPathTraversal(t *testing.T) {
 
 		for (var i = 0; i < attacks.length; i++) {
 			try {
-				var data = await fs.read(attacks[i]);
+				var data = fs.readFileSync(attacks[i], "utf8");
 				if (data && data.data && data.data.length > 0) {
 					results["attack_" + i] = "ESCAPED:" + data.data.substring(0, 20);
 				} else {
@@ -371,7 +371,7 @@ func TestSandboxEscape_FSWriteEscape(t *testing.T) {
 		];
 		for (var i = 0; i < attacks.length; i++) {
 			try {
-				await fs.write(attacks[i][0], attacks[i][1]);
+				fs.writeFileSync(attacks[i][0], attacks[i][1]);
 				results["write_" + i] = "WROTE";
 			} catch(e) {
 				results["write_" + i] = "blocked";

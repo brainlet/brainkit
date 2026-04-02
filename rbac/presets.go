@@ -22,7 +22,6 @@ var RoleService = Role{
 	},
 	Commands: CommandPermissions{Allow: []string{
 		"tools.call", "tools.list", "tools.resolve",
-		"fs.read", "fs.write", "fs.list", "fs.stat",
 		"secrets.get",
 	}},
 	Registration: RegistrationPermissions{Tools: true, Agents: false},

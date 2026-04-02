@@ -39,7 +39,7 @@ func TestWASMAllowlist_GetDefault(t *testing.T) {
 		var resp messages.WasmAllowlistGetResp
 		require.NoError(t, json.Unmarshal(p, &resp))
 		assert.True(t, resp.Allowlist["tools.call"], "default should allow tools.call")
-		assert.True(t, resp.Allowlist["fs.read"], "default should allow fs.read")
+		assert.True(t, resp.Allowlist["tools.call"], "default should allow tools.call")
 		assert.False(t, resp.Allowlist["kit.deploy"], "default should NOT allow kit.deploy")
 		assert.False(t, resp.Allowlist["secrets.set"], "default should NOT allow secrets.set")
 	case <-ctx.Done():
@@ -52,8 +52,8 @@ func TestWASMAllowlist_AddRemove(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Add fs.write (not in defaults)
-	pr1, _ := sdk.Publish(tk, ctx, messages.WasmAllowlistAddMsg{Command: "fs.write"})
+	// Add secrets.set (not in defaults)
+	pr1, _ := sdk.Publish(tk, ctx, messages.WasmAllowlistAddMsg{Command: "secrets.set"})
 	ch1 := make(chan []byte, 1)
 	unsub1, _ := tk.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
 	<-ch1
@@ -61,7 +61,7 @@ func TestWASMAllowlist_AddRemove(t *testing.T) {
 
 	// Verify it's there
 	allowlist := tk.WASMAllowlistGet()
-	assert.True(t, allowlist["fs.write"], "fs.write should be in allowlist after add")
+	assert.True(t, allowlist["secrets.set"], "secrets.set should be in allowlist after add")
 	assert.True(t, allowlist["tools.call"], "tools.call should still be there")
 
 	// Remove tools.call
@@ -74,7 +74,7 @@ func TestWASMAllowlist_AddRemove(t *testing.T) {
 	// Verify
 	allowlist2 := tk.WASMAllowlistGet()
 	assert.False(t, allowlist2["tools.call"], "tools.call should be gone after remove")
-	assert.True(t, allowlist2["fs.write"], "fs.write should still be there")
+	assert.True(t, allowlist2["secrets.set"], "secrets.set should still be there")
 }
 
 func TestWASMAllowlist_SetReplace(t *testing.T) {
@@ -488,8 +488,8 @@ func TestWASMAllowlist_Attack_AdminAddsThensDowngraded(t *testing.T) {
 	defer k.Close()
 
 	// Admin adds fs.write to WASM allowlist
-	k.WASMAllowlistAdd("fs.write")
-	assert.True(t, k.WASMAllowlistGet()["fs.write"])
+	k.WASMAllowlistAdd("secrets.set")
+	assert.True(t, k.WASMAllowlistGet()["secrets.set"])
 
 	// Admin deployment gets role downgraded to service
 	// The allowlist change persists — it's kernel-level, not per-deployment

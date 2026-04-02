@@ -73,32 +73,18 @@ func TestPlugin_InProcess(t *testing.T) {
 	})
 
 	t.Run("Plugin_FS_WriteRead", func(t *testing.T) {
-		_pr3, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
-			Path: "plugin-data.json", Data: `{"status":"ok"}`,
-		})
-		require.NoError(t, err)
-		_ch3 := make(chan messages.FsWriteResp, 1)
-		_us3, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr3.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch3 <- r })
-		defer _us3()
-		select {
-		case <-_ch3:
-		case <-ctx.Done():
-			t.Fatal("timeout")
-		}
+		// FS operations now go through the jsbridge polyfill, not bus commands.
+		// Use a kernel with EvalTS to test the polyfill path.
+		tk := testutil.NewTestKernelFull(t)
+		fsCtx, fsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer fsCancel()
 
-		_pr4, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "plugin-data.json"})
+		result, err := tk.EvalTS(fsCtx, "__test.ts", `
+			fs.writeFileSync("plugin-data.json", '{"status":"ok"}');
+			return fs.readFileSync("plugin-data.json", "utf8");
+		`)
 		require.NoError(t, err)
-		_ch4 := make(chan messages.FsReadResp, 1)
-		_us4, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch4 <- r })
-		require.NoError(t, err)
-		defer _us4()
-		var resp messages.FsReadResp
-		select {
-		case resp = <-_ch4:
-		case <-ctx.Done():
-			t.Fatal("timeout")
-		}
-		assert.Equal(t, `{"status":"ok"}`, resp.Data)
+		assert.Equal(t, `{"status":"ok"}`, result)
 	})
 
 	t.Run("Plugin_Deploy_Teardown", func(t *testing.T) {

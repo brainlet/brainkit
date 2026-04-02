@@ -47,7 +47,6 @@ type Kernel struct {
 	// Category B: take interfaces, not *Kernel
 	toolsDomain    *ToolsDomain
 	agentsDomain   *AgentsDomain
-	fsDomain       *FSDomain
 	packagesDomain *PackagesDomain
 	secretsDomain  *SecretsDomain
 	workflowDomain *WorkflowDomain
@@ -587,6 +586,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		Providers:    providers,
 		EnvVars:      cfg.EnvVars,
 		MaxStackSize: cfg.MaxStackSize,
+		CWD:          cfg.FSRoot,
 		FetchSpanHook: func(method, url string) func(int, error) {
 			// Lazy reference — tracer is initialized after sandbox creation
 			if kernel.tracer == nil {
@@ -610,7 +610,6 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.bridge = agentSandbox.Bridge()
 
 	kernel.agentsDomain = newAgentsDomain()
-	kernel.fsDomain = newFSDomain(cfg.FSRoot)
 
 	kernel.registerBridges()
 

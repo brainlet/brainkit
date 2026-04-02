@@ -24,31 +24,31 @@ import (
 // Attack: error messages reveal internal structure (file paths, stack traces)
 func TestDataLeakage_ErrorMessageContent(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
 
-	// Trigger various errors and check what leaks in the message
-	errors := []struct {
+	sensitivePatterns := []string{
+		"/Users/", "/home/", "/var/", // absolute paths
+		"goroutine", "runtime.go",     // Go stack traces
+		"password", "secret",          // secrets in error messages
+	}
+
+	// Trigger various errors via bus and check what leaks in the message
+	busErrors := []struct {
 		name string
 		msg  messages.BrainkitMessage
 	}{
 		{"tool-not-found", messages.ToolCallMsg{Name: "secret-internal-tool-name"}},
 		{"agent-not-found", messages.AgentGetStatusMsg{Name: "internal-agent"}},
-		{"fs-read-missing", messages.FsReadMsg{Path: "/internal/config/secrets.json"}},
 		{"deploy-bad", messages.KitDeployMsg{Source: "x.ts", Code: "throw new Error('DB_PASSWORD=secret123');"}},
 	}
 
-	for _, tc := range errors {
+	for _, tc := range busErrors {
 		t.Run(tc.name, func(t *testing.T) {
 			payload, ok := sendAndReceive(t, tk, tc.msg, 5*time.Second)
 			if !ok {
 				return
 			}
 			errStr := string(payload)
-			// Check for leaks
-			sensitivePatterns := []string{
-				"/Users/", "/home/", "/var/", // absolute paths
-				"goroutine", "runtime.go",     // Go stack traces
-				"password", "secret",          // secrets in error messages
-			}
 			for _, pattern := range sensitivePatterns {
 				if strings.Contains(strings.ToLower(errStr), pattern) {
 					t.Logf("FINDING: error %s leaks '%s': %s", tc.name, pattern, errStr[:min(200, len(errStr))])
@@ -56,6 +56,22 @@ func TestDataLeakage_ErrorMessageContent(t *testing.T) {
 			}
 		})
 	}
+
+	// FS error via polyfill — reading a non-existent internal path should return an error, not internal info
+	t.Run("fs-read-missing", func(t *testing.T) {
+		result, err := tk.EvalTS(ctx, "__test.ts", `
+			try { fs.readFileSync("/internal/config/secrets.json"); return "LEAKED"; }
+			catch(e) { return e.code || "error"; }
+		`)
+		require.NoError(t, err)
+		assert.NotEqual(t, "LEAKED", result)
+		errStr := result
+		for _, pattern := range sensitivePatterns {
+			if strings.Contains(strings.ToLower(errStr), pattern) {
+				t.Logf("FINDING: fs-read-missing leaks '%s': %s", pattern, errStr[:min(200, len(errStr))])
+			}
+		}
+	})
 }
 
 // Attack: deployment A leaves data in globalThis that deployment B can find
@@ -285,39 +301,42 @@ func TestDataLeakage_FilesystemReconnaissance(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	ctx := context.Background()
 
-	// Create some files
-	sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "config/database.json", Data: `{"host":"prod-db"}`})
-	sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "secrets/api-keys.txt", Data: "sk-12345"})
-	sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: ".env", Data: "DB_PASSWORD=secret"})
-	time.Sleep(200 * time.Millisecond)
+	// Create some files via polyfill
+	_, err := tk.EvalTS(ctx, "__setup.ts", `
+		fs.mkdirSync("config", {recursive: true});
+		fs.mkdirSync("secrets", {recursive: true});
+		fs.writeFileSync("config/database.json", '{"host":"prod-db"}');
+		fs.writeFileSync("secrets/api-keys.txt", "sk-12345");
+		fs.writeFileSync(".env", "DB_PASSWORD=secret");
+		return "ok";
+	`)
+	require.NoError(t, err)
 
 	// Deployment lists everything
-	_, err := tk.Deploy(ctx, "fs-recon.ts", `
+	_, err = tk.Deploy(ctx, "fs-recon.ts", `
 		var results = {};
 		try {
-			var root = await fs.list(".");
-			results.root = root.files.map(function(f) { return f.name; });
+			var root = fs.readdirSync(".");
+			results.root = root;
 		} catch(e) { results.error = e.message; }
 
 		try {
-			var config = await fs.list("config");
-			results.config = config.files.map(function(f) { return f.name; });
+			var config = fs.readdirSync("config");
+			results.config = config;
 		} catch(e) {}
 
 		try {
-			var secrets = await fs.list("secrets");
-			results.secrets = secrets.files.map(function(f) { return f.name; });
+			var secretsDir = fs.readdirSync("secrets");
+			results.secrets = secretsDir;
 		} catch(e) {}
 
 		// Try to read sensitive files
 		try {
-			var envFile = await fs.read(".env");
-			results.envContent = envFile.data;
+			results.envContent = fs.readFileSync(".env", "utf8");
 		} catch(e) {}
 
 		try {
-			var apiKeys = await fs.read("secrets/api-keys.txt");
-			results.apiKeysContent = apiKeys.data;
+			results.apiKeysContent = fs.readFileSync("secrets/api-keys.txt", "utf8");
 		} catch(e) {}
 
 		output(results);

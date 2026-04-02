@@ -492,7 +492,7 @@ func TestRBAC_CommandMatrix(t *testing.T) {
 		allowed bool
 	}{
 		{"service", "tools.call", true}, {"service", "tools.list", true},
-		{"service", "fs.read", true}, {"service", "secrets.get", true},
+		{"service", "secrets.get", true},
 		{"service", "rbac.assign", false}, {"service", "wasm.compile", false},
 		{"observer", "tools.list", true}, {"observer", "kit.list", true},
 		{"observer", "tools.call", false}, {"observer", "secrets.get", false},

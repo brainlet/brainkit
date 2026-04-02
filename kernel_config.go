@@ -58,7 +58,7 @@ type KernelConfig struct {
 	// Vector pool — deployments pick via vectorStore("name").
 	Vectors map[string]VectorConfig
 
-	// Filesystem sandbox root — deployments access via fs.read/write/list.
+	// Filesystem sandbox root — deployments access via the fs polyfill.
 	FSRoot string
 
 	// Secrets
@@ -140,19 +140,16 @@ type KernelConfig struct {
 // DefaultWASMCommandAllowlist is the default set of commands WASM modules can call.
 // Read-only operations only — no state mutation, no deployment, no secrets write.
 var DefaultWASMCommandAllowlist = map[string]bool{
-	"tools.call":       true,
-	"tools.list":       true,
-	"tools.resolve":    true,
-	"fs.read":          true,
-	"fs.list":          true,
-	"fs.stat":          true,
-	"registry.has":     true,
-	"registry.list":    true,
-	"registry.resolve": true,
-	"agents.list":      true,
-	"agents.discover":  true,
+	"tools.call":        true,
+	"tools.list":        true,
+	"tools.resolve":     true,
+	"registry.has":      true,
+	"registry.list":     true,
+	"registry.resolve":  true,
+	"agents.list":       true,
+	"agents.discover":   true,
 	"agents.get-status": true,
-	"metrics.get":      true,
+	"metrics.get":       true,
 }
 
 // RegistryConfig configures a plugin registry source.

@@ -1,11 +1,9 @@
-// Test: fs.list() and fs.stat()
+// Test: fs.readdirSync() and fs.statSync()
 import { fs, output } from "kit";
-await fs.write("stat-test.txt", "12345");
-const stat = await fs.stat("stat-test.txt");
-const listing = await fs.list(".");
+fs.writeFileSync("stat-test.txt", "12345");
+const stat = fs.statSync("stat-test.txt");
+const listing = fs.readdirSync(".");
 output({
-  size: stat.size,
-  isDir: stat.isDir,
-  fileCount: listing.files.length,
-  hasFile: listing.files.some((f: any) => f.name === "stat-test.txt"),
+  isDir: stat.isDirectory(),
+  hasFile: listing.some((f: any) => f === "stat-test.txt"),
 });

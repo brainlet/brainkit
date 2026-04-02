@@ -39,13 +39,7 @@ func commandTable() []cmdTest {
 		{"agents.set-status", messages.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, messages.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false, false},
 		{"agents.discover", messages.AgentDiscoverMsg{}, messages.AgentDiscoverMsg{}, "", false, false},
 
-		// Filesystem
-		{"fs.read", messages.FsReadMsg{Path: "nonexistent.txt"}, messages.FsReadMsg{Path: ""}, "", false, false},
-		{"fs.write", messages.FsWriteMsg{Path: "matrix-test.txt", Data: "hello"}, messages.FsWriteMsg{Path: "", Data: ""}, "", false, false},
-		{"fs.list", messages.FsListMsg{Path: "."}, messages.FsListMsg{}, "", false, false},
-		{"fs.stat", messages.FsStatMsg{Path: "."}, messages.FsStatMsg{Path: "ghost-path"}, "", false, false},
-		{"fs.delete", messages.FsDeleteMsg{Path: "matrix-test.txt"}, messages.FsDeleteMsg{Path: "ghost-file"}, "", false, false},
-		{"fs.mkdir", messages.FsMkdirMsg{Path: "matrix-dir"}, messages.FsMkdirMsg{Path: ""}, "", false, false},
+		// Filesystem — removed (fs is now a jsbridge polyfill, not bus commands)
 
 		// Kit lifecycle
 		{"kit.list", messages.KitListMsg{}, messages.KitListMsg{}, "", false, false},
@@ -174,7 +168,6 @@ func TestBusMatrix_GarbagePayload(t *testing.T) {
 	topics := []string{
 		"tools.call", "tools.list", "tools.resolve",
 		"agents.list", "agents.get-status", "agents.set-status", "agents.discover",
-		"fs.read", "fs.write", "fs.list", "fs.stat", "fs.delete", "fs.mkdir",
 		"kit.list", "kit.deploy", "kit.teardown",
 		"secrets.set", "secrets.get", "secrets.delete", "secrets.list", "secrets.rotate",
 		"registry.has", "registry.list", "registry.resolve",

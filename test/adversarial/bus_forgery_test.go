@@ -294,7 +294,7 @@ func TestBusForgery_CommandTopicBypass(t *testing.T) {
 			"secrets.set", "secrets.get", "secrets.delete",
 			"kit.deploy", "kit.teardown",
 			"rbac.assign", "rbac.revoke",
-			"fs.read", "fs.write", "fs.delete",
+			
 			"wasm.compile", "wasm.run",
 		];
 

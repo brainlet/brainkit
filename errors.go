@@ -8,10 +8,6 @@ import (
 
 // ── Sentinel errors ──────────────────────────────────────────────────────────
 
-// ErrNoWorkspace is returned when a filesystem operation is attempted
-// but KernelConfig.FSRoot is not configured.
-var ErrNoWorkspace error = &sdkerrors.NotConfiguredError{Feature: "workspace"}
-
 // ErrMCPNotConfigured is returned when an MCP operation is attempted
 // but no MCP servers were registered in KernelConfig.
 var ErrMCPNotConfigured error = &sdkerrors.NotConfiguredError{Feature: "mcp"}

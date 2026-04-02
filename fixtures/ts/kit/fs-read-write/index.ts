@@ -1,5 +1,5 @@
-// Test: fs.write() then fs.read() roundtrip
+// Test: fs.writeFileSync() then fs.readFileSync() roundtrip
 import { fs, output } from "kit";
-await fs.write("test-file.txt", "hello from fixture");
-const result = await fs.read("test-file.txt");
-output({ written: true, data: result.data, matches: result.data === "hello from fixture" });
+fs.writeFileSync("test-file.txt", "hello from fixture");
+const data = fs.readFileSync("test-file.txt", "utf8");
+output({ written: true, matches: data === "hello from fixture" });

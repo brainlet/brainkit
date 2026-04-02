@@ -46,6 +46,35 @@ var resolveJS string
 //go:embed runtime/bus.js
 var busJS string
 
+const fsPromisesModuleJS = `export const readFile = globalThis.fs.promises.readFile;
+export const writeFile = globalThis.fs.promises.writeFile;
+export const appendFile = globalThis.fs.promises.appendFile;
+export const readdir = globalThis.fs.promises.readdir;
+export const stat = globalThis.fs.promises.stat;
+export const lstat = globalThis.fs.promises.lstat;
+export const access = globalThis.fs.promises.access;
+export const mkdir = globalThis.fs.promises.mkdir;
+export const mkdtemp = globalThis.fs.promises.mkdtemp;
+export const rmdir = globalThis.fs.promises.rmdir;
+export const rm = globalThis.fs.promises.rm;
+export const unlink = globalThis.fs.promises.unlink;
+export const rename = globalThis.fs.promises.rename;
+export const copyFile = globalThis.fs.promises.copyFile;
+export const cp = globalThis.fs.promises.cp;
+export const link = globalThis.fs.promises.link;
+export const symlink = globalThis.fs.promises.symlink;
+export const readlink = globalThis.fs.promises.readlink;
+export const realpath = globalThis.fs.promises.realpath;
+export const chmod = globalThis.fs.promises.chmod;
+export const chown = globalThis.fs.promises.chown;
+export const lchown = globalThis.fs.promises.lchown;
+export const truncate = globalThis.fs.promises.truncate;
+export const utimes = globalThis.fs.promises.utimes;
+export const open = globalThis.fs.promises.open;
+export const watch = globalThis.fs.promises.watch;
+export default globalThis.fs.promises;
+`
+
 // loadRuntime sets up the kit runtime:
 // Loads 8 JS files in dependency order, then registers 5 ES modules.
 func (k *Kernel) loadRuntime() error {
@@ -82,6 +111,9 @@ func (k *Kernel) loadRuntime() error {
 		{agentModuleJS, "agent"},
 		{compilerModuleJS, "compiler"},
 		{testModuleJS, "test"},
+		// fs module — re-exports from globalThis.fs (set by jsbridge/fs.go polyfill)
+		{"export default globalThis.fs;", "fs"},
+		{fsPromisesModuleJS, "fs/promises"},
 	}
 
 	for _, mod := range modules {

@@ -12,7 +12,7 @@
   var bus = globalThis.__kit_bus;
   var kit = globalThis.__kit_kitAPI;
   var tools = globalThis.__kit_tools;
-  var fs = globalThis.__kit_fs;
+  var fs = globalThis.fs;
   var mcp = globalThis.__kit_mcp;
   var registry = globalThis.__kit_registry_api;
   var secretsAPI = globalThis.__kit_secrets;
@@ -178,7 +178,7 @@
           },
         });
       },
-      fs: _kitObj.fs,
+      fs: globalThis.fs,
       mcp: _kitObj.mcp,
       output: _kitObj.output,
       secrets: {

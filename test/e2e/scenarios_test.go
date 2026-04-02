@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,46 +195,26 @@ func TestE2E_DeployLifecycle(t *testing.T) {
 // TestE2E_MultiDomain tests a workflow that crosses domain boundaries:
 // write a file → call a tool that reads and processes it → write output → verify.
 func TestE2E_MultiDomain(t *testing.T) {
-	rt := testutil.NewTestKernel(t)
+	tk := testutil.NewTestKernelFull(t)
+	rt := sdk.Runtime(tk)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// 1. Write input file
-	_pr10, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
-		Path: "input.json",
-		Data: `{"items":["apple","banana","cherry"]}`,
-	})
+	// 1. Write input file via polyfill
+	_, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.writeFileSync("input.json", '{"items":["apple","banana","cherry"]}');
+		return "ok";
+	`)
 	require.NoError(t, err)
-	_ch10 := make(chan messages.FsWriteResp, 1)
-	_us10, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr10.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch10 <- r })
-	defer _us10()
-	select {
-	case <-_ch10:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
-	// 2. Read it back
-	_pr11, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "input.json"})
+	// 2. Read it back via polyfill
+	readData, err := tk.EvalTS(ctx, "__test.ts", `return fs.readFileSync("input.json", "utf8");`)
 	require.NoError(t, err)
-	_ch11 := make(chan messages.FsReadResp, 1)
-	_us11, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr11.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch11 <- r })
-	require.NoError(t, err)
-	defer _us11()
-	var readResp messages.FsReadResp
-	select {
-	case readResp = <-_ch11:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	// 3. Process with the "echo" tool (simulating processing)
-	var input map[string]any
-	json.Unmarshal([]byte(readResp.Data), &input)
-
 	_pr12, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
 		Name:  "echo",
-		Input: map[string]any{"message": readResp.Data},
+		Input: map[string]any{"message": readData},
 	})
 	require.NoError(t, err)
 	_ch12 := make(chan messages.ToolCallResp, 1)
@@ -247,35 +228,18 @@ func TestE2E_MultiDomain(t *testing.T) {
 		t.Fatal("timeout")
 	}
 
-	// 4. Write the processed output
-	_pr13, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
-		Path: "output.json",
-		Data: string(callResp.Result),
-	})
+	// 4. Write the processed output via polyfill
+	// Escape the JSON for safe embedding in JS string
+	escaped := strings.ReplaceAll(string(callResp.Result), `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	writeCode := `fs.writeFileSync("output.json", '` + escaped + `'); return "ok";`
+	_, err = tk.EvalTS(ctx, "__test.ts", writeCode)
 	require.NoError(t, err)
-	_ch13 := make(chan messages.FsWriteResp, 1)
-	_us13, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr13.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch13 <- r })
-	defer _us13()
-	select {
-	case <-_ch13:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
-	// 5. Read and verify output
-	_pr14, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "output.json"})
+	// 5. Read and verify output via polyfill
+	outData, err := tk.EvalTS(ctx, "__test.ts", `return fs.readFileSync("output.json", "utf8");`)
 	require.NoError(t, err)
-	_ch14 := make(chan messages.FsReadResp, 1)
-	_us14, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr14.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch14 <- r })
-	require.NoError(t, err)
-	defer _us14()
-	var outResp messages.FsReadResp
-	select {
-	case outResp = <-_ch14:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
-	assert.Contains(t, outResp.Data, "echoed")
+	assert.Contains(t, outData, "echoed")
 }
 
 // TestE2E_WasmShardLifecycle tests the full WASM shard lifecycle:

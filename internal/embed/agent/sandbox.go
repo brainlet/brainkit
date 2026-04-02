@@ -33,6 +33,9 @@ type SandboxConfig struct {
 
 	// FetchSpanHook is called around each fetch request for tracing.
 	FetchSpanHook jsbridge.FetchSpanHook
+
+	// CWD is the workspace root for the fs polyfill. Empty = fs operations throw.
+	CWD string
 }
 
 // Sandbox is an isolated execution environment with its own QuickJS runtime.
@@ -92,7 +95,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.DNS(),            // dns.lookup, dns.promises — must be after Net
 		jsbridge.Zlib(),           // zlib.inflate/deflate, gzip — must be after Buffer
 		jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
-		jsbridge.FS(),             // fs.readFile, writeFile, etc.
+		jsbridge.FS(cfg.CWD),      // complete Node.js fs module (workspace-scoped)
 		jsbridge.Exec(),           // child_process.exec, spawn
 		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
 	)

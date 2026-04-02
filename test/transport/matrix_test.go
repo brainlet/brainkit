@@ -79,86 +79,33 @@ func TestBackendMatrix(t *testing.T) {
 				assert.Equal(t, "echo", resp.ShortName)
 			})
 
-			// --- FS domain ---
+			// --- FS domain (via jsbridge polyfill) ---
 			t.Run("fs_write_read", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
-					Path: "matrix-test.txt", Data: "backend:" + backend,
-				})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.writeFileSync("matrix-test.txt", "backend:`+backend+`");
+					return fs.readFileSync("matrix-test.txt", "utf8");
+				`)
 				require.NoError(t, err)
-				_ch4 := make(chan messages.FsWriteResp, 1)
-				_us4, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch4 <- r })
-				defer _us4()
-				select {
-				case <-_ch4:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-
-				_pr5, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "matrix-test.txt"})
-				require.NoError(t, err)
-				_ch5 := make(chan messages.FsReadResp, 1)
-				_us5, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr5.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch5 <- r })
-				require.NoError(t, err)
-				defer _us5()
-				var resp messages.FsReadResp
-				select {
-				case resp = <-_ch5:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "backend:"+backend, resp.Data)
+				assert.Equal(t, "backend:"+backend, result)
 			})
 
 			t.Run("fs_mkdir_list_stat_delete", func(t *testing.T) {
-				_spr1, _ := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "matrix-dir"})
-				_sch1 := make(chan messages.FsMkdirResp, 1)
-				_sun1, _ := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _spr1.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _sch1 <- r })
-				defer _sun1()
-				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
-				_spr2, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "matrix-dir/a.txt", Data: "a"})
-				_sch2 := make(chan messages.FsWriteResp, 1)
-				_sun2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch2 <- r })
-				defer _sun2()
-				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr6, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "matrix-dir"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.mkdirSync("matrix-dir", {recursive: true});
+					fs.writeFileSync("matrix-dir/a.txt", "a");
+					var files = fs.readdirSync("matrix-dir");
+					var s = fs.statSync("matrix-dir/a.txt");
+					fs.unlinkSync("matrix-dir/a.txt");
+					return JSON.stringify({fileCount: files.length, isDir: s.isDirectory()});
+				`)
 				require.NoError(t, err)
-				_ch6 := make(chan messages.FsListResp, 1)
-				_us6, err := sdk.SubscribeTo[messages.FsListResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsListResp, m messages.Message) { _ch6 <- r })
-				require.NoError(t, err)
-				defer _us6()
-				var listResp messages.FsListResp
-				select {
-				case listResp = <-_ch6:
-				case <-ctx.Done():
-					t.Fatal("timeout")
+				var resp struct {
+					FileCount int  `json:"fileCount"`
+					IsDir     bool `json:"isDir"`
 				}
-				assert.Len(t, listResp.Files, 1)
-
-				_pr7, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "matrix-dir/a.txt"})
-				require.NoError(t, err)
-				_ch7 := make(chan messages.FsStatResp, 1)
-				_us7, err := sdk.SubscribeTo[messages.FsStatResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsStatResp, m messages.Message) { _ch7 <- r })
-				require.NoError(t, err)
-				defer _us7()
-				var statResp messages.FsStatResp
-				select {
-				case statResp = <-_ch7:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.False(t, statResp.IsDir)
-
-				_pr8, err := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "matrix-dir/a.txt"})
-				require.NoError(t, err)
-				_ch8 := make(chan messages.FsDeleteResp, 1)
-				_us8, _ := sdk.SubscribeTo[messages.FsDeleteResp](rt, ctx, _pr8.ReplyTo, func(r messages.FsDeleteResp, m messages.Message) { _ch8 <- r })
-				defer _us8()
-				select {
-				case <-_ch8:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
+				json.Unmarshal([]byte(result), &resp)
+				assert.Equal(t, 1, resp.FileCount)
+				assert.False(t, resp.IsDir)
 			})
 
 			// --- Agents domain ---

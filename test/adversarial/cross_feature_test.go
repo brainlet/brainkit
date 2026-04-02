@@ -141,10 +141,10 @@ func TestCrossFeature_HandlerWritesFS(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := tk.Deploy(ctx, "fs-handler.ts", `
-		bus.on("save", async function(msg) {
-			await fs.write("handler-output.txt", msg.payload.content);
-			var read = await fs.read("handler-output.txt");
-			msg.reply({written: true, readBack: read.data});
+		bus.on("save", function(msg) {
+			fs.writeFileSync("handler-output.txt", msg.payload.content);
+			var readBack = fs.readFileSync("handler-output.txt", "utf8");
+			msg.reply({written: true, readBack: readBack});
 		});
 	`)
 	require.NoError(t, err)

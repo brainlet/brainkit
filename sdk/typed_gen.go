@@ -56,66 +56,6 @@ func SubscribeAgentSetStatusResp(rt Runtime, ctx context.Context, topic string, 
 	return SubscribeTo[messages.AgentSetStatusResp](rt, ctx, topic, handler)
 }
 
-// PublishFsDelete publishes a FsDeleteMsg and returns routing info for the response.
-func PublishFsDelete(rt Runtime, ctx context.Context, msg messages.FsDeleteMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsDeleteResp subscribes to the response topic for a FsDeleteMsg command.
-func SubscribeFsDeleteResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsDeleteResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsDeleteResp](rt, ctx, topic, handler)
-}
-
-// PublishFsList publishes a FsListMsg and returns routing info for the response.
-func PublishFsList(rt Runtime, ctx context.Context, msg messages.FsListMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsListResp subscribes to the response topic for a FsListMsg command.
-func SubscribeFsListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsListResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsListResp](rt, ctx, topic, handler)
-}
-
-// PublishFsMkdir publishes a FsMkdirMsg and returns routing info for the response.
-func PublishFsMkdir(rt Runtime, ctx context.Context, msg messages.FsMkdirMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsMkdirResp subscribes to the response topic for a FsMkdirMsg command.
-func SubscribeFsMkdirResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsMkdirResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsMkdirResp](rt, ctx, topic, handler)
-}
-
-// PublishFsRead publishes a FsReadMsg and returns routing info for the response.
-func PublishFsRead(rt Runtime, ctx context.Context, msg messages.FsReadMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsReadResp subscribes to the response topic for a FsReadMsg command.
-func SubscribeFsReadResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsReadResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsReadResp](rt, ctx, topic, handler)
-}
-
-// PublishFsStat publishes a FsStatMsg and returns routing info for the response.
-func PublishFsStat(rt Runtime, ctx context.Context, msg messages.FsStatMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsStatResp subscribes to the response topic for a FsStatMsg command.
-func SubscribeFsStatResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsStatResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsStatResp](rt, ctx, topic, handler)
-}
-
-// PublishFsWrite publishes a FsWriteMsg and returns routing info for the response.
-func PublishFsWrite(rt Runtime, ctx context.Context, msg messages.FsWriteMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeFsWriteResp subscribes to the response topic for a FsWriteMsg command.
-func SubscribeFsWriteResp(rt Runtime, ctx context.Context, topic string, handler func(messages.FsWriteResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.FsWriteResp](rt, ctx, topic, handler)
-}
-
 // PublishGatewayRouteAdd publishes a GatewayRouteAddMsg and returns routing info for the response.
 func PublishGatewayRouteAdd(rt Runtime, ctx context.Context, msg messages.GatewayRouteAddMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

@@ -168,25 +168,6 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
 				return kernel.agentsDomain.SetStatus(ctx, req)
 			}),
-			// ── Filesystem ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsReadMsg) (*messages.FsReadResp, error) {
-				return kernel.fsDomain.Read(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsWriteMsg) (*messages.FsWriteResp, error) {
-				return kernel.fsDomain.Write(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsListMsg) (*messages.FsListResp, error) {
-				return kernel.fsDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsStatMsg) (*messages.FsStatResp, error) {
-				return kernel.fsDomain.Stat(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsDeleteMsg) (*messages.FsDeleteResp, error) {
-				return kernel.fsDomain.Delete(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.FsMkdirMsg) (*messages.FsMkdirResp, error) {
-				return kernel.fsDomain.Mkdir(ctx, req)
-			}),
 			// ── WASM ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmCompileMsg) (*messages.WasmCompileResp, error) {
 				return kernel.wasmDomainInst.Compile(ctx, req)

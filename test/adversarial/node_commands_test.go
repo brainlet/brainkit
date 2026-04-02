@@ -17,7 +17,7 @@ import (
 func makeNode(t *testing.T) *brainkit.Node {
 	t.Helper()
 	if !testutil.PodmanAvailable() {
-		t.Fatal("Node tests need Podman for NATS")
+		t.Skip("Node tests need Podman for NATS")
 	}
 	msgCfg := messagingCfgForBackend(t, "nats")
 	tmpDir := t.TempDir()
@@ -232,7 +232,7 @@ func TestNodeCommands_DeployOnNode(t *testing.T) {
 // TestNodeCommands_NodeShutdownClean — Node.Close is clean with active deployments.
 func TestNodeCommands_NodeShutdownClean(t *testing.T) {
 	if !testutil.PodmanAvailable() {
-		t.Fatal("needs Podman")
+		t.Skip("needs Podman")
 	}
 	msgCfg := messagingCfgForBackend(t, "nats")
 	tmpDir := t.TempDir()

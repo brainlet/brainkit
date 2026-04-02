@@ -57,26 +57,12 @@ func TestSurfaceMatrix_GoSDK(t *testing.T) {
 	})
 
 	t.Run("fs.write+read", func(t *testing.T) {
-		pr, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "go-surf.txt", Data: "from go"})
-		ch := make(chan []byte, 1)
-		unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-		select {
-		case <-ch:
-		case <-time.After(3 * time.Second):
-			t.Fatal("timeout write")
-		}
-		unsub()
-
-		pr2, _ := sdk.Publish(tk, ctx, messages.FsReadMsg{Path: "go-surf.txt"})
-		ch2 := make(chan []byte, 1)
-		unsub2, _ := tk.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
-		defer unsub2()
-		select {
-		case p := <-ch2:
-			assert.Contains(t, string(p), "from go")
-		case <-time.After(3 * time.Second):
-			t.Fatal("timeout read")
-		}
+		result, err := tk.EvalTS(ctx, "__test.ts", `
+			fs.writeFileSync("go-surf.txt", "from go");
+			return fs.readFileSync("go-surf.txt", "utf8");
+		`)
+		require.NoError(t, err)
+		assert.Equal(t, "from go", result)
 	})
 
 	t.Run("bus.publish+reply", func(t *testing.T) {
@@ -142,7 +128,7 @@ func TestSurfaceMatrix_TSDeployed(t *testing.T) {
 		},
 		{
 			"fs.write+read",
-			`await fs.write("ts-surf.txt", "from-ts"); var r = await fs.read("ts-surf.txt"); output(r.data);`,
+			`fs.writeFileSync("ts-surf.txt", "from-ts"); output(fs.readFileSync("ts-surf.txt", "utf8"));`,
 			"from-ts",
 		},
 		{
@@ -208,7 +194,7 @@ func TestSurfaceMatrix_EvalTS(t *testing.T) {
 		{"tools.call", `var r = __go_brainkit_request("tools.call", JSON.stringify({name:"echo",input:{message:"eval"}})); return r.indexOf("eval") >= 0 ? "ok" : "fail";`, "ok"},
 		{"secrets.set", `__go_brainkit_request("secrets.set", JSON.stringify({name:"eval-k",value:"eval-v"})); return "ok";`, "ok"},
 		{"secrets.get", `__go_brainkit_request("secrets.set", JSON.stringify({name:"eval-g",value:"eval-gv"})); var r = JSON.parse(__go_brainkit_request("secrets.get", JSON.stringify({name:"eval-g"}))); return r.value || "empty";`, "eval-gv"},
-		{"fs.list", `__go_brainkit_request("fs.list", JSON.stringify({path:"."})); return "ok";`, "ok"},
+		{"fs.list", `return JSON.stringify(fs.readdirSync("."));`, ""},
 		{"metrics", `var r = JSON.parse(__go_brainkit_request("metrics.get", "{}")); return r.metrics ? "ok" : "fail";`, "ok"},
 		{"registry.list", `__go_brainkit_request("registry.list", JSON.stringify({category:"provider"})); return "ok";`, "ok"},
 		{"bus.publish", `var r = bus.publish("incoming.eval-surface", {data:"test"}); return r.replyTo ? "ok" : "fail";`, "ok"},

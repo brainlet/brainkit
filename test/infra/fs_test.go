@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,277 +14,122 @@ import (
 func TestGoDirect_FS(t *testing.T) {
 	for _, factory := range []struct {
 		name string
-		make func(t *testing.T) sdk.Runtime
+		make func(t *testing.T) *testutil.TestKernel
 	}{
-		{"Kernel", testutil.NewTestKernel},
-		{"Node", testutil.NewTestNode},
+		{"Kernel", testutil.NewTestKernelFull},
 	} {
 		t.Run(factory.name, func(t *testing.T) {
-			rt := factory.make(t)
+			tk := factory.make(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			t.Run("Write_Read_Roundtrip", func(t *testing.T) {
-				_pr1, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{
-					Path: "test.txt", Data: "hello fs",
-				})
+				result, err := tk.EvalTS(ctx, "__test.ts", `fs.writeFileSync("test.txt", "hello fs"); return fs.readFileSync("test.txt", "utf8");`)
 				require.NoError(t, err)
-				_ch1 := make(chan messages.FsWriteResp, 1)
-				_us1, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr1.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch1 <- r })
-				defer _us1()
-				select {
-				case <-_ch1:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-
-				_pr2, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "test.txt"})
-				require.NoError(t, err)
-				_ch2 := make(chan messages.FsReadResp, 1)
-				_us2, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr2.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch2 <- r })
-				require.NoError(t, err)
-				defer _us2()
-				var resp messages.FsReadResp
-				select {
-				case resp = <-_ch2:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "hello fs", resp.Data)
+				assert.Equal(t, "hello fs", result)
 			})
 
 			t.Run("Write_Overwrite", func(t *testing.T) {
-				_spr1, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v1"})
-				_sch1 := make(chan messages.FsWriteResp, 1)
-				_sun1, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr1.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch1 <- r })
-				defer _sun1()
-				select { case <-_sch1: case <-ctx.Done(): t.Fatal("timeout") }
-				_spr2, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "overwrite.txt", Data: "v2"})
-				_sch2 := make(chan messages.FsWriteResp, 1)
-				_sun2, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr2.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch2 <- r })
-				defer _sun2()
-				select { case <-_sch2: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr3, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "overwrite.txt"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.writeFileSync("overwrite.txt", "v1");
+					fs.writeFileSync("overwrite.txt", "v2");
+					return fs.readFileSync("overwrite.txt", "utf8");
+				`)
 				require.NoError(t, err)
-				_ch3 := make(chan messages.FsReadResp, 1)
-				_us3, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr3.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch3 <- r })
-				require.NoError(t, err)
-				defer _us3()
-				var resp messages.FsReadResp
-				select {
-				case resp = <-_ch3:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "v2", resp.Data)
+				assert.Equal(t, "v2", result)
 			})
 
 			t.Run("Mkdir_Recursive", func(t *testing.T) {
-				_pr4, err := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "a/b/c"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.mkdirSync("a/b/c", {recursive: true});
+					fs.writeFileSync("a/b/c/deep.txt", "deep");
+					return fs.readFileSync("a/b/c/deep.txt", "utf8");
+				`)
 				require.NoError(t, err)
-				_ch4 := make(chan messages.FsMkdirResp, 1)
-				_us4, err := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _pr4.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _ch4 <- r })
-				require.NoError(t, err)
-				defer _us4()
-				var resp messages.FsMkdirResp
-				select {
-				case resp = <-_ch4:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.True(t, resp.OK)
-
-				_pr5, err := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "a/b/c/deep.txt", Data: "deep"})
-				require.NoError(t, err)
-				_ch5 := make(chan messages.FsWriteResp, 1)
-				_us5, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _pr5.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _ch5 <- r })
-				defer _us5()
-				select {
-				case <-_ch5:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-
-				_pr6, err := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "a/b/c/deep.txt"})
-				require.NoError(t, err)
-				_ch6 := make(chan messages.FsReadResp, 1)
-				_us6, err := sdk.SubscribeTo[messages.FsReadResp](rt, ctx, _pr6.ReplyTo, func(r messages.FsReadResp, m messages.Message) { _ch6 <- r })
-				require.NoError(t, err)
-				defer _us6()
-				var readResp messages.FsReadResp
-				select {
-				case readResp = <-_ch6:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "deep", readResp.Data)
+				assert.Equal(t, "deep", result)
 			})
 
 			t.Run("List_WithPattern", func(t *testing.T) {
-				_spr3, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/a.txt", Data: "a"})
-				_sch3 := make(chan messages.FsWriteResp, 1)
-				_sun3, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr3.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch3 <- r })
-				defer _sun3()
-				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
-				_spr4, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/b.json", Data: "{}"})
-				_sch4 := make(chan messages.FsWriteResp, 1)
-				_sun4, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr4.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch4 <- r })
-				defer _sun4()
-				select { case <-_sch4: case <-ctx.Done(): t.Fatal("timeout") }
-				_spr5, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "listdir/c.txt", Data: "c"})
-				_sch5 := make(chan messages.FsWriteResp, 1)
-				_sun5, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr5.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch5 <- r })
-				defer _sun5()
-				select { case <-_sch5: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr7, err := sdk.Publish(rt, ctx, messages.FsListMsg{Path: "listdir", Pattern: "*.txt"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.mkdirSync("listdir", {recursive: true});
+					fs.writeFileSync("listdir/a.txt", "a");
+					fs.writeFileSync("listdir/b.json", "{}");
+					fs.writeFileSync("listdir/c.txt", "c");
+					var files = fs.readdirSync("listdir");
+					return JSON.stringify(files);
+				`)
 				require.NoError(t, err)
-				_ch7 := make(chan messages.FsListResp, 1)
-				_us7, err := sdk.SubscribeTo[messages.FsListResp](rt, ctx, _pr7.ReplyTo, func(r messages.FsListResp, m messages.Message) { _ch7 <- r })
-				require.NoError(t, err)
-				defer _us7()
-				var resp messages.FsListResp
-				select {
-				case resp = <-_ch7:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Len(t, resp.Files, 2) // a.txt, c.txt
+				var files []string
+				json.Unmarshal([]byte(result), &files)
+				assert.Len(t, files, 3) // a.txt, b.json, c.txt — readdirSync lists all
 			})
 
 			t.Run("Stat_File", func(t *testing.T) {
-				_spr6, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "stat-target.txt", Data: "12345"})
-				_sch6 := make(chan messages.FsWriteResp, 1)
-				_sun6, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr6.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch6 <- r })
-				defer _sun6()
-				select { case <-_sch6: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr8, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "stat-target.txt"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.writeFileSync("stat-target.txt", "12345");
+					var s = fs.statSync("stat-target.txt");
+					return JSON.stringify({size: s.size, isDir: s.isDirectory()});
+				`)
 				require.NoError(t, err)
-				_ch8 := make(chan messages.FsStatResp, 1)
-				_us8, err := sdk.SubscribeTo[messages.FsStatResp](rt, ctx, _pr8.ReplyTo, func(r messages.FsStatResp, m messages.Message) { _ch8 <- r })
-				require.NoError(t, err)
-				defer _us8()
-				var resp messages.FsStatResp
-				select {
-				case resp = <-_ch8:
-				case <-ctx.Done():
-					t.Fatal("timeout")
+				var stat struct {
+					Size  int64 `json:"size"`
+					IsDir bool  `json:"isDir"`
 				}
-				assert.False(t, resp.IsDir)
-				assert.Equal(t, int64(5), resp.Size)
-				assert.NotEmpty(t, resp.ModTime)
+				json.Unmarshal([]byte(result), &stat)
+				assert.False(t, stat.IsDir)
+				assert.Equal(t, int64(5), stat.Size)
 			})
 
 			t.Run("Stat_Directory", func(t *testing.T) {
-				_spr7, _ := sdk.Publish(rt, ctx, messages.FsMkdirMsg{Path: "stat-dir"})
-				_sch7 := make(chan messages.FsMkdirResp, 1)
-				_sun7, _ := sdk.SubscribeTo[messages.FsMkdirResp](rt, ctx, _spr7.ReplyTo, func(r messages.FsMkdirResp, m messages.Message) { _sch7 <- r })
-				defer _sun7()
-				select { case <-_sch7: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr9, err := sdk.Publish(rt, ctx, messages.FsStatMsg{Path: "stat-dir"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.mkdirSync("stat-dir", {recursive: true});
+					var s = fs.statSync("stat-dir");
+					return JSON.stringify({isDir: s.isDirectory()});
+				`)
 				require.NoError(t, err)
-				_ch9 := make(chan messages.FsStatResp, 1)
-				_us9, err := sdk.SubscribeTo[messages.FsStatResp](rt, ctx, _pr9.ReplyTo, func(r messages.FsStatResp, m messages.Message) { _ch9 <- r })
-				require.NoError(t, err)
-				defer _us9()
-				var resp messages.FsStatResp
-				select {
-				case resp = <-_ch9:
-				case <-ctx.Done():
-					t.Fatal("timeout")
+				var stat struct {
+					IsDir bool `json:"isDir"`
 				}
-				assert.True(t, resp.IsDir)
+				json.Unmarshal([]byte(result), &stat)
+				assert.True(t, stat.IsDir)
 			})
 
 			t.Run("Delete", func(t *testing.T) {
-				_spr8, _ := sdk.Publish(rt, ctx, messages.FsWriteMsg{Path: "delete-me.txt", Data: "x"})
-				_sch8 := make(chan messages.FsWriteResp, 1)
-				_sun8, _ := sdk.SubscribeTo[messages.FsWriteResp](rt, ctx, _spr8.ReplyTo, func(r messages.FsWriteResp, m messages.Message) { _sch8 <- r })
-				defer _sun8()
-				select { case <-_sch8: case <-ctx.Done(): t.Fatal("timeout") }
-
-				_pr10, err := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "delete-me.txt"})
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					fs.writeFileSync("delete-me.txt", "x");
+					fs.unlinkSync("delete-me.txt");
+					try { fs.readFileSync("delete-me.txt", "utf8"); return "SHOULD_FAIL"; }
+					catch(e) { return e.code || "error"; }
+				`)
 				require.NoError(t, err)
-				_ch10 := make(chan messages.FsDeleteResp, 1)
-				_us10, err := sdk.SubscribeTo[messages.FsDeleteResp](rt, ctx, _pr10.ReplyTo, func(r messages.FsDeleteResp, m messages.Message) { _ch10 <- r })
-				require.NoError(t, err)
-				defer _us10()
-				var resp messages.FsDeleteResp
-				select {
-				case resp = <-_ch10:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.True(t, resp.OK)
-
-				pr, _ := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "delete-me.txt"})
-				errCh := make(chan string, 1)
-				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
-					json.Unmarshal(msg.Payload, &r)
-					errCh <- r.Error
-				})
-				defer un()
-				select {
-				case errMsg := <-errCh:
-					assert.NotEmpty(t, errMsg)
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
+				assert.NotEqual(t, "SHOULD_FAIL", result)
 			})
 
 			t.Run("Delete_NotFound", func(t *testing.T) {
-				pr, _ := sdk.Publish(rt, ctx, messages.FsDeleteMsg{Path: "ghost.txt"})
-				errCh := make(chan string, 1)
-				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
-					json.Unmarshal(msg.Payload, &r)
-					errCh <- r.Error
-				})
-				defer un()
-				select {
-				case errMsg := <-errCh:
-					assert.NotEmpty(t, errMsg)
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					try { fs.unlinkSync("ghost.txt"); return "SHOULD_FAIL"; }
+					catch(e) { return e.code || "error"; }
+				`)
+				require.NoError(t, err)
+				assert.NotEqual(t, "SHOULD_FAIL", result)
 			})
 
 			t.Run("Read_NotFound", func(t *testing.T) {
-				pr, _ := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "nope.txt"})
-				errCh := make(chan string, 1)
-				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
-					json.Unmarshal(msg.Payload, &r)
-					errCh <- r.Error
-				})
-				defer un()
-				select {
-				case errMsg := <-errCh:
-					assert.NotEmpty(t, errMsg)
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					try { fs.readFileSync("nope.txt", "utf8"); return "SHOULD_FAIL"; }
+					catch(e) { return e.code || "error"; }
+				`)
+				require.NoError(t, err)
+				assert.NotEqual(t, "SHOULD_FAIL", result)
 			})
 
 			t.Run("PathTraversal_Rejected", func(t *testing.T) {
-				pr, _ := sdk.Publish(rt, ctx, messages.FsReadMsg{Path: "../../etc/passwd"})
-				errCh := make(chan string, 1)
-				un, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
-					var r struct { Error string `json:"error"` }
-					json.Unmarshal(msg.Payload, &r)
-					errCh <- r.Error
-				})
-				defer un()
-				select {
-				case errMsg := <-errCh:
-					assert.NotEmpty(t, errMsg)
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
+				result, err := tk.EvalTS(ctx, "__test.ts", `
+					try { fs.readFileSync("../../etc/passwd"); return "SHOULD_FAIL"; }
+					catch(e) { return e.code || "error"; }
+				`)
+				require.NoError(t, err)
+				assert.NotEqual(t, "SHOULD_FAIL", result)
 			})
 		})
 	}

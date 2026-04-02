@@ -1,63 +1,55 @@
 package adversarial_test
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"context"
+	"time"
 )
 
-// TestFSMatrix_WriteReadDelete — full lifecycle via bus.
+// TestFSMatrix_WriteReadDelete — full lifecycle via polyfill.
 func TestFSMatrix_WriteReadDelete(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Write
-	pr1, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "fs-test.txt", Data: "hello fs"})
-	ch1 := make(chan []byte, 1)
-	unsub1, _ := tk.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
-	<-ch1
-	unsub1()
-
-	// Read
-	pr2, _ := sdk.Publish(tk, ctx, messages.FsReadMsg{Path: "fs-test.txt"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := tk.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
-	p2 := <-ch2
-	unsub2()
-	assert.Contains(t, string(p2), "hello fs")
+	// Write + Read
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.writeFileSync("fs-test.txt", "hello fs");
+		return fs.readFileSync("fs-test.txt", "utf8");
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "hello fs", result)
 
 	// Stat
-	pr3, _ := sdk.Publish(tk, ctx, messages.FsStatMsg{Path: "fs-test.txt"})
-	ch3 := make(chan []byte, 1)
-	unsub3, _ := tk.SubscribeRaw(ctx, pr3.ReplyTo, func(m messages.Message) { ch3 <- m.Payload })
-	p3 := <-ch3
-	unsub3()
-	assert.Contains(t, string(p3), "size")
+	statResult, err := tk.EvalTS(ctx, "__test.ts", `
+		var s = fs.statSync("fs-test.txt");
+		return JSON.stringify({size: s.size});
+	`)
+	require.NoError(t, err)
+	assert.Contains(t, statResult, "size")
 
 	// Delete
-	pr4, _ := sdk.Publish(tk, ctx, messages.FsDeleteMsg{Path: "fs-test.txt"})
-	ch4 := make(chan []byte, 1)
-	unsub4, _ := tk.SubscribeRaw(ctx, pr4.ReplyTo, func(m messages.Message) { ch4 <- m.Payload })
-	p4 := <-ch4
-	unsub4()
-	assert.Contains(t, string(p4), "ok")
+	delResult, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.unlinkSync("fs-test.txt");
+		return "ok";
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", delResult)
 
 	// Read again — should fail
-	pr5, _ := sdk.Publish(tk, ctx, messages.FsReadMsg{Path: "fs-test.txt"})
-	ch5 := make(chan json.RawMessage, 1)
-	unsub5, _ := tk.SubscribeRaw(ctx, pr5.ReplyTo, func(m messages.Message) { ch5 <- json.RawMessage(m.Payload) })
-	defer unsub5()
-	p5 := <-ch5
-	assert.True(t, responseHasError(p5), "reading deleted file should error")
+	readResult, err := tk.EvalTS(ctx, "__test.ts", `
+		try { fs.readFileSync("fs-test.txt", "utf8"); return "SHOULD_FAIL"; }
+		catch(e) { return e.code || "error"; }
+	`)
+	require.NoError(t, err)
+	assert.NotEqual(t, "SHOULD_FAIL", readResult)
 }
 
 // TestFSMatrix_MkdirAndList — create dir, list contents.
@@ -66,27 +58,14 @@ func TestFSMatrix_MkdirAndList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Mkdir
-	pr1, _ := sdk.Publish(tk, ctx, messages.FsMkdirMsg{Path: "test-dir"})
-	ch1 := make(chan []byte, 1)
-	unsub1, _ := tk.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
-	<-ch1
-	unsub1()
-
-	// Write file inside
-	pr2, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "test-dir/file.txt", Data: "inside"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := tk.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
-	<-ch2
-	unsub2()
-
-	// List
-	pr3, _ := sdk.Publish(tk, ctx, messages.FsListMsg{Path: "test-dir"})
-	ch3 := make(chan []byte, 1)
-	unsub3, _ := tk.SubscribeRaw(ctx, pr3.ReplyTo, func(m messages.Message) { ch3 <- m.Payload })
-	defer unsub3()
-	p3 := <-ch3
-	assert.Contains(t, string(p3), "file.txt")
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.mkdirSync("test-dir", {recursive: true});
+		fs.writeFileSync("test-dir/file.txt", "inside");
+		var files = fs.readdirSync("test-dir");
+		return JSON.stringify(files);
+	`)
+	require.NoError(t, err)
+	assert.Contains(t, result, "file.txt")
 }
 
 // TestFSMatrix_ReadNonexistent — read nonexistent file returns error.
@@ -95,17 +74,12 @@ func TestFSMatrix_ReadNonexistent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(tk, ctx, messages.FsReadMsg{Path: "ghost-file-xyz.txt"})
-	ch := make(chan json.RawMessage, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- json.RawMessage(m.Payload) })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.True(t, responseHasError(p))
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		try { fs.readFileSync("ghost-file-xyz.txt", "utf8"); return "SHOULD_FAIL"; }
+		catch(e) { return e.code || "error"; }
+	`)
+	require.NoError(t, err)
+	assert.NotEqual(t, "SHOULD_FAIL", result)
 }
 
 // TestFSMatrix_WorkspaceEscape — path traversal blocked.
@@ -114,22 +88,12 @@ func TestFSMatrix_WorkspaceEscape(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// filepath.Clean normalizes ../../../ to stay within root, so the escape check
-	// in resolveWorkspacePath only fires if the resolved path literally exits the prefix.
-	// With filepath.Join(workspace, filepath.Clean("/"+path)), ../../../ → /etc/passwd → workspace/etc/passwd.
-	// So escape only happens if Clean produces a path outside the workspace.
-	// Test that we at least get an error (file not found within workspace).
-	pr, _ := sdk.Publish(tk, ctx, messages.FsReadMsg{Path: "../../../etc/passwd"})
-	ch := make(chan json.RawMessage, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- json.RawMessage(m.Payload) })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.True(t, responseHasError(p), "traversal should error (escape or not found)")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		try { fs.readFileSync("../../../etc/passwd"); return "SHOULD_FAIL"; }
+		catch(e) { return e.code || "error"; }
+	`)
+	require.NoError(t, err)
+	assert.NotEqual(t, "SHOULD_FAIL", result)
 }
 
 // TestFSMatrix_LargeFileWrite — write and read 1MB file.
@@ -138,51 +102,40 @@ func TestFSMatrix_LargeFileWrite(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	big := strings.Repeat("x", 1024*1024)
+	_ = strings.Repeat("x", 1024*1024) // keep strings import used
 
-	pr1, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: "big-file.txt", Data: big})
-	ch1 := make(chan []byte, 1)
-	unsub1, _ := tk.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
-	<-ch1
-	unsub1()
-
-	pr2, _ := sdk.Publish(tk, ctx, messages.FsStatMsg{Path: "big-file.txt"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := tk.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
-	defer unsub2()
-	p2 := <-ch2
-
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		var big = "";
+		for (var i = 0; i < 1024*1024; i++) big += "x";
+		fs.writeFileSync("big-file.txt", big);
+		var s = fs.statSync("big-file.txt");
+		return JSON.stringify({size: s.size});
+	`)
+	require.NoError(t, err)
 	var stat struct{ Size int64 `json:"size"` }
-	json.Unmarshal(p2, &stat)
+	json.Unmarshal([]byte(result), &stat)
 	assert.Equal(t, int64(1024*1024), stat.Size)
 }
 
-// TestFSMatrix_ListWithPattern — list with glob pattern.
+// TestFSMatrix_ListWithPattern — list directory contents.
 func TestFSMatrix_ListWithPattern(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Write several files
-	for _, name := range []string{"alpha.txt", "beta.txt", "alpha.json", "gamma.txt"} {
-		pr, _ := sdk.Publish(tk, ctx, messages.FsWriteMsg{Path: name, Data: "content"})
-		ch := make(chan []byte, 1)
-		unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-		<-ch
-		unsub()
-	}
-
-	// List with pattern
-	pr, _ := sdk.Publish(tk, ctx, messages.FsListMsg{Path: ".", Pattern: "*.txt"})
-	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-	defer unsub()
-	p := <-ch
-
-	assert.Contains(t, string(p), "alpha.txt")
-	assert.Contains(t, string(p), "beta.txt")
-	assert.Contains(t, string(p), "gamma.txt")
-	assert.NotContains(t, string(p), "alpha.json")
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.writeFileSync("alpha.txt", "content");
+		fs.writeFileSync("beta.txt", "content");
+		fs.writeFileSync("alpha.json", "content");
+		fs.writeFileSync("gamma.txt", "content");
+		var files = fs.readdirSync(".");
+		return JSON.stringify(files);
+	`)
+	require.NoError(t, err)
+	assert.Contains(t, result, "alpha.txt")
+	assert.Contains(t, result, "beta.txt")
+	assert.Contains(t, result, "gamma.txt")
+	assert.Contains(t, result, "alpha.json")
 }
 
 // TestFSMatrix_StatDirectory — stat on directory returns isDir=true.
@@ -191,19 +144,13 @@ func TestFSMatrix_StatDirectory(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr1, _ := sdk.Publish(tk, ctx, messages.FsMkdirMsg{Path: "stat-dir"})
-	ch1 := make(chan []byte, 1)
-	unsub1, _ := tk.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
-	<-ch1
-	unsub1()
-
-	pr2, _ := sdk.Publish(tk, ctx, messages.FsStatMsg{Path: "stat-dir"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := tk.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
-	defer unsub2()
-	p2 := <-ch2
-
-	assert.Contains(t, string(p2), `"isDir":true`)
+	result, err := tk.EvalTS(ctx, "__test.ts", `
+		fs.mkdirSync("stat-dir", {recursive: true});
+		var s = fs.statSync("stat-dir");
+		return JSON.stringify({isDir: s.isDirectory()});
+	`)
+	require.NoError(t, err)
+	assert.Contains(t, result, `"isDir":true`)
 }
 
 // TestFSMatrix_FromTS — all FS ops from .ts surface.
@@ -212,16 +159,16 @@ func TestFSMatrix_FromTS(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := tk.Deploy(ctx, "fs-ts-test.ts", `
-		await fs.write("ts-file.txt", "from typescript");
-		var read = await fs.read("ts-file.txt");
-		var stat = await fs.stat("ts-file.txt");
-		var list = await fs.list(".", "ts-*");
-		await fs.delete("ts-file.txt");
+		fs.writeFileSync("ts-file.txt", "from typescript");
+		var data = fs.readFileSync("ts-file.txt", "utf8");
+		var stat = fs.statSync("ts-file.txt");
+		var list = fs.readdirSync(".");
+		fs.unlinkSync("ts-file.txt");
 
 		output({
-			data: read.data,
+			data: data,
 			size: stat.size,
-			filesFound: list.files.length,
+			filesFound: list.length,
 			deleted: true,
 		});
 	`)

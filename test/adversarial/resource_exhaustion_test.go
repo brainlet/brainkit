@@ -345,7 +345,7 @@ func TestExhaustion_FilesystemFill(t *testing.T) {
 		try {
 			// Write 100 files of 1MB each = 100MB total (in the sandbox)
 			for (var i = 0; i < 100; i++) {
-				await fs.write("fill-" + i + ".dat", "x".repeat(1024 * 1024));
+				fs.writeFileSync("fill-" + i + ".dat", "x".repeat(1024 * 1024));
 				written++;
 			}
 		} catch(e) {}

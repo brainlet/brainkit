@@ -1,5 +1,5 @@
-// infrastructure.js — Tool, FS, MCP, Registry, Secrets, and Output APIs.
-// Outputs: globalThis.__kit_tools, __kit_fs, __kit_mcp, __kit_registry_api, __kit_secrets, __kit_output
+// infrastructure.js — Tool, MCP, Registry, Secrets, and Output APIs.
+// Outputs: globalThis.__kit_tools, __kit_mcp, __kit_registry_api, __kit_secrets, __kit_output
 // Depends on: globalThis.__kit_bridgeRequest, __kit_bridgeRequestAsync, __kit_bridgeControl, __kit_parseBridgeResponse
 
 (function() {
@@ -24,15 +24,6 @@
       var raw = bridgeRequest("tools.resolve", { name: name });
       return parseBridgeResponse(raw);
     },
-  };
-
-  globalThis.__kit_fs = {
-    read: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.read", { path: path })); },
-    write: async function(path, data) { return parseBridgeResponse(await bridgeRequestAsync("fs.write", { path: path, data: data })); },
-    list: async function(path, pattern) { return parseBridgeResponse(await bridgeRequestAsync("fs.list", { path: path || ".", pattern: pattern || "" })); },
-    stat: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.stat", { path: path })); },
-    delete: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.delete", { path: path })); },
-    mkdir: async function(path) { return parseBridgeResponse(await bridgeRequestAsync("fs.mkdir", { path: path })); },
   };
 
   globalThis.__kit_mcp = {
