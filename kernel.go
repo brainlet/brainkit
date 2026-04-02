@@ -30,7 +30,6 @@ import (
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/secrets"
 	"github.com/brainlet/brainkit/tracing"
-	"github.com/brainlet/brainkit/workflow"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
@@ -41,7 +40,7 @@ import (
 )
 
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
-// It owns JS/WASM/runtime state and an internal Watermill transport.
+// It owns JS runtime state and an internal Watermill transport.
 type Kernel struct {
 	// Domain handlers (internal — accessed via command catalog, not directly)
 	// Category B: take interfaces, not *Kernel
@@ -49,25 +48,19 @@ type Kernel struct {
 	agentsDomain   *AgentsDomain
 	packagesDomain *PackagesDomain
 	secretsDomain  *SecretsDomain
-	workflowDomain *WorkflowDomain
 	// Category C: stay on *Kernel (touch too many subsystems)
-	wasmDomainInst      *WASMDomain
 	lifecycle           *LifecycleDomain
 	packageDeployDomain *PackageDeployDomain
-	automationDomain    *AutomationDomain
 	testingDomain       *TestingDomain
 	// Eliminated (inlined into catalog): RBACDomain, TracingDomain, MCPDomain, RegistryDomain
 
 	Tools     *toolreg.ToolRegistry
 	packages       *packages.Manager
-	workflowEngine *workflow.Engine
-	hostFunctions  *workflow.HostFunctionRegistry
 	mcp            *mcppkg.MCPManager
 	providers *provreg.ProviderRegistry
 	rbac                *rbac.Manager
 	tracer              *tracing.Tracer
 	busRateLimiters      map[string]*rate.Limiter // role → limiter
-	wasmCommandAllowlist map[string]bool          // live — protected by mu
 	replyHMACKey         []byte                   // 32-byte key for reply token HMAC; nil if RBAC not configured
 
 	// Internal Watermill transport — always present
@@ -82,7 +75,6 @@ type Kernel struct {
 	callerID  string
 	bridge    *jsbridge.Bridge
 	agents    *agentembed.Sandbox
-	wasm      *WASMService
 	storages  map[string]*libsql.Server
 
 	secretStore   secrets.SecretStore
@@ -556,15 +548,6 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		sharedTools = toolreg.New()
 	}
 
-	wasmAllowlist := cfg.WASMCommandAllowlist
-	if wasmAllowlist == nil {
-		// Copy default so runtime mutations don't modify the package-level var
-		wasmAllowlist = make(map[string]bool, len(DefaultWASMCommandAllowlist))
-		for k, v := range DefaultWASMCommandAllowlist {
-			wasmAllowlist[k] = v
-		}
-	}
-
 	kernel := &Kernel{
 		Tools:                sharedTools,
 		config:               cfg,
@@ -574,7 +557,6 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		deployments:          make(map[string]*deploymentInfo),
 		bridgeSubs:           make(map[string]func()),
 		schedules:            make(map[string]*scheduleEntry),
-		wasmCommandAllowlist: wasmAllowlist,
 	}
 	providers := make(map[string]agentembed.ProviderConfig)
 	for name, reg := range cfg.AIProviders {
@@ -780,86 +762,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// ToolsDomain needs tracer — constructed here after tracer init
 	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, cfg.CallerID)
 
-	// Initialize workflow engine with persistence if KitStore available
-	kernel.hostFunctions = workflow.NewHostFunctionRegistry()
-	var wfStore workflow.RunStore
-	if sqlStore, ok := cfg.Store.(*SQLiteStore); ok {
-		wfStore = &workflowStoreAdapter{store: sqlStore}
-	}
-	kernel.workflowEngine = workflow.NewEngine(kernel.hostFunctions, wfStore,
-		workflow.WithAI(&kernelAIGenerator{kernel: kernel}),
-		workflow.WithBusSubscriber(func(topic string, handler func(json.RawMessage)) (func(), error) {
-			return kernel.remote.SubscribeRaw(context.Background(), topic, func(msg messages.Message) {
-				handler(msg.Payload)
-			})
-		}),
-		workflow.WithBusPublisher(func(ctx context.Context, topic string, payload json.RawMessage) error {
-			return kernel.publish(ctx, topic, payload)
-		}),
-		workflow.WithSpanRecorder(func(workflowID, runID string, entries []workflow.JournalEntry) {
-			if kernel.tracer == nil {
-				return
-			}
-			for _, entry := range entries {
-				span := kernel.tracer.StartSpan("workflow.step:"+entry.StepName, context.Background())
-				span.SetAttribute("workflowId", workflowID)
-				span.SetAttribute("runId", runID)
-				span.SetAttribute("stepIndex", strconv.Itoa(entry.StepIndex))
-				span.SetSource(workflowID)
-				// Record host calls within the step as child attributes
-				for _, call := range entry.Calls {
-					span.SetAttribute("call:"+call.Function, call.Duration.String())
-				}
-				if entry.Error != "" {
-					span.End(fmt.Errorf("%s", entry.Error))
-				} else {
-					span.End(nil)
-				}
-			}
-		}),
-		workflow.WithPluginCaller(func(ctx context.Context, topic string, args json.RawMessage) (json.RawMessage, error) {
-			resultTopic := topic + ".result"
-			correlationID := uuid.NewString()
-			waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-
-			resultCh := make(chan json.RawMessage, 1)
-			unsub, err := kernel.remote.SubscribeRaw(waitCtx, resultTopic, func(msg messages.Message) {
-				if msg.Metadata["correlationId"] == correlationID {
-					select {
-					case resultCh <- json.RawMessage(msg.Payload):
-					default:
-					}
-					cancel()
-				}
-			})
-			if err != nil {
-				return nil, err
-			}
-			defer unsub()
-
-			if _, err := kernel.remote.PublishRaw(messaging.ContextWithCorrelationID(waitCtx, correlationID), topic, args); err != nil {
-				return nil, err
-			}
-			select {
-			case result := <-resultCh:
-				return result, nil
-			case <-waitCtx.Done():
-				return nil, fmt.Errorf("plugin call %s: timeout", topic)
-			}
-		}),
-	)
-	kernel.workflowDomain = newWorkflowDomain(kernel.workflowEngine)
-	kernel.automationDomain = newAutomationDomain(kernel)
 	kernel.testingDomain = newTestingDomain(kernel)
-
-	// Restore active workflow runs from previous session
-	if wfStore != nil {
-		kernel.workflowEngine.RestoreActiveRuns(context.Background())
-	}
-
-	kernel.wasm = newWASMService(kernel)
-	kernel.wasmDomainInst = newWASMDomain(kernel, kernel.wasm)
 	kernel.lifecycle = newLifecycleDomain(kernel)
 	// (RegistryDomain eliminated — inlined into catalog)
 
@@ -868,14 +771,6 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	// Initial probe — don't wait for first periodic tick
 	go kernel.ProbeAll()
-
-	if cfg.Store != nil {
-		if err := kernel.wasm.loadFromStore(cfg.Store); err != nil {
-			InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
-				Operation: "LoadFromStore", Cause: err,
-			}, ErrorContext{Operation: "LoadFromStore", Component: "kernel"})
-		}
-	}
 
 	if len(cfg.MCPServers) > 0 {
 		kernel.mcp = mcppkg.New()
@@ -971,17 +866,6 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Restore persisted schedules
 	if cfg.Store != nil {
 		kernel.restoreSchedules()
-	}
-
-	// Wire WASM shard bus subscriptions for standalone Kernel.
-	// Node.Start() does this separately after transport provisioning.
-	// Without this, shard bus.on handlers don't fire on standalone Kernel (bug #9).
-	if !cfg.DeferRouterStart && kernel.wasm != nil {
-		if err := kernel.wasm.restoreTransportSubscriptions(); err != nil {
-			InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
-				Operation: "RestoreShardSubscriptions", Cause: err,
-			}, ErrorContext{Operation: "RestoreShardSubscriptions", Component: "kernel"})
-		}
 	}
 
 	kernel.startedAt = time.Now()
@@ -1155,9 +1039,6 @@ func (k *Kernel) close() error {
 	if k.mcp != nil {
 		collect(k.mcp.Close())
 	}
-	if k.wasm != nil {
-		k.wasm.close()
-	}
 	if k.config.Store != nil {
 		collect(k.config.Store.Close())
 	}
@@ -1299,90 +1180,6 @@ func (k *Kernel) RemoveResource(resourceType, id string) error {
 	return err
 }
 
-// ListWASMModules returns metadata for all compiled WASM modules.
-func (k *Kernel) ListWASMModules() ([]WASMModuleInfo, error) {
-	k.wasm.mu.Lock()
-	defer k.wasm.mu.Unlock()
-	infos := make([]WASMModuleInfo, 0, len(k.wasm.modules))
-	for _, mod := range k.wasm.modules {
-		infos = append(infos, WASMModuleInfo{
-			Name:       mod.Name,
-			Size:       mod.Size,
-			Exports:    mod.Exports,
-			CompiledAt: mod.CompiledAt.Format(time.RFC3339),
-			SourceHash: mod.SourceHash,
-		})
-	}
-	return infos, nil
-}
-
-// GetWASMModule returns metadata for a specific module by name.
-func (k *Kernel) GetWASMModule(name string) (*WASMModuleInfo, error) {
-	k.wasm.mu.Lock()
-	mod, ok := k.wasm.modules[name]
-	k.wasm.mu.Unlock()
-	if !ok {
-		return nil, nil
-	}
-	return &WASMModuleInfo{
-		Name:       mod.Name,
-		Size:       mod.Size,
-		Exports:    mod.Exports,
-		CompiledAt: mod.CompiledAt.Format(time.RFC3339),
-		SourceHash: mod.SourceHash,
-	}, nil
-}
-
-// RemoveWASMModule unloads a compiled module by name via the typed domain.
-func (k *Kernel) RemoveWASMModule(name string) error {
-	_, err := k.wasmDomainInst.Remove(context.Background(), messages.WasmRemoveMsg{Name: name})
-	return err
-}
-
-// DeployWASM activates a compiled shard via the typed domain.
-func (k *Kernel) DeployWASM(name string) (*ShardDescriptor, error) {
-	resp, err := k.wasmDomainInst.Deploy(context.Background(), messages.WasmDeployMsg{Name: name})
-	if err != nil {
-		return nil, err
-	}
-	return &ShardDescriptor{
-		Module:     resp.Module,
-		Mode:       resp.Mode,
-		Handlers:   resp.Handlers,
-		DeployedAt: time.Now(),
-	}, nil
-}
-
-// UndeployWASM removes all event subscriptions for a deployed shard.
-func (k *Kernel) UndeployWASM(name string) error {
-	_, err := k.wasmDomainInst.Undeploy(context.Background(), messages.WasmUndeployMsg{Name: name})
-	return err
-}
-
-// DescribeWASM returns the shard's registrations via the typed domain.
-func (k *Kernel) DescribeWASM(name string) (*ShardDescriptor, error) {
-	resp, err := k.wasmDomainInst.Describe(context.Background(), messages.WasmDescribeMsg{Name: name})
-	if err != nil {
-		return nil, err
-	}
-	return &ShardDescriptor{
-		Module:     resp.Module,
-		Mode:       resp.Mode,
-		Handlers:   resp.Handlers,
-		DeployedAt: time.Now(),
-	}, nil
-}
-
-// ListDeployedWASM returns all active shard descriptors.
-func (k *Kernel) ListDeployedWASM() []ShardDescriptor {
-	return k.wasm.listDeployedShards()
-}
-
-// InjectWASMEvent manually triggers a shard handler.
-func (k *Kernel) InjectWASMEvent(shardName, topic string, payload json.RawMessage) (*WASMEventResult, error) {
-	return k.wasm.invokeShardHandler(context.Background(), shardName, topic, payload, nil)
-}
-
 // initStorages starts sqlite bridges for all sqlite storage entries.
 // Must be called before loadRuntime — libsql servers need to be running.
 // Returns a path→URL map for sqlite bridge sharing with vectors.
@@ -1488,32 +1285,6 @@ func (k *Kernel) EvalModule(ctx context.Context, filename, code string) (string,
 // RegisterTool is a convenience method for registering typed Go tools.
 func RegisterTool[T any](k *Kernel, name string, tool toolreg.TypedTool[T]) error {
 	return toolreg.Register(k.Tools, name, tool)
-}
-
-// ResumeWorkflow resumes a suspended workflow run from the Go side.
-func (k *Kernel) ResumeWorkflow(ctx context.Context, runId, stepId, resumeDataJSON string) (string, error) {
-	stepArg := "undefined"
-	if stepId != "" {
-		stepArg = fmt.Sprintf("%q", stepId)
-	}
-	code := fmt.Sprintf(`(async () => {
-		var result = await globalThis.__kit.resumeWorkflow(%q, %s, %s);
-		globalThis.__module_result = JSON.stringify(result);
-	})()`, runId, stepArg, resumeDataJSON)
-
-	val, err := k.bridge.EvalAsync("__resume_workflow.js", code)
-	if err != nil {
-		return "", fmt.Errorf("resume workflow %s: %w", runId, err)
-	}
-	if val != nil {
-		val.Free()
-	}
-	result, err := k.bridge.Eval("__get_resume_result.js", `typeof globalThis.__module_result !== 'undefined' ? String(globalThis.__module_result) : ""`)
-	if err != nil {
-		return "", err
-	}
-	defer result.Free()
-	return result.String(), nil
 }
 
 // --- Provider Registry delegation ---

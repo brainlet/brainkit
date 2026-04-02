@@ -493,3 +493,8 @@ func (n *Node) setPluginState(ctx context.Context, req messages.PluginStateSetMs
 	}
 	return &messages.PluginStateSetResp{OK: true}, nil
 }
+
+func mustMarshalJSON(v any) json.RawMessage {
+	payload, _ := json.Marshal(v)
+	return payload
+}
