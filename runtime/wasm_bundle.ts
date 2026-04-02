@@ -1,8 +1,8 @@
 // AUTO-GENERATED — do not edit. Run scripts/bundle_wasm.sh to regenerate.
-// Source files: 15 files from kit/runtime/wasm/
+// Source files: 26 files from runtime/wasm/
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/host.ts
+// Source: runtime/wasm/host.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/host.ts — Raw host function bindings (INTERNAL).
@@ -39,7 +39,7 @@ export declare function _hasState(key: string): i32
 export declare function _setMode(mode: string): void
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/json.ts
+// Source: runtime/wasm/json.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/json.ts — Pure AssemblyScript JSON library.
@@ -623,7 +623,7 @@ class JSONParser {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/types.ts
+// Source: runtime/wasm/types.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/types.ts — Base types for the brainkit WASM module.
@@ -635,7 +635,7 @@ export interface BusMsg {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/log.ts
+// Source: runtime/wasm/log.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/log.ts — Logging functions.
@@ -667,7 +667,7 @@ export function error(message: string): void {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/state.ts
+// Source: runtime/wasm/state.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/state.ts — State management functions.
@@ -689,7 +689,7 @@ export function hasState(key: string): bool {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/shard.ts
+// Source: runtime/wasm/shard.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/shard.ts — Shard registration + bus functions.
@@ -726,7 +726,7 @@ export function setMode(mode: string): void {
 }
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/agents.ts
+// Source: runtime/wasm/generated/agents.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -803,109 +803,262 @@ export class AgentSetStatusMsg {
 
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/fs.ts
+// Source: runtime/wasm/generated/automation.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
-// Domain: fs
+// Domain: automation
 
-export namespace fs_ops {
+export namespace automation {
 }
 
 // Events
-export class FsReadMsg {
+export class AutomationDeployMsg {
     path: string
+    manifest: string
+    workflowSource: string
+    adminSource: string
 
-    constructor(path: string) {
+    constructor(path: string, manifest: string, workflowSource: string, adminSource: string) {
         this.path = path
+        this.manifest = manifest
+        this.workflowSource = workflowSource
+        this.adminSource = adminSource
     }
 
     toJSON(): string {
         let obj = new JSONObject()
         obj.setString("path", this.path)
+        if (this.manifest.length > 0) obj.set("manifest", JSONValue.parse(this.manifest))
+        obj.setString("workflowSource", this.workflowSource)
+        obj.setString("adminSource", this.adminSource)
         return obj.toString()
     }
 }
 
-export class FsWriteMsg {
-    path: string
-    data: string
+export class AutomationTeardownMsg {
+    name: string
 
-    constructor(path: string, data: string) {
-        this.path = path
-        this.data = data
+    constructor(name: string) {
+        this.name = name
     }
 
     toJSON(): string {
         let obj = new JSONObject()
-        obj.setString("path", this.path)
-        obj.setString("data", this.data)
+        obj.setString("name", this.name)
         return obj.toString()
     }
 }
 
-export class FsListMsg {
-    path: string
-    pattern: string
-
-    constructor(path: string, pattern: string) {
-        this.path = path
-        this.pattern = pattern
-    }
+export class AutomationListMsg {
 
     toJSON(): string {
         let obj = new JSONObject()
-        obj.setString("path", this.path)
-        obj.setString("pattern", this.pattern)
         return obj.toString()
     }
 }
 
-export class FsStatMsg {
-    path: string
+export class AutomationInfoMsg {
+    name: string
 
-    constructor(path: string) {
-        this.path = path
+    constructor(name: string) {
+        this.name = name
     }
 
     toJSON(): string {
         let obj = new JSONObject()
-        obj.setString("path", this.path)
-        return obj.toString()
-    }
-}
-
-export class FsDeleteMsg {
-    path: string
-
-    constructor(path: string) {
-        this.path = path
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("path", this.path)
-        return obj.toString()
-    }
-}
-
-export class FsMkdirMsg {
-    path: string
-
-    constructor(path: string) {
-        this.path = path
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("path", this.path)
+        obj.setString("name", this.name)
         return obj.toString()
     }
 }
 
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/kit.ts
+// Source: runtime/wasm/generated/bus.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: bus
+
+export namespace bus {
+}
+
+// Events
+export class HandlerFailedEvent {
+    topic: string
+    source: string
+    error: string
+    retryCount: i32
+    willRetry: bool
+
+    constructor(topic: string, source: string, error: string, retryCount: i32, willRetry: bool) {
+        this.topic = topic
+        this.source = source
+        this.error = error
+        this.retryCount = retryCount
+        this.willRetry = willRetry
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("topic", this.topic)
+        obj.setString("source", this.source)
+        obj.setString("error", this.error)
+        obj.setInt("retryCount", this.retryCount)
+        obj.setBool("willRetry", this.willRetry)
+        return obj.toString()
+    }
+}
+
+export class HandlerExhaustedEvent {
+    topic: string
+    source: string
+    error: string
+    retryCount: i32
+
+    constructor(topic: string, source: string, error: string, retryCount: i32) {
+        this.topic = topic
+        this.source = source
+        this.error = error
+        this.retryCount = retryCount
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("topic", this.topic)
+        obj.setString("source", this.source)
+        obj.setString("error", this.error)
+        obj.setInt("retryCount", this.retryCount)
+        return obj.toString()
+    }
+}
+
+export class PermissionDeniedEvent {
+    source: string
+    topic: string
+    action: string
+    role: string
+    reason: string
+
+    constructor(source: string, topic: string, action: string, role: string, reason: string) {
+        this.source = source
+        this.topic = topic
+        this.action = action
+        this.role = role
+        this.reason = reason
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setString("topic", this.topic)
+        obj.setString("action", this.action)
+        obj.setString("role", this.role)
+        obj.setString("reason", this.reason)
+        return obj.toString()
+    }
+}
+
+export class ReplyDeniedEvent {
+    source: string
+    topic: string
+    correlationId: string
+    reason: string
+
+    constructor(source: string, topic: string, correlationId: string, reason: string) {
+        this.source = source
+        this.topic = topic
+        this.correlationId = correlationId
+        this.reason = reason
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setString("topic", this.topic)
+        obj.setString("correlationId", this.correlationId)
+        obj.setString("reason", this.reason)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/gateway.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: gateway
+
+export namespace gateway {
+}
+
+// Events
+export class GatewayRouteAddMsg {
+    method: string
+    path: string
+    topic: string
+    type: string
+    owner: string
+
+    constructor(method: string, path: string, topic: string, type: string, owner: string) {
+        this.method = method
+        this.path = path
+        this.topic = topic
+        this.type = type
+        this.owner = owner
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("method", this.method)
+        obj.setString("path", this.path)
+        obj.setString("topic", this.topic)
+        obj.setString("type", this.type)
+        obj.setString("owner", this.owner)
+        return obj.toString()
+    }
+}
+
+export class GatewayRouteRemoveMsg {
+    method: string
+    path: string
+    owner: string
+
+    constructor(method: string, path: string, owner: string) {
+        this.method = method
+        this.path = path
+        this.owner = owner
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("method", this.method)
+        obj.setString("path", this.path)
+        obj.setString("owner", this.owner)
+        return obj.toString()
+    }
+}
+
+export class GatewayRouteListMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class GatewayStatusMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/kit.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -915,40 +1068,6 @@ export namespace kit {
 }
 
 // Events
-export class KitDeployedEvent {
-    source: string
-    resources: string
-
-    constructor(source: string, resources: string) {
-        this.source = source
-        this.resources = resources
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("source", this.source)
-        if (this.resources.length > 0) obj.set("resources", JSONValue.parse(this.resources))
-        return obj.toString()
-    }
-}
-
-export class KitTeardownedEvent {
-    source: string
-    removed: i32
-
-    constructor(source: string, removed: i32) {
-        this.source = source
-        this.removed = removed
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("source", this.source)
-        obj.setInt("removed", this.removed)
-        return obj.toString()
-    }
-}
-
 export class KitDeployMsg {
     source: string
     code: string
@@ -1005,9 +1124,57 @@ export class KitRedeployMsg {
     }
 }
 
+export class KitDeployFileMsg {
+    path: string
+
+    constructor(path: string) {
+        this.path = path
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("path", this.path)
+        return obj.toString()
+    }
+}
+
+export class KitDeployedEvent {
+    source: string
+    resources: string
+
+    constructor(source: string, resources: string) {
+        this.source = source
+        this.resources = resources
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        if (this.resources.length > 0) obj.set("resources", JSONValue.parse(this.resources))
+        return obj.toString()
+    }
+}
+
+export class KitTeardownedEvent {
+    source: string
+    removed: i32
+
+    constructor(source: string, removed: i32) {
+        this.source = source
+        this.removed = removed
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setInt("removed", this.removed)
+        return obj.toString()
+    }
+}
+
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/mcp.ts
+// Source: runtime/wasm/generated/mcp.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -1053,7 +1220,239 @@ export class McpCallToolMsg {
 
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/plugin.ts
+// Source: runtime/wasm/generated/metrics.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: metrics
+
+export namespace metrics {
+}
+
+// Events
+export class MetricsGetMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/package.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: package
+
+export namespace package {
+}
+
+// Events
+export class PackageDeployMsg {
+    path: string
+    manifest: string
+    files: string
+
+    constructor(path: string, manifest: string, files: string) {
+        this.path = path
+        this.manifest = manifest
+        this.files = files
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("path", this.path)
+        if (this.manifest.length > 0) obj.set("manifest", JSONValue.parse(this.manifest))
+        if (this.files.length > 0) obj.set("files", JSONValue.parse(this.files))
+        return obj.toString()
+    }
+}
+
+export class PackageTeardownMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PackageRedeployMsg {
+    path: string
+
+    constructor(path: string) {
+        this.path = path
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("path", this.path)
+        return obj.toString()
+    }
+}
+
+export class PackageListDeployedMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class PackageDeployInfoMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/packages.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: packages
+
+export namespace packages {
+}
+
+// Events
+export class PackagesSearchMsg {
+    query: string
+    capabilities: string
+
+    constructor(query: string, capabilities: string) {
+        this.query = query
+        this.capabilities = capabilities
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("query", this.query)
+        if (this.capabilities.length > 0) obj.set("capabilities", JSONValue.parse(this.capabilities))
+        return obj.toString()
+    }
+}
+
+export class PackagesInstallMsg {
+    name: string
+    version: string
+
+    constructor(name: string, version: string) {
+        this.name = name
+        this.version = version
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("version", this.version)
+        return obj.toString()
+    }
+}
+
+export class PackagesRemoveMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PackagesUpdateMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PackagesListMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class PackagesInfoMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/peers.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: peers
+
+export namespace peers {
+}
+
+// Events
+export class PeersListMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class PeersResolveMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/plugin.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -1063,29 +1462,6 @@ export namespace plugin {
 }
 
 // Events
-export class PluginRegisteredEvent {
-    owner: string
-    name: string
-    version: string
-    tools: i32
-
-    constructor(owner: string, name: string, version: string, tools: i32) {
-        this.owner = owner
-        this.name = name
-        this.version = version
-        this.tools = tools
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("owner", this.owner)
-        obj.setString("name", this.name)
-        obj.setString("version", this.version)
-        obj.setInt("tools", this.tools)
-        return obj.toString()
-    }
-}
-
 export class PluginManifestMsg {
     owner: string
     name: string
@@ -1094,8 +1470,9 @@ export class PluginManifestMsg {
     tools: string
     subscriptions: string
     events: string
+    host_functions: string
 
-    constructor(owner: string, name: string, version: string, description: string, tools: string, subscriptions: string, events: string) {
+    constructor(owner: string, name: string, version: string, description: string, tools: string, subscriptions: string, events: string, host_functions: string) {
         this.owner = owner
         this.name = name
         this.version = version
@@ -1103,6 +1480,7 @@ export class PluginManifestMsg {
         this.tools = tools
         this.subscriptions = subscriptions
         this.events = events
+        this.host_functions = host_functions
     }
 
     toJSON(): string {
@@ -1114,6 +1492,7 @@ export class PluginManifestMsg {
         if (this.tools.length > 0) obj.set("tools", JSONValue.parse(this.tools))
         if (this.subscriptions.length > 0) obj.set("subscriptions", JSONValue.parse(this.subscriptions))
         if (this.events.length > 0) obj.set("events", JSONValue.parse(this.events))
+        if (this.host_functions.length > 0) obj.set("host_functions", JSONValue.parse(this.host_functions))
         return obj.toString()
     }
 }
@@ -1149,9 +1528,204 @@ export class PluginStateSetMsg {
     }
 }
 
+export class PluginStartMsg {
+    name: string
+    binary: string
+    env: string
+    config: string
+    role: string
+
+    constructor(name: string, binary: string, env: string, config: string, role: string) {
+        this.name = name
+        this.binary = binary
+        this.env = env
+        this.config = config
+        this.role = role
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("binary", this.binary)
+        if (this.env.length > 0) obj.set("env", JSONValue.parse(this.env))
+        if (this.config.length > 0) obj.set("config", JSONValue.parse(this.config))
+        obj.setString("role", this.role)
+        return obj.toString()
+    }
+}
+
+export class PluginStopMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PluginRestartMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PluginListRunningMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class PluginStatusMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class PluginRegisteredEvent {
+    owner: string
+    name: string
+    version: string
+    tools: i32
+
+    constructor(owner: string, name: string, version: string, tools: i32) {
+        this.owner = owner
+        this.name = name
+        this.version = version
+        this.tools = tools
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("owner", this.owner)
+        obj.setString("name", this.name)
+        obj.setString("version", this.version)
+        obj.setInt("tools", this.tools)
+        return obj.toString()
+    }
+}
+
+export class PluginStartedEvent {
+    name: string
+    pid: i32
+    version: string
+
+    constructor(name: string, pid: i32, version: string) {
+        this.name = name
+        this.pid = pid
+        this.version = version
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setInt("pid", this.pid)
+        obj.setString("version", this.version)
+        return obj.toString()
+    }
+}
+
+export class PluginStoppedEvent {
+    name: string
+    reason: string
+
+    constructor(name: string, reason: string) {
+        this.name = name
+        this.reason = reason
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("reason", this.reason)
+        return obj.toString()
+    }
+}
+
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/registry.ts
+// Source: runtime/wasm/generated/rbac.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: rbac
+
+export namespace rbac {
+}
+
+// Events
+export class RBACAssignMsg {
+    source: string
+    role: string
+
+    constructor(source: string, role: string) {
+        this.source = source
+        this.role = role
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setString("role", this.role)
+        return obj.toString()
+    }
+}
+
+export class RBACRevokeMsg {
+    source: string
+
+    constructor(source: string) {
+        this.source = source
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        return obj.toString()
+    }
+}
+
+export class RBACListMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class RBACRolesMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/registry.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -1211,7 +1785,204 @@ export class RegistryResolveMsg {
 
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/tools.ts
+// Source: runtime/wasm/generated/secrets.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: secrets
+
+export namespace secrets {
+}
+
+// Events
+export class SecretsSetMsg {
+    name: string
+    value: string
+
+    constructor(name: string, value: string) {
+        this.name = name
+        this.value = value
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("value", this.value)
+        return obj.toString()
+    }
+}
+
+export class SecretsGetMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class SecretsDeleteMsg {
+    name: string
+
+    constructor(name: string) {
+        this.name = name
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        return obj.toString()
+    }
+}
+
+export class SecretsListMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class SecretsRotateMsg {
+    name: string
+    newValue: string
+    restart: bool
+
+    constructor(name: string, newValue: string, restart: bool) {
+        this.name = name
+        this.newValue = newValue
+        this.restart = restart
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("newValue", this.newValue)
+        obj.setBool("restart", this.restart)
+        return obj.toString()
+    }
+}
+
+export class SecretsAccessedEvent {
+    name: string
+    accessor: string
+    timestamp: string
+
+    constructor(name: string, accessor: string, timestamp: string) {
+        this.name = name
+        this.accessor = accessor
+        this.timestamp = timestamp
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("accessor", this.accessor)
+        obj.setString("timestamp", this.timestamp)
+        return obj.toString()
+    }
+}
+
+export class SecretsStoredEvent {
+    name: string
+    version: i32
+    timestamp: string
+
+    constructor(name: string, version: i32, timestamp: string) {
+        this.name = name
+        this.version = version
+        this.timestamp = timestamp
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setInt("version", this.version)
+        obj.setString("timestamp", this.timestamp)
+        return obj.toString()
+    }
+}
+
+export class SecretsRotatedEvent {
+    name: string
+    version: i32
+    restartedPlugins: string
+    timestamp: string
+
+    constructor(name: string, version: i32, restartedPlugins: string, timestamp: string) {
+        this.name = name
+        this.version = version
+        this.restartedPlugins = restartedPlugins
+        this.timestamp = timestamp
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setInt("version", this.version)
+        if (this.restartedPlugins.length > 0) obj.set("restartedPlugins", JSONValue.parse(this.restartedPlugins))
+        obj.setString("timestamp", this.timestamp)
+        return obj.toString()
+    }
+}
+
+export class SecretsDeletedEvent {
+    name: string
+    timestamp: string
+
+    constructor(name: string, timestamp: string) {
+        this.name = name
+        this.timestamp = timestamp
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("name", this.name)
+        obj.setString("timestamp", this.timestamp)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/test.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: test
+
+export namespace test {
+}
+
+// Events
+export class TestRunMsg {
+    dir: string
+    pattern: string
+    skipAI: bool
+
+    constructor(dir: string, pattern: string, skipAI: bool) {
+        this.dir = dir
+        this.pattern = pattern
+        this.skipAI = skipAI
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("dir", this.dir)
+        obj.setString("pattern", this.pattern)
+        obj.setBool("skipAI", this.skipAI)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/tools.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -1268,7 +2039,56 @@ export class ToolResolveMsg {
 
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/generated/wasm.ts
+// Source: runtime/wasm/generated/trace.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: trace
+
+export namespace trace {
+}
+
+// Events
+export class TraceGetMsg {
+    traceId: string
+
+    constructor(traceId: string) {
+        this.traceId = traceId
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("traceId", this.traceId)
+        return obj.toString()
+    }
+}
+
+export class TraceListMsg {
+    source: string
+    status: string
+    minDuration: i32
+    limit: i32
+
+    constructor(source: string, status: string, minDuration: i32, limit: i32) {
+        this.source = source
+        this.status = status
+        this.minDuration = minDuration
+        this.limit = limit
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setString("status", this.status)
+        obj.setInt("minDuration", this.minDuration)
+        obj.setInt("limit", this.limit)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/generated/wasm.ts
 // ════════════════════════════════════════════════════════════
 
 // AUTO-GENERATED from sdk/messages — do not edit.
@@ -1390,9 +2210,147 @@ export class WasmDescribeMsg {
     }
 }
 
+export class WasmAllowlistGetMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistSetMsg {
+    allowlist: string
+
+    constructor(allowlist: string) {
+        this.allowlist = allowlist
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        if (this.allowlist.length > 0) obj.set("allowlist", JSONValue.parse(this.allowlist))
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistAddMsg {
+    command: string
+
+    constructor(command: string) {
+        this.command = command
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("command", this.command)
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistRemoveMsg {
+    command: string
+
+    constructor(command: string) {
+        this.command = command
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("command", this.command)
+        return obj.toString()
+    }
+}
+
 
 // ════════════════════════════════════════════════════════════
-// Source: kit/runtime/wasm/index.ts
+// Source: runtime/wasm/generated/workflow.ts
+// ════════════════════════════════════════════════════════════
+
+// AUTO-GENERATED from sdk/messages — do not edit.
+// Domain: workflow
+
+export namespace workflow {
+}
+
+// Events
+export class WorkflowRunMsg {
+    workflowId: string
+    input: string
+    hostResults: string
+
+    constructor(workflowId: string, input: string, hostResults: string) {
+        this.workflowId = workflowId
+        this.input = input
+        this.hostResults = hostResults
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("workflowId", this.workflowId)
+        if (this.input.length > 0) obj.set("input", JSONValue.parse(this.input))
+        if (this.hostResults.length > 0) obj.set("hostResults", JSONValue.parse(this.hostResults))
+        return obj.toString()
+    }
+}
+
+export class WorkflowStatusMsg {
+    runId: string
+
+    constructor(runId: string) {
+        this.runId = runId
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("runId", this.runId)
+        return obj.toString()
+    }
+}
+
+export class WorkflowCancelMsg {
+    runId: string
+
+    constructor(runId: string) {
+        this.runId = runId
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("runId", this.runId)
+        return obj.toString()
+    }
+}
+
+export class WorkflowListMsg {
+    workflowId: string
+
+    constructor(workflowId: string) {
+        this.workflowId = workflowId
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("workflowId", this.workflowId)
+        return obj.toString()
+    }
+}
+
+export class WorkflowHistoryMsg {
+    runId: string
+
+    constructor(runId: string) {
+        this.runId = runId
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("runId", this.runId)
+        return obj.toString()
+    }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// Source: runtime/wasm/index.ts
 // ════════════════════════════════════════════════════════════
 
 // runtime/wasm/index.ts — Re-exports everything as the "brainkit" module.

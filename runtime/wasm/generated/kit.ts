@@ -5,40 +5,6 @@ export namespace kit {
 }
 
 // Events
-export class KitDeployedEvent {
-    source: string
-    resources: string
-
-    constructor(source: string, resources: string) {
-        this.source = source
-        this.resources = resources
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("source", this.source)
-        if (this.resources.length > 0) obj.set("resources", JSONValue.parse(this.resources))
-        return obj.toString()
-    }
-}
-
-export class KitTeardownedEvent {
-    source: string
-    removed: i32
-
-    constructor(source: string, removed: i32) {
-        this.source = source
-        this.removed = removed
-    }
-
-    toJSON(): string {
-        let obj = new JSONObject()
-        obj.setString("source", this.source)
-        obj.setInt("removed", this.removed)
-        return obj.toString()
-    }
-}
-
 export class KitDeployMsg {
     source: string
     code: string
@@ -91,6 +57,54 @@ export class KitRedeployMsg {
         let obj = new JSONObject()
         obj.setString("source", this.source)
         obj.setString("code", this.code)
+        return obj.toString()
+    }
+}
+
+export class KitDeployFileMsg {
+    path: string
+
+    constructor(path: string) {
+        this.path = path
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("path", this.path)
+        return obj.toString()
+    }
+}
+
+export class KitDeployedEvent {
+    source: string
+    resources: string
+
+    constructor(source: string, resources: string) {
+        this.source = source
+        this.resources = resources
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        if (this.resources.length > 0) obj.set("resources", JSONValue.parse(this.resources))
+        return obj.toString()
+    }
+}
+
+export class KitTeardownedEvent {
+    source: string
+    removed: i32
+
+    constructor(source: string, removed: i32) {
+        this.source = source
+        this.removed = removed
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("source", this.source)
+        obj.setInt("removed", this.removed)
         return obj.toString()
     }
 }

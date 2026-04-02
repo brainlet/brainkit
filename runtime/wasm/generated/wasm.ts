@@ -117,3 +117,53 @@ export class WasmDescribeMsg {
     }
 }
 
+export class WasmAllowlistGetMsg {
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistSetMsg {
+    allowlist: string
+
+    constructor(allowlist: string) {
+        this.allowlist = allowlist
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        if (this.allowlist.length > 0) obj.set("allowlist", JSONValue.parse(this.allowlist))
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistAddMsg {
+    command: string
+
+    constructor(command: string) {
+        this.command = command
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("command", this.command)
+        return obj.toString()
+    }
+}
+
+export class WasmAllowlistRemoveMsg {
+    command: string
+
+    constructor(command: string) {
+        this.command = command
+    }
+
+    toJSON(): string {
+        let obj = new JSONObject()
+        obj.setString("command", this.command)
+        return obj.toString()
+    }
+}
+
