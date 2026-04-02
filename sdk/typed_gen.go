@@ -561,6 +561,66 @@ func SubscribeTraceListResp(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[messages.TraceListResp](rt, ctx, topic, handler)
 }
 
+// PublishWorkflowCancel publishes a WorkflowCancelMsg and returns routing info for the response.
+func PublishWorkflowCancel(rt Runtime, ctx context.Context, msg messages.WorkflowCancelMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowCancelResp subscribes to the response topic for a WorkflowCancelMsg command.
+func SubscribeWorkflowCancelResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowCancelResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowCancelResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowList publishes a WorkflowListMsg and returns routing info for the response.
+func PublishWorkflowList(rt Runtime, ctx context.Context, msg messages.WorkflowListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowListResp subscribes to the response topic for a WorkflowListMsg command.
+func SubscribeWorkflowListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowListResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowResume publishes a WorkflowResumeMsg and returns routing info for the response.
+func PublishWorkflowResume(rt Runtime, ctx context.Context, msg messages.WorkflowResumeMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowResumeResp subscribes to the response topic for a WorkflowResumeMsg command.
+func SubscribeWorkflowResumeResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowResumeResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowResumeResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowStart publishes a WorkflowStartMsg and returns routing info for the response.
+func PublishWorkflowStart(rt Runtime, ctx context.Context, msg messages.WorkflowStartMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowStartResp subscribes to the response topic for a WorkflowStartMsg command.
+func SubscribeWorkflowStartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStartResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowStartAsync publishes a WorkflowStartAsyncMsg and returns routing info for the response.
+func PublishWorkflowStartAsync(rt Runtime, ctx context.Context, msg messages.WorkflowStartAsyncMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowStartAsyncResp subscribes to the response topic for a WorkflowStartAsyncMsg command.
+func SubscribeWorkflowStartAsyncResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStartAsyncResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStartAsyncResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowStatus publishes a WorkflowStatusMsg and returns routing info for the response.
+func PublishWorkflowStatus(rt Runtime, ctx context.Context, msg messages.WorkflowStatusMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowStatusResp subscribes to the response topic for a WorkflowStatusMsg command.
+func SubscribeWorkflowStatusResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStatusResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStatusResp](rt, ctx, topic, handler)
+}
+
 // EmitHandlerExhausted fires a HandlerExhaustedEvent event (no response expected).
 func EmitHandlerExhausted(rt Runtime, ctx context.Context, msg messages.HandlerExhaustedEvent) error {
 	return Emit(rt, ctx, msg)
