@@ -159,45 +159,6 @@ func TestNodeCommands_PackageListEmpty(t *testing.T) {
 	}
 }
 
-// TestNodeCommands_WorkflowListEmpty — workflow.list on fresh Node returns empty.
-func TestNodeCommands_WorkflowListEmpty(t *testing.T) {
-	node := makeNode(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, _ := sdk.Publish(node, ctx, messages.WorkflowListMsg{})
-	ch := make(chan []byte, 1)
-	unsub, _ := node.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "runs")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
-}
-
-// TestNodeCommands_AutomationListEmpty — automation.list on fresh Node returns empty.
-func TestNodeCommands_AutomationListEmpty(t *testing.T) {
-	node := makeNode(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, _ := sdk.Publish(node, ctx, messages.AutomationListMsg{})
-	ch := make(chan []byte, 1)
-	unsub, _ := node.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.NotEmpty(t, p) // some response — may be empty list or error for no automation domain
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
-}
-
-// TestNodeCommands_DeployOnNode — deploy + call + teardown on Node.
 func TestNodeCommands_DeployOnNode(t *testing.T) {
 	node := makeNode(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

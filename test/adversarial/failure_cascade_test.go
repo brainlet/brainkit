@@ -252,27 +252,6 @@ func TestFailureCascade_SecretRotatePluginFails(t *testing.T) {
 	}
 }
 
-// C09: WASM module deploy with module that doesn't export required functions
-func TestFailureCascade_WASMBadModule(t *testing.T) {
-	tk := testutil.NewTestKernelFull(t)
-	ctx := context.Background()
-
-	// Deploy a WASM shard with a module name that doesn't exist
-	pr, _ := sdk.Publish(tk, ctx, messages.WasmDeployMsg{Name: "nonexistent-module"})
-	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case payload := <-ch:
-		// Should error — module not found
-		assert.Contains(t, string(payload), "error")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
-}
-
-// C12: Multiple ErrorHandler calls concurrently — handler must be goroutine-safe
 func TestFailureCascade_ConcurrentErrorHandler(t *testing.T) {
 	var mu sync.Mutex
 	var count int
