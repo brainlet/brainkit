@@ -605,6 +605,23 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		return nil, fmt.Errorf("brainkit: start storage: %w", err)
 	}
 
+	// Initialize the provider registry BEFORE loadRuntime so that JS code
+	// evaluated during runtime init (patches.js, resolve.js, kit_runtime.js)
+	// can access the registry via __go_registry_has / __go_registry_resolve.
+	kernel.providers = provreg.New(cfg.Probe)
+	for name, reg := range cfg.AIProviders {
+		kernel.providers.RegisterAIProvider(name, reg)
+	}
+	// Register all storages and vectors in the provider registry
+	kernel.registerStorages(cfg, bridgeURLs)
+	if err := kernel.registerVectors(cfg, bridgeURLs); err != nil {
+		for _, srv := range kernel.storages {
+			_ = srv.Close()
+		}
+		agentSandbox.Close()
+		return nil, fmt.Errorf("brainkit: register vectors: %w", err)
+	}
+
 	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
 	obsStrategy := cfg.Observability.Strategy
 	if obsStrategy == "" {
@@ -619,14 +636,8 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		obsEnabled, obsStrategy, obsServiceName,
 	))
 
-	if err := kernel.loadRuntime(); err != nil {
-		agentSandbox.Close()
-		return nil, err
-	}
-
 	// Inject provider configs into the JS runtime for ai.generate/embed model resolution.
 	// The JS runtime's resolveModel() reads from globalThis.__kit_providers.
-	// Convert typed AIProvider registrations to the shape the JS runtime expects.
 	if len(cfg.AIProviders) > 0 {
 		provMap := make(map[string]map[string]string)
 		for name, reg := range cfg.AIProviders {
@@ -643,20 +654,15 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		))
 	}
 
-	// Initialize the provider registry
-	kernel.providers = provreg.New(cfg.Probe)
-	for name, reg := range cfg.AIProviders {
-		kernel.providers.RegisterAIProvider(name, reg)
-	}
-	// Register all storages and vectors in the provider registry
-	kernel.registerStorages(cfg, bridgeURLs)
-	if err := kernel.registerVectors(cfg, bridgeURLs); err != nil {
-		for _, srv := range kernel.storages {
-			_ = srv.Close()
-		}
+	if err := kernel.loadRuntime(); err != nil {
 		agentSandbox.Close()
-		return nil, fmt.Errorf("brainkit: register vectors: %w", err)
+		return nil, err
 	}
+
+	// Note: Mastra workflow storage uses InMemoryStore by default (via patches.js).
+	// The __kit_store_holder pattern supports upgrading to a configured backend,
+	// but this requires testing the LibSQL bridge against Mastra's snapshot schema.
+	// The init reorder above ensures providers are ready if/when this upgrade is enabled.
 
 	// Initialize package manager
 	registries := cfg.PluginRegistries

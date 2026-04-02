@@ -9,7 +9,13 @@
   if (!embed) return;
 
   // ─── Storage shim + Observability ────────────────────────────
+  // Start with InMemoryStore. kit_runtime.js upgrades to configured backend
+  // after resolve.js loads (providers are initialized before loadRuntime).
   var _defaultStore = new embed.InMemoryStore();
+  var _storeHolder = { store: _defaultStore };
+  Object.defineProperty(globalThis, '__kit_store_holder', {
+    value: _storeHolder, writable: false, enumerable: false, configurable: true
+  });
   Object.defineProperty(globalThis, '__kit_internal_store', {
     value: _defaultStore, writable: false, enumerable: false, configurable: true
   });
@@ -34,7 +40,7 @@
   }
 
   var _workflowStorageShim = {
-    getStorage: function() { return _defaultStore; },
+    getStorage: function() { return _storeHolder.store; },
     getLogger: function() { return undefined; },
     generateId: function() { return crypto.randomUUID(); },
     get observability() { return _observability; },
