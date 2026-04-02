@@ -8,6 +8,11 @@
   var embed = globalThis.__agent_embed;
   if (!embed) return;
 
+  // Note: workflow storage currently uses InMemoryStore. Upgrading to a
+  // configured storage backend for durable suspend/resume across restarts
+  // requires careful init ordering (providers init after loadRuntime).
+  // TODO: wire configured storage into Mastra's workflow persistence.
+
   // Read extracted APIs from globalThis
   var bus = globalThis.__kit_bus;
   var kit = globalThis.__kit_kitAPI;
