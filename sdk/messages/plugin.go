@@ -13,7 +13,7 @@ type PluginManifestMsg struct {
 	HostFunctions  []PluginHostFuncDef `json:"host_functions,omitempty"`
 }
 
-// PluginHostFuncDef declares a host function a plugin provides to WASM workflows.
+// PluginHostFuncDef declares a host function a plugin provides.
 type PluginHostFuncDef struct {
 	Module      string           `json:"module"`      // wazero module name: "telegram", "db"
 	Name        string           `json:"name"`        // function name: "send", "query"

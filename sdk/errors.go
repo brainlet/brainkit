@@ -24,11 +24,11 @@ var ErrNotCrossNamespace = fmt.Errorf("sdk: runtime does not support cross-names
 // Definitions live in internal/sdkerrors to avoid import cycles; re-exported here as type aliases.
 
 // NotFoundError is returned when a named resource does not exist.
-// Resource is one of: "tool", "agent", "shard", "module", "storage", "pool", "peer", "mcp-server".
+// Resource is one of: "tool", "agent", "storage", "pool", "peer", "mcp-server".
 type NotFoundError = sdkerrors.NotFoundError
 
 // AlreadyExistsError is returned when creating a resource that already exists.
-// Resource is one of: "deployment", "shard", "storage", "pool".
+// Resource is one of: "deployment", "storage", "pool".
 type AlreadyExistsError = sdkerrors.AlreadyExistsError
 
 // ValidationError is returned when input fails validation.

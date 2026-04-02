@@ -131,7 +131,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	return node, nil
 }
 
-// Start restores WASM shard subscriptions and launches plugins.
+// Start launches plugins and restores running state.
 // The router is already running from NewNode.
 func (n *Node) Start(ctx context.Context) error {
 	n.mu.Lock()
