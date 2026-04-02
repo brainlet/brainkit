@@ -259,6 +259,182 @@ func commandCatalog() *commandRegistry {
 				}
 				return &messages.RegistryResolveResp{Config: configJSON}, nil
 			}),
+			// ── Workflows (Mastra engine via JS eval) ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStartMsg) (*messages.WorkflowStartResp, error) {
+				inputJSON := "null"
+				if len(req.InputData) > 0 {
+					inputJSON = string(req.InputData)
+				}
+				script := fmt.Sprintf(`(async () => {
+					var entry = globalThis.__kit_registry.get("workflow", %q);
+					if (!entry || !entry.ref) throw new BrainkitError("workflow not found: " + %q, "NOT_FOUND");
+					var wf = entry.ref;
+					var run = await wf.createRun();
+					var runId = run.runId || "";
+					var result = await run.start({ inputData: JSON.parse(%q) });
+					globalThis.__workflow_runs[runId] = { run: run, lastResult: result };
+					if (result.status !== "suspended") {
+						delete globalThis.__workflow_runs[runId];
+					}
+					return JSON.stringify({
+						runId: runId,
+						status: result.status || "unknown",
+						steps: result.steps || null,
+					});
+				})()`, req.Name, req.Name, inputJSON)
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_start.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowStartResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.start: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStartAsyncMsg) (*messages.WorkflowStartAsyncResp, error) {
+				inputJSON := "null"
+				if len(req.InputData) > 0 {
+					inputJSON = string(req.InputData)
+				}
+				script := fmt.Sprintf(`(async () => {
+					var entry = globalThis.__kit_registry.get("workflow", %q);
+					if (!entry || !entry.ref) throw new BrainkitError("workflow not found: " + %q, "NOT_FOUND");
+					var wf = entry.ref;
+					var run = await wf.createRun();
+					var runId = run.runId || "";
+					globalThis.__workflow_runs[runId] = { run: run, lastResult: null };
+					run.start({ inputData: JSON.parse(%q) }).then(function(result) {
+						if (result.status !== "suspended") {
+							delete globalThis.__workflow_runs[runId];
+						} else {
+							globalThis.__workflow_runs[runId].lastResult = result;
+						}
+						__go_brainkit_bus_emit("workflow.completed." + runId, JSON.stringify({
+							runId: runId,
+							status: result.status || "unknown",
+							steps: result.steps || null,
+						}));
+					}).catch(function(err) {
+						delete globalThis.__workflow_runs[runId];
+						__go_brainkit_bus_emit("workflow.completed." + runId, JSON.stringify({
+							runId: runId,
+							status: "failed",
+							error: err.message || String(err),
+						}));
+					});
+					return JSON.stringify({ runId: runId });
+				})()`, req.Name, req.Name, inputJSON)
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_start_async.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowStartAsyncResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.startAsync: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStatusMsg) (*messages.WorkflowStatusResp, error) {
+				script := fmt.Sprintf(`(function() {
+					var entry = globalThis.__workflow_runs[%q];
+					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
+					var result = entry.lastResult;
+					return JSON.stringify({
+						runId: %q,
+						status: result ? (result.status || "running") : "running",
+						steps: result ? (result.steps || null) : null,
+					});
+				})()`, req.RunID, req.RunID, req.RunID)
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_status.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowStatusResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.status: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowResumeMsg) (*messages.WorkflowResumeResp, error) {
+				resumeJSON := "null"
+				if len(req.ResumeData) > 0 {
+					resumeJSON = string(req.ResumeData)
+				}
+				stepArg := "undefined"
+				if req.Step != "" {
+					stepArg = fmt.Sprintf("%q", req.Step)
+				}
+				script := fmt.Sprintf(`(async () => {
+					var entry = globalThis.__workflow_runs[%q];
+					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
+					var run = entry.run;
+					var opts = { resumeData: JSON.parse(%q) };
+					var stepVal = %s;
+					if (stepVal !== undefined) opts.step = stepVal;
+					var result = await run.resume(opts);
+					entry.lastResult = result;
+					if (result.status !== "suspended") {
+						delete globalThis.__workflow_runs[%q];
+					}
+					return JSON.stringify({
+						status: result.status || "unknown",
+						steps: result.steps || null,
+					});
+				})()`, req.RunID, req.RunID, resumeJSON, stepArg, req.RunID)
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_resume.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowResumeResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.resume: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowCancelMsg) (*messages.WorkflowCancelResp, error) {
+				script := fmt.Sprintf(`(function() {
+					var entry = globalThis.__workflow_runs[%q];
+					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
+					delete globalThis.__workflow_runs[%q];
+					return JSON.stringify({ cancelled: true });
+				})()`, req.RunID, req.RunID, req.RunID)
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_cancel.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowCancelResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.cancel: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowListMsg) (*messages.WorkflowListResp, error) {
+				script := `(function() {
+					var entries = globalThis.__kit_registry.list("workflow");
+					var result = [];
+					for (var i = 0; i < entries.length; i++) {
+						var e = entries[i];
+						var ref = globalThis.__kit_registry.get("workflow", e.name);
+						result.push({
+							name: e.name,
+							source: e.source || "",
+							hasInput: !!(ref && ref.ref && ref.ref.inputSchema),
+							hasOutput: !!(ref && ref.ref && ref.ref.outputSchema),
+						});
+					}
+					return JSON.stringify({ workflows: result });
+				})()`
+				resultJSON, err := kernel.EvalTS(ctx, "__workflow_list.ts", script)
+				if err != nil {
+					return nil, err
+				}
+				var resp messages.WorkflowListResp
+				if err := json.Unmarshal([]byte(resultJSON), &resp); err != nil {
+					return nil, fmt.Errorf("workflow.list: parse result: %w", err)
+				}
+				return &resp, nil
+			}),
 			// ── Metrics ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MetricsGetMsg) (*messages.MetricsGetResp, error) {
 				data, _ := json.Marshal(kernel.Metrics())
