@@ -90,8 +90,8 @@ type KernelConfig struct {
 	// If no policy matches, an error response is sent immediately to the caller.
 	RetryPolicies map[string]RetryPolicy
 
-	// LogHandler receives tagged log entries from .ts Compartments, WASM modules,
-	// and the Kernel. Called concurrently from multiple goroutines — must be safe.
+	// LogHandler receives tagged log entries from .ts Compartments and the Kernel.
+	// Called concurrently from multiple goroutines — must be safe.
 	// nil = default (print to stdout via log.Printf).
 	LogHandler func(LogEntry)
 

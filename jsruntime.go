@@ -19,9 +19,6 @@ var aiModuleJS string
 //go:embed runtime/agent_module.js
 var agentModuleJS string
 
-//go:embed runtime/compiler_module.js
-var compilerModuleJS string
-
 //go:embed runtime/test_module.js
 var testModuleJS string
 
@@ -109,7 +106,6 @@ func (k *Kernel) loadRuntime() error {
 		{kitModuleJS, "kit"},
 		{aiModuleJS, "ai"},
 		{agentModuleJS, "agent"},
-		{compilerModuleJS, "compiler"},
 		{testModuleJS, "test"},
 		// fs module — re-exports from globalThis.fs (set by jsbridge/fs.go polyfill)
 		{"export default globalThis.fs;", "fs"},

@@ -14,7 +14,7 @@ type BrainkitError interface {
 // ── Existing types (now with Code + Details) ─────────────────────────────────
 
 // NotFoundError is returned when a named resource does not exist.
-// Resource is one of: "tool", "agent", "shard", "module", "storage", "pool", "peer", "mcp-server".
+// Resource is one of: "tool", "agent", "storage", "pool", "peer", "mcp-server".
 type NotFoundError struct {
 	Resource string
 	Name     string
@@ -29,7 +29,7 @@ func (e *NotFoundError) Details() map[string]any {
 }
 
 // AlreadyExistsError is returned when creating a resource that already exists.
-// Resource is one of: "deployment", "shard", "storage", "pool".
+// Resource is one of: "deployment", "storage", "pool".
 type AlreadyExistsError struct {
 	Resource string
 	Name     string

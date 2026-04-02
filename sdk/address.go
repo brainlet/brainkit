@@ -21,17 +21,6 @@ func SendToService(rt Runtime, ctx context.Context, service, topic string, paylo
 	return Publish(rt, ctx, messages.CustomMsg{Topic: resolved, Payload: data}, opts...)
 }
 
-// SendToShard publishes to a deployed WASM shard's handler topic.
-// The shard parameter is for documentation/future validation.
-// The topic must match one of the shard's registered handler patterns.
-func SendToShard(rt Runtime, ctx context.Context, shard, topic string, payload any, opts ...PublishOption) (PublishResult, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return PublishResult{}, fmt.Errorf("sdk: marshal payload: %w", err)
-	}
-	return Publish(rt, ctx, messages.CustomMsg{Topic: topic, Payload: data}, opts...)
-}
-
 // ResolveServiceTopic converts a service name + local topic to the bus topic.
 // Convention: ts.<name-without-ext>.<topic>
 //
