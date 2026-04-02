@@ -2,6 +2,7 @@ package jsbridge
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -349,8 +350,8 @@ func getEncoding(val *quickjs.Value) string {
 		var opts struct {
 			Encoding string `json:"encoding"`
 		}
-		if json.Unmarshal([]byte(s), &opts) == nil && opts.Encoding != "" {
-			return opts.Encoding
+		if json.Unmarshal([]byte(s), &opts) == nil {
+			return opts.Encoding // "" if not specified → triggers Buffer path
 		}
 	}
 	return s
@@ -506,7 +507,9 @@ func (p *FSPolyfill) Setup(ctx *quickjs.Context) error {
 func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 	resolve := func(userPath string) (string, error) { return p.resolve(userPath) }
 
-	// readFileSync(path, options?) → string
+	// readFileSync(path, options?) → string or "__BUFFER__:<base64>"
+	// When encoding is specified (utf8, etc.) returns a string.
+	// When no encoding, returns "__BUFFER__:" + base64 data — JS side wraps as Buffer.
 	ctx.Globals().Set("__go_fs_readFileSync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return qctx.ThrowError(fmt.Errorf("readFileSync: path required"))
@@ -524,10 +527,12 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 		if len(args) > 1 {
 			enc = getEncoding(args[1])
 		}
-		if enc == "utf8" || enc == "utf-8" || enc == "" {
+		if enc != "" {
 			return qctx.NewString(string(data))
 		}
-		return qctx.NewString(string(data))
+		// No encoding → return binary as base64-prefixed string for Buffer wrapping
+		b64 := base64.StdEncoding.EncodeToString(data)
+		return qctx.NewString("__BUFFER__:" + b64)
 	}))
 
 	// writeFileSync(path, data, options?)
@@ -1071,7 +1076,11 @@ func (p *FSPolyfill) execAsyncOp(op, argsJSON string, resolve func(string) (stri
 		if err != nil {
 			return "", mapError(err, "read", args.Path)
 		}
-		return string(data), nil
+		if args.Encoding != "" {
+			return string(data), nil
+		}
+		// No encoding → return binary as base64-prefixed for Buffer wrapping
+		return "__BUFFER__:" + base64.StdEncoding.EncodeToString(data), nil
 
 	case "writeFile":
 		absPath, err := resolve(args.Path)
@@ -1871,6 +1880,17 @@ const fsSetupJS = `
     return __go_fs_fh_truncate(this.fd, len || 0);
   };
 
+  // ─── Buffer unwrap helper ────────────────────────────────
+  // Go returns "__BUFFER__:<base64>" when no encoding is specified.
+  // This converts it to a Buffer (from jsbridge/buffer.go polyfill).
+  var _bufPrefix = "__BUFFER__:";
+  function _unwrapBuffer(val) {
+    if (typeof val === "string" && val.substring(0, _bufPrefix.length) === _bufPrefix) {
+      return Buffer.from(val.substring(_bufPrefix.length), "base64");
+    }
+    return val;
+  }
+
   // ─── Async helper ───────────────────────────────────────
   function fsAsync(op, args) {
     return __go_fs_async(op, JSON.stringify(args));
@@ -1879,7 +1899,10 @@ const fsSetupJS = `
   // ─── fs.promises ────────────────────────────────────────
   var promises = {
     readFile: function(path, opts) {
-      return fsAsync("readFile", { path: path, encoding: (opts && opts.encoding) || (typeof opts === "string" ? opts : "") });
+      var enc = (opts && opts.encoding) || (typeof opts === "string" ? opts : "");
+      return fsAsync("readFile", { path: path, encoding: enc }).then(function(r) {
+        return _unwrapBuffer(r);
+      });
     },
     writeFile: function(path, data, opts) {
       return fsAsync("writeFile", { path: path, data: typeof data === "string" ? data : String(data) }).then(function() {});
@@ -2028,7 +2051,7 @@ const fsSetupJS = `
     promises: promises,
 
     // Sync methods
-    readFileSync: function(path, opts) { return __go_fs_readFileSync(path, typeof opts === "string" ? opts : JSON.stringify(opts || {})); },
+    readFileSync: function(path, opts) { return _unwrapBuffer(__go_fs_readFileSync(path, typeof opts === "string" ? opts : JSON.stringify(opts || {}))); },
     writeFileSync: function(path, data, opts) { return __go_fs_writeFileSync(path, typeof data === "string" ? data : String(data), JSON.stringify(opts || {})); },
     appendFileSync: function(path, data, opts) { return __go_fs_appendFileSync(path, typeof data === "string" ? data : String(data), JSON.stringify(opts || {})); },
     readdirSync: function(path, opts) { return _parseReaddirSync(__go_fs_readdirSync(path, JSON.stringify(opts || {})), opts); },
@@ -2053,37 +2076,38 @@ const fsSetupJS = `
     utimesSync: function(path, atime, mtime) { return __go_fs_utimesSync(path, atime, mtime); },
     existsSync: function(path) { return __go_fs_existsSync(path); },
 
-    // Streams
+    // Streams — use Node.js stream.Readable/Writable from nodestreams.go
     createReadStream: function(path, opts) {
+      var S = globalThis.stream;
+      var readable = new S.Readable({ read: function() {} });
+      readable.path = path;
       var streamID = __go_fs_createReadStream(path, JSON.stringify(opts || {}));
-      var ee = new EventEmitter();
       globalThis.__fs_streams[streamID] = {
-        _onData: function(chunk) { ee.emit("data", chunk); },
-        _onEnd: function() { ee.emit("end"); ee.emit("close"); delete globalThis.__fs_streams[streamID]; },
-        _onError: function(msg) { ee.emit("error", new Error(msg)); ee.emit("close"); delete globalThis.__fs_streams[streamID]; },
+        _onData: function(chunk) { readable.push(chunk); },
+        _onEnd: function() { readable.push(null); delete globalThis.__fs_streams[streamID]; },
+        _onError: function(msg) { readable.destroy(new Error(msg)); delete globalThis.__fs_streams[streamID]; },
       };
-      ee.path = path;
-      return ee;
+      return readable;
     },
     createWriteStream: function(path, opts) {
-      var fd = __go_fs_createWriteStream(path, JSON.stringify(opts || {}));
-      var ee = new EventEmitter();
-      ee.fd = fd;
-      ee.path = path;
-      ee.write = function(chunk, encoding, callback) {
-        var ok = __go_fs_ws_write(fd, typeof chunk === "string" ? chunk : String(chunk));
-        if (callback) callback(ok ? null : new Error("write failed"));
-        return ok;
-      };
-      ee.end = function(chunk, encoding, callback) {
-        if (chunk) ee.write(chunk);
-        __go_fs_ws_close(fd);
-        ee.emit("finish");
-        ee.emit("close");
-        if (callback) callback();
-      };
-      ee.close = function(callback) { ee.end(null, null, callback); };
-      return ee;
+      var S = globalThis.stream;
+      var fd = null;
+      var writable = new S.Writable({
+        write: function(chunk, encoding, callback) {
+          if (fd === null) {
+            // Lazy open — first write triggers file open (off JS thread for sync bridge)
+            fd = __go_fs_createWriteStream(path, JSON.stringify(opts || {}));
+          }
+          var ok = __go_fs_ws_write(fd, typeof chunk === "string" ? chunk : String(chunk));
+          callback(ok ? null : new Error("write failed"));
+        },
+        final: function(callback) {
+          if (fd !== null) __go_fs_ws_close(fd);
+          callback();
+        },
+      });
+      writable.path = path;
+      return writable;
     },
 
     // Watch

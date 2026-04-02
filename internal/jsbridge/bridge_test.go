@@ -600,6 +600,157 @@ func TestFsMkdirAndRm(t *testing.T) {
 	}
 }
 
+func TestFsReadBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Write binary data with null bytes — would corrupt if treated as string
+	binData := []byte{0x89, 0x50, 0x4E, 0x47, 0x00, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE}
+	os.WriteFile(filepath.Join(tmpDir, "test.bin"), binData, 0644)
+
+	b := newTestBridge(t, Encoding(), Buffer(), FS(tmpDir))
+
+	// readFileSync without encoding should return a Buffer, not a string
+	val, err := b.EvalAsync("test.js", `(function() {
+		var buf = fs.readFileSync("test.bin");
+		if (typeof buf === "string") return "GOT_STRING";
+		if (!buf._isBuffer && !Buffer.isBuffer(buf)) return "NOT_BUFFER: " + typeof buf;
+		return "OK:len=" + buf.length;
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	result := val.String()
+	if result != fmt.Sprintf("OK:len=%d", len(binData)) {
+		t.Errorf("readFileSync binary = %q, want OK:len=%d", result, len(binData))
+	}
+}
+
+func TestFsReadBinaryPreservesBytes(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Write known bytes, read back, verify round-trip
+	os.WriteFile(filepath.Join(tmpDir, "data.bin"), []byte{0x01, 0x02, 0x03, 0xFE, 0xFF}, 0644)
+
+	b := newTestBridge(t, Encoding(), Buffer(), FS(tmpDir))
+
+	val, err := b.EvalAsync("test.js", `(function() {
+		var buf = fs.readFileSync("data.bin");
+		var bytes = [];
+		for (var i = 0; i < buf.length; i++) bytes.push(buf[i]);
+		return JSON.stringify(bytes);
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	expected := "[1,2,3,254,255]"
+	if val.String() != expected {
+		t.Errorf("binary roundtrip = %q, want %q", val.String(), expected)
+	}
+}
+
+func TestFsReadWithEncodingReturnsString(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.WriteFile(filepath.Join(tmpDir, "text.txt"), []byte("hello"), 0644)
+
+	b := newTestBridge(t, Encoding(), Buffer(), FS(tmpDir))
+
+	val, err := b.EvalAsync("test.js", `(function() {
+		var result = fs.readFileSync("text.txt", "utf8");
+		return typeof result + ":" + result;
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	if val.String() != "string:hello" {
+		t.Errorf("readFileSync utf8 = %q, want 'string:hello'", val.String())
+	}
+}
+
+func TestFsCreateReadStreamPipe(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.WriteFile(filepath.Join(tmpDir, "stream-src.txt"), []byte("stream content here"), 0644)
+
+	b := newTestBridge(t, Events(), NodeStreams(), FS(tmpDir))
+
+	// createReadStream should return a stream.Readable with pipe()
+	val, err := b.EvalAsync("test.js", `(async function() {
+		var rs = fs.createReadStream("stream-src.txt");
+		var hasPipe = typeof rs.pipe === "function";
+		var chunks = [];
+		return new Promise(function(resolve) {
+			rs.on("data", function(chunk) { chunks.push(chunk); });
+			rs.on("end", function() {
+				resolve(JSON.stringify({hasPipe: hasPipe, data: chunks.join(""), chunkCount: chunks.length}));
+			});
+			rs.on("error", function(e) { resolve("ERROR:" + e.message); });
+		});
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	var parsed struct {
+		HasPipe    bool   `json:"hasPipe"`
+		Data       string `json:"data"`
+		ChunkCount int    `json:"chunkCount"`
+	}
+	json.Unmarshal([]byte(val.String()), &parsed)
+	if !parsed.HasPipe {
+		t.Error("createReadStream should return a Readable with pipe()")
+	}
+	if parsed.Data != "stream content here" {
+		t.Errorf("stream data = %q, want 'stream content here'", parsed.Data)
+	}
+}
+
+func TestFsCreateWriteStreamLazyOpen(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	b := newTestBridge(t, Events(), NodeStreams(), FS(tmpDir))
+
+	// createWriteStream should return immediately (lazy open)
+	// and actually write when write() is called
+	val, err := b.EvalAsync("test.js", `(function() {
+		var ws = fs.createWriteStream("lazy.txt");
+		var hasWrite = typeof ws.write === "function";
+		var hasEnd = typeof ws.end === "function";
+		ws.write("hello ");
+		ws.write("world");
+		ws.end();
+		return JSON.stringify({hasWrite: hasWrite, hasEnd: hasEnd});
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	var parsed struct {
+		HasWrite bool `json:"hasWrite"`
+		HasEnd   bool `json:"hasEnd"`
+	}
+	json.Unmarshal([]byte(val.String()), &parsed)
+	if !parsed.HasWrite {
+		t.Error("createWriteStream should have write()")
+	}
+	if !parsed.HasEnd {
+		t.Error("createWriteStream should have end()")
+	}
+
+	// Verify file was written
+	data, err := os.ReadFile(filepath.Join(tmpDir, "lazy.txt"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "hello world" {
+		t.Errorf("file content = %q, want 'hello world'", string(data))
+	}
+}
+
 // --- Phase 2: path ---
 
 func TestPathJoin(t *testing.T) {
