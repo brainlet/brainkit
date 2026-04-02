@@ -244,12 +244,18 @@ func generateDomainFile(domain string, group DomainGroup) string {
 
 	// Generate namespace with functions
 	nsName := domain
-	// Avoid AS reserved words
-	if nsName == "wasm" {
-		nsName = "wasm_ops"
+	// Avoid TypeScript/AssemblyScript reserved words
+	reserved := map[string]string{
+		"wasm":    "wasm_ops",
+		"fs":     "fs_ops",
+		"package": "pkg",
+		"test":   "testing",
+		"class":  "class_ops",
+		"import": "import_ops",
+		"export": "export_ops",
 	}
-	if nsName == "fs" {
-		nsName = "fs_ops"
+	if alt, ok := reserved[nsName]; ok {
+		nsName = alt
 	}
 
 	b.WriteString(fmt.Sprintf("export namespace %s {\n", nsName))

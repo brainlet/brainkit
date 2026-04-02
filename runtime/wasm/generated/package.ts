@@ -1,7 +1,7 @@
 // AUTO-GENERATED from sdk/messages — do not edit.
 // Domain: package
 
-export namespace package {
+export namespace pkg {
 }
 
 // Events

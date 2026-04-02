@@ -1,7 +1,7 @@
 // AUTO-GENERATED from sdk/messages — do not edit.
 // Domain: test
 
-export namespace test {
+export namespace testing {
 }
 
 // Events

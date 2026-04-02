@@ -1246,7 +1246,7 @@ export class MetricsGetMsg {
 // AUTO-GENERATED from sdk/messages — do not edit.
 // Domain: package
 
-export namespace package {
+export namespace pkg {
 }
 
 // Events
@@ -1956,7 +1956,7 @@ export class SecretsDeletedEvent {
 // AUTO-GENERATED from sdk/messages — do not edit.
 // Domain: test
 
-export namespace test {
+export namespace testing {
 }
 
 // Events
