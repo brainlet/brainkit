@@ -536,12 +536,13 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 	}))
 
 	// writeFileSync(path, data, options?)
+	// data arrives as string. If prefixed with "__BUFFER__:" it's base64-encoded binary from JS Buffer.
 	ctx.Globals().Set("__go_fs_writeFileSync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 2 {
 			return qctx.ThrowError(fmt.Errorf("writeFileSync: path and data required"))
 		}
 		userPath := args[0].String()
-		data := args[1].String()
+		dataStr := args[1].String()
 		absPath, err := resolve(userPath)
 		if err != nil {
 			return throwFSError(qctx, err, "open", userPath)
@@ -549,7 +550,16 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 			return throwFSError(qctx, err, "mkdir", userPath)
 		}
-		if err := os.WriteFile(absPath, []byte(data), 0o644); err != nil {
+		var bytes []byte
+		if strings.HasPrefix(dataStr, "__BUFFER__:") {
+			bytes, err = base64.StdEncoding.DecodeString(dataStr[11:])
+			if err != nil {
+				return throwFSError(qctx, fmt.Errorf("decode buffer data: %w", err), "write", userPath)
+			}
+		} else {
+			bytes = []byte(dataStr)
+		}
+		if err := os.WriteFile(absPath, bytes, 0o644); err != nil {
 			return throwFSError(qctx, err, "write", userPath)
 		}
 		return qctx.NewUndefined()
@@ -561,17 +571,26 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 			return qctx.ThrowError(fmt.Errorf("appendFileSync: path and data required"))
 		}
 		userPath := args[0].String()
-		data := args[1].String()
+		dataStr := args[1].String()
 		absPath, err := resolve(userPath)
 		if err != nil {
 			return throwFSError(qctx, err, "open", userPath)
+		}
+		var bytes []byte
+		if strings.HasPrefix(dataStr, "__BUFFER__:") {
+			bytes, err = base64.StdEncoding.DecodeString(dataStr[11:])
+			if err != nil {
+				return throwFSError(qctx, fmt.Errorf("decode buffer data: %w", err), "write", userPath)
+			}
+		} else {
+			bytes = []byte(dataStr)
 		}
 		f, err := os.OpenFile(absPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
 			return throwFSError(qctx, err, "open", userPath)
 		}
 		defer f.Close()
-		if _, err := f.WriteString(data); err != nil {
+		if _, err := f.Write(bytes); err != nil {
 			return throwFSError(qctx, err, "write", userPath)
 		}
 		return qctx.NewUndefined()
@@ -646,17 +665,36 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 	}))
 
 	// accessSync(path, mode?)
+	// mode: F_OK (0, existence), R_OK (4), W_OK (2), X_OK (1)
 	ctx.Globals().Set("__go_fs_accessSync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 1 {
 			return qctx.ThrowError(fmt.Errorf("accessSync: path required"))
 		}
 		userPath := args[0].String()
+		mode := 0 // F_OK
+		if len(args) > 1 {
+			mode = int(args[1].ToInt32())
+		}
 		absPath, err := resolve(userPath)
 		if err != nil {
 			return throwFSError(qctx, err, "access", userPath)
 		}
-		if _, err := os.Stat(absPath); err != nil {
+		info, err := os.Stat(absPath)
+		if err != nil {
 			return throwFSError(qctx, err, "access", userPath)
+		}
+		// Check R_OK (4), W_OK (2), X_OK (1) against file permissions
+		if mode > 0 && info != nil {
+			perm := info.Mode().Perm()
+			if mode&4 != 0 && perm&0o444 == 0 { // R_OK
+				return throwFSError(qctx, &fsError{code: "EACCES", errno: -13, syscall: "access", path: userPath, message: "permission denied"}, "access", userPath)
+			}
+			if mode&2 != 0 && perm&0o222 == 0 { // W_OK
+				return throwFSError(qctx, &fsError{code: "EACCES", errno: -13, syscall: "access", path: userPath, message: "permission denied"}, "access", userPath)
+			}
+			if mode&1 != 0 && perm&0o111 == 0 { // X_OK
+				return throwFSError(qctx, &fsError{code: "EACCES", errno: -13, syscall: "access", path: userPath, message: "permission denied"}, "access", userPath)
+			}
 		}
 		return qctx.NewUndefined()
 	}))
@@ -791,12 +829,17 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 	}))
 
 	// copyFileSync(src, dest, mode?)
+	// mode: 0 (default, overwrite), COPYFILE_EXCL (1, fail if dest exists)
 	ctx.Globals().Set("__go_fs_copyFileSync", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 		if len(args) < 2 {
 			return qctx.ThrowError(fmt.Errorf("copyFileSync: src and dest required"))
 		}
 		srcUser := args[0].String()
 		dstUser := args[1].String()
+		mode := 0
+		if len(args) > 2 {
+			mode = int(args[2].ToInt32())
+		}
 		srcAbs, err := resolve(srcUser)
 		if err != nil {
 			return throwFSError(qctx, err, "copyfile", srcUser)
@@ -804,6 +847,12 @@ func (p *FSPolyfill) registerSyncBridges(ctx *quickjs.Context, root string) {
 		dstAbs, err := resolve(dstUser)
 		if err != nil {
 			return throwFSError(qctx, err, "copyfile", dstUser)
+		}
+		// COPYFILE_EXCL (1): fail if dest exists
+		if mode&1 != 0 {
+			if _, err := os.Stat(dstAbs); err == nil {
+				return throwFSError(qctx, &fsError{code: "EEXIST", errno: -17, syscall: "copyfile", path: dstUser, message: fmt.Sprintf("EEXIST: file already exists '%s'", dstUser)}, "copyfile", dstUser)
+			}
 		}
 		in, err := os.Open(srcAbs)
 		if err != nil {
@@ -1090,7 +1139,16 @@ func (p *FSPolyfill) execAsyncOp(op, argsJSON string, resolve func(string) (stri
 		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 			return "", mapError(err, "mkdir", args.Path)
 		}
-		if err := os.WriteFile(absPath, []byte(args.Data), 0o644); err != nil {
+		var bytes []byte
+		if strings.HasPrefix(args.Data, "__BUFFER__:") {
+			bytes, err = base64.StdEncoding.DecodeString(args.Data[11:])
+			if err != nil {
+				return "", fmt.Errorf("decode buffer data: %w", err)
+			}
+		} else {
+			bytes = []byte(args.Data)
+		}
+		if err := os.WriteFile(absPath, bytes, 0o644); err != nil {
 			return "", mapError(err, "write", args.Path)
 		}
 		return "undefined", nil
@@ -1100,12 +1158,21 @@ func (p *FSPolyfill) execAsyncOp(op, argsJSON string, resolve func(string) (stri
 		if err != nil {
 			return "", err
 		}
+		var bytes []byte
+		if strings.HasPrefix(args.Data, "__BUFFER__:") {
+			bytes, err = base64.StdEncoding.DecodeString(args.Data[11:])
+			if err != nil {
+				return "", fmt.Errorf("decode buffer data: %w", err)
+			}
+		} else {
+			bytes = []byte(args.Data)
+		}
 		f, err := os.OpenFile(absPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
 			return "", mapError(err, "open", args.Path)
 		}
 		defer f.Close()
-		if _, err := f.WriteString(args.Data); err != nil {
+		if _, err := f.Write(bytes); err != nil {
 			return "", mapError(err, "write", args.Path)
 		}
 		return "undefined", nil
@@ -1892,7 +1959,7 @@ const fsSetupJS = `
     return __go_fs_fh_truncate(this.fd, len || 0);
   };
 
-  // ─── Buffer unwrap helper ────────────────────────────────
+  // ─── Buffer wrap/unwrap helpers ──────────────────────────
   // Go returns "__BUFFER__:<base64>" when no encoding is specified.
   // This converts it to a Buffer (from jsbridge/buffer.go polyfill).
   var _bufPrefix = "__BUFFER__:";
@@ -1901,6 +1968,28 @@ const fsSetupJS = `
       return Buffer.from(val.substring(_bufPrefix.length), "base64");
     }
     return val;
+  }
+
+  // Convert Buffer/TypedArray data to "__BUFFER__:<base64>" for Go transport
+  function _wrapData(data) {
+    if (typeof data === "string") return data;
+    if (typeof Buffer !== "undefined" && Buffer.isBuffer(data)) {
+      return _bufPrefix + data.toString("base64");
+    }
+    if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
+      var bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+      // Manual base64 encode for typed arrays
+      var _b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      var result = "";
+      for (var i = 0; i < bytes.length; i += 3) {
+        var b0 = bytes[i], b1 = i + 1 < bytes.length ? bytes[i + 1] : 0, b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+        result += _b64c[(b0 >> 2) & 0x3F] + _b64c[((b0 << 4) | (b1 >> 4)) & 0x3F];
+        result += (i + 1 < bytes.length) ? _b64c[((b1 << 2) | (b2 >> 6)) & 0x3F] : "=";
+        result += (i + 2 < bytes.length) ? _b64c[b2 & 0x3F] : "=";
+      }
+      return _bufPrefix + result;
+    }
+    return String(data);
   }
 
   // ─── Async helper ───────────────────────────────────────
@@ -1917,10 +2006,10 @@ const fsSetupJS = `
       });
     },
     writeFile: function(path, data, opts) {
-      return fsAsync("writeFile", { path: path, data: typeof data === "string" ? data : String(data) }).then(function() {});
+      return fsAsync("writeFile", { path: path, data: _wrapData(data) }).then(function() {});
     },
     appendFile: function(path, data, opts) {
-      return fsAsync("appendFile", { path: path, data: typeof data === "string" ? data : String(data) }).then(function() {});
+      return fsAsync("appendFile", { path: path, data: _wrapData(data) }).then(function() {});
     },
     readdir: function(path, opts) {
       var wft = opts && opts.withFileTypes;
@@ -2064,8 +2153,8 @@ const fsSetupJS = `
 
     // Sync methods
     readFileSync: function(path, opts) { return _unwrapBuffer(__go_fs_readFileSync(path, typeof opts === "string" ? opts : JSON.stringify(opts || {}))); },
-    writeFileSync: function(path, data, opts) { return __go_fs_writeFileSync(path, typeof data === "string" ? data : String(data), JSON.stringify(opts || {})); },
-    appendFileSync: function(path, data, opts) { return __go_fs_appendFileSync(path, typeof data === "string" ? data : String(data), JSON.stringify(opts || {})); },
+    writeFileSync: function(path, data, opts) { return __go_fs_writeFileSync(path, _wrapData(data), JSON.stringify(opts || {})); },
+    appendFileSync: function(path, data, opts) { return __go_fs_appendFileSync(path, _wrapData(data), JSON.stringify(opts || {})); },
     readdirSync: function(path, opts) { return _parseReaddirSync(__go_fs_readdirSync(path, JSON.stringify(opts || {})), opts); },
     statSync: function(path, opts) { return parseStats(__go_fs_statSync(path, JSON.stringify(opts || {}))); },
     lstatSync: function(path, opts) { return parseStats(__go_fs_lstatSync(path, JSON.stringify(opts || {}))); },
@@ -2085,7 +2174,12 @@ const fsSetupJS = `
     chmodSync: function(path, mode) { return __go_fs_chmodSync(path, mode); },
     chownSync: function(path, uid, gid) { return __go_fs_chownSync(path, uid, gid); },
     truncateSync: function(path, len) { return __go_fs_truncateSync(path, len || 0); },
-    utimesSync: function(path, atime, mtime) { return __go_fs_utimesSync(path, atime, mtime); },
+    utimesSync: function(path, atime, mtime) {
+      // Node.js accepts number (seconds since epoch) or Date objects
+      if (atime instanceof Date) atime = atime.getTime() / 1000;
+      if (mtime instanceof Date) mtime = mtime.getTime() / 1000;
+      return __go_fs_utimesSync(path, atime, mtime);
+    },
     existsSync: function(path) { return __go_fs_existsSync(path); },
 
     // Streams — fs.ReadStream (extends stream.Readable), fs.WriteStream (extends stream.Writable)

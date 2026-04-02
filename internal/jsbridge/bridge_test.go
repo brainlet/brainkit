@@ -650,6 +650,36 @@ func TestFsReadBinaryPreservesBytes(t *testing.T) {
 	}
 }
 
+func TestFsWriteBinaryRoundtrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	b := newTestBridge(t, Encoding(), Buffer(), FS(tmpDir))
+
+	// Write binary data via Buffer, read it back, verify bytes preserved
+	val, err := b.EvalAsync("test.js", `(function() {
+		var buf = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF, 0xFE]);
+		fs.writeFileSync("binary.bin", buf);
+		var readBack = fs.readFileSync("binary.bin");
+		var bytes = [];
+		for (var i = 0; i < readBack.length; i++) bytes.push(readBack[i]);
+		return JSON.stringify(bytes);
+	})()`)
+	if err != nil {
+		t.Fatalf("EvalAsync: %v", err)
+	}
+	defer val.Free()
+
+	expected := "[137,80,78,71,0,255,254]"
+	if val.String() != expected {
+		t.Errorf("binary write roundtrip = %q, want %q", val.String(), expected)
+	}
+
+	// Also verify on disk
+	data, _ := os.ReadFile(filepath.Join(tmpDir, "binary.bin"))
+	if len(data) != 7 || data[0] != 0x89 || data[4] != 0x00 || data[6] != 0xFE {
+		t.Errorf("on-disk bytes wrong: %v", data)
+	}
+}
+
 func TestFsReadWithEncodingReturnsString(t *testing.T) {
 	tmpDir := t.TempDir()
 	os.WriteFile(filepath.Join(tmpDir, "text.txt"), []byte("hello"), 0644)
