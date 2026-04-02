@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/registry"
-	"github.com/brainlet/brainkit/workflow"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
@@ -142,10 +141,6 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 	n.started = true
 	n.mu.Unlock()
-
-	if err := n.Kernel.wasm.restoreTransportSubscriptions(); err != nil {
-		return err
-	}
 
 	// Restore dynamically-started plugins from previous session
 	n.restoreRunningPlugins()
@@ -432,29 +427,6 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 				},
 			},
 		})
-	}
-
-	// Register host functions for WASM workflows
-	if n.Kernel.hostFunctions != nil {
-		for _, hf := range manifest.HostFunctions {
-			toolTopic := hf.ToolTopic
-			if toolTopic == "" {
-				toolTopic = pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, hf.Name)
-			}
-			params := make([]workflow.HostParam, len(hf.Params))
-			for i, p := range hf.Params {
-				params[i] = workflow.HostParam{Name: p.Name, Type: p.Type}
-			}
-			n.Kernel.hostFunctions.Register(workflow.HostFunctionDef{
-				Module:      hf.Module,
-				Name:        hf.Name,
-				Description: hf.Description,
-				Params:      params,
-				Returns:     hf.Returns,
-				PluginName:  manifest.Name,
-				PluginTopic: toolTopic,
-			})
-		}
 	}
 
 	_ = n.Kernel.publish(ctx, messages.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(messages.PluginRegisteredEvent{

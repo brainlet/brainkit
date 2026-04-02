@@ -64,9 +64,6 @@ type DeployError = sdkerrors.DeployError
 // BridgeError is returned when a Go↔JS bridge function fails.
 type BridgeError = sdkerrors.BridgeError
 
-// CompilerError is returned when the AssemblyScript compiler fails.
-type CompilerError = sdkerrors.CompilerError
-
 // CycleDetectedError is returned when message cascading exceeds max depth.
 type CycleDetectedError = sdkerrors.CycleDetectedError
 
