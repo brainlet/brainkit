@@ -659,10 +659,13 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		return nil, err
 	}
 
-	// Note: Mastra workflow storage uses InMemoryStore by default (via patches.js).
-	// The __kit_store_holder pattern supports upgrading to a configured backend,
-	// but this requires testing the LibSQL bridge against Mastra's snapshot schema.
-	// The init reorder above ensures providers are ready if/when this upgrade is enabled.
+	// Upgrade Mastra storage from InMemoryStore to configured backend.
+	// patches.js creates _storeHolder with InMemoryStore. If a storage backend is
+	// configured, resolve it, call init() (creates mastra_workflow_snapshot table + others),
+	// and replace the holder's store so all Mastra persistence goes to the real database.
+	if len(cfg.Storages) > 0 {
+		kernel.upgradeMastraStorage()
+	}
 
 	// Initialize package manager
 	registries := cfg.PluginRegistries
@@ -872,6 +875,12 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Restore persisted schedules
 	if cfg.Store != nil {
 		kernel.restoreSchedules()
+	}
+
+	// Restart workflows that were active before the previous Kernel shutdown.
+	// Requires both deployment persistence (Store) and Mastra storage (Storages).
+	if cfg.Store != nil && len(cfg.Storages) > 0 {
+		kernel.restartActiveWorkflows()
 	}
 
 	kernel.startedAt = time.Now()
@@ -1479,6 +1488,81 @@ func (k *Kernel) processScheduledJobs() {
 	}
 	k.pumpCycles.Add(1)
 	k.bridge.ProcessScheduledJobs()
+}
+
+// upgradeMastraStorage resolves the configured storage backend and upgrades
+// the Mastra store holder from InMemoryStore to the real backend.
+// Tries "default" first (convention), falls back to first available.
+func (k *Kernel) upgradeMastraStorage() {
+	script := `
+		var storageNames = globalThis.__kit_registry_api.list("storage");
+		var storageName = null;
+		for (var i = 0; i < storageNames.length; i++) {
+			if (storageNames[i].name === "default") { storageName = "default"; break; }
+		}
+		if (!storageName && storageNames.length > 0) storageName = storageNames[0].name;
+		if (storageName) {
+			var configuredStorage = globalThis.__kit_resolveStorage(storageName);
+			await configuredStorage.init();
+			globalThis.__kit_store_holder.store = configuredStorage;
+			return JSON.stringify({ upgraded: true, storage: storageName });
+		}
+		return JSON.stringify({ upgraded: false });
+	`
+	result, err := k.EvalTS(context.Background(), "__upgrade_mastra_storage.ts", script)
+	if err != nil {
+		log.Printf("[brainkit] WARNING: Mastra storage upgrade failed: %v", err)
+		return
+	}
+	var parsed struct {
+		Upgraded bool   `json:"upgraded"`
+		Storage  string `json:"storage"`
+	}
+	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Upgraded {
+		log.Printf("[brainkit] Mastra storage upgraded to %q", parsed.Storage)
+	}
+}
+
+// restartActiveWorkflows calls restartAllActiveWorkflowRuns() on all registered
+// workflows. Picks up runs with status "running" or "waiting" from storage,
+// reconnects via createRun({runId}), and calls restart() to re-enter from snapshot.
+// Called automatically during NewKernel after .ts re-deployment.
+func (k *Kernel) restartActiveWorkflows() {
+	script := `
+		var workflows = globalThis.__kit_registry.list("workflow");
+		var restarted = 0;
+		for (var i = 0; i < workflows.length; i++) {
+			var entry = globalThis.__kit_registry.get("workflow", workflows[i].name);
+			if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
+				try {
+					await entry.ref.restartAllActiveWorkflowRuns();
+					restarted++;
+				} catch(e) {
+					// Log but don't fail startup — partial recovery is better than no recovery
+				}
+			}
+		}
+		return JSON.stringify({ restarted: restarted });
+	`
+	result, err := k.EvalTS(context.Background(), "__restart_workflows.ts", script)
+	if err != nil {
+		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "RestartActiveWorkflows", Cause: err,
+		}, ErrorContext{Operation: "RestartActiveWorkflows", Component: "kernel"})
+		return
+	}
+	var parsed struct {
+		Restarted int `json:"restarted"`
+	}
+	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Restarted > 0 {
+		log.Printf("[brainkit] restarted active workflows for %d workflow definitions", parsed.Restarted)
+	}
+}
+
+// RestartActiveWorkflows is the public Go API for manually triggering workflow recovery.
+func (k *Kernel) RestartActiveWorkflows(ctx context.Context) error {
+	k.restartActiveWorkflows()
+	return nil
 }
 
 // extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.

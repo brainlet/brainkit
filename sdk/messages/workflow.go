@@ -86,3 +86,31 @@ type WorkflowInfo struct {
 	HasInput  bool   `json:"hasInput"`
 	HasOutput bool   `json:"hasOutput"`
 }
+
+// ── Workflow Runs (query + restart) ──
+
+type WorkflowRunsMsg struct {
+	Name   string `json:"name"`
+	Status string `json:"status,omitempty"`
+}
+
+func (WorkflowRunsMsg) BusTopic() string { return "workflow.runs" }
+
+type WorkflowRunsResp struct {
+	ResultMeta
+	Runs  json.RawMessage `json:"runs"`
+	Total int             `json:"total"`
+}
+
+type WorkflowRestartMsg struct {
+	Name  string `json:"name"`
+	RunID string `json:"runId"`
+}
+
+func (WorkflowRestartMsg) BusTopic() string { return "workflow.restart" }
+
+type WorkflowRestartResp struct {
+	ResultMeta
+	Status string          `json:"status"`
+	Steps  json.RawMessage `json:"steps,omitempty"`
+}

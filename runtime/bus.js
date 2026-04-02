@@ -70,14 +70,6 @@
     value: {}, writable: false, enumerable: false, configurable: true
   });
 
-  // ─── Workflow Run Registry ──────────────────────────────────
-  // Tracks active Mastra workflow run objects between bus commands.
-  // workflow.start stores: __workflow_runs[runId] = { run, lastResult }
-  // workflow.resume/status/cancel retrieves by runId.
-  Object.defineProperty(globalThis, '__workflow_runs', {
-    value: {}, writable: false, enumerable: false, configurable: true
-  });
-
   // ─── Message Wrapper ──────────────────────────────────────────
   function wrapMsg(rawMsg) {
     var _replyToken = rawMsg.replyToken || "";

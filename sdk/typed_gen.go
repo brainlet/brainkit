@@ -581,6 +581,16 @@ func SubscribeWorkflowListResp(rt Runtime, ctx context.Context, topic string, ha
 	return SubscribeTo[messages.WorkflowListResp](rt, ctx, topic, handler)
 }
 
+// PublishWorkflowRestart publishes a WorkflowRestartMsg and returns routing info for the response.
+func PublishWorkflowRestart(rt Runtime, ctx context.Context, msg messages.WorkflowRestartMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowRestartResp subscribes to the response topic for a WorkflowRestartMsg command.
+func SubscribeWorkflowRestartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowRestartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowRestartResp](rt, ctx, topic, handler)
+}
+
 // PublishWorkflowResume publishes a WorkflowResumeMsg and returns routing info for the response.
 func PublishWorkflowResume(rt Runtime, ctx context.Context, msg messages.WorkflowResumeMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -589,6 +599,16 @@ func PublishWorkflowResume(rt Runtime, ctx context.Context, msg messages.Workflo
 // SubscribeWorkflowResumeResp subscribes to the response topic for a WorkflowResumeMsg command.
 func SubscribeWorkflowResumeResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowResumeResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.WorkflowResumeResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowRuns publishes a WorkflowRunsMsg and returns routing info for the response.
+func PublishWorkflowRuns(rt Runtime, ctx context.Context, msg messages.WorkflowRunsMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowRunsResp subscribes to the response topic for a WorkflowRunsMsg command.
+func SubscribeWorkflowRunsResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowRunsResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowRunsResp](rt, ctx, topic, handler)
 }
 
 // PublishWorkflowStart publishes a WorkflowStartMsg and returns routing info for the response.
