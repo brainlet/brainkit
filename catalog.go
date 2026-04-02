@@ -168,47 +168,6 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
 				return kernel.agentsDomain.SetStatus(ctx, req)
 			}),
-			// ── WASM ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmCompileMsg) (*messages.WasmCompileResp, error) {
-				return kernel.wasmDomainInst.Compile(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmRunMsg) (*messages.WasmRunResp, error) {
-				return kernel.wasmDomainInst.Run(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmDeployMsg) (*messages.WasmDeployResp, error) {
-				return kernel.wasmDomainInst.Deploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmUndeployMsg) (*messages.WasmUndeployResp, error) {
-				return kernel.wasmDomainInst.Undeploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmListMsg) (*messages.WasmListResp, error) {
-				return kernel.wasmDomainInst.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmGetMsg) (*messages.WasmGetResp, error) {
-				return kernel.wasmDomainInst.Get(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmRemoveMsg) (*messages.WasmRemoveResp, error) {
-				return kernel.wasmDomainInst.Remove(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmDescribeMsg) (*messages.WasmDescribeResp, error) {
-				return kernel.wasmDomainInst.Describe(ctx, req)
-			}),
-			// ── WASM Command Allowlist ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistGetMsg) (*messages.WasmAllowlistGetResp, error) {
-				return &messages.WasmAllowlistGetResp{Allowlist: kernel.WASMAllowlistGet()}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistSetMsg) (*messages.WasmAllowlistSetResp, error) {
-				kernel.WASMAllowlistSet(req.Allowlist)
-				return &messages.WasmAllowlistSetResp{OK: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistAddMsg) (*messages.WasmAllowlistAddResp, error) {
-				kernel.WASMAllowlistAdd(req.Command)
-				return &messages.WasmAllowlistAddResp{OK: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WasmAllowlistRemoveMsg) (*messages.WasmAllowlistRemoveResp, error) {
-				kernel.WASMAllowlistRemove(req.Command)
-				return &messages.WasmAllowlistRemoveResp{OK: true}, nil
-			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
 				return kernel.lifecycle.Deploy(ctx, req)
 			}),
@@ -299,35 +258,6 @@ func commandCatalog() *commandRegistry {
 					}
 				}
 				return &messages.RegistryResolveResp{Config: configJSON}, nil
-			}),
-			// ── Workflow Engine ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowRunMsg) (*messages.WorkflowRunResp, error) {
-				return kernel.workflowDomain.Run(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStatusMsg) (*messages.WorkflowStatusResp, error) {
-				return kernel.workflowDomain.Status(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowCancelMsg) (*messages.WorkflowCancelResp, error) {
-				return kernel.workflowDomain.Cancel(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowListMsg) (*messages.WorkflowListResp, error) {
-				return kernel.workflowDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowHistoryMsg) (*messages.WorkflowHistoryResp, error) {
-				return kernel.workflowDomain.History(ctx, req)
-			}),
-			// ── Automations ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationDeployMsg) (*messages.AutomationDeployResp, error) {
-				return kernel.automationDomain.Deploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationTeardownMsg) (*messages.AutomationTeardownResp, error) {
-				return kernel.automationDomain.Teardown(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationListMsg) (*messages.AutomationListResp, error) {
-				return kernel.automationDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AutomationInfoMsg) (*messages.AutomationInfoResp, error) {
-				return kernel.automationDomain.Info(ctx, req)
 			}),
 			// ── Metrics ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MetricsGetMsg) (*messages.MetricsGetResp, error) {
@@ -546,9 +476,6 @@ func commandCatalog() *commandRegistry {
 
 // shouldSkipCommand returns true if the command topic targets an unconfigured domain.
 func shouldSkipCommand(topic string, kernel *Kernel) bool {
-	if strings.HasPrefix(topic, "wasm.") && kernel.wasm == nil {
-		return true
-	}
 	if strings.HasPrefix(topic, "mcp.") && kernel.mcp == nil {
 		return true
 	}
