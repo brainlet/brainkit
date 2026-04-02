@@ -125,3 +125,71 @@ func TestWorkflowBusList(t *testing.T) {
 	}
 	require.True(t, found, "list-test workflow should appear in list")
 }
+
+func TestWorkflowBusSuspendResume(t *testing.T) {
+	tk := testutil.NewTestKernelFull(t)
+	k := tk.Kernel
+
+	_, err := k.Deploy(context.Background(), "suspend-wf.ts", `
+		const approvalStep = createStep({
+			id: "approval",
+			inputSchema: z.object({ item: z.string() }),
+			resumeSchema: z.object({ approved: z.boolean() }),
+			outputSchema: z.object({ result: z.string() }),
+			execute: async ({ inputData, resumeData, suspend }) => {
+				if (!resumeData) {
+					return await suspend({ reason: "needs approval" });
+				}
+				return { result: resumeData.approved ? "approved: " + inputData.item : "denied" };
+			},
+		});
+		const wf = createWorkflow({
+			id: "approval-flow",
+			inputSchema: z.object({ item: z.string() }),
+			outputSchema: z.object({ result: z.string() }),
+		}).then(approvalStep).commit();
+		kit.register("workflow", "approval-flow", wf);
+	`)
+	require.NoError(t, err)
+
+	// Start — should suspend
+	startResult, err := sdk.Publish(k, context.Background(), messages.WorkflowStartMsg{
+		Name:      "approval-flow",
+		InputData: json.RawMessage(`{"item":"widget"}`),
+	})
+	require.NoError(t, err)
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel1()
+	var startResp messages.WorkflowStartResp
+	unsub1, _ := sdk.SubscribeTo[messages.WorkflowStartResp](k, ctx1, startResult.ReplyTo, func(r messages.WorkflowStartResp, msg messages.Message) {
+		startResp = r
+		cancel1()
+	})
+	defer unsub1()
+	<-ctx1.Done()
+
+	require.Equal(t, "suspended", startResp.Status, "workflow should suspend")
+	require.NotEmpty(t, startResp.RunID)
+
+	// Resume with approval
+	resumeResult, err := sdk.Publish(k, context.Background(), messages.WorkflowResumeMsg{
+		Name:       "approval-flow",
+		RunID:      startResp.RunID,
+		Step:       "approval",
+		ResumeData: json.RawMessage(`{"approved":true}`),
+	})
+	require.NoError(t, err)
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel2()
+	var resumeResp messages.WorkflowResumeResp
+	unsub2, _ := sdk.SubscribeTo[messages.WorkflowResumeResp](k, ctx2, resumeResult.ReplyTo, func(r messages.WorkflowResumeResp, msg messages.Message) {
+		resumeResp = r
+		cancel2()
+	})
+	defer unsub2()
+	<-ctx2.Done()
+
+	require.Empty(t, resumeResp.Error, "resume should not return error: %s", resumeResp.Error)
+}
