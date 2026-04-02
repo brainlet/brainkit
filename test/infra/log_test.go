@@ -2,7 +2,6 @@ package infra_test
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"testing"
 	"time"

@@ -265,7 +265,7 @@ func commandCatalog() *commandRegistry {
 				if len(req.InputData) > 0 {
 					inputJSON = string(req.InputData)
 				}
-				script := fmt.Sprintf(`(async () => {
+				script := fmt.Sprintf(`
 					var entry = globalThis.__kit_registry.get("workflow", %q);
 					if (!entry || !entry.ref) throw new BrainkitError("workflow not found: " + %q, "NOT_FOUND");
 					var wf = entry.ref;
@@ -281,7 +281,7 @@ func commandCatalog() *commandRegistry {
 						status: result.status || "unknown",
 						steps: result.steps || null,
 					});
-				})()`, req.Name, req.Name, inputJSON)
+				`, req.Name, req.Name, inputJSON)
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_start.ts", script)
 				if err != nil {
 					return nil, err
@@ -297,7 +297,7 @@ func commandCatalog() *commandRegistry {
 				if len(req.InputData) > 0 {
 					inputJSON = string(req.InputData)
 				}
-				script := fmt.Sprintf(`(async () => {
+				script := fmt.Sprintf(`
 					var entry = globalThis.__kit_registry.get("workflow", %q);
 					if (!entry || !entry.ref) throw new BrainkitError("workflow not found: " + %q, "NOT_FOUND");
 					var wf = entry.ref;
@@ -324,7 +324,7 @@ func commandCatalog() *commandRegistry {
 						}));
 					});
 					return JSON.stringify({ runId: runId });
-				})()`, req.Name, req.Name, inputJSON)
+				`, req.Name, req.Name, inputJSON)
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_start_async.ts", script)
 				if err != nil {
 					return nil, err
@@ -336,7 +336,7 @@ func commandCatalog() *commandRegistry {
 				return &resp, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowStatusMsg) (*messages.WorkflowStatusResp, error) {
-				script := fmt.Sprintf(`(function() {
+				script := fmt.Sprintf(`
 					var entry = globalThis.__workflow_runs[%q];
 					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
 					var result = entry.lastResult;
@@ -345,7 +345,7 @@ func commandCatalog() *commandRegistry {
 						status: result ? (result.status || "running") : "running",
 						steps: result ? (result.steps || null) : null,
 					});
-				})()`, req.RunID, req.RunID, req.RunID)
+				`, req.RunID, req.RunID, req.RunID)
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_status.ts", script)
 				if err != nil {
 					return nil, err
@@ -365,7 +365,7 @@ func commandCatalog() *commandRegistry {
 				if req.Step != "" {
 					stepArg = fmt.Sprintf("%q", req.Step)
 				}
-				script := fmt.Sprintf(`(async () => {
+				script := fmt.Sprintf(`
 					var entry = globalThis.__workflow_runs[%q];
 					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
 					var run = entry.run;
@@ -381,7 +381,7 @@ func commandCatalog() *commandRegistry {
 						status: result.status || "unknown",
 						steps: result.steps || null,
 					});
-				})()`, req.RunID, req.RunID, resumeJSON, stepArg, req.RunID)
+				`, req.RunID, req.RunID, resumeJSON, stepArg, req.RunID)
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_resume.ts", script)
 				if err != nil {
 					return nil, err
@@ -393,12 +393,12 @@ func commandCatalog() *commandRegistry {
 				return &resp, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowCancelMsg) (*messages.WorkflowCancelResp, error) {
-				script := fmt.Sprintf(`(function() {
+				script := fmt.Sprintf(`
 					var entry = globalThis.__workflow_runs[%q];
 					if (!entry) throw new BrainkitError("workflow run not found: " + %q, "NOT_FOUND");
 					delete globalThis.__workflow_runs[%q];
 					return JSON.stringify({ cancelled: true });
-				})()`, req.RunID, req.RunID, req.RunID)
+				`, req.RunID, req.RunID, req.RunID)
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_cancel.ts", script)
 				if err != nil {
 					return nil, err
@@ -410,7 +410,7 @@ func commandCatalog() *commandRegistry {
 				return &resp, nil
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.WorkflowListMsg) (*messages.WorkflowListResp, error) {
-				script := `(function() {
+				script := `
 					var entries = globalThis.__kit_registry.list("workflow");
 					var result = [];
 					for (var i = 0; i < entries.length; i++) {
@@ -424,7 +424,7 @@ func commandCatalog() *commandRegistry {
 						});
 					}
 					return JSON.stringify({ workflows: result });
-				})()`
+				`
 				resultJSON, err := kernel.EvalTS(ctx, "__workflow_list.ts", script)
 				if err != nil {
 					return nil, err
