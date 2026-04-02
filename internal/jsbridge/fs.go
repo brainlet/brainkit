@@ -1534,12 +1534,23 @@ func (p *FSPolyfill) registerFileHandleBridges(ctx *quickjs.Context, b *Bridge, 
 					scheduleReject(qctx, reject, fmt.Errorf("bad file descriptor"), "write", "")
 					return
 				}
+				var bytes []byte
+				if strings.HasPrefix(data, "__BUFFER__:") {
+					var decErr error
+					bytes, decErr = base64.StdEncoding.DecodeString(data[11:])
+					if decErr != nil {
+						scheduleReject(qctx, reject, fmt.Errorf("decode buffer: %w", decErr), "write", "")
+						return
+					}
+				} else {
+					bytes = []byte(data)
+				}
 				var n int
 				var err error
 				if position >= 0 {
-					n, err = f.WriteAt([]byte(data), position)
+					n, err = f.WriteAt(bytes, position)
 				} else {
-					n, err = f.Write([]byte(data))
+					n, err = f.Write(bytes)
 				}
 				if err != nil {
 					scheduleReject(qctx, reject, err, "write", "")
@@ -1661,9 +1672,20 @@ func (p *FSPolyfill) registerFileHandleBridges(ctx *quickjs.Context, b *Bridge, 
 					scheduleReject(qctx, reject, fmt.Errorf("bad file descriptor"), "write", "")
 					return
 				}
+				var bytes []byte
+				if strings.HasPrefix(data, "__BUFFER__:") {
+					var decErr error
+					bytes, decErr = base64.StdEncoding.DecodeString(data[11:])
+					if decErr != nil {
+						scheduleReject(qctx, reject, fmt.Errorf("decode buffer: %w", decErr), "write", "")
+						return
+					}
+				} else {
+					bytes = []byte(data)
+				}
 				f.Truncate(0)
 				f.Seek(0, 0)
-				if _, err := f.WriteString(data); err != nil {
+				if _, err := f.Write(bytes); err != nil {
 					scheduleReject(qctx, reject, err, "write", "")
 					return
 				}
@@ -1934,29 +1956,60 @@ const fsSetupJS = `
   function FileHandle(fd) {
     this.fd = fd;
   }
-  FileHandle.prototype.read = function(opts) {
-    var len = (opts && opts.length) || 16384;
-    var pos = (opts && opts.position !== undefined) ? opts.position : -1;
-    return __go_fs_fh_read(this.fd, len, pos).then(function(r) { return JSON.parse(r); });
+  FileHandle.prototype.read = function(bufferOrOpts, offset, length, position) {
+    // Node.js signature: read(buffer, offset, length, position) or read(options)
+    var len, pos;
+    if (bufferOrOpts && typeof bufferOrOpts === "object" && !ArrayBuffer.isView(bufferOrOpts)) {
+      len = bufferOrOpts.length || 16384;
+      pos = (bufferOrOpts.position !== undefined && bufferOrOpts.position !== null) ? bufferOrOpts.position : -1;
+    } else {
+      len = (typeof length === "number") ? length : 16384;
+      pos = (typeof position === "number") ? position : -1;
+    }
+    return __go_fs_fh_read(this.fd, len, pos).then(function(r) {
+      var parsed = JSON.parse(r);
+      // Return {bytesRead, buffer} matching Node.js API
+      return { bytesRead: parsed.bytesRead, buffer: parsed.data };
+    });
   };
   FileHandle.prototype.readFile = function(opts) {
-    return __go_fs_fh_readFile(this.fd);
+    var enc = "";
+    if (typeof opts === "string") enc = opts;
+    else if (opts && opts.encoding) enc = opts.encoding;
+    return __go_fs_fh_readFile(this.fd).then(function(r) {
+      if (enc) return r; // string
+      // No encoding → wrap as Buffer
+      if (typeof Buffer !== "undefined") return Buffer.from(r, "utf8");
+      return r;
+    });
   };
-  FileHandle.prototype.write = function(data, offset, length, position) {
-    var pos = (typeof position === "number") ? position : -1;
-    return __go_fs_fh_write(this.fd, data, pos).then(function(r) { return JSON.parse(r); });
+  FileHandle.prototype.write = function(data, offsetOrOpts, length, position) {
+    var d = (typeof data === "string") ? data : _wrapData(data);
+    var pos;
+    if (typeof offsetOrOpts === "object" && offsetOrOpts !== null) {
+      pos = (offsetOrOpts.position !== undefined) ? offsetOrOpts.position : -1;
+    } else {
+      pos = (typeof position === "number") ? position : -1;
+    }
+    return __go_fs_fh_write(this.fd, d, pos).then(function(r) { return JSON.parse(r); });
   };
-  FileHandle.prototype.writeFile = function(data) {
-    return __go_fs_fh_writeFile(this.fd, typeof data === "string" ? data : String(data));
+  FileHandle.prototype.writeFile = function(data, opts) {
+    return __go_fs_fh_writeFile(this.fd, _wrapData(data));
   };
   FileHandle.prototype.close = function() {
     return __go_fs_fh_close(this.fd);
   };
-  FileHandle.prototype.stat = function() {
+  FileHandle.prototype.stat = function(opts) {
     return __go_fs_fh_stat(this.fd).then(parseStats);
   };
   FileHandle.prototype.truncate = function(len) {
     return __go_fs_fh_truncate(this.fd, len || 0);
+  };
+  FileHandle.prototype.utimes = function(atime, mtime) {
+    // Not implemented as a Go bridge — use stat to get path, then utimes
+    // For now, this is a no-op that resolves. Full implementation would need
+    // the Go side to support futimes(fd, atime, mtime).
+    return Promise.resolve();
   };
 
   // ─── Buffer wrap/unwrap helpers ──────────────────────────
@@ -2079,6 +2132,8 @@ const fsSetupJS = `
       return fsAsync("truncate", { path: path, len: len || 0 }).then(function() {});
     },
     utimes: function(path, atime, mtime) {
+      if (atime instanceof Date) atime = atime.getTime() / 1000;
+      if (mtime instanceof Date) mtime = mtime.getTime() / 1000;
       return fsAsync("utimes", { path: path, atime: atime, mtime: mtime }).then(function() {});
     },
     open: function(path, flags, mode) {
