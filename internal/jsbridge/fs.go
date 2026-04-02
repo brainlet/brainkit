@@ -1666,22 +1666,34 @@ func (p *FSPolyfill) registerStreamBridges(ctx *quickjs.Context, b *Bridge, root
 		return qctx.NewString(streamID)
 	}))
 
-	// __go_fs_createWriteStream(path, optionsJSON) → fd
+	// __go_fs_createWriteStream(path, optionsJSON, streamID) → void
+	// Opens the file asynchronously via bridge.Go(). Reports fd via __fs_streams[streamID]._onOpen(fd).
 	ctx.Globals().Set("__go_fs_createWriteStream", ctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
-		if len(args) < 1 {
-			return qctx.ThrowError(fmt.Errorf("createWriteStream: path required"))
+		if len(args) < 3 {
+			return qctx.ThrowError(fmt.Errorf("createWriteStream: path, options, streamID required"))
 		}
 		userPath := args[0].String()
+		wsID := args[2].String()
 		absPath, err := p.resolve(userPath)
 		if err != nil {
 			return throwFSError(qctx, err, "open", userPath)
 		}
-		f, err := os.Create(absPath)
-		if err != nil {
-			return throwFSError(qctx, err, "open", userPath)
-		}
-		fd := p.trackHandle(f)
-		return qctx.NewInt32(int32(fd))
+
+		b.Go(func(goCtx context.Context) {
+			f, err := os.Create(absPath)
+			if err != nil {
+				qctx.Schedule(func(qctx *quickjs.Context) {
+					qctx.Eval(fmt.Sprintf(`globalThis.__fs_streams[%q]&&globalThis.__fs_streams[%q]._onError(%q)`, wsID, wsID, err.Error()))
+				})
+				return
+			}
+			fd := p.trackHandle(f)
+			qctx.Schedule(func(qctx *quickjs.Context) {
+				qctx.Eval(fmt.Sprintf(`globalThis.__fs_streams[%q]&&globalThis.__fs_streams[%q]._onOpen(%d)`, wsID, wsID, fd))
+			})
+		})
+
+		return qctx.NewUndefined()
 	}))
 
 	// __go_fs_ws_write(fd, chunk) → bool
@@ -2076,37 +2088,81 @@ const fsSetupJS = `
     utimesSync: function(path, atime, mtime) { return __go_fs_utimesSync(path, atime, mtime); },
     existsSync: function(path) { return __go_fs_existsSync(path); },
 
-    // Streams — use Node.js stream.Readable/Writable from nodestreams.go
+    // Streams — fs.ReadStream (extends stream.Readable), fs.WriteStream (extends stream.Writable)
     createReadStream: function(path, opts) {
       var S = globalThis.stream;
       var readable = new S.Readable({ read: function() {} });
       readable.path = path;
+      readable.bytesRead = 0;
+      readable.pending = true;
       var streamID = __go_fs_createReadStream(path, JSON.stringify(opts || {}));
       globalThis.__fs_streams[streamID] = {
-        _onData: function(chunk) { readable.push(chunk); },
-        _onEnd: function() { readable.push(null); delete globalThis.__fs_streams[streamID]; },
-        _onError: function(msg) { readable.destroy(new Error(msg)); delete globalThis.__fs_streams[streamID]; },
+        _onData: function(chunk) {
+          if (readable.pending) {
+            readable.pending = false;
+            readable.emit("open", -1);
+            readable.emit("ready");
+          }
+          readable.bytesRead += chunk.length;
+          readable.push(chunk);
+        },
+        _onEnd: function() {
+          readable.push(null);
+          delete globalThis.__fs_streams[streamID];
+        },
+        _onError: function(msg) {
+          readable.destroy(new Error(msg));
+          delete globalThis.__fs_streams[streamID];
+        },
       };
       return readable;
     },
     createWriteStream: function(path, opts) {
       var S = globalThis.stream;
-      var fd = null;
+      var _fd = null;
+      var _pending = [];
+      var _opened = false;
       var writable = new S.Writable({
         write: function(chunk, encoding, callback) {
-          if (fd === null) {
-            // Lazy open — first write triggers file open (off JS thread for sync bridge)
-            fd = __go_fs_createWriteStream(path, JSON.stringify(opts || {}));
+          if (!_opened) {
+            _pending.push({chunk: chunk, callback: callback});
+            return;
           }
-          var ok = __go_fs_ws_write(fd, typeof chunk === "string" ? chunk : String(chunk));
+          var ok = __go_fs_ws_write(_fd, typeof chunk === "string" ? chunk : String(chunk));
+          writable.bytesWritten += (typeof chunk === "string" ? chunk.length : String(chunk).length);
           callback(ok ? null : new Error("write failed"));
         },
         final: function(callback) {
-          if (fd !== null) __go_fs_ws_close(fd);
+          if (_fd !== null) __go_fs_ws_close(_fd);
           callback();
         },
       });
       writable.path = path;
+      writable.bytesWritten = 0;
+      writable.pending = true;
+      var wsID = "ws_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      globalThis.__fs_streams[wsID] = {
+        _onOpen: function(fd) {
+          _fd = fd;
+          _opened = true;
+          writable.pending = false;
+          writable.emit("open", fd);
+          writable.emit("ready");
+          // Flush pending writes
+          for (var i = 0; i < _pending.length; i++) {
+            var p = _pending[i];
+            var ok = __go_fs_ws_write(_fd, typeof p.chunk === "string" ? p.chunk : String(p.chunk));
+            writable.bytesWritten += (typeof p.chunk === "string" ? p.chunk.length : String(p.chunk).length);
+            p.callback(ok ? null : new Error("write failed"));
+          }
+          _pending = [];
+        },
+        _onError: function(msg) {
+          writable.destroy(new Error(msg));
+          delete globalThis.__fs_streams[wsID];
+        },
+      };
+      __go_fs_createWriteStream(path, JSON.stringify(opts || {}), wsID);
       return writable;
     },
 

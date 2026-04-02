@@ -676,15 +676,21 @@ func TestFsCreateReadStreamPipe(t *testing.T) {
 
 	b := newTestBridge(t, Events(), NodeStreams(), FS(tmpDir))
 
-	// createReadStream should return a stream.Readable with pipe()
+	// createReadStream should return a Readable with pipe(), emit 'open', track bytesRead
 	val, err := b.EvalAsync("test.js", `(async function() {
 		var rs = fs.createReadStream("stream-src.txt");
 		var hasPipe = typeof rs.pipe === "function";
+		var hasPending = rs.pending === true;
+		var gotOpen = false;
 		var chunks = [];
 		return new Promise(function(resolve) {
+			rs.on("open", function() { gotOpen = true; });
 			rs.on("data", function(chunk) { chunks.push(chunk); });
 			rs.on("end", function() {
-				resolve(JSON.stringify({hasPipe: hasPipe, data: chunks.join(""), chunkCount: chunks.length}));
+				resolve(JSON.stringify({
+					hasPipe: hasPipe, hasPending: hasPending, gotOpen: gotOpen,
+					data: chunks.join(""), bytesRead: rs.bytesRead
+				}));
 			});
 			rs.on("error", function(e) { resolve("ERROR:" + e.message); });
 		});
@@ -694,55 +700,92 @@ func TestFsCreateReadStreamPipe(t *testing.T) {
 	}
 	defer val.Free()
 
+	result := val.String()
+	if strings.HasPrefix(result, "ERROR:") {
+		t.Fatalf("createReadStream error: %s", result)
+	}
 	var parsed struct {
 		HasPipe    bool   `json:"hasPipe"`
+		HasPending bool   `json:"hasPending"`
+		GotOpen    bool   `json:"gotOpen"`
 		Data       string `json:"data"`
-		ChunkCount int    `json:"chunkCount"`
+		BytesRead  int    `json:"bytesRead"`
 	}
-	json.Unmarshal([]byte(val.String()), &parsed)
+	json.Unmarshal([]byte(result), &parsed)
 	if !parsed.HasPipe {
 		t.Error("createReadStream should return a Readable with pipe()")
+	}
+	if !parsed.HasPending {
+		t.Error("createReadStream should start with pending=true")
+	}
+	if !parsed.GotOpen {
+		t.Error("createReadStream should emit 'open' event")
 	}
 	if parsed.Data != "stream content here" {
 		t.Errorf("stream data = %q, want 'stream content here'", parsed.Data)
 	}
+	if parsed.BytesRead != 19 {
+		t.Errorf("bytesRead = %d, want 19", parsed.BytesRead)
+	}
 }
 
-func TestFsCreateWriteStreamLazyOpen(t *testing.T) {
+func TestFsCreateWriteStreamAsyncOpen(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	b := newTestBridge(t, Events(), NodeStreams(), FS(tmpDir))
 
-	// createWriteStream should return immediately (lazy open)
-	// and actually write when write() is called
-	val, err := b.EvalAsync("test.js", `(function() {
-		var ws = fs.createWriteStream("lazy.txt");
+	// createWriteStream opens file async, emits 'open', then flushes buffered writes
+	val, err := b.EvalAsync("test.js", `(async function() {
+		var ws = fs.createWriteStream("async-ws.txt");
 		var hasWrite = typeof ws.write === "function";
 		var hasEnd = typeof ws.end === "function";
+		var hasPending = ws.pending === true;
 		ws.write("hello ");
 		ws.write("world");
-		ws.end();
-		return JSON.stringify({hasWrite: hasWrite, hasEnd: hasEnd});
+		return new Promise(function(resolve) {
+			ws.on("open", function(fd) {
+				ws.end(function() {
+					resolve(JSON.stringify({hasWrite: hasWrite, hasEnd: hasEnd, hasPending: hasPending, gotOpen: true, fd: fd}));
+				});
+			});
+			ws.on("error", function(e) { resolve("ERROR:" + e.message); });
+		});
 	})()`)
 	if err != nil {
 		t.Fatalf("EvalAsync: %v", err)
 	}
 	defer val.Free()
 
-	var parsed struct {
-		HasWrite bool `json:"hasWrite"`
-		HasEnd   bool `json:"hasEnd"`
+	result := val.String()
+	if strings.HasPrefix(result, "ERROR:") {
+		t.Fatalf("createWriteStream error: %s", result)
 	}
-	json.Unmarshal([]byte(val.String()), &parsed)
+	var parsed struct {
+		HasWrite   bool `json:"hasWrite"`
+		HasEnd     bool `json:"hasEnd"`
+		HasPending bool `json:"hasPending"`
+		GotOpen    bool `json:"gotOpen"`
+		FD         int  `json:"fd"`
+	}
+	json.Unmarshal([]byte(result), &parsed)
 	if !parsed.HasWrite {
 		t.Error("createWriteStream should have write()")
 	}
 	if !parsed.HasEnd {
 		t.Error("createWriteStream should have end()")
 	}
+	if !parsed.HasPending {
+		t.Error("createWriteStream should start with pending=true")
+	}
+	if !parsed.GotOpen {
+		t.Error("createWriteStream should emit 'open' event")
+	}
+	if parsed.FD <= 0 {
+		t.Errorf("createWriteStream 'open' fd = %d, want >0", parsed.FD)
+	}
 
-	// Verify file was written
-	data, err := os.ReadFile(filepath.Join(tmpDir, "lazy.txt"))
+	// Verify file was written (writes buffered until open, then flushed)
+	data, err := os.ReadFile(filepath.Join(tmpDir, "async-ws.txt"))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
