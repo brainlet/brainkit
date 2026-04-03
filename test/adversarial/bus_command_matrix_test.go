@@ -71,28 +71,11 @@ func commandTable() []cmdTest {
 		{"packages.list", messages.PackagesListMsg{}, messages.PackagesListMsg{}, "", false, false},
 		{"packages.info", messages.PackagesInfoMsg{Name: "ghost"}, messages.PackagesInfoMsg{Name: ""}, "", false, false},
 
-		// WASM
-		{"wasm.list", messages.WasmListMsg{}, messages.WasmListMsg{}, "", false, false},
-		{"wasm.get", messages.WasmGetMsg{Name: "ghost-module"}, messages.WasmGetMsg{Name: ""}, "", false, false},
-		{"wasm.remove", messages.WasmRemoveMsg{Name: "ghost-module"}, messages.WasmRemoveMsg{Name: ""}, "", false, false},
-		{"wasm.deploy", messages.WasmDeployMsg{Name: "ghost-module"}, messages.WasmDeployMsg{Name: ""}, "", false, false},
-		{"wasm.undeploy", messages.WasmUndeployMsg{Name: "ghost-module"}, messages.WasmUndeployMsg{Name: ""}, "", false, false},
-		{"wasm.describe", messages.WasmDescribeMsg{Name: "ghost-module"}, messages.WasmDescribeMsg{Name: ""}, "", false, false},
-
-		// Workflow
-		{"workflow.list", messages.WorkflowListMsg{}, messages.WorkflowListMsg{}, "", false, false},
-		{"workflow.status", messages.WorkflowStatusMsg{RunID: "ghost-run"}, messages.WorkflowStatusMsg{RunID: ""}, "", false, false},
-		{"workflow.cancel", messages.WorkflowCancelMsg{RunID: "ghost-run"}, messages.WorkflowCancelMsg{RunID: ""}, "", false, false},
-		{"workflow.history", messages.WorkflowHistoryMsg{RunID: "ghost-run"}, messages.WorkflowHistoryMsg{RunID: ""}, "", false, false},
-
 		// Package Deploy
 		{"package.list", messages.PackageListDeployedMsg{}, messages.PackageListDeployedMsg{}, "", false, false},
 		{"package.info", messages.PackageDeployInfoMsg{Name: "ghost"}, messages.PackageDeployInfoMsg{Name: ""}, "", false, false},
 		{"package.teardown", messages.PackageTeardownMsg{Name: "ghost"}, messages.PackageTeardownMsg{Name: ""}, "", false, false},
 
-		// Automation
-		{"automation.list", messages.AutomationListMsg{}, messages.AutomationListMsg{}, "", false, false},
-		{"automation.info", messages.AutomationInfoMsg{Name: "ghost"}, messages.AutomationInfoMsg{Name: ""}, "", false, false},
 	}
 }
 
@@ -173,10 +156,7 @@ func TestBusMatrix_GarbagePayload(t *testing.T) {
 		"registry.has", "registry.list", "registry.resolve",
 		"metrics.get",
 		"packages.search", "packages.list", "packages.info",
-		"wasm.list", "wasm.get", "wasm.remove", "wasm.deploy", "wasm.undeploy", "wasm.describe",
-		"workflow.list", "workflow.status", "workflow.cancel", "workflow.history",
 		"package.list", "package.info", "package.teardown",
-		"automation.list", "automation.info",
 	}
 
 	for _, topic := range topics {

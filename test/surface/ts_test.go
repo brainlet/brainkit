@@ -33,7 +33,7 @@ func TestTS_ModuleImports(t *testing.T) {
 					hasKit: typeof kit === "object" && typeof kit.register === "function",
 					hasModel: typeof model === "function",
 					hasTools: typeof tools === "object" && typeof tools.call === "function",
-					hasFs: typeof fs === "object" && typeof fs.read === "function",
+					hasFs: typeof fs === "object" && typeof fs.promises === "object" && typeof fs.promises.readFile === "function",
 					hasMcp: typeof mcp === "object",
 					hasOutput: typeof output === "function",
 					hasRegistry: typeof registry === "object",

@@ -208,33 +208,6 @@ func TestStateCorruption_ZeroDurationSchedule(t *testing.T) {
 	assert.True(t, k.Alive(context.Background()))
 }
 
-// D05: Persisted shard references missing module
-func TestStateCorruption_ShardMissingModule(t *testing.T) {
-	tmpDir := t.TempDir()
-	storePath := filepath.Join(tmpDir, "store.db")
-
-	store, err := brainkit.NewSQLiteStore(storePath)
-	require.NoError(t, err)
-	store.SaveShard("ghost-shard", brainkit.ShardDescriptor{
-		Module:     "nonexistent-module",
-		Mode:       "stateless",
-		Handlers:   map[string]string{"test.*": "handle"},
-		DeployedAt: time.Now(),
-	})
-	store.Close()
-
-	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	assert.True(t, k.Alive(context.Background()))
-}
-
-// D06: Two persisted deployments with same source — last write wins
 func TestStateCorruption_DuplicatePersistedSource(t *testing.T) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store.db")

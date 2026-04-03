@@ -257,32 +257,6 @@ func TestExhaustion_TimerBomb(t *testing.T) {
 // FINDING: Concurrent AS compilation CRASHES the Binaryen C library (SIGSEGV).
 // The AS compiler shares a single QuickJS runtime and Binaryen is NOT thread-safe.
 // ensureCompiler() has a mutex but concurrent bus commands can still race.
-// Test uses sequential compiles to avoid the crash while documenting the finding.
-func TestExhaustion_WASMCompileBomb(t *testing.T) {
-	tk := testutil.NewTestKernelFull(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	// Sequential compiles — concurrent compiles CRASH Binaryen (real finding above)
-	for i := 0; i < 5; i++ {
-		pr, _ := sdk.Publish(tk, ctx, messages.WasmCompileMsg{
-			Source:  fmt.Sprintf(`export function run(): i32 { return %d; }`, i),
-			Options: &messages.WasmCompileOpts{Name: fmt.Sprintf("bomb-%d", i)},
-		})
-		ch := make(chan []byte, 1)
-		unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-		select {
-		case <-ch:
-		case <-time.After(30 * time.Second):
-			t.Logf("compile %d timed out", i)
-		}
-		unsub()
-	}
-
-	assert.True(t, tk.Alive(ctx), "kernel should survive sequential WASM compiles")
-}
-
-// Attack: secrets.set with enormous values
 func TestExhaustion_SecretValueBomb(t *testing.T) {
 	tk := testutil.NewTestKernelFull(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

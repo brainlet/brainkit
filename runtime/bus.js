@@ -176,9 +176,6 @@
       var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
       return globalThis.__kit_bus.publish("ts." + name + "." + localTopic, data);
     },
-    sendToShard: function(shard, topic, data) {
-      return globalThis.__kit_bus.publish(topic, data);
-    },
     schedule: function(expression, topic, data) {
       var id = __go_brainkit_bus_schedule(expression, topic, JSON.stringify(data || null), globalThis.__kit_currentSource || "go");
       _resourceRegistry.register("schedule", id, id, null, function() {

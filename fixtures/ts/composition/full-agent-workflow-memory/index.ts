@@ -1,8 +1,7 @@
-// Test: full composition — uses Agent, generateText, tools, compile, z, createTool
+// Test: full composition — uses Agent, generateText, tools, z, createTool
 // This is what a real developer .ts file looks like.
 import { Agent, createTool, z } from "agent";
 import { generateText } from "ai";
-import { compile } from "compiler";
 import { model, tools, output } from "kit";
 
 // 1. Direct AI call (LOCAL)
@@ -25,13 +24,8 @@ const concatTool = createTool({
   execute: async ({ a, b }) => ({ result: a + b }),
 });
 
-// 4. Compile and run WASM
-const wasmModule = await compile('export function run(): i32 { return 99; }');
-const wasmResult = await wasmModule.run({});
-
 output({
   aiText: aiResult.text,
   reversed: (reversed as any).result,
   hasLocalTool: !!concatTool,
-  wasmExitCode: wasmResult.exitCode,
 });

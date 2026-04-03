@@ -106,6 +106,11 @@ func SubscribeKitDeployResp(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[messages.KitDeployResp](rt, ctx, topic, handler)
 }
 
+// PublishKitDeployFile publishes a KitDeployFileMsg and returns routing info for the response.
+func PublishKitDeployFile(rt Runtime, ctx context.Context, msg messages.KitDeployFileMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
 // PublishKitList publishes a KitListMsg and returns routing info for the response.
 func PublishKitList(rt Runtime, ctx context.Context, msg messages.KitListMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -154,6 +159,66 @@ func PublishMcpListTools(rt Runtime, ctx context.Context, msg messages.McpListTo
 // SubscribeMcpListToolsResp subscribes to the response topic for a McpListToolsMsg command.
 func SubscribeMcpListToolsResp(rt Runtime, ctx context.Context, topic string, handler func(messages.McpListToolsResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.McpListToolsResp](rt, ctx, topic, handler)
+}
+
+// PublishMetricsGet publishes a MetricsGetMsg and returns routing info for the response.
+func PublishMetricsGet(rt Runtime, ctx context.Context, msg messages.MetricsGetMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeMetricsGetResp subscribes to the response topic for a MetricsGetMsg command.
+func SubscribeMetricsGetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.MetricsGetResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.MetricsGetResp](rt, ctx, topic, handler)
+}
+
+// PublishPackageDeploy publishes a PackageDeployMsg and returns routing info for the response.
+func PublishPackageDeploy(rt Runtime, ctx context.Context, msg messages.PackageDeployMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackageDeployResp subscribes to the response topic for a PackageDeployMsg command.
+func SubscribePackageDeployResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageDeployResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackageDeployResp](rt, ctx, topic, handler)
+}
+
+// PublishPackageDeployInfo publishes a PackageDeployInfoMsg and returns routing info for the response.
+func PublishPackageDeployInfo(rt Runtime, ctx context.Context, msg messages.PackageDeployInfoMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackageDeployInfoResp subscribes to the response topic for a PackageDeployInfoMsg command.
+func SubscribePackageDeployInfoResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageDeployInfoResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackageDeployInfoResp](rt, ctx, topic, handler)
+}
+
+// PublishPackageListDeployed publishes a PackageListDeployedMsg and returns routing info for the response.
+func PublishPackageListDeployed(rt Runtime, ctx context.Context, msg messages.PackageListDeployedMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackageListDeployedResp subscribes to the response topic for a PackageListDeployedMsg command.
+func SubscribePackageListDeployedResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageListDeployedResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackageListDeployedResp](rt, ctx, topic, handler)
+}
+
+// PublishPackageRedeploy publishes a PackageRedeployMsg and returns routing info for the response.
+func PublishPackageRedeploy(rt Runtime, ctx context.Context, msg messages.PackageRedeployMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackageRedeployResp subscribes to the response topic for a PackageRedeployMsg command.
+func SubscribePackageRedeployResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageRedeployResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackageRedeployResp](rt, ctx, topic, handler)
+}
+
+// PublishPackageTeardown publishes a PackageTeardownMsg and returns routing info for the response.
+func PublishPackageTeardown(rt Runtime, ctx context.Context, msg messages.PackageTeardownMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePackageTeardownResp subscribes to the response topic for a PackageTeardownMsg command.
+func SubscribePackageTeardownResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageTeardownResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PackageTeardownResp](rt, ctx, topic, handler)
 }
 
 // PublishPackagesInfo publishes a PackagesInfoMsg and returns routing info for the response.
@@ -214,6 +279,26 @@ func PublishPackagesUpdate(rt Runtime, ctx context.Context, msg messages.Package
 // SubscribePackagesUpdateResp subscribes to the response topic for a PackagesUpdateMsg command.
 func SubscribePackagesUpdateResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackagesUpdateResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.PackagesUpdateResp](rt, ctx, topic, handler)
+}
+
+// PublishPeersList publishes a PeersListMsg and returns routing info for the response.
+func PublishPeersList(rt Runtime, ctx context.Context, msg messages.PeersListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePeersListResp subscribes to the response topic for a PeersListMsg command.
+func SubscribePeersListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PeersListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PeersListResp](rt, ctx, topic, handler)
+}
+
+// PublishPeersResolve publishes a PeersResolveMsg and returns routing info for the response.
+func PublishPeersResolve(rt Runtime, ctx context.Context, msg messages.PeersResolveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribePeersResolveResp subscribes to the response topic for a PeersResolveMsg command.
+func SubscribePeersResolveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PeersResolveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PeersResolveResp](rt, ctx, topic, handler)
 }
 
 // PublishPluginListRunning publishes a PluginListRunningMsg and returns routing info for the response.
@@ -296,6 +381,46 @@ func SubscribePluginStopResp(rt Runtime, ctx context.Context, topic string, hand
 	return SubscribeTo[messages.PluginStopResp](rt, ctx, topic, handler)
 }
 
+// PublishRBACAssign publishes a RBACAssignMsg and returns routing info for the response.
+func PublishRBACAssign(rt Runtime, ctx context.Context, msg messages.RBACAssignMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeRBACAssignResp subscribes to the response topic for a RBACAssignMsg command.
+func SubscribeRBACAssignResp(rt Runtime, ctx context.Context, topic string, handler func(messages.RBACAssignResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.RBACAssignResp](rt, ctx, topic, handler)
+}
+
+// PublishRBACList publishes a RBACListMsg and returns routing info for the response.
+func PublishRBACList(rt Runtime, ctx context.Context, msg messages.RBACListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeRBACListResp subscribes to the response topic for a RBACListMsg command.
+func SubscribeRBACListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.RBACListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.RBACListResp](rt, ctx, topic, handler)
+}
+
+// PublishRBACRevoke publishes a RBACRevokeMsg and returns routing info for the response.
+func PublishRBACRevoke(rt Runtime, ctx context.Context, msg messages.RBACRevokeMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeRBACRevokeResp subscribes to the response topic for a RBACRevokeMsg command.
+func SubscribeRBACRevokeResp(rt Runtime, ctx context.Context, topic string, handler func(messages.RBACRevokeResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.RBACRevokeResp](rt, ctx, topic, handler)
+}
+
+// PublishRBACRoles publishes a RBACRolesMsg and returns routing info for the response.
+func PublishRBACRoles(rt Runtime, ctx context.Context, msg messages.RBACRolesMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeRBACRolesResp subscribes to the response topic for a RBACRolesMsg command.
+func SubscribeRBACRolesResp(rt Runtime, ctx context.Context, topic string, handler func(messages.RBACRolesResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.RBACRolesResp](rt, ctx, topic, handler)
+}
+
 // PublishRegistryHas publishes a RegistryHasMsg and returns routing info for the response.
 func PublishRegistryHas(rt Runtime, ctx context.Context, msg messages.RegistryHasMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -324,6 +449,66 @@ func PublishRegistryResolve(rt Runtime, ctx context.Context, msg messages.Regist
 // SubscribeRegistryResolveResp subscribes to the response topic for a RegistryResolveMsg command.
 func SubscribeRegistryResolveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.RegistryResolveResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.RegistryResolveResp](rt, ctx, topic, handler)
+}
+
+// PublishSecretsDelete publishes a SecretsDeleteMsg and returns routing info for the response.
+func PublishSecretsDelete(rt Runtime, ctx context.Context, msg messages.SecretsDeleteMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeSecretsDeleteResp subscribes to the response topic for a SecretsDeleteMsg command.
+func SubscribeSecretsDeleteResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsDeleteResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsDeleteResp](rt, ctx, topic, handler)
+}
+
+// PublishSecretsGet publishes a SecretsGetMsg and returns routing info for the response.
+func PublishSecretsGet(rt Runtime, ctx context.Context, msg messages.SecretsGetMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeSecretsGetResp subscribes to the response topic for a SecretsGetMsg command.
+func SubscribeSecretsGetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsGetResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsGetResp](rt, ctx, topic, handler)
+}
+
+// PublishSecretsList publishes a SecretsListMsg and returns routing info for the response.
+func PublishSecretsList(rt Runtime, ctx context.Context, msg messages.SecretsListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeSecretsListResp subscribes to the response topic for a SecretsListMsg command.
+func SubscribeSecretsListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsListResp](rt, ctx, topic, handler)
+}
+
+// PublishSecretsRotate publishes a SecretsRotateMsg and returns routing info for the response.
+func PublishSecretsRotate(rt Runtime, ctx context.Context, msg messages.SecretsRotateMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeSecretsRotateResp subscribes to the response topic for a SecretsRotateMsg command.
+func SubscribeSecretsRotateResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsRotateResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsRotateResp](rt, ctx, topic, handler)
+}
+
+// PublishSecretsSet publishes a SecretsSetMsg and returns routing info for the response.
+func PublishSecretsSet(rt Runtime, ctx context.Context, msg messages.SecretsSetMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeSecretsSetResp subscribes to the response topic for a SecretsSetMsg command.
+func SubscribeSecretsSetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsSetResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsSetResp](rt, ctx, topic, handler)
+}
+
+// PublishTestRun publishes a TestRunMsg and returns routing info for the response.
+func PublishTestRun(rt Runtime, ctx context.Context, msg messages.TestRunMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeTestRunResp subscribes to the response topic for a TestRunMsg command.
+func SubscribeTestRunResp(rt Runtime, ctx context.Context, topic string, handler func(messages.TestRunResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.TestRunResp](rt, ctx, topic, handler)
 }
 
 // PublishToolCall publishes a ToolCallMsg and returns routing info for the response.
@@ -356,84 +541,104 @@ func SubscribeToolResolveResp(rt Runtime, ctx context.Context, topic string, han
 	return SubscribeTo[messages.ToolResolveResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmCompile publishes a WasmCompileMsg and returns routing info for the response.
-func PublishWasmCompile(rt Runtime, ctx context.Context, msg messages.WasmCompileMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishTraceGet publishes a TraceGetMsg and returns routing info for the response.
+func PublishTraceGet(rt Runtime, ctx context.Context, msg messages.TraceGetMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmCompileResp subscribes to the response topic for a WasmCompileMsg command.
-func SubscribeWasmCompileResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmCompileResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmCompileResp](rt, ctx, topic, handler)
+// SubscribeTraceGetResp subscribes to the response topic for a TraceGetMsg command.
+func SubscribeTraceGetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.TraceGetResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.TraceGetResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmDeploy publishes a WasmDeployMsg and returns routing info for the response.
-func PublishWasmDeploy(rt Runtime, ctx context.Context, msg messages.WasmDeployMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishTraceList publishes a TraceListMsg and returns routing info for the response.
+func PublishTraceList(rt Runtime, ctx context.Context, msg messages.TraceListMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmDeployResp subscribes to the response topic for a WasmDeployMsg command.
-func SubscribeWasmDeployResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmDeployResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmDeployResp](rt, ctx, topic, handler)
+// SubscribeTraceListResp subscribes to the response topic for a TraceListMsg command.
+func SubscribeTraceListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.TraceListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.TraceListResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmDescribe publishes a WasmDescribeMsg and returns routing info for the response.
-func PublishWasmDescribe(rt Runtime, ctx context.Context, msg messages.WasmDescribeMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowCancel publishes a WorkflowCancelMsg and returns routing info for the response.
+func PublishWorkflowCancel(rt Runtime, ctx context.Context, msg messages.WorkflowCancelMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmDescribeResp subscribes to the response topic for a WasmDescribeMsg command.
-func SubscribeWasmDescribeResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmDescribeResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmDescribeResp](rt, ctx, topic, handler)
+// SubscribeWorkflowCancelResp subscribes to the response topic for a WorkflowCancelMsg command.
+func SubscribeWorkflowCancelResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowCancelResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowCancelResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmGet publishes a WasmGetMsg and returns routing info for the response.
-func PublishWasmGet(rt Runtime, ctx context.Context, msg messages.WasmGetMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowList publishes a WorkflowListMsg and returns routing info for the response.
+func PublishWorkflowList(rt Runtime, ctx context.Context, msg messages.WorkflowListMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmGetResp subscribes to the response topic for a WasmGetMsg command.
-func SubscribeWasmGetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmGetResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmGetResp](rt, ctx, topic, handler)
+// SubscribeWorkflowListResp subscribes to the response topic for a WorkflowListMsg command.
+func SubscribeWorkflowListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowListResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmList publishes a WasmListMsg and returns routing info for the response.
-func PublishWasmList(rt Runtime, ctx context.Context, msg messages.WasmListMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowRestart publishes a WorkflowRestartMsg and returns routing info for the response.
+func PublishWorkflowRestart(rt Runtime, ctx context.Context, msg messages.WorkflowRestartMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmListResp subscribes to the response topic for a WasmListMsg command.
-func SubscribeWasmListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmListResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmListResp](rt, ctx, topic, handler)
+// SubscribeWorkflowRestartResp subscribes to the response topic for a WorkflowRestartMsg command.
+func SubscribeWorkflowRestartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowRestartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowRestartResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmRemove publishes a WasmRemoveMsg and returns routing info for the response.
-func PublishWasmRemove(rt Runtime, ctx context.Context, msg messages.WasmRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowResume publishes a WorkflowResumeMsg and returns routing info for the response.
+func PublishWorkflowResume(rt Runtime, ctx context.Context, msg messages.WorkflowResumeMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmRemoveResp subscribes to the response topic for a WasmRemoveMsg command.
-func SubscribeWasmRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmRemoveResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmRemoveResp](rt, ctx, topic, handler)
+// SubscribeWorkflowResumeResp subscribes to the response topic for a WorkflowResumeMsg command.
+func SubscribeWorkflowResumeResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowResumeResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowResumeResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmRun publishes a WasmRunMsg and returns routing info for the response.
-func PublishWasmRun(rt Runtime, ctx context.Context, msg messages.WasmRunMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowRuns publishes a WorkflowRunsMsg and returns routing info for the response.
+func PublishWorkflowRuns(rt Runtime, ctx context.Context, msg messages.WorkflowRunsMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmRunResp subscribes to the response topic for a WasmRunMsg command.
-func SubscribeWasmRunResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmRunResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmRunResp](rt, ctx, topic, handler)
+// SubscribeWorkflowRunsResp subscribes to the response topic for a WorkflowRunsMsg command.
+func SubscribeWorkflowRunsResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowRunsResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowRunsResp](rt, ctx, topic, handler)
 }
 
-// PublishWasmUndeploy publishes a WasmUndeployMsg and returns routing info for the response.
-func PublishWasmUndeploy(rt Runtime, ctx context.Context, msg messages.WasmUndeployMsg, opts ...PublishOption) (PublishResult, error) {
+// PublishWorkflowStart publishes a WorkflowStartMsg and returns routing info for the response.
+func PublishWorkflowStart(rt Runtime, ctx context.Context, msg messages.WorkflowStartMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
 }
 
-// SubscribeWasmUndeployResp subscribes to the response topic for a WasmUndeployMsg command.
-func SubscribeWasmUndeployResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WasmUndeployResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.WasmUndeployResp](rt, ctx, topic, handler)
+// SubscribeWorkflowStartResp subscribes to the response topic for a WorkflowStartMsg command.
+func SubscribeWorkflowStartResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStartResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStartResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowStartAsync publishes a WorkflowStartAsyncMsg and returns routing info for the response.
+func PublishWorkflowStartAsync(rt Runtime, ctx context.Context, msg messages.WorkflowStartAsyncMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowStartAsyncResp subscribes to the response topic for a WorkflowStartAsyncMsg command.
+func SubscribeWorkflowStartAsyncResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStartAsyncResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStartAsyncResp](rt, ctx, topic, handler)
+}
+
+// PublishWorkflowStatus publishes a WorkflowStatusMsg and returns routing info for the response.
+func PublishWorkflowStatus(rt Runtime, ctx context.Context, msg messages.WorkflowStatusMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeWorkflowStatusResp subscribes to the response topic for a WorkflowStatusMsg command.
+func SubscribeWorkflowStatusResp(rt Runtime, ctx context.Context, topic string, handler func(messages.WorkflowStatusResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.WorkflowStatusResp](rt, ctx, topic, handler)
 }
 
 // EmitHandlerExhausted fires a HandlerExhaustedEvent event (no response expected).
@@ -476,6 +681,16 @@ func SubscribeKitTeardowned(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[messages.KitTeardownedEvent](rt, ctx, topic, handler)
 }
 
+// EmitPermissionDenied fires a PermissionDeniedEvent event (no response expected).
+func EmitPermissionDenied(rt Runtime, ctx context.Context, msg messages.PermissionDeniedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribePermissionDenied listens for PermissionDeniedEvent events.
+func SubscribePermissionDenied(rt Runtime, ctx context.Context, topic string, handler func(messages.PermissionDeniedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.PermissionDeniedEvent](rt, ctx, topic, handler)
+}
+
 // EmitPluginRegistered fires a PluginRegisteredEvent event (no response expected).
 func EmitPluginRegistered(rt Runtime, ctx context.Context, msg messages.PluginRegisteredEvent) error {
 	return Emit(rt, ctx, msg)
@@ -504,5 +719,55 @@ func EmitPluginStopped(rt Runtime, ctx context.Context, msg messages.PluginStopp
 // SubscribePluginStopped listens for PluginStoppedEvent events.
 func SubscribePluginStopped(rt Runtime, ctx context.Context, topic string, handler func(messages.PluginStoppedEvent, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.PluginStoppedEvent](rt, ctx, topic, handler)
+}
+
+// EmitReplyDenied fires a ReplyDeniedEvent event (no response expected).
+func EmitReplyDenied(rt Runtime, ctx context.Context, msg messages.ReplyDeniedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeReplyDenied listens for ReplyDeniedEvent events.
+func SubscribeReplyDenied(rt Runtime, ctx context.Context, topic string, handler func(messages.ReplyDeniedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ReplyDeniedEvent](rt, ctx, topic, handler)
+}
+
+// EmitSecretsAccessed fires a SecretsAccessedEvent event (no response expected).
+func EmitSecretsAccessed(rt Runtime, ctx context.Context, msg messages.SecretsAccessedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeSecretsAccessed listens for SecretsAccessedEvent events.
+func SubscribeSecretsAccessed(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsAccessedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsAccessedEvent](rt, ctx, topic, handler)
+}
+
+// EmitSecretsDeleted fires a SecretsDeletedEvent event (no response expected).
+func EmitSecretsDeleted(rt Runtime, ctx context.Context, msg messages.SecretsDeletedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeSecretsDeleted listens for SecretsDeletedEvent events.
+func SubscribeSecretsDeleted(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsDeletedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsDeletedEvent](rt, ctx, topic, handler)
+}
+
+// EmitSecretsRotated fires a SecretsRotatedEvent event (no response expected).
+func EmitSecretsRotated(rt Runtime, ctx context.Context, msg messages.SecretsRotatedEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeSecretsRotated listens for SecretsRotatedEvent events.
+func SubscribeSecretsRotated(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsRotatedEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsRotatedEvent](rt, ctx, topic, handler)
+}
+
+// EmitSecretsStored fires a SecretsStoredEvent event (no response expected).
+func EmitSecretsStored(rt Runtime, ctx context.Context, msg messages.SecretsStoredEvent) error {
+	return Emit(rt, ctx, msg)
+}
+
+// SubscribeSecretsStored listens for SecretsStoredEvent events.
+func SubscribeSecretsStored(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsStoredEvent, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.SecretsStoredEvent](rt, ctx, topic, handler)
 }
 

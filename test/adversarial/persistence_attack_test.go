@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -169,52 +167,6 @@ func TestPersistenceAttack_CorruptScheduleTable(t *testing.T) {
 
 	ctx := context.Background()
 	assert.True(t, k.Alive(ctx), "kernel should survive corrupt schedules")
-}
-
-// Attack: WASM module table with corrupt binary data
-func TestPersistenceAttack_CorruptWASMModule(t *testing.T) {
-	tmpDir := t.TempDir()
-	storePath := filepath.Join(tmpDir, "wasm-corrupt.db")
-
-	store, _ := brainkit.NewSQLiteStore(storePath)
-
-	// Save "module" with garbage binary
-	store.SaveModule("garbage-mod", []byte("not-a-wasm-binary"), brainkit.WASMModuleInfo{
-		Name: "garbage-mod", Size: 17, Exports: []string{"run"},
-		CompiledAt: time.Now().Format(time.RFC3339), SourceHash: "abc123",
-	})
-
-	// Save shard referencing the garbage module
-	store.SaveShard("garbage-shard", brainkit.ShardDescriptor{
-		Module: "garbage-mod", Mode: "stateless",
-		Handlers:   map[string]string{"test.topic": "run"},
-		DeployedAt: time.Now(),
-	})
-	store.Close()
-
-	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	ctx := context.Background()
-	assert.True(t, k.Alive(ctx), "kernel should survive corrupt WASM module in store")
-
-	// Try to run the corrupt module — should error cleanly
-	pr, _ := sdk.Publish(k, ctx, messages.WasmRunMsg{ModuleID: "garbage-mod"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.True(t, responseHasError(p), "running corrupt WASM should return error")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
 }
 
 // Attack: save deployment with code that mutates the store during restore

@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// LogEntry is a tagged log entry from a .ts Compartment, WASM module, or the Kernel.
-// Source identifies the origin: "myagent.ts", "wasm:counter-shard", "kernel".
+// LogEntry is a tagged log entry from a .ts Compartment or the Kernel.
+// Source identifies the origin: "myagent.ts", "kernel".
 // Level is one of: "log", "warn", "error", "debug", "info".
 //
 // Concurrency: LogHandler is called from multiple goroutines concurrently.

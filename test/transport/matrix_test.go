@@ -186,42 +186,6 @@ func TestBackendMatrix(t *testing.T) {
 				assert.GreaterOrEqual(t, tearResp.Removed, 0)
 			})
 
-			// --- WASM ---
-			t.Run("wasm_compile_run", func(t *testing.T) {
-				_pr13, err := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source:  `export function run(): i32 { return 99; }`,
-					Options: &messages.WasmCompileOpts{Name: "matrix-wasm-" + backend},
-				})
-				require.NoError(t, err)
-				_ch13 := make(chan messages.WasmCompileResp, 1)
-				_us13, err := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, _pr13.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { _ch13 <- r })
-				require.NoError(t, err)
-				defer _us13()
-				var compResp messages.WasmCompileResp
-				select {
-				case compResp = <-_ch13:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Greater(t, compResp.Size, 0)
-
-				_pr14, err := sdk.Publish(rt, ctx, messages.WasmRunMsg{
-					ModuleID: "matrix-wasm-" + backend,
-				})
-				require.NoError(t, err)
-				_ch14 := make(chan messages.WasmRunResp, 1)
-				_us14, err := sdk.SubscribeTo[messages.WasmRunResp](rt, ctx, _pr14.ReplyTo, func(r messages.WasmRunResp, m messages.Message) { _ch14 <- r })
-				require.NoError(t, err)
-				defer _us14()
-				var runResp messages.WasmRunResp
-				select {
-				case runResp = <-_ch14:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, 99, runResp.ExitCode)
-			})
-
 			// --- Async pattern ---
 			t.Run("async_correlation", func(t *testing.T) {
 				corrID, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
@@ -254,62 +218,6 @@ func TestBackendMatrix(t *testing.T) {
 				_sun3, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, _spr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { _sch3 <- r })
 				defer _sun3()
 				select { case <-_sch3: case <-ctx.Done(): t.Fatal("timeout") }
-			})
-
-			// --- WASM deploy/undeploy/describe ---
-			t.Run("wasm_deploy_lifecycle", func(t *testing.T) {
-				cpr, _ := sdk.Publish(rt, ctx, messages.WasmCompileMsg{
-					Source: `
-						import { _busOn, _setMode } from "brainkit";
-						export function init(): void { _setMode("stateless"); _busOn("matrix.ev", "h"); }
-						export function h(t: usize, p: usize): void {}
-					`, Options: &messages.WasmCompileOpts{Name: "matrix-shard-" + backend},
-				})
-				cch := make(chan messages.WasmCompileResp, 1)
-				cun, _ := sdk.SubscribeTo[messages.WasmCompileResp](rt, ctx, cpr.ReplyTo, func(r messages.WasmCompileResp, m messages.Message) { cch <- r })
-				defer cun()
-				select { case <-cch: case <-ctx.Done(): t.Fatal("timeout") }
-				_pr16, err := sdk.Publish(rt, ctx, messages.WasmDeployMsg{Name: "matrix-shard-" + backend})
-				require.NoError(t, err)
-				_ch16 := make(chan messages.WasmDeployResp, 1)
-				_us16, err := sdk.SubscribeTo[messages.WasmDeployResp](rt, ctx, _pr16.ReplyTo, func(r messages.WasmDeployResp, m messages.Message) { _ch16 <- r })
-				require.NoError(t, err)
-				defer _us16()
-				var deploy messages.WasmDeployResp
-				select {
-				case deploy = <-_ch16:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "stateless", deploy.Mode)
-
-				_pr17, err := sdk.Publish(rt, ctx, messages.WasmDescribeMsg{Name: "matrix-shard-" + backend})
-				require.NoError(t, err)
-				_ch17 := make(chan messages.WasmDescribeResp, 1)
-				_us17, err := sdk.SubscribeTo[messages.WasmDescribeResp](rt, ctx, _pr17.ReplyTo, func(r messages.WasmDescribeResp, m messages.Message) { _ch17 <- r })
-				require.NoError(t, err)
-				defer _us17()
-				var desc messages.WasmDescribeResp
-				select {
-				case desc = <-_ch17:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.Equal(t, "stateless", desc.Mode)
-
-				_pr18, err := sdk.Publish(rt, ctx, messages.WasmUndeployMsg{Name: "matrix-shard-" + backend})
-				require.NoError(t, err)
-				_ch18 := make(chan messages.WasmUndeployResp, 1)
-				_us18, err := sdk.SubscribeTo[messages.WasmUndeployResp](rt, ctx, _pr18.ReplyTo, func(r messages.WasmUndeployResp, m messages.Message) { _ch18 <- r })
-				require.NoError(t, err)
-				defer _us18()
-				var undeploy messages.WasmUndeployResp
-				select {
-				case undeploy = <-_ch18:
-				case <-ctx.Done():
-					t.Fatal("timeout")
-				}
-				assert.True(t, undeploy.Undeployed)
 			})
 
 			// --- Registry ---

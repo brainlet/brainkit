@@ -10,7 +10,6 @@ type KernelMetrics struct {
 	ActiveHandlers    int64         `json:"activeHandlers"`
 	ActiveDeployments int           `json:"activeDeployments"`
 	ActiveSchedules   int           `json:"activeSchedules"`
-	ActiveShards      int           `json:"activeShards"`
 	PumpCycles        int64         `json:"pumpCycles"`
 
 	// Uptime
@@ -24,10 +23,6 @@ func (k *Kernel) Metrics() KernelMetrics {
 		ActiveDeployments: len(k.ListDeployments()),
 		ActiveSchedules:   len(k.ListSchedules()),
 		PumpCycles:        k.pumpCycles.Load(),
-	}
-
-	if k.wasm != nil {
-		m.ActiveShards = len(k.wasm.listDeployedShards())
 	}
 
 	if !k.startedAt.IsZero() {

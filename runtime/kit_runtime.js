@@ -79,7 +79,6 @@
       },
       unsubscribe: _kitObj.bus.unsubscribe,
       sendTo: _kitObj.bus.sendTo,
-      sendToShard: _kitObj.bus.sendToShard,
       schedule: ws(function(expression, topic, data) {
         return _kitObj.bus.schedule(expression, ns + "." + topic, data);
       }),
@@ -150,7 +149,6 @@
         on: scopedBus.on,
         unsubscribe: scopedBus.unsubscribe,
         sendTo: rewrapErrors(scopedBus.sendTo),
-        sendToShard: rewrapErrors(scopedBus.sendToShard),
         schedule: rewrapErrors(scopedBus.schedule),
         unschedule: scopedBus.unschedule,
       },
@@ -223,23 +221,6 @@
       DefaultExporter: embed.DefaultExporter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
-      // Compiler
-      compile: async function(source, opts) {
-        var raw = await (typeof __go_brainkit_request_async === "function"
-          ? __go_brainkit_request_async("wasm.compile", JSON.stringify({ source: source, options: opts || {} }))
-          : __go_brainkit_request("wasm.compile", JSON.stringify({ source: source, options: opts || {} })));
-        var result = JSON.parse(raw);
-        if (result && result.error) throw new Error("compiler: " + result.error);
-        result.run = async function(input) {
-          var runRaw = await (typeof __go_brainkit_request_async === "function"
-            ? __go_brainkit_request_async("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null }))
-            : __go_brainkit_request("wasm.run", JSON.stringify({ moduleId: result.moduleId, input: input || null })));
-          var runResult = JSON.parse(runRaw);
-          if (runResult && runResult.error) throw new Error("wasm.run: " + runResult.error);
-          return runResult;
-        };
-        return result;
-      },
       // JS built-ins
       console: {
         log:   function() { __go_console_log_tagged(source, "log", Array.prototype.slice.call(arguments).map(String).join(' ')); },
