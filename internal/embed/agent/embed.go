@@ -23,7 +23,21 @@ var sesSource string
 
 // sesLockdownJS calls lockdown() with QuickJS-compatible options.
 // Must run after ses.umd.js and before the Mastra bundle.
-const sesLockdownJS = `lockdown({ errorTaming: "unsafe", overrideTaming: "moderate", consoleTaming: "unsafe", evalTaming: "unsafe-eval" });`
+// sesLockdownJS calls lockdown() with QuickJS-compatible options.
+// Mutes all console methods during lockdown to suppress SES "Removing unpermitted
+// intrinsics" noise (5 non-standard QuickJS extensions that brainkit doesn't use).
+// Restores console after lockdown and emits a single debug summary.
+const sesLockdownJS = `(function() {
+  var _log = console.log, _warn = console.warn, _error = console.error, _info = console.info, _debug = console.debug;
+  var _count = 0;
+  var _noop = function() { _count++; };
+  console.log = _noop; console.warn = _noop; console.error = _noop; console.info = _noop; console.debug = _noop;
+  lockdown({ errorTaming: "unsafe", overrideTaming: "moderate", consoleTaming: "unsafe", evalTaming: "unsafe-eval" });
+  console.log = _log; console.warn = _warn; console.error = _error; console.info = _info; console.debug = _debug;
+  if (_count > 0) {
+    console.debug("[brainkit] SES lockdown complete (" + _count + " non-standard intrinsics removed)");
+  }
+})();`
 
 // LoadBundle evaluates the agent-embed bundle in the given bridge.
 // Loading order: globals → SES polyfills → SES → lockdown → Mastra bundle.
