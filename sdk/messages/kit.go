@@ -132,6 +132,20 @@ type KitEvalResp struct {
 	Result string `json:"result"`
 }
 
+// ── Send (request-reply from Go) ──
+
+type KitSendMsg struct {
+	Topic   string          `json:"topic"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func (KitSendMsg) BusTopic() string { return "kit.send" }
+
+type KitSendResp struct {
+	ResultMeta
+	Payload json.RawMessage `json:"payload"`
+}
+
 // ── Health (bus) ──
 
 type KitHealthMsg struct{}

@@ -199,6 +199,35 @@ func commandCatalog() *commandRegistry {
 				result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
 				return &messages.KitEvalResp{Result: result}, nil
 			}),
+			// ── Send (Go-side request-reply — no JS thread involvement) ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitSendMsg) (*messages.KitSendResp, error) {
+				correlationID := uuid.NewString()
+				replyTo := req.Topic + ".reply." + correlationID
+
+				replyCh := make(chan messages.Message, 1)
+				unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+					select {
+					case replyCh <- msg:
+					default:
+					}
+				})
+				if err != nil {
+					return nil, err
+				}
+				defer unsub()
+
+				pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+				if _, err := kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
+					return nil, err
+				}
+
+				select {
+				case msg := <-replyCh:
+					return &messages.KitSendResp{Payload: msg.Payload}, nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}),
 			// ── Health (bus) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitHealthMsg) (*messages.KitHealthResp, error) {
 				return &messages.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil

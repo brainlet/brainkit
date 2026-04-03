@@ -151,6 +151,16 @@ func SubscribeKitRedeployResp(rt Runtime, ctx context.Context, topic string, han
 	return SubscribeTo[messages.KitRedeployResp](rt, ctx, topic, handler)
 }
 
+// PublishKitSend publishes a KitSendMsg and returns routing info for the response.
+func PublishKitSend(rt Runtime, ctx context.Context, msg messages.KitSendMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitSendResp subscribes to the response topic for a KitSendMsg command.
+func SubscribeKitSendResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitSendResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.KitSendResp](rt, ctx, topic, handler)
+}
+
 // PublishKitTeardown publishes a KitTeardownMsg and returns routing info for the response.
 func PublishKitTeardown(rt Runtime, ctx context.Context, msg messages.KitTeardownMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
