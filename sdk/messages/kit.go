@@ -118,3 +118,27 @@ type PeersResolveResp struct {
 	Namespace string `json:"namespace"`
 	Address   string `json:"address"`
 }
+
+// ── Eval ──
+
+type KitEvalMsg struct {
+	Code string `json:"code"`
+}
+
+func (KitEvalMsg) BusTopic() string { return "kit.eval" }
+
+type KitEvalResp struct {
+	ResultMeta
+	Result string `json:"result"`
+}
+
+// ── Health (bus) ──
+
+type KitHealthMsg struct{}
+
+func (KitHealthMsg) BusTopic() string { return "kit.health" }
+
+type KitHealthResp struct {
+	ResultMeta
+	Health json.RawMessage `json:"health"`
+}

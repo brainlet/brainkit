@@ -111,6 +111,26 @@ func PublishKitDeployFile(rt Runtime, ctx context.Context, msg messages.KitDeplo
 	return Publish(rt, ctx, msg, opts...)
 }
 
+// PublishKitEval publishes a KitEvalMsg and returns routing info for the response.
+func PublishKitEval(rt Runtime, ctx context.Context, msg messages.KitEvalMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitEvalResp subscribes to the response topic for a KitEvalMsg command.
+func SubscribeKitEvalResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitEvalResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.KitEvalResp](rt, ctx, topic, handler)
+}
+
+// PublishKitHealth publishes a KitHealthMsg and returns routing info for the response.
+func PublishKitHealth(rt Runtime, ctx context.Context, msg messages.KitHealthMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitHealthResp subscribes to the response topic for a KitHealthMsg command.
+func SubscribeKitHealthResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitHealthResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.KitHealthResp](rt, ctx, topic, handler)
+}
+
 // PublishKitList publishes a KitListMsg and returns routing info for the response.
 func PublishKitList(rt Runtime, ctx context.Context, msg messages.KitListMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

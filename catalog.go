@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/google/uuid"
 )
 
 type commandSpec struct {
@@ -187,6 +188,20 @@ func commandCatalog() *commandRegistry {
 					Deployed:  true,
 					Resources: resourceInfosToMessages(resources),
 				}, nil
+			}),
+			// ── Eval ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitEvalMsg) (*messages.KitEvalResp, error) {
+				source := "__cli_eval_" + uuid.NewString() + ".ts"
+				if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {
+					return nil, err
+				}
+				defer kernel.Teardown(ctx, source)
+				result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
+				return &messages.KitEvalResp{Result: result}, nil
+			}),
+			// ── Health (bus) ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitHealthMsg) (*messages.KitHealthResp, error) {
+				return &messages.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil
 			}),
 			// ── MCP ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
