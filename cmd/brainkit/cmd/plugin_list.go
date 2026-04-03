@@ -23,8 +23,8 @@ func addPluginListCmd(parent *cobra.Command) {
 			}
 			defer client.Close()
 
-			installed, installErr := busRequest[messages.PackagesListMsg, messages.PackagesListResp](client, messages.PackagesListMsg{})
-			running, runErr := busRequest[messages.PluginListRunningMsg, messages.PluginListRunningResp](client, messages.PluginListRunningMsg{})
+			installed, installErr := httpBusRequest[messages.PackagesListMsg, messages.PackagesListResp](client, messages.PackagesListMsg{})
+			running, runErr := httpBusRequest[messages.PluginListRunningMsg, messages.PluginListRunningResp](client, messages.PluginListRunningMsg{})
 
 			runningByName := map[string]messages.RunningPluginInfo{}
 			if runErr == nil && running != nil {

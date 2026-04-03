@@ -3,24 +3,24 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/brainlet/brainkit"
 )
 
+// Connect reads the control port from the pidfile and creates an HTTP BusClient.
 func Connect(cfg *CLIConfig) (*brainkit.BusClient, error) {
-	nc, err := BuildNodeConfig(cfg)
+	pidFile := filepath.Join("data", "brainkit.pid")
+	data, err := os.ReadFile(pidFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot find running brainkit instance (no %s)\nHint: start an instance with `brainkit start`", pidFile)
 	}
-	client, err := brainkit.NewClient(nc)
-	if err != nil {
-		transport := cfg.Transport
-		if transport == "" {
-			transport = "memory"
-		}
-		return nil, fmt.Errorf("cannot connect to brainkit instance (%s)\nHint: start an instance with `brainkit start`", transport)
+	port := strings.TrimSpace(string(data))
+	if port == "" {
+		return nil, fmt.Errorf("invalid pidfile %s", pidFile)
 	}
-	return client, nil
+	return brainkit.NewClient("http://127.0.0.1:" + port), nil
 }
 
 func MustConnect(cfg *CLIConfig) *brainkit.BusClient {

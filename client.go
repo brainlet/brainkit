@@ -1,57 +1,86 @@
 package brainkit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-
-	"github.com/brainlet/brainkit/internal/messaging"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
 )
 
-// BusClient is a lightweight client for sending bus commands to a running Node.
-// No Kernel, no JS runtime — just transport + publish/subscribe.
-// Use NewClient() to create one from a NodeConfig.
+// BusClient sends bus commands to a running brainkit instance over HTTP.
+// The instance exposes a control API on a local port.
 type BusClient struct {
-	remote    *messaging.RemoteClient
-	transport *messaging.Transport
+	baseURL    string
+	httpClient *http.Client
 }
 
-// PublishRaw sends a message to a topic. Returns correlationID.
-func (c *BusClient) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
-	return c.remote.PublishRaw(ctx, topic, payload)
+// busRequestPayload is the JSON body for POST /api/bus.
+type busRequestPayload struct {
+	Topic   string          `json:"topic"`
+	Payload json.RawMessage `json:"payload"`
 }
 
-// SubscribeRaw subscribes to a topic.
-func (c *BusClient) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
-	return c.remote.SubscribeRaw(ctx, topic, handler)
+// busResponsePayload is the JSON response from POST /api/bus.
+type busResponsePayload struct {
+	Payload json.RawMessage `json:"payload"`
+	Error   string          `json:"error,omitempty"`
 }
 
-// Close shuts down the transport.
-func (c *BusClient) Close() error {
-	return c.transport.Close()
+// NewClient creates a BusClient that connects to a running instance over HTTP.
+func NewClient(baseURL string) *BusClient {
+	return &BusClient{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 60 * time.Second,
+		},
+	}
 }
 
-// NewClient creates a BusClient that connects to a running Node via transport.
-// The BusClient shares the same transport type and namespace as the Node,
-// so bus commands are delivered to the Node's command handlers.
-func NewClient(cfg NodeConfig) (*BusClient, error) {
-	namespace := cfg.Kernel.Namespace
-	if namespace == "" {
-		if cfg.Namespace != "" {
-			namespace = cfg.Namespace
-		} else {
-			namespace = "user"
-		}
+// Request sends a typed bus command and returns the raw response payload.
+func (c *BusClient) Request(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
+	body, err := json.Marshal(busRequestPayload{Topic: topic, Payload: payload})
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	transport, err := messaging.NewTransportSet(cfg.Messaging.transportConfig())
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/bus", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	remote := messaging.NewRemoteClientWithTransport(namespace, "cli", transport)
-	return &BusClient{
-		remote:    remote,
-		transport: transport,
-	}, nil
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to brainkit instance at %s\nHint: is `brainkit start` running?", c.baseURL)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var errResp busResponsePayload
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
+			return nil, fmt.Errorf("%s", errResp.Error)
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result busResponsePayload
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		// Response might be raw payload (not wrapped)
+		return respBody, nil
+	}
+	if result.Error != "" {
+		return nil, fmt.Errorf("%s", result.Error)
+	}
+	return result.Payload, nil
 }
+
+// Close is a no-op for HTTP client (no persistent connection).
+func (c *BusClient) Close() error { return nil }

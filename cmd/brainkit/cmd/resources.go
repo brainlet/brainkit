@@ -27,17 +27,17 @@ func newResourcesCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "TYPE\tNAME\tDESCRIPTION")
 
-			if tools, err := busRequest[messages.ToolListMsg, messages.ToolListResp](client, messages.ToolListMsg{}); err == nil {
+			if tools, err := httpBusRequest[messages.ToolListMsg, messages.ToolListResp](client, messages.ToolListMsg{}); err == nil {
 				for _, t := range tools.Tools {
 					fmt.Fprintf(tw, "tool\t%s\t%s\n", t.ShortName, t.Description)
 				}
 			}
-			if agents, err := busRequest[messages.AgentListMsg, messages.AgentListResp](client, messages.AgentListMsg{}); err == nil {
+			if agents, err := httpBusRequest[messages.AgentListMsg, messages.AgentListResp](client, messages.AgentListMsg{}); err == nil {
 				for _, a := range agents.Agents {
 					fmt.Fprintf(tw, "agent\t%s\t%s\n", a.Name, a.Status)
 				}
 			}
-			if wfs, err := busRequest[messages.WorkflowListMsg, messages.WorkflowListResp](client, messages.WorkflowListMsg{}); err == nil {
+			if wfs, err := httpBusRequest[messages.WorkflowListMsg, messages.WorkflowListResp](client, messages.WorkflowListMsg{}); err == nil {
 				for _, wf := range wfs.Workflows {
 					fmt.Fprintf(tw, "workflow\t%s\t%s\n", wf.Name, wf.Source)
 				}
