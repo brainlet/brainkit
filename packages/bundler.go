@@ -17,7 +17,7 @@ func Bundle(entryPath string) (string, error) {
 	result := api.Build(api.BuildOptions{
 		EntryPoints: []string{entryPath},
 		Bundle:      true,
-		Format:      api.FormatIIFE,
+		Format:      api.FormatESModule,
 		Platform:    api.PlatformBrowser,
 		External:    []string{"kit", "ai", "agent", "compiler"},
 		Write:       false,

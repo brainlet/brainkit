@@ -251,7 +251,7 @@ func bundleTestFile(filePath string) (string, error) {
 	result := api.Build(api.BuildOptions{
 		EntryPoints: []string{filePath},
 		Bundle:      true,
-		Format:      api.FormatIIFE,
+		Format:      api.FormatESModule,
 		Platform:    api.PlatformBrowser,
 		External:    []string{"test", "kit", "ai", "agent", "compiler"},
 		Write:       false,
