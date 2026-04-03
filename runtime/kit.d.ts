@@ -28,15 +28,15 @@ declare module "kit" {
   };
 
   export interface BusMessage {
-    payload: unknown;
+    payload: any;
     replyTo: string;
     correlationId: string;
     topic: string;
     callerId: string;
     /** Publish final response to replyTo (done=true). */
-    reply(data: unknown): void;
+    reply(data: any): void;
     /** Publish intermediate chunk to replyTo (done=false). For streaming. */
-    send(data: unknown): void;
+    send(data: any): void;
   }
 
   // ── Resource Registration ────────────────────────────────────
