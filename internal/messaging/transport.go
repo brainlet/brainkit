@@ -330,6 +330,12 @@ func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*T
 		return nil, fmt.Errorf("sqlite connect: %w", err)
 	}
 
+	// WAL mode + busy_timeout for multi-process access (CLI + running Node).
+	// Without these, concurrent writers from separate processes get SQLITE_BUSY.
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA synchronous=NORMAL")
+
 	publisher, err := wmsqlite.NewPublisher(db, wmsqlite.PublisherOptions{
 		InitializeSchema: true,
 		Logger:           logger,
