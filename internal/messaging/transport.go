@@ -322,15 +322,29 @@ func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*T
 		dbPath = "file::memory:?cache=shared"
 	}
 	if dbPath != "file::memory:?cache=shared" && !strings.HasPrefix(dbPath, "file:") {
-		// Encode PRAGMAs in the URI so they apply to EVERY connection in the pool.
-		// db.Exec("PRAGMA ...") only applies to one connection — new pool connections
-		// get default settings, causing SQLITE_BUSY under concurrent access.
-		dbPath = "file:" + dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+		dbPath = "file:" + dbPath + "?cache=shared"
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite connect: %w", err)
+	}
+
+	// Pin to 1 connection so PRAGMAs apply to all operations.
+	// modernc.org/sqlite doesn't support URI pragma params.
+	// With MaxOpenConns=1, every db.Exec/Query uses the same connection.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite WAL: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=10000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite busy_timeout: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite synchronous: %w", err)
 	}
 
 	publisher, err := wmsqlite.NewPublisher(db, wmsqlite.PublisherOptions{
