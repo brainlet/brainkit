@@ -48,8 +48,8 @@ bus.on("greet", (msg) => {
 `,
 			"tsconfig.json": `{
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ES2020",
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleResolution": "node",
     "strict": true,
     "paths": {
