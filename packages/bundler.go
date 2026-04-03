@@ -26,8 +26,9 @@ func Bundle(entryPath string) (string, error) {
 		},
 		// Tree-shaking for dead code elimination
 		TreeShaking: api.TreeShakingTrue,
-		// Target modern JS (QuickJS supports ES2020+)
-		Target: api.ES2020,
+		// Target ESNext — QuickJS supports ES2020+ and Deploy wraps in async IIFE,
+		// so top-level await is safe. ES2020 rejects top-level await at bundle time.
+		Target: api.ESNext,
 	})
 
 	if len(result.Errors) > 0 {

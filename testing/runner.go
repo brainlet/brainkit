@@ -259,7 +259,7 @@ func bundleTestFile(filePath string) (string, error) {
 			".ts": api.LoaderTS,
 		},
 		TreeShaking: api.TreeShakingTrue,
-		Target:      api.ES2020,
+		Target:      api.ESNext,
 	})
 
 	if len(result.Errors) > 0 {
