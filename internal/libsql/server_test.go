@@ -3,9 +3,12 @@ package libsql
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestServerStartStop(t *testing.T) {
@@ -447,6 +450,133 @@ func TestBatchRequest(t *testing.T) {
 	}
 	if countResult.Rows[0][0].Value != "2" {
 		t.Errorf("expected count=2, got %s", countResult.Rows[0][0].Value)
+	}
+}
+
+func TestConcurrentReadPipelines(t *testing.T) {
+	srv, err := NewServer(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+
+	// Create table with data
+	doPipeline(t, srv.URL(), pipelineRequest{
+		Requests: []pipelineEntry{
+			{Type: "execute", Stmt: &stmtRequest{SQL: "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"}},
+			{Type: "execute", Stmt: &stmtRequest{SQL: "INSERT INTO items VALUES (1, 'a'), (2, 'b'), (3, 'c')"}},
+			{Type: "close"},
+		},
+	})
+
+	// 10 concurrent SELECT pipelines
+	start := make(chan struct{})
+	errs := make(chan error, 10)
+	durations := make(chan time.Duration, 10)
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			<-start
+			t0 := time.Now()
+			body, _ := json.Marshal(pipelineRequest{
+				Requests: []pipelineEntry{
+					{Type: "execute", Stmt: &stmtRequest{SQL: "SELECT * FROM items"}},
+				},
+			})
+			resp, err := http.Post(srv.URL()+"/v2/pipeline", "application/json", bytes.NewReader(body))
+			if err != nil {
+				errs <- err
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != 200 {
+				errs <- fmt.Errorf("got %d", resp.StatusCode)
+				return
+			}
+			durations <- time.Since(t0)
+		}()
+	}
+
+	close(start)
+
+	for i := 0; i < 10; i++ {
+		select {
+		case err := <-errs:
+			t.Errorf("concurrent read failed: %v", err)
+		case d := <-durations:
+			_ = d
+		case <-time.After(10 * time.Second):
+			t.Fatal("concurrent reads timed out")
+		}
+	}
+}
+
+func TestConcurrentReadDuringWrite(t *testing.T) {
+	srv, err := NewServer(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+
+	doPipeline(t, srv.URL(), pipelineRequest{
+		Requests: []pipelineEntry{
+			{Type: "execute", Stmt: &stmtRequest{SQL: "CREATE TABLE counter (id INTEGER PRIMARY KEY, val INTEGER)"}},
+			{Type: "execute", Stmt: &stmtRequest{SQL: "INSERT INTO counter VALUES (1, 0)"}},
+			{Type: "close"},
+		},
+	})
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 10)
+
+	// 5 writers
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body, _ := json.Marshal(pipelineRequest{
+				Requests: []pipelineEntry{
+					{Type: "execute", Stmt: &stmtRequest{SQL: "UPDATE counter SET val = val + 1 WHERE id = 1"}},
+				},
+			})
+			resp, err := http.Post(srv.URL()+"/v2/pipeline", "application/json", bytes.NewReader(body))
+			if err != nil {
+				errs <- err
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != 200 {
+				errs <- fmt.Errorf("write got %d", resp.StatusCode)
+			}
+		}()
+	}
+
+	// 5 readers
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body, _ := json.Marshal(pipelineRequest{
+				Requests: []pipelineEntry{
+					{Type: "execute", Stmt: &stmtRequest{SQL: "SELECT val FROM counter WHERE id = 1"}},
+				},
+			})
+			resp, err := http.Post(srv.URL()+"/v2/pipeline", "application/json", bytes.NewReader(body))
+			if err != nil {
+				errs <- err
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != 200 {
+				errs <- fmt.Errorf("read got %d", resp.StatusCode)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }
 

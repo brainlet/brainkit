@@ -668,3 +668,59 @@ func TestTS_BusServiceAsAIProxy(t *testing.T) {
 
 	sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "ai-service.ts"})
 }
+
+func TestLibSQL_FileURLBlocked(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	_, err := k.Deploy(ctx, "file-url-test.ts", `
+		try {
+			var store = new LibSQLStore({ url: "file:./sneaky.db" });
+			output({ blocked: false });
+		} catch(e) {
+			output({ blocked: true, code: e.code || "unknown", message: e.message || String(e) });
+		}
+	`)
+	require.NoError(t, err)
+
+	result, err := k.EvalTS(ctx, "__get_output.ts", `return globalThis.__module_result || "null";`)
+	require.NoError(t, err)
+
+	var parsed struct {
+		Blocked bool   `json:"blocked"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed), "result was: %s", result)
+	assert.True(t, parsed.Blocked, "file: URL should be blocked")
+	assert.Equal(t, "VALIDATION_ERROR", parsed.Code)
+	assert.Contains(t, parsed.Message, "file:")
+}
+
+func TestLibSQL_HttpURLNotBlockedByValidation(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	// http: URL should NOT be blocked by validation. The constructor may throw
+	// a connection error (no server at 127.0.0.1:9999), but it must NOT throw
+	// VALIDATION_ERROR — that's the file: URL guard we're testing.
+	_, err := k.Deploy(ctx, "http-url-test.ts", `
+		try {
+			var store = new LibSQLStore({ url: "http://127.0.0.1:9999" });
+			output({ code: "none" });
+		} catch(e) {
+			output({ code: e.code || "unknown", message: e.message || String(e) });
+		}
+	`)
+	require.NoError(t, err)
+
+	result, err := k.EvalTS(ctx, "__get_output.ts", `return globalThis.__module_result || "null";`)
+	require.NoError(t, err)
+
+	var parsed struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed), "result was: %s", result)
+	assert.NotEqual(t, "VALIDATION_ERROR", parsed.Code, "http: URL should not trigger file: URL validation")
+}

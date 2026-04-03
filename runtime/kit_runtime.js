@@ -198,11 +198,21 @@
       createStep: embed.createStep,
       Memory: embed.Memory,
       InMemoryStore: embed.InMemoryStore,
-      LibSQLStore: embed.LibSQLStore,
+      LibSQLStore: function(opts) {
+        if (opts && opts.url && /^file:/i.test(opts.url)) {
+          throw new _BKE("file: URLs not supported — use storage('name') to access configured backends", "VALIDATION_ERROR");
+        }
+        return new embed.LibSQLStore(opts);
+      },
       UpstashStore: embed.UpstashStore,
       PostgresStore: embed.PostgresStore,
       MongoDBStore: embed.MongoDBStore,
-      LibSQLVector: embed.LibSQLVector,
+      LibSQLVector: function(opts) {
+        if (opts && opts.connectionUrl && /^file:/i.test(opts.connectionUrl)) {
+          throw new _BKE("file: URLs not supported — use vectorStore('name') to access configured backends", "VALIDATION_ERROR");
+        }
+        return new embed.LibSQLVector(opts);
+      },
       PgVector: embed.PgVector,
       MongoDBVector: embed.MongoDBVector,
       ModelRouterEmbeddingModel: embed.ModelRouterEmbeddingModel,

@@ -40,8 +40,8 @@ type Server struct {
 	url      string
 	logger   func(format string, args ...any)
 
-	// Serialize all DB access — SQLite is single-writer
-	dbMu sync.Mutex
+	// DB access lock — RWMutex allows concurrent readers, serializes writers
+	dbMu sync.RWMutex
 	// baton-based connections for transactions
 	mu      sync.Mutex
 	batons  map[string]*sql.Tx
@@ -311,6 +311,40 @@ type execError struct {
 	Code    string `json:"code,omitempty"`
 }
 
+// --- Pipeline Classification ---
+
+// pipelineNeedsWrite returns true if the pipeline contains any write operations.
+// Read-only pipelines can run concurrently under RWMutex.
+func (s *Server) pipelineNeedsWrite(req *pipelineRequest) bool {
+	if req.Baton != nil && *req.Baton != "" {
+		return true
+	}
+	for _, entry := range req.Requests {
+		switch entry.Type {
+		case "batch", "sequence":
+			return true // may contain writes
+		case "execute":
+			if entry.Stmt == nil {
+				continue
+			}
+			sqlText := entry.Stmt.SQL
+			if sqlText == "" && entry.Stmt.SQLId != nil {
+				s.mu.Lock()
+				if cached, ok := s.sqlCache[*entry.Stmt.SQLId]; ok {
+					sqlText = cached
+				}
+				s.mu.Unlock()
+			}
+			if sqlText != "" && !isQuery(strings.TrimSpace(sqlText)) {
+				return true
+			}
+		case "store_sql", "close_sql", "close":
+			return true // metadata operations
+		}
+	}
+	return false
+}
+
 // --- Pipeline Handler ---
 
 func (s *Server) handlePipeline(w http.ResponseWriter, r *http.Request) {
@@ -331,8 +365,13 @@ func (s *Server) handlePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.dbMu.Lock()
-	defer s.dbMu.Unlock()
+	if s.pipelineNeedsWrite(&req) {
+		s.dbMu.Lock()
+		defer s.dbMu.Unlock()
+	} else {
+		s.dbMu.RLock()
+		defer s.dbMu.RUnlock()
+	}
 
 	// Resolve baton (transaction context)
 	var tx *sql.Tx
