@@ -83,6 +83,12 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.list
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.list", func(msg messages.Message) {
+		if gw.rbacChecker != nil {
+			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.list"); err != nil {
+				gw.replyError(msg, "permission denied: "+err.Error())
+				return
+			}
+		}
 		routes := gw.routes.list()
 		infos := make([]messages.GatewayRouteInfo, len(routes))
 		for i, r := range routes {
@@ -98,6 +104,12 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.status
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.status", func(msg messages.Message) {
+		if gw.rbacChecker != nil {
+			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.status"); err != nil {
+				gw.replyError(msg, "permission denied: "+err.Error())
+				return
+			}
+		}
 		gw.routes.mu.RLock()
 		routeCount := len(gw.routes.routes)
 		gw.routes.mu.RUnlock()

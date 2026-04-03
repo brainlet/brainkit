@@ -8,11 +8,10 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"regexp"
-	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -352,30 +351,14 @@ func mapHTTPStatus(resp []byte, err error) int {
 }
 
 // sanitizeErrorPayload redacts sensitive information from error JSON payloads
-// before sending to HTTP clients. Strips absolute paths and connection strings.
-var gwAbsPathRe = regexp.MustCompile(`(?:/[a-zA-Z0-9_.~-]+){3,}`)
-var gwConnStringRe = regexp.MustCompile(`\w+://[^\s"]+:[^\s"]+@[^\s"]+`)
-
+// before sending to HTTP clients. Delegates to messaging.SanitizeErrorMessage.
 func sanitizeErrorPayload(payload []byte) []byte {
 	var parsed map[string]any
 	if json.Unmarshal(payload, &parsed) != nil {
 		return payload // not JSON — return as-is
 	}
 	if errMsg, ok := parsed["error"].(string); ok {
-		// Strip absolute paths (keep last component)
-		errMsg = gwAbsPathRe.ReplaceAllStringFunc(errMsg, func(path string) string {
-			parts := strings.Split(path, "/")
-			return "<path>/" + parts[len(parts)-1]
-		})
-		// Redact connection strings
-		errMsg = gwConnStringRe.ReplaceAllStringFunc(errMsg, func(cs string) string {
-			idx := strings.Index(cs, "://")
-			if idx < 0 {
-				return "****"
-			}
-			return cs[:idx] + "://****"
-		})
-		parsed["error"] = errMsg
+		parsed["error"] = messaging.SanitizeErrorMessage(errMsg)
 	}
 	sanitized, err := json.Marshal(parsed)
 	if err != nil {

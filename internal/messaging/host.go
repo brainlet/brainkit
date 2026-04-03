@@ -117,14 +117,14 @@ func SerializeBrainkitError(err error) []byte {
 	}
 	if bk, ok := err.(brainkitError); ok {
 		payload, _ := json.Marshal(map[string]any{
-			"error":   sanitizeErrorMessage(err.Error()),
+			"error":   SanitizeErrorMessage(err.Error()),
 			"code":    bk.Code(),
 			"details": bk.Details(),
 		})
 		return payload
 	}
 	payload, _ := json.Marshal(map[string]any{
-		"error": sanitizeErrorMessage(err.Error()),
+		"error": SanitizeErrorMessage(err.Error()),
 		"code":  "INTERNAL_ERROR",
 	})
 	return payload
@@ -136,10 +136,10 @@ var absolutePathRe = regexp.MustCompile(`(?:/[a-zA-Z0-9_.~-]+){3,}`)
 // connectionStringRe matches connection strings with credentials (postgres://user:pass@host, amqp://...).
 var connectionStringRe = regexp.MustCompile(`\w+://[^\s]+:[^\s]+@[^\s]+`)
 
-// sanitizeErrorMessage removes sensitive information from error messages
+// SanitizeErrorMessage removes sensitive information from error messages
 // before they're returned to callers via bus or HTTP.
 // Strips: absolute filesystem paths, connection strings with credentials.
-func sanitizeErrorMessage(msg string) string {
+func SanitizeErrorMessage(msg string) string {
 	// Replace absolute paths (3+ segments) with just the last component
 	msg = absolutePathRe.ReplaceAllStringFunc(msg, func(path string) string {
 		parts := strings.Split(path, "/")
