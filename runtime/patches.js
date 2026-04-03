@@ -74,26 +74,9 @@
     }
   })();
 
-  // Patch Agent.generate/stream
-  (function() {
-    var AgentProto = embed.Agent.prototype;
-    var _origGenerate = AgentProto.generate;
-    if (_origGenerate) {
-      AgentProto.generate = function() {
-        if (typeof this.__registerMastra === "function") {
-          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
-        }
-        return _origGenerate.apply(this, arguments);
-      };
-    }
-    var _origStream = AgentProto.stream;
-    if (_origStream) {
-      AgentProto.stream = function() {
-        if (typeof this.__registerMastra === "function") {
-          try { this.__registerMastra(_workflowStorageShim); } catch(e) {}
-        }
-        return _origStream.apply(this, arguments);
-      };
-    }
-  })();
+  // Note: Agent.generate/stream are NOT patched with __registerMastra.
+  // Unlike Workflow.commit() which needs storage for snapshots, Agents handle
+  // missing #mastra gracefully (fallback UUID for generateId, no persistence required).
+  // Injecting _workflowStorageShim into Agents causes circular reference errors
+  // when LibSQLStore tries to serialize Agent run state to mastra_workflow_snapshot.
 })();

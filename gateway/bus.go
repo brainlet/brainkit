@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -52,24 +53,26 @@ func (gw *Gateway) subscribeBusCommands() {
 		}
 		removed := 0
 		callerSource := msg.CallerID
+		// Ownership isolation: .ts deployments can only remove their own routes.
+		// Go callers (no .ts suffix) have full access — they own the infrastructure
+		// and the RBAC check above already authorizes the command.
+		isDeploymentCaller := strings.HasSuffix(callerSource, ".ts")
 		if req.Owner != "" {
-			// Only allow removing routes you own (or if you're the kernel callerID)
-			if req.Owner == callerSource || callerSource == "" {
-				removed = gw.routes.removeByOwner(req.Owner)
-			} else {
+			if isDeploymentCaller && req.Owner != callerSource {
 				gw.replyError(msg, "cannot remove routes owned by "+req.Owner)
 				return
 			}
+			removed = gw.routes.removeByOwner(req.Owner)
 		} else if req.Method != "" && req.Path != "" {
-			// Look up route owner — only allow removal if caller owns it
 			matched, _ := gw.routes.match(req.Method, req.Path)
-			if matched != nil && (matched.Owner == callerSource || matched.Owner == "" || callerSource == "") {
+			if matched != nil {
+				if isDeploymentCaller && matched.Owner != callerSource && matched.Owner != "" {
+					gw.replyError(msg, "cannot remove route owned by "+matched.Owner)
+					return
+				}
 				if gw.routes.remove(req.Method, req.Path) {
 					removed = 1
 				}
-			} else if matched != nil {
-				gw.replyError(msg, "cannot remove route owned by "+matched.Owner)
-				return
 			}
 		}
 		log.Printf("[gateway] routes removed via bus: %d", removed)
