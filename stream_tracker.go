@@ -53,6 +53,13 @@ func (st *streamTracker) StartHeartbeat(replyTo, correlationID string) {
 	st.kernel.bridge.Go(func(goCtx context.Context) {
 		ticker := time.NewTicker(st.interval)
 		defer ticker.Stop()
+		// Self-remove from active map on exit — prevents map growth when
+		// goroutines self-terminate via maxLife timeout or bridge close.
+		defer func() {
+			st.mu.Lock()
+			delete(st.active, replyTo)
+			st.mu.Unlock()
+		}()
 		for {
 			select {
 			case <-ticker.C:
