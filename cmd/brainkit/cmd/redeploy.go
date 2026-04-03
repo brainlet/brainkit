@@ -47,22 +47,23 @@ func redeployFile(path string) error {
 }
 
 func redeployDirectory(path string) error {
-	// Teardown the old package, then deploy fresh
 	manifestData, err := os.ReadFile(filepath.Join(path, "manifest.json"))
 	if err != nil {
 		return fmt.Errorf("read manifest: %w", err)
 	}
 
 	var manifest struct {
-		Name string `json:"name"`
+		Name     string                       `json:"name"`
+		Services map[string]json.RawMessage   `json:"services"`
 	}
 	json.Unmarshal(manifestData, &manifest)
 
-	// Teardown existing package
-	if manifest.Name != "" {
+	// Teardown each service by its deployed source name (packageName/serviceName.ts)
+	for svcName := range manifest.Services {
+		source := manifest.Name + "/" + svcName + ".ts"
 		connectAndPublish(
-			messages.PackageTeardownMsg{Name: manifest.Name},
-			func(resp *messages.PackageTeardownResp) {},
+			messages.KitTeardownMsg{Source: source},
+			func(resp *messages.KitTeardownResp) {},
 		)
 	}
 
