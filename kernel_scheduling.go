@@ -144,13 +144,21 @@ func (k *Kernel) restoreSchedules() {
 	for _, s := range schedules {
 		if s.OneTime {
 			if s.NextFire.Before(now) {
-				k.publish(context.Background(), s.Topic, s.Payload)
+				if err := k.publish(context.Background(), s.Topic, s.Payload); err != nil {
+					InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+						Operation: "RestoreSchedule.CatchUp", Source: s.ID, Cause: err,
+					}, ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
+				}
 				k.config.Store.DeleteSchedule(s.ID)
 				continue
 			}
 		} else {
 			if s.NextFire.Before(now) {
-				k.publish(context.Background(), s.Topic, s.Payload)
+				if err := k.publish(context.Background(), s.Topic, s.Payload); err != nil {
+					InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+						Operation: "RestoreSchedule.CatchUp", Source: s.ID, Cause: err,
+					}, ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
+				}
 				s.NextFire = now.Add(s.Duration)
 				k.config.Store.SaveSchedule(s)
 			}

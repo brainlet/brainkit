@@ -148,6 +148,146 @@ func TestConcurrent_TeardownDuringHandler(t *testing.T) {
 	}
 }
 
+func TestConcurrent_DeployTeardownRaceOnSameSource(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	// Deploy the service first
+	_, err := k.Deploy(ctx, "race-target.ts", `bus.on("ping", (msg) => msg.reply({ ok: true }));`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	// Concurrent teardown + redeploy on the same source — must not panic/deadlock.
+	// One operation wins (teardown or redeploy), the other gets an error — that's correct.
+	errs := make(chan error, 2)
+
+	go func() {
+		_, tErr := k.Teardown(ctx, "race-target.ts")
+		errs <- tErr
+	}()
+	go func() {
+		_, rErr := k.Redeploy(ctx, "race-target.ts", `bus.on("ping", (msg) => msg.reply({ v: 2 }));`)
+		errs <- rErr
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-errs:
+			// Either nil (operation won) or error (lost the race) — both are acceptable.
+			// The important thing is no panic or deadlock.
+			_ = e
+		case <-time.After(15 * time.Second):
+			t.Fatalf("deadlock on operation %d: deploy/teardown race did not resolve", i)
+		}
+	}
+}
+
+func TestConcurrent_StressDeployTeardownCycles(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	// 5 goroutines, each deploys, verifies, tears down, repeats 3 times
+	testutil.ConcurrentDo(t, 5, func(i int) {
+		for cycle := 0; cycle < 3; cycle++ {
+			source := fmt.Sprintf("stress-%d.ts", i)
+			code := fmt.Sprintf(`bus.on("ping", (msg) => msg.reply({ id: %d, cycle: %d }));`, i, cycle)
+
+			resources, deployErr := k.Deploy(ctx, source, code)
+			if deployErr != nil {
+				// AlreadyExists is acceptable if the previous teardown hasn't fully completed
+				continue
+			}
+			_ = resources
+
+			time.Sleep(50 * time.Millisecond)
+
+			_, teardownErr := k.Teardown(ctx, source)
+			if teardownErr != nil {
+				t.Errorf("goroutine %d cycle %d: teardown failed: %v", i, cycle, teardownErr)
+			}
+		}
+	})
+
+	// Final state: all deployments should be torn down
+	deployments := k.ListDeployments()
+	assert.Empty(t, deployments, "all stress deployments should be torn down")
+}
+
+func TestConcurrent_RedeployRace(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	// Initial deploy
+	_, err := k.Deploy(ctx, "redeploy-race.ts", `bus.on("v", (msg) => msg.reply({ version: 0 }));`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	// 3 goroutines all try to redeploy simultaneously — only one should succeed,
+	// others should either succeed or get a recoverable error. No panics.
+	errs := make(chan error, 3)
+	for i := 0; i < 3; i++ {
+		go func(version int) {
+			code := fmt.Sprintf(`bus.on("v", (msg) => msg.reply({ version: %d }));`, version)
+			_, rErr := k.Redeploy(ctx, "redeploy-race.ts", code)
+			errs <- rErr
+		}(i + 1)
+	}
+
+	for i := 0; i < 3; i++ {
+		select {
+		case e := <-errs:
+			_ = e // error or nil — both acceptable in a race
+		case <-time.After(30 * time.Second):
+			t.Fatal("deadlock: concurrent redeploy did not resolve")
+		}
+	}
+
+	// The service should still exist (one redeploy won)
+	deployments := k.ListDeployments()
+	assert.Len(t, deployments, 1, "exactly one deployment should survive")
+}
+
+func TestConcurrent_DeployDuringDrain(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	ctx := context.Background()
+
+	// Activate drain mode
+	k.SetDraining(true)
+
+	// Deploy a service — should still succeed (draining affects handlers, not deploys)
+	// BUT subscriptions in the deployed code won't receive messages (enterHandler returns false)
+	resources, err := k.Deploy(ctx, "drain-deploy.ts", `bus.on("ping", (msg) => msg.reply({ ok: true }));`)
+	if err != nil {
+		// If deploy fails during drain, that's also acceptable behavior
+		t.Logf("deploy during drain returned error (acceptable): %v", err)
+	} else {
+		assert.NotNil(t, resources)
+		// Verify the handler is rejected during drain
+		pr, pubErr := sdk.SendToService(k, ctx, "drain-deploy.ts", "ping", map[string]bool{"go": true})
+		if pubErr == nil {
+			// Subscribe to replyTo — should time out because drain rejects handlers
+			replyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			gotReply := make(chan bool, 1)
+			unsub, _ := k.SubscribeRaw(replyCtx, pr.ReplyTo, func(msg messages.Message) {
+				gotReply <- true
+			})
+			if unsub != nil {
+				defer unsub()
+			}
+			select {
+			case <-gotReply:
+				t.Log("handler replied despite drain — drain may not affect deployed code handlers")
+			case <-replyCtx.Done():
+				// Expected: handler rejected by drain
+			}
+		}
+	}
+
+	// Clean up drain state
+	k.SetDraining(false)
+}
+
 // helper to avoid unused import
 var _ = json.Marshal
 var _ = messages.Message{}

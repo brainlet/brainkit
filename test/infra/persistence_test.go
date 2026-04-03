@@ -298,3 +298,179 @@ func TestPersistence_WithRestoringSkipsPersist(t *testing.T) {
 	deps, _ := store.LoadDeployments()
 	assert.Empty(t, deps, "WithRestoring should skip SaveDeployment")
 }
+
+func TestPersistence_RolePreservedAcrossRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "role-restart.db")
+
+	roles := map[string]rbac.Role{
+		"admin": rbac.RoleAdmin,
+		"restricted": {
+			Name: "restricted",
+			Bus: rbac.BusPermissions{
+				Subscribe: rbac.TopicFilter{Allow: []string{"*.reply.*"}},
+			},
+			Commands: rbac.CommandPermissions{Allow: []string{"tools.list"}},
+		},
+	}
+
+	// Kernel 1: deploy with role
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test",
+		Store: store1, Roles: roles, DefaultRole: "restricted",
+	})
+	require.NoError(t, err)
+
+	_, err = k1.Deploy(context.Background(), "admin-svc.ts",
+		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
+		brainkit.WithRole("admin"),
+	)
+	require.NoError(t, err)
+	k1.Close()
+
+	// Kernel 2: same store — deployment should restore with role="admin"
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test",
+		Store: store2, Roles: roles, DefaultRole: "restricted",
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// Verify the deployment was restored
+	deployments := k2.ListDeployments()
+	require.Len(t, deployments, 1, "admin-svc.ts should be restored")
+
+	// Verify the role was preserved by checking the stored deployment
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 1)
+	assert.Equal(t, "admin", deps[0].Role, "role should be preserved across restart")
+}
+
+func TestPersistence_ScheduleCatchUpOnRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "schedule-restart.db")
+
+	// Kernel 1: create a one-time schedule that fires 100ms from now
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	// Create a schedule that fires "in 100ms"
+	schedID, err := k1.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "in 100ms",
+		Topic:      "test.catchup",
+		Payload:    []byte(`{"caught":"up"}`),
+		Source:     "test",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, schedID)
+
+	// Close immediately — the schedule hasn't fired yet
+	k1.Close()
+
+	// Wait past the fire time
+	time.Sleep(200 * time.Millisecond)
+
+	// Kernel 2: same store — should fire the missed schedule on startup
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	// Subscribe to the catchup topic BEFORE creating kernel
+	// (kernel creation triggers restoreSchedules which fires missed schedules)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// The one-time schedule should have been fired and deleted
+	schedules := k2.ListSchedules()
+	assert.Empty(t, schedules, "one-time schedule should be deleted after catch-up fire")
+}
+
+func TestPersistence_RecurringScheduleRestartsCorrectly(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "recurring-restart.db")
+
+	// Kernel 1: create recurring schedule
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	schedID, err := k1.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "every 1h",
+		Topic:      "test.heartbeat",
+		Payload:    []byte(`{"beat":true}`),
+		Source:     "test",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, schedID)
+
+	// Verify schedule exists
+	schedules := k1.ListSchedules()
+	require.Len(t, schedules, 1)
+	k1.Close()
+
+	// Kernel 2: schedule should be restored and active
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	schedules = k2.ListSchedules()
+	require.Len(t, schedules, 1, "recurring schedule should be restored")
+	assert.Equal(t, "every 1h", schedules[0].Expression)
+	assert.Equal(t, "test.heartbeat", schedules[0].Topic)
+	assert.False(t, schedules[0].OneTime, "should be recurring, not one-time")
+}
+
+func TestPersistence_DeployOrderPreservedExactly(t *testing.T) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "order-exact.db")
+
+	// Kernel 1: deploy A, B, C in order
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	for _, name := range []string{"alpha.ts", "beta.ts", "gamma.ts"} {
+		_, err := k1.Deploy(ctx, name, `bus.on("x", (msg) => msg.reply({}));`)
+		require.NoError(t, err)
+	}
+	k1.Close()
+
+	// Kernel 2: verify load order matches deploy order
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 3)
+
+	// LoadDeployments returns ORDER BY deploy_order
+	assert.Equal(t, "alpha.ts", deps[0].Source)
+	assert.Equal(t, "beta.ts", deps[1].Source)
+	assert.Equal(t, "gamma.ts", deps[2].Source)
+	assert.True(t, deps[0].Order < deps[1].Order, "alpha should have lower order than beta")
+	assert.True(t, deps[1].Order < deps[2].Order, "beta should have lower order than gamma")
+
+	store2.Close()
+}

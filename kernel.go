@@ -45,11 +45,16 @@ type Kernel struct {
 	agentsDomain   *AgentsDomain
 	packagesDomain *PackagesDomain
 	secretsDomain  *SecretsDomain
+	// Category B (continued): take interfaces, not *Kernel
+	mcpDomain       *MCPDomain
+	registryDomain  *RegistryDomain
+	rbacAdminDomain *RBACAdminDomain
+	tracingDomain   *TracingDomain
+	metricsDomain   *MetricsDomain
 	// Category C: stay on *Kernel (touch too many subsystems)
 	lifecycle           *LifecycleDomain
 	packageDeployDomain *PackageDeployDomain
 	testingDomain       *TestingDomain
-	// Eliminated (inlined into catalog): RBACDomain, TracingDomain, MCPDomain, RegistryDomain
 
 	Tools     *toolreg.ToolRegistry
 	packages       *packages.Manager
@@ -488,7 +493,10 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	kernel.testingDomain = newTestingDomain(kernel)
 	kernel.lifecycle = newLifecycleDomain(kernel)
-	// (RegistryDomain eliminated — inlined into catalog)
+	kernel.registryDomain = newRegistryDomain(kernel.providers)
+	kernel.tracingDomain = newTracingDomain(cfg.TraceStore)
+	kernel.rbacAdminDomain = newRBACAdminDomain(kernel.rbac)
+	kernel.metricsDomain = newMetricsDomain(kernel)
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()
@@ -498,9 +506,12 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	if len(cfg.MCPServers) > 0 {
 		kernel.mcp = mcppkg.New()
-		// (MCPDomain eliminated — inlined into catalog)
+		kernel.mcpDomain = newMCPDomain(kernel.mcp)
 		for name, serverCfg := range cfg.MCPServers {
 			if err := kernel.mcp.Connect(context.Background(), name, serverCfg); err != nil {
+				InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
+					Operation: "MCP.Connect:" + name, Cause: err,
+				}, ErrorContext{Operation: "ConnectMCP", Component: "mcp", Source: name})
 				continue
 			}
 			for _, tool := range kernel.mcp.ListToolsForServer(name) {
@@ -523,7 +534,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 			}
 		}
 	}
-	// (MCPDomain eliminated — no else branch needed)
+	if kernel.mcpDomain == nil {
+		kernel.mcpDomain = newMCPDomain(nil) // nil-safe — returns ErrMCPNotConfigured
+	}
 
 	// Set up internal Watermill transport + router
 	if cfg.Transport != nil {
@@ -1226,7 +1239,9 @@ func (k *Kernel) upgradeMastraStorage() {
 	`
 	result, err := k.EvalTS(context.Background(), "__upgrade_mastra_storage.ts", script)
 	if err != nil {
-		log.Printf("[brainkit] WARNING: Mastra storage upgrade failed: %v", err)
+		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "UpgradeMastraStorage", Cause: err,
+		}, ErrorContext{Operation: "UpgradeMastraStorage", Component: "kernel"})
 		return
 	}
 	var parsed struct {
@@ -1246,6 +1261,7 @@ func (k *Kernel) restartActiveWorkflows() {
 	script := `
 		var workflows = globalThis.__kit_registry.list("workflow");
 		var restarted = 0;
+		var errors = [];
 		for (var i = 0; i < workflows.length; i++) {
 			var entry = globalThis.__kit_registry.get("workflow", workflows[i].name);
 			if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
@@ -1253,11 +1269,11 @@ func (k *Kernel) restartActiveWorkflows() {
 					await entry.ref.restartAllActiveWorkflowRuns();
 					restarted++;
 				} catch(e) {
-					// Log but don't fail startup — partial recovery is better than no recovery
+					errors.push({ workflow: workflows[i].name, error: e.message || String(e) });
 				}
 			}
 		}
-		return JSON.stringify({ restarted: restarted });
+		return JSON.stringify({ restarted: restarted, errors: errors });
 	`
 	result, err := k.EvalTS(context.Background(), "__restart_workflows.ts", script)
 	if err != nil {
@@ -1268,6 +1284,17 @@ func (k *Kernel) restartActiveWorkflows() {
 	}
 	var parsed struct {
 		Restarted int `json:"restarted"`
+		Errors    []struct {
+			Workflow string `json:"workflow"`
+			Error    string `json:"error"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal([]byte(result), &parsed) == nil {
+		for _, wfErr := range parsed.Errors {
+			InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+				Operation: "RestartWorkflow", Source: wfErr.Workflow, Cause: fmt.Errorf("%s", wfErr.Error),
+			}, ErrorContext{Operation: "RestartWorkflow", Component: "workflow", Source: wfErr.Workflow})
+		}
 	}
 	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Restarted > 0 {
 		log.Printf("[brainkit] restarted active workflows for %d workflow definitions", parsed.Restarted)

@@ -218,9 +218,18 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	}
 	log.Printf("[plugin:%s] restarting in %s (%d/%d)", pc.config.Name, backoff, nextRestart, pc.config.MaxRestarts)
 
-	time.Sleep(backoff)
+	// Wait for backoff OR shutdown — whichever comes first.
+	// Previous: time.Sleep(backoff) blocked the goroutine for up to 30s during shutdown.
+	select {
+	case <-time.After(backoff):
+		// Backoff elapsed — proceed with restart
+	case <-pm.node.Kernel.bridge.GoContext().Done():
+		// Bridge shutting down — don't restart, exit immediately
+		close(pc.done)
+		return
+	}
 
-	// Check again — node may have shut down during backoff
+	// Check again — stopPlugin may have been called during backoff
 	pc.mu.Lock()
 	stopping = pc.stopping
 	pc.mu.Unlock()

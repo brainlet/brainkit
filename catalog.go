@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -190,74 +188,22 @@ func commandCatalog() *commandRegistry {
 					Resources: resourceInfosToMessages(resources),
 				}, nil
 			}),
-			// ── MCP (inlined) ──
+			// ── MCP ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
-				if kernel.mcp == nil {
-					return nil, ErrMCPNotConfigured
-				}
-				tools := kernel.mcp.ListTools()
-				var infos []messages.McpToolInfo
-				for _, t := range tools {
-					infos = append(infos, messages.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
-				}
-				return &messages.McpListToolsResp{Tools: infos}, nil
+				return kernel.mcpDomain.ListTools(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
-				if kernel.mcp == nil {
-					return nil, ErrMCPNotConfigured
-				}
-				argsJSON, _ := json.Marshal(req.Args)
-				result, err := kernel.mcp.CallTool(ctx, req.Server, req.Tool, argsJSON)
-				if err != nil {
-					return nil, err
-				}
-				return &messages.McpCallToolResp{Result: result}, nil
+				return kernel.mcpDomain.CallTool(ctx, req)
 			}),
-			// ── Registry (inlined) ──
+			// ── Registry ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryHasMsg) (*messages.RegistryHasResp, error) {
-				var found bool
-				switch req.Category {
-				case "provider":
-					found = kernel.providers.HasAIProvider(req.Name)
-				case "vectorStore":
-					found = kernel.providers.HasVectorStore(req.Name)
-				case "storage":
-					found = kernel.providers.HasStorage(req.Name)
-				}
-				return &messages.RegistryHasResp{Found: found}, nil
+				return kernel.registryDomain.Has(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryListMsg) (*messages.RegistryListResp, error) {
-				var result any
-				switch req.Category {
-				case "provider":
-					result = kernel.providers.ListAIProviders()
-				case "vectorStore":
-					result = kernel.providers.ListVectorStores()
-				case "storage":
-					result = kernel.providers.ListStorages()
-				default:
-					result = []any{}
-				}
-				b, _ := json.Marshal(result)
-				return &messages.RegistryListResp{Items: b}, nil
+				return kernel.registryDomain.List(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
-				var configJSON []byte
-				switch req.Category {
-				case "provider":
-					if reg, ok := kernel.providers.GetAIProvider(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
-					}
-				case "vectorStore":
-					if reg, ok := kernel.providers.GetVectorStore(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
-					}
-				case "storage":
-					if reg, ok := kernel.providers.GetStorage(req.Name); ok {
-						configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
-					}
-				}
-				return &messages.RegistryResolveResp{Config: configJSON}, nil
+				return kernel.registryDomain.Resolve(ctx, req)
 			}),
 			// ── Workflows (handlers in handlers_workflows.go) ──
 			kernelCommand(handleWorkflowStart),
@@ -270,77 +216,27 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(handleWorkflowRestart),
 			// ── Metrics ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MetricsGetMsg) (*messages.MetricsGetResp, error) {
-				data, _ := json.Marshal(kernel.Metrics())
-				return &messages.MetricsGetResp{Metrics: data}, nil
+				return kernel.metricsDomain.Get(ctx, req)
 			}),
-			// ── Tracing (inlined) ──
+			// ── Tracing ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceGetMsg) (*messages.TraceGetResp, error) {
-				if kernel.config.TraceStore == nil {
-					return &messages.TraceGetResp{Spans: json.RawMessage("[]")}, nil
-				}
-				spans, err := kernel.config.TraceStore.GetTrace(req.TraceID)
-				if err != nil {
-					return nil, err
-				}
-				data, _ := json.Marshal(spans)
-				return &messages.TraceGetResp{Spans: data}, nil
+				return kernel.tracingDomain.Get(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceListMsg) (*messages.TraceListResp, error) {
-				if kernel.config.TraceStore == nil {
-					return &messages.TraceListResp{Traces: json.RawMessage("[]")}, nil
-				}
-				query := tracing.TraceQuery{Source: req.Source, Status: req.Status, Limit: req.Limit}
-				if req.MinDuration > 0 {
-					query.MinDuration = time.Duration(req.MinDuration) * time.Millisecond
-				}
-				traces, err := kernel.config.TraceStore.ListTraces(query)
-				if err != nil {
-					return nil, err
-				}
-				data, _ := json.Marshal(traces)
-				return &messages.TraceListResp{Traces: data}, nil
+				return kernel.tracingDomain.List(ctx, req)
 			}),
-			// ── RBAC Administration (inlined — no domain type needed) ──
+			// ── RBAC Administration ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACAssignMsg) (*messages.RBACAssignResp, error) {
-				if kernel.rbac == nil {
-					return nil, &sdkerrors.NotConfiguredError{Feature: "rbac"}
-				}
-				if req.Source == "" {
-					return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
-				}
-				if err := kernel.rbac.Assign(req.Source, req.Role); err != nil {
-					return nil, err
-				}
-				return &messages.RBACAssignResp{Assigned: true}, nil
+				return kernel.rbacAdminDomain.Assign(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRevokeMsg) (*messages.RBACRevokeResp, error) {
-				if kernel.rbac == nil {
-					return nil, &sdkerrors.NotConfiguredError{Feature: "rbac"}
-				}
-				kernel.rbac.Revoke(req.Source)
-				return &messages.RBACRevokeResp{Revoked: true}, nil
+				return kernel.rbacAdminDomain.Revoke(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACListMsg) (*messages.RBACListResp, error) {
-				if kernel.rbac == nil {
-					return &messages.RBACListResp{Assignments: []messages.RBACAssignmentInfo{}}, nil
-				}
-				assignments := kernel.rbac.ListAssignments()
-				infos := make([]messages.RBACAssignmentInfo, len(assignments))
-				for i, a := range assignments {
-					infos[i] = messages.RBACAssignmentInfo{
-						Source: a.Source, Role: a.Role,
-						AssignedAt: a.AssignedAt.Format(time.RFC3339),
-					}
-				}
-				return &messages.RBACListResp{Assignments: infos}, nil
+				return kernel.rbacAdminDomain.List(ctx, req)
 			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRolesMsg) (*messages.RBACRolesResp, error) {
-				if kernel.rbac == nil {
-					return &messages.RBACRolesResp{Roles: json.RawMessage("[]")}, nil
-				}
-				roles := kernel.rbac.ListRoles()
-				data, _ := json.Marshal(roles)
-				return &messages.RBACRolesResp{Roles: data}, nil
+				return kernel.rbacAdminDomain.Roles(ctx, req)
 			}),
 			// ── Secrets ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
