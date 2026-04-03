@@ -1,164 +1,387 @@
 package infra_test
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
-	"sort"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type streamMsg struct {
-	Type  string          `json:"type"`
-	Event string          `json:"event,omitempty"`
-	Data  json.RawMessage `json:"data"`
-	Seq   int             `json:"seq"`
-}
-
-func deployAndCollect(t *testing.T, k *testutil.TestKernel, source, code, topic string, expectCount int) []streamMsg {
+func startGatewayWithStream(t *testing.T, k *testutil.TestKernel, streamCfg *gateway.StreamConfig) (*gateway.Gateway, string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{Source: source, Code: code})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
-
-	collected := make(chan streamMsg, 20)
-	sendPR, _ := sdk.SendToService(k, ctx, source, topic, map[string]bool{"go": true})
-	replyUnsub, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
-		var sm streamMsg
-		json.Unmarshal(msg.Payload, &sm)
-		collected <- sm
+	gw := gateway.New(k, gateway.Config{
+		Listen:  "127.0.0.1:0",
+		Timeout: 5 * time.Second,
+		Stream:  streamCfg,
 	})
-	defer replyUnsub()
+	require.NoError(t, gw.Start())
+	t.Cleanup(func() { gw.Stop() })
+	time.Sleep(50 * time.Millisecond)
+	return gw, "http://" + gw.Addr()
+}
 
-	var msgs []streamMsg
-	for i := 0; i < expectCount; i++ {
-		select {
-		case m := <-collected:
-			msgs = append(msgs, m)
-		case <-ctx.Done():
-			t.Fatalf("timeout waiting for stream message %d/%d", i+1, expectCount)
+// readSSEEvents reads SSE lines until the connection closes or timeout.
+func readSSEEvents(t *testing.T, resp *http.Response, timeout time.Duration) string {
+	t.Helper()
+	done := make(chan string, 1)
+	go func() {
+		body, _ := io.ReadAll(resp.Body)
+		done <- string(body)
+	}()
+	select {
+	case content := <-done:
+		return content
+	case <-time.After(timeout):
+		resp.Body.Close()
+		t.Log("readSSEEvents: timeout, closing body")
+		return <-done
+	}
+}
+
+func TestStream_HeartbeatTimeout(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	_, err := k.Deploy(context.Background(), "hb-timeout.ts", `
+		bus.on("stall", async (msg) => {
+			msg.stream.text("start");
+			// Never sends end — should trigger heartbeat timeout
+			await new Promise(r => setTimeout(r, 60000));
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatInterval: 1 * time.Second,
+		HeartbeatTimeout:  3 * time.Second,
+		MaxDuration:       30 * time.Second,
+		MaxEvents:         100,
+		GracePeriod:       5 * time.Second,
+	})
+	gw.HandleStream("GET", "/api/stall", "ts.hb-timeout.stall")
+
+	resp, err := http.Get(addr + "/api/stall")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	content := readSSEEvents(t, resp, 10*time.Second)
+	assert.Contains(t, content, "event: text")
+	assert.Contains(t, content, `"reason":"heartbeat_timeout"`)
+}
+
+func TestStream_MaxDuration(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	_, err := k.Deploy(context.Background(), "slow-stream.ts", `
+		bus.on("slow", async (msg) => {
+			for (var i = 0; i < 100; i++) {
+				msg.stream.text("tick " + i);
+				await new Promise(r => setTimeout(r, 500));
+			}
+			msg.stream.end({});
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatInterval: 1 * time.Second,
+		HeartbeatTimeout:  10 * time.Second,
+		MaxDuration:       3 * time.Second,
+		MaxEvents:         10000,
+		GracePeriod:       5 * time.Second,
+	})
+	gw.HandleStream("GET", "/api/slow", "ts.slow-stream.slow")
+
+	resp, err := http.Get(addr + "/api/slow")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	content := readSSEEvents(t, resp, 10*time.Second)
+	assert.Contains(t, content, "event: text")
+	assert.Contains(t, content, `"reason":"max_duration"`)
+}
+
+func TestStream_MaxEvents(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	_, err := k.Deploy(context.Background(), "flood.ts", `
+		bus.on("flood", async (msg) => {
+			for (var i = 0; i < 20; i++) {
+				msg.stream.text("msg " + i);
+			}
+			msg.stream.end({});
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatInterval: 10 * time.Second,
+		HeartbeatTimeout:  25 * time.Second,
+		MaxDuration:       30 * time.Second,
+		MaxEvents:         5,
+		GracePeriod:       5 * time.Second,
+	})
+	gw.HandleStream("GET", "/api/flood", "ts.flood.flood")
+
+	resp, err := http.Get(addr + "/api/flood")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	content := readSSEEvents(t, resp, 10*time.Second)
+	assert.Contains(t, content, `"reason":"max_events"`)
+}
+
+func TestStream_KeepaliveComments(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	// Handler has a 12s delay between events — heartbeat fires at 10s interval
+	_, err := k.Deploy(context.Background(), "delayed.ts", `
+		bus.on("delayed", async (msg) => {
+			msg.stream.text("first");
+			await new Promise(r => setTimeout(r, 12000));
+			msg.stream.text("second");
+			msg.stream.end({});
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatTimeout: 25 * time.Second,
+		MaxDuration:      30 * time.Second,
+		MaxEvents:        10000,
+		GracePeriod:      5 * time.Second,
+	})
+	gw.HandleStream("GET", "/api/delayed", "ts.delayed.delayed")
+
+	resp, err := http.Get(addr + "/api/delayed")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	content := readSSEEvents(t, resp, 20*time.Second)
+	assert.Contains(t, content, ":keepalive")
+	assert.Contains(t, content, "event: text")
+	assert.Contains(t, content, "event: end")
+}
+
+func TestStream_Reconnection(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	_, err := k.Deploy(context.Background(), "recon.ts", `
+		bus.on("stream", async (msg) => {
+			for (var i = 0; i < 8; i++) {
+				msg.stream.text("chunk " + i);
+				await new Promise(r => setTimeout(r, 300));
+			}
+			msg.stream.end({ final: true });
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatInterval: 1 * time.Second,
+		HeartbeatTimeout:  10 * time.Second,
+		MaxDuration:       30 * time.Second,
+		MaxEvents:         10000,
+		GracePeriod:       10 * time.Second,
+	})
+	gw.HandleStream("GET", "/api/recon", "ts.recon.stream")
+
+	// First connection — read 3 events then disconnect
+	resp1, err := http.Get(addr + "/api/recon")
+	require.NoError(t, err)
+
+	scanner := bufio.NewScanner(resp1.Body)
+	var lastID string
+	eventsRead := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "id: ") {
+			lastID = strings.TrimPrefix(line, "id: ")
+		}
+		if strings.HasPrefix(line, "event: text") {
+			eventsRead++
+			if eventsRead >= 3 {
+				break
+			}
 		}
 	}
-	// Reorder by sequence number — transport may deliver out of order under load
-	sort.Slice(msgs, func(i, j int) bool { return msgs[i].Seq < msgs[j].Seq })
-	return msgs
+	resp1.Body.Close()
+	require.NotEmpty(t, lastID, "should have received at least one id")
+	require.GreaterOrEqual(t, eventsRead, 3, "should have read 3 text events")
+
+	// Wait briefly for more events to buffer
+	time.Sleep(1 * time.Second)
+
+	// Reconnect with Last-Event-Id
+	req, _ := http.NewRequest("GET", addr+"/api/recon", nil)
+	req.Header.Set("Last-Event-Id", lastID)
+	resp2, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+
+	assert.Equal(t, 200, resp2.StatusCode)
+	content := readSSEEvents(t, resp2, 10*time.Second)
+	// Should receive replayed events + live events + end
+	assert.Contains(t, content, "event: text")
+	assert.Contains(t, content, "event: end")
 }
 
-func TestStream_TextChunks(t *testing.T) {
+func TestStream_SessionExpired(t *testing.T) {
 	k := testutil.NewTestKernelFull(t)
-	msgs := deployAndCollect(t, k, "streamer.ts", `bus.on("stream", async (msg) => {
-		msg.stream.text("hello ");
-		msg.stream.text("world");
-		msg.stream.end({ total: 2 });
-	});`, "stream", 3)
+	_, err := k.Deploy(context.Background(), "expire.ts", `
+		bus.on("stream", async (msg) => {
+			msg.stream.text("hello");
+			msg.stream.end({});
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
 
-	require.Len(t, msgs, 3)
-	assert.Equal(t, "text", msgs[0].Type)
-	assert.Equal(t, `"hello "`, string(msgs[0].Data))
-	assert.Equal(t, "text", msgs[1].Type)
-	assert.Equal(t, `"world"`, string(msgs[1].Data))
-	assert.Equal(t, "end", msgs[2].Type)
-}
-
-func TestStream_Progress(t *testing.T) {
-	k := testutil.NewTestKernelFull(t)
-	msgs := deployAndCollect(t, k, "progress.ts", `bus.on("work", async (msg) => {
-		msg.stream.progress(0.0, "starting");
-		msg.stream.progress(0.5, "halfway");
-		msg.stream.progress(1.0, "done");
-		msg.stream.end({ items: 42 });
-	});`, "work", 4)
-
-	assert.Equal(t, "progress", msgs[0].Type)
-	assert.Equal(t, "progress", msgs[1].Type)
-	assert.Equal(t, "progress", msgs[2].Type)
-	assert.Equal(t, "end", msgs[3].Type)
-
-	var p struct{ Value float64; Message string }
-	json.Unmarshal(msgs[1].Data, &p)
-	assert.Equal(t, 0.5, p.Value)
-	assert.Equal(t, "halfway", p.Message)
-}
-
-func TestStream_ErrorMidStream(t *testing.T) {
-	k := testutil.NewTestKernelFull(t)
-	msgs := deployAndCollect(t, k, "errstream.ts", `bus.on("fail", async (msg) => {
-		msg.stream.text("partial");
-		msg.stream.error("something broke");
-	});`, "fail", 2)
-
-	assert.Equal(t, "text", msgs[0].Type)
-	assert.Equal(t, "error", msgs[1].Type)
-
-	var errData struct{ Message string }
-	json.Unmarshal(msgs[1].Data, &errData)
-	assert.Equal(t, "something broke", errData.Message)
-}
-
-func TestStream_EventSequence(t *testing.T) {
-	k := testutil.NewTestKernelFull(t)
-	msgs := deployAndCollect(t, k, "events.ts", `bus.on("run", async (msg) => {
-		msg.stream.event("tool_start", { name: "search" });
-		msg.stream.event("tool_end", { name: "search", found: 3 });
-		msg.stream.end({ ok: true });
-	});`, "run", 3)
-
-	assert.Equal(t, "event", msgs[0].Type)
-	assert.Equal(t, "tool_start", msgs[0].Event)
-	assert.Equal(t, "event", msgs[1].Type)
-	assert.Equal(t, "tool_end", msgs[1].Event)
-	assert.Equal(t, "end", msgs[2].Type)
-}
-
-func TestStream_RawSendStillWorks(t *testing.T) {
-	k := testutil.NewTestKernelFull(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{
-		Source: "rawsend.ts",
-		Code:   `bus.on("raw", async (msg) => { msg.send({ chunk: "hello" }); msg.reply({ done: true }); });`,
+	gw, addr := startGatewayWithStream(t, k, &gateway.StreamConfig{
+		HeartbeatInterval: 10 * time.Second,
+		HeartbeatTimeout:  25 * time.Second,
+		MaxDuration:       30 * time.Second,
+		MaxEvents:         10000,
+		GracePeriod:       1 * time.Second, // very short grace period
 	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	gw.HandleStream("GET", "/api/expire", "ts.expire.stream")
 
-	collected := make(chan json.RawMessage, 10)
-	sendPR, _ := sdk.SendToService(k, ctx, "rawsend.ts", "raw", map[string]bool{"go": true})
-	replyUnsub, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
-		collected <- json.RawMessage(msg.Payload)
-	})
-	defer replyUnsub()
+	// First connection — completes normally
+	resp1, err := http.Get(addr + "/api/expire")
+	require.NoError(t, err)
+	body1, _ := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	require.Contains(t, string(body1), "event: end")
 
-	var msgs []json.RawMessage
-	for i := 0; i < 2; i++ {
+	// Extract stream token from first event
+	lines := strings.Split(string(body1), "\n")
+	var lastID string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "id: ") {
+			lastID = strings.TrimPrefix(line, "id: ")
+		}
+	}
+	require.NotEmpty(t, lastID)
+
+	// Wait past grace period
+	time.Sleep(2 * time.Second)
+
+	// Reconnect — should get 410 Gone
+	req, _ := http.NewRequest("GET", addr+"/api/expire", nil)
+	req.Header.Set("Last-Event-Id", lastID)
+	resp2, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusGone, resp2.StatusCode)
+}
+
+func TestStream_ConcurrentStreams(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	for i := 0; i < 3; i++ {
+		name := []string{"svc-a", "svc-b", "svc-c"}[i]
+		_, err := k.Deploy(context.Background(), name+".ts", `
+			bus.on("stream", async (msg) => {
+				msg.stream.text("`+name+`");
+				msg.stream.end({});
+			});
+		`)
+		require.NoError(t, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	gw, addr := startGatewayWithStream(t, k, nil)
+	gw.HandleStream("GET", "/api/a", "ts.svc-a.stream")
+	gw.HandleStream("GET", "/api/b", "ts.svc-b.stream")
+	gw.HandleStream("GET", "/api/c", "ts.svc-c.stream")
+
+	results := make([]string, 3)
+	done := make(chan int, 3)
+	for i, path := range []string{"/api/a", "/api/b", "/api/c"} {
+		go func(idx int, p string) {
+			resp, err := http.Get(addr + p)
+			if err != nil {
+				done <- idx
+				return
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			results[idx] = string(body)
+			done <- idx
+		}(i, path)
+	}
+	for i := 0; i < 3; i++ {
 		select {
-		case m := <-collected:
-			msgs = append(msgs, m)
-		case <-ctx.Done():
-			t.Fatalf("timeout at %d", i)
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("stream %d timed out", i)
 		}
 	}
 
-	// Raw send/reply have no seq — order not guaranteed under load.
-	// Verify both messages are present regardless of order.
-	combined := string(msgs[0]) + string(msgs[1])
-	assert.Contains(t, combined, "chunk")
-	assert.Contains(t, combined, "done")
-	// Verify raw format (no typed stream envelope)
-	assert.NotContains(t, combined, `"type"`)
+	assert.Contains(t, results[0], "svc-a")
+	assert.Contains(t, results[1], "svc-b")
+	assert.Contains(t, results[2], "svc-c")
+}
+
+func TestStream_GatewayShutdown(t *testing.T) {
+	k := testutil.NewTestKernelFull(t)
+	_, err := k.Deploy(context.Background(), "shutdown-test.ts", `
+		bus.on("stream", async (msg) => {
+			msg.stream.text("start");
+			await new Promise(r => setTimeout(r, 30000));
+			msg.stream.end({});
+		});
+	`)
+	require.NoError(t, err)
+	time.Sleep(200 * time.Millisecond)
+
+	gw := gateway.New(k, gateway.Config{
+		Listen:  "127.0.0.1:0",
+		Timeout: 5 * time.Second,
+		Stream: &gateway.StreamConfig{
+			HeartbeatInterval: 1 * time.Second,
+			HeartbeatTimeout:  25 * time.Second,
+			MaxDuration:       30 * time.Second,
+			MaxEvents:         10000,
+			GracePeriod:       5 * time.Second,
+		},
+	})
+	require.NoError(t, gw.Start())
+	addr := "http://" + gw.Addr()
+	gw.HandleStream("GET", "/api/shutdown", "ts.shutdown-test.stream")
+
+	// Start a stream
+	resp, err := http.Get(addr + "/api/shutdown")
+	require.NoError(t, err)
+
+	// Read first event
+	scanner := bufio.NewScanner(resp.Body)
+	gotText := false
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), "event: text") {
+			gotText = true
+			break
+		}
+	}
+	require.True(t, gotText, "should receive text event before shutdown")
+
+	// Stop gateway while stream is active
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- gw.Stop() }()
+
+	select {
+	case <-shutdownDone:
+		// Stop completed — may return context deadline exceeded from http.Server.Shutdown
+		// if active SSE connections didn't close within the 10s timeout.
+	case <-time.After(15 * time.Second):
+		t.Fatal("gateway.Stop() blocked for > 15s")
+	}
+
+	resp.Body.Close()
 }

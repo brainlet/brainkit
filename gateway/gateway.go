@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -33,6 +34,43 @@ type RBACChecker interface {
 	CheckCommand(source, command string) error
 }
 
+// StreamConfig configures SSE streaming behavior.
+type StreamConfig struct {
+	HeartbeatInterval time.Duration // Bridge heartbeat frequency. Default: 10s.
+	HeartbeatTimeout  time.Duration // No heartbeat = producer dead. Default: 25s.
+	MaxDuration       time.Duration // Total stream lifetime cap. Default: 10m.
+	MaxEvents         int           // Event count + buffer cap. Default: 10000.
+	GracePeriod       time.Duration // Keep session after terminal for late reconnects. Default: 60s.
+}
+
+func (c *StreamConfig) withDefaults() StreamConfig {
+	out := StreamConfig{
+		HeartbeatInterval: 10 * time.Second,
+		HeartbeatTimeout:  25 * time.Second,
+		MaxDuration:       10 * time.Minute,
+		MaxEvents:         10000,
+		GracePeriod:       60 * time.Second,
+	}
+	if c != nil {
+		if c.HeartbeatInterval > 0 {
+			out.HeartbeatInterval = c.HeartbeatInterval
+		}
+		if c.HeartbeatTimeout > 0 {
+			out.HeartbeatTimeout = c.HeartbeatTimeout
+		}
+		if c.MaxDuration > 0 {
+			out.MaxDuration = c.MaxDuration
+		}
+		if c.MaxEvents > 0 {
+			out.MaxEvents = c.MaxEvents
+		}
+		if c.GracePeriod > 0 {
+			out.GracePeriod = c.GracePeriod
+		}
+	}
+	return out
+}
+
 // Config configures the HTTP gateway.
 type Config struct {
 	Listen      string
@@ -43,6 +81,7 @@ type Config struct {
 	Tracer      Tracer           // optional — creates root spans for requests
 	RBACChecker RBACChecker      // optional — checks caller permissions on bus commands
 	RateLimit   *RateLimitConfig // optional — global rate limiter (429 when exceeded)
+	Stream      *StreamConfig    // optional — SSE streaming config. nil = use defaults.
 }
 
 // Tracer is a minimal tracing interface to avoid importing kit/tracing.
@@ -71,14 +110,20 @@ type HealthChecker interface {
 
 // Gateway is the HTTP/WS/SSE protocol bridge to the bus.
 type Gateway struct {
-	rt          sdk.Runtime
-	config      Config
-	routes      *routeTable
-	srv         *http.Server
-	ln          net.Listener
-	active      atomic.Int64
-	busUnsubs   []func()
-	rbacChecker RBACChecker
+	rt           sdk.Runtime
+	config       Config
+	streamConfig StreamConfig
+	routes       *routeTable
+	srv          *http.Server
+	ln           net.Listener
+	active       atomic.Int64
+	busUnsubs    []func()
+	rbacChecker  RBACChecker
+
+	// Stream session management
+	sessionsMu  sync.RWMutex
+	sessions    map[string]*streamSession
+	sweepCancel context.CancelFunc
 }
 
 // New creates an HTTP gateway.
@@ -90,10 +135,12 @@ func New(rt sdk.Runtime, cfg Config) *Gateway {
 		cfg.Listen = ":8080"
 	}
 	return &Gateway{
-		rt:          rt,
-		config:      cfg,
-		routes:      newRouteTable(),
-		rbacChecker: cfg.RBACChecker,
+		rt:           rt,
+		config:       cfg,
+		streamConfig: cfg.Stream.withDefaults(),
+		routes:       newRouteTable(),
+		rbacChecker:  cfg.RBACChecker,
+		sessions:     make(map[string]*streamSession),
 	}
 }
 
@@ -182,16 +229,37 @@ func (gw *Gateway) Start() error {
 	}()
 
 	gw.subscribeBusCommands()
+
+	// Start session sweep goroutine
+	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	gw.sweepCancel = sweepCancel
+	go gw.sweepSessions(sweepCtx)
+
 	log.Printf("[gateway] listening on %s (%d routes)", gw.Addr(), len(gw.routes.routes))
 	return nil
 }
 
 // Stop gracefully shuts down the HTTP server and unsubscribes bus commands.
 func (gw *Gateway) Stop() error {
+	// Stop session sweep
+	if gw.sweepCancel != nil {
+		gw.sweepCancel()
+	}
+
+	// Cleanup all stream sessions
+	gw.sessionsMu.Lock()
+	for id, session := range gw.sessions {
+		session.terminate("server_shutdown")
+		delete(gw.sessions, id)
+	}
+	gw.sessionsMu.Unlock()
+
+	// Unsubscribe bus commands
 	for _, unsub := range gw.busUnsubs {
 		unsub()
 	}
 	gw.busUnsubs = nil
+
 	if gw.srv == nil {
 		return nil
 	}
@@ -365,4 +433,61 @@ func sanitizeErrorPayload(payload []byte) []byte {
 		return payload
 	}
 	return sanitized
+}
+
+// --- Stream session management (streamSession type defined in stream.go) ---
+
+func (gw *Gateway) sweepSessions(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			gw.cleanExpiredSessions()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (gw *Gateway) cleanExpiredSessions() {
+	now := time.Now()
+	gw.sessionsMu.Lock()
+	defer gw.sessionsMu.Unlock()
+	for id, session := range gw.sessions {
+		session.mu.RLock()
+		expired := session.terminal && !session.terminalAt.IsZero() &&
+			now.Sub(session.terminalAt) > gw.streamConfig.GracePeriod
+		session.mu.RUnlock()
+		if expired {
+			if session.unsub != nil {
+				session.unsub()
+			}
+			delete(gw.sessions, id)
+		}
+	}
+}
+
+func (gw *Gateway) findSession(token string) *streamSession {
+	gw.sessionsMu.RLock()
+	session := gw.sessions[token]
+	gw.sessionsMu.RUnlock()
+	if session == nil {
+		return nil
+	}
+	// Check grace period expiry inline (don't wait for sweep)
+	session.mu.RLock()
+	expired := session.terminal && !session.terminalAt.IsZero() &&
+		time.Since(session.terminalAt) > gw.streamConfig.GracePeriod
+	session.mu.RUnlock()
+	if expired {
+		return nil
+	}
+	return session
+}
+
+func (gw *Gateway) registerSession(session *streamSession) {
+	gw.sessionsMu.Lock()
+	gw.sessions[session.id] = session
+	gw.sessionsMu.Unlock()
 }

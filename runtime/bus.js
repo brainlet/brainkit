@@ -90,53 +90,50 @@
           __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false, _replyToken);
         }
       },
-      stream: (function() {
-        var _seq = 0;
-        return {
+      stream: {
           text: function(chunk) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "text", data: chunk, seq: _seq++ }),
+                JSON.stringify({ type: "text", data: chunk }),
                 msg.correlationId, false, _replyToken);
             }
           },
           progress: function(value, message) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "progress", data: { value: value, message: message || "" }, seq: _seq++ }),
+                JSON.stringify({ type: "progress", data: { value: value, message: message || "" } }),
                 msg.correlationId, false, _replyToken);
             }
           },
           object: function(partial) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "object", data: partial, seq: _seq++ }),
+                JSON.stringify({ type: "object", data: partial }),
                 msg.correlationId, false, _replyToken);
             }
           },
           event: function(name, data) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "event", event: name, data: data || null, seq: _seq++ }),
+                JSON.stringify({ type: "event", event: name, data: data || null }),
                 msg.correlationId, false, _replyToken);
             }
           },
           error: function(message) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "error", data: { message: typeof message === "string" ? message : String(message) }, seq: _seq++ }),
+                JSON.stringify({ type: "error", data: { message: typeof message === "string" ? message : String(message) } }),
                 msg.correlationId, true, _replyToken);
             }
           },
           end: function(finalData) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
-                JSON.stringify({ type: "end", data: finalData || null, seq: _seq++ }),
+                JSON.stringify({ type: "end", data: finalData || null }),
                 msg.correlationId, true, _replyToken);
             }
           },
-        };
-      })(),
+        },
     };
     return msg;
   }

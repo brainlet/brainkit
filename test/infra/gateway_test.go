@@ -343,6 +343,8 @@ func TestGateway_SSEStreaming(t *testing.T) {
 	content := string(body)
 	assert.Contains(t, content, "event: text")
 	assert.Contains(t, content, "event: end")
+assert.Regexp(t, `id: [a-f0-9-]+:0`, content, "first event should have id with seq 0")
+	assert.Regexp(t, `id: [a-f0-9-]+:\d+`, content, "events should have id: token:seq format")
 }
 
 func TestGateway_SSEProgressAndEvents(t *testing.T) {
@@ -370,6 +372,7 @@ func TestGateway_SSEProgressAndEvents(t *testing.T) {
 	assert.Contains(t, content, "event: tool_start")
 	assert.Contains(t, content, "event: text")
 	assert.Contains(t, content, "event: end")
+assert.Regexp(t, `id: [a-f0-9-]+:\d+`, content, "events should have id: token:seq format")
 }
 
 func TestGateway_SSEErrorTerminates(t *testing.T) {
@@ -394,6 +397,7 @@ func TestGateway_SSEErrorTerminates(t *testing.T) {
 	assert.Contains(t, content, "event: text")
 	assert.Contains(t, content, "event: error")
 	assert.Contains(t, content, "something broke")
+assert.Regexp(t, `id: [a-f0-9-]+:\d+`, content, "error event should have id")
 }
 
 func TestGateway_ErrorResponse500(t *testing.T) {

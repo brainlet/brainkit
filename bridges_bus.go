@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -163,6 +164,16 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			if err := k.transport.Publisher.Publish(replyTo, wmsg); err != nil {
 				return k.throwBrainkitError(qctx, &sdkerrors.TransportError{Operation: "bus.reply", Cause: err})
 			}
+
+			// Stream heartbeat management — start on first stream message, stop on done
+			if done {
+				k.streamTracker.StopHeartbeat(replyTo)
+			} else if strings.Contains(payload, `"type"`) {
+				// Only start heartbeat for stream protocol messages (have "type" field).
+				// msg.stream.*() calls always include type, raw msg.send() calls don't.
+				k.streamTracker.StartHeartbeat(replyTo, correlationID)
+			}
+
 			return qctx.NewUndefined()
 		}))
 

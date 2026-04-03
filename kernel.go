@@ -64,6 +64,7 @@ type Kernel struct {
 	tracer              *tracing.Tracer
 	busRateLimiters      map[string]*rate.Limiter // role → limiter
 	replyHMACKey         []byte                   // 32-byte key for reply token HMAC; nil if RBAC not configured
+	streamTracker        *streamTracker           // heartbeat goroutine manager for active streams
 
 	// Internal Watermill transport — always present
 	transport      *messaging.Transport
@@ -497,6 +498,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.tracingDomain = newTracingDomain(cfg.TraceStore)
 	kernel.rbacAdminDomain = newRBACAdminDomain(kernel.rbac)
 	kernel.metricsDomain = newMetricsDomain(kernel)
+	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()
@@ -763,6 +765,11 @@ func (k *Kernel) close() error {
 	}
 	k.schedules = nil
 	k.mu.Unlock()
+
+	// Stop all stream heartbeat goroutines
+	if k.streamTracker != nil {
+		k.streamTracker.CloseAll()
+	}
 
 	var firstErr error
 	collect := func(err error) {
