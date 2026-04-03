@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
 // BusClient sends bus commands to a running brainkit instance over HTTP.
@@ -33,9 +32,7 @@ type busResponsePayload struct {
 func NewClient(baseURL string) *BusClient {
 	return &BusClient{
 		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		httpClient: &http.Client{},
 	}
 }
 

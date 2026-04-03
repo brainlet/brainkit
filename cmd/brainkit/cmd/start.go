@@ -108,8 +108,9 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), timeout)
-		defer cancel()
+		// Use the HTTP request context — inherits the client's timeout.
+		// No server-side timeout cap — the client controls how long to wait.
+		ctx := r.Context()
 
 		correlationID := uuid.NewString()
 		replyTo := req.Topic + ".reply." + correlationID
