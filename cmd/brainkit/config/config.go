@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ type MCPServerEntry struct {
 
 type CLIConfig struct {
 	Namespace   string                    `mapstructure:"namespace"`
+	EnvFile     string                    `mapstructure:"env_file"`
 	Transport   string                    `mapstructure:"transport"`
 	NATSURL     string                    `mapstructure:"nats_url"`
 	NATSName    string                    `mapstructure:"nats_name"`
@@ -58,7 +60,37 @@ func LoadConfig() (*CLIConfig, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	loadEnvFile(cfg.EnvFile)
 	return &cfg, nil
+}
+
+// loadEnvFile reads a .env file and sets environment variables.
+// If path is empty, tries .env in the current directory (silent if missing).
+func loadEnvFile(path string) {
+	if path == "" {
+		path = ".env"
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			// Don't override existing env vars
+			if os.Getenv(key) == "" {
+				os.Setenv(key, val)
+			}
+		}
+	}
 }
 
 func BuildNodeConfig(cfg *CLIConfig) (brainkit.NodeConfig, error) {

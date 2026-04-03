@@ -10,6 +10,10 @@ import (
 
 const initTemplate = `namespace: %s
 
+# Environment — loads .env file into os.Getenv before starting.
+# AI provider keys (OPENAI_API_KEY, etc.) are auto-detected from env.
+env_file: .env
+
 # Bus transport — how CLI commands communicate with the running instance
 # sql-sqlite works locally with no external deps. Use nats/redis/amqp for distributed.
 transport: sql-sqlite
