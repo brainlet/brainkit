@@ -185,11 +185,10 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 			// Drain remaining events from eventCh first (they may have arrived
 			// out of order from GoChannel), then write the terminal event.
 			if evt.isTerminal() || (evt.Type == "" && evt.isDoneMetadata()) {
-				// Brief yield to let any in-flight events from the same producer
-				// arrive in the channel. GoChannel may deliver end before preceding
-				// data events due to goroutine scheduling between Publish calls.
-				time.Sleep(5 * time.Millisecond)
-				// Drain pending non-terminal events
+				// Drain any data events that arrived out of order.
+				// Uses a timer-based drain: read from eventCh with a short
+				// deadline to catch in-flight events without blocking indefinitely.
+				drainTimer := time.NewTimer(10 * time.Millisecond)
 			drainLoop:
 				for {
 					select {
@@ -208,10 +207,19 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 						s.nextID++
 						s.eventCount++
 						s.mu.Unlock()
-					default:
+						// Reset timer — more events may follow
+						if !drainTimer.Stop() {
+							select {
+							case <-drainTimer.C:
+							default:
+							}
+						}
+						drainTimer.Reset(10 * time.Millisecond)
+					case <-drainTimer.C:
 						break drainLoop
 					}
 				}
+				drainTimer.Stop()
 
 				if evt.isTerminal() {
 					s.mu.Lock()
@@ -338,19 +346,30 @@ func (gw *Gateway) handleStream(w http.ResponseWriter, r *http.Request, matched 
 			w.Write([]byte(`{"error":"stream session expired","reason":"session_expired"}`))
 			return
 		}
-		// Check if another writer is already active
-		session.mu.RLock()
-		busy := session.hasWriter
-		session.mu.RUnlock()
-		if busy {
-			time.Sleep(100 * time.Millisecond)
-			session.mu.RLock()
-			busy = session.hasWriter
-			session.mu.RUnlock()
-			if busy {
-				http.Error(w, `{"error":"stream already has active writer"}`, http.StatusConflict)
-				return
+		// Wait for previous writer to exit (client disconnect in-flight)
+		writerReady := false
+		deadline := time.NewTimer(500 * time.Millisecond)
+		tick := time.NewTicker(10 * time.Millisecond)
+	waitWriter:
+		for {
+			select {
+			case <-tick.C:
+				session.mu.RLock()
+				busy := session.hasWriter
+				session.mu.RUnlock()
+				if !busy {
+					writerReady = true
+					break waitWriter
+				}
+			case <-deadline.C:
+				break waitWriter
 			}
+		}
+		tick.Stop()
+		deadline.Stop()
+		if !writerReady {
+			http.Error(w, `{"error":"stream already has active writer"}`, http.StatusConflict)
+			return
 		}
 		session.replayAndResume(w, flusher, r, lastSeq)
 		return
