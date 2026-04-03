@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/brainlet/brainkit"
 	"github.com/spf13/cobra"
 )
 
@@ -39,12 +40,12 @@ var newModuleCmd = &cobra.Command{
   }
 }
 `, name),
-			"hello.ts": fmt.Sprintf(`import { bus, kit } from "kit";
+			"hello.ts": `import { bus, kit } from "kit";
 
 bus.on("greet", (msg) => {
   msg.reply({ message: "Hello from " + kit.source });
 });
-`),
+`,
 			"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2020",
@@ -55,17 +56,19 @@ bus.on("greet", (msg) => {
       "kit": ["./types/kit.d.ts"],
       "ai": ["./types/ai.d.ts"],
       "agent": ["./types/agent.d.ts"],
-      "test": ["./types/test.d.ts"]
+      "brainkit": ["./types/brainkit.d.ts"],
+      "globals": ["./types/globals.d.ts"]
     }
   },
   "include": ["*.ts"],
   "exclude": ["types"]
 }
 `,
-			filepath.Join("types", "kit.d.ts"):   kitDTS,
-			filepath.Join("types", "ai.d.ts"):    aiDTS,
-			filepath.Join("types", "agent.d.ts"):  agentDTS,
-			filepath.Join("types", "test.d.ts"):   testDTS,
+			filepath.Join("types", "kit.d.ts"):      brainkit.KitDTS,
+			filepath.Join("types", "ai.d.ts"):       brainkit.AiDTS,
+			filepath.Join("types", "agent.d.ts"):     brainkit.AgentDTS,
+			filepath.Join("types", "brainkit.d.ts"):  brainkit.BrainkitDTS,
+			filepath.Join("types", "globals.d.ts"):   brainkit.GlobalsDTS,
 		}
 
 		for path, content := range files {
@@ -82,7 +85,8 @@ bus.on("greet", (msg) => {
 		fmt.Println("  types/kit.d.ts")
 		fmt.Println("  types/ai.d.ts")
 		fmt.Println("  types/agent.d.ts")
-		fmt.Println("  types/test.d.ts")
+		fmt.Println("  types/brainkit.d.ts")
+		fmt.Println("  types/globals.d.ts")
 		fmt.Printf("\nDeploy: brainkit deploy %s/\n", dir)
 		return nil
 	},

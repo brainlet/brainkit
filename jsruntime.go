@@ -43,6 +43,22 @@ var resolveJS string
 //go:embed runtime/bus.js
 var busJS string
 
+// Type definitions — embedded for CLI scaffolding (brainkit new module)
+//go:embed runtime/kit.d.ts
+var KitDTS string
+
+//go:embed runtime/ai.d.ts
+var AiDTS string
+
+//go:embed runtime/agent.d.ts
+var AgentDTS string
+
+//go:embed runtime/brainkit.d.ts
+var BrainkitDTS string
+
+//go:embed runtime/globals.d.ts
+var GlobalsDTS string
+
 const fsPromisesModuleJS = `export const readFile = globalThis.fs.promises.readFile;
 export const writeFile = globalThis.fs.promises.writeFile;
 export const appendFile = globalThis.fs.promises.appendFile;
