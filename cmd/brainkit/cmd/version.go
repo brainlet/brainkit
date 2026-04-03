@@ -11,19 +11,17 @@ var (
 	Commit  = "unknown"
 )
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print brainkit version",
-	Run: func(cmd *cobra.Command, args []string) {
-		if jsonOutput {
-			fmt.Printf(`{"version":"%s","commit":"%s"}`, Version, Commit)
-			fmt.Println()
-		} else {
-			fmt.Printf("brainkit version %s (commit %s)\n", Version, Commit)
-		}
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print brainkit version",
+		Run: func(cmd *cobra.Command, args []string) {
+			if jsonOutput {
+				cmd.Printf(`{"version":"%s","commit":"%s"}`, Version, Commit)
+				cmd.Println()
+			} else {
+				cmd.Println(fmt.Sprintf("brainkit version %s (commit %s)", Version, Commit))
+			}
+		},
+	}
 }

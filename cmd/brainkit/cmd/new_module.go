@@ -9,30 +9,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var newModuleDir string
+func newModuleSubCmd() *cobra.Command {
+	var newModuleDir string
 
-var newModuleCmd = &cobra.Command{
-	Use:   "module <name>",
-	Short: "Scaffold a .ts module project",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
-		dir := newModuleDir
-		if dir == "" {
-			dir = name
-		}
+	c := &cobra.Command{
+		Use:   "module <name>",
+		Short: "Scaffold a .ts module project",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			dir := newModuleDir
+			if dir == "" {
+				dir = name
+			}
+			if _, err := os.Stat(dir); err == nil {
+				return fmt.Errorf("directory %s already exists", dir)
+			}
+			typesDir := filepath.Join(dir, "types")
+			if err := os.MkdirAll(typesDir, 0755); err != nil {
+				return fmt.Errorf("create directory: %w", err)
+			}
 
-		if _, err := os.Stat(dir); err == nil {
-			return fmt.Errorf("directory %s already exists", dir)
-		}
-
-		typesDir := filepath.Join(dir, "types")
-		if err := os.MkdirAll(typesDir, 0755); err != nil {
-			return fmt.Errorf("create directory: %w", err)
-		}
-
-		files := map[string]string{
-			"manifest.json": fmt.Sprintf(`{
+			files := map[string]string{
+				"manifest.json": fmt.Sprintf(`{
   "name": "%s",
   "version": "0.1.0",
   "services": {
@@ -40,13 +39,13 @@ var newModuleCmd = &cobra.Command{
   }
 }
 `, name),
-			"hello.ts": `import { bus, kit } from "kit";
+				"hello.ts": `import { bus, kit } from "kit";
 
 bus.on("greet", (msg) => {
   msg.reply({ message: "Hello from " + kit.source });
 });
 `,
-			"tsconfig.json": `{
+				"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
@@ -65,35 +64,33 @@ bus.on("greet", (msg) => {
   "include": ["*.ts", "./types/globals.d.ts"]
 }
 `,
-			filepath.Join("types", "kit.d.ts"):      brainkit.KitDTS,
-			filepath.Join("types", "ai.d.ts"):       brainkit.AiDTS,
-			filepath.Join("types", "agent.d.ts"):     brainkit.AgentDTS,
-			filepath.Join("types", "brainkit.d.ts"):  brainkit.BrainkitDTS,
-			filepath.Join("types", "globals.d.ts"):   brainkit.GlobalsDTS,
-		}
-
-		for path, content := range files {
-			fullPath := filepath.Join(dir, path)
-			if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-				return fmt.Errorf("write %s: %w", path, err)
+				filepath.Join("types", "kit.d.ts"):     brainkit.KitDTS,
+				filepath.Join("types", "ai.d.ts"):      brainkit.AiDTS,
+				filepath.Join("types", "agent.d.ts"):    brainkit.AgentDTS,
+				filepath.Join("types", "brainkit.d.ts"): brainkit.BrainkitDTS,
+				filepath.Join("types", "globals.d.ts"):  brainkit.GlobalsDTS,
 			}
-		}
 
-		fmt.Printf("Created module %s in %s/\n", name, dir)
-		fmt.Println("  manifest.json")
-		fmt.Println("  hello.ts")
-		fmt.Println("  tsconfig.json")
-		fmt.Println("  types/kit.d.ts")
-		fmt.Println("  types/ai.d.ts")
-		fmt.Println("  types/agent.d.ts")
-		fmt.Println("  types/brainkit.d.ts")
-		fmt.Println("  types/globals.d.ts")
-		fmt.Printf("\nDeploy: brainkit deploy %s/\n", dir)
-		return nil
-	},
-}
+			for path, content := range files {
+				fullPath := filepath.Join(dir, path)
+				if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+					return fmt.Errorf("write %s: %w", path, err)
+				}
+			}
 
-func init() {
-	newModuleCmd.Flags().StringVar(&newModuleDir, "dir", "", "output directory (default: ./<name>)")
-	newCmd.AddCommand(newModuleCmd)
+			cmd.Printf("Created module %s in %s/\n", name, dir)
+			cmd.Println("  manifest.json")
+			cmd.Println("  hello.ts")
+			cmd.Println("  tsconfig.json")
+			cmd.Println("  types/kit.d.ts")
+			cmd.Println("  types/ai.d.ts")
+			cmd.Println("  types/agent.d.ts")
+			cmd.Println("  types/brainkit.d.ts")
+			cmd.Println("  types/globals.d.ts")
+			cmd.Printf("\nDeploy: brainkit deploy %s/\n", dir)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&newModuleDir, "dir", "", "output directory (default: ./<name>)")
+	return c
 }

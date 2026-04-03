@@ -32,24 +32,22 @@ fs_root: ./workspace
 store_path: ./data/store.db
 `
 
-var initCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Create a brainkit.yaml config file",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		path := "brainkit.yaml"
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("%s already exists", path)
-		}
-		ns := config.DefaultNamespace()
-		content := fmt.Sprintf(initTemplate, ns)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return err
-		}
-		fmt.Printf("Created %s (namespace: %s)\n", path, ns)
-		return nil
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(initCmd)
+func newInitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init",
+		Short: "Create a brainkit.yaml config file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := "brainkit.yaml"
+			if _, err := os.Stat(path); err == nil {
+				return fmt.Errorf("%s already exists", path)
+			}
+			ns := config.DefaultNamespace()
+			content := fmt.Sprintf(initTemplate, ns)
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				return err
+			}
+			cmd.Printf("Created %s (namespace: %s)\n", path, ns)
+			return nil
+		},
+	}
 }

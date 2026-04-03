@@ -4,16 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/brainlet/brainkit/cmd/brainkit/config"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/spf13/cobra"
 )
 
-// connectAndPublish connects to the running instance, publishes a typed message,
-// waits for the response, and calls format to print it.
-func connectAndPublish[Req messages.BrainkitMessage, Resp any](req Req, format func(*Resp)) error {
+func connectAndPublish[Req messages.BrainkitMessage, Resp any](cmd *cobra.Command, req Req, format func(*Resp)) error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return err
@@ -30,7 +29,7 @@ func connectAndPublish[Req messages.BrainkitMessage, Resp any](req Req, format f
 	}
 
 	if jsonOutput {
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		return enc.Encode(resp)
 	}
@@ -38,7 +37,6 @@ func connectAndPublish[Req messages.BrainkitMessage, Resp any](req Req, format f
 	return nil
 }
 
-// busRequest publishes a typed bus command and waits for the typed response.
 func busRequest[Req messages.BrainkitMessage, Resp any](rt sdk.Runtime, req Req) (*Resp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -73,4 +71,9 @@ func busRequest[Req messages.BrainkitMessage, Resp any](rt sdk.Runtime, req Req)
 	case <-ctx.Done():
 		return nil, fmt.Errorf("no response within %s. Is `brainkit start` running?", timeout)
 	}
+}
+
+// w is a shorthand to get the command's output writer for tabwriter etc.
+func w(cmd *cobra.Command) io.Writer {
+	return cmd.OutOrStdout()
 }
