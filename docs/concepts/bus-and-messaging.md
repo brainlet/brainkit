@@ -30,13 +30,20 @@ Each command has a topic (from `BusTopic()` on the message type), a decoder, and
 |--------|--------|---------|
 | `tools.*` | call, resolve, list | ToolsDomain |
 | `agents.*` | list, discover, get-status, set-status | AgentsDomain |
-| `fs.*` | read, write, list, stat, delete, mkdir | FSDomain |
-| `wasm.*` | compile, run, deploy, undeploy, list, get, remove, describe | WASMDomain |
-| `kit.*` | deploy, teardown, redeploy, list | LifecycleDomain |
-| `mcp.*` | listTools, callTool | MCPDomain |
-| `registry.*` | has, list, resolve | RegistryDomain |
-| `plugin.manifest` | (Node only) | processPluginManifest |
-| `plugin.state.*` | get, set (Node only) | pluginState |
+| `kit.*` | deploy, teardown, redeploy, list, deploy.file | LifecycleDomain |
+| `workflow.*` | start, startAsync, status, resume, cancel, list, runs, restart | Catalog (inline JS eval) |
+| `mcp.*` | listTools, callTool | Catalog (inline) |
+| `registry.*` | has, list, resolve | Catalog (inline) |
+| `secrets.*` | set, get, delete, list, rotate | SecretsDomain |
+| `packages.*` | search, install, remove, update, list, info | PackagesDomain |
+| `package.*` | deploy, teardown, redeploy, list, info | PackageDeployDomain |
+| `metrics.get` | | Catalog (inline) |
+| `trace.*` | get, list | Catalog (inline) |
+| `rbac.*` | assign, revoke, list, roles | Catalog (inline) |
+| `peers.*` | list, resolve (Node only) | Catalog (inline) |
+| `test.run` | | TestingDomain |
+| `plugin.*` | manifest, state.get, state.set, start, stop, restart, list, status (Node only) | PluginLifecycleDomain |
+| `gateway.http.*` | route.add, route.remove, route.list, status | Gateway (bus subscriber) |
 
 Topics NOT in the catalog are user-defined — `.ts` services use `bus.on("topic")` to create mailbox handlers, WASM shards register handlers via `bus_on`, and Go code can subscribe with `sdk.SubscribeTo`. These bypass the catalog entirely.
 
@@ -69,7 +76,7 @@ func (i *LocalInvoker) Invoke(ctx context.Context, topic string, payload json.Ra
 }
 ```
 
-WASM's `bus_publish` host function also uses the LocalInvoker for catalog commands before falling back to the transport for non-catalog topics.
+Workflow bus commands use `kernel.EvalTS()` to call Mastra's Workflow APIs via the JS registry — the Go catalog handler generates JS code that calls `workflow.createRun()`, `run.start()`, `run.resume()`, etc.
 
 ## The Async Pattern
 
@@ -210,31 +217,9 @@ bus.on("localTopic", handler);  // subscribes to ts.<source>.<localTopic>
 // Send to another .ts service
 bus.sendTo("other-service.ts", "topic", data);
 
-// Send to a WASM shard
-bus.sendToShard("shard-name", "topic", data);
-
 // Unsubscribe
 bus.unsubscribe(subId);
 ```
 
 Each of these calls a Go bridge function (`__go_brainkit_bus_publish`, `__go_brainkit_bus_emit`, etc.) which interacts with the Kernel's RemoteClient and transport.
 
-## The WASM Bus API
-
-From AssemblyScript shards, the bus is accessed via host functions:
-
-```assemblyscript
-// Publish with callback (async pattern — callback is an exported function name)
-_busPublish("tools.call", '{"name":"echo"}', "onResult");
-
-// Fire-and-forget
-_busEmit("event.happened", '{"data":"value"}');
-
-// Subscribe (init phase only)
-_busOn("my-topic", "handleMyTopic");
-
-// Reply to current inbound message
-_reply('{"result":"ok"}');
-```
-
-`_busPublish` uses the LocalInvoker for catalog commands (instant, in-process) and falls back to the transport for user-defined topics (async, with replyTo and callback delivery).

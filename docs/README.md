@@ -1,6 +1,6 @@
 # Brainkit Documentation
 
-Brainkit is the execution engine for [Brainlet](https://github.com/brainlet/brainlet). A Kit is a self-contained environment — one QuickJS runtime with Mastra + AI SDK + polyfills loaded, plus Go services (bus, tool registry, WASM, storage, plugins, networking). All agents, AI calls, workflows, and `.ts` code run inside a Kit.
+Brainkit is an embeddable Go runtime for AI agents. A Kit is a self-contained environment — one QuickJS runtime with Mastra + AI SDK + polyfills loaded, plus Go services (bus, tool registry, storage, plugins, networking). All agents, AI calls, workflows, and `.ts` code run inside a Kit.
 
 ## Architecture
 
@@ -9,8 +9,8 @@ Brainkit is the execution engine for [Brainlet](https://github.com/brainlet/brai
 - **Deployment**: `Kit.Deploy(ctx, source, code)` deploys code in an isolated compartment. `Kit.Teardown(ctx, source)` removes the compartment and all its resources (bus subscriptions, registered agents/tools). `Kit.Redeploy(ctx, source, code)` does an atomic swap (teardown + deploy).
 - **Plugin SDK**: Registration-based (`sdk.New` + `sdk.Tool` + `sdk.On` + `sdk.Event`). Out-of-process gRPC. Auto-restart, backpressure, stream recovery, interceptors. Plugin manifest files deploy in Compartments.
 - **Tool Registry**: `owner/pkg@version/tool` naming with 5-level resolution (exact → no-owner → no-version → bare → short name).
-- **WASM Shards**: Two modes (stateless/persistent). 10 host functions. AssemblyScript library with typed namespace functions.
-- **Agent Registry**: 8 bus topics for agent lifecycle (register, discover, request, message, status). Agents auto-unregister and clean up bus subscriptions on teardown.
+- **Workflows**: Mastra workflow engine with bus commands for lifecycle (start, resume, cancel, restart). Snapshots persist to configured storage. Crash recovery via `restartAllActiveWorkflowRuns()` on startup.
+- **Agent Registry**: Bus topics for agent lifecycle (list, discover, status). Agents auto-unregister and clean up bus subscriptions on teardown.
 - **Networking**: Kit-to-Kit over gRPC. Discovery (Static + Multicast LAN). NATS as alternative transport. On `Kit.Close()`, the network stops before the bridge closes to prevent in-flight message errors.
 - **Scaling**: InstanceManager with pools. Worker group competing consumers. Static + Threshold strategies.
 
@@ -24,7 +24,7 @@ Conceptual documentation — what things are, when to use them, how to choose.
 - [Evals](guides/evals.md) — Scorers, batch evaluation with runEvals(), pre-built scorers (rule-based + LLM).
 - [Processors](guides/processors.md) — Built-in input/output middleware: security, PII, moderation, token limiting, tool search.
 - [Harness](guides/harness.md) — Orchestrator for agent execution, threads, modes, tool approval, events, display state.
-- [WASM](guides/wasm.md) — WASM shard model, deployment, host functions, AS library.
+- [Storage](guides/storage-and-memory.md) — Storage backends, agent memory, vectors, workflow persistence.
 
 ## API Reference
 
@@ -33,7 +33,6 @@ Technical reference — Go config structs, TypeScript constructors, method signa
 - [Storage API](api/storage/README.md) — `StorageConfig`, `LibSQLStore`, `LibSQLVector`, `AddStorage`/`RemoveStorage`
 - [Workspace API](api/workspace/README.md) — `Workspace`, `LocalFilesystem`, `LocalSandbox`, search, tools config, LSP
 - [Harness API](api/harness/README.md) — `HarnessConfig`, `InitHarness`, 48 methods, 41 events, display state, permissions
-- [WASM API](api/wasm/README.md) — Compile, run, deploy, undeploy, shard descriptors, host functions
 
 ## Deployment
 
@@ -83,14 +82,21 @@ All operations flow through the bus. Current handlers:
 
 | Namespace | Topics | Handler |
 |-----------|--------|---------|
-| `wasm.*` | compile, run, deploy, undeploy, list, get, remove, describe | WASM service |
-| `tools.*` | call, list, resolve, register | Tool registry |
-| `agents.*` | register, unregister, list, discover, get-status, set-status, request, message | Agent registry |
+| `tools.*` | call, list, resolve | Tool registry |
+| `agents.*` | list, discover, get-status, set-status | Agent registry |
+| `kit.*` | deploy, teardown, redeploy, list, deploy.file | Compartment lifecycle |
+| `workflow.*` | start, startAsync, status, resume, cancel, list, runs, restart | Mastra workflows |
 | `mcp.*` | listTools, callTool | MCP manager |
-| `fs.*` | read, write, list, stat, delete, mkdir | Go-native (sandboxed) |
-| `ai.*` | generate, embed, embedMany, generateObject | EvalTS → Mastra |
-| `plugin.state.*` | get, set | Plugin state persistence |
-| `kit.*` | deploy, teardown, redeploy, list | Compartment lifecycle |
-| `memory.*` | createThread, getThread, listThreads, save, recall, deleteThread | Thread/message storage |
+| `secrets.*` | set, get, delete, list, rotate | Secret management |
+| `registry.*` | has, list, resolve | Provider registry |
+| `packages.*` | search, install, remove, update, list, info | Package manager |
+| `package.*` | deploy, teardown, redeploy, list, info | Package deployment |
+| `plugin.*` | manifest, state.get/set, start, stop, restart, list, status | Plugin lifecycle |
+| `rbac.*` | assign, revoke, list, roles | RBAC administration |
+| `metrics.get` | | Kernel metrics |
+| `trace.*` | get, list | Distributed tracing |
+| `test.run` | | Test framework |
+| `peers.*` | list, resolve | Peer discovery |
+| `gateway.http.*` | route.add/remove/list, status | HTTP gateway |
 | `workflows.*` | run, resume, cancel, status | Workflow execution |
 | `vectors.*` | upsert, query, createIndex, deleteIndex, listIndexes | Vector store operations |

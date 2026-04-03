@@ -34,7 +34,6 @@ func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler f
 func Reply(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
 func SendChunk(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
 func SendToService(rt Runtime, ctx context.Context, service, topic string, payload any, opts ...PublishOption) (PublishResult, error)
-func SendToShard(rt Runtime, ctx context.Context, shard, topic string, payload any, opts ...PublishOption) (PublishResult, error)
 func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
@@ -55,12 +54,22 @@ func WithReplyTo(topic string) PublishOption
 ## Error Types
 
 ```go
-// sdk/errors.go — check with errors.As
-type NotFoundError struct { Resource, Name string }
-type AlreadyExistsError struct { Resource, Name, Hint string }
-type ValidationError struct { Field, Message string }
-type TimeoutError struct { Operation string }
-type WorkspaceEscapeError struct { Path string }
+// sdk/errors.go — check with errors.As (all implement BrainkitError with Code() + Details())
+type NotFoundError struct { Resource, Name string }              // NOT_FOUND
+type AlreadyExistsError struct { Resource, Name, Hint string }   // ALREADY_EXISTS
+type ValidationError struct { Field, Message string }            // VALIDATION_ERROR
+type TimeoutError struct { Operation string }                    // TIMEOUT
+type WorkspaceEscapeError struct { Path string }                 // WORKSPACE_ESCAPE
+type PermissionDeniedError struct { Source, Action, Topic, Role string } // PERMISSION_DENIED
+type RateLimitedError struct { Role string; Limit float64 }      // RATE_LIMITED
+type NotConfiguredError struct { Feature string }                 // NOT_CONFIGURED
+type TransportError struct { Operation string; Cause error }     // TRANSPORT_ERROR
+type PersistenceError struct { Operation, Source string; Cause error } // PERSISTENCE_ERROR
+type DeployError struct { Source, Phase string; Cause error }    // DEPLOY_ERROR
+type BridgeError struct { Function string; Cause error }         // BRIDGE_ERROR
+type CycleDetectedError struct { Depth int }                     // CYCLE_DETECTED
+type DecodeError struct { Topic string; Cause error }            // DECODE_ERROR
+type ReplyDeniedError struct { Source, ReplyTo, CorrelationID string } // REPLY_DENIED
 
 // Sentinels — check with errors.Is
 var ErrNoReplyTo error          // message has no replyTo
@@ -91,7 +100,7 @@ type Message struct {
 ### ResultMeta (embedded in all response types)
 
 ```go
-type ResultMeta struct { Error string `json:"error,omitempty"` }
+type ResultMeta struct { Error string `json:"error,omitempty"`; Code string `json:"code,omitempty"`; Details map[string]any `json:"details,omitempty"` }
 func (m *ResultMeta) SetError(err string)
 func (m ResultMeta) ResultError() string
 func ResultErrorOf(v any) string
@@ -153,47 +162,27 @@ type ResourceInfo struct { Type, ID, Name, Source string; CreatedAt int64 }
 type DeploymentInfo struct { Source, CreatedAt string; Resources []ResourceInfo }
 ```
 
-### Filesystem
+### Workflow
 
 ```go
-type FsReadMsg struct { Path string }                          // fs.read
-type FsWriteMsg struct { Path, Data string }                   // fs.write
-type FsListMsg struct { Path, Pattern string }                 // fs.list
-type FsStatMsg struct { Path string }                          // fs.stat
-type FsDeleteMsg struct { Path string }                        // fs.delete
-type FsMkdirMsg struct { Path string }                         // fs.mkdir
+type WorkflowStartMsg struct { Name string; InputData json.RawMessage }           // workflow.start
+type WorkflowStartAsyncMsg struct { Name string; InputData json.RawMessage }      // workflow.startAsync
+type WorkflowStatusMsg struct { Name, RunID string }                               // workflow.status
+type WorkflowResumeMsg struct { Name, RunID, Step string; ResumeData json.RawMessage } // workflow.resume
+type WorkflowCancelMsg struct { Name, RunID string }                               // workflow.cancel
+type WorkflowListMsg struct{}                                                      // workflow.list
+type WorkflowRunsMsg struct { Name, Status string }                                // workflow.runs
+type WorkflowRestartMsg struct { Name, RunID string }                              // workflow.restart
 
-type FsReadResp struct { ResultMeta; Data string }
-type FsWriteResp struct { ResultMeta; OK bool }
-type FsListResp struct { ResultMeta; Files []FsFileInfo }
-type FsStatResp struct { ResultMeta; Size int64; IsDir bool; ModTime string }
-type FsDeleteResp struct { ResultMeta; OK bool }
-type FsMkdirResp struct { ResultMeta; OK bool }
-type FsFileInfo struct { Name string; Size int64; IsDir bool }
-```
-
-### WASM
-
-```go
-type WasmCompileMsg struct { Source string; Options *WasmCompileOpts }  // wasm.compile
-type WasmRunMsg struct { ModuleID string; Input any }                    // wasm.run
-type WasmDeployMsg struct { Name string }                                // wasm.deploy
-type WasmUndeployMsg struct { Name string }                              // wasm.undeploy
-type WasmListMsg struct{}                                                // wasm.list
-type WasmGetMsg struct { Name string }                                   // wasm.get
-type WasmRemoveMsg struct { Name string }                                // wasm.remove
-type WasmDescribeMsg struct { Name string }                              // wasm.describe
-
-type WasmCompileOpts struct { Name, Runtime string }
-type WasmCompileResp struct { ResultMeta; ModuleID, Name, Text string; Size int; Exports []string }
-type WasmRunResp struct { ResultMeta; ExitCode int; Value any }
-type WasmDeployResp struct { ResultMeta; Module, Mode string; Handlers map[string]string }
-type WasmUndeployResp struct { ResultMeta; Undeployed bool }
-type WasmListResp struct { ResultMeta; Modules []WasmModuleInfo }
-type WasmGetResp struct { ResultMeta; Module *WasmModuleInfo }
-type WasmRemoveResp struct { ResultMeta; Removed bool }
-type WasmDescribeResp struct { ResultMeta; Module, Mode string; Handlers map[string]string }
-type WasmModuleInfo struct { Name string; Size int; Exports []string; CompiledAt, SourceHash string }
+type WorkflowStartResp struct { ResultMeta; RunID, Status string; Steps json.RawMessage }
+type WorkflowStartAsyncResp struct { ResultMeta; RunID string }
+type WorkflowStatusResp struct { ResultMeta; RunID, Status string; Steps json.RawMessage }
+type WorkflowResumeResp struct { ResultMeta; Status string; Steps json.RawMessage }
+type WorkflowCancelResp struct { ResultMeta; Cancelled bool }
+type WorkflowListResp struct { ResultMeta; Workflows []WorkflowInfo }
+type WorkflowRunsResp struct { ResultMeta; Runs json.RawMessage; Total int }
+type WorkflowRestartResp struct { ResultMeta; Status string; Steps json.RawMessage }
+type WorkflowInfo struct { Name, Source string; HasInput, HasOutput bool }
 ```
 
 ### MCP

@@ -13,20 +13,14 @@ console.warn("slow query"); // [my-service.ts] [warn] slow query
 console.error("failed");    // [my-service.ts] [error] failed
 ```
 
-WASM shards also emit tagged logs:
-
-```assemblyscript
-_log("processing order");   // [wasm:my-shard] [info] processing order
-```
-
 ### LogHandler
 
 By default, logs go to `log.Printf`. Override with a custom handler:
 
 ```go
-k, err := kit.NewKernel(kit.KernelConfig{
-    LogHandler: func(entry kit.LogEntry) {
-        // entry.Source:  "my-service.ts" or "wasm:my-shard" or "kernel"
+k, err := brainkit.NewKernel(brainkit.KernelConfig{
+    LogHandler: func(entry brainkit.LogEntry) {
+        // entry.Source:  "my-service.ts" or "kernel"
         // entry.Level:   "log", "warn", "error", "debug", "info"
         // entry.Message: the log text
         // entry.Time:    time.Time
@@ -47,7 +41,6 @@ k, err := kit.NewKernel(kit.KernelConfig{
 | Source format | Origin |
 |---------------|--------|
 | `my-service.ts` | .ts Compartment console.log/warn/error |
-| `wasm:my-shard` | WASM shard _log() calls |
 | `kernel` | Internal Kernel operations |
 
 ## Observability (Mastra Tracing)

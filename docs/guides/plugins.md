@@ -1,6 +1,6 @@
 # Plugins
 
-Plugins are separate Go processes that connect to a Kit over an external transport (NATS). They register tools, subscribe to events, and communicate through the same bus as .ts services and WASM shards.
+Plugins are separate Go processes that connect to a Kit over an external transport (NATS). They register tools, subscribe to events, and communicate through the same bus as .ts services.
 
 ## Building a Plugin
 
@@ -170,13 +170,13 @@ State is stored per-plugin (keyed by plugin identity). Storage backend:
 When the host receives a plugin's manifest, it registers each tool in the shared tool registry with an executor that routes calls through the bus:
 
 ```
-Go/TS/WASM calls "echo" tool
+Go/TS calls "echo" tool
   → ToolsDomain.Call resolves to plugin tool
   → Publishes to "plugin.tool.acme/my-plugin@1.0.0/echo"
   → Plugin's router handles it
   → Plugin calls handleEcho
   → Plugin publishes result to "plugin.tool.acme/my-plugin@1.0.0/echo.result"
-  → Go/TS/WASM receives result
+  → Go/TS receives result
 ```
 
 Plugin tools appear in `tools.list` alongside Go-registered and .ts-registered tools. The naming convention is `owner/package@version/tool` — e.g., `acme/my-plugin@1.0.0/echo`. Resolution supports short names: `tools.call("echo")` finds it if there's no ambiguity.

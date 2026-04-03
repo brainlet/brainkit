@@ -4,7 +4,7 @@ brainkit uses typed errors for conditions that callers need to handle semantical
 
 ## Error Types
 
-Five error types in `sdk/errors.go` (backed by `internal/sdkerrors/errors.go` to avoid import cycles):
+15 error types in `sdk/errors.go` (backed by `internal/sdkerrors/errors.go` to avoid import cycles). All implement `BrainkitError` interface with `Code() string` and `Details() map[string]any`:
 
 ### NotFoundError
 

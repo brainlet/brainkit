@@ -1,6 +1,6 @@
 # MCP Integration
 
-brainkit connects to MCP (Model Context Protocol) servers and registers their tools in the shared tool registry. MCP tools become callable from Go, .ts, WASM, and plugins — same as any other tool.
+brainkit connects to MCP (Model Context Protocol) servers and registers their tools in the shared tool registry. MCP tools become callable from Go, .ts, and plugins — same as any other tool.
 
 ## Configuration
 

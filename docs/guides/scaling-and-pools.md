@@ -25,7 +25,7 @@ err := im.SpawnPool("workers", kit.PoolConfig{
 })
 ```
 
-Each instance is a full Node with its own Kernel (QuickJS runtime, WASM service, tool registry). Instances in the same pool share a `ToolRegistry` — tools registered on one are visible on all.
+Each instance is a full Node with its own Kernel (QuickJS runtime, tool registry). Instances in the same pool share a `ToolRegistry` — tools registered on one are visible on all.
 
 ## Manual Scaling
 
@@ -195,6 +195,6 @@ _, err := im.PoolInfo("nonexistent") // NotFoundError{Resource: "pool", Name: "n
 
 ## Memory Considerations
 
-Each Kit instance has its own QuickJS heap (~256MB address space, ~50-80MB actual with Mastra bundle). A pool of 5 instances uses ~400MB actual memory. If WASM compilation is used, the AS compiler adds another ~512MB per instance (lazy — only when `wasm.compile` is called).
+Each Kit instance has its own QuickJS heap (~256MB address space, ~50-80MB actual with Mastra bundle). A pool of 5 instances uses ~400MB actual memory.
 
 For memory-constrained environments, consider using `SharedTools` to avoid duplicate tool registrations, and keep `Max` bounded.

@@ -191,3 +191,76 @@ The HITL fixture (`fixtures/ts/agent/hitl-bus-approval/index.ts`) tests the full
 ```bash
 go test ./test/fixtures/ -run 'TestTSFixturesE2E/agent/hitl-bus-approval' -v
 ```
+
+## Workflow-Level HITL (Suspend/Resume)
+
+Separate from agent HITL, Mastra workflows support suspend/resume for human-in-the-loop patterns. A workflow step calls `await suspend()` to pause execution, and an external caller sends `workflow.resume` via the bus to continue.
+
+### From .ts — workflow with suspend
+
+```typescript
+const reviewStep = createStep({
+    id: "review",
+    inputSchema: z.object({ documentId: z.string() }),
+    resumeSchema: z.object({ approved: z.boolean(), reviewer: z.string() }),
+    suspendSchema: z.object({ reason: z.string(), documentId: z.string() }),
+    outputSchema: z.object({ status: z.string(), reviewedBy: z.string() }),
+    execute: async ({ inputData, resumeData, suspend }) => {
+        if (!resumeData) {
+            // Notify external callers that approval is needed
+            bus.emit("approvals.needed", {
+                workflowName: "doc-review",
+                documentId: inputData.documentId,
+            });
+            return await suspend({
+                reason: "Document needs review",
+                documentId: inputData.documentId,
+            });
+        }
+        return {
+            status: resumeData.approved ? "approved" : "rejected",
+            reviewedBy: resumeData.reviewer,
+        };
+    },
+});
+
+const wf = createWorkflow({
+    id: "doc-review",
+    inputSchema: z.object({ documentId: z.string() }),
+    outputSchema: z.object({ status: z.string(), reviewedBy: z.string() }),
+}).then(reviewStep).commit();
+kit.register("workflow", "doc-review", wf);
+```
+
+### Resuming from Go
+
+```go
+sdk.Publish(k, ctx, messages.WorkflowResumeMsg{
+    Name:       "doc-review",
+    RunID:      runId,
+    Step:       "review",
+    ResumeData: json.RawMessage(`{"approved": true, "reviewer": "alice@corp.com"}`),
+})
+```
+
+### Resuming from .ts
+
+```typescript
+bus.publish("workflow.resume", {
+    name: "doc-review",
+    runId: runId,
+    step: "review",
+    resumeData: { approved: true, reviewer: "alice@corp.com" },
+});
+```
+
+### Key Differences from Agent HITL
+
+| | Agent HITL | Workflow HITL |
+|---|---|---|
+| Mechanism | `generateWithApproval` | `suspend()` + `workflow.resume` |
+| What suspends | A single tool call | A workflow step |
+| Resume data | `{approved: bool}` | Any shape (per `resumeSchema`) |
+| Bus lifecycle | Go bridge handles publish/subscribe/timeout | Workflow author controls notification |
+| Timeout | Built-in (Go context.WithTimeout) | No built-in timeout — stays suspended until resumed |
+| Persistence | In-memory only | Snapshot persisted to storage — survives Kernel restart |

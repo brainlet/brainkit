@@ -103,27 +103,60 @@ interface StepConfig {
     id: string;
     inputSchema: ZodType;
     outputSchema: ZodType;
-    execute: (ctx: { inputData: any; suspend?: (data: any) => Promise<void> }) => Promise<any>;
+    resumeSchema?: ZodType;
+    suspendSchema?: ZodType;
+    stateSchema?: ZodType;
+    execute: (ctx: {
+        inputData: any;
+        resumeData?: any;
+        suspendData?: any;
+        suspend: (data?: any) => Promise<void>;
+        state: any;
+        setState: (state: any) => Promise<void>;
+        getInitData: () => any;
+        getStepResult: (stepId: string) => any;
+    }) => Promise<any>;
+}
+
+interface WorkflowConfig {
+    id: string;
+    inputSchema: ZodType;
+    outputSchema: ZodType;
+    stateSchema?: ZodType;
+    retryConfig?: { attempts?: number; delay?: number };
 }
 
 interface WorkflowBuilder {
     then(step: Step): WorkflowBuilder;
     branch(conditions: [predicate, Step][]): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
+    sleep(durationMsOrFn: number | ((ctx: any) => number)): WorkflowBuilder;
+    sleepUntil(dateOrFn: Date | ((ctx: any) => Date)): WorkflowBuilder;
+    foreach(step: Step, opts?: { concurrency?: number }): WorkflowBuilder;
+    loop(step: Step, opts: { condition: (ctx: any) => boolean }): WorkflowBuilder;
     commit(): Workflow;
 }
 
 interface Workflow {
-    createRun(): Promise<WorkflowRun>;
+    createRun(opts?: { runId?: string; resourceId?: string }): Promise<WorkflowRun>;
+    getWorkflowRunById(runId: string): Promise<WorkflowState | null>;
+    listWorkflowRuns(opts?: { status?: string }): Promise<{ runs: any[]; total: number }>;
+    restartAllActiveWorkflowRuns(): Promise<void>;
 }
 
 interface WorkflowRun {
+    runId: string;
     start(opts: { inputData: any }): Promise<WorkflowResult>;
+    resume(opts: { resumeData?: any; step?: string }): Promise<WorkflowResult>;
+    restart(): Promise<WorkflowResult>;
+    cancel(): Promise<void>;
+    stream(opts: { inputData: any }): Promise<ReadableStream>;
 }
 
 interface WorkflowResult {
-    status: "success" | "failed" | "suspended";
-    result: any;
+    status: "success" | "failed" | "suspended" | "running" | "waiting" | "canceled" | "pending";
+    result?: any;
+    steps?: Record<string, { status: string; output?: any; error?: any }>;
 }
 ```
 

@@ -17,8 +17,7 @@
 ```typescript
 import { generateText, streamText, generateObject, streamObject, embed, embedMany, z } from "ai";
 import { Agent, createTool, createWorkflow, createStep, Memory, InMemoryStore, LibSQLStore, PostgresStore, MongoDBStore, UpstashStore, LibSQLVector, PgVector, MongoDBVector, Workspace, LocalFilesystem, LocalSandbox, MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool, rerank, rerankWithScorer, Observability, DefaultExporter, createScorer, runEvals, RequestContext, ModelRouterEmbeddingModel, z } from "agent";
-import { bus, kit, model, embeddingModel, provider, storage, vectorStore, registry, tools, tool, fs, mcp, output, generateWithApproval } from "kit";
-import { compile } from "compiler";
+import { bus, kit, model, embeddingModel, provider, storage, vectorStore, registry, tools, tool, fs, mcp, output, secrets, generateWithApproval } from "kit";
 ```
 
 ## "kit" Module
@@ -33,7 +32,8 @@ const bus: {
     on(localTopic: string, handler: (msg: BusMessage) => void | Promise<void>): string;
     unsubscribe(subId: string): void;
     sendTo(service: string, localTopic: string, data?: unknown): { replyTo: string; correlationId: string };
-    sendToShard(shard: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
+    schedule(expression: string, topic: string, data?: unknown): string;
+    unschedule(scheduleId: string): void;
 };
 
 interface BusMessage {
@@ -114,16 +114,28 @@ interface ToolResolveResult { name: string; shortName: string; description: stri
 
 ### Filesystem
 
+The `fs` endowment is a complete Node.js 22 `fs` polyfill (Go-backed via `jsbridge/fs.go`):
+
 ```typescript
-const fs: {
-    read(path: string): Promise<{ data: string }>;
-    write(path: string, data: string): Promise<{ ok: boolean }>;
-    list(path?: string, pattern?: string): Promise<{ files: FileInfo[] }>;
-    stat(path: string): Promise<{ size: number; isDir: boolean; modTime: string }>;
-    delete(path: string): Promise<{ ok: boolean }>;
-    mkdir(path: string): Promise<{ ok: boolean }>;
-};
+// Async (Promise-based)
+const data = await fs.promises.readFile("file.txt", "utf-8");
+await fs.promises.writeFile("output.txt", data);
+await fs.promises.mkdir("dir", { recursive: true });
+const entries = await fs.promises.readdir(".");
+const stats = await fs.promises.stat("file.txt");
+
+// Sync
+const content = fs.readFileSync("file.txt", "utf-8");
+fs.writeFileSync("output.txt", content);
+fs.mkdirSync("dir", { recursive: true });
+
+// File handles
+const fh = await fs.promises.open("file.txt", "r");
+const { bytesRead, buffer } = await fh.read(buf, 0, buf.length, 0);
+await fh.close();
 ```
+
+All paths resolve relative to `KernelConfig.FSRoot` with workspace escape protection.
 
 ### MCP
 
@@ -154,18 +166,12 @@ function generateWithApproval(
 ): Promise<AgentResult>;
 ```
 
-### Compiler
+### Secrets
 
 ```typescript
-async function compile(source: string, opts?: { name?: string }): Promise<CompileResult>;
-
-interface CompileResult {
-    moduleId: string;
-    name: string;
-    size: number;
-    exports: string[];
-    run(input?: any): Promise<{ exitCode: number; value?: any }>;
-}
+const secrets: {
+    get(name: string): string;  // returns "" if not found
+};
 ```
 
 ## SES Compartment Globals

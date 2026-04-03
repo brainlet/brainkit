@@ -114,14 +114,6 @@ Resolves the naming convention and publishes:
 pr, err := sdk.SendToService(rt, ctx, "calc.ts", "add", map[string]int{"a": 17, "b": 25})
 ```
 
-### SendToShard — address a WASM shard
-
-```go
-func SendToShard(rt Runtime, ctx context.Context, shard, topic string, payload any, opts ...PublishOption) (PublishResult, error)
-```
-
-Publishes to a WASM shard's handler topic. The `shard` parameter is for documentation — the topic is used directly.
-
 ### PublishTo — cross-Kit
 
 ```go
@@ -157,25 +149,24 @@ Every command has a request type and a response type in `sdk/messages/`:
 | `AgentDiscoverMsg` | `AgentDiscoverResp` | `agents.discover` |
 | `AgentGetStatusMsg` | `AgentGetStatusResp` | `agents.get-status` |
 | `AgentSetStatusMsg` | `AgentSetStatusResp` | `agents.set-status` |
-| `WasmCompileMsg` | `WasmCompileResp` | `wasm.compile` |
-| `WasmRunMsg` | `WasmRunResp` | `wasm.run` |
-| `WasmDeployMsg` | `WasmDeployResp` | `wasm.deploy` |
-| `WasmUndeployMsg` | `WasmUndeployResp` | `wasm.undeploy` |
-| `WasmListMsg` | `WasmListResp` | `wasm.list` |
-| `WasmGetMsg` | `WasmGetResp` | `wasm.get` |
-| `WasmRemoveMsg` | `WasmRemoveResp` | `wasm.remove` |
-| `WasmDescribeMsg` | `WasmDescribeResp` | `wasm.describe` |
+| `WorkflowStartMsg` | `WorkflowStartResp` | `workflow.start` |
+| `WorkflowStartAsyncMsg` | `WorkflowStartAsyncResp` | `workflow.startAsync` |
+| `WorkflowStatusMsg` | `WorkflowStatusResp` | `workflow.status` |
+| `WorkflowResumeMsg` | `WorkflowResumeResp` | `workflow.resume` |
+| `WorkflowCancelMsg` | `WorkflowCancelResp` | `workflow.cancel` |
+| `WorkflowListMsg` | `WorkflowListResp` | `workflow.list` |
+| `WorkflowRunsMsg` | `WorkflowRunsResp` | `workflow.runs` |
+| `WorkflowRestartMsg` | `WorkflowRestartResp` | `workflow.restart` |
 | `McpListToolsMsg` | `McpListToolsResp` | `mcp.listTools` |
 | `McpCallToolMsg` | `McpCallToolResp` | `mcp.callTool` |
 | `RegistryHasMsg` | `RegistryHasResp` | `registry.has` |
 | `RegistryListMsg` | `RegistryListResp` | `registry.list` |
 | `RegistryResolveMsg` | `RegistryResolveResp` | `registry.resolve` |
-| `FsReadMsg` | `FsReadResp` | `fs.read` |
-| `FsWriteMsg` | `FsWriteResp` | `fs.write` |
-| `FsListMsg` | `FsListResp` | `fs.list` |
-| `FsStatMsg` | `FsStatResp` | `fs.stat` |
-| `FsDeleteMsg` | `FsDeleteResp` | `fs.delete` |
-| `FsMkdirMsg` | `FsMkdirResp` | `fs.mkdir` |
+| `SecretsSetMsg` | `SecretsSetResp` | `secrets.set` |
+| `SecretsGetMsg` | `SecretsGetResp` | `secrets.get` |
+| `SecretsDeleteMsg` | `SecretsDeleteResp` | `secrets.delete` |
+| `SecretsListMsg` | `SecretsListResp` | `secrets.list` |
+| `SecretsRotateMsg` | `SecretsRotateResp` | `secrets.rotate` |
 
 ### CustomMsg — ad-hoc topics
 

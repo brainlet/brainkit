@@ -122,10 +122,8 @@ Every operation is tested on every backend. The test matrix in `test/transport/m
 | `fs_mkdir_list_stat_delete` | Full filesystem lifecycle |
 | `agents_list_empty` | Agent registry query |
 | `kit_deploy_teardown` | .ts deployment + teardown |
-| `wasm_compile_run` | AS compile + execute |
 | `async_correlation` | CorrelationID-based response routing |
 | `kit_redeploy` | Atomic teardown + deploy |
-| `wasm_deploy_lifecycle` | Shard deploy + describe + undeploy |
 | `registry_has_list` | Provider registry queries |
 
 Container-based backends (NATS, AMQP, Redis, Postgres) use testcontainers-go with Podman. The test helper `testutil.AllBackends(t)` returns only available backends — GoChannel and SQLite always, container backends only if Podman is running.

@@ -178,12 +178,8 @@ The 16.5MB bundle breaks down roughly as:
 | Other deps (sentiment, xxhash, etc.) | ~2MB |
 | esbuild overhead (IIFE wrappers, etc.) | ~800KB |
 
-## The AS Compiler's Separate Bundle
+## The AS Compiler's Separate Bundle (Dormant)
 
-The AssemblyScript compiler (`internal/embed/compiler/`) has its own bundle and its own QuickJS runtime. It doesn't share the Mastra bundle's QuickJS instance because:
-
-1. AS compilation is CPU-bound — it would block the agent runtime
-2. The AS compiler needs Binaryen (C bridge), which has its own memory model
-3. The compiler is lazy — `ensureCompiler()` only creates it when `wasm.compile` is first called
+The AssemblyScript compiler (`internal/embed/compiler/`) has its own bundle and its own QuickJS runtime. It is **dormant** — not wired to the Kernel or exposed through any bus commands. It remains as a Go library for potential future use (sandboxed computation, user-submitted modules).
 
 The compiler bundle has a separate, simpler `build.mjs` with only `fs` and `crypto` stubs (no Mastra, no AI SDK).

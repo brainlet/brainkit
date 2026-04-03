@@ -12,11 +12,11 @@ import (
     "fmt"
     "log"
 
-    "github.com/brainlet/brainkit/kit"
+    "github.com/brainlet/brainkit"
 )
 
 func main() {
-    k, err := kit.NewKernel(kit.KernelConfig{
+    k, err := brainkit.NewKernel(brainkit.KernelConfig{
         Namespace: "my-app",
         FSRoot:    "/tmp/my-app",
     })
@@ -37,26 +37,26 @@ This creates a Kernel with an in-process message bus (GoChannel transport). No c
 ```go
 // Pattern from internal/testutil/testutil.go — NewTestKernelFull
 // AI providers are auto-detected from os.Getenv (e.g. OPENAI_API_KEY)
-k, err := kit.NewKernel(kit.KernelConfig{
+k, err := brainkit.NewKernel(brainkit.KernelConfig{
     Namespace: "my-app",
     CallerID:  "my-app",
     FSRoot:    "/tmp/my-app",
 
     // SQLite storage — enables new LibSQLStore({ id: "x" }) in .ts code
-    Storages: map[string]kit.StorageConfig{
-        "default": kit.SQLiteStorage("/tmp/my-app/data.db"),
+    Storages: map[string]brainkit.StorageConfig{
+        "default": brainkit.SQLiteStorage("/tmp/my-app/data.db"),
     },
 })
 ```
 
 ## Registering Go Tools
 
-Tools registered in Go are callable from every surface — .ts code, WASM shards, plugins, and other Go code.
+Tools registered in Go are callable from every surface — .ts code, plugins, and other Go code.
 
 ```go
 import (
     "github.com/brainlet/brainkit/internal/registry"
-    "github.com/brainlet/brainkit/kit"
+    "github.com/brainlet/brainkit"
 )
 
 // Define typed input struct
@@ -66,7 +66,7 @@ type AddInput struct {
 }
 
 // Register with typed generic helper
-err := kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+err := brainkit.RegisterTool(k,"add", registry.TypedTool[AddInput]{
     Description: "adds two numbers",
     Execute: func(ctx context.Context, input AddInput) (any, error) {
         return map[string]int{"sum": input.A + input.B}, nil
@@ -77,7 +77,6 @@ err := kit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
 The tool is now available:
 - From Go: `sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "add", Input: map[string]any{"a": 10, "b": 32}})`
 - From .ts: `await tools.call("add", { a: 10, b: 32 })`
-- From WASM: `_busPublish("tools.call", '{"name":"add","input":{"a":10,"b":32}}', "onResult")`
 
 ## Deploying .ts Code
 
@@ -189,12 +188,12 @@ Teardown removes all resources created by the deployment — tools are deregiste
 For multi-Kit communication or plugin support, use a Node with an external transport:
 
 ```go
-n, err := kit.NewNode(kit.NodeConfig{
-    Kernel: kit.KernelConfig{
+n, err := brainkit.NewNode(brainkit.NodeConfig{
+    Kernel: brainkit.KernelConfig{
         Namespace: "my-app",
         FSRoot:    "/tmp/my-app",
     },
-    Messaging: kit.MessagingConfig{
+    Messaging: brainkit.MessagingConfig{
         Transport: "nats",
         NATSURL:   "nats://localhost:4222",
     },
@@ -218,4 +217,4 @@ The Node's Kernel uses NATS instead of GoChannel. All bus messages flow through 
 - [TypeScript Services](ts-services.md) — bus.on patterns, msg.reply, streaming, HITL
 - [Go SDK](go-sdk.md) — Publish, SubscribeTo, Reply, SendToService, error types
 - [Plugins](plugins.md) — building out-of-process plugins
-- [WASM Shards](wasm-shards.md) — AssemblyScript event-reactive modules
+- [Storage and Memory](storage-and-memory.md) — storage backends, agent memory, vectors

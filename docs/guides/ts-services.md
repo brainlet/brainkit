@@ -78,18 +78,9 @@ bus.subscribe("system.events.shutdown", (msg) => {
 ### bus.sendTo — service-to-service
 
 ```typescript
-// fixtures/ts/bus/send-to-service/index.ts
 // Equivalent to sdk.SendToService in Go
 const result = bus.sendTo("other-service.ts", "process", { data: "hello" });
 // Publishes to ts.other-service.process with replyTo
-```
-
-### bus.sendToShard — to WASM shards
-
-```typescript
-// fixtures/ts/bus/send-to-shard/index.ts
-const result = bus.sendToShard("counter-shard", "counter.increment", { amount: 1 });
-// Publishes to counter.increment with replyTo
 ```
 
 ## Message Object
@@ -146,7 +137,7 @@ const myTool = createTool({
 });
 
 kit.register("tool", "multiply", myTool);
-// NOW it's callable from Go, WASM, plugins, other .ts code
+// NOW it's callable from Go, plugins, other .ts code
 ```
 
 ```typescript

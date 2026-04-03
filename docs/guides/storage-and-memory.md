@@ -186,6 +186,17 @@ LibSQLStore, PostgresStore, and MongoDBStore support 3-tier observational memory
 
 InMemoryStore and UpstashStore support basic memory (threads + messages) but not the observational compression pipeline.
 
+## Workflow Snapshot Persistence
+
+When a storage backend is configured (any entry in `KernelConfig.Storages`), brainkit automatically upgrades Mastra's internal storage from `InMemoryStore` to the configured backend during Kernel initialization. This means:
+
+- Workflow snapshots (step results, suspend state, execution paths) persist to the real database
+- `workflow.status` queries read from storage — works even after Kernel restart
+- On startup, `restartActiveWorkflows()` picks up any runs that were `running` or `waiting` when the previous Kernel died
+- Suspended workflows survive Kernel restarts — `workflow.resume` works on the new Kernel
+
+The storage upgrade calls `storage.init()` which creates Mastra's domain tables (`mastra_workflow_snapshot`, `mastra_threads`, `mastra_messages`, etc.).
+
 ## Choosing a Provider
 
 | Use Case | Recommended |

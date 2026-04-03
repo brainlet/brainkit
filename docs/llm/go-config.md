@@ -1,30 +1,40 @@
 # Go Config — API Reference
 
-> `import "github.com/brainlet/brainkit/kit"`
-> `import "github.com/brainlet/brainkit/kit/registry"`
+> `import "github.com/brainlet/brainkit"`
+> `import "github.com/brainlet/brainkit/registry"`
 
 ## KernelConfig
 
 ```go
 type KernelConfig struct {
-    Name             string
     Namespace        string                                    // default: "user"
     CallerID         string                                    // default: Namespace
+    AIProviders      map[string]registry.AIProviderRegistration // explicit provider configs (auto-detected from env if empty)
     EnvVars          map[string]string                         // injected into JS process.env
+    Storages         map[string]StorageConfig                  // SQLite, Postgres, etc.
+    Vectors          map[string]VectorConfig                   // PgVector, LibSQL, etc.
+    FSRoot           string                                    // sandboxed fs root
+    SecretStore      secrets.SecretStore                       // pluggable secret backend
+    SecretKey        string                                    // master key for EncryptedKVStore
+    Roles            map[string]rbac.Role                      // RBAC role definitions
+    DefaultRole      string                                    // default role for deployments
+    TraceStore       tracing.TraceStore                        // nil = no tracing
+    TraceSampleRate  float64                                   // 0.0-1.0, default 1.0
     MaxStackSize     int                                       // QuickJS stack size (bytes)
     SharedTools      *toolreg.ToolRegistry                     // shared across pool instances
     MCPServers       map[string]mcppkg.ServerConfig            // MCP server connections
     Observability    ObservabilityConfig
-    Store            KitStore                                  // WASM module/shard persistence
-    FSRoot           string                                    // sandboxed fs root
-
-    Storages         map[string]StorageConfig                  // SQLite, Postgres, etc.
-    Vectors          map[string]VectorConfig                   // PgVector, LibSQL, etc.
-
+    Store            KitStore                                  // deployment/schedule persistence
     Probe            registry.ProbeConfig
+    RetryPolicies    map[string]RetryPolicy                    // topic glob → retry config
+    LogHandler       func(LogEntry)                            // nil = log.Printf
+    ErrorHandler     func(error, ErrorContext)                 // nil = log.Printf
+    MaxConcurrency   int                                       // concurrent bus handlers (0 = unlimited)
+    BusRateLimits    map[string]float64                        // role → requests/sec
+    PluginRegistries []RegistryConfig                          // plugin registry sources
+    PluginDir        string                                    // local plugin cache
     Transport        *messaging.Transport                      // injected by Node, nil for standalone
     DeferRouterStart bool                                      // set by Node
-    LogHandler       func(LogEntry)                            // nil = log.Printf
 }
 ```
 
@@ -107,7 +117,7 @@ type ObservabilityConfig struct {
 
 ```go
 type LogEntry struct {
-    Source  string    // "my-service.ts", "wasm:my-shard", "kernel"
+    Source  string    // "my-service.ts", "kernel"
     Level  string    // "log", "warn", "error", "debug", "info"
     Message string
     Time   time.Time
@@ -146,7 +156,6 @@ type ServerConfig struct {
 
 ```go
 // kit/errors.go
-var ErrNoWorkspace error       // FSRoot not configured
 var ErrMCPNotConfigured error  // no MCP servers registered
 var ErrCommandTopic error      // event emitted on command topic
 ```
@@ -185,15 +194,21 @@ func NewThresholdStrategy(scaleUp, scaleDown int) *ThresholdStrategy
 
 ```go
 type KitStore interface {
-    SaveModule(name string, binary []byte, info WASMModuleInfo) error
-    LoadModules() (map[string]*WASMModule, error)
-    DeleteModule(name string) error
-    SaveShard(name string, desc ShardDescriptor) error
-    LoadShards() (map[string]ShardDescriptor, error)
-    DeleteShard(name string) error
-    SaveState(shardName, key string, state map[string]string) error
-    LoadState(shardName, key string) (map[string]string, error)
-    DeleteState(shardName string) error
+    SaveDeployment(d PersistedDeployment) error
+    LoadDeployments() ([]PersistedDeployment, error)
+    DeleteDeployment(source string) error
+    SaveSchedule(s PersistedSchedule) error
+    LoadSchedules() ([]PersistedSchedule, error)
+    DeleteSchedule(id string) error
+    SaveInstalledPlugin(p InstalledPlugin) error
+    LoadInstalledPlugins() ([]InstalledPlugin, error)
+    DeleteInstalledPlugin(name string) error
+    SaveRunningPlugin(p RunningPluginRecord) error
+    LoadRunningPlugins() ([]RunningPluginRecord, error)
+    DeleteRunningPlugin(name string) error
+    SavePluginState(pluginID, key, value string) error
+    LoadPluginState(pluginID, key string) (string, error)
+    DeletePluginState(pluginID string) error
     Close() error
 }
 
