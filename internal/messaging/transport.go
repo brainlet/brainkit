@@ -322,19 +322,16 @@ func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*T
 		dbPath = "file::memory:?cache=shared"
 	}
 	if dbPath != "file::memory:?cache=shared" && !strings.HasPrefix(dbPath, "file:") {
-		dbPath = "file:" + dbPath + "?cache=shared"
+		// Encode PRAGMAs in the URI so they apply to EVERY connection in the pool.
+		// db.Exec("PRAGMA ...") only applies to one connection — new pool connections
+		// get default settings, causing SQLITE_BUSY under concurrent access.
+		dbPath = "file:" + dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite connect: %w", err)
 	}
-
-	// WAL mode + busy_timeout for multi-process access (CLI + running Node).
-	// Without these, concurrent writers from separate processes get SQLITE_BUSY.
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
-	db.Exec("PRAGMA synchronous=NORMAL")
 
 	publisher, err := wmsqlite.NewPublisher(db, wmsqlite.PublisherOptions{
 		InitializeSchema: true,
