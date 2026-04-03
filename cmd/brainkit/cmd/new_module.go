@@ -48,20 +48,21 @@ bus.on("greet", (msg) => {
 `,
 			"tsconfig.json": `{
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "strict": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
     "paths": {
       "kit": ["./types/kit.d.ts"],
       "ai": ["./types/ai.d.ts"],
-      "agent": ["./types/agent.d.ts"],
-      "brainkit": ["./types/brainkit.d.ts"],
-      "globals": ["./types/globals.d.ts"]
+      "agent": ["./types/agent.d.ts"]
     }
   },
-  "include": ["*.ts"],
-  "exclude": ["types"]
+  "include": ["*.ts", "./types/globals.d.ts"]
 }
 `,
 			filepath.Join("types", "kit.d.ts"):      brainkit.KitDTS,
