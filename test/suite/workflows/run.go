@@ -1,0 +1,82 @@
+// Package workflows provides the workflow domain test suite.
+// All test functions take *suite.TestEnv and are registered via Run().
+// The standalone workflows_test.go creates a Full env for the memory fast path.
+package workflows
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/test/suite"
+	"github.com/stretchr/testify/require"
+)
+
+// Run executes all workflow domain tests against the given environment.
+func Run(t *testing.T, env *suite.TestEnv) {
+	t.Run("workflows", func(t *testing.T) {
+		// commands.go — happy path + error paths (from infra/workflow_bus_test.go)
+		t.Run("start_sequential", func(t *testing.T) { testStartSequential(t, env) })
+		t.Run("start_parallel", func(t *testing.T) { testStartParallel(t, env) })
+		t.Run("list", func(t *testing.T) { testList(t, env) })
+		t.Run("suspend_resume", func(t *testing.T) { testSuspendResume(t, env) })
+		t.Run("cancel", func(t *testing.T) { testCancel(t, env) })
+		t.Run("with_tool_call", func(t *testing.T) { testWithToolCall(t, env) })
+		t.Run("not_found", func(t *testing.T) { testNotFound(t, env) })
+		t.Run("resume_nonexistent_run", func(t *testing.T) { testResumeNonexistentRun(t, env) })
+		t.Run("status_nonexistent_run", func(t *testing.T) { testStatusNonexistentRun(t, env) })
+		t.Run("cancel_nonexistent_run", func(t *testing.T) { testCancelNonexistentRun(t, env) })
+		t.Run("step_with_error", func(t *testing.T) { testStepWithError(t, env) })
+
+		// storage.go — persistence + storage tests
+		t.Run("storage_upgrade", func(t *testing.T) { testStorageUpgrade(t, env) })
+		t.Run("status_from_storage", func(t *testing.T) { testStatusFromStorage(t, env) })
+		t.Run("runs", func(t *testing.T) { testRuns(t, env) })
+		t.Run("start_async_event", func(t *testing.T) { testStartAsyncEvent(t, env) })
+		t.Run("crash_recovery_suspended", func(t *testing.T) { testCrashRecoverySuspended(t, env) })
+
+		// concurrent.go — concurrency + stress
+		t.Run("concurrent_starts", func(t *testing.T) { testConcurrentStarts(t, env) })
+		t.Run("multi_workflow_stress", func(t *testing.T) { testMultiWorkflowStress(t, env) })
+		t.Run("long_running_integration", func(t *testing.T) { testLongRunningIntegration(t, env) })
+
+		// developer.go — developer scenario tests
+		t.Run("tool_call_inside_step", func(t *testing.T) { testToolCallInsideStep(t, env) })
+		t.Run("bus_emit_from_step", func(t *testing.T) { testBusEmitFromStep(t, env) })
+		t.Run("conditional_branch", func(t *testing.T) { testConditionalBranch(t, env) })
+		t.Run("step_state", func(t *testing.T) { testStepState(t, env) })
+		t.Run("suspend_with_context_data", func(t *testing.T) { testSuspendWithContextData(t, env) })
+	})
+}
+
+// wfPublishAndWait publishes a workflow command and waits for the typed response.
+// Generic helper replicating publishAndWait from infra/workflow_bus_test.go.
+func wfPublishAndWait[Req messages.BrainkitMessage, Resp any](
+	t *testing.T, k *brainkit.Kernel, msg Req, timeout time.Duration,
+) Resp {
+	t.Helper()
+	result, err := sdk.Publish(k, context.Background(), msg)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var resp Resp
+	unsub, err := sdk.SubscribeTo[Resp](k, ctx, result.ReplyTo, func(r Resp, m messages.Message) {
+		resp = r
+		cancel()
+	})
+	require.NoError(t, err)
+	defer unsub()
+	<-ctx.Done()
+	return resp
+}
+
+// wfDeploy deploys a .ts file that registers a workflow.
+func wfDeploy(t *testing.T, k *brainkit.Kernel, source, code string) {
+	t.Helper()
+	_, err := k.Deploy(context.Background(), source, code)
+	require.NoError(t, err)
+}
