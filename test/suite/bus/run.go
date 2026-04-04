@@ -97,5 +97,33 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("bus_matrix_valid_input", func(t *testing.T) { testBusMatrixValidInput(t, env) })
 		t.Run("bus_matrix_empty_input", func(t *testing.T) { testBusMatrixEmptyInput(t, env) })
 		t.Run("bus_matrix_garbage_payload", func(t *testing.T) { testBusMatrixGarbagePayload(t, env) })
+
+		// cross_feature.go — cross-feature adversarial (from adversarial/cross_feature_test.go)
+		t.Run("cross_deploy_calls_go_tool", func(t *testing.T) { testCrossDeployCallsGoTool(t, env) })
+		t.Run("cross_ts_tool_calls_another_ts_tool", func(t *testing.T) { testCrossTSToolCallsAnotherTSTool(t, env) })
+		t.Run("cross_handler_calls_tool", func(t *testing.T) { testCrossHandlerCallsTool(t, env) })
+		t.Run("cross_handler_reads_secret", func(t *testing.T) { testCrossHandlerReadsSecret(t, env) })
+		t.Run("cross_handler_writes_fs", func(t *testing.T) { testCrossHandlerWritesFS(t, env) })
+		t.Run("cross_go_tool_emits_bus_event", func(t *testing.T) { testCrossGoToolEmitsBusEvent(t, env) })
+		t.Run("cross_traced_tool_call", func(t *testing.T) { testCrossTracedToolCall(t, env) })
+		t.Run("cross_health_during_deploy_churn", func(t *testing.T) { testCrossHealthDuringDeployChurn(t, env) })
+		t.Run("cross_metrics_track_schedules", func(t *testing.T) { testCrossMetricsTrackSchedules(t, env) })
+		t.Run("cross_deploy_with_persistence_and_restart", func(t *testing.T) { testCrossDeployWithPersistenceAndRestart(t, env) })
+
+		// error_contract_adv.go — bus error contract adversarial (from adversarial/error_contract_test.go)
+		t.Run("error_contract_bus_not_found", func(t *testing.T) { testErrorContractBusNotFound(t, env) })
+		t.Run("error_contract_bus_validation_error", func(t *testing.T) { testErrorContractBusValidationError(t, env) })
+		t.Run("error_contract_bus_not_configured_rbac", func(t *testing.T) { testErrorContractBusNotConfiguredRBAC(t, env) })
+		t.Run("error_contract_bus_already_exists", func(t *testing.T) { testErrorContractBusAlreadyExists(t, env) })
+		t.Run("error_contract_bus_deploy_error_bad_syntax", func(t *testing.T) { testErrorContractBusDeployErrorBadSyntax(t, env) })
+
+		// input_abuse.go — bus input abuse adversarial (from adversarial/input_abuse_test.go)
+		t.Run("input_abuse_bus_empty_topic", func(t *testing.T) { testInputAbuseBusEmptyTopic(t, env) })
+		t.Run("input_abuse_bus_large_payload", func(t *testing.T) { testInputAbuseBusLargePayload(t, env) })
+		t.Run("input_abuse_bus_deeply_nested_json", func(t *testing.T) { testInputAbuseBusDeeplyNestedJSON(t, env) })
+		t.Run("input_abuse_bus_subscribe_empty_topic", func(t *testing.T) { testInputAbuseBusSubscribeEmptyTopic(t, env) })
+
+		// e2e.go — multi-service chain E2E (from adversarial/e2e_scenarios_test.go)
+		t.Run("e2e_multi_service_chain", func(t *testing.T) { testE2EMultiServiceChain(t, env) })
 	})
 }

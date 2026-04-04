@@ -28,5 +28,22 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("fetch_manifest_not_found", func(t *testing.T) { testFetchManifestNotFound(t, env) })
 		t.Run("multiple_registries", func(t *testing.T) { testMultipleRegistries(t, env) })
 		t.Run("registry_with_auth", func(t *testing.T) { testRegistryWithAuth(t, env) })
+
+		// storage_runtime.go — runtime storage register/unregister (adversarial)
+		t.Run("storage_runtime_add_remove", func(t *testing.T) { testStorageRuntimeAddRemove(t, env) })
+		t.Run("storage_runtime_add_duplicate", func(t *testing.T) { testStorageRuntimeAddDuplicate(t, env) })
+		t.Run("storage_runtime_remove_nonexistent", func(t *testing.T) { testStorageRuntimeRemoveNonexistent(t, env) })
+		t.Run("storage_runtime_url_for_nonexistent", func(t *testing.T) { testStorageRuntimeURLForNonexistent(t, env) })
+		t.Run("storage_runtime_sqlite_add", func(t *testing.T) { testStorageRuntimeSQLiteAdd(t, env) })
+		t.Run("storage_runtime_list_resources", func(t *testing.T) { testStorageRuntimeListResources(t, env) })
+		t.Run("storage_runtime_resources_from_source", func(t *testing.T) { testStorageRuntimeResourcesFromSource(t, env) })
+		t.Run("storage_runtime_scaling_pool", func(t *testing.T) { testStorageRuntimeScalingPool(t, env) })
+		t.Run("storage_runtime_kernel_multiple_storages", func(t *testing.T) { testStorageRuntimeKernelMultipleStorages(t, env) })
+
+		// input_abuse.go — registry input abuse (adversarial)
+		t.Run("input_abuse_empty_provider_name", func(t *testing.T) { testInputAbuseEmptyProviderName(t, env) })
+		t.Run("input_abuse_duplicate_register", func(t *testing.T) { testInputAbuseDuplicateRegister(t, env) })
+		t.Run("input_abuse_invalid_config", func(t *testing.T) { testInputAbuseInvalidConfig(t, env) })
+		t.Run("input_abuse_missing_type", func(t *testing.T) { testInputAbuseMissingType(t, env) })
 	})
 }
