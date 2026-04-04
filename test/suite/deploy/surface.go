@@ -101,8 +101,10 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 				hasKit: typeof kit === "object" && typeof kit.register === "function",
 				hasModel: typeof model === "function",
 				hasTools: typeof tools === "object" && typeof tools.call === "function",
-				hasFs: typeof fs === "object" && typeof fs.promises === "object",
+				hasFs: typeof fs === "object" && typeof fs.promises === "object" && typeof fs.promises.readFile === "function",
+				hasMcp: typeof mcp === "object",
 				hasOutput: typeof output === "function",
+				hasRegistry: typeof registry === "object",
 			};
 			output(checks);
 		`,
@@ -128,7 +130,9 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, checks["hasModel"], "model should be available")
 	assert.True(t, checks["hasTools"], "tools should be available")
 	assert.True(t, checks["hasFs"], "fs should be available")
+	assert.True(t, checks["hasMcp"], "mcp should be available")
 	assert.True(t, checks["hasOutput"], "output should be available")
+	assert.True(t, checks["hasRegistry"], "registry should be available")
 
 	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-imports-deploy-adv.ts"})
 }

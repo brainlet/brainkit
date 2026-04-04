@@ -161,6 +161,26 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
+// testDeployDottedSourceName — dots in source name interact with bus topic resolution.
+func testDeployDottedSourceName(t *testing.T, env *suite.TestEnv) {
+	ctx := context.Background()
+
+	_, err := env.Kernel.Deploy(ctx, "my.dotted.agent-deploy-adv.ts", `
+		bus.on("ask", function(msg) { msg.reply({ answer: "dotted" }); });
+	`)
+	require.NoError(t, err)
+
+	// Verify the mailbox resolves correctly despite dots
+	result, err := env.Kernel.EvalTS(ctx, "__dotted_test-deploy-adv.ts", `
+		var r = bus.publish("ts.my.dotted.agent-deploy-adv.ask", { q: "test" });
+		return r.replyTo;
+	`)
+	require.NoError(t, err)
+	assert.Contains(t, result, "ts.my.dotted.agent-deploy-adv.ask.reply.")
+
+	env.Kernel.Teardown(ctx, "my.dotted.agent-deploy-adv.ts")
+}
+
 // testDeployRedeployDifferentTools — redeploy replaces tools: old tool should be gone.
 func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()

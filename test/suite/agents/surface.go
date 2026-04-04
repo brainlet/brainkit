@@ -54,8 +54,27 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
-	assert.NotEmpty(t, parsed["text"], "agent should return non-empty text")
+	assert.Contains(t, parsed["text"], "SURFACE_AGENT_OK")
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
+
+	// Verify agent was registered
+	pr2, err := sdk.Publish(env.Kernel, ctx, messages.AgentListMsg{})
+	require.NoError(t, err)
+	ch2 := make(chan messages.AgentListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { ch2 <- r })
+	defer unsub2()
+	select {
+	case listResp := <-ch2:
+		found := false
+		for _, a := range listResp.Agents {
+			if a.Name == "surface-gen-agent-adv" {
+				found = true
+			}
+		}
+		assert.True(t, found, "surface-gen-agent-adv should be in agents list")
+	case <-ctx.Done():
+		t.Fatal("timeout listing agents")
+	}
 
 	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-gen-agent-adv.ts"})
 }

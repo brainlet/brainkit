@@ -45,11 +45,16 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("deploy_throws_during_init", func(t *testing.T) { testDeployThrowsDuringInit(t, env) })
 		t.Run("deploy_partial_cleanup", func(t *testing.T) { testDeployPartialCleanup(t, env) })
 		t.Run("deploy_redeploy_different_tools", func(t *testing.T) { testDeployRedeployDifferentTools(t, env) })
+		t.Run("deploy_dotted_source_name", func(t *testing.T) { testDeployDottedSourceName(t, env) })
 
 		// state_corruption.go — deploy state corruption tests
-		t.Run("teardown_during_handler_execution", func(t *testing.T) { testTeardownDuringHandlerExecution(t, env) })
-		t.Run("redeploy_while_handlers_active", func(t *testing.T) { testRedeployWhileHandlersActive(t, env) })
-		t.Run("deploy_removes_other_deployment", func(t *testing.T) { testDeployRemovesOtherDeployment(t, env) })
+		t.Run("state_corruption_bad_transpile", func(t *testing.T) { testStateCorruptionBadTranspile(t, env) })
+		t.Run("state_corruption_duplicate_persisted_source", func(t *testing.T) { testStateCorruptionDuplicatePersistedSource(t, env) })
+		t.Run("state_corruption_store_wiped_midlife", func(t *testing.T) { testStateCorruptionStoreWipedMidlife(t, env) })
+		t.Run("state_corruption_empty_code", func(t *testing.T) { testStateCorruptionEmptyCode(t, env) })
+		t.Run("state_corruption_zero_duration_schedule", func(t *testing.T) { testStateCorruptionZeroDurationSchedule(t, env) })
+		t.Run("state_corruption_past_schedule_fires", func(t *testing.T) { testStateCorruptionPastScheduleFires(t, env) })
+		t.Run("state_corruption_nonexistent_role_on_deploy", func(t *testing.T) { testStateCorruptionNonexistentRoleOnDeploy(t, env) })
 
 		// e2e.go — deploy lifecycle e2e
 		t.Run("deploy_lifecycle", func(t *testing.T) { testDeployLifecycle(t, env) })

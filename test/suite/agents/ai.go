@@ -79,5 +79,48 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout listing agents")
 	}
 
+	// Get status — should be "idle" by default
+	pr3, err := sdk.Publish(env.Kernel, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	require.NoError(t, err)
+	ch3 := make(chan messages.AgentGetStatusResp, 1)
+	unsub3, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kernel, ctx, pr3.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch3 <- r })
+	require.NoError(t, err)
+	defer unsub3()
+	var statusResp messages.AgentGetStatusResp
+	select {
+	case statusResp = <-ch3:
+	case <-ctx.Done():
+		t.Fatal("timeout getting initial status")
+	}
+	assert.Equal(t, "idle", statusResp.Status)
+
+	// Set status to "busy"
+	pr4, err := sdk.Publish(env.Kernel, ctx, messages.AgentSetStatusMsg{
+		Name: "ai-list-agent-adv", Status: "busy",
+	})
+	require.NoError(t, err)
+	ch4 := make(chan messages.AgentSetStatusResp, 1)
+	unsub4, _ := sdk.SubscribeTo[messages.AgentSetStatusResp](env.Kernel, ctx, pr4.ReplyTo, func(r messages.AgentSetStatusResp, m messages.Message) { ch4 <- r })
+	defer unsub4()
+	select {
+	case <-ch4:
+	case <-ctx.Done():
+		t.Fatal("timeout setting status")
+	}
+
+	// Re-get status — should be "busy"
+	pr5, err := sdk.Publish(env.Kernel, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	require.NoError(t, err)
+	ch5 := make(chan messages.AgentGetStatusResp, 1)
+	unsub5, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kernel, ctx, pr5.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch5 <- r })
+	require.NoError(t, err)
+	defer unsub5()
+	select {
+	case statusResp = <-ch5:
+	case <-ctx.Done():
+		t.Fatal("timeout getting updated status")
+	}
+	assert.Equal(t, "busy", statusResp.Status)
+
 	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "ai-agent-agent-adv.ts"})
 }

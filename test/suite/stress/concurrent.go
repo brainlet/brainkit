@@ -30,7 +30,7 @@ func testParallelDeploy(t *testing.T, env *suite.TestEnv) {
 	})
 
 	deployments := k.ListDeployments()
-	require.GreaterOrEqual(t, len(deployments), 10, "all 10 deploys should succeed")
+	require.Len(t, deployments, 10, "all 10 deploys should succeed")
 }
 
 func testParallelPublish(t *testing.T, env *suite.TestEnv) {
@@ -221,8 +221,7 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 	})
 
 	deployments := k.ListDeployments()
-	// Some may remain from concurrent timing -- just verify no crash
-	_ = deployments
+	assert.Empty(t, deployments, "all stress deployments should be torn down")
 }
 
 func testRedeployRace(t *testing.T, env *suite.TestEnv) {
@@ -256,7 +255,7 @@ func testRedeployRace(t *testing.T, env *suite.TestEnv) {
 	}
 
 	deployments := k.ListDeployments()
-	assert.GreaterOrEqual(t, len(deployments), 1, "at least one deployment should survive")
+	assert.Len(t, deployments, 1, "exactly one deployment should survive")
 }
 
 func testDeployDuringDrain(t *testing.T, env *suite.TestEnv) {
