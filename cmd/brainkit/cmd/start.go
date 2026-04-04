@@ -52,6 +52,7 @@ func newStartCmd() *cobra.Command {
 
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /api/bus", controlBusHandler(node))
+			mux.HandleFunc("POST /api/stream", controlStreamHandler(node))
 			controlSrv := &http.Server{Handler: mux}
 			go controlSrv.Serve(ln)
 
@@ -139,6 +140,86 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]json.RawMessage{"payload": msg.Payload})
 		case <-ctx.Done():
 			writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timeout waiting for response"})
+		}
+	}
+}
+
+// controlStreamHandler handles POST /api/stream — bus publish + stream all events as NDJSON.
+// Each intermediate message (done=false) is written as a JSON line and flushed.
+// The terminal message (done=true) is written last, then the response closes.
+func controlStreamHandler(node *brainkit.Node) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		var req struct {
+			Topic   string          `json:"topic"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+			return
+		}
+		if req.Topic == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic is required"})
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+			return
+		}
+
+		ctx := r.Context()
+		correlationID := uuid.NewString()
+		replyTo := req.Topic + ".reply." + correlationID
+
+		eventCh := make(chan messages.Message, 100)
+		unsub, err := node.Kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+			select {
+			case eventCh <- msg:
+			default:
+			}
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscribe: " + err.Error()})
+			return
+		}
+		defer unsub()
+
+		pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+		if _, err := node.Kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		enc := json.NewEncoder(w)
+		for {
+			select {
+			case msg := <-eventCh:
+				done := msg.Metadata != nil && msg.Metadata["done"] == "true"
+				evt := map[string]any{
+					"payload": json.RawMessage(msg.Payload),
+					"done":    done,
+				}
+				enc.Encode(evt)
+				flusher.Flush()
+				if done {
+					return
+				}
+			case <-ctx.Done():
+				enc.Encode(map[string]string{"error": "timeout"})
+				flusher.Flush()
+				return
+			}
 		}
 	}
 }

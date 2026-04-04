@@ -51,7 +51,7 @@ func (c *BusClient) Request(ctx context.Context, topic string, payload json.RawM
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("cannot connect to brainkit instance at %s\nHint: is `brainkit start` running?", c.baseURL)
+		return nil, fmt.Errorf("cannot connect to brainkit instance at %s: %w\nHint: is `brainkit start` running?", c.baseURL, err)
 	}
 	defer resp.Body.Close()
 
@@ -77,6 +77,58 @@ func (c *BusClient) Request(ctx context.Context, topic string, payload json.RawM
 		return nil, fmt.Errorf("%s", result.Error)
 	}
 	return result.Payload, nil
+}
+
+// StreamEvent is one event from the NDJSON stream.
+type StreamEvent struct {
+	Payload json.RawMessage `json:"payload"`
+	Done    bool            `json:"done"`
+	Error   string          `json:"error,omitempty"`
+}
+
+// Stream sends a bus command and returns a channel of streaming events.
+// The channel closes after the terminal event (done=true) or on error.
+func (c *BusClient) Stream(ctx context.Context, topic string, payload json.RawMessage) (<-chan StreamEvent, error) {
+	body, err := json.Marshal(busRequestPayload{Topic: topic, Payload: payload})
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/stream", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to brainkit instance at %s\nHint: is `brainkit start` running?", c.baseURL)
+	}
+
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	ch := make(chan StreamEvent, 100)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+		dec := json.NewDecoder(resp.Body)
+		for dec.More() {
+			var evt StreamEvent
+			if err := dec.Decode(&evt); err != nil {
+				ch <- StreamEvent{Error: err.Error(), Done: true}
+				return
+			}
+			ch <- evt
+			if evt.Done {
+				return
+			}
+		}
+	}()
+	return ch, nil
 }
 
 // Close is a no-op for HTTP client (no persistent connection).
