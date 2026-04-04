@@ -67,5 +67,17 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("framework_deploy_and_test", func(t *testing.T) { testFrameworkDeployAndTest(t, env) })
 		t.Run("framework_hooks", func(t *testing.T) { testFrameworkHooks(t, env) })
 		t.Run("framework_not_assertions", func(t *testing.T) { testFrameworkNotAssertions(t, env) })
+
+		// errors.go — bus error paths (from adversarial/bus_error_paths_test.go)
+		t.Run("publish_to_command_topic", func(t *testing.T) { testPublishToCommandTopic(t, env) })
+		t.Run("emit_to_command_topic", func(t *testing.T) { testEmitToCommandTopic(t, env) })
+		t.Run("subscribe_receives_metadata_adv", func(t *testing.T) { testSubscribeReceivesMetadataAdv(t, env) })
+		t.Run("reply_without_reply_to", func(t *testing.T) { testReplyWithoutReplyTo(t, env) })
+		t.Run("send_to_nonexistent_service", func(t *testing.T) { testSendToNonexistentService(t, env) })
+		t.Run("correlation_id_preserved", func(t *testing.T) { testCorrelationIDPreserved(t, env) })
+		t.Run("multiple_replies", func(t *testing.T) { testMultipleReplies(t, env) })
+		t.Run("subscribe_unsubscribe", func(t *testing.T) { testSubscribeUnsubscribe(t, env) })
+		t.Run("deployment_namespace", func(t *testing.T) { testDeploymentNamespace(t, env) })
+		t.Run("schedule_with_payload", func(t *testing.T) { testScheduleWithPayload(t, env) })
 	})
 }
