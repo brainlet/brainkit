@@ -18,3 +18,7 @@ internal/docs/*
 .c*
 .omc
 CLAUDE.md
+
+playground
+
+bin/*
