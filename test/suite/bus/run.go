@@ -89,5 +89,13 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("diag_await_tools_call", func(t *testing.T) { testDiagBusOnAwaitToolsCall(t, env) })
 		t.Run("diag_await_fetch", func(t *testing.T) { testDiagBusOnAwaitFetch(t, env) })
 		t.Run("diag_await_generate_text", func(t *testing.T) { testDiagBusOnAwaitGenerateText(t, env) })
+
+		// log.go (continued) — concurrent logging
+		t.Run("log_handler_concurrent", func(t *testing.T) { testLogHandlerConcurrent(t, env) })
+
+		// surface.go — bus command matrix (valid input, empty input, garbage payload)
+		t.Run("bus_matrix_valid_input", func(t *testing.T) { testBusMatrixValidInput(t, env) })
+		t.Run("bus_matrix_empty_input", func(t *testing.T) { testBusMatrixEmptyInput(t, env) })
+		t.Run("bus_matrix_garbage_payload", func(t *testing.T) { testBusMatrixGarbagePayload(t, env) })
 	})
 }

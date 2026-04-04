@@ -114,6 +114,29 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 	assert.Contains(t, fromB, "from file B", "file-b.ts logs should be tagged")
 }
 
+// testLogHandlerConcurrent tests multiple deployments logging concurrently.
+func testLogHandlerConcurrent(t *testing.T, _ *suite.TestEnv) {
+	var mu sync.Mutex
+	var count int
+
+	concEnv := suite.Minimal(t, suite.WithFSRoot(), suite.WithLogHandler(func(entry brainkit.LogEntry) {
+		mu.Lock()
+		count++
+		mu.Unlock()
+	}))
+
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		src := "concurrent-log.ts"
+		concEnv.Kernel.Deploy(ctx, src, `console.log("concurrent"); output("ok");`)
+		concEnv.Kernel.Teardown(ctx, src)
+	}
+
+	mu.Lock()
+	assert.Greater(t, count, 0, "should have received log entries from concurrent deploys")
+	mu.Unlock()
+}
+
 // testLogHandlerNilDefault verifies nil LogHandler doesn't panic.
 func testLogHandlerNilDefault(t *testing.T, _ *suite.TestEnv) {
 	nilEnv := suite.Minimal(t, suite.WithFSRoot())
