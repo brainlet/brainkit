@@ -59,5 +59,13 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		// error_contract.go
 		t.Run("bus_error_response_carries_code", func(t *testing.T) { testBusErrorResponseCarriesCode(t, env) })
 		t.Run("result_meta_includes_code", func(t *testing.T) { testResultMetaIncludesCode(t, env) })
+
+		// test_framework.go — JS built-in test framework
+		t.Run("framework_passing_tests", func(t *testing.T) { testFrameworkPassingTests(t, env) })
+		t.Run("framework_failing_test", func(t *testing.T) { testFrameworkFailingTest(t, env) })
+		t.Run("framework_async_tests", func(t *testing.T) { testFrameworkAsyncTests(t, env) })
+		t.Run("framework_deploy_and_test", func(t *testing.T) { testFrameworkDeployAndTest(t, env) })
+		t.Run("framework_hooks", func(t *testing.T) { testFrameworkHooks(t, env) })
+		t.Run("framework_not_assertions", func(t *testing.T) { testFrameworkNotAssertions(t, env) })
 	})
 }
