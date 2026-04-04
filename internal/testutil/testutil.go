@@ -219,55 +219,6 @@ func MustJSON(v any) json.RawMessage {
 	return b
 }
 
-// NewTestKernelWithStorage creates a Kernel with storage, workspace, and AI providers.
-// Used for memory, workflows, and vectors domain tests that need JS runtime storage init.
-func NewTestKernelWithStorage(t *testing.T) *TestKernel {
-	t.Helper()
-	LoadEnv(t)
-	tmpDir := t.TempDir()
-
-	storageProviders := make(map[string]provreg.AIProviderRegistration)
-	storageEnvVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		storageProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
-		storageEnvVars["OPENAI_API_KEY"] = key
-	}
-
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace:   "test",
-		CallerID:    "test-storage",
-		FSRoot:      tmpDir,
-		AIProviders: storageProviders,
-		Storages: map[string]brainkit.StorageConfig{
-			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
-		},
-		EnvVars: storageEnvVars,
-	})
-	if err != nil {
-		t.Fatalf("NewKernel (with storage): %v", err)
-	}
-	t.Cleanup(func() { k.Close() })
-
-	// Register standard test tools
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input EchoInput) (any, error) {
-			return map[string]string{"echoed": input.Message}, nil
-		},
-	})
-	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
-		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input AddInput) (any, error) {
-			return map[string]int{"sum": input.A + input.B}, nil
-		},
-	})
-
-	return &TestKernel{k}
-}
-
 // BuildTestMCP compiles the testmcp binary and returns its path.
 func BuildTestMCP(t *testing.T) string {
 	t.Helper()
@@ -342,47 +293,6 @@ func RestartKernel(t *testing.T, cfg brainkit.KernelConfig, setup func(*brainkit
 	t.Cleanup(func() { k2.Close() })
 
 	return k1, k2
-}
-
-// RestartKernelWithStore is like RestartKernel but returns the store path
-// for callers that need to inspect the DB directly.
-func RestartKernelWithStore(t *testing.T, cfg brainkit.KernelConfig, setup func(*brainkit.Kernel)) (string, *brainkit.Kernel) {
-	t.Helper()
-	storePath := filepath.Join(t.TempDir(), "restart-test.db")
-
-	store1, err := brainkit.NewSQLiteStore(storePath)
-	if err != nil {
-		t.Fatalf("RestartKernelWithStore: open store1: %v", err)
-	}
-	cfg.Store = store1
-	if cfg.Namespace == "" {
-		cfg.Namespace = "test"
-	}
-	if cfg.CallerID == "" {
-		cfg.CallerID = "test"
-	}
-
-	k1, err := brainkit.NewKernel(cfg)
-	if err != nil {
-		t.Fatalf("RestartKernelWithStore: create k1: %v", err)
-	}
-
-	setup(k1)
-	k1.Close()
-
-	store2, err := brainkit.NewSQLiteStore(storePath)
-	if err != nil {
-		t.Fatalf("RestartKernelWithStore: open store2: %v", err)
-	}
-	cfg.Store = store2
-
-	k2, err := brainkit.NewKernel(cfg)
-	if err != nil {
-		t.Fatalf("RestartKernelWithStore: create k2: %v", err)
-	}
-	t.Cleanup(func() { k2.Close() })
-
-	return storePath, k2
 }
 
 // ConcurrentDo runs fn in n goroutines and waits for all to complete.

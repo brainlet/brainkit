@@ -60,41 +60,6 @@ func CreateTestTransport(t *testing.T, backend string) *messaging.Transport {
 	return transport
 }
 
-// NewTestKernelWithTransport creates a Kernel with the given backend transport.
-func NewTestKernelWithTransport(t *testing.T, backend string) sdk.Runtime {
-	t.Helper()
-	LoadEnv(t)
-	tmpDir := t.TempDir()
-	cfg := TransportConfigForBackend(t, backend)
-
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "test",
-		CallerID:  "test-" + backend,
-		FSRoot:    tmpDir,
-		Transport: MustCreateTransport(t, cfg),
-	})
-	if err != nil {
-		t.Fatalf("NewKernel(%s): %v", backend, err)
-	}
-	t.Cleanup(func() { k.Close() })
-
-	// Register test tools
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input EchoInput) (any, error) {
-			return map[string]string{"echoed": input.Message}, nil
-		},
-	})
-	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
-		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input AddInput) (any, error) {
-			return map[string]int{"sum": input.A + input.B}, nil
-		},
-	})
-
-	return k
-}
-
 // NewKitWithNamespace creates a Kernel with a specific namespace on the given backend.
 // For cross-Kit tests, two Kits share the same transport but different namespaces.
 func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
@@ -309,39 +274,6 @@ func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
 	t.Fatalf("backend not ready after 5 probe attempts — transport is broken or container didn't start")
 }
 
-// NewTestKernelPair creates two Kernels on the SAME transport with different namespaces.
-func NewTestKernelPair(t *testing.T, backend string) (sdk.Runtime, sdk.Runtime) {
-	t.Helper()
-	LoadEnv(t)
-	cfg := TransportConfigForBackend(t, backend)
-	transport := MustCreateTransport(t, cfg)
-	t.Cleanup(func() { transport.Close() })
-
-	makeKit := func(namespace string) sdk.Runtime {
-		tmpDir := t.TempDir()
-		k, err := brainkit.NewKernel(brainkit.KernelConfig{
-			Namespace: namespace,
-			CallerID:  namespace + "-caller",
-			FSRoot:    tmpDir,
-			Transport: transport,
-		})
-		if err != nil {
-			t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
-		}
-		t.Cleanup(func() { k.Close() })
-
-		brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-			Description: "echoes the input message",
-			Execute: func(ctx context.Context, input EchoInput) (any, error) {
-				return map[string]string{"echoed": input.Message, "from": namespace}, nil
-			},
-		})
-		return k
-	}
-
-	return makeKit("kit-a"), makeKit("kit-b")
-}
-
 // NewTestKernelPairFull creates two fully-configured Kernels on the SAME transport.
 func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKernel) {
 	t.Helper()
@@ -437,59 +369,6 @@ func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	})
 	if err != nil {
 		t.Fatalf("NewKernel(%s): %v", backend, err)
-	}
-	t.Cleanup(func() { k.Close() })
-
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input EchoInput) (any, error) {
-			return map[string]string{"echoed": input.Message}, nil
-		},
-	})
-	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
-		Description: "adds two numbers",
-		Execute: func(ctx context.Context, input AddInput) (any, error) {
-			return map[string]int{"sum": input.A + input.B}, nil
-		},
-	})
-
-	return &TestKernel{k}
-}
-
-// NewTestKernelWithStorageAndBackend creates a Kernel with storage + workspace + AI providers
-// on the given transport backend.
-func NewTestKernelWithStorageAndBackend(t *testing.T, backend string) *TestKernel {
-	t.Helper()
-	LoadEnv(t)
-	tmpDir := t.TempDir()
-
-	storageProviders := make(map[string]provreg.AIProviderRegistration)
-	storageEnvVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		storageProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
-		storageEnvVars["OPENAI_API_KEY"] = key
-	}
-
-	cfg := TransportConfigForBackend(t, backend)
-	transport := MustCreateTransport(t, cfg)
-	t.Cleanup(func() { transport.Close() })
-
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace:   "test",
-		CallerID:    "test-storage-" + backend,
-		FSRoot:      tmpDir,
-		AIProviders: storageProviders,
-		Storages: map[string]brainkit.StorageConfig{
-			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
-		},
-		EnvVars:   storageEnvVars,
-		Transport: transport,
-	})
-	if err != nil {
-		t.Fatalf("NewKernel(%s, storage): %v", backend, err)
 	}
 	t.Cleanup(func() { k.Close() })
 
