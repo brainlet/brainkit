@@ -1,0 +1,585 @@
+package persistence
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/test/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
+)
+
+// ── Deploy persistence ──────────────────────────────────────────────────
+
+func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "test.db")
+
+	// Kernel 1: deploy a service
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store1,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	pr, err := sdk.Publish(k1, ctx, messages.KitDeployMsg{
+		Source: "greeter-persist.ts",
+		Code:   `bus.on("greet", (msg) => { msg.reply({ hello: "world" }); });`,
+	})
+	require.NoError(t, err)
+	deployCh := make(chan struct{}, 1)
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k1, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	<-deployCh
+	unsub()
+
+	// Verify service works
+	time.Sleep(100 * time.Millisecond)
+	sendPR, _ := sdk.SendToService(k1, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
+	replyCh := make(chan bool, 1)
+	replyUnsub, _ := k1.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replyCh <- true })
+	select {
+	case <-replyCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout")
+	}
+	replyUnsub()
+
+	// Close Kernel 1
+	k1.Close()
+
+	// Kernel 2: same store — service should auto-redeploy
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// Service should be running
+	time.Sleep(200 * time.Millisecond)
+	sendPR2, _ := sdk.SendToService(k2, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
+	replyCh2 := make(chan bool, 1)
+	replyUnsub2, _ := k2.SubscribeRaw(ctx, sendPR2.ReplyTo, func(msg messages.Message) { replyCh2 <- true })
+	defer replyUnsub2()
+
+	select {
+	case <-replyCh2:
+		// auto-redeployed and responded
+	case <-time.After(5 * time.Second):
+		t.Fatal("redeployed service did not respond")
+	}
+}
+
+func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "test.db")
+	store, _ := brainkit.NewSQLiteStore(storePath)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{Source: "temp-persist.ts", Code: `bus.on("x", (m) => m.reply({}));`})
+	deployCh := make(chan struct{}, 1)
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	<-deployCh
+	unsub()
+
+	// Teardown
+	tpr, _ := sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: "temp-persist.ts"})
+	tdCh := make(chan struct{}, 1)
+	tunsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](k, ctx, tpr.ReplyTo, func(_ messages.KitTeardownResp, _ messages.Message) { tdCh <- struct{}{} })
+	<-tdCh
+	tunsub()
+	k.Close()
+
+	// Kernel 2: should have NO deployments
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, _ := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store2,
+	})
+	defer k2.Close()
+
+	deployments := k2.ListDeployments()
+	assert.Empty(t, deployments, "torn-down deployment should not persist")
+}
+
+func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "test.db")
+	store, _ := brainkit.NewSQLiteStore(storePath)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	for _, name := range []string{"first-persist.ts", "second-persist.ts", "third-persist.ts"} {
+		pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{
+			Source: name,
+			Code:   `bus.on("ping", (m) => m.reply({}));`,
+		})
+		ch := make(chan struct{}, 1)
+		unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { ch <- struct{}{} })
+		<-ch
+		unsub()
+	}
+	k.Close()
+
+	// Verify order in store
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	deps, _ := store2.LoadDeployments()
+	store2.Close()
+
+	require.Len(t, deps, 3)
+	assert.Equal(t, "first-persist.ts", deps[0].Source)
+	assert.Equal(t, "second-persist.ts", deps[1].Source)
+	assert.Equal(t, "third-persist.ts", deps[2].Source)
+	assert.Less(t, deps[0].Order, deps[1].Order)
+	assert.Less(t, deps[1].Order, deps[2].Order)
+}
+
+func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "test.db")
+	store, _ := brainkit.NewSQLiteStore(storePath)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Deploy a working service
+	pr1, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{
+		Source: "good-persist.ts",
+		Code:   `bus.on("ping", (msg) => { msg.reply({ ok: true }); });`,
+	})
+	ch1 := make(chan struct{}, 1)
+	u1, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr1.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { ch1 <- struct{}{} })
+	<-ch1
+	u1()
+
+	// Persist a broken deployment directly into the store
+	store.SaveDeployment(brainkit.PersistedDeployment{
+		Source: "broken-persist.ts", Code: `throw new Error("intentional failure");`,
+		Order: 99, DeployedAt: time.Now(),
+	})
+
+	k.Close()
+
+	// Kernel 2: should start even though broken-persist.ts fails to redeploy
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test",
+		CallerID:  "test",
+		Store:     store2,
+	})
+	require.NoError(t, err, "Kernel should start even with a broken persisted deployment")
+	defer k2.Close()
+
+	// The good service should still work
+	time.Sleep(200 * time.Millisecond)
+	sendPR, _ := sdk.SendToService(k2, ctx, "good-persist.ts", "ping", map[string]bool{"x": true})
+	replyCh := make(chan bool, 1)
+	replyUnsub, _ := k2.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replyCh <- true })
+	defer replyUnsub()
+
+	select {
+	case <-replyCh:
+		// good-persist.ts works despite broken-persist.ts failure
+	case <-time.After(5 * time.Second):
+		t.Fatal("good-persist.ts should work even when broken-persist.ts fails to redeploy")
+	}
+}
+
+// ── Metadata persistence ────────────────────────────────────────────────
+
+func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
+	storePath := filepath.Join(t.TempDir(), "pkg-restart.db")
+
+	// Phase 1: deploy with package name
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	_, err = k1.Deploy(context.Background(), "svc-persist.ts",
+		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
+		brainkit.WithPackageName("my-package"),
+	)
+	require.NoError(t, err)
+	k1.Close()
+
+	// Phase 2: verify package name survived in store
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 1)
+	assert.Equal(t, "my-package", deps[0].PackageName, "packageName must survive restart")
+	store2.Close()
+}
+
+func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
+	storePath := filepath.Join(t.TempDir(), "redeploy-meta.db")
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store,
+		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx := context.Background()
+	_, err = k.Deploy(ctx, "svc-redeploy-persist.ts",
+		`bus.on("v1", (msg) => msg.reply({ v: 1 }));`,
+		brainkit.WithPackageName("my-pkg"), brainkit.WithRole("admin"),
+	)
+	require.NoError(t, err)
+
+	// Redeploy with new code — metadata should be preserved
+	_, err = k.Redeploy(ctx, "svc-redeploy-persist.ts",
+		`bus.on("v2", (msg) => msg.reply({ v: 2 }));`)
+	require.NoError(t, err)
+
+	// Check store directly
+	deps, _ := store.LoadDeployments()
+	require.Len(t, deps, 1)
+	assert.Equal(t, "my-pkg", deps[0].PackageName, "packageName must survive redeploy")
+	assert.Equal(t, "admin", deps[0].Role, "role must survive redeploy")
+}
+
+func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
+	storePath := filepath.Join(t.TempDir(), "restoring.db")
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store,
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	// Deploy with WithRestoring — should NOT persist
+	_, err = k.Deploy(context.Background(), "ephemeral-persist.ts",
+		`bus.on("x", (msg) => msg.reply({}));`,
+		brainkit.WithRestoring(),
+	)
+	require.NoError(t, err)
+
+	// Store should be empty (WithRestoring skips SaveDeployment)
+	deps, _ := store.LoadDeployments()
+	assert.Empty(t, deps, "WithRestoring should skip SaveDeployment")
+}
+
+func testRolePreservedAcrossRestart(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "role-restart.db")
+
+	roles := map[string]rbac.Role{
+		"admin": rbac.RoleAdmin,
+		"restricted": {
+			Name: "restricted",
+			Bus: rbac.BusPermissions{
+				Subscribe: rbac.TopicFilter{Allow: []string{"*.reply.*"}},
+			},
+			Commands: rbac.CommandPermissions{Allow: []string{"tools.list"}},
+		},
+	}
+
+	// Kernel 1: deploy with role
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test",
+		Store: store1, Roles: roles, DefaultRole: "restricted",
+	})
+	require.NoError(t, err)
+
+	_, err = k1.Deploy(context.Background(), "admin-svc-persist.ts",
+		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
+		brainkit.WithRole("admin"),
+	)
+	require.NoError(t, err)
+	k1.Close()
+
+	// Kernel 2: same store — deployment should restore with role="admin"
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test",
+		Store: store2, Roles: roles, DefaultRole: "restricted",
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// Verify the deployment was restored
+	deployments := k2.ListDeployments()
+	require.Len(t, deployments, 1, "admin-svc-persist.ts should be restored")
+
+	// Verify the role was preserved by checking the stored deployment
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 1)
+	assert.Equal(t, "admin", deps[0].Role, "role should be preserved across restart")
+}
+
+// ── Schedule persistence (from persistence_test.go) ─────────────────────
+
+func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "schedule-restart.db")
+
+	// Kernel 1: create a one-time schedule that fires 100ms from now
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	// Create a schedule that fires "in 100ms"
+	schedID, err := k1.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "in 100ms",
+		Topic:      "test.catchup.persist",
+		Payload:    []byte(`{"caught":"up"}`),
+		Source:     "test",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, schedID)
+
+	// Close immediately — the schedule hasn't fired yet
+	k1.Close()
+
+	// Wait past the fire time
+	time.Sleep(200 * time.Millisecond)
+
+	// Kernel 2: same store — should fire the missed schedule on startup
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	// The one-time schedule should have been fired and deleted
+	schedules := k2.ListSchedules()
+	assert.Empty(t, schedules, "one-time schedule should be deleted after catch-up fire")
+}
+
+func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "recurring-restart.db")
+
+	// Kernel 1: create recurring schedule
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	schedID, err := k1.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "every 1h",
+		Topic:      "test.heartbeat.persist",
+		Payload:    []byte(`{"beat":true}`),
+		Source:     "test",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, schedID)
+
+	// Verify schedule exists
+	schedules := k1.ListSchedules()
+	require.Len(t, schedules, 1)
+	k1.Close()
+
+	// Kernel 2: schedule should be restored and active
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store2,
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	schedules = k2.ListSchedules()
+	require.Len(t, schedules, 1, "recurring schedule should be restored")
+	assert.Equal(t, "every 1h", schedules[0].Expression)
+	assert.Equal(t, "test.heartbeat.persist", schedules[0].Topic)
+	assert.False(t, schedules[0].OneTime, "should be recurring, not one-time")
+}
+
+func testDeployOrderPreservedExactly(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "order-exact.db")
+
+	// Kernel 1: deploy A, B, C in order
+	store1, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", Store: store1,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	for _, name := range []string{"alpha-persist.ts", "beta-persist.ts", "gamma-persist.ts"} {
+		_, err := k1.Deploy(ctx, name, `bus.on("x", (msg) => msg.reply({}));`)
+		require.NoError(t, err)
+	}
+	k1.Close()
+
+	// Kernel 2: verify load order matches deploy order
+	store2, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	deps, err := store2.LoadDeployments()
+	require.NoError(t, err)
+	require.Len(t, deps, 3)
+
+	// LoadDeployments returns ORDER BY deploy_order
+	assert.Equal(t, "alpha-persist.ts", deps[0].Source)
+	assert.Equal(t, "beta-persist.ts", deps[1].Source)
+	assert.Equal(t, "gamma-persist.ts", deps[2].Source)
+	assert.True(t, deps[0].Order < deps[1].Order, "alpha should have lower order than beta")
+	assert.True(t, deps[1].Order < deps[2].Order, "beta should have lower order than gamma")
+
+	store2.Close()
+}
+
+// ── Edge cases — corrupt store recovery ─────────────────────────────────
+
+func testCorruptDeploymentTable(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "corrupt.db")
+
+	// Create valid store with a deployment
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store,
+	})
+	require.NoError(t, err)
+	k.Deploy(context.Background(), "valid-persist.ts", `output("valid");`)
+	k.Close()
+	store.Close()
+
+	// Open DB directly and corrupt data
+	db, err := sql.Open("sqlite", storePath)
+	require.NoError(t, err)
+
+	// Inject deployment with code that throws during restore
+	db.Exec(`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
+		VALUES ('evil-persist.ts', 'throw new Error("corrupt restore");', 0, '2026-01-01T00:00:00Z', '', 'service')`)
+
+	// Inject deployment with binary garbage as code
+	db.Exec(`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
+		VALUES ('binary-persist.ts', X'DEADBEEF', 1, '2026-01-01T00:00:00Z', '', 'service')`)
+
+	// Inject deployment with enormous code
+	bigCode := make([]byte, 1024*1024) // 1MB of garbage
+	for i := range bigCode {
+		bigCode[i] = byte('A' + (i % 26))
+	}
+	db.Exec(`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
+		VALUES ('huge-persist.ts', ?, 2, '2026-01-01T00:00:00Z', '', 'service')`, string(bigCode))
+
+	db.Close()
+
+	// Reopen — kernel should handle corrupt deployments gracefully
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	var errors []error
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store2,
+		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+			errors = append(errors, err)
+		},
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	ctx := context.Background()
+	assert.True(t, k2.Alive(ctx), "kernel should survive corrupt deployments")
+	t.Logf("Errors during restore: %d", len(errors))
+
+	// The valid deployment should still work
+	deps := k2.ListDeployments()
+	found := false
+	for _, d := range deps {
+		if d.Source == "valid-persist.ts" {
+			found = true
+		}
+	}
+	assert.True(t, found, "valid deployment should survive corrupt siblings")
+}
+
+func testCorruptScheduleTable(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "sched-corrupt.db")
+
+	store, _ := brainkit.NewSQLiteStore(storePath)
+	store.SaveSchedule(brainkit.PersistedSchedule{
+		ID: "valid-sched", Expression: "every 1h", Duration: time.Hour,
+		Topic: "valid.topic.persist", Payload: json.RawMessage(`{}`),
+		Source: "test", CreatedAt: time.Now(), NextFire: time.Now().Add(time.Hour),
+	})
+	// Inject corrupt schedule
+	store.SaveSchedule(brainkit.PersistedSchedule{
+		ID: "corrupt-sched", Expression: "invalid-expression", Duration: 0,
+		Topic: "", Payload: json.RawMessage(`not-json`),
+		Source: "", CreatedAt: time.Time{}, NextFire: time.Time{},
+	})
+	// Inject schedule with negative duration
+	store.SaveSchedule(brainkit.PersistedSchedule{
+		ID: "neg-sched", Expression: "every -1h", Duration: -time.Hour,
+		Topic: "neg.topic.persist", Payload: json.RawMessage(`{}`),
+		Source: "test", CreatedAt: time.Now(), NextFire: time.Now().Add(-time.Hour),
+	})
+	store.Close()
+
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store2,
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx := context.Background()
+	assert.True(t, k.Alive(ctx), "kernel should survive corrupt schedules")
+}

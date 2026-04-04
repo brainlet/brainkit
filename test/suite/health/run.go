@@ -27,5 +27,33 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// metrics.go
 		t.Run("metrics_reflects_state", func(t *testing.T) { testMetricsReflectsState(t, env) })
+
+		// probes.go (health probes — most use fresh kernels with specific configs)
+		t.Run("probe_ai_provider_real_openai", func(t *testing.T) { testProbeAIProviderRealOpenAI(t, env) })
+		t.Run("probe_ai_provider_bad_key", func(t *testing.T) { testProbeAIProviderBadKey(t, env) })
+		t.Run("probe_ai_provider_not_registered", func(t *testing.T) { testProbeAIProviderNotRegistered(t, env) })
+		t.Run("probe_storage_inmemory", func(t *testing.T) { testProbeStorageInMemory(t, env) })
+		t.Run("probe_vector_store_pgvector", func(t *testing.T) { testProbeVectorStoreRealPgVector(t, env) })
+		t.Run("probe_all", func(t *testing.T) { testProbeAll(t, env) })
+		t.Run("probe_periodic_ticker", func(t *testing.T) { testProbePeriodicTicker(t, env) })
+
+		// degraded.go (adversarial degraded health scenarios)
+		t.Run("alive_after_heavy_load-degraded", func(t *testing.T) { testAliveAfterHeavyLoad(t, env) })
+		t.Run("ready_toggle_during_drain-degraded", func(t *testing.T) { testReadyToggleDuringDrain(t, env) })
+		t.Run("full_health_check_categories-degraded", func(t *testing.T) { testFullHealthCheckCategories(t, env) })
+		t.Run("health_with_tracing_store-degraded", func(t *testing.T) { testHealthWithTracingStore(t, env) })
+		t.Run("health_with_storage_bridges-degraded", func(t *testing.T) { testHealthWithStorageBridges(t, env) })
+		t.Run("metrics_reflect_deployments-degraded", func(t *testing.T) { testMetricsReflectDeployments(t, env) })
+		t.Run("uptime_increases-degraded", func(t *testing.T) { testUptimeIncreases(t, env) })
+		t.Run("health_after_close-degraded", func(t *testing.T) { testHealthAfterClose(t, env) })
+		t.Run("persistence_store_health-degraded", func(t *testing.T) { testPersistenceStoreHealth(t, env) })
+
+		// shutdown_adv.go (adversarial shutdown tests)
+		t.Run("shutdown_graceful_with_active_deployments-adv", func(t *testing.T) { testShutdownGracefulWithActiveDeployments(t, env) })
+		t.Run("shutdown_with_active_schedules-adv", func(t *testing.T) { testShutdownWithActiveSchedules(t, env) })
+		t.Run("shutdown_with_active_subscriptions-adv", func(t *testing.T) { testShutdownWithActiveSubscriptions(t, env) })
+		t.Run("shutdown_drain_timeout-adv", func(t *testing.T) { testShutdownDrainTimeoutAdv(t, env) })
+		t.Run("shutdown_concurrent_close-adv", func(t *testing.T) { testShutdownConcurrentClose(t, env) })
+		t.Run("shutdown_storage_access_before_close-adv", func(t *testing.T) { testShutdownStorageAccessBeforeClose(t, env) })
 	})
 }
