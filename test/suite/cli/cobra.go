@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,8 @@ func testNewModule(t *testing.T, _ *suite.TestEnv) {
 	assert.FileExists(t, filepath.Join(modDir, "hello.ts"))
 	assert.FileExists(t, filepath.Join(modDir, "tsconfig.json"))
 	assert.FileExists(t, filepath.Join(modDir, "types", "kit.d.ts"))
+	assert.FileExists(t, filepath.Join(modDir, "types", "ai.d.ts"))
+	assert.FileExists(t, filepath.Join(modDir, "types", "agent.d.ts"))
 
 	data, _ := os.ReadFile(filepath.Join(modDir, "manifest.json"))
 	assert.Contains(t, string(data), `"name": "my-mod"`)
@@ -216,7 +219,10 @@ func testSendWithAsyncHandler(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Deployed slow.ts")
 
-	out, err = runCLI(t, "--timeout", "15s", "send", "slow", "compute", `{"a":17,"b":25}`)
+	out, err = runCLI(t, "--timeout", "15s", "send", "slow", "compute", `{"a":3,"b":4}`)
 	require.NoError(t, err)
-	assert.Contains(t, out, "42")
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	assert.Equal(t, float64(7), result["sum"])
 }

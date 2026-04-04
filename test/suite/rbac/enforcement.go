@@ -334,6 +334,20 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	require.Len(t, deployments2, 1, "deployment should be restored from persistence")
 	assert.Equal(t, "watched-rbac.ts", deployments2[0].Source)
 
+	// Deploy an admin service to provide cross-role verification
+	adminCode := `
+		bus.on("test", async (msg) => {
+			try {
+				bus.publish("some.forbidden.topic", { test: true });
+				msg.reply({ blocked: false });
+			} catch(e) {
+				msg.reply({ blocked: true, error: e.message });
+			}
+		});
+	`
+	_, err = k2.Deploy(context.Background(), "admin-checker.ts", adminCode, brainkit.WithRole("admin"))
+	require.NoError(t, err)
+
 	// Verify the observer's restored deployment is functional
 	time.Sleep(100 * time.Millisecond)
 	sendPR, err := sdk.SendToService(k2, context.Background(), "watched-rbac.ts", "ping", map[string]bool{"x": true})

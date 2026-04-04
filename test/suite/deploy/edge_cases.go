@@ -32,7 +32,9 @@ func testTSImportsStripped(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, result, `"busExists":true`)
 }
 
-func testMultipleDeploymentsCoexist(t *testing.T, env *suite.TestEnv) {
+func testMultipleDeploymentsCoexist(t *testing.T, _ *suite.TestEnv) {
+	// Fresh kernel needed — exact count assertions require no other deployments
+	env := suite.Full(t)
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
 		src := fmt.Sprintf("coexist-%d.ts", i)
@@ -43,11 +45,14 @@ func testMultipleDeploymentsCoexist(t *testing.T, env *suite.TestEnv) {
 	}
 
 	deps := env.Kernel.ListDeployments()
-	assert.GreaterOrEqual(t, len(deps), 10)
+	assert.Equal(t, 10, len(deps))
 
 	for i := 0; i < 10; i++ {
 		env.Kernel.Teardown(ctx, fmt.Sprintf("coexist-%d.ts", i))
 	}
+
+	deps2 := env.Kernel.ListDeployments()
+	assert.Equal(t, 0, len(deps2))
 }
 
 func testRedeployPreservesOtherDeployments(t *testing.T, env *suite.TestEnv) {

@@ -74,6 +74,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("err_handler_error", func(t *testing.T) { testErrHandlerError(t, env) })
 		t.Run("err_large_payload", func(t *testing.T) { testErrLargePayload(t, env) })
 		t.Run("err_path_params", func(t *testing.T) { testErrPathParams(t, env) })
+		t.Run("err_gateway_status_mapping", func(t *testing.T) { testErrGatewayStatusMapping(t, env) })
 
 		// attacks.go — gateway-specific attack tests (from adversarial/gateway_attack_test.go)
 		t.Run("attack_request_body_bomb", func(t *testing.T) { testAttackRequestBodyBomb(t, env) })

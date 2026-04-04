@@ -70,7 +70,11 @@ func testStatDirectory(t *testing.T, env *suite.TestEnv) {
 		return JSON.stringify({isDir: s.isDirectory()});
 	`)
 	require.NoError(t, err)
-	assert.Contains(t, result, `"isDir":true`)
+	var stat struct {
+		IsDir bool `json:"isDir"`
+	}
+	json.Unmarshal([]byte(result), &stat)
+	assert.True(t, stat.IsDir)
 }
 
 func testDelete(t *testing.T, env *suite.TestEnv) {

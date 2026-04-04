@@ -116,6 +116,11 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("error_contract_bus_not_configured_rbac", func(t *testing.T) { testErrorContractBusNotConfiguredRBAC(t, env) })
 		t.Run("error_contract_bus_already_exists", func(t *testing.T) { testErrorContractBusAlreadyExists(t, env) })
 		t.Run("error_contract_bus_deploy_error_bad_syntax", func(t *testing.T) { testErrorContractBusDeployErrorBadSyntax(t, env) })
+		t.Run("error_contract_errors_as_all_types", func(t *testing.T) { testErrorContractErrorsAsAllTypes(t, env) })
+		t.Run("error_contract_jsbridge_permission_denied", func(t *testing.T) { testErrorContractJSBridgePermissionDenied(t, env) })
+		t.Run("error_contract_jsbridge_validation_error_missing_args", func(t *testing.T) { testErrorContractJSBridgeValidationErrorMissingArgs(t, env) })
+		t.Run("error_contract_jsbridge_rate_limited", func(t *testing.T) { testErrorContractJSBridgeRateLimited(t, env) })
+		t.Run("error_contract_jsbridge_not_configured_secrets", func(t *testing.T) { testErrorContractJSBridgeNotConfiguredSecrets(t, env) })
 
 		// input_abuse.go — bus input abuse adversarial (from adversarial/input_abuse_test.go)
 		t.Run("input_abuse_bus_empty_topic", func(t *testing.T) { testInputAbuseBusEmptyTopic(t, env) })
