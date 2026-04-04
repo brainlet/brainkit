@@ -1,0 +1,67 @@
+package security
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/test/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// testStateNonexistentRoleOnDeploy — role assigned to nonexistent role name.
+func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "store-sec.db")
+
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	store.SaveDeployment(brainkit.PersistedDeployment{
+		Source: "ghost-role-sec.ts", Code: `output("hi");`,
+		Order: 1, Role: "nonexistent-role-xyz",
+		DeployedAt: time.Now(),
+	})
+	store.Close()
+
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store2,
+		Roles: map[string]rbac.Role{"service": rbac.RoleService},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	assert.NotNil(t, k)
+}
+
+// testStateStoreWipedMidlife — store emptied behind brainkit's back — in-memory state survives.
+func testStateStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-sec.db"))
+	require.NoError(t, err)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	_, err = k.Deploy(context.Background(), "survivor-sec.ts", `output("alive");`)
+	require.NoError(t, err)
+
+	store.DeleteDeployment("survivor-sec.ts")
+
+	deps := k.ListDeployments()
+	found := false
+	for _, d := range deps {
+		if d.Source == "survivor-sec.ts" {
+			found = true
+		}
+	}
+	assert.True(t, found, "in-memory deployment survives store wipe")
+}
