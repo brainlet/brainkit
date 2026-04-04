@@ -79,5 +79,15 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("subscribe_unsubscribe", func(t *testing.T) { testSubscribeUnsubscribe(t, env) })
 		t.Run("deployment_namespace", func(t *testing.T) { testDeploymentNamespace(t, env) })
 		t.Run("schedule_with_payload", func(t *testing.T) { testScheduleWithPayload(t, env) })
+
+		// integration.go — multi-service chain
+		t.Run("two_service_interaction", func(t *testing.T) { testTwoServiceInteraction(t, env) })
+
+		// async_diag.go — async operation levels inside bus.on handlers
+		t.Run("diag_await_promise_resolve", func(t *testing.T) { testDiagBusOnAwaitPromiseResolve(t, env) })
+		t.Run("diag_await_set_timeout", func(t *testing.T) { testDiagBusOnAwaitSetTimeout(t, env) })
+		t.Run("diag_await_tools_call", func(t *testing.T) { testDiagBusOnAwaitToolsCall(t, env) })
+		t.Run("diag_await_fetch", func(t *testing.T) { testDiagBusOnAwaitFetch(t, env) })
+		t.Run("diag_await_generate_text", func(t *testing.T) { testDiagBusOnAwaitGenerateText(t, env) })
 	})
 }
