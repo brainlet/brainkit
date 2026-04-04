@@ -43,5 +43,21 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("retry_exhausted_dead_letter", func(t *testing.T) { testRetryExhaustedDeadLetter(t, env) })
 		t.Run("exhausted_event_emitted", func(t *testing.T) { testExhaustedEventEmitted(t, env) })
 		t.Run("retry_preserves_reply_to", func(t *testing.T) { testRetryPreservesReplyTo(t, env) })
+
+		// ratelimit.go
+		t.Run("bus_rate_limit_exceeds", func(t *testing.T) { testBusRateLimitExceeds(t, env) })
+
+		// pump.go
+		t.Run("pump_schedule_latency", func(t *testing.T) { testPumpScheduleLatency(t, env) })
+		t.Run("pump_responsive_after_idle", func(t *testing.T) { testPumpResponsiveAfterIdle(t, env) })
+
+		// log.go
+		t.Run("log_handler_ts_compartment", func(t *testing.T) { testLogHandlerTSCompartment(t, env) })
+		t.Run("log_handler_multiple_files", func(t *testing.T) { testLogHandlerMultipleFiles(t, env) })
+		t.Run("log_handler_nil_default", func(t *testing.T) { testLogHandlerNilDefault(t, env) })
+
+		// error_contract.go
+		t.Run("bus_error_response_carries_code", func(t *testing.T) { testBusErrorResponseCarriesCode(t, env) })
+		t.Run("result_meta_includes_code", func(t *testing.T) { testResultMetaIncludesCode(t, env) })
 	})
 }

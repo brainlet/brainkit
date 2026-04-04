@@ -1,0 +1,137 @@
+package bus
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/test/suite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// testLogHandlerTSCompartment needs its own kernel with a custom LogHandler.
+func testLogHandlerTSCompartment(t *testing.T, _ *suite.TestEnv) {
+	var mu sync.Mutex
+	var logs []brainkit.LogEntry
+
+	logEnv := suite.Minimal(t, suite.WithFSRoot(), suite.WithLogHandler(func(e brainkit.LogEntry) {
+		mu.Lock()
+		logs = append(logs, e)
+		mu.Unlock()
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+		Source: "log-test.ts",
+		Code:   `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`,
+	})
+	require.NoError(t, err)
+	ch := make(chan messages.KitDeployResp, 1)
+	us, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	defer us()
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var tagged []string
+	for _, l := range logs {
+		if l.Source == "log-test.ts" {
+			tagged = append(tagged, l.Level+":"+l.Message)
+		}
+	}
+	assert.Contains(t, tagged, "log:hello from ts")
+	assert.Contains(t, tagged, "warn:warning!")
+	assert.Contains(t, tagged, "error:error!")
+}
+
+// testLogHandlerMultipleFiles needs its own kernel with a custom LogHandler.
+func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
+	var mu sync.Mutex
+	var logs []brainkit.LogEntry
+
+	logEnv := suite.Minimal(t, suite.WithFSRoot(), suite.WithLogHandler(func(e brainkit.LogEntry) {
+		mu.Lock()
+		logs = append(logs, e)
+		mu.Unlock()
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	pr1, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+		Source: "file-a.ts",
+		Code:   `console.log("from file A");`,
+	})
+	require.NoError(t, err)
+	ch1 := make(chan messages.KitDeployResp, 1)
+	us1, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+	defer us1()
+	select {
+	case <-ch1:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
+
+	pr2, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+		Source: "file-b.ts",
+		Code:   `console.log("from file B");`,
+	})
+	require.NoError(t, err)
+	ch2 := make(chan messages.KitDeployResp, 1)
+	us2, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch2 <- r })
+	defer us2()
+	select {
+	case <-ch2:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var fromA, fromB []string
+	for _, l := range logs {
+		if l.Source == "file-a.ts" {
+			fromA = append(fromA, l.Message)
+		}
+		if l.Source == "file-b.ts" {
+			fromB = append(fromB, l.Message)
+		}
+	}
+	assert.Contains(t, fromA, "from file A", "file-a.ts logs should be tagged")
+	assert.Contains(t, fromB, "from file B", "file-b.ts logs should be tagged")
+}
+
+// testLogHandlerNilDefault verifies nil LogHandler doesn't panic.
+func testLogHandlerNilDefault(t *testing.T, _ *suite.TestEnv) {
+	nilEnv := suite.Minimal(t, suite.WithFSRoot())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(nilEnv.Kernel, ctx, messages.KitDeployMsg{
+		Source: "nil-test.ts",
+		Code:   `console.log("should not panic");`,
+	})
+	require.NoError(t, err)
+	ch := make(chan messages.KitDeployResp, 1)
+	us, _ := sdk.SubscribeTo[messages.KitDeployResp](nilEnv.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	defer us()
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		t.Fatal("timeout")
+	}
+}
