@@ -121,6 +121,66 @@ func testTeardownCancelsSchedules(t *testing.T, _ *suite.TestEnv) {
 	assert.Equal(t, 0, len(schedsAfter), "teardown should cancel all schedules from the deployment")
 }
 
+// testE2EScheduleFires — schedule a message, verify handler receives it.
+func testE2EScheduleFires(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	ctx := context.Background()
+
+	// Deploy handler
+	_, err := freshEnv.Kernel.Deploy(ctx, "sched-handler-e2e.ts", `
+		bus.on("tick", function(msg) {
+			msg.reply({ticked: true, payload: msg.payload});
+		});
+	`)
+	require.NoError(t, err)
+
+	// Subscribe to know when schedule fires
+	fired := make(chan []byte, 1)
+	unsub, _ := freshEnv.Kernel.SubscribeRaw(ctx, "ts.sched-handler-e2e.tick", func(m messages.Message) {
+		fired <- m.Payload
+	})
+	defer unsub()
+
+	// Schedule in 200ms
+	id, err := freshEnv.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
+		Expression: "in 200ms",
+		Topic:      "ts.sched-handler-e2e.tick",
+		Payload:    json.RawMessage(`{"scheduled":true}`),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	select {
+	case p := <-fired:
+		assert.Contains(t, string(p), "scheduled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("schedule didn't fire within 5s")
+	}
+}
+
+// testInputAbuseScheduleInvalidExpression — invalid schedule expression should error.
+func testInputAbuseScheduleInvalidExpression(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	_, err := freshEnv.Kernel.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "bananas at midnight",
+		Topic:      "test",
+	})
+	assert.Error(t, err)
+}
+
+// testInputAbuseScheduleEmptyTopic — empty topic schedule should work or error cleanly.
+func testInputAbuseScheduleEmptyTopic(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	id, err := freshEnv.Kernel.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "in 1h",
+		Topic:      "",
+	})
+	// Either succeeds or errors — no panic
+	if err == nil {
+		freshEnv.Kernel.Unschedule(context.Background(), id)
+	}
+}
+
 func testDrainSkipsFiring(t *testing.T, env *suite.TestEnv) {
 	// Use a fresh kernel since we need to drain it
 	freshEnv := suite.Full(t)

@@ -16,5 +16,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("deploy_creates_span", func(t *testing.T) { testDeployCreatesSpan(t, env) })
 		t.Run("query_by_source", func(t *testing.T) { testQueryBySource(t, env) })
 		t.Run("empty_store", func(t *testing.T) { testEmptyStore(t, env) })
+		t.Run("sample_rate", func(t *testing.T) { testSampleRate(t, env) })
+		t.Run("trace_context_propagates", func(t *testing.T) { testTraceContextPropagates(t, env) })
 	})
 }

@@ -142,6 +142,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("persist_code_mutates_store_during_restore", func(t *testing.T) { testPersistCodeMutatesStoreDuringRestore(t, env) })
 		t.Run("persist_evil_plugin_paths", func(t *testing.T) { testPersistEvilPluginPaths(t, env) })
 		t.Run("persist_concurrent_store_writes", func(t *testing.T) { testPersistConcurrentStoreWrites(t, env) })
+
+		// libsql_validation.go — LibSQL file: URL blocking (from surface/ts_test.go)
+		t.Run("libsql_file_url_blocked", func(t *testing.T) { testLibSQLFileURLBlocked(t, env) })
+		t.Run("libsql_http_url_not_blocked", func(t *testing.T) { testLibSQLHttpURLNotBlocked(t, env) })
 	})
 }
 

@@ -85,6 +85,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("exhaustion_filesystem_fill", func(t *testing.T) { testExhaustionFilesystemFill(t, env) })
 		t.Run("exhaustion_pump_starvation", func(t *testing.T) { testExhaustionPumpStarvation(t, env) })
 		t.Run("exhaustion_persistence_bomb", func(t *testing.T) { testExhaustionPersistenceBomb(t, env) })
+
+		// e2e_stress.go — E2E stress scenarios (from adversarial/e2e_scenarios_test.go + e2e/scenarios_test.go)
+		t.Run("e2e_multiple_kernels", func(t *testing.T) { testE2EMultipleKernels(t, env) })
+		t.Run("e2e_concurrent_operations", func(t *testing.T) { testE2EConcurrentOperations(t, env) })
 	})
 }
 

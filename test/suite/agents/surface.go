@@ -13,6 +13,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testSurfaceGenerateTextReal — verify real AI SDK generateText from deployed .ts.
+// Requires OPENAI_API_KEY.
+func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
+	env.RequireAI(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+		Source: "surface-ai-gen-adv.ts",
+		Code: `
+			const result = await generateText({
+				model: model("openai", "gpt-4o-mini"),
+				prompt: "What is 2+2? Reply with just the number.",
+				maxTokens: 10,
+			});
+			output({
+				text: result.text,
+				hasUsage: !!result.usage,
+				finishReason: result.finishReason,
+			});
+		`,
+	})
+	require.NoError(t, err)
+	ch := make(chan messages.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	defer unsub()
+	select {
+	case resp := <-ch:
+		require.True(t, resp.Deployed, "deploy should succeed: %s", resp.Error)
+	case <-ctx.Done():
+		t.Fatal("timeout deploying AI generate")
+	}
+
+	result, err := env.Kernel.EvalTS(ctx, "__read_ai_gen_adv.ts", `return globalThis.__module_result || "null"`)
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
+	assert.NotEmpty(t, parsed["text"], "generateText should return non-empty text")
+	assert.Contains(t, parsed["text"], "4", "should contain the answer 4")
+	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
+
+	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-ai-gen-adv.ts"})
+}
+
 // testSurfaceAgentGenerate — deploy agent, call generate, verify response.
 // Requires OPENAI_API_KEY.
 func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {

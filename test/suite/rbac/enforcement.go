@@ -546,3 +546,28 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("observer timeout")
 	}
 }
+
+// testInputAbuseRBACNonexistentRole — assigning a nonexistent role should error.
+func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx := context.Background()
+	pr, err := sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "test.ts", Role: "nonexistent-role"})
+	require.NoError(t, err)
+
+	ch := make(chan []byte, 1)
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	defer unsub()
+	select {
+	case payload := <-ch:
+		assert.Contains(t, string(payload), "error")
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout")
+	}
+}

@@ -18,6 +18,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("deploy_agent_then_list", func(t *testing.T) { testDeployAgentThenList(t, env) })
 
 		// surface.go — surface AI tests (require OPENAI_API_KEY)
+		t.Run("surface_generate_text_real", func(t *testing.T) { testSurfaceGenerateTextReal(t, env) })
 		t.Run("surface_agent_generate", func(t *testing.T) { testSurfaceAgentGenerate(t, env) })
 		t.Run("surface_agent_with_tool", func(t *testing.T) { testSurfaceAgentWithTool(t, env) })
 		t.Run("surface_bus_service_ai_proxy", func(t *testing.T) { testSurfaceBusServiceAIProxy(t, env) })

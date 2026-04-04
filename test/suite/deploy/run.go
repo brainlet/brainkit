@@ -58,10 +58,18 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// e2e.go — deploy lifecycle e2e
 		t.Run("deploy_lifecycle", func(t *testing.T) { testDeployLifecycle(t, env) })
+		t.Run("e2e_deploy_with_error_recovery", func(t *testing.T) { testE2EDeployWithErrorRecovery(t, env) })
+		t.Run("e2e_deploy_list_redeploy_teardown", func(t *testing.T) { testE2EDeployListRedeployTeardown(t, env) })
 
 		// surface.go — TS surface deploy tests
 		t.Run("ts_namespace_isolation", func(t *testing.T) { testTSNamespaceIsolation(t, env) })
 		t.Run("ts_module_imports", func(t *testing.T) { testTSModuleImports(t, env) })
+		t.Run("ts_agent_endowments", func(t *testing.T) { testTSAgentEndowments(t, env) })
+		t.Run("ts_ai_sdk_endowments", func(t *testing.T) { testTSAISDKEndowments(t, env) })
+		t.Run("ts_deploy_with_tool", func(t *testing.T) { testTSDeployWithTool(t, env) })
+		t.Run("ts_deploy_with_workflow", func(t *testing.T) { testTSDeployWithWorkflow(t, env) })
+		t.Run("ts_deploy_with_bus_service", func(t *testing.T) { testTSDeployWithBusService(t, env) })
+		t.Run("ts_deploy_with_streaming", func(t *testing.T) { testTSDeployWithStreaming(t, env) })
 		t.Run("ts_file_extension_handling", func(t *testing.T) { testTSFileExtensionHandling(t, env) })
 	})
 }

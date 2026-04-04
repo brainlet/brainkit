@@ -58,6 +58,9 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("matrix_integration_observer_denied_publish", func(t *testing.T) { testMatrixIntegrationObserverDeniedPublish(t, env) })
 		t.Run("matrix_integration_service_allowed_tool_call", func(t *testing.T) { testMatrixIntegrationServiceAllowedToolCall(t, env) })
 		t.Run("matrix_integration_gateway_denied_everything", func(t *testing.T) { testMatrixIntegrationGatewayDeniedEverything(t, env) })
+
+		// input_abuse.go — RBAC input abuse (from adversarial/input_abuse_test.go)
+		t.Run("input_abuse_nonexistent_role", func(t *testing.T) { testInputAbuseRBACNonexistentRole(t, env) })
 	})
 }
 

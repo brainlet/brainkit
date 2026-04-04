@@ -14,5 +14,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("invalid_expression", func(t *testing.T) { testInvalidExpression(t, env) })
 		t.Run("teardown_cancels", func(t *testing.T) { testTeardownCancelsSchedules(t, env) })
 		t.Run("drain_skips_firing", func(t *testing.T) { testDrainSkipsFiring(t, env) })
+
+		// E2E and input abuse (from adversarial e2e_scenarios_test.go + input_abuse_test.go)
+		t.Run("e2e_schedule_fires", func(t *testing.T) { testE2EScheduleFires(t, env) })
+		t.Run("input_abuse_invalid_expression", func(t *testing.T) { testInputAbuseScheduleInvalidExpression(t, env) })
+		t.Run("input_abuse_empty_topic", func(t *testing.T) { testInputAbuseScheduleEmptyTopic(t, env) })
 	})
 }

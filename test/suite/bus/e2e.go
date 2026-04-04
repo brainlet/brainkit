@@ -54,3 +54,42 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 }
+
+// testE2EMultiDomain — workflow crossing domain boundaries:
+// write file → call tool that reads+processes → write output → verify.
+func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// 1. Write input file via polyfill
+	_, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `
+		fs.writeFileSync("input.json", '{"items":["apple","banana","cherry"]}');
+		return "ok";
+	`)
+	require.NoError(t, err)
+
+	// 2. Read it back via polyfill
+	readData, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `return fs.readFileSync("input.json", "utf8");`)
+	require.NoError(t, err)
+
+	// 3. Process with the "echo" tool
+	pr, err := sdk.Publish(freshEnv.Kernel, ctx, messages.ToolCallMsg{
+		Name:  "echo",
+		Input: map[string]any{"message": readData},
+	})
+	require.NoError(t, err)
+	callCh := make(chan messages.ToolCallResp, 1)
+	cancelCall, err := sdk.SubscribeTo[messages.ToolCallResp](freshEnv.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, _ messages.Message) { callCh <- r })
+	require.NoError(t, err)
+	defer cancelCall()
+	var callResp messages.ToolCallResp
+	select {
+	case callResp = <-callCh:
+	case <-ctx.Done():
+		t.Fatal("timeout calling echo")
+	}
+
+	// 4. Verify the result contains the echoed data
+	assert.Contains(t, string(callResp.Result), "echoed")
+}

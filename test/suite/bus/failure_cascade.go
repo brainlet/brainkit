@@ -200,3 +200,100 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 	t.Logf("ErrorHandler called %d times concurrently", count)
 	mu.Unlock()
 }
+
+// testCascadePublishDuringDrain — C03: bus.publish during kernel drain.
+func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	ctx := context.Background()
+
+	// Deploy a service
+	_, err := freshEnv.Kernel.Deploy(ctx, "drain-pub-cascade.ts", `
+		bus.on("ask", function(msg) { msg.reply({ ok: true }); });
+	`)
+	require.NoError(t, err)
+
+	// Start draining
+	freshEnv.Kernel.SetDraining(true)
+
+	// Publish should still work (publish isn't affected by drain — only handlers are)
+	result, err := freshEnv.Kernel.EvalTS(ctx, "__drain_pub_cascade.ts", `
+		var r = bus.publish("ts.drain-pub-cascade.ask", {});
+		return r.replyTo ? "published" : "fail";
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, "published", result)
+
+	freshEnv.Kernel.SetDraining(false)
+}
+
+// testCascadeEvalTSDuringClose — C04: EvalTS during kernel close.
+func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+	})
+	require.NoError(t, err)
+
+	// Close the kernel
+	k.Close()
+
+	// EvalTS after close should error, not panic
+	_, err = k.EvalTS(context.Background(), "__after_close_cascade.ts", `return "should not run";`)
+	assert.Error(t, err)
+}
+
+// testCascadeRetryExhausted — C06: Handler throws, retry exhausted.
+func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		RetryPolicies: map[string]brainkit.RetryPolicy{
+			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},
+		},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	_, err = k.Deploy(context.Background(), "retry-test-cascade.ts", `
+		bus.on("boom", function(msg) { throw new Error("always fails"); });
+	`)
+	require.NoError(t, err)
+
+	// Subscribe to exhaustion events
+	exhausted := make(chan bool, 1)
+	unsub, _ := sdk.SubscribeTo[messages.HandlerExhaustedEvent](k, context.Background(), "bus.handler.exhausted", func(e messages.HandlerExhaustedEvent, m messages.Message) {
+		exhausted <- true
+	})
+	defer unsub()
+
+	// Publish — should trigger retries then exhaustion
+	k.PublishRaw(context.Background(), "ts.retry-test-cascade.boom", json.RawMessage(`{}`))
+
+	select {
+	case <-exhausted:
+		// Good — exhaustion event fired
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for exhaustion event")
+	}
+}
+
+// testCascadeScheduleNoHandler — C10: Schedule fires but no handler exists.
+func testCascadeScheduleNoHandler(t *testing.T, _ *suite.TestEnv) {
+	freshEnv := suite.Full(t)
+	ctx := context.Background()
+
+	// Schedule a message to a topic nobody listens to
+	id, err := freshEnv.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
+		Expression: "in 100ms",
+		Topic:      "ghost.topic.nobody.listens.cascade",
+		Payload:    json.RawMessage(`{"ghost": true}`),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	// Wait for it to fire
+	time.Sleep(500 * time.Millisecond)
+
+	// Kernel should still be healthy — no panic from publishing to a topic with no subscribers
+	assert.True(t, freshEnv.Kernel.Alive(ctx))
+}

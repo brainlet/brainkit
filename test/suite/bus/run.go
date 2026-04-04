@@ -128,7 +128,20 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("input_abuse_bus_deeply_nested_json", func(t *testing.T) { testInputAbuseBusDeeplyNestedJSON(t, env) })
 		t.Run("input_abuse_bus_subscribe_empty_topic", func(t *testing.T) { testInputAbuseBusSubscribeEmptyTopic(t, env) })
 
-		// e2e.go — multi-service chain E2E (from adversarial/e2e_scenarios_test.go)
+		// e2e.go — multi-service chain E2E (from adversarial/e2e_scenarios_test.go + e2e/scenarios_test.go)
 		t.Run("e2e_multi_service_chain", func(t *testing.T) { testE2EMultiServiceChain(t, env) })
+		t.Run("e2e_multi_domain", func(t *testing.T) { testE2EMultiDomain(t, env) })
+
+		// failure_cascade.go — failure cascade tests (from adversarial/failure_cascade_test.go)
+		t.Run("cascade_deploy_with_broken_store", func(t *testing.T) { testCascadeDeployWithBrokenStore(t, env) })
+		t.Run("cascade_corrupted_store", func(t *testing.T) { testCascadeCorruptedStore(t, env) })
+		t.Run("cascade_publish_during_drain", func(t *testing.T) { testCascadePublishDuringDrain(t, env) })
+		t.Run("cascade_eval_ts_during_close", func(t *testing.T) { testCascadeEvalTSDuringClose(t, env) })
+		t.Run("cascade_secret_rotate_plugin_fails", func(t *testing.T) { testCascadeSecretRotatePluginFails(t, env) })
+		t.Run("cascade_retry_exhausted", func(t *testing.T) { testCascadeRetryExhausted(t, env) })
+		t.Run("cascade_handler_throw_no_reply_to", func(t *testing.T) { testCascadeHandlerThrowNoReplyTo(t, env) })
+		t.Run("cascade_teardown_cleans_subscriptions", func(t *testing.T) { testCascadeTeardownCleansSubscriptions(t, env) })
+		t.Run("cascade_schedule_no_handler", func(t *testing.T) { testCascadeScheduleNoHandler(t, env) })
+		t.Run("cascade_concurrent_error_handler", func(t *testing.T) { testCascadeConcurrentErrorHandler(t, env) })
 	})
 }
