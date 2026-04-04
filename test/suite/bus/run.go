@@ -34,5 +34,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("sdk_reply_go_to_go", func(t *testing.T) { testSDKReplyGoToGo(t, env) })
 		t.Run("sdk_send_chunk", func(t *testing.T) { testSDKSendChunk(t, env) })
 		t.Run("sdk_send_to_service", func(t *testing.T) { testSDKSendToService(t, env) })
+
+		// failure.go — handler throw, retry, dead letter, exhausted event
+		t.Run("sync_throw_error_response", func(t *testing.T) { testSyncThrowErrorResponse(t, env) })
+		t.Run("async_rejection_error_response", func(t *testing.T) { testAsyncRejectionErrorResponse(t, env) })
+		t.Run("handler_failed_event_emitted", func(t *testing.T) { testHandlerFailedEventEmitted(t, env) })
+		t.Run("retry_policy_retries", func(t *testing.T) { testRetryPolicyRetries(t, env) })
+		t.Run("retry_exhausted_dead_letter", func(t *testing.T) { testRetryExhaustedDeadLetter(t, env) })
+		t.Run("exhausted_event_emitted", func(t *testing.T) { testExhaustedEventEmitted(t, env) })
+		t.Run("retry_preserves_reply_to", func(t *testing.T) { testRetryPreservesReplyTo(t, env) })
 	})
 }
