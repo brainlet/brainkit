@@ -116,9 +116,13 @@ func (c *BusClient) Stream(ctx context.Context, topic string, payload json.RawMe
 		defer close(ch)
 		defer resp.Body.Close()
 		dec := json.NewDecoder(resp.Body)
-		for dec.More() {
+		for {
 			var evt StreamEvent
 			if err := dec.Decode(&evt); err != nil {
+				// EOF = server closed connection (normal end)
+				if err.Error() == "EOF" {
+					return
+				}
 				ch <- StreamEvent{Error: err.Error(), Done: true}
 				return
 			}
