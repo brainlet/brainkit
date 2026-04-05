@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,7 @@ func newDeployCmd() *cobra.Command {
 
 	c := &cobra.Command{
 		Use:   "deploy <file-or-dir>",
-		Short: "Deploy a .ts file or module directory",
+		Short: "Deploy a .ts file or package directory",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
@@ -34,9 +35,8 @@ func newDeployCmd() *cobra.Command {
 	return c
 }
 
-// deployFile wraps a single .ts file as a single-service package.
-// echo.ts → package "echo", service "echo", deployed as echo/echo.ts.
-// Same namespace convention as directory packages — no special case.
+// deployFile wraps a single .ts file as a virtual package.
+// hello.ts → package "hello", deployed as hello.ts, namespace ts.hello.*
 func deployFile(cmd *cobra.Command, path string) error {
 	code, err := os.ReadFile(path)
 	if err != nil {
@@ -44,43 +44,51 @@ func deployFile(cmd *cobra.Command, path string) error {
 	}
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
-	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","services":{%q:{"entry":%q}}}`,
-		name, name, filename)
+	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","entry":%q}`, name, filename)
 	return connectAndPublish(cmd, messages.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{filename: string(code)},
 	},
 		func(resp *messages.PackageDeployResp) {
-			cmd.Printf("Deployed %s\n", name)
-			for _, svc := range resp.Services {
-				cmd.Printf("  service: %s\n", svc)
-			}
+			cmd.Printf("Deployed %s (%s)\n", resp.Name, resp.Source)
 		},
 	)
 }
 
+// deployDirectory reads manifest + recursively collects all .ts files for inline deploy.
 func deployDirectory(cmd *cobra.Command, path string) error {
 	manifestData, err := os.ReadFile(filepath.Join(path, "manifest.json"))
 	if err != nil {
 		return fmt.Errorf("read manifest: %w", err)
 	}
 	files := make(map[string]string)
-	entries, _ := os.ReadDir(path)
-	for _, e := range entries {
-		if !e.IsDir() && filepath.Ext(e.Name()) == ".ts" {
-			data, err := os.ReadFile(filepath.Join(path, e.Name()))
-			if err != nil {
-				return err
-			}
-			files[e.Name()] = string(data)
+	filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-	}
-	return connectAndPublish(cmd, messages.PackageDeployMsg{Manifest: json.RawMessage(manifestData), Files: files},
-		func(resp *messages.PackageDeployResp) {
-			cmd.Printf("Deployed package %s v%s\n", resp.Name, resp.Version)
-			for _, svc := range resp.Services {
-				cmd.Printf("  service: %s\n", svc)
+		if d.IsDir() {
+			name := d.Name()
+			if name == "node_modules" || name == ".git" || name == "types" {
+				return filepath.SkipDir
 			}
+			return nil
+		}
+		if filepath.Ext(d.Name()) == ".ts" {
+			rel, _ := filepath.Rel(path, p)
+			data, readErr := os.ReadFile(p)
+			if readErr != nil {
+				return readErr
+			}
+			files[rel] = string(data)
+		}
+		return nil
+	})
+	return connectAndPublish(cmd, messages.PackageDeployMsg{
+		Manifest: json.RawMessage(manifestData),
+		Files:    files,
+	},
+		func(resp *messages.PackageDeployResp) {
+			cmd.Printf("Deployed %s v%s (%s)\n", resp.Name, resp.Version, resp.Source)
 		},
 	)
 }

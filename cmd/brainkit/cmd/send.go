@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/brainlet/brainkit/cmd/brainkit/config"
 	"github.com/spf13/cobra"
@@ -12,22 +11,14 @@ import (
 
 func newSendCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "send <package> [service] <topic> [payload]",
-		Short: "Send a message to a deployed service",
-		Long: `Publishes to a .ts service's mailbox topic and streams all responses.
-
-Forms:
-  brainkit send <package> <topic> [payload]            # single-service package (or single-file deploy)
-  brainkit send <package> <service> <topic> [payload]  # multi-service package
-
-The single-service form resolves the target by checking deployed services.
-If "hello/hello.ts" exists → sends to package service namespace.
-If "hello.ts" exists → sends to single-file namespace.
+		Use:   "send <package> <topic> [payload]",
+		Short: "Send a message to a deployed package",
+		Long: `Publishes to a package's bus topic and streams all responses.
 
 Examples:
   brainkit send hello greet '{"name":"David"}'
-  brainkit send myapp api greet '{"query":"test"}'`,
-		Args: cobra.RangeArgs(2, 4),
+  brainkit send support-team ask '{"query":"help"}'`,
+		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.LoadConfig()
 			if err != nil {
@@ -39,10 +30,15 @@ Examples:
 			}
 			defer client.Close()
 
-			fullTopic, payload, err := resolveSendTarget(client, args)
-			if err != nil {
-				return err
+			pkg := args[0]
+			topic := args[1]
+			var payload json.RawMessage = json.RawMessage(`null`)
+			if len(args) > 2 {
+				payload = json.RawMessage(args[2])
 			}
+
+			// Resolve: package + topic → ts.<package>.<topic>
+			fullTopic := "ts." + pkg + "." + topic
 
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
@@ -61,64 +57,6 @@ Examples:
 			return nil
 		},
 	}
-}
-
-// resolveSendTarget determines the bus topic from CLI args.
-// Tries package service first (pkg/svc.ts namespace), falls back to single-file (svc.ts namespace).
-func resolveSendTarget(client interface{ Request(context.Context, string, json.RawMessage) (json.RawMessage, error) }, args []string) (string, json.RawMessage, error) {
-	pkg, service, topic, payload := parseSendArgs(args)
-
-	// Try package service namespace: ts.<pkg>.<svc>.<topic>
-	pkgSource := pkg + "/" + service + ".ts"
-	fullTopic := resolveServiceTopic(pkgSource, topic)
-
-	return fullTopic, payload, nil
-}
-
-// parseSendArgs handles:
-//   2 args: <package> <topic>              → service = package name
-//   3 args: <package> <service> <topic>    OR  <package> <topic> <payload>
-//   4 args: <package> <service> <topic> <payload>
-//
-// Heuristic for 3 args: if args[2] looks like JSON, treat as payload.
-func parseSendArgs(args []string) (pkg, service, topic string, payload json.RawMessage) {
-	switch len(args) {
-	case 2:
-		pkg = args[0]
-		service = args[0]
-		topic = args[1]
-		payload = json.RawMessage(`null`)
-	case 3:
-		if looksLikeJSON(args[2]) {
-			pkg = args[0]
-			service = args[0]
-			topic = args[1]
-			payload = json.RawMessage(args[2])
-		} else {
-			pkg = args[0]
-			service = args[1]
-			topic = args[2]
-			payload = json.RawMessage(`null`)
-		}
-	case 4:
-		pkg = args[0]
-		service = args[1]
-		topic = args[2]
-		payload = json.RawMessage(args[3])
-	}
-	return
-}
-
-// resolveServiceTopic converts a source name + local topic to the bus topic.
-func resolveServiceTopic(source, topic string) string {
-	name := strings.TrimSuffix(source, ".ts")
-	name = strings.ReplaceAll(name, "/", ".")
-	return "ts." + name + "." + topic
-}
-
-func looksLikeJSON(s string) bool {
-	s = strings.TrimSpace(s)
-	return len(s) > 0 && (s[0] == '{' || s[0] == '[' || s[0] == '"')
 }
 
 // printEvent formats and prints a bus event payload.

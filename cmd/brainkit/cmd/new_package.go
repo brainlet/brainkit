@@ -9,16 +9,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newModuleSubCmd() *cobra.Command {
-	var newModuleDir string
+func newPackageSubCmd() *cobra.Command {
+	var newPkgDir string
 
 	c := &cobra.Command{
-		Use:   "module <name>",
-		Short: "Scaffold a .ts module project",
+		Use:   "package <name>",
+		Short: "Scaffold a brainkit package",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			dir := newModuleDir
+			dir := newPkgDir
 			if dir == "" {
 				dir = name
 			}
@@ -34,17 +34,16 @@ func newModuleSubCmd() *cobra.Command {
 				"manifest.json": fmt.Sprintf(`{
   "name": "%s",
   "version": "0.1.0",
-  "services": {
-    "hello": { "entry": "hello.ts" }
-  }
+  "description": "",
+  "entry": "index.ts"
 }
 `, name),
-				"hello.ts": `import { bus, kit } from "kit";
+				"index.ts": fmt.Sprintf(`import { bus } from "kit";
 
-bus.on("greet", (msg) => {
-  msg.reply({ message: "Hello from " + kit.source });
+bus.on("hello", (msg) => {
+  msg.reply({ message: "Hello from %s!" });
 });
-`,
+`, name),
 				"tsconfig.json": `{
   "compilerOptions": {
     "target": "ES2022",
@@ -78,9 +77,9 @@ bus.on("greet", (msg) => {
 				}
 			}
 
-			cmd.Printf("Created module %s in %s/\n", name, dir)
+			cmd.Printf("Created package %s in %s/\n", name, dir)
 			cmd.Println("  manifest.json")
-			cmd.Println("  hello.ts")
+			cmd.Println("  index.ts")
 			cmd.Println("  tsconfig.json")
 			cmd.Println("  types/kit.d.ts")
 			cmd.Println("  types/ai.d.ts")
@@ -91,6 +90,6 @@ bus.on("greet", (msg) => {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&newModuleDir, "dir", "", "output directory (default: ./<name>)")
+	c.Flags().StringVar(&newPkgDir, "dir", "", "output directory (default: ./<name>)")
 	return c
 }

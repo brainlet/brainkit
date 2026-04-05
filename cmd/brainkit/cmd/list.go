@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -18,7 +19,8 @@ func newListCmd() *cobra.Command {
 					tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
 					fmt.Fprintln(tw, "SOURCE\tCREATED\tRESOURCES")
 					for _, d := range resp.Deployments {
-						fmt.Fprintf(tw, "%s\t%s\t%d resources\n", d.Source, d.CreatedAt, len(d.Resources))
+						name := strings.TrimSuffix(d.Source, ".ts")
+						fmt.Fprintf(tw, "%s\t%s\t%d resources\n", name, d.CreatedAt, len(d.Resources))
 					}
 					tw.Flush()
 				},
