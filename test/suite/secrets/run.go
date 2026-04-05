@@ -35,5 +35,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// integration.go — secrets rotation integration
 		t.Run("integration_rotation", func(t *testing.T) { testSecretsRotation(t, env) })
+		t.Run("e2e_rotate_and_verify", func(t *testing.T) { testE2ESecretsRotateAndVerify(t, env) })
 	})
 }

@@ -139,6 +139,23 @@ func testLargeFileWrite(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, int64(1024*1024), stat.Size)
 }
 
+func testFSListWithPattern(t *testing.T, env *suite.TestEnv) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result, err := env.Kernel.EvalTS(ctx, "__test.ts", `
+		fs.mkdirSync("listdir", {recursive: true});
+		fs.writeFileSync("listdir/a.txt", "a");
+		fs.writeFileSync("listdir/b.json", "{}");
+		fs.writeFileSync("listdir/c.txt", "c");
+		var files = fs.readdirSync("listdir");
+		return JSON.stringify(files);
+	`)
+	require.NoError(t, err)
+	var files []string
+	json.Unmarshal([]byte(result), &files)
+	assert.Len(t, files, 3) // a.txt, b.json, c.txt — readdirSync lists all
+}
+
 func testFSFromTS(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 	err := env.Deploy("fs-ts-test.ts", `

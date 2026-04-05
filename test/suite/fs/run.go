@@ -18,6 +18,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("read_not_found", func(t *testing.T) { testReadNotFound(t, env) })
 		t.Run("path_traversal_rejected", func(t *testing.T) { testPathTraversalRejected(t, env) })
 		t.Run("large_file_write", func(t *testing.T) { testLargeFileWrite(t, env) })
+		t.Run("list_with_pattern", func(t *testing.T) { testFSListWithPattern(t, env) })
 		t.Run("fs_from_ts", func(t *testing.T) { testFSFromTS(t, env) })
 	})
 }

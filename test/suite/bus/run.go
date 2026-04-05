@@ -121,6 +121,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("error_contract_jsbridge_validation_error_missing_args", func(t *testing.T) { testErrorContractJSBridgeValidationErrorMissingArgs(t, env) })
 		t.Run("error_contract_jsbridge_rate_limited", func(t *testing.T) { testErrorContractJSBridgeRateLimited(t, env) })
 		t.Run("error_contract_jsbridge_not_configured_secrets", func(t *testing.T) { testErrorContractJSBridgeNotConfiguredSecrets(t, env) })
+		t.Run("error_contract_error_handler_persistence_error", func(t *testing.T) { testErrorContractErrorHandlerPersistenceError(t, env) })
+		t.Run("error_contract_error_handler_deploy_error", func(t *testing.T) { testErrorContractErrorHandlerDeployError(t, env) })
 
 		// input_abuse.go — bus input abuse adversarial (from adversarial/input_abuse_test.go)
 		t.Run("input_abuse_bus_empty_topic", func(t *testing.T) { testInputAbuseBusEmptyTopic(t, env) })
@@ -130,6 +132,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// e2e.go — multi-service chain E2E (from adversarial/e2e_scenarios_test.go + e2e/scenarios_test.go)
 		t.Run("e2e_multi_service_chain", func(t *testing.T) { testE2EMultiServiceChain(t, env) })
+		t.Run("e2e_streaming_response", func(t *testing.T) { testE2EStreamingResponse(t, env) })
 		t.Run("e2e_multi_domain", func(t *testing.T) { testE2EMultiDomain(t, env) })
 
 		// failure_cascade.go — failure cascade tests (from adversarial/failure_cascade_test.go)

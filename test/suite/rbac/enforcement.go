@@ -547,6 +547,55 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	}
 }
 
+// testRBACDeniedFromTS — observer role .ts deployment tries bus operations it shouldn't access.
+func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Roles: map[string]rbac.Role{
+			"observer": rbac.RoleObserver,
+		},
+		DefaultRole: "observer",
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx := context.Background()
+
+	// Observer cannot publish to arbitrary topics (only subscribe)
+	t.Run("bus.publish/denied", func(t *testing.T) {
+		_, err := k.Deploy(ctx, "rbac-bus-deny.ts", `
+			var caught = "none";
+			try { bus.publish("forbidden.topic", {}); }
+			catch(e) { caught = "DENIED:" + (e.message || ""); }
+			output(caught);
+		`, brainkit.WithRole("observer"))
+		require.NoError(t, err)
+		defer k.Teardown(ctx, "rbac-bus-deny.ts")
+
+		result, _ := k.EvalTS(ctx, "__rbac_bus_result.ts", `return String(globalThis.__module_result || "");`)
+		assert.Contains(t, result, "DENIED", "observer should be denied bus.publish to forbidden topic")
+	})
+
+	// Observer CAN subscribe (observer role allows subscribe to *)
+	t.Run("bus.subscribe/allowed", func(t *testing.T) {
+		_, err := k.Deploy(ctx, "rbac-bus-allow.ts", `
+			var caught = "none";
+			try {
+				var subId = bus.subscribe("events.anything", function() {});
+				bus.unsubscribe(subId);
+				caught = "ALLOWED";
+			} catch(e) { caught = "DENIED:" + (e.message || ""); }
+			output(caught);
+		`, brainkit.WithRole("observer"))
+		require.NoError(t, err)
+		defer k.Teardown(ctx, "rbac-bus-allow.ts")
+
+		result, _ := k.EvalTS(ctx, "__rbac_sub_result.ts", `return String(globalThis.__module_result || "");`)
+		assert.Equal(t, "ALLOWED", result, "observer should be allowed bus.subscribe")
+	})
+}
+
 // testInputAbuseRBACNonexistentRole — assigning a nonexistent role should error.
 func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()

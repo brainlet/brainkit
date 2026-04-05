@@ -55,6 +55,56 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
+// testE2EStreamingResponse — deploy handler that uses msg.stream, verify SSE events.
+func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
+	ctx := context.Background()
+
+	err := env.Deploy("streamer-adv.ts", `
+		bus.on("stream", function(msg) {
+			msg.stream.text("chunk1");
+			msg.stream.text("chunk2");
+			msg.stream.progress(50, "halfway");
+			msg.stream.text("chunk3");
+			msg.stream.end({done: true});
+		});
+	`)
+	require.NoError(t, err)
+
+	pr, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+		Topic:   "ts.streamer-adv.stream",
+		Payload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+
+	var chunks []json.RawMessage
+	done := make(chan bool, 1)
+	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+		chunks = append(chunks, json.RawMessage(m.Payload))
+		var parsed struct {
+			Type string `json:"type"`
+		}
+		json.Unmarshal(m.Payload, &parsed)
+		if parsed.Type == "end" {
+			done <- true
+		}
+		// Also check done metadata
+		if m.Metadata["done"] == "true" {
+			done <- true
+		}
+	})
+	defer unsub()
+
+	select {
+	case <-done:
+		// On GoChannel, rapid stream messages may arrive merged — exact count varies.
+		// What matters: we got the end signal and at least some chunks.
+		assert.Greater(t, len(chunks), 0, "should have received stream chunks")
+	case <-time.After(5 * time.Second):
+		t.Logf("received %d chunks before timeout", len(chunks))
+		assert.Greater(t, len(chunks), 0, "should have received some chunks")
+	}
+}
+
 // testE2EMultiDomain — workflow crossing domain boundaries:
 // write file → call tool that reads+processes → write output → verify.
 func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {

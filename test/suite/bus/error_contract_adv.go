@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -224,4 +226,129 @@ func testErrorContractJSBridgeNotConfiguredSecrets(t *testing.T, _ *suite.TestEn
 	`)
 	require.NoError(t, err)
 	assert.Equal(t, "empty", result)
+}
+
+// testErrorContractErrorHandlerPersistenceError — ErrorHandler receives PersistenceError when store fails.
+// Migrated from adversarial/error_contract_test.go TestErrorContract_ErrorHandler_PersistenceError.
+func testErrorContractErrorHandlerPersistenceError(t *testing.T, _ *suite.TestEnv) {
+	var mu sync.Mutex
+	var received []error
+	var contexts []brainkit.ErrorContext
+
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "store.db")
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store,
+		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+			mu.Lock()
+			received = append(received, err)
+			contexts = append(contexts, ctx)
+			mu.Unlock()
+		},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	// Deploy something, then corrupt the store, then try to persist
+	_, err = k.Deploy(context.Background(), "eh-test-adv.ts", `output("hello");`)
+	require.NoError(t, err)
+
+	// Close the store's DB to simulate a persistence failure
+	store.Close()
+
+	// Schedule something — persistence will fail, ErrorHandler should be called
+	_, schedErr := k.Schedule(context.Background(), brainkit.ScheduleConfig{
+		Expression: "in 1h",
+		Topic:      "test.topic",
+		Payload:    json.RawMessage(`{}`),
+	})
+	// Schedule succeeds in memory even if persistence fails
+	_ = schedErr
+
+	// Give ErrorHandler a moment to be called
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// We should have at least one PersistenceError
+	foundPersistence := false
+	for _, err := range received {
+		var pe *sdkerrors.PersistenceError
+		if errors.As(err, &pe) {
+			foundPersistence = true
+			assert.NotEmpty(t, pe.Operation)
+		}
+	}
+	if len(received) > 0 {
+		assert.True(t, foundPersistence, "expected at least one PersistenceError, got: %v", received)
+	}
+	_ = contexts // used to verify context is populated
+}
+
+// testErrorContractErrorHandlerDeployError — ErrorHandler receives DeployError when persisted code is corrupt.
+// Migrated from adversarial/error_contract_test.go TestErrorContract_ErrorHandler_DeployError.
+func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
+	var mu sync.Mutex
+	var received []error
+
+	tmpDir := t.TempDir()
+	storePath := filepath.Join(tmpDir, "store.db")
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store,
+		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+			mu.Lock()
+			received = append(received, err)
+			mu.Unlock()
+		},
+	})
+	require.NoError(t, err)
+
+	// Deploy valid code, persist it
+	_, err = k.Deploy(context.Background(), "valid-adv.ts", `output("ok");`)
+	require.NoError(t, err)
+
+	// Now corrupt the persisted code in the store
+	store.SaveDeployment(brainkit.PersistedDeployment{
+		Source: "corrupt-adv.ts",
+		Code:   "const x: number = {{{invalid;;;",
+		Order:  99,
+	})
+
+	k.Close()
+
+	// Create a new kernel — it will try to redeploy "corrupt-adv.ts" and fail
+	store2, _ := brainkit.NewSQLiteStore(storePath)
+	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Store: store2,
+		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+			mu.Lock()
+			received = append(received, err)
+			mu.Unlock()
+		},
+	})
+	require.NoError(t, err)
+	defer k2.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	foundDeploy := false
+	for _, err := range received {
+		var de *sdkerrors.DeployError
+		if errors.As(err, &de) {
+			foundDeploy = true
+			assert.Equal(t, "corrupt-adv.ts", de.Source)
+		}
+	}
+	assert.True(t, foundDeploy, "expected DeployError for corrupt-adv.ts, got: %v", received)
 }

@@ -423,3 +423,51 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 	deps := k2.ListDeployments()
 	assert.Equal(t, 100, len(deps), "all 100 deployments should be restored")
 }
+
+// testEvalTSInfiniteLoop — deploy while(true){}, then close kernel, verify no hang.
+// The original test was t.Skip (NEEDS-WORK). This approach tests clean kernel shutdown
+// under runaway JS by closing the kernel from a goroutine and checking it completes in time.
+func testEvalTSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
+	if testing.Short() {
+		t.Skip("skipped in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "stress-inf", CallerID: "stress-inf", FSRoot: tmpDir,
+	})
+	require.NoError(t, err)
+
+	// Deploy a runaway infinite loop — this blocks the JS thread.
+	// Deploy is async (Compartment init), so it may or may not block.
+	deployDone := make(chan error, 1)
+	go func() {
+		_, err := k.Deploy(context.Background(), "infinite.ts", `while(true){}`)
+		deployDone <- err
+	}()
+
+	// Give it a brief moment to enter the loop
+	time.Sleep(200 * time.Millisecond)
+
+	// Close the kernel — this should interrupt QuickJS and release resources
+	closeDone := make(chan struct{}, 1)
+	go func() {
+		k.Close()
+		close(closeDone)
+	}()
+
+	// Verify the kernel closes within a reasonable timeout
+	select {
+	case <-closeDone:
+		// Kernel shut down cleanly — the infinite loop was interrupted
+	case <-time.After(15 * time.Second):
+		t.Fatal("kernel.Close() hung — infinite JS loop was not interrupted within 15s")
+	}
+
+	// Deploy may have errored — either way, the kernel must not hang permanently
+	select {
+	case <-deployDone:
+	default:
+		// Deploy goroutine may still be running, that's acceptable as long as Close() returned
+	}
+}
