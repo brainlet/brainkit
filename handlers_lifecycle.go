@@ -137,11 +137,12 @@ func WithPackageName(name string) DeployOption {
 }
 
 func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
-	if strings.TrimSpace(source) == "" {
-		return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
+	// Phase 1: Validate
+	if err := k.validateDeploy(source); err != nil {
+		return nil, err
 	}
 
-	// Tracing
+	// Tracing wraps the entire deploy
 	span := k.tracer.StartSpan("kit.deploy:"+source, ctx)
 	span.SetSource(source)
 	defer func() { span.End(nil) }()
@@ -150,39 +151,66 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	originalCode := code // capture before transpilation for persistence
+	originalCode := code
 
 	// Set Go-side source for RBAC — subscribe calls during deployment capture this
 	k.setCurrentSource(source)
 	defer k.setCurrentSource("")
 
-	// Assign role if specified
 	if cfg.role != "" && k.rbac != nil {
 		k.rbac.Assign(source, cfg.role)
 	}
 
+	// Phase 2: Transpile (.ts → JS + strip imports)
+	jsCode, err := k.transpileIfTS(source, code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 3: Evaluate in SES Compartment
+	if err := k.evaluateInCompartment(ctx, source, jsCode); err != nil {
+		return nil, err
+	}
+
+	// Phase 4: Track deployment + enumerate resources
+	resources := k.trackDeployment(source)
+
+	// Phase 5: Persist to KitStore
+	k.persistDeployment(ctx, source, originalCode, resources, cfg)
+
+	return resources, nil
+}
+
+// validateDeploy checks source is non-empty and not already deployed.
+func (k *Kernel) validateDeploy(source string) error {
+	if strings.TrimSpace(source) == "" {
+		return &sdkerrors.ValidationError{Field: "source", Message: "is required"}
+	}
 	k.mu.Lock()
-	if k.deployments != nil {
-		if _, exists := k.deployments[source]; exists {
-			k.mu.Unlock()
-			return nil, &sdk.AlreadyExistsError{Resource: "deployment", Name: source, Hint: "use Redeploy"}
-		}
-	}
+	_, exists := k.deployments[source]
 	k.mu.Unlock()
-
-	// If source is .ts, transpile to JS first: strip type annotations, interfaces,
-	// generics, type aliases. Then strip ES import statements since the Compartment
-	// injects all symbols as endowments (globals), not ES modules.
-	if strings.HasSuffix(source, ".ts") {
-		js, transpileErr := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
-		if transpileErr != nil {
-			return nil, &sdkerrors.DeployError{Source: source, Phase: "transpile", Cause: transpileErr}
-		}
-		code = stripESImports(js)
+	if exists {
+		return &sdk.AlreadyExistsError{Resource: "deployment", Name: source, Hint: "use Redeploy"}
 	}
+	return nil
+}
 
-	// EvalTS handles: IsEvalBusy reentrant guard, async promise resolution,
-	// Value.Free on return. Wraps code in Compartment with per-source endowments.
+// transpileIfTS converts .ts source to JS, stripping type annotations and ES imports.
+// Returns the original code unchanged for .js sources.
+func (k *Kernel) transpileIfTS(source, code string) (string, error) {
+	if !strings.HasSuffix(source, ".ts") {
+		return code, nil
+	}
+	js, err := typescript.Transpile(code, typescript.TranspileOptions{FileName: source})
+	if err != nil {
+		return "", &sdkerrors.DeployError{Source: source, Phase: "transpile", Cause: err}
+	}
+	return stripESImports(js), nil
+}
+
+// evaluateInCompartment creates a SES Compartment and evaluates the JS code inside it.
+// On failure, cleans up partial resources and the compartment reference.
+func (k *Kernel) evaluateInCompartment(ctx context.Context, source, code string) error {
 	evalCode := fmt.Sprintf(`
 		if (typeof globalThis.Compartment !== "function") {
 			throw new Error("SES not available — Compartment not found after lockdown");
@@ -196,14 +224,16 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 
 	_, err := k.EvalTS(ctx, "__deploy_"+source, evalCode)
 	if err != nil {
-		// Cleanup any partial resources created before the error
 		k.TeardownFile(source)
-		// Remove compartment reference if it was stored
 		k.EvalTS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
 			`delete globalThis.__kit_compartments[%q]; return "ok";`, source))
-		return nil, &sdkerrors.DeployError{Source: source, Phase: "eval", Cause: err}
+		return &sdkerrors.DeployError{Source: source, Phase: "eval", Cause: err}
 	}
+	return nil
+}
 
+// trackDeployment records the deployment and enumerates its resources.
+func (k *Kernel) trackDeployment(source string) []ResourceInfo {
 	resources, err := k.ResourcesFrom(source)
 	if err != nil {
 		k.logger.Warn("deploy: failed to enumerate resources", slog.String("source", source), slog.String("error", err.Error()))
@@ -223,22 +253,33 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	}
 	k.mu.Unlock()
 
-	// Persist to KitStore (original .ts source, not transpiled JS)
-	// Skip when restoring from persistence — don't overwrite stored metadata with defaults.
-	if k.config.Store != nil && !cfg.restoring {
-		if err := k.config.Store.SaveDeployment(PersistedDeployment{
-			Source:      source,
-			Code:        originalCode,
-			Order:       order,
-			DeployedAt:  now,
-			Role:        cfg.role,
-			PackageName: cfg.packageName,
-		}); err != nil {
-			k.persistenceError(ctx, "SaveDeployment", source, err)
-		}
-	}
+	return resources
+}
 
-	return resources, nil
+// persistDeployment saves the deployment to KitStore for restart recovery.
+// Skips when restoring from persistence (cfg.restoring) to avoid overwriting metadata.
+func (k *Kernel) persistDeployment(ctx context.Context, source, originalCode string, resources []ResourceInfo, cfg deployConfig) {
+	if k.config.Store == nil || cfg.restoring {
+		return
+	}
+	// Read back the order from the tracked deployment
+	k.mu.Lock()
+	order := 0
+	if d, ok := k.deployments[source]; ok {
+		order = d.Order
+	}
+	k.mu.Unlock()
+
+	if err := k.config.Store.SaveDeployment(PersistedDeployment{
+		Source:      source,
+		Code:        originalCode,
+		Order:       order,
+		DeployedAt:  time.Now(),
+		Role:        cfg.role,
+		PackageName: cfg.packageName,
+	}); err != nil {
+		k.persistenceError(ctx, "SaveDeployment", source, err)
+	}
 }
 
 // Teardown removes all resources from a deployed file and drops the compartment.
