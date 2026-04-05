@@ -3,7 +3,6 @@ package brainkit
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
@@ -192,15 +191,8 @@ func (k *Kernel) refreshProviderIfSecret(name, newValue string) {
 	}
 
 	// Update the JS-side provider cache
-	escaped := secrets.MaskSecret(newValue) // for logging only
-	_ = escaped
-	k.bridge.Eval("__refresh_provider.js", fmt.Sprintf(
-		`if (globalThis.__kit_providers && globalThis.__kit_providers[%q]) {
-			globalThis.__kit_providers[%q].APIKey = %q;
-			globalThis.__kit_providers[%q].apiKey = %q;
-			// Clear provider cache so next provider()/model() call re-creates with new key
-			if (globalThis.__kit && globalThis.__kit.__clearProviderCache) {
-				globalThis.__kit.__clearProviderCache(%q);
-			}
-		}`, provName, provName, newValue, provName, newValue, provName))
+	k.callJSSync("__brainkit.secrets.refreshProvider", map[string]string{
+		"provider": provName,
+		"apiKey":   newValue,
+	})
 }

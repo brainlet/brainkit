@@ -81,29 +81,9 @@ func (d *ToolsDomain) Register(_ context.Context, name, description string, inpu
 				if rawInput == "" {
 					rawInput = "null"
 				}
-				script := fmt.Sprintf(`(async () => {
-					var entry = globalThis.__kit_registry.get("tool", %q);
-					var execFn = entry && entry.ref && typeof entry.ref.__brainkit_execute === "function"
-						? entry.ref.__brainkit_execute
-						: entry && entry.ref && typeof entry.ref.execute === "function"
-							? entry.ref.execute
-							: null;
-					if (!execFn) {
-						throw new Error("tool not found in JS registry: " + %q);
-					}
-					var __input = JSON.parse(%q);
-					var __wrapped;
-					if (__input && typeof __input === "object" && !Array.isArray(__input)) {
-						__wrapped = {};
-						for (var key in __input) __wrapped[key] = __input[key];
-						__wrapped.context = __input;
-					} else {
-						__wrapped = { context: __input };
-					}
-					var result = await execFn(__wrapped, { requestContext: null });
-					return JSON.stringify(result === undefined ? null : result);
-				})()`, shortName, shortName, rawInput)
-				out, err := d.eval.EvalOnJSThread("__brainkit_tool_exec__.js", script)
+				argsJSON, _ := json.Marshal(map[string]any{"name": shortName, "input": json.RawMessage(rawInput)})
+				script := fmt.Sprintf(`(async () => { return JSON.stringify(await __brainkit.tools.execute(JSON.parse(%q))); })()`, string(argsJSON))
+				out, err := d.eval.EvalOnJSThread("__dispatch_tool__.js", script)
 				if err != nil {
 					return nil, err
 				}

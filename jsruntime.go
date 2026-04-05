@@ -43,6 +43,9 @@ var resolveJS string
 //go:embed runtime/bus.js
 var busJS string
 
+//go:embed runtime/dispatch.js
+var dispatchJS string
+
 // Type definitions — embedded for CLI scaffolding (brainkit new module)
 //go:embed runtime/kit.d.ts
 var KitDTS string
@@ -89,7 +92,7 @@ export default globalThis.fs.promises;
 `
 
 // loadRuntime sets up the kit runtime:
-// Loads 8 JS files in dependency order, then registers 5 ES modules.
+// Loads 9 JS files in dependency order, then registers 6 ES modules.
 func (k *Kernel) loadRuntime() error {
 	// Load runtime files in dependency order
 	runtimeFiles := []struct {
@@ -104,6 +107,7 @@ func (k *Kernel) loadRuntime() error {
 		{busJS, "bus.js"},                      // 6. resource registry, bus API, kit.register
 		{kitRuntimeJS, "kit-runtime.js"},       // 7. export + endowments
 		{testRuntimeJS, "test-runtime.js"},     // 8. test framework
+		{dispatchJS, "dispatch.js"},            // 9. Go-callable dispatch functions
 	}
 	for _, rf := range runtimeFiles {
 		val, err := k.bridge.Eval(rf.name, rf.source)

@@ -684,6 +684,29 @@ func (k *Kernel) subscribe(topic string, handler func(messages.Message)) (func()
 	return k.remote.SubscribeRaw(context.Background(), topic, handler)
 }
 
+// callJS invokes a named function in the JS runtime with JSON-serialized arguments.
+// The function must be registered on globalThis (e.g., __brainkit.workflow.start).
+// Returns the JSON result. Used by bus command handlers to avoid inline JS construction.
+func (k *Kernel) callJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return nil, fmt.Errorf("callJS %s: marshal args: %w", fn, err)
+	}
+	code := fmt.Sprintf("return JSON.stringify(await %s(JSON.parse(%q)))", fn, string(argsJSON))
+	result, err := k.EvalTS(ctx, "__dispatch__.ts", code)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(result), nil
+}
+
+// callJSSync invokes a named function synchronously via bridge.Eval (not EvalTS).
+// Used for non-async operations that run on the JS thread directly (e.g., provider cache refresh).
+func (k *Kernel) callJSSync(fn string, args any) {
+	argsJSON, _ := json.Marshal(args)
+	k.bridge.Eval("__dispatch_sync__.js", fmt.Sprintf("%s(JSON.parse(%q))", fn, string(argsJSON)))
+}
+
 // ReplyRaw publishes directly to a resolved replyTo topic without namespace prefixing.
 // This is the Go equivalent of __go_brainkit_bus_reply in bridges.go.
 // Used by sdk.Reply and sdk.SendChunk.
@@ -1240,22 +1263,7 @@ func (k *Kernel) processScheduledJobs() {
 // the Mastra store holder from InMemoryStore to the real backend.
 // Tries "default" first (convention), falls back to first available.
 func (k *Kernel) upgradeMastraStorage() {
-	script := `
-		var storageNames = globalThis.__kit_registry_api.list("storage");
-		var storageName = null;
-		for (var i = 0; i < storageNames.length; i++) {
-			if (storageNames[i].name === "default") { storageName = "default"; break; }
-		}
-		if (!storageName && storageNames.length > 0) storageName = storageNames[0].name;
-		if (storageName) {
-			var configuredStorage = globalThis.__kit_resolveStorage(storageName);
-			await configuredStorage.init();
-			globalThis.__kit_store_holder.store = configuredStorage;
-			return JSON.stringify({ upgraded: true, storage: storageName });
-		}
-		return JSON.stringify({ upgraded: false });
-	`
-	result, err := k.EvalTS(context.Background(), "__upgrade_mastra_storage.ts", script)
+	raw, err := k.callJS(context.Background(), "__brainkit.storage.upgrade", nil)
 	if err != nil {
 		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "UpgradeMastraStorage", Cause: err,
@@ -1266,7 +1274,7 @@ func (k *Kernel) upgradeMastraStorage() {
 		Upgraded bool   `json:"upgraded"`
 		Storage  string `json:"storage"`
 	}
-	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Upgraded {
+	if json.Unmarshal(raw, &parsed) == nil && parsed.Upgraded {
 		k.logger.Info("Mastra storage upgraded", slog.String("backend", parsed.Storage))
 	}
 }
@@ -1276,24 +1284,7 @@ func (k *Kernel) upgradeMastraStorage() {
 // reconnects via createRun({runId}), and calls restart() to re-enter from snapshot.
 // Called automatically during NewKernel after .ts re-deployment.
 func (k *Kernel) restartActiveWorkflows() {
-	script := `
-		var workflows = globalThis.__kit_registry.list("workflow");
-		var restarted = 0;
-		var errors = [];
-		for (var i = 0; i < workflows.length; i++) {
-			var entry = globalThis.__kit_registry.get("workflow", workflows[i].name);
-			if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
-				try {
-					await entry.ref.restartAllActiveWorkflowRuns();
-					restarted++;
-				} catch(e) {
-					errors.push({ workflow: workflows[i].name, error: e.message || String(e) });
-				}
-			}
-		}
-		return JSON.stringify({ restarted: restarted, errors: errors });
-	`
-	result, err := k.EvalTS(context.Background(), "__restart_workflows.ts", script)
+	raw, err := k.callJS(context.Background(), "__brainkit.storage.restartWorkflows", nil)
 	if err != nil {
 		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "RestartActiveWorkflows", Cause: err,
@@ -1307,15 +1298,15 @@ func (k *Kernel) restartActiveWorkflows() {
 			Error    string `json:"error"`
 		} `json:"errors"`
 	}
-	if json.Unmarshal([]byte(result), &parsed) == nil {
+	if json.Unmarshal(raw, &parsed) == nil {
 		for _, wfErr := range parsed.Errors {
 			InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 				Operation: "RestartWorkflow", Source: wfErr.Workflow, Cause: fmt.Errorf("%s", wfErr.Error),
 			}, ErrorContext{Operation: "RestartWorkflow", Component: "workflow", Source: wfErr.Workflow})
 		}
-	}
-	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Restarted > 0 {
-		k.logger.Info("restarted active workflows", slog.Int("definitions", parsed.Restarted))
+		if parsed.Restarted > 0 {
+			k.logger.Info("restarted active workflows", slog.Int("definitions", parsed.Restarted))
+		}
 	}
 }
 
