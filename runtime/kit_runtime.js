@@ -232,13 +232,17 @@
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
       // JS built-ins
-      console: {
-        log:   function() { __go_console_log_tagged(source, "log", Array.prototype.slice.call(arguments).map(String).join(' ')); },
-        warn:  function() { __go_console_log_tagged(source, "warn", Array.prototype.slice.call(arguments).map(String).join(' ')); },
-        error: function() { __go_console_log_tagged(source, "error", Array.prototype.slice.call(arguments).map(String).join(' ')); },
-        info:  function() { __go_console_log_tagged(source, "info", Array.prototype.slice.call(arguments).map(String).join(' ')); },
-        debug: function() { __go_console_log_tagged(source, "debug", Array.prototype.slice.call(arguments).map(String).join(' ')); },
-      },
+      console: (function() {
+        function _fmt(v) { return (v && typeof v === "object") ? JSON.stringify(v) : String(v); }
+        function _args(a) { return Array.prototype.slice.call(a).map(_fmt).join(' '); }
+        return {
+          log:   function() { __go_console_log_tagged(source, "log", _args(arguments)); },
+          warn:  function() { __go_console_log_tagged(source, "warn", _args(arguments)); },
+          error: function() { __go_console_log_tagged(source, "error", _args(arguments)); },
+          info:  function() { __go_console_log_tagged(source, "info", _args(arguments)); },
+          debug: function() { __go_console_log_tagged(source, "debug", _args(arguments)); },
+        };
+      })(),
       JSON: JSON,
       Promise: globalThis.Promise,
       setTimeout: ws(globalThis.setTimeout),
