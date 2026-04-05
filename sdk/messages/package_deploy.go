@@ -5,19 +5,19 @@ import "encoding/json"
 // ── Package Deployment ──
 
 type PackageDeployMsg struct {
-	Path     string            `json:"path,omitempty"`     // filesystem path to package dir
-	Manifest json.RawMessage   `json:"manifest,omitempty"` // inline manifest JSON
-	Files    map[string]string `json:"files,omitempty"`    // inline file map: filename → code (no filesystem needed)
+	Path     string            `json:"path,omitempty"`
+	Manifest json.RawMessage   `json:"manifest,omitempty"`
+	Files    map[string]string `json:"files,omitempty"`
 }
 
 func (PackageDeployMsg) BusTopic() string { return "package.deploy" }
 
 type PackageDeployResp struct {
 	ResultMeta
-	Deployed bool     `json:"deployed"`
-	Name     string   `json:"name"`
-	Version  string   `json:"version"`
-	Services []string `json:"services"`
+	Deployed bool   `json:"deployed"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Source   string `json:"source"`
 }
 
 type PackageTeardownMsg struct {
@@ -31,18 +31,6 @@ type PackageTeardownResp struct {
 	Removed bool `json:"removed"`
 }
 
-type PackageRedeployMsg struct {
-	Path string `json:"path"`
-}
-
-func (PackageRedeployMsg) BusTopic() string { return "package.redeploy" }
-
-type PackageRedeployResp struct {
-	ResultMeta
-	Redeployed bool     `json:"redeployed"`
-	Services   []string `json:"services"`
-}
-
 type PackageListDeployedMsg struct{}
 
 func (PackageListDeployedMsg) BusTopic() string { return "package.list" }
@@ -53,10 +41,10 @@ type PackageListDeployedResp struct {
 }
 
 type DeployedPackageInfo struct {
-	Name     string   `json:"name"`
-	Version  string   `json:"version"`
-	Services []string `json:"services"`
-	Status   string   `json:"status"` // "active", "degraded"
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Source  string `json:"source"`
+	Status  string `json:"status"`
 }
 
 type PackageDeployInfoMsg struct {
@@ -67,7 +55,7 @@ func (PackageDeployInfoMsg) BusTopic() string { return "package.info" }
 
 type PackageDeployInfoResp struct {
 	ResultMeta
-	Name     string   `json:"name"`
-	Version  string   `json:"version"`
-	Services []string `json:"services"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Source  string `json:"source"`
 }
