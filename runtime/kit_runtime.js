@@ -69,13 +69,24 @@
   globalThis.__kitEndowments = function(source) {
     var ns = "ts." + source.replace(/\.ts$/, "").replace(/\//g, ".");
     var ws = function(fn) { return __withSource(fn, source); };
+    var _reg = globalThis.__kit_registry;
+    var _BKE = globalThis.BrainkitError;
 
     var scopedBus = {
       publish: _kitObj.bus.publish,
       emit: _kitObj.bus.emit,
       subscribe: ws(_kitObj.bus.subscribe),
       on: function(localTopic, handler) {
-        return scopedBus.subscribe(ns + "." + localTopic, handler);
+        var fullTopic = ns + "." + localTopic;
+        var existing = _reg.get("topic", fullTopic);
+        if (existing) {
+          throw new _BKE(
+            "topic '" + localTopic + "' already subscribed in this package",
+            "TOPIC_COLLISION"
+          );
+        }
+        _reg.register("topic", fullTopic, localTopic, null, null);
+        return scopedBus.subscribe(fullTopic, handler);
       },
       unsubscribe: _kitObj.bus.unsubscribe,
       sendTo: _kitObj.bus.sendTo,
@@ -97,7 +108,6 @@
     // Parse "[CODE] message {{details_json}}" format from error messages.
     // This format is set by throwBrainkitError in bridges.go to survive
     // QuickJS error wrapping and SES Compartment boundaries.
-    var _BKE = globalThis.BrainkitError;
     var _codeRe = /^\[([A-Z_]+)\]\s/;
     var _detailsRe = /\s\{\{(.+)\}\}$/;
     function _parseError(e) {
