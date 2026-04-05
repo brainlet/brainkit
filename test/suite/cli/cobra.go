@@ -94,23 +94,23 @@ func testInit(t *testing.T, _ *suite.TestEnv) {
 	assert.FileExists(t, filepath.Join(tmpDir, "brainkit.yaml"))
 }
 
-func testNewModule(t *testing.T, _ *suite.TestEnv) {
+func testNewPackage(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	modDir := filepath.Join(tmpDir, "my-mod")
-	out, err := runCLI(t, "new", "module", "my-mod", "--dir", modDir)
+	pkgDir := filepath.Join(tmpDir, "my-pkg")
+	out, err := runCLI(t, "new", "package", "my-pkg", "--dir", pkgDir)
 	require.NoError(t, err)
-	assert.Contains(t, out, "Created module my-mod")
-	assert.FileExists(t, filepath.Join(modDir, "manifest.json"))
-	assert.FileExists(t, filepath.Join(modDir, "hello.ts"))
-	assert.FileExists(t, filepath.Join(modDir, "tsconfig.json"))
-	assert.FileExists(t, filepath.Join(modDir, "types", "kit.d.ts"))
-	assert.FileExists(t, filepath.Join(modDir, "types", "ai.d.ts"))
-	assert.FileExists(t, filepath.Join(modDir, "types", "agent.d.ts"))
+	assert.Contains(t, out, "Created package my-pkg")
+	assert.FileExists(t, filepath.Join(pkgDir, "manifest.json"))
+	assert.FileExists(t, filepath.Join(pkgDir, "index.ts"))
+	assert.FileExists(t, filepath.Join(pkgDir, "tsconfig.json"))
+	assert.FileExists(t, filepath.Join(pkgDir, "types", "kit.d.ts"))
+	assert.FileExists(t, filepath.Join(pkgDir, "types", "ai.d.ts"))
+	assert.FileExists(t, filepath.Join(pkgDir, "types", "agent.d.ts"))
 
-	data, _ := os.ReadFile(filepath.Join(modDir, "manifest.json"))
-	assert.Contains(t, string(data), `"name": "my-mod"`)
+	data, _ := os.ReadFile(filepath.Join(pkgDir, "manifest.json"))
+	assert.Contains(t, string(data), `"name": "my-pkg"`)
 
-	kitDts, _ := os.ReadFile(filepath.Join(modDir, "types", "kit.d.ts"))
+	kitDts, _ := os.ReadFile(filepath.Join(pkgDir, "types", "kit.d.ts"))
 	assert.Contains(t, string(kitDts), "BusMessage")
 }
 
@@ -160,7 +160,7 @@ func testFullWorkflow(t *testing.T, _ *suite.TestEnv) {
 
 	out, err = runCLI(t, "--timeout", "15s", "list")
 	require.NoError(t, err)
-	assert.Contains(t, out, "echo/echo.ts")
+	assert.Contains(t, out, "echo")
 
 	out, err = runCLI(t, "--timeout", "15s", "send", "echo", "ping", `{"value":"from-test"}`)
 	require.NoError(t, err)
@@ -186,13 +186,13 @@ func testFullWorkflow(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "deleted")
 
-	out, err = runCLI(t, "--timeout", "15s", "teardown", "echo/echo.ts")
+	out, err = runCLI(t, "--timeout", "15s", "teardown", "echo")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Removed")
 
 	out, err = runCLI(t, "--timeout", "15s", "list")
 	require.NoError(t, err)
-	assert.NotContains(t, out, "echo/echo.ts")
+	assert.NotContains(t, out, "echo")
 }
 
 func testRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
@@ -209,11 +209,11 @@ func testRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	os.WriteFile(filepath.Join(pkgDir, "manifest.json"), []byte(`{
 		"name": "evolve",
 		"version": "1.0.0",
-		"services": { "svc": { "entry": "svc.ts" } }
+		"entry": "index.ts"
 	}`), 0644)
 
 	// v1: returns {"answer": "v1"}
-	os.WriteFile(filepath.Join(pkgDir, "svc.ts"), []byte(`
+	os.WriteFile(filepath.Join(pkgDir, "index.ts"), []byte(`
 		import { bus } from "kit";
 		bus.on("check", (msg) => { msg.reply({ answer: "v1" }); });
 	`), 0644)
@@ -225,13 +225,13 @@ func testRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	// Verify v1
 	time.Sleep(500 * time.Millisecond)
-	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "svc", "check", `{}`)
+	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "check", `{}`)
 	require.NoError(t, err)
 	t.Logf("v1 response: %s", out)
 	assert.Contains(t, out, `"v1"`)
 
 	// Change the code to v2
-	os.WriteFile(filepath.Join(pkgDir, "svc.ts"), []byte(`
+	os.WriteFile(filepath.Join(pkgDir, "index.ts"), []byte(`
 		import { bus } from "kit";
 		bus.on("check", (msg) => { msg.reply({ answer: "v2" }); });
 	`), 0644)
@@ -243,7 +243,7 @@ func testRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	// THE CRITICAL CHECK: must return v2
 	time.Sleep(500 * time.Millisecond)
-	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "svc", "check", `{}`)
+	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "check", `{}`)
 	require.NoError(t, err)
 	t.Logf("v2 response: %s", out)
 	assert.Contains(t, out, `"v2"`, "REDEPLOY BUG: expected v2 but got: %s", out)

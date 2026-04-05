@@ -12,7 +12,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("version", func(t *testing.T) { testVersion(t, env) })
 		t.Run("version_json", func(t *testing.T) { testVersionJSON(t, env) })
 		t.Run("init", func(t *testing.T) { testInit(t, env) })
-		t.Run("new_module", func(t *testing.T) { testNewModule(t, env) })
+		t.Run("new_package", func(t *testing.T) { testNewPackage(t, env) })
 		t.Run("new_plugin", func(t *testing.T) { testNewPlugin(t, env) })
 
 		// cobra.go — Full E2E (needs running brainkit start)
