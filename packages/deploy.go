@@ -6,25 +6,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Package describes a deployed package and its services.
+// Package describes a deployed package.
 type Package struct {
-	Name     string   `json:"name"`
-	Version  string   `json:"version"`
-	Dir      string   `json:"dir"`
-	Services []string `json:"services"` // deployed service source names
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Dir     string `json:"dir"`
+	Source  string `json:"source"` // deployed as "{name}.ts"
 }
 
-// Deployer handles package deployment via a Kernel.
-// Abstracted to avoid import cycles with the kit package.
+// Deployer deploys bundled code into the runtime.
 type Deployer interface {
 	Deploy(ctx context.Context, source, code string) error
 	Teardown(ctx context.Context, source string) error
 }
 
-// DeployPackage reads a manifest, validates dependencies, bundles each service
-// with esbuild, and deploys them as individual .ts Compartments.
+// DeployPackage reads a manifest, resolves entry, validates deps, bundles, and deploys.
 func DeployPackage(ctx context.Context, deployer Deployer, dir string, plugins PluginChecker, secrets SecretChecker) (*Package, error) {
 	// 1. Read manifest
 	manifestPath := filepath.Join(dir, "manifest.json")
@@ -33,7 +32,7 @@ func DeployPackage(ctx context.Context, deployer Deployer, dir string, plugins P
 		return nil, fmt.Errorf("package.deploy: read manifest: %w", err)
 	}
 
-	var manifest PackageManifestV2
+	var manifest PackageManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, fmt.Errorf("package.deploy: parse manifest: %w", err)
 	}
@@ -41,62 +40,64 @@ func DeployPackage(ctx context.Context, deployer Deployer, dir string, plugins P
 	if manifest.Name == "" {
 		return nil, fmt.Errorf("package.deploy: manifest missing 'name'")
 	}
-	if len(manifest.Services) == 0 {
-		return nil, fmt.Errorf("package.deploy: manifest has no services")
+
+	// 2. Resolve entry point
+	entryPath, err := ResolveEntry(dir, manifest)
+	if err != nil {
+		return nil, fmt.Errorf("package.deploy: %w", err)
 	}
 
-	// 2. Validate dependencies
+	// 3. Validate dependencies
 	if plugins != nil && secrets != nil {
 		if err := ValidateDeps(manifest, plugins, secrets); err != nil {
 			return nil, err
 		}
 	}
 
-	// 3. Bundle and deploy each service
-	var deployed []string
-	for name, svc := range manifest.Services {
-		entryPath := filepath.Join(dir, svc.Entry)
-		if _, err := os.Stat(entryPath); err != nil {
-			// Teardown already-deployed services on failure
-			for _, d := range deployed {
-				deployer.Teardown(ctx, d)
-			}
-			return nil, fmt.Errorf("package.deploy: service %q entry %q not found: %w", name, svc.Entry, err)
-		}
+	// 4. Bundle from entry point
+	bundled, err := Bundle(entryPath)
+	if err != nil {
+		return nil, fmt.Errorf("package.deploy: bundle: %w", err)
+	}
 
-		bundled, err := Bundle(entryPath)
-		if err != nil {
-			for _, d := range deployed {
-				deployer.Teardown(ctx, d)
-			}
-			return nil, fmt.Errorf("package.deploy: bundle service %q: %w", name, err)
-		}
-
-		sourceName := manifest.Name + "/" + name + ".ts"
-		if err := deployer.Deploy(ctx, sourceName, bundled); err != nil {
-			for _, d := range deployed {
-				deployer.Teardown(ctx, d)
-			}
-			return nil, fmt.Errorf("package.deploy: deploy service %q: %w", name, err)
-		}
-		deployed = append(deployed, sourceName)
+	// 5. Deploy as {name}.ts
+	source := manifest.Name + ".ts"
+	if err := deployer.Deploy(ctx, source, bundled); err != nil {
+		return nil, fmt.Errorf("package.deploy: deploy %q: %w", source, err)
 	}
 
 	return &Package{
-		Name:     manifest.Name,
-		Version:  manifest.Version,
-		Dir:      dir,
-		Services: deployed,
+		Name:    manifest.Name,
+		Version: manifest.Version,
+		Dir:     dir,
+		Source:  source,
 	}, nil
 }
 
-// TeardownPackage removes all services from a deployed package.
-func TeardownPackage(ctx context.Context, deployer Deployer, pkg *Package) error {
-	var firstErr error
-	for _, svc := range pkg.Services {
-		if err := deployer.Teardown(ctx, svc); err != nil && firstErr == nil {
-			firstErr = err
-		}
+// DeployFile deploys a single .ts file as a virtual package.
+// The package name is derived from the filename (hello.ts → "hello").
+func DeployFile(ctx context.Context, deployer Deployer, path string) (*Package, error) {
+	filename := filepath.Base(path)
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	bundled, err := Bundle(path)
+	if err != nil {
+		return nil, fmt.Errorf("package.deploy: bundle %s: %w", path, err)
 	}
-	return firstErr
+
+	source := name + ".ts"
+	if err := deployer.Deploy(ctx, source, bundled); err != nil {
+		return nil, fmt.Errorf("package.deploy: deploy %q: %w", source, err)
+	}
+
+	return &Package{
+		Name:    name,
+		Version: "0.0.0",
+		Source:  source,
+	}, nil
+}
+
+// TeardownPackage removes the package's deployment.
+func TeardownPackage(ctx context.Context, deployer Deployer, pkg *Package) error {
+	return deployer.Teardown(ctx, pkg.Source)
 }

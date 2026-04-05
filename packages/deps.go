@@ -5,20 +5,14 @@ import (
 	"strings"
 )
 
-// PackageManifestV2 is the package-level manifest (distinct from the plugin registry manifest).
+// PackageManifest describes a package (the deployable unit).
 // Lives in manifest.json alongside .ts source files.
-type PackageManifestV2 struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description,omitempty"`
-	Services    map[string]Service `json:"services"`
-	Requires    *Requirements     `json:"requires,omitempty"`
-	Tests       string            `json:"tests,omitempty"` // directory of *.test.ts files
-}
-
-// Service is a .ts entry point deployed as a separate Compartment.
-type Service struct {
-	Entry string `json:"entry"`
+type PackageManifest struct {
+	Name        string        `json:"name"`
+	Version     string        `json:"version"`
+	Description string        `json:"description,omitempty"`
+	Entry       string        `json:"entry,omitempty"` // default: resolved by ResolveEntry
+	Requires    *Requirements `json:"requires,omitempty"`
 }
 
 // Requirements declares plugin and secret dependencies.
@@ -41,7 +35,7 @@ type SecretChecker interface {
 
 // ValidateDeps checks that all required plugins are installed+running
 // and all required secrets exist. Supports version constraints (>=, >, =).
-func ValidateDeps(manifest PackageManifestV2, plugins PluginChecker, secrets SecretChecker) error {
+func ValidateDeps(manifest PackageManifest, plugins PluginChecker, secrets SecretChecker) error {
 	if manifest.Requires == nil {
 		return nil
 	}

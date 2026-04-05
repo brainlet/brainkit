@@ -10,8 +10,8 @@ import (
 
 // mockDeployer tracks deploy/teardown calls without a real Kernel.
 type mockDeployer struct {
-	deployed  map[string]string // source → code
-	tornDown  []string
+	deployed map[string]string // source → code
+	tornDown []string
 }
 
 func newMockDeployer() *mockDeployer {
@@ -50,7 +50,7 @@ type mockSecretChecker struct {
 
 func (m *mockSecretChecker) HasSecret(name string) bool { return m.secrets[name] }
 
-func writeManifest(t *testing.T, dir string, manifest PackageManifestV2) {
+func writeManifest(t *testing.T, dir string, manifest PackageManifest) {
 	t.Helper()
 	data, _ := json.Marshal(manifest)
 	os.WriteFile(filepath.Join(dir, "manifest.json"), data, 0644)
@@ -60,17 +60,15 @@ func TestDeployPackage_Basic(t *testing.T) {
 	dir := t.TempDir()
 
 	writeFile(t, dir, "config.ts", `export const CONFIG = { name: "test" };`)
-	writeFile(t, dir, "agents/main.ts", `
-		import { CONFIG } from "../config";
+	writeFile(t, dir, "index.ts", `
+		import { CONFIG } from "./config";
 		console.log(CONFIG.name);
 	`)
 
-	writeManifest(t, dir, PackageManifestV2{
+	writeManifest(t, dir, PackageManifest{
 		Name:    "test-pkg",
 		Version: "1.0.0",
-		Services: map[string]Service{
-			"main": {Entry: "agents/main.ts"},
-		},
+		Entry:   "index.ts",
 	})
 
 	deployer := newMockDeployer()
@@ -82,36 +80,28 @@ func TestDeployPackage_Basic(t *testing.T) {
 	if pkg.Name != "test-pkg" {
 		t.Fatalf("expected name 'test-pkg', got %q", pkg.Name)
 	}
-	if len(pkg.Services) != 1 {
-		t.Fatalf("expected 1 service, got %d", len(pkg.Services))
-	}
-	if pkg.Services[0] != "test-pkg/main.ts" {
-		t.Fatalf("expected service 'test-pkg/main.ts', got %q", pkg.Services[0])
+	if pkg.Source != "test-pkg.ts" {
+		t.Fatalf("expected source 'test-pkg.ts', got %q", pkg.Source)
 	}
 
 	// Verify bundled code was passed to deployer
-	code, ok := deployer.deployed["test-pkg/main.ts"]
+	code, ok := deployer.deployed["test-pkg.ts"]
 	if !ok {
-		t.Fatal("service not deployed")
+		t.Fatal("source not deployed")
 	}
 	if code == "" {
 		t.Fatal("deployed code is empty")
 	}
 }
 
-func TestDeployPackage_MultipleServices(t *testing.T) {
+func TestDeployPackage_IndexTsConvention(t *testing.T) {
 	dir := t.TempDir()
 
-	writeFile(t, dir, "svc-a.ts", `console.log("a");`)
-	writeFile(t, dir, "svc-b.ts", `console.log("b");`)
-
-	writeManifest(t, dir, PackageManifestV2{
-		Name:    "multi",
-		Version: "2.0.0",
-		Services: map[string]Service{
-			"alpha": {Entry: "svc-a.ts"},
-			"beta":  {Entry: "svc-b.ts"},
-		},
+	writeFile(t, dir, "index.ts", `console.log("hello");`)
+	// No entry in manifest — should find index.ts by convention
+	writeManifest(t, dir, PackageManifest{
+		Name:    "convention",
+		Version: "1.0.0",
 	})
 
 	deployer := newMockDeployer()
@@ -120,23 +110,21 @@ func TestDeployPackage_MultipleServices(t *testing.T) {
 		t.Fatal("deploy:", err)
 	}
 
-	if len(pkg.Services) != 2 {
-		t.Fatalf("expected 2 services, got %d", len(pkg.Services))
+	if pkg.Source != "convention.ts" {
+		t.Fatalf("expected source 'convention.ts', got %q", pkg.Source)
 	}
-	if len(deployer.deployed) != 2 {
-		t.Fatalf("expected 2 deployed, got %d", len(deployer.deployed))
+	if _, ok := deployer.deployed["convention.ts"]; !ok {
+		t.Fatal("source not deployed")
 	}
 }
 
 func TestDeployPackage_MissingEntry(t *testing.T) {
 	dir := t.TempDir()
 
-	writeManifest(t, dir, PackageManifestV2{
+	writeManifest(t, dir, PackageManifest{
 		Name:    "broken",
 		Version: "1.0.0",
-		Services: map[string]Service{
-			"main": {Entry: "nonexistent.ts"},
-		},
+		Entry:   "nonexistent.ts",
 	})
 
 	deployer := newMockDeployer()
@@ -149,13 +137,10 @@ func TestDeployPackage_MissingEntry(t *testing.T) {
 func TestDeployPackage_DependencyCheckFails(t *testing.T) {
 	dir := t.TempDir()
 
-	writeFile(t, dir, "main.ts", `console.log("hi");`)
-	writeManifest(t, dir, PackageManifestV2{
+	writeFile(t, dir, "index.ts", `console.log("hi");`)
+	writeManifest(t, dir, PackageManifest{
 		Name:    "needs-plugin",
 		Version: "1.0.0",
-		Services: map[string]Service{
-			"main": {Entry: "main.ts"},
-		},
 		Requires: &Requirements{
 			Plugins: []string{"brainlet/telegram-gateway@>=1.0.0"},
 		},
@@ -177,13 +162,10 @@ func TestDeployPackage_DependencyCheckFails(t *testing.T) {
 func TestDeployPackage_SecretCheckFails(t *testing.T) {
 	dir := t.TempDir()
 
-	writeFile(t, dir, "main.ts", `console.log("hi");`)
-	writeManifest(t, dir, PackageManifestV2{
+	writeFile(t, dir, "index.ts", `console.log("hi");`)
+	writeManifest(t, dir, PackageManifest{
 		Name:    "needs-secret",
 		Version: "1.0.0",
-		Services: map[string]Service{
-			"main": {Entry: "main.ts"},
-		},
 		Requires: &Requirements{
 			Secrets: []string{"MY_TOKEN"},
 		},
@@ -202,13 +184,10 @@ func TestDeployPackage_SecretCheckFails(t *testing.T) {
 func TestDeployPackage_DepsPass(t *testing.T) {
 	dir := t.TempDir()
 
-	writeFile(t, dir, "main.ts", `console.log("ok");`)
-	writeManifest(t, dir, PackageManifestV2{
+	writeFile(t, dir, "index.ts", `console.log("ok");`)
+	writeManifest(t, dir, PackageManifest{
 		Name:    "full-deps",
 		Version: "1.0.0",
-		Services: map[string]Service{
-			"main": {Entry: "main.ts"},
-		},
 		Requires: &Requirements{
 			Plugins: []string{"brainlet/telegram-gateway@>=1.0.0"},
 			Secrets: []string{"BOT_TOKEN"},
@@ -229,16 +208,18 @@ func TestDeployPackage_DepsPass(t *testing.T) {
 	if pkg.Name != "full-deps" {
 		t.Fatalf("wrong name: %q", pkg.Name)
 	}
+	if pkg.Source != "full-deps.ts" {
+		t.Fatalf("wrong source: %q", pkg.Source)
+	}
 }
 
 func TestTeardownPackage(t *testing.T) {
 	deployer := newMockDeployer()
-	deployer.deployed["pkg/svc-a.ts"] = "code-a"
-	deployer.deployed["pkg/svc-b.ts"] = "code-b"
+	deployer.deployed["pkg.ts"] = "code"
 
 	pkg := &Package{
-		Name:     "pkg",
-		Services: []string{"pkg/svc-a.ts", "pkg/svc-b.ts"},
+		Name:   "pkg",
+		Source: "pkg.ts",
 	}
 
 	err := TeardownPackage(context.Background(), deployer, pkg)
@@ -248,7 +229,92 @@ func TestTeardownPackage(t *testing.T) {
 	if len(deployer.deployed) != 0 {
 		t.Fatalf("expected 0 deployed after teardown, got %d", len(deployer.deployed))
 	}
-	if len(deployer.tornDown) != 2 {
-		t.Fatalf("expected 2 teardowns, got %d", len(deployer.tornDown))
+	if len(deployer.tornDown) != 1 {
+		t.Fatalf("expected 1 teardown, got %d", len(deployer.tornDown))
+	}
+	if deployer.tornDown[0] != "pkg.ts" {
+		t.Fatalf("expected teardown of 'pkg.ts', got %q", deployer.tornDown[0])
+	}
+}
+
+func TestDeployFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "hello.ts", `console.log("hi");`)
+
+	deployer := newMockDeployer()
+	pkg, err := DeployFile(context.Background(), deployer, filepath.Join(dir, "hello.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Name != "hello" {
+		t.Fatalf("expected name 'hello', got %q", pkg.Name)
+	}
+	if pkg.Source != "hello.ts" {
+		t.Fatalf("expected source 'hello.ts', got %q", pkg.Source)
+	}
+	if _, ok := deployer.deployed["hello.ts"]; !ok {
+		t.Fatal("not deployed")
+	}
+}
+
+// --- ResolveEntry tests ---
+
+func TestResolveEntry_ExplicitEntry(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "main.ts", `console.log("main");`)
+
+	path, err := ResolveEntry(dir, PackageManifest{Entry: "main.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != "main.ts" {
+		t.Fatalf("expected main.ts, got %s", path)
+	}
+}
+
+func TestResolveEntry_IndexTsFallback(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "index.ts", `console.log("index");`)
+	writeFile(t, dir, "other.ts", `console.log("other");`)
+
+	path, err := ResolveEntry(dir, PackageManifest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != "index.ts" {
+		t.Fatalf("expected index.ts, got %s", path)
+	}
+}
+
+func TestResolveEntry_OnlyTsFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "solo.ts", `console.log("solo");`)
+
+	path, err := ResolveEntry(dir, PackageManifest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(path) != "solo.ts" {
+		t.Fatalf("expected solo.ts, got %s", path)
+	}
+}
+
+func TestResolveEntry_NoTsFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := ResolveEntry(dir, PackageManifest{})
+	if err == nil {
+		t.Fatal("expected error for no .ts files")
+	}
+}
+
+func TestResolveEntry_MultipleTsFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.ts", `console.log("a");`)
+	writeFile(t, dir, "b.ts", `console.log("b");`)
+
+	_, err := ResolveEntry(dir, PackageManifest{})
+	if err == nil {
+		t.Fatal("expected error for multiple .ts files without entry/index.ts")
 	}
 }
