@@ -324,9 +324,6 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageTeardownMsg) (*messages.PackageTeardownResp, error) {
 				return kernel.packageDeployDomain.Teardown(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageRedeployMsg) (*messages.PackageRedeployResp, error) {
-				return kernel.packageDeployDomain.Redeploy(ctx, req)
-			}),
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageListDeployedMsg) (*messages.PackageListDeployedResp, error) {
 				return kernel.packageDeployDomain.List(ctx, req)
 			}),

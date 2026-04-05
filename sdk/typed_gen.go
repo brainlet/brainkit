@@ -231,16 +231,6 @@ func SubscribePackageListDeployedResp(rt Runtime, ctx context.Context, topic str
 	return SubscribeTo[messages.PackageListDeployedResp](rt, ctx, topic, handler)
 }
 
-// PublishPackageRedeploy publishes a PackageRedeployMsg and returns routing info for the response.
-func PublishPackageRedeploy(rt Runtime, ctx context.Context, msg messages.PackageRedeployMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackageRedeployResp subscribes to the response topic for a PackageRedeployMsg command.
-func SubscribePackageRedeployResp(rt Runtime, ctx context.Context, topic string, handler func(messages.PackageRedeployResp, messages.Message)) (func(), error) {
-	return SubscribeTo[messages.PackageRedeployResp](rt, ctx, topic, handler)
-}
-
 // PublishPackageTeardown publishes a PackageTeardownMsg and returns routing info for the response.
 func PublishPackageTeardown(rt Runtime, ctx context.Context, msg messages.PackageTeardownMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

@@ -33,7 +33,7 @@ func (d *kernelDeployer) Teardown(ctx context.Context, source string) error {
 	return err
 }
 
-// PackageDeployDomain handles package.deploy/teardown/redeploy/list/info bus commands.
+// PackageDeployDomain handles package.deploy/teardown/list/info bus commands.
 type PackageDeployDomain struct {
 	kit *Kernel
 
@@ -105,7 +105,7 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDe
 		Deployed: true,
 		Name:     pkg.Name,
 		Version:  pkg.Version,
-		Services: pkg.Services,
+		Source:   pkg.Source,
 	}, nil
 }
 
@@ -125,28 +125,6 @@ func (d *PackageDeployDomain) Teardown(ctx context.Context, req messages.Package
 	return &messages.PackageTeardownResp{Removed: true}, nil
 }
 
-func (d *PackageDeployDomain) Redeploy(ctx context.Context, req messages.PackageRedeployMsg) (*messages.PackageRedeployResp, error) {
-	// Deploy handles teardown-if-exists for each service (idempotent).
-	// Just need to clean up our package tracking first.
-	d.mu.Lock()
-	for name, pkg := range d.deployed {
-		if pkg.Dir == req.Path {
-			delete(d.deployed, name)
-			break
-		}
-	}
-	d.mu.Unlock()
-
-	resp, err := d.Deploy(ctx, messages.PackageDeployMsg{Path: req.Path})
-	if err != nil {
-		return nil, err
-	}
-	return &messages.PackageRedeployResp{
-		Redeployed: true,
-		Services:   resp.Services,
-	}, nil
-}
-
 func (d *PackageDeployDomain) List(_ context.Context, _ messages.PackageListDeployedMsg) (*messages.PackageListDeployedResp, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -154,10 +132,10 @@ func (d *PackageDeployDomain) List(_ context.Context, _ messages.PackageListDepl
 	pkgs := make([]messages.DeployedPackageInfo, 0, len(d.deployed))
 	for _, pkg := range d.deployed {
 		pkgs = append(pkgs, messages.DeployedPackageInfo{
-			Name:     pkg.Name,
-			Version:  pkg.Version,
-			Services: pkg.Services,
-			Status:   "active",
+			Name:    pkg.Name,
+			Version: pkg.Version,
+			Source:  pkg.Source,
+			Status:  "active",
 		})
 	}
 	return &messages.PackageListDeployedResp{Packages: pkgs}, nil
@@ -171,9 +149,9 @@ func (d *PackageDeployDomain) Info(_ context.Context, req messages.PackageDeploy
 		return nil, &sdkerrors.NotFoundError{Resource: "package", Name: req.Name}
 	}
 	return &messages.PackageDeployInfoResp{
-		Name:     pkg.Name,
-		Version:  pkg.Version,
-		Services: pkg.Services,
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Source:  pkg.Source,
 	}, nil
 }
 
@@ -234,23 +212,13 @@ func (c *kernelSecretChecker) HasSecret(name string) bool {
 }
 
 // DeployFile deploys a single .ts file with import resolution via esbuild.
-// Convenience wrapper: reads file, bundles with esbuild, deploys bundled code.
+// Bundles with esbuild, deploys as {name}.ts where name is derived from filename.
 func DeployFile(ctx context.Context, k *Kernel, filePath string) ([]ResourceInfo, error) {
-	bundled, err := packages.Bundle(filePath)
+	deployer := &kernelDeployer{kernel: k}
+	pkg, err := packages.DeployFile(ctx, deployer, filePath)
 	if err != nil {
-		return nil, fmt.Errorf("deploy file %s: bundle: %w", filePath, err)
+		return nil, err
 	}
-	// Use the filename as the deployment source
-	source := baseFileName(filePath)
-	return k.Deploy(ctx, source, bundled)
-}
-
-// baseFileName extracts just the filename from a path for use as deployment source.
-func baseFileName(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[i+1:]
-		}
-	}
-	return path
+	resources, _ := k.ResourcesFrom(pkg.Source)
+	return resources, nil
 }
