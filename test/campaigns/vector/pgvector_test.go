@@ -9,5 +9,5 @@ import (
 func TestVector_PgVector(t *testing.T) {
 	campaigns.RequirePodman(t)
 	infra := campaigns.NewInfra(t, campaigns.Vector("pgvector"), campaigns.AI())
-	infra.RunFixtures(t, "vector/pgvector-*")
+	infra.RunFixtures(t, "vector/*/pgvector")
 }

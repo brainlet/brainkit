@@ -83,7 +83,7 @@ func (r *Runner) RunMatching(t *testing.T, patterns ...string) {
 
 // fixtureEntry represents a discovered fixture ready for execution.
 type fixtureEntry struct {
-	relPath string       // e.g. "agent/generate-basic"
+	relPath string       // e.g. "agent/generate/basic"
 	needs   FixtureNeeds // classified infrastructure requirements
 }
 
@@ -166,8 +166,8 @@ func (r *Runner) discover(t *testing.T, patterns []string) []fixtureEntry {
 		}
 
 		// Compute relative path from ts/ root to the fixture directory.
-		// path is like /abs/fixtures/ts/agent/generate-basic/index.ts
-		// We want "agent/generate-basic"
+		// path is like /abs/fixtures/ts/agent/generate/basic/index.ts
+		// We want "agent/generate/basic"
 		dir := filepath.Dir(path)
 		relPath, err := filepath.Rel(r.root, dir)
 		if err != nil {
@@ -486,7 +486,7 @@ func matchesAny(relPath string, patterns []string) bool {
 			return true
 		}
 		// Also try matching against individual segments for partial patterns
-		// e.g. pattern "agent/*" should match "agent/generate-basic"
+		// e.g. pattern "agent/*" should match "agent/generate/basic"
 		if strings.Contains(pattern, "/") {
 			// Direct match attempted above
 			continue

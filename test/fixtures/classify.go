@@ -13,39 +13,25 @@ type FixtureNeeds struct {
 	MCP          bool   // needs in-process MCP server
 }
 
-// containerBackends maps fixture path segments to the container they need.
+// containerBackends maps path segments to container names.
 // A fixture needs a container if any segment in its relative path matches.
 var containerBackends = map[string]string{
-	"postgres-basic":          "postgres",
-	"postgres-scram":          "postgres",
-	"mongodb-basic":           "mongodb",
-	"mongodb-scram":           "mongodb",
-	"with-memory-postgres":    "postgres",
-	"with-memory-mongodb":     "mongodb",
-	"semantic-recall":         "postgres", // needs pgvector + libsql-server
-	"working-memory":          "postgres", // needs pgvector + libsql-server
-	"vector-query-tool":       "postgres", // needs pgvector + libsql-server
-	"pgvector-create-upsert-query": "postgres",
-	"pgvector-methods":        "postgres",
-	"mongodb-create-upsert-query":  "mongodb",
-	"mongodb-methods":         "mongodb",
-	"libsql-create-upsert-query":   "",  // libsql-server container, handled by LibSQLServer flag
-	"libsql-methods":          "",        // libsql-server container, handled by LibSQLServer flag
+	"postgres":       "postgres",
+	"postgres-scram": "postgres",
+	"pgvector":       "postgres",
+	"mongodb":        "mongodb",
+	"mongodb-scram":  "mongodb",
 }
 
-// credentialBackends maps fixture path segments to the env var they need.
+// credentialBackends need cloud credentials, not containers.
 var credentialBackends = map[string]string{
-	"upstash-basic":       "UPSTASH_REDIS_REST_URL",
-	"with-memory-upstash": "UPSTASH_REDIS_REST_URL",
+	"upstash": "UPSTASH_REDIS_REST_URL",
 }
 
-// vectorServerBackends maps fixture name segments that need a libsql-server container.
+// vectorServerBackends need a libsql-server container (for vector extensions).
+// "libsql" under vector/ needs the server; under memory/storage/ it's in-process.
 var vectorServerBackends = map[string]bool{
-	"semantic-recall":            true,
-	"working-memory":             true,
-	"vector-query-tool":          true,
-	"libsql-create-upsert-query": true,
-	"libsql-methods":             true,
+	"libsql": true,
 }
 
 // aiCategories are top-level categories where every fixture needs AI.
@@ -56,91 +42,79 @@ var aiCategories = map[string]bool{
 	"composition":  true,
 }
 
-// aiSegments are specific fixture names that need AI regardless of category.
+// aiSegments trigger AI need when found anywhere in the path.
 var aiSegments = map[string]bool{
 	"with-agent-step":  true,
 	"vector-query-tool": true,
-	// memory fixtures that use Agent conversation
-	"inmemory-basic":  true,
-	"libsql-basic":    true,
-	"libsql-local":    true,
-	"postgres-basic":  true,
-	"postgres-scram":  true,
-	"mongodb-basic":   true,
-	"mongodb-scram":   true,
-	"upstash-basic":   true,
+	"with-llm-judge":   true,
 	"semantic-recall":  true,
-	"working-memory":  true,
-}
-
-// vectorCategory marks categories where ALL fixtures need containers.
-var vectorCategory = map[string]bool{
-	"vector": true,
+	"generate-title":   true,
+	"working-memory":   true,
 }
 
 // ClassifyFixture determines what infrastructure a fixture needs based on its
-// relative path from the fixtures root (e.g. "agent/generate-basic").
+// relative path from the fixtures root (e.g. "agent/generate/basic",
+// "memory/storage/postgres", "vector/create-upsert-query/pgvector").
+//
+// Classification scans ALL path segments, so nesting depth doesn't matter.
 func ClassifyFixture(relPath string) FixtureNeeds {
 	var needs FixtureNeeds
 
-	parts := strings.Split(relPath, "/")
-	if len(parts) < 2 {
+	segments := strings.Split(relPath, "/")
+	if len(segments) < 2 {
 		return needs
 	}
 
-	category := parts[0]
-	name := parts[len(parts)-1] // leaf segment (fixture name)
+	category := segments[0]
 
-	// MCP detection: category == "mcp"
+	// MCP detection
 	if category == "mcp" {
 		needs.MCP = true
 	}
 
-	// AI detection: full category match or specific fixture name
+	// AI detection: category-level
 	if aiCategories[category] {
 		needs.AI = true
 	}
-	if aiSegments[name] && category == "memory" {
-		needs.AI = true
-	}
-	if aiSegments[name] && category == "workflow" {
-		needs.AI = true
-	}
-	if aiSegments[name] && category == "rag" {
-		needs.AI = true
-	}
 
-	// Container detection: category-level or name-level
-	if vectorCategory[category] {
-		// All vector fixtures need a container
-		if strings.HasPrefix(name, "pgvector") {
-			needs.Container = "postgres"
-		} else if strings.HasPrefix(name, "mongodb") {
-			needs.Container = "mongodb"
+	// Scan all segments for infrastructure needs
+	for _, seg := range segments {
+		// Container detection
+		if backend, ok := containerBackends[seg]; ok && needs.Container == "" {
+			needs.Container = backend
 		}
-		// libsql-* vector fixtures need libsql-server but not postgres/mongodb container
-	}
-	if c, ok := containerBackends[name]; ok && needs.Container == "" {
-		needs.Container = c
+
+		// Credential detection
+		if envVar, ok := credentialBackends[seg]; ok && needs.Credential == "" {
+			needs.Credential = envVar
+		}
+
+		// LibSQL server detection: only under vector/ category
+		// (memory/storage/libsql is in-process, no container needed)
+		if vectorServerBackends[seg] && category == "vector" {
+			needs.LibSQLServer = true
+		}
+
+		// AI segment detection
+		if aiSegments[seg] {
+			needs.AI = true
+		}
 	}
 
-	// LibSQL server detection (vector extensions)
-	if vectorServerBackends[name] {
-		needs.LibSQLServer = true
-	}
-	// All libsql-* fixtures in vector category need the server
-	if category == "vector" && strings.HasPrefix(name, "libsql") {
-		needs.LibSQLServer = true
-	}
-
-	// Credential detection
-	if cred, ok := credentialBackends[name]; ok {
-		needs.Credential = cred
-	}
-	// Also check for "upstash" anywhere in name
-	if strings.Contains(name, "upstash") && needs.Credential == "" {
-		needs.Credential = "UPSTASH_REDIS_REST_URL"
+	// memory/storage/* all need AI (they use Agent conversation)
+	if category == "memory" && hasSegment(segments, "storage") {
+		needs.AI = true
 	}
 
 	return needs
+}
+
+// hasSegment checks if a specific segment exists in the path.
+func hasSegment(segments []string, target string) bool {
+	for _, seg := range segments {
+		if seg == target {
+			return true
+		}
+	}
+	return false
 }

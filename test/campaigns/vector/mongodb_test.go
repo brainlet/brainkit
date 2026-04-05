@@ -9,5 +9,5 @@ import (
 func TestVector_MongoDB(t *testing.T) {
 	campaigns.RequirePodman(t)
 	infra := campaigns.NewInfra(t, campaigns.Vector("mongodb"), campaigns.AI())
-	infra.RunFixtures(t, "vector/mongodb-*")
+	infra.RunFixtures(t, "vector/*/mongodb")
 }

@@ -9,5 +9,5 @@ import (
 func TestStorage_LibSQL(t *testing.T) {
 	campaigns.RequirePodman(t)
 	infra := campaigns.NewInfra(t, campaigns.Storage("libsql"), campaigns.AI())
-	infra.RunFixtures(t, "memory/libsql-*", "agent/with-memory-libsql")
+	infra.RunFixtures(t, "memory/storage/libsql*", "agent/memory/libsql")
 }

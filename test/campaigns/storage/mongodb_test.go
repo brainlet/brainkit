@@ -9,5 +9,5 @@ import (
 func TestStorage_MongoDB(t *testing.T) {
 	campaigns.RequirePodman(t)
 	infra := campaigns.NewInfra(t, campaigns.Storage("mongodb"), campaigns.AI())
-	infra.RunFixtures(t, "memory/mongodb-*", "agent/with-memory-mongodb")
+	infra.RunFixtures(t, "memory/storage/mongodb*", "agent/memory/mongodb")
 }

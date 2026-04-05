@@ -9,5 +9,5 @@ import (
 func TestStorage_Postgres(t *testing.T) {
 	campaigns.RequirePodman(t)
 	infra := campaigns.NewInfra(t, campaigns.Storage("postgres"), campaigns.AI())
-	infra.RunFixtures(t, "memory/postgres-*", "agent/with-memory-postgres")
+	infra.RunFixtures(t, "memory/storage/postgres*", "agent/memory/postgres")
 }

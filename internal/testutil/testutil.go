@@ -3,7 +3,6 @@ package testutil
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/rbac"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -210,15 +208,6 @@ func HasAIKey() bool {
 	return os.Getenv("OPENAI_API_KEY") != ""
 }
 
-// MustJSON marshals v to json.RawMessage or panics.
-func MustJSON(v any) json.RawMessage {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
-
 // BuildTestMCP compiles the testmcp binary and returns its path.
 func BuildTestMCP(t *testing.T) string {
 	t.Helper()
@@ -249,50 +238,6 @@ func StartPgVectorContainer(t *testing.T) string {
 		"POSTGRES_DB=brainkit",
 	)
 	return fmt.Sprintf("postgresql://test:test@%s/brainkit", addr)
-}
-
-// ── Phase 1 Test Helpers ─────────────────────────────────────────────────
-
-// RestartKernel creates a Kernel with SQLiteStore, runs setup, closes it,
-// creates a new Kernel with the same store path. Returns (closed k1, running k2).
-// k2 is registered with t.Cleanup.
-func RestartKernel(t *testing.T, cfg brainkit.KernelConfig, setup func(*brainkit.Kernel)) (*brainkit.Kernel, *brainkit.Kernel) {
-	t.Helper()
-	storePath := filepath.Join(t.TempDir(), "restart-test.db")
-
-	store1, err := brainkit.NewSQLiteStore(storePath)
-	if err != nil {
-		t.Fatalf("RestartKernel: open store1: %v", err)
-	}
-	cfg.Store = store1
-	if cfg.Namespace == "" {
-		cfg.Namespace = "test"
-	}
-	if cfg.CallerID == "" {
-		cfg.CallerID = "test"
-	}
-
-	k1, err := brainkit.NewKernel(cfg)
-	if err != nil {
-		t.Fatalf("RestartKernel: create k1: %v", err)
-	}
-
-	setup(k1)
-	k1.Close()
-
-	store2, err := brainkit.NewSQLiteStore(storePath)
-	if err != nil {
-		t.Fatalf("RestartKernel: open store2: %v", err)
-	}
-	cfg.Store = store2
-
-	k2, err := brainkit.NewKernel(cfg)
-	if err != nil {
-		t.Fatalf("RestartKernel: create k2: %v", err)
-	}
-	t.Cleanup(func() { k2.Close() })
-
-	return k1, k2
 }
 
 // ConcurrentDo runs fn in n goroutines and waits for all to complete.
@@ -343,28 +288,3 @@ func WaitForBusMessage(t *testing.T, k *brainkit.Kernel, topic string, timeout t
 	}
 }
 
-// NewTestKernelWithRBAC creates a Kernel with RBAC roles and a SQLiteStore.
-func NewTestKernelWithRBAC(t *testing.T, roles map[string]rbac.Role, defaultRole string) *TestKernel {
-	t.Helper()
-	LoadEnv(t)
-	tmpDir := t.TempDir()
-	storePath := filepath.Join(tmpDir, "rbac-test.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
-	if err != nil {
-		t.Fatalf("NewTestKernelWithRBAC: open store: %v", err)
-	}
-
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace:   "test",
-		CallerID:    "test",
-		Store:       store,
-		Roles:       roles,
-		DefaultRole: defaultRole,
-		FSRoot:      tmpDir,
-	})
-	if err != nil {
-		t.Fatalf("NewTestKernelWithRBAC: create kernel: %v", err)
-	}
-	t.Cleanup(func() { k.Close() })
-	return &TestKernel{k}
-}

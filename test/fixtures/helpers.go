@@ -29,7 +29,7 @@ func FixturesRoot(t *testing.T) string {
 }
 
 // LoadTSFixtureRaw reads the raw .ts source for a fixture given its relative path
-// from the ts/ directory (e.g. "agent/generate-basic").
+// from the ts/ directory (e.g. "agent/generate/basic").
 func LoadTSFixtureRaw(t *testing.T, relPath string) string {
 	t.Helper()
 	path := filepath.Join(FixturesRoot(t), "ts", relPath, "index.ts")
@@ -41,7 +41,7 @@ func LoadTSFixtureRaw(t *testing.T, relPath string) string {
 }
 
 // LoadExpect reads the expect.json sidecar for a fixture given its relative path
-// from the ts/ directory (e.g. "agent/generate-basic").
+// from the ts/ directory (e.g. "agent/generate/basic").
 // Returns nil if no expect.json exists.
 func LoadExpect(t *testing.T, relPath string) map[string]any {
 	t.Helper()

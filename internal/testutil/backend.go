@@ -16,7 +16,6 @@ import (
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit"
 	provreg "github.com/brainlet/brainkit/registry"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -45,48 +44,6 @@ func AllBackends(t *testing.T) []string {
 		t.Log("Podman not available — skipping NATS, AMQP, Redis, Postgres backends")
 	}
 	return backends
-}
-
-// CreateTestTransport creates a transport for the given backend.
-// For Podman-based backends, starts the container and returns URL.
-func CreateTestTransport(t *testing.T, backend string) *messaging.Transport {
-	t.Helper()
-	cfg := TransportConfigForBackend(t, backend)
-	transport, err := messaging.NewTransportSet(cfg)
-	if err != nil {
-		t.Fatalf("create transport %s: %v", backend, err)
-	}
-	t.Cleanup(func() { transport.Close() })
-	return transport
-}
-
-// NewKitWithNamespace creates a Kernel with a specific namespace on the given backend.
-// For cross-Kit tests, two Kits share the same transport but different namespaces.
-func NewKitWithNamespace(t *testing.T, namespace, backend string) sdk.Runtime {
-	t.Helper()
-	LoadEnv(t)
-	tmpDir := t.TempDir()
-	cfg := TransportConfigForBackend(t, backend)
-
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: namespace,
-		CallerID:  namespace + "-caller",
-		FSRoot:    tmpDir,
-		Transport: MustCreateTransport(t, cfg),
-	})
-	if err != nil {
-		t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
-	}
-	t.Cleanup(func() { k.Close() })
-
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-		Description: "echoes the input message",
-		Execute: func(ctx context.Context, input EchoInput) (any, error) {
-			return map[string]string{"echoed": input.Message, "from": namespace}, nil
-		},
-	})
-
-	return k
 }
 
 // MustCreateTransport creates a transport or fails the test.
@@ -272,53 +229,6 @@ func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
 		}
 	}
 	t.Fatalf("backend not ready after 5 probe attempts — transport is broken or container didn't start")
-}
-
-// NewTestKernelPairFull creates two fully-configured Kernels on the SAME transport.
-func NewTestKernelPairFull(t *testing.T, backend string) (*TestKernel, *TestKernel) {
-	t.Helper()
-	LoadEnv(t)
-	cfg := TransportConfigForBackend(t, backend)
-	transport := MustCreateTransport(t, cfg)
-	t.Cleanup(func() { transport.Close() })
-
-	aiProviders := make(map[string]provreg.AIProviderRegistration)
-	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		aiProviders["openai"] = provreg.AIProviderRegistration{
-			Type: provreg.AIProviderOpenAI, Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
-		envVars["OPENAI_API_KEY"] = key
-	}
-
-	makeKit := func(namespace string) *TestKernel {
-		tmpDir := t.TempDir()
-		k, err := brainkit.NewKernel(brainkit.KernelConfig{
-			Namespace:   namespace,
-			CallerID:    namespace + "-caller",
-			FSRoot:      tmpDir,
-			Transport:   transport,
-			AIProviders: aiProviders,
-			EnvVars:     envVars,
-			Storages: map[string]brainkit.StorageConfig{
-				"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
-			},
-		})
-		if err != nil {
-			t.Fatalf("NewKernel(%s, ns=%s): %v", backend, namespace, err)
-		}
-		t.Cleanup(func() { k.Close() })
-
-		brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
-			Description: "echoes the input message",
-			Execute: func(ctx context.Context, input EchoInput) (any, error) {
-				return map[string]string{"echoed": input.Message, "from": namespace}, nil
-			},
-		})
-		return &TestKernel{k}
-	}
-
-	return makeKit("kit-a"), makeKit("kit-b")
 }
 
 // RequiresNetworkTransport skips the test if the backend is memory (in-process only).
