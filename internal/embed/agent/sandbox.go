@@ -71,6 +71,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 
 	b, err := jsbridge.New(bridgeCfg,
 		// Core runtime
+		jsbridge.Inspect(),        // __util_inspect, __util_format — must be before Console
 		jsbridge.Console(),
 		jsbridge.Process(),        // process.env (Go-backed), process.version, nextTick, stdout
 		jsbridge.Encoding(),       // TextEncoder, TextDecoder, btoa, atob

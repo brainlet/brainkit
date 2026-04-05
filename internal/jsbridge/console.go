@@ -63,6 +63,12 @@ func (c *ConsolePolyfill) capture(level, msg string) {
 }
 
 func (c *ConsolePolyfill) Setup(ctx *quickjs.Context) error {
+	// Ensure __util_inspect and __util_format are available (Console depends on Inspect).
+	// No-op if already loaded.
+	if err := Inspect().Setup(ctx); err != nil {
+		return err
+	}
+
 	reg := func(name, level string, w io.Writer) {
 		ctx.Globals().Set(name, ctx.NewFunction(func(ctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			msg := ""
@@ -83,11 +89,11 @@ func (c *ConsolePolyfill) Setup(ctx *quickjs.Context) error {
 
 	return evalJS(ctx, `
 globalThis.console = {
-  log:   (...a) => __go_console_log(a.map(String).join(' ')),
-  warn:  (...a) => __go_console_warn(a.map(String).join(' ')),
-  error: (...a) => __go_console_error(a.map(String).join(' ')),
-  info:  (...a) => __go_console_info(a.map(String).join(' ')),
-  debug: (...a) => __go_console_debug(a.map(String).join(' ')),
+  log:   (...a) => __go_console_log(__util_format(a)),
+  warn:  (...a) => __go_console_warn(__util_format(a)),
+  error: (...a) => __go_console_error(__util_format(a)),
+  info:  (...a) => __go_console_info(__util_format(a)),
+  debug: (...a) => __go_console_debug(__util_format(a)),
 };
 `)
 }
