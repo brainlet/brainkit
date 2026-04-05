@@ -23,5 +23,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// e2e.go — tool pipeline end-to-end
 		t.Run("e2e_tool_pipeline", func(t *testing.T) { testToolPipeline(t, env) })
+
+		// backend_advanced.go — ported from adversarial/backend_matrix_test.go
+		t.Run("tool_call_roundtrip", func(t *testing.T) { testToolCallRoundtrip(t, env) })
 	})
 }

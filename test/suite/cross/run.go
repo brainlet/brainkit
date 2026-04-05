@@ -66,6 +66,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("discovery/resolve_nonexistent", func(t *testing.T) { testDiscoveryResolveNonexistent(t, env) })
 		t.Run("discovery/close", func(t *testing.T) { testDiscoveryClose(t, env) })
 		t.Run("discovery/static_peers_bus", func(t *testing.T) { testDiscoveryStaticPeersBus(t, env) })
+
+		// backend_matrix.go — ported from adversarial/crosskit_matrix_test.go
+		t.Run("crosskit/publish_reply", func(t *testing.T) { testCrossKitPublishReply(t, env) })
+		t.Run("crosskit/error_propagation", func(t *testing.T) { testCrossKitErrorPropagation(t, env) })
 	})
 }
 

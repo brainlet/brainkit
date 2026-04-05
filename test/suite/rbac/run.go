@@ -64,6 +64,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// input_abuse.go — RBAC input abuse (from adversarial/input_abuse_test.go)
 		t.Run("input_abuse_nonexistent_role", func(t *testing.T) { testInputAbuseRBACNonexistentRole(t, env) })
+
+		// backend_advanced.go — ported from adversarial/rbac_backend_test.go
+		t.Run("rbac_enforcement_on_transport", func(t *testing.T) { testRBACEnforcementOnTransport(t, env) })
+		t.Run("rbac_tool_call_on_transport", func(t *testing.T) { testRBACToolCallOnTransport(t, env) })
 	})
 }
 

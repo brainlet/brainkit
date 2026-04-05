@@ -19,5 +19,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("e2e_schedule_fires", func(t *testing.T) { testE2EScheduleFires(t, env) })
 		t.Run("input_abuse_invalid_expression", func(t *testing.T) { testInputAbuseScheduleInvalidExpression(t, env) })
 		t.Run("input_abuse_empty_topic", func(t *testing.T) { testInputAbuseScheduleEmptyTopic(t, env) })
+
+		// backend_advanced.go — ported from adversarial/backend_advanced_test.go
+		t.Run("schedule_fire_on_transport", func(t *testing.T) { testScheduleFireOnTransport(t, env) })
 	})
 }

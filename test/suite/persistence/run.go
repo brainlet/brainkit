@@ -29,5 +29,12 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		// Edge cases — corrupt store recovery
 		t.Run("corrupt_deployment_table", func(t *testing.T) { testCorruptDeploymentTable(t, env) })
 		t.Run("corrupt_schedule_table", func(t *testing.T) { testCorruptScheduleTable(t, env) })
+
+		// backend_matrix.go — ported from adversarial/backend_matrix_test.go + persistence_matrix_test.go
+		t.Run("deploy_persist_restart", func(t *testing.T) { testDeployPersistRestart(t, env) })
+		t.Run("secrets_survive_restart", func(t *testing.T) { testSecretsSurviveRestart(t, env) })
+		t.Run("multi_deploy_order_and_metadata", func(t *testing.T) { testMultiDeployOrderAndMetadata(t, env) })
+		t.Run("multiple_schedules_survive", func(t *testing.T) { testMultipleSchedulesSurvive(t, env) })
+		t.Run("deploy_with_bus_handler_survives_restart", func(t *testing.T) { testDeployWithBusHandlerSurvivesRestart(t, env) })
 	})
 }

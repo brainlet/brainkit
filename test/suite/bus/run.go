@@ -146,5 +146,36 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("cascade_teardown_cleans_subscriptions", func(t *testing.T) { testCascadeTeardownCleansSubscriptions(t, env) })
 		t.Run("cascade_schedule_no_handler", func(t *testing.T) { testCascadeScheduleNoHandler(t, env) })
 		t.Run("cascade_concurrent_error_handler", func(t *testing.T) { testCascadeConcurrentErrorHandler(t, env) })
+
+		// backend_advanced.go — ported from adversarial/backend_advanced_test.go + backend_matrix_test.go
+		t.Run("concurrent_publish_50", func(t *testing.T) { testConcurrentPublish50(t, env) })
+		t.Run("large_payload_100kb", func(t *testing.T) { testLargePayload100KB(t, env) })
+		t.Run("dotted_topic_names", func(t *testing.T) { testDottedTopicNames(t, env) })
+		t.Run("deploy_handler_call", func(t *testing.T) { testDeployHandlerCall(t, env) })
+		t.Run("publish_reply", func(t *testing.T) { testPublishReply(t, env) })
+		t.Run("error_code_on_bus", func(t *testing.T) { testErrorCodeOnBus(t, env) })
+
+		// transport compliance — ported from transport/compliance_test.go
+		t.Run("transport_compliance_publish_subscribe", func(t *testing.T) { testTransportCompliancePublishSubscribe(t, env) })
+		t.Run("transport_compliance_correlation_id", func(t *testing.T) { testTransportComplianceCorrelationID(t, env) })
+		t.Run("transport_compliance_dotted_topics", func(t *testing.T) { testTransportComplianceDottedTopics(t, env) })
+
+		// surface_matrix.go — ported from adversarial/surface_matrix_test.go
+		t.Run("surface_go_sdk", func(t *testing.T) { testSurfaceGoSDK(t, env) })
+		t.Run("surface_ts_deployed", func(t *testing.T) { testSurfaceTSDeployed(t, env) })
+		t.Run("surface_evalts", func(t *testing.T) { testSurfaceEvalTS(t, env) })
+		t.Run("surface_error_consistency", func(t *testing.T) { testSurfaceErrorConsistency(t, env) })
+
+		// transport_matrix.go — ported from transport/matrix_test.go
+		t.Run("transport_matrix_tools_call", func(t *testing.T) { testTransportMatrixToolsCall(t, env) })
+		t.Run("transport_matrix_tools_list", func(t *testing.T) { testTransportMatrixToolsList(t, env) })
+		t.Run("transport_matrix_tools_resolve", func(t *testing.T) { testTransportMatrixToolsResolve(t, env) })
+		t.Run("transport_matrix_fs_write_read", func(t *testing.T) { testTransportMatrixFSWriteRead(t, env) })
+		t.Run("transport_matrix_fs_mkdir_list_stat_delete", func(t *testing.T) { testTransportMatrixFSMkdirListStatDelete(t, env) })
+		t.Run("transport_matrix_agents_list_empty", func(t *testing.T) { testTransportMatrixAgentsListEmpty(t, env) })
+		t.Run("transport_matrix_kit_deploy_teardown", func(t *testing.T) { testTransportMatrixKitDeployTeardown(t, env) })
+		t.Run("transport_matrix_kit_redeploy", func(t *testing.T) { testTransportMatrixKitRedeploy(t, env) })
+		t.Run("transport_matrix_registry_has_list", func(t *testing.T) { testTransportMatrixRegistryHasList(t, env) })
+		t.Run("transport_matrix_async_correlation", func(t *testing.T) { testTransportMatrixAsyncCorrelation(t, env) })
 	})
 }
