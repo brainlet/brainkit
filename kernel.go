@@ -850,6 +850,9 @@ func (k *Kernel) Namespace() string { return k.namespace }
 // CallerID returns the runtime identity.
 func (k *Kernel) CallerID() string { return k.callerID }
 
+// Logger returns the structured logger.
+func (k *Kernel) Logger() *slog.Logger { return k.logger }
+
 // CreateAgent creates a persistent agent in the runtime.
 func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error) {
 	return k.agents.CreateAgent(cfg)

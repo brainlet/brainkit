@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -64,20 +65,19 @@ func newStartCmd() *cobra.Command {
 			os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", port)), 0644)
 			defer os.Remove(pidFile)
 
-			cmd.Println("brainkit started")
-			cmd.Printf("  namespace:  %s\n", node.Kernel.Namespace())
-			cmd.Printf("  transport:  %s\n", cfg.Transport)
-			cmd.Printf("  control:    http://127.0.0.1:%d\n", port)
-			if cfg.FSRoot != "" {
-				cmd.Printf("  workspace:  %s\n", cfg.FSRoot)
-			}
-			cmd.Println("\nPress Ctrl+C to stop.")
+			logger := node.Kernel.Logger()
+			logger.Info("brainkit started",
+				slog.String("namespace", node.Kernel.Namespace()),
+				slog.String("transport", cfg.Transport),
+				slog.String("control", fmt.Sprintf("http://127.0.0.1:%d", port)),
+				slog.String("workspace", cfg.FSRoot),
+			)
 
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			<-sigCh
 
-			cmd.Println("\nShutting down...")
+			logger.Info("shutting down")
 
 			// Shutdown with a hard deadline — don't hang on stuck connections.
 			// Second Ctrl+C force-exits immediately.
@@ -93,7 +93,7 @@ func newStartCmd() *cobra.Command {
 			case err := <-shutdownDone:
 				return err
 			case <-sigCh:
-				cmd.Println("\nForce exit.")
+				logger.Warn("force exit")
 				os.Exit(1)
 				return nil
 			}
