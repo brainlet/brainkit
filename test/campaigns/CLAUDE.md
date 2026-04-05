@@ -1,8 +1,30 @@
 # Campaigns
 
-Read TEST_MAP.md before editing.
+Read TEST_MAP.md before editing. Read `../CLAUDE.md` for overall conventions.
 
 Infrastructure composition layer. Each campaign spins up containers, creates a TestEnv with real backends, and calls suite `Run()` functions.
+
+## Conventions — READ BEFORE EDITING
+
+### Every campaign must start with RequirePodman
+```go
+campaigns.RequirePodman(t)  // skip entire campaign when no Podman
+```
+Without this guard, CI without Podman will hang or fail instead of skipping.
+
+### Campaigns don't contain test logic
+Campaigns call `suite.Run()` — they never have their own assertions. The test logic lives in `test/suite/`. If you need a new test, add it to the suite domain, not the campaign.
+
+### Container sharing
+The Infra builder starts each container type once. `Storage("postgres")` + `Vector("pgvector")` reuse the same Postgres container. Don't start containers manually.
+
+### Transport-sensitive domains
+These 14 domains should appear in every transport campaign: bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway.
+
+### After editing
+1. `go vet ./test/campaigns/<category>/`
+2. With Podman: `go test ./test/campaigns/<category>/ -count=1 -timeout 300s`
+3. Update TEST_MAP.md
 
 ## How campaigns work
 
