@@ -181,3 +181,120 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 }
+
+// testInlineFilesRedeployPicksUpNewCode reproduces the bug where
+// `brainkit redeploy ./dir` sends updated code via PackageDeployMsg.Files
+// but the deployed service keeps running the old code.
+func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
+	env := suite.Full(t, suite.WithPersistence())
+	ctx := context.Background()
+
+	manifest := `{
+		"name": "evolve-pkg",
+		"version": "1.0.0",
+		"services": { "svc": { "entry": "svc.ts" } }
+	}`
+
+	// ── Deploy v1: returns {"version": "v1"} ──
+	v1Code := `bus.on("check", (msg) => { msg.reply({ version: "v1" }); });`
+
+	pub, err := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{
+		Manifest: json.RawMessage(manifest),
+		Files:    map[string]string{"svc.ts": v1Code},
+	})
+	require.NoError(t, err)
+
+	deployCh := make(chan messages.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kernel, ctx, pub.ReplyTo,
+		func(resp messages.PackageDeployResp, _ messages.Message) { deployCh <- resp })
+	select {
+	case resp := <-deployCh:
+		cancel()
+		require.True(t, resp.Deployed)
+		t.Logf("v1 deployed: %v", resp.Services)
+	case <-time.After(10 * time.Second):
+		cancel()
+		t.Fatal("timeout deploying v1")
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify v1 behavior
+	v1Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg/svc.ts", "check", nil)
+	require.Equal(t, "v1", v1Resp["version"], "v1 should return version=v1")
+	t.Logf("v1 verified: %v", v1Resp)
+
+	// ── Teardown v1 (same as CLI redeployDirectory does) ──
+	tearPub, _ := sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "evolve-pkg/svc.ts"})
+	tearCh := make(chan messages.KitTeardownResp, 1)
+	tearCancel, _ := sdk.SubscribeTo[messages.KitTeardownResp](env.Kernel, ctx, tearPub.ReplyTo,
+		func(resp messages.KitTeardownResp, _ messages.Message) { tearCh <- resp })
+	select {
+	case <-tearCh:
+		tearCancel()
+	case <-time.After(5 * time.Second):
+		tearCancel()
+		t.Fatal("timeout tearing down v1")
+	}
+
+	// ── Deploy v2: returns {"version": "v2"} ──
+	v2Code := `bus.on("check", (msg) => { msg.reply({ version: "v2" }); });`
+
+	pub2, err := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{
+		Manifest: json.RawMessage(manifest),
+		Files:    map[string]string{"svc.ts": v2Code},
+	})
+	require.NoError(t, err)
+
+	deployCh2 := make(chan messages.PackageDeployResp, 1)
+	cancel2, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kernel, ctx, pub2.ReplyTo,
+		func(resp messages.PackageDeployResp, _ messages.Message) { deployCh2 <- resp })
+	select {
+	case resp := <-deployCh2:
+		cancel2()
+		require.True(t, resp.Deployed)
+		t.Logf("v2 deployed: %v", resp.Services)
+	case <-time.After(10 * time.Second):
+		cancel2()
+		t.Fatal("timeout deploying v2")
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// ── THE CRITICAL CHECK: v2 must return "v2", not "v1" ──
+	v2Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg/svc.ts", "check", nil)
+	require.Equal(t, "v2", v2Resp["version"], "REDEPLOY BUG: v2 should return version=v2 but got %v", v2Resp["version"])
+	t.Logf("v2 verified: %v", v2Resp)
+}
+
+func sendToServiceAndWait(t *testing.T, k interface {
+	sdk.Runtime
+	SubscribeRaw(context.Context, string, func(messages.Message)) (func(), error)
+}, service, topic string, payload any) map[string]any {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pr, err := sdk.SendToService(k.(sdk.Runtime), ctx, service, topic, payload)
+	require.NoError(t, err)
+
+	replyCh := make(chan map[string]any, 1)
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+		var resp map[string]any
+		json.Unmarshal(msg.Payload, &resp)
+		select {
+		case replyCh <- resp:
+		default:
+		}
+	})
+	require.NoError(t, err)
+	defer unsub()
+
+	select {
+	case resp := <-replyCh:
+		return resp
+	case <-ctx.Done():
+		t.Fatalf("timeout waiting for response from %s/%s", service, topic)
+		return nil
+	}
+}

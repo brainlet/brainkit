@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/spf13/cobra"
@@ -33,17 +34,26 @@ func newDeployCmd() *cobra.Command {
 	return c
 }
 
+// deployFile wraps a single .ts file as a single-service package.
+// echo.ts → package "echo", service "echo", deployed as echo/echo.ts.
+// Same namespace convention as directory packages — no special case.
 func deployFile(cmd *cobra.Command, path string) error {
 	code, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	source := filepath.Base(path)
-	return connectAndPublish(cmd, messages.KitDeployMsg{Source: source, Code: string(code)},
-		func(resp *messages.KitDeployResp) {
-			cmd.Printf("Deployed %s\n", source)
-			for _, r := range resp.Resources {
-				cmd.Printf("  %s: %s\n", r.Type, r.Name)
+	filename := filepath.Base(path)
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","services":{%q:{"entry":%q}}}`,
+		name, name, filename)
+	return connectAndPublish(cmd, messages.PackageDeployMsg{
+		Manifest: json.RawMessage(manifest),
+		Files:    map[string]string{filename: string(code)},
+	},
+		func(resp *messages.PackageDeployResp) {
+			cmd.Printf("Deployed %s\n", name)
+			for _, svc := range resp.Services {
+				cmd.Printf("  service: %s\n", svc)
 			}
 		},
 	)

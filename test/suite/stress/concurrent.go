@@ -178,7 +178,7 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 		errs <- tErr
 	}()
 	go func() {
-		_, rErr := k.Redeploy(ctx, "race-stress-target.ts", `bus.on("ping", (msg) => msg.reply({ v: 2 }));`)
+		_, rErr := k.Deploy(ctx, "race-stress-target.ts", `bus.on("ping", (msg) => msg.reply({ v: 2 }));`)
 		errs <- rErr
 	}()
 
@@ -240,7 +240,7 @@ func testRedeployRace(t *testing.T, env *suite.TestEnv) {
 	for i := 0; i < 3; i++ {
 		go func(version int) {
 			code := fmt.Sprintf(`bus.on("v", (msg) => msg.reply({ version: %d }));`, version)
-			_, rErr := k.Redeploy(ctx, "redeploy-stress-race.ts", code)
+			_, rErr := k.Deploy(ctx, "redeploy-stress-race.ts", code)
 			errs <- rErr
 		}(i + 1)
 	}

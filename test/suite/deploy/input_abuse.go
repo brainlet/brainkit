@@ -93,9 +93,9 @@ func testDeployDuplicateSource(t *testing.T, env *suite.TestEnv) {
 	_, err := env.Kernel.Deploy(ctx, "dup-deploy-adv.ts", `output("v1");`)
 	require.NoError(t, err)
 
+	// Second deploy is idempotent — tears down and redeploys
 	_, err2 := env.Kernel.Deploy(ctx, "dup-deploy-adv.ts", `output("v2");`)
-	assert.Error(t, err2, "duplicate deploy should be rejected")
-	assert.Contains(t, err2.Error(), "already exists")
+	assert.NoError(t, err2, "duplicate deploy should succeed (idempotent)")
 
 	env.Kernel.Teardown(ctx, "dup-deploy-adv.ts")
 }
@@ -193,7 +193,7 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	// Redeploy with tool B (no tool A)
-	_, err = env.Kernel.Redeploy(ctx, "evolving-deploy-adv.ts", `
+	_, err = env.Kernel.Deploy(ctx, "evolving-deploy-adv.ts", `
 		const b = createTool({ id: "tool-b-adv", description: "v2", execute: async () => ({ v: 2 }) });
 		kit.register("tool", "tool-b-adv", b);
 	`)

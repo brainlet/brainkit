@@ -1,4 +1,18 @@
-.PHONY: deps deps-go deps-npm build test clean
+.PHONY: all brainkit install deps deps-go deps-npm build test test-v bench bench-stable clean
+
+# Default: build the CLI binary
+all: brainkit
+
+# Build the CLI binary to bin/
+brainkit:
+	@mkdir -p bin
+	go build -o bin/brainkit ./cmd/brainkit/
+	@echo "Built bin/brainkit"
+
+# Install to /usr/local/bin (requires sudo)
+install: brainkit
+	sudo cp bin/brainkit /usr/local/bin/brainkit
+	@echo "Installed to /usr/local/bin/brainkit"
 
 # Install all dependencies (Go + npm)
 deps: deps-go deps-npm
@@ -21,11 +35,11 @@ build:
 
 # Run all tests
 test:
-	go test ./kit/... ./internal/... -timeout 120s
+	go test ./test/suite/... -timeout 600s
 
 # Run tests with verbose output
 test-v:
-	go test -v ./kit/... ./internal/... -timeout 120s
+	go test -v ./test/suite/... -timeout 600s
 
 # Run as-embed benchmarks (compilation performance)
 bench:
@@ -35,7 +49,8 @@ bench:
 bench-stable:
 	cd internal/embed/compiler && go test -run='^$$' -bench=. -benchmem -benchtime=3x -timeout 30m
 
-# Clean generated bundles and node_modules
+# Clean generated bundles, node_modules, and binaries
 clean:
+	rm -rf bin/
 	rm -rf internal/embed/ai/bundle/node_modules internal/embed/agent/bundle/node_modules internal/embed/compiler/bundle/node_modules
 	rm -f internal/embed/ai/bundle/meta.json internal/embed/agent/bundle/meta.json internal/embed/compiler/bundle/meta.json

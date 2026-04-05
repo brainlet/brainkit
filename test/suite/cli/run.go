@@ -18,6 +18,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		// cobra.go — Full E2E (needs running brainkit start)
 		t.Run("full_workflow", func(t *testing.T) { testFullWorkflow(t, env) })
 		t.Run("send_with_async_handler", func(t *testing.T) { testSendWithAsyncHandler(t, env) })
+		t.Run("redeploy_picks_up_new_code", func(t *testing.T) { testRedeployPicksUpNewCode(t, env) })
 
 		// commands.go — bus command tests (kit.eval, kit.health, kit.send)
 		t.Run("kit_eval", func(t *testing.T) { testKitEval(t, env) })

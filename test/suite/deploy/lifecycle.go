@@ -158,57 +158,31 @@ func testDeployInvalidCode(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
+// testDeployDuplicate verifies that deploying the same source twice is idempotent.
 func testDeployDuplicate(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
-		Source: "dup-deploy.ts",
-		Code:   `const t = createTool({ id: "dup-tool", description: "dup", execute: async () => ({}) }); kit.register("tool", "dup-tool", t);`,
-	})
+	_, err := env.Kernel.Deploy(ctx, "dup-deploy.ts", `output("v1");`)
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
-	defer unsub()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
-		Source: "dup-deploy.ts",
-		Code:   `const t = createTool({ id: "dup-tool-2", description: "dup2", execute: async () => ({}) }); kit.register("tool", "dup-tool-2", t);`,
-	})
-	require.NoError(t, err)
-	ch2 := make(chan string, 1)
-	unsub2, _ := env.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
-		var r struct {
-			Error string `json:"error"`
-		}
-		json.Unmarshal(msg.Payload, &r)
-		ch2 <- r.Error
-	})
-	defer unsub2()
-	select {
-	case errMsg := <-ch2:
-		assert.NotEmpty(t, errMsg)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	// Deploy again with same source — idempotent, not error
+	_, err = env.Kernel.Deploy(ctx, "dup-deploy.ts", `output("v2");`)
+	require.NoError(t, err, "second deploy should succeed (idempotent)")
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "dup-deploy.ts"})
+	env.Kernel.Teardown(ctx, "dup-deploy.ts")
 }
 
+// testConcurrentDeploySameSource verifies that deploying the same source concurrently
+// doesn't crash — the second deploy is idempotent.
 func testConcurrentDeploySameSource(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	_, err := env.Kernel.Deploy(ctx, "concurrent-src.ts", `output("first");`)
 	require.NoError(t, err)
 
+	// Second deploy replaces the first (idempotent)
 	_, err = env.Kernel.Deploy(ctx, "concurrent-src.ts", `output("second");`)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "already exists")
+	require.NoError(t, err, "second deploy should succeed (idempotent)")
 
 	env.Kernel.Teardown(ctx, "concurrent-src.ts")
 }

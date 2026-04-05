@@ -272,7 +272,7 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	// Redeploy with new code — metadata should be preserved
-	_, err = k.Redeploy(ctx, "svc-redeploy-persist.ts",
+	_, err = k.Deploy(ctx, "svc-redeploy-persist.ts",
 		`bus.on("v2", (msg) => msg.reply({ v: 2 }));`)
 	require.NoError(t, err)
 

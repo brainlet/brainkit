@@ -1,3 +1,10 @@
+# Philosophy
+
+Zero backward compatiblity
+Zero legacy
+100% greenfield
+Only final state code
+
 # Superpower
 
 The folder is on `internal/docs/superpowers` 
@@ -7,6 +14,10 @@ Make sure the env var `USER_TYPE` with value `"ant"` is set.
 # brainkit
 
 A Go runtime library that embeds QuickJS (JS/TS) and Watermill (pub/sub) into a single platform for AI agent teams. Two projects exist: **brainkit** (this library) and **brainlet** (the product using it). Nothing else — no brainlink, no capclaude.
+
+## Knowledge Base
+
+Empirical findings live in `../brainkit-maps/knowledge/`. Search there BEFORE re-investigating system behavior (storage resilience, SES patterns, transport quirks, benchmarks).
 
 # Agent Directives: Mechanical Overrides
 

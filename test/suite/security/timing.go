@@ -157,7 +157,7 @@ func testTimingConcurrentRedeploy(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			k.Redeploy(ctx, "redeploy-race-sec.ts", fmt.Sprintf(`output("v%d");`, n))
+			k.Deploy(ctx, "redeploy-race-sec.ts", fmt.Sprintf(`output("v%d");`, n))
 		}(i)
 	}
 	wg.Wait()

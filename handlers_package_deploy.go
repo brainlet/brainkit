@@ -126,19 +126,17 @@ func (d *PackageDeployDomain) Teardown(ctx context.Context, req messages.Package
 }
 
 func (d *PackageDeployDomain) Redeploy(ctx context.Context, req messages.PackageRedeployMsg) (*messages.PackageRedeployResp, error) {
-	// Find existing package name from path
+	// Deploy handles teardown-if-exists for each service (idempotent).
+	// Just need to clean up our package tracking first.
 	d.mu.Lock()
 	for name, pkg := range d.deployed {
 		if pkg.Dir == req.Path {
 			delete(d.deployed, name)
-			deployer := &kernelDeployer{kernel: d.kit}
-			packages.TeardownPackage(ctx, deployer, pkg)
 			break
 		}
 	}
 	d.mu.Unlock()
 
-	// Deploy fresh
 	resp, err := d.Deploy(ctx, messages.PackageDeployMsg{Path: req.Path})
 	if err != nil {
 		return nil, err

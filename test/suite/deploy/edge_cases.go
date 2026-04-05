@@ -62,7 +62,7 @@ func testRedeployPreservesOtherDeployments(t *testing.T, env *suite.TestEnv) {
 	_, err = env.Kernel.Deploy(ctx, "changing-edge.ts", `output("v1");`)
 	require.NoError(t, err)
 
-	_, err = env.Kernel.Redeploy(ctx, "changing-edge.ts", `output("v2");`)
+	_, err = env.Kernel.Deploy(ctx, "changing-edge.ts", `output("v2");`)
 	require.NoError(t, err)
 
 	deps := env.Kernel.ListDeployments()

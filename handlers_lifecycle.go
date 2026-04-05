@@ -11,7 +11,6 @@ import (
 
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )
@@ -53,7 +52,7 @@ func (d *LifecycleDomain) Teardown(ctx context.Context, req messages.KitTeardown
 }
 
 func (d *LifecycleDomain) Redeploy(ctx context.Context, req messages.KitRedeployMsg) (*messages.KitRedeployResp, error) {
-	resources, err := d.kit.Redeploy(ctx, req.Source, req.Code)
+	resources, err := d.kit.Deploy(ctx, req.Source, req.Code)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +137,10 @@ func WithPackageName(name string) DeployOption {
 }
 
 func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
-	// Phase 1: Validate
-	if err := k.validateDeploy(source); err != nil {
+	// Phase 1: Validate + teardown if already deployed (idempotent)
+	// Captures metadata from existing deployment for merge.
+	existing, err := k.validateAndPrepareDeploy(ctx, source)
+	if err != nil {
 		return nil, err
 	}
 
@@ -149,6 +150,12 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	defer func() { span.End(nil) }()
 
 	var cfg deployConfig
+	// Merge existing metadata first (previous role, packageName)
+	if existing != nil {
+		cfg.role = existing.Role
+		cfg.packageName = existing.PackageName
+	}
+	// Explicit opts override existing metadata
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -182,18 +189,35 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	return resources, nil
 }
 
-// validateDeploy checks source is non-empty and not already deployed.
-func (k *Kernel) validateDeploy(source string) error {
+// validateAndPrepareDeploy checks source is non-empty. If already deployed, captures
+// persisted metadata (role, packageName) and tears down the existing deployment.
+// Returns the persisted metadata if available (nil if fresh deploy).
+func (k *Kernel) validateAndPrepareDeploy(ctx context.Context, source string) (*PersistedDeployment, error) {
 	if strings.TrimSpace(source) == "" {
-		return &sdkerrors.ValidationError{Field: "source", Message: "is required"}
+		return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
 	}
 	k.mu.Lock()
 	_, exists := k.deployments[source]
 	k.mu.Unlock()
-	if exists {
-		return &sdk.AlreadyExistsError{Resource: "deployment", Name: source, Hint: "use Redeploy"}
+	if !exists {
+		return nil, nil
 	}
-	return nil
+
+	// Capture persisted metadata before teardown
+	var existing *PersistedDeployment
+	if k.config.Store != nil {
+		deps, _ := k.config.Store.LoadDeployments()
+		for _, d := range deps {
+			if d.Source == source {
+				d := d
+				existing = &d
+				break
+			}
+		}
+	}
+
+	k.Teardown(ctx, source)
+	return existing, nil
 }
 
 // transpileIfTS converts .ts source to JS, stripping type annotations and ES imports.
@@ -313,76 +337,7 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 	return removed, nil
 }
 
-// Redeploy tears down old deployment and deploys new code.
-// Preserves original metadata (role, packageName, order) across the teardown+deploy cycle.
-func (k *Kernel) Redeploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
-	span := k.tracer.StartSpan("kit.redeploy:"+source, ctx)
-	span.SetSource(source)
-	defer span.End(nil)
 
-	// Capture original metadata before teardown
-	k.mu.Lock()
-	originalOrder := 0
-	if d, ok := k.deployments[source]; ok {
-		originalOrder = d.Order
-	}
-	k.mu.Unlock()
-
-	// Read persisted metadata (in-memory deploymentInfo doesn't store role/packageName)
-	originalRole := ""
-	originalPkgName := ""
-	if k.config.Store != nil {
-		deps, _ := k.config.Store.LoadDeployments()
-		for _, d := range deps {
-			if d.Source == source {
-				originalRole = d.Role
-				originalPkgName = d.PackageName
-				break
-			}
-		}
-	}
-
-	if _, err := k.Teardown(ctx, source); err != nil {
-		k.logger.Warn("redeploy: teardown failed", slog.String("source", source), slog.String("error", err.Error()))
-	}
-
-	// Merge original metadata with any explicit opts (explicit opts win)
-	var mergedOpts []DeployOption
-	if originalRole != "" {
-		mergedOpts = append(mergedOpts, WithRole(originalRole))
-	}
-	if originalPkgName != "" {
-		mergedOpts = append(mergedOpts, WithPackageName(originalPkgName))
-	}
-	mergedOpts = append(mergedOpts, opts...) // explicit opts override originals
-	resources, err := k.Deploy(ctx, source, code, mergedOpts...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Restore original order (Deploy assigned a new one).
-	// Only update order — Deploy already persisted the correct role/packageName.
-	if originalOrder > 0 {
-		k.mu.Lock()
-		if d, ok := k.deployments[source]; ok {
-			d.Order = originalOrder
-		}
-		k.mu.Unlock()
-		if k.config.Store != nil {
-			// Read back what Deploy saved, just update the order
-			deps, _ := k.config.Store.LoadDeployments()
-			for _, d := range deps {
-				if d.Source == source {
-					d.Order = originalOrder
-					k.config.Store.SaveDeployment(d)
-					break
-				}
-			}
-		}
-	}
-
-	return resources, nil
-}
 
 // ListDeployments returns all currently deployed files with their resources.
 func (k *Kernel) ListDeployments() []deploymentInfo {

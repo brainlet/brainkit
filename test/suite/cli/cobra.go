@@ -156,11 +156,11 @@ func testFullWorkflow(t *testing.T, _ *suite.TestEnv) {
 
 	out, err = runCLI(t, "--timeout", "15s", "deploy", tsFile)
 	require.NoError(t, err)
-	assert.Contains(t, out, "Deployed echo.ts")
+	assert.Contains(t, out, "Deployed echo")
 
 	out, err = runCLI(t, "--timeout", "15s", "list")
 	require.NoError(t, err)
-	assert.Contains(t, out, "echo.ts")
+	assert.Contains(t, out, "echo/echo.ts")
 
 	out, err = runCLI(t, "--timeout", "15s", "send", "echo", "ping", `{"value":"from-test"}`)
 	require.NoError(t, err)
@@ -186,13 +186,67 @@ func testFullWorkflow(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "deleted")
 
-	out, err = runCLI(t, "--timeout", "15s", "teardown", "echo.ts")
+	out, err = runCLI(t, "--timeout", "15s", "teardown", "echo/echo.ts")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Removed")
 
 	out, err = runCLI(t, "--timeout", "15s", "list")
 	require.NoError(t, err)
-	assert.NotContains(t, out, "echo.ts")
+	assert.NotContains(t, out, "echo/echo.ts")
+}
+
+func testRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
+	if testing.Short() {
+		t.Skip("skipping CLI redeploy test in short mode")
+	}
+
+	setupWorkDir(t)
+	startInstance(t)
+
+	// Create a package directory with manifest + v1 code
+	pkgDir := filepath.Join("workspace", "evolve")
+	os.MkdirAll(pkgDir, 0755)
+	os.WriteFile(filepath.Join(pkgDir, "manifest.json"), []byte(`{
+		"name": "evolve",
+		"version": "1.0.0",
+		"services": { "svc": { "entry": "svc.ts" } }
+	}`), 0644)
+
+	// v1: returns {"answer": "v1"}
+	os.WriteFile(filepath.Join(pkgDir, "svc.ts"), []byte(`
+		import { bus } from "kit";
+		bus.on("check", (msg) => { msg.reply({ answer: "v1" }); });
+	`), 0644)
+
+	// Deploy v1
+	out, err := runCLI(t, "--timeout", "15s", "deploy", pkgDir)
+	require.NoError(t, err)
+	t.Logf("deploy v1: %s", out)
+
+	// Verify v1
+	time.Sleep(500 * time.Millisecond)
+	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "svc", "check", `{}`)
+	require.NoError(t, err)
+	t.Logf("v1 response: %s", out)
+	assert.Contains(t, out, `"v1"`)
+
+	// Change the code to v2
+	os.WriteFile(filepath.Join(pkgDir, "svc.ts"), []byte(`
+		import { bus } from "kit";
+		bus.on("check", (msg) => { msg.reply({ answer: "v2" }); });
+	`), 0644)
+
+	// Redeploy
+	out, err = runCLI(t, "--timeout", "15s", "deploy", pkgDir)
+	require.NoError(t, err)
+	t.Logf("redeploy: %s", out)
+
+	// THE CRITICAL CHECK: must return v2
+	time.Sleep(500 * time.Millisecond)
+	out, err = runCLI(t, "--timeout", "15s", "send", "evolve", "svc", "check", `{}`)
+	require.NoError(t, err)
+	t.Logf("v2 response: %s", out)
+	assert.Contains(t, out, `"v2"`, "REDEPLOY BUG: expected v2 but got: %s", out)
 }
 
 func testSendWithAsyncHandler(t *testing.T, _ *suite.TestEnv) {
@@ -217,7 +271,7 @@ func testSendWithAsyncHandler(t *testing.T, _ *suite.TestEnv) {
 
 	out, err := runCLI(t, "--timeout", "15s", "deploy", tsFile)
 	require.NoError(t, err)
-	assert.Contains(t, out, "Deployed slow.ts")
+	assert.Contains(t, out, "Deployed slow")
 
 	out, err = runCLI(t, "--timeout", "15s", "send", "slow", "compute", `{"a":3,"b":4}`)
 	require.NoError(t, err)
