@@ -30,6 +30,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("corrupt_deployment_table", func(t *testing.T) { testCorruptDeploymentTable(t, env) })
 		t.Run("corrupt_schedule_table", func(t *testing.T) { testCorruptScheduleTable(t, env) })
 
+		// storage_failure.go — adversarial: kill Postgres mid-operation
+		t.Run("postgres_storage_death", func(t *testing.T) { testPostgresStorageDeath(t, env) })
 		// backend_matrix.go — ported from adversarial/backend_matrix_test.go + persistence_matrix_test.go
 		t.Run("deploy_persist_restart", func(t *testing.T) { testDeployPersistRestart(t, env) })
 		t.Run("secrets_survive_restart", func(t *testing.T) { testSecretsSurviveRestart(t, env) })
