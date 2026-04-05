@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -217,7 +218,7 @@ func (k *Kernel) evaluateInCompartment(ctx context.Context, source, code string)
 		}
 		var __endowments = globalThis.__kitEndowments(%q);
 		var __c = new globalThis.Compartment({ __options__: true, globals: __endowments });
-		globalThis.__kit_compartments[%q] = __c;
+		globalThis.`+js.JSCompartments+`[%q] = __c;
 		await __c.evaluate('(async () => { ' + %q + ' })()');
 		return "ok";
 	`, source, source, code)
@@ -226,7 +227,7 @@ func (k *Kernel) evaluateInCompartment(ctx context.Context, source, code string)
 	if err != nil {
 		k.TeardownFile(source)
 		k.EvalTS(ctx, "__deploy_cleanup.ts", fmt.Sprintf(
-			`delete globalThis.__kit_compartments[%q]; return "ok";`, source))
+			`delete globalThis.`+js.JSCompartments+`[%q]; return "ok";`, source))
 		return &sdkerrors.DeployError{Source: source, Phase: "eval", Cause: err}
 	}
 	return nil
@@ -296,7 +297,7 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 
 	// Drop compartment reference (uses EvalTS for proper Value.Free + reentrant safety)
 	if _, err := k.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
-		`delete globalThis.__kit_compartments[%q]; return "ok";`, source)); err != nil {
+		`delete globalThis.`+js.JSCompartments+`[%q]; return "ok";`, source)); err != nil {
 		k.logger.Warn("teardown: failed to drop compartment", slog.String("source", source), slog.String("error", err.Error()))
 	}
 

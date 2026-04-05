@@ -2,16 +2,17 @@ package brainkit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"errors"
 )
 
 // registerLoggingBridge adds __go_console_log_tagged for per-Compartment tagged logging.
 func (k *Kernel) registerLoggingBridge(qctx *quickjs.Context) {
-	qctx.Globals().Set("__go_console_log_tagged",
+	qctx.Globals().Set(js.JSBridgeConsoleLogTagged,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 3 {
 				return qctx.NewUndefined()

@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 )
 
 // registerRegistryBridges adds __go_registry_resolve, __go_registry_has, __go_registry_list bridges.
 func (k *Kernel) registerRegistryBridges(qctx *quickjs.Context) {
 	// __go_registry_resolve(category, name) → configJSON or ""
-	qctx.Globals().Set("__go_registry_resolve",
+	qctx.Globals().Set(js.JSBridgeRegistryResolve,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return qctx.NewString("")
@@ -51,7 +52,7 @@ func (k *Kernel) registerRegistryBridges(qctx *quickjs.Context) {
 		}))
 
 	// __go_registry_has(category, name) → "true" or "false"
-	qctx.Globals().Set("__go_registry_has",
+	qctx.Globals().Set(js.JSBridgeRegistryHas,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return qctx.NewString("false")
@@ -74,7 +75,7 @@ func (k *Kernel) registerRegistryBridges(qctx *quickjs.Context) {
 		}))
 
 	// __go_registry_list(category) → JSON array
-	qctx.Globals().Set("__go_registry_list",
+	qctx.Globals().Set(js.JSBridgeRegistryList,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
 				return qctx.NewString("[]")

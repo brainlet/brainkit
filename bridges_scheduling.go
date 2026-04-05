@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 )
 
 // registerSchedulingBridges adds bus.schedule and bus.unschedule bridges.
 func (k *Kernel) registerSchedulingBridges(qctx *quickjs.Context) {
 	// __go_brainkit_bus_schedule(expression, topic, payloadJSON, source) → scheduleID
-	qctx.Globals().Set("__go_brainkit_bus_schedule",
+	qctx.Globals().Set(js.JSBridgeBusSchedule,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 4 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.schedule: expected 4 args"})
@@ -34,7 +35,7 @@ func (k *Kernel) registerSchedulingBridges(qctx *quickjs.Context) {
 		}))
 
 	// __go_brainkit_bus_unschedule(scheduleID)
-	qctx.Globals().Set("__go_brainkit_bus_unschedule",
+	qctx.Globals().Set(js.JSBridgeBusUnschedule,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "scheduleId", Message: "bus.unschedule: expected 1 arg"})

@@ -3,17 +3,18 @@ package brainkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"errors"
 )
 
 // registerRequestBridges adds __go_brainkit_request (sync) and __go_brainkit_request_async bridges.
 func (k *Kernel) registerRequestBridges(qctx *quickjs.Context, invoker *LocalInvoker) {
 	// __go_brainkit_request(topic, payloadJSON) → resultJSON (SYNCHRONOUS)
-	qctx.Globals().Set("__go_brainkit_request",
+	qctx.Globals().Set(js.JSBridgeRequest,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_request: expected 2 args (topic, payload)"})
@@ -38,7 +39,7 @@ func (k *Kernel) registerRequestBridges(qctx *quickjs.Context, invoker *LocalInv
 		}))
 
 	// __go_brainkit_request_async(topic, payloadJSON) → Promise<resultJSON> (ASYNC)
-	qctx.Globals().Set("__go_brainkit_request_async",
+	qctx.Globals().Set(js.JSBridgeRequestAsync,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_request_async: expected 2 args"})

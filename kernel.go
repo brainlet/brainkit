@@ -20,6 +20,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
@@ -369,7 +370,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		obsServiceName = "brainkit"
 	}
 	kernel.bridge.Eval("__obs_config.js", fmt.Sprintf(
-		`globalThis.__brainkit_obs_config = { enabled: %v, strategy: %q, serviceName: %q }`,
+		`globalThis.`+js.JSObsConfig+` = { enabled: %v, strategy: %q, serviceName: %q }`,
 		obsEnabled, obsStrategy, obsServiceName,
 	))
 
@@ -387,7 +388,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		}
 		provJSON, _ := json.Marshal(provMap)
 		kernel.bridge.Eval("__providers.js", fmt.Sprintf(
-			`globalThis.__kit_providers = %s;`, string(provJSON),
+			`globalThis.`+js.JSProviders+` = %s;`, string(provJSON),
 		))
 	}
 

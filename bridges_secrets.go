@@ -5,6 +5,7 @@ import (
 	"time"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -12,7 +13,7 @@ import (
 // registerSecretBridges adds __go_brainkit_secret_get bridge.
 func (k *Kernel) registerSecretBridges(qctx *quickjs.Context) {
 	// __go_brainkit_secret_get(name) → value or "" (not found)
-	qctx.Globals().Set("__go_brainkit_secret_get",
+	qctx.Globals().Set(js.JSBridgeSecretGet,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "name", Message: "is required"})

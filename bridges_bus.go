@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/rbac"
@@ -20,7 +21,7 @@ import (
 
 // registerBusBridges adds bus_send, bus_publish, bus_emit, bus_reply, subscribe, unsubscribe bridges.
 func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
-	qctx.Globals().Set("__go_brainkit_bus_send",
+	qctx.Globals().Set(js.JSBridgeBusSend,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.send: expected 2 args (topic, payload)"})
@@ -51,7 +52,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 
 	// __go_brainkit_bus_publish(topic, payloadJSON) → JSON string {replyTo, correlationId}
 	// Publishes a message with auto-generated replyTo, returns routing info to JS.
-	qctx.Globals().Set("__go_brainkit_bus_publish",
+	qctx.Globals().Set(js.JSBridgeBusPublish,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.publish: expected 2 args (topic, payload)"})
@@ -102,7 +103,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 
 	// __go_brainkit_bus_emit(topic, payloadJSON) → void
 	// Fire-and-forget publish. No replyTo, no correlationId returned.
-	qctx.Globals().Set("__go_brainkit_bus_emit",
+	qctx.Globals().Set(js.JSBridgeBusEmit,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.emit: expected 2 args (topic, payload)"})
@@ -130,7 +131,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 		}))
 
 	// __go_brainkit_bus_reply(replyTo, payloadJSON, correlationId, done) → void
-	qctx.Globals().Set("__go_brainkit_bus_reply",
+	qctx.Globals().Set(js.JSBridgeBusReply,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 4 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.reply: expected 4 args"})
@@ -177,7 +178,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			return qctx.NewUndefined()
 		}))
 
-	qctx.Globals().Set("__go_brainkit_subscribe",
+	qctx.Globals().Set(js.JSBridgeSubscribe,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "subscribe: expected topic pattern"})
@@ -259,7 +260,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 					k.setCurrentSource(subscriberSource)
 					defer k.setCurrentSource("")
 
-					script := fmt.Sprintf(`(function(){ var fn = globalThis.__bus_subs[%q]; if (typeof fn === "function") { return fn(JSON.parse(%s)); } })()`, subID, quoted)
+					script := fmt.Sprintf(`(function(){ var fn = globalThis.`+js.JSBusSubs+`[%q]; if (typeof fn === "function") { return fn(JSON.parse(%s)); } })()`, subID, quoted)
 					val := qctx.Eval(script)
 					if val == nil {
 						return
@@ -298,7 +299,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			return qctx.NewString(subID)
 		}))
 
-	qctx.Globals().Set("__go_brainkit_unsubscribe",
+	qctx.Globals().Set(js.JSBridgeUnsubscribe,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "subscriptionId", Message: "unsubscribe: expected subscription ID"})

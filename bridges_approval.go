@@ -8,6 +8,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -15,7 +16,7 @@ import (
 
 // registerApprovalBridges adds __go_brainkit_await_approval for bus-based HITL tool approval.
 func (k *Kernel) registerApprovalBridges(qctx *quickjs.Context) {
-	qctx.Globals().Set("__go_brainkit_await_approval",
+	qctx.Globals().Set(js.JSBridgeAwaitApproval,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 3 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "await_approval: expected 3 args"})

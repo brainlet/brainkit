@@ -1,5 +1,9 @@
 package brainkit
 
+import (
+	js "github.com/brainlet/brainkit/internal/contract"
+)
+
 // registerBridges adds all Go bridge functions to the Kernel's QuickJS context.
 // Each domain is registered in its own file for maintainability:
 //   - bridges_request.go  — __go_brainkit_request, __go_brainkit_request_async
@@ -24,7 +28,7 @@ func (k *Kernel) registerBridges() {
 	k.registerSecretBridges(qctx)
 
 	// Set context globals
-	qctx.Globals().Set("__brainkit_sandbox_id", qctx.NewString(k.agents.ID()))
-	qctx.Globals().Set("__brainkit_sandbox_namespace", qctx.NewString(k.namespace))
-	qctx.Globals().Set("__brainkit_sandbox_callerID", qctx.NewString(k.callerID))
+	qctx.Globals().Set(js.JSSandboxID, qctx.NewString(k.agents.ID()))
+	qctx.Globals().Set(js.JSSandboxNamespace, qctx.NewString(k.namespace))
+	qctx.Globals().Set(js.JSSandboxCallerID, qctx.NewString(k.callerID))
 }

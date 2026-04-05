@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	quickjs "github.com/buke/quickjs-go"
+	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	provreg "github.com/brainlet/brainkit/registry"
 )
@@ -12,7 +13,7 @@ import (
 // registerControlBridges adds __go_brainkit_control for local-only registration operations
 // (tools.register, tools.unregister, agents.register, agents.unregister, registry.register, registry.unregister).
 func (k *Kernel) registerControlBridges(qctx *quickjs.Context) {
-	qctx.Globals().Set("__go_brainkit_control",
+	qctx.Globals().Set(js.JSBridgeControl,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 2 {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "brainkit_control: expected 2 args (action, payload)"})
