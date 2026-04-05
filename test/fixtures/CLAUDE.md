@@ -1,5 +1,7 @@
 # TS Fixtures
 
+Read TEST_MAP.md before editing.
+
 TypeScript fixture runner. Each fixture is `index.ts` + optional `expect.json` in a nested directory.
 
 ## How it works

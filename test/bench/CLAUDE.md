@@ -1,5 +1,7 @@
 # Benchmarks
 
+Read TEST_MAP.md before editing.
+
 Same TestEnv pattern as suite tests but for `*testing.B`.
 
 ## Pattern

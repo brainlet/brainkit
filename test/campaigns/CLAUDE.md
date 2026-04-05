@@ -1,5 +1,7 @@
 # Campaigns
 
+Read TEST_MAP.md before editing.
+
 Infrastructure composition layer. Each campaign spins up containers, creates a TestEnv with real backends, and calls suite `Run()` functions.
 
 ## How campaigns work
