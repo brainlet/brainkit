@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +141,15 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout calling echo")
 	}
 
-	// 4. Verify the result contains the echoed data
-	assert.Contains(t, string(callResp.Result), "echoed")
+	// 4. Write the processed output via polyfill
+	escaped := strings.ReplaceAll(string(callResp.Result), `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	writeCode := `fs.writeFileSync("output.json", '` + escaped + `'); return "ok";`
+	_, err = freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", writeCode)
+	require.NoError(t, err)
+
+	// 5. Read and verify output via polyfill
+	outData, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `return fs.readFileSync("output.json", "utf8");`)
+	require.NoError(t, err)
+	assert.Contains(t, outData, "echoed")
 }

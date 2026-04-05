@@ -596,6 +596,38 @@ func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 	})
 }
 
+// testInputAbuseRBACEmptySource — RBACAssignMsg{Source: "", Role: "admin"} must return VALIDATION_ERROR.
+func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
+	})
+	require.NoError(t, err)
+	defer k.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "", Role: "admin"})
+	require.NoError(t, err)
+
+	ch := make(chan json.RawMessage, 1)
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- json.RawMessage(m.Payload) })
+	defer unsub()
+
+	select {
+	case payload := <-ch:
+		var resp struct {
+			Code string `json:"code"`
+		}
+		require.NoError(t, json.Unmarshal(payload, &resp))
+		assert.Equal(t, "VALIDATION_ERROR", resp.Code)
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for RBAC empty source response")
+	}
+}
+
 // testInputAbuseRBACNonexistentRole — assigning a nonexistent role should error.
 func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
