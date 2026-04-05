@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -343,7 +343,7 @@ func (n *Node) restoreRunningPlugins() {
 		restored++
 	}
 	if restored > 0 {
-		log.Printf("[brainkit] restored %d running plugins", restored)
+		n.Kernel.logger.Info("restored running plugins", slog.Int("count", restored))
 	}
 }
 

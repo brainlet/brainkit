@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -30,14 +30,14 @@ func (k *Kernel) handleHandlerFailure(msg messages.Message, topic string, handle
 
 	// No retry policy — send error response immediately
 	if policy == nil || policy.MaxRetries == 0 {
-		log.Printf("[brainkit] handler error on %s: %v", topic, handlerErr)
+		k.logger.Error("handler error", slog.String("topic", topic), slog.String("error", handlerErr.Error()))
 		k.sendErrorResponse(msg, handlerErr)
 		return
 	}
 
 	// Retries exhausted — dead letter + error response
 	if retryCount >= policy.MaxRetries {
-		log.Printf("[brainkit] handler exhausted on %s after %d retries: %v", topic, retryCount, handlerErr)
+		k.logger.Error("handler exhausted", slog.String("topic", topic), slog.Int("retries", retryCount), slog.String("error", handlerErr.Error()))
 		k.deadLetter(msg, topic, handlerErr, retryCount, policy)
 		k.sendErrorResponse(msg, fmt.Errorf("handler failed after %d retries: %w", retryCount, handlerErr))
 		k.emitHandlerExhausted(topic, handlerErr, retryCount)
@@ -48,8 +48,13 @@ func (k *Kernel) handleHandlerFailure(msg messages.Message, topic string, handle
 	delay := policy.computeDelay(retryCount)
 	nextRetry := retryCount + 1
 
-	log.Printf("[brainkit] handler failed on %s, retry %d/%d in %s: %v",
-		topic, nextRetry, policy.MaxRetries, delay, handlerErr)
+	k.logger.Warn("handler failed, retrying",
+		slog.String("topic", topic),
+		slog.Int("retry", nextRetry),
+		slog.Int("max_retries", policy.MaxRetries),
+		slog.Duration("delay", delay),
+		slog.String("error", handlerErr.Error()),
+	)
 
 	k.bridge.Go(func(goCtx context.Context) {
 		select {

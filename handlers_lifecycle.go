@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -206,7 +206,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 
 	resources, err := k.ResourcesFrom(source)
 	if err != nil {
-		log.Printf("[kit] deploy %s: failed to enumerate resources: %v", source, err)
+		k.logger.Warn("deploy: failed to enumerate resources", slog.String("source", source), slog.String("error", err.Error()))
 	}
 
 	order := k.nextDeployOrder()
@@ -256,7 +256,7 @@ func (k *Kernel) Teardown(ctx context.Context, source string) (int, error) {
 	// Drop compartment reference (uses EvalTS for proper Value.Free + reentrant safety)
 	if _, err := k.EvalTS(ctx, "__teardown_compartment.ts", fmt.Sprintf(
 		`delete globalThis.__kit_compartments[%q]; return "ok";`, source)); err != nil {
-		log.Printf("[kit] teardown %s: failed to drop compartment: %v", source, err)
+		k.logger.Warn("teardown: failed to drop compartment", slog.String("source", source), slog.String("error", err.Error()))
 	}
 
 	k.mu.Lock()
@@ -301,7 +301,7 @@ func (k *Kernel) Redeploy(ctx context.Context, source, code string, opts ...Depl
 	}
 
 	if _, err := k.Teardown(ctx, source); err != nil {
-		log.Printf("redeploy teardown %s: %v", source, err)
+		k.logger.Warn("redeploy: teardown failed", slog.String("source", source), slog.String("error", err.Error()))
 	}
 
 	// Merge original metadata with any explicit opts (explicit opts win)

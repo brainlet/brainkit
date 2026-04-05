@@ -1,6 +1,6 @@
 package brainkit
 
-import "log"
+import "log/slog"
 
 // ErrorContext provides context about where a non-fatal error occurred.
 type ErrorContext struct {
@@ -19,9 +19,13 @@ func InvokeErrorHandler(handler func(error, ErrorContext), err error, ctx ErrorC
 }
 
 func defaultErrorHandler(err error, ctx ErrorContext) {
-	if ctx.Source != "" {
-		log.Printf("[brainkit] [%s] %s %s: %v", ctx.Component, ctx.Operation, ctx.Source, err)
-	} else {
-		log.Printf("[brainkit] [%s] %s: %v", ctx.Component, ctx.Operation, err)
+	attrs := []slog.Attr{
+		slog.String("component", ctx.Component),
+		slog.String("operation", ctx.Operation),
+		slog.Any("error", err),
 	}
+	if ctx.Source != "" {
+		attrs = append(attrs, slog.String("source", ctx.Source))
+	}
+	slog.LogAttrs(nil, slog.LevelError, "non-fatal error", attrs...)
 }

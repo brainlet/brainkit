@@ -1,7 +1,7 @@
 package brainkit
 
 import (
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -18,9 +18,20 @@ type LogEntry struct {
 	Time    time.Time
 }
 
-// defaultLogHandler prints to stdout via log.Printf. Used when KernelConfig.LogHandler is nil.
+// defaultLogHandler logs .ts compartment entries via slog.
 func defaultLogHandler(e LogEntry) {
-	log.Printf("[%s] [%s] %s", e.Source, e.Level, e.Message)
+	level := slog.LevelInfo
+	switch e.Level {
+	case "error":
+		level = slog.LevelError
+	case "warn":
+		level = slog.LevelWarn
+	case "debug":
+		level = slog.LevelDebug
+	}
+	slog.LogAttrs(nil, level, e.Message,
+		slog.String("source", e.Source),
+	)
 }
 
 // emitLog sends a log entry through the Kernel's LogHandler.

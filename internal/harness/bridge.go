@@ -3,7 +3,7 @@ package harness
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -64,7 +64,7 @@ func (h *Harness) registerLockBridges() {
 func (h *Harness) handleEvent(jsonStr string) {
 	var event HarnessEvent
 	if err := json.Unmarshal([]byte(jsonStr), &event); err != nil {
-		log.Printf("harness: failed to parse event: %v (json: %.100s)", err, jsonStr)
+		slog.Error("harness: failed to parse event", slog.String("error", err.Error()))
 		return
 	}
 	event.Raw = json.RawMessage(jsonStr)
@@ -93,7 +93,7 @@ func (h *Harness) handleEvent(jsonStr string) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("harness: subscriber panic: %v", r)
+					slog.Error("harness: subscriber panic", slog.Any("panic", r))
 				}
 			}()
 			sub.fn(event)

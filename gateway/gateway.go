@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -78,6 +78,7 @@ type Config struct {
 	Middleware  []Middleware
 	CORS        *CORSConfig
 	NoHealth    bool
+	Logger      *slog.Logger     // optional — nil = slog.Default()
 	Tracer      Tracer           // optional — creates root spans for requests
 	RBACChecker RBACChecker      // optional — checks caller permissions on bus commands
 	RateLimit   *RateLimitConfig // optional — global rate limiter (429 when exceeded)
@@ -112,6 +113,7 @@ type HealthChecker interface {
 type Gateway struct {
 	rt           sdk.Runtime
 	config       Config
+	logger       *slog.Logger
 	streamConfig StreamConfig
 	routes       *routeTable
 	srv          *http.Server
@@ -134,9 +136,14 @@ func New(rt sdk.Runtime, cfg Config) *Gateway {
 	if cfg.Listen == "" {
 		cfg.Listen = ":8080"
 	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Gateway{
 		rt:           rt,
 		config:       cfg,
+		logger:       logger,
 		streamConfig: cfg.Stream.withDefaults(),
 		routes:       newRouteTable(),
 		rbacChecker:  cfg.RBACChecker,
@@ -224,7 +231,7 @@ func (gw *Gateway) Start() error {
 
 	go func() {
 		if err := gw.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("[gateway] serve error: %v", err)
+			gw.logger.Error("serve error", slog.String("error", err.Error()))
 		}
 	}()
 
@@ -235,7 +242,7 @@ func (gw *Gateway) Start() error {
 	gw.sweepCancel = sweepCancel
 	go gw.sweepSessions(sweepCtx)
 
-	log.Printf("[gateway] listening on %s (%d routes)", gw.Addr(), len(gw.routes.routes))
+	gw.logger.Info("gateway listening", slog.String("address", gw.Addr()), slog.Int("routes", len(gw.routes.routes)))
 	return nil
 }
 

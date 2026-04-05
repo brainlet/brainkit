@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -74,6 +74,7 @@ type Kernel struct {
 	ownsTransport  bool // true if Kernel created the transport (false if injected by Node)
 
 	config    KernelConfig
+	logger    *slog.Logger
 	namespace string
 	callerID  string
 	bridge    *jsbridge.Bridge
@@ -146,12 +147,12 @@ func (k *Kernel) waitForDrain(ctx context.Context) {
 		case <-ctx.Done():
 			active := k.activeHandlers.Load()
 			if active > 0 {
-				log.Printf("[brainkit] drain timeout: %d handlers still active, forcing shutdown", active)
+				k.logger.Warn("drain timeout, forcing shutdown", slog.Int64("active_handlers", active))
 			}
 			return
 		case <-ticker.C:
 			if k.activeHandlers.Load() == 0 {
-				log.Printf("[brainkit] drain complete")
+				k.logger.Info("drain complete")
 				return
 			}
 		}
@@ -264,6 +265,11 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Auto-detect AI providers from OS env + EnvVars before sandbox creation
 	autoDetectProviders(&cfg)
 
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	sharedTools := cfg.SharedTools
 	if sharedTools == nil {
 		sharedTools = toolreg.New()
@@ -272,6 +278,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel := &Kernel{
 		Tools:                sharedTools,
 		config:               cfg,
+		logger:               logger,
 		namespace:            cfg.Namespace,
 		callerID:             cfg.CallerID,
 		storages:             make(map[string]*libsql.Server),
@@ -283,6 +290,17 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	for name, reg := range cfg.AIProviders {
 		pc := extractProviderCredentials(reg)
 		providers[name] = agentembed.ProviderConfig{APIKey: pc.APIKey, BaseURL: pc.BaseURL}
+	}
+
+	// Cleanup stack: each resource allocation pushes its cleanup function.
+	// On failure, all cleanups execute in reverse order. On success, the
+	// slice is nilled — Kernel.Close() owns resource lifecycle from then on.
+	var cleanups []func()
+	fail := func(err error) (*Kernel, error) {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+		return nil, err
 	}
 
 	agentSandbox, err := agentembed.NewSandbox(agentembed.SandboxConfig{
@@ -307,8 +325,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("brainkit: create runtime: %w", err)
+		return fail(fmt.Errorf("brainkit: create runtime: %w", err))
 	}
+	cleanups = append(cleanups, func() { agentSandbox.Close() })
 	kernel.agents = agentSandbox
 	kernel.bridge = agentSandbox.Bridge()
 
@@ -319,12 +338,13 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Start sqlite storage bridges (must happen before loadRuntime)
 	bridgeURLs, err := kernel.initStorages(cfg)
 	if err != nil {
+		return fail(fmt.Errorf("brainkit: start storage: %w", err))
+	}
+	cleanups = append(cleanups, func() {
 		for _, srv := range kernel.storages {
 			_ = srv.Close()
 		}
-		agentSandbox.Close()
-		return nil, fmt.Errorf("brainkit: start storage: %w", err)
-	}
+	})
 
 	// Initialize the provider registry BEFORE loadRuntime so that JS code
 	// evaluated during runtime init (patches.js, resolve.js, kit_runtime.js)
@@ -336,11 +356,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Register all storages and vectors in the provider registry
 	kernel.registerStorages(cfg, bridgeURLs)
 	if err := kernel.registerVectors(cfg, bridgeURLs); err != nil {
-		for _, srv := range kernel.storages {
-			_ = srv.Close()
-		}
-		agentSandbox.Close()
-		return nil, fmt.Errorf("brainkit: register vectors: %w", err)
+		return fail(fmt.Errorf("brainkit: register vectors: %w", err))
 	}
 
 	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
@@ -376,8 +392,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	}
 
 	if err := kernel.loadRuntime(); err != nil {
-		agentSandbox.Close()
-		return nil, err
+		return fail(err)
 	}
 
 	// Upgrade Mastra storage from InMemoryStore to configured backend.
@@ -416,47 +431,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	kernel.packageDeployDomain = newPackageDeployDomain(kernel)
 
 	// Initialize secret store
-	if cfg.SecretStore != nil {
-		kernel.secretStore = cfg.SecretStore
-	} else {
-		secretKey := cfg.SecretKey
-		if secretKey == "" {
-			secretKey = os.Getenv("BRAINKIT_SECRET_KEY")
-		}
-		if secretKey != "" && cfg.Store != nil {
-			store, ok := cfg.Store.(*SQLiteStore)
-			if ok {
-				encStore, err := secrets.NewEncryptedKVStore(store.db, secretKey)
-				if err != nil {
-					InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
-						Operation: "CreateEncryptedSecretStore", Cause: err,
-					}, ErrorContext{Operation: "CreateEncryptedSecretStore", Component: "kernel"})
-					kernel.secretStore = secrets.NewEnvStore()
-				} else {
-					kernel.secretStore = encStore
-				}
-			} else {
-				kernel.secretStore = secrets.NewEnvStore()
-			}
-		} else {
-			if secretKey == "" && cfg.Store != nil {
-				log.Printf("[brainkit] WARNING: SecretKey not set — secrets stored without encryption")
-				store, ok := cfg.Store.(*SQLiteStore)
-				if ok {
-					encStore, _ := secrets.NewEncryptedKVStore(store.db, "")
-					if encStore != nil {
-						kernel.secretStore = encStore
-					} else {
-						kernel.secretStore = secrets.NewEnvStore()
-					}
-				} else {
-					kernel.secretStore = secrets.NewEnvStore()
-				}
-			} else {
-				kernel.secretStore = secrets.NewEnvStore()
-			}
-		}
-	}
+	kernel.secretStore = resolveSecretStore(cfg, logger)
 	// SecretsDomain constructed later (needs kernel.remote for bus publishing)
 
 	// Initialize RBAC
@@ -468,7 +443,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	if kernel.rbac != nil {
 		key := make([]byte, 32)
 		if _, err := cryptorand.Read(key); err != nil {
-			return nil, fmt.Errorf("brainkit: generate reply HMAC key: %w", err)
+			return fail(fmt.Errorf("brainkit: generate reply HMAC key: %w", err))
 		}
 		kernel.replyHMACKey = key
 	}
@@ -547,11 +522,11 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	} else {
 		transport, err := messaging.NewTransportSet(messaging.TransportConfig{Type: "memory"})
 		if err != nil {
-			agentSandbox.Close()
-			return nil, fmt.Errorf("brainkit: internal transport: %w", err)
+			return fail(fmt.Errorf("brainkit: internal transport: %w", err))
 		}
 		kernel.transport = transport
 		kernel.ownsTransport = true
+		cleanups = append(cleanups, func() { transport.Close() })
 	}
 
 	kernel.remote = messaging.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, kernel.transport)
@@ -559,14 +534,10 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// SecretsDomain — needs kernel.remote for bus event publishing
 	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, cfg.CallerID, nil, kernel.refreshProviderIfSecret)
 
-	logger := watermill.NopLogger{}
-	router, err := message.NewRouter(message.RouterConfig{}, logger)
+	wmLogger := watermill.NopLogger{}
+	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
 	if err != nil {
-		if kernel.ownsTransport {
-			kernel.transport.Close()
-		}
-		agentSandbox.Close()
-		return nil, fmt.Errorf("brainkit: router: %w", err)
+		return fail(fmt.Errorf("brainkit: router: %w", err))
 	}
 
 	metrics := messaging.NewMetrics()
@@ -615,6 +586,11 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	kernel.startedAt = time.Now()
 
+	// Success — Kernel.Close() now owns all resources.
+	// Nil out cleanups so fail() is harmless if called accidentally.
+	cleanups = nil
+	_ = cleanups
+
 	return kernel, nil
 }
 
@@ -654,7 +630,7 @@ func (k *Kernel) redeployPersistedDeployments() {
 		}
 	}
 
-	log.Printf("[brainkit] redeployed %d persisted deployments", len(deployments))
+	k.logger.Info("redeployed persisted deployments", slog.Int("count", len(deployments)))
 }
 
 // --- sdk.Runtime implementation ---
@@ -737,6 +713,41 @@ func (k *Kernel) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return k.Shutdown(ctx)
+}
+
+// resolveSecretStore determines the secret store from config with clear precedence:
+// 1. Explicit SecretStore → use it
+// 2. SQLiteStore + SecretKey → encrypted KV store
+// 3. SQLiteStore + no SecretKey → unencrypted KV store (dev mode, logged warning)
+// 4. No SQLiteStore → environment variable fallback
+func resolveSecretStore(cfg KernelConfig, logger *slog.Logger) secrets.SecretStore {
+	if cfg.SecretStore != nil {
+		return cfg.SecretStore
+	}
+
+	key := cfg.SecretKey
+	if key == "" {
+		key = os.Getenv("BRAINKIT_SECRET_KEY")
+	}
+
+	// Need a *SQLiteStore to back the encrypted KV store
+	sqliteStore, hasSQLite := cfg.Store.(*SQLiteStore)
+	if !hasSQLite || sqliteStore == nil {
+		return secrets.NewEnvStore()
+	}
+
+	if key == "" {
+		logger.Warn("SecretKey not set, secrets stored without encryption")
+	}
+
+	store, err := secrets.NewEncryptedKVStore(sqliteStore.db, key)
+	if err != nil {
+		InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
+			Operation: "CreateEncryptedSecretStore", Cause: err,
+		}, ErrorContext{Operation: "CreateEncryptedSecretStore", Component: "kernel"})
+		return secrets.NewEnvStore()
+	}
+	return store
 }
 
 // close is the internal shutdown logic.
@@ -1256,7 +1267,7 @@ func (k *Kernel) upgradeMastraStorage() {
 		Storage  string `json:"storage"`
 	}
 	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Upgraded {
-		log.Printf("[brainkit] Mastra storage upgraded to %q", parsed.Storage)
+		k.logger.Info("Mastra storage upgraded", slog.String("backend", parsed.Storage))
 	}
 }
 
@@ -1304,7 +1315,7 @@ func (k *Kernel) restartActiveWorkflows() {
 		}
 	}
 	if json.Unmarshal([]byte(result), &parsed) == nil && parsed.Restarted > 0 {
-		log.Printf("[brainkit] restarted active workflows for %d workflow definitions", parsed.Restarted)
+		k.logger.Info("restarted active workflows", slog.Int("definitions", parsed.Restarted))
 	}
 }
 

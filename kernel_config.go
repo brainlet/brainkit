@@ -2,6 +2,7 @@ package brainkit
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
@@ -90,9 +91,13 @@ type KernelConfig struct {
 	// If no policy matches, an error response is sent immediately to the caller.
 	RetryPolicies map[string]RetryPolicy
 
+	// Logger for structured logging. nil = slog.Default().
+	// Use slog.New(slog.NewJSONHandler(os.Stdout, nil)) for JSON output.
+	Logger *slog.Logger
+
 	// LogHandler receives tagged log entries from .ts Compartments and the Kernel.
 	// Called concurrently from multiple goroutines — must be safe.
-	// nil = default (print to stdout via log.Printf).
+	// nil = default (logs via Logger).
 	LogHandler func(LogEntry)
 
 	// ErrorHandler receives non-fatal errors that would otherwise be swallowed.

@@ -3,7 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -75,7 +75,7 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 				replyTo := wmsg.Metadata.Get("replyTo")
 				if replyTo == "" {
 					if err != nil {
-						log.Printf("[host] command %s failed with no replyTo: %v", binding.Topic, err)
+						slog.Error("command failed with no replyTo", slog.String("topic", binding.Topic), slog.String("error", err.Error()))
 					}
 					return nil
 				}

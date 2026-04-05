@@ -3,7 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -163,5 +163,5 @@ func (d *Multicast) parseAnnouncement(msg string) {
 	d.peers[name] = Peer{Name: name, Address: address}
 	d.mu.Unlock()
 
-	log.Printf("[multicast] discovered peer %q at %s", name, address)
+	slog.Info("discovered peer", slog.String("peer", name), slog.String("address", address))
 }

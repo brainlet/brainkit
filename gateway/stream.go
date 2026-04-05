@@ -185,11 +185,9 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 			// Drain remaining events from eventCh first (they may have arrived
 			// out of order from GoChannel), then write the terminal event.
 			if evt.isTerminal() || (evt.Type == "" && evt.isDoneMetadata()) {
-				// Drain any data events that arrived out of order.
-				// Uses a timer-based drain: read from eventCh with a short
-				// deadline to catch in-flight events without blocking indefinitely.
-				drainTimer := time.NewTimer(10 * time.Millisecond)
-			drainLoop:
+				// Non-blocking drain: read all buffered events without waiting.
+				// GoChannel buffers messages — anything already in the channel
+				// is captured; anything not yet sent is truly after the terminal.
 				for {
 					select {
 					case pending := <-s.eventCh:
@@ -207,19 +205,11 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 						s.nextID++
 						s.eventCount++
 						s.mu.Unlock()
-						// Reset timer — more events may follow
-						if !drainTimer.Stop() {
-							select {
-							case <-drainTimer.C:
-							default:
-							}
-						}
-						drainTimer.Reset(10 * time.Millisecond)
-					case <-drainTimer.C:
-						break drainLoop
+					default:
+						goto drainDone
 					}
 				}
-				drainTimer.Stop()
+			drainDone:
 
 				if evt.isTerminal() {
 					s.mu.Lock()

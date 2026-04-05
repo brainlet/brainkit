@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -32,7 +32,7 @@ func (gw *Gateway) subscribeBusCommands() {
 			Method: req.Method, Path: req.Path, Topic: req.Topic,
 			Type: rt, Owner: req.Owner,
 		})
-		log.Printf("[gateway] route added via bus: %s %s → %s (owner: %s)", req.Method, req.Path, req.Topic, req.Owner)
+		gw.logger.Info("route added via bus", slog.String("method", req.Method), slog.String("path", req.Path), slog.String("topic", req.Topic), slog.String("owner", req.Owner))
 		gw.replyJSON(msg, messages.GatewayRouteAddResp{Added: true})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
@@ -75,7 +75,7 @@ func (gw *Gateway) subscribeBusCommands() {
 				}
 			}
 		}
-		log.Printf("[gateway] routes removed via bus: %d", removed)
+		gw.logger.Info("routes removed via bus", slog.Int("removed", removed))
 		gw.replyJSON(msg, messages.GatewayRouteRemoveResp{Removed: removed})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)

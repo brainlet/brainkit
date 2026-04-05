@@ -3,7 +3,7 @@ package brainkit
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/brainlet/brainkit/internal/messaging"
@@ -74,7 +74,7 @@ func (im *InstanceManager) SpawnPool(name string, cfg PoolConfig) error {
 	}
 
 	im.pools[name] = p
-	log.Printf("[scaling] pool %q spawned with %d instances", name, count)
+	slog.Info("pool spawned", slog.String("pool", name), slog.Int("instances", count))
 	return nil
 }
 
@@ -100,7 +100,7 @@ func (im *InstanceManager) Scale(name string, delta int) error {
 			}
 			p.instances = append(p.instances, node)
 		}
-		log.Printf("[scaling] pool %q scaled up by %d (now %d)", name, delta, len(p.instances))
+		slog.Info("pool scaled up", slog.String("pool", name), slog.Int("delta", delta), slog.Int("total", len(p.instances)))
 	} else if delta < 0 {
 		remove := -delta
 		if remove > len(p.instances) {
@@ -111,7 +111,7 @@ func (im *InstanceManager) Scale(name string, delta int) error {
 			p.instances[idx].Close()
 			p.instances = p.instances[:idx]
 		}
-		log.Printf("[scaling] pool %q scaled down by %d (now %d)", name, remove, len(p.instances))
+		slog.Info("pool scaled down", slog.String("pool", name), slog.Int("delta", remove), slog.Int("total", len(p.instances)))
 	}
 
 	return nil
@@ -136,7 +136,7 @@ func (im *InstanceManager) KillPool(name string) error {
 	}
 	p.instances = nil
 
-	log.Printf("[scaling] pool %q killed", name)
+	slog.Info("pool killed", slog.String("pool", name))
 	return nil
 }
 
@@ -207,12 +207,12 @@ func (im *InstanceManager) EvaluateAndScale() {
 		switch decision.Action {
 		case "scale-up":
 			if decision.Delta > 0 {
-				log.Printf("[scaling] %s: %s", name, decision.Reason)
+				slog.Info("scaling decision", slog.String("pool", name), slog.String("reason", decision.Reason))
 				im.Scale(name, decision.Delta)
 			}
 		case "scale-down":
 			if decision.Delta > 0 {
-				log.Printf("[scaling] %s: %s", name, decision.Reason)
+				slog.Info("scaling decision", slog.String("pool", name), slog.String("reason", decision.Reason))
 				im.Scale(name, -decision.Delta)
 			}
 		}

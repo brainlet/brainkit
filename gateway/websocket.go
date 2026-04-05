@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/brainlet/brainkit/internal/messaging"
@@ -17,7 +17,7 @@ func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, match
 		OriginPatterns: []string{"*"},
 	})
 	if err != nil {
-		log.Printf("[gateway:ws] accept error: %v", err)
+		gw.logger.Error("websocket accept error", slog.String("error", err.Error()))
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")

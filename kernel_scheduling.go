@@ -3,7 +3,7 @@ package brainkit
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -167,6 +167,6 @@ func (k *Kernel) restoreSchedules() {
 		restored++
 	}
 	if restored > 0 {
-		log.Printf("[brainkit] restored %d persisted schedules", restored)
+		k.logger.Info("restored persisted schedules", slog.Int("count", restored))
 	}
 }

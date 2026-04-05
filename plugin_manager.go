@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"sync"
@@ -52,6 +52,10 @@ func newPluginManager(node *Node) *pluginManager {
 		node:    node,
 		plugins: make(map[string]*pluginConn),
 	}
+}
+
+func (pm *pluginManager) log() *slog.Logger {
+	return pm.node.Kernel.logger
 }
 
 func (pm *pluginManager) startAll(configs []PluginConfig) {
@@ -107,7 +111,7 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 		cancel()
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
-	cmd.Stderr = &logWriter{prefix: fmt.Sprintf("[plugin:%s] ", cfg.Name)}
+	cmd.Stderr = &logWriter{logger: pm.log(), plugin: cfg.Name}
 
 	if err := cmd.Start(); err != nil {
 		cancel()
@@ -129,7 +133,7 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 
 	select {
 	case identity := <-readyCh:
-		log.Printf("[plugin:%s] ready: %s", cfg.Name, identity)
+		pm.log().Info("plugin ready", slog.String("plugin", cfg.Name), slog.String("identity", identity))
 	case <-time.After(cfg.StartTimeout):
 		cancel()
 		cmd.Process.Kill()
@@ -154,9 +158,9 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	go pm.watchProcess(pc)
 
 	if restartCount > 0 {
-		log.Printf("[plugin:%s] restarted (pid=%d, restart #%d)", cfg.Name, cmd.Process.Pid, restartCount)
+		pm.log().Info("plugin restarted", slog.String("plugin", cfg.Name), slog.Int("pid", cmd.Process.Pid), slog.Int("restart", restartCount))
 	} else {
-		log.Printf("[plugin:%s] started (pid=%d)", cfg.Name, cmd.Process.Pid)
+		pm.log().Info("plugin started", slog.String("plugin", cfg.Name), slog.Int("pid", cmd.Process.Pid))
 	}
 	return nil
 }
@@ -190,23 +194,23 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 
 	// Unexpected exit — log it
 	if exitSignal != "" {
-		log.Printf("[plugin:%s] crashed: signal %s (exit code %d)", pc.config.Name, exitSignal, exitCode)
+		pm.log().Error("plugin crashed", slog.String("plugin", pc.config.Name), slog.String("signal", exitSignal), slog.Int("exit_code", exitCode))
 	} else if err != nil {
-		log.Printf("[plugin:%s] crashed: %v (exit code %d)", pc.config.Name, err, exitCode)
+		pm.log().Error("plugin crashed", slog.String("plugin", pc.config.Name), slog.String("error", err.Error()), slog.Int("exit_code", exitCode))
 	} else {
-		log.Printf("[plugin:%s] exited: code %d", pc.config.Name, exitCode)
+		pm.log().Info("plugin exited", slog.String("plugin", pc.config.Name), slog.Int("exit_code", exitCode))
 	}
 
 	// Auto-restart if configured
 	if !pc.config.AutoRestart {
-		log.Printf("[plugin:%s] auto-restart disabled, not restarting", pc.config.Name)
+		pm.log().Info("plugin auto-restart disabled", slog.String("plugin", pc.config.Name))
 		close(pc.done)
 		return
 	}
 
 	nextRestart := pc.restarts + 1
 	if nextRestart > pc.config.MaxRestarts {
-		log.Printf("[plugin:%s] max restarts reached (%d/%d), giving up", pc.config.Name, pc.restarts, pc.config.MaxRestarts)
+		pm.log().Error("plugin max restarts reached", slog.String("plugin", pc.config.Name), slog.Int("restarts", pc.restarts), slog.Int("max", pc.config.MaxRestarts))
 		close(pc.done)
 		return
 	}
@@ -216,7 +220,7 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	if backoff > 30*time.Second {
 		backoff = 30 * time.Second
 	}
-	log.Printf("[plugin:%s] restarting in %s (%d/%d)", pc.config.Name, backoff, nextRestart, pc.config.MaxRestarts)
+	pm.log().Info("plugin restarting", slog.String("plugin", pc.config.Name), slog.Duration("backoff", backoff), slog.Int("retry", nextRestart), slog.Int("max", pc.config.MaxRestarts))
 
 	// Wait for backoff OR shutdown — whichever comes first.
 	// Previous: time.Sleep(backoff) blocked the goroutine for up to 30s during shutdown.
@@ -279,7 +283,7 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 	select {
 	case <-pc.done:
 	case <-time.After(pc.config.ShutdownTimeout):
-		log.Printf("[plugin:%s] shutdown timeout, killing", name)
+		pm.log().Warn("plugin shutdown timeout, killing", slog.String("plugin", name))
 		if pc.cmd.Process != nil {
 			pc.cmd.Process.Kill()
 		}
@@ -293,7 +297,7 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 	delete(pm.plugins, name)
 	pm.mu.Unlock()
 
-	log.Printf("[plugin:%s] stopped", name)
+	pm.log().Info("plugin stopped", slog.String("plugin", name))
 }
 
 func (pm *pluginManager) listPlugins() []RunningPlugin {
@@ -326,10 +330,11 @@ func (pm *pluginManager) nextStartOrder() int {
 }
 
 type logWriter struct {
-	prefix string
+	logger *slog.Logger
+	plugin string
 }
 
 func (w *logWriter) Write(p []byte) (int, error) {
-	log.Printf("%s%s", w.prefix, strings.TrimRight(string(p), "\n"))
+	w.logger.Info(strings.TrimRight(string(p), "\n"), slog.String("plugin", w.plugin), slog.String("stream", "stderr"))
 	return len(p), nil
 }

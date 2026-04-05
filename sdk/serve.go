@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -96,7 +96,7 @@ func (p *Plugin) Run() error {
 	// Start router
 	go func() {
 		if routerErr := router.Run(context.Background()); routerErr != nil {
-			log.Printf("[plugin:%s] router stopped: %v", p.name, routerErr)
+			slog.Error("plugin router stopped", slog.String("plugin", p.name), slog.String("error", routerErr.Error()))
 		}
 	}()
 	<-router.Running()
@@ -153,7 +153,7 @@ func (p *Plugin) Run() error {
 	if p.onStartFn != nil {
 		go func() {
 			if startErr := p.onStartFn(rt); startErr != nil {
-				log.Printf("[plugin:%s] OnStart error: %v", p.name, startErr)
+				slog.Error("plugin OnStart error", slog.String("plugin", p.name), slog.String("error", startErr.Error()))
 			}
 		}()
 	}
@@ -168,7 +168,7 @@ func (p *Plugin) Run() error {
 
 	if p.onStopFn != nil {
 		if err := p.onStopFn(); err != nil {
-			log.Printf("[plugin:%s] OnStop error: %v", p.name, err)
+			slog.Error("plugin OnStop error", slog.String("plugin", p.name), slog.String("error", err.Error()))
 		}
 	}
 
