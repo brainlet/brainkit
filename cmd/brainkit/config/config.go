@@ -99,6 +99,9 @@ func BuildNodeConfig(cfg *CLIConfig) (brainkit.NodeConfig, error) {
 			Namespace: cfg.Namespace,
 			FSRoot:    cfg.FSRoot,
 			SecretKey: cfg.SecretKey,
+			LogHandler: func(e brainkit.LogEntry) {
+				fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", e.Source, e.Level, e.Message)
+			},
 		},
 		Messaging: brainkit.MessagingConfig{
 			Transport:   cfg.Transport,
