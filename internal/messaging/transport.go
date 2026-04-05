@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -57,6 +58,20 @@ func (t *Transport) SanitizeTopic(topic string) string {
 		return topic
 	}
 	return t.TopicSanitizer(topic)
+}
+
+// onceCloser wraps a Close function with sync.Once to prevent double-close panics.
+// Watermill's router.Close() fires handleClose goroutines that call subscriber.Close()
+// asynchronously (not tracked by any WaitGroup). When Transport.Close() also calls
+// subscriber.Close(), the double-close races on channel close in some backends (SQLite).
+// sync.Once ensures exactly one close regardless of call count or concurrency.
+func onceCloser(fn func() error) func() error {
+	var once sync.Once
+	return func() error {
+		var err error
+		once.Do(func() { err = fn() })
+		return err
+	}
 }
 
 // Close shuts down all transport resources.
@@ -169,7 +184,7 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 	return &Transport{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, subscriber.Close},
+		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close)},
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer(".", "-", "/", "-", "@", "-", " ", "-")
 			return r.Replace(topic)
@@ -203,7 +218,7 @@ func newAMQPTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 	return &Transport{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, subscriber.Close},
+		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close)},
 		// AMQP: dots are native routing key delimiters — preserve them.
 		// Sanitize slashes, @, spaces which are invalid in exchange names.
 		TopicSanitizer: func(topic string) string {
@@ -257,7 +272,7 @@ func newRedisTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tr
 	return &Transport{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, subscriber.Close, rdb.Close},
+		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), rdb.Close},
 		// Redis keys accept any binary string — no sanitization needed
 	}, nil
 }
@@ -303,7 +318,7 @@ func newPostgresTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (
 	return &Transport{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, subscriber.Close, db.Close},
+		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
 		// SQL: topic becomes table name — must be valid SQL identifier
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer(".", "_", "/", "_", "@", "_", " ", "_")
@@ -357,7 +372,7 @@ func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*T
 	return &Transport{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, subscriber.Close, db.Close},
+		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
 		// SQLite watermill adapter handles table naming internally.
 		// But our topics may contain dots which become table names — sanitize.
 		TopicSanitizer: func(topic string) string {
