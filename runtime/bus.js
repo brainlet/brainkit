@@ -21,12 +21,12 @@
   var _resourceRegistry = {
     entries: {},
     cleanups: {},
-    register: function(type, id, name, ref, cleanupFn) {
+    register: function(type, id, name, ref, cleanupFn, source) {
       var key = type + ":" + id;
       if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} }
       this.entries[key] = {
         type: type, id: id, name: name || id,
-        source: globalThis.__kit_currentSource || "unknown",
+        source: source || globalThis.__kit_currentSource || "unknown",
         createdAt: Date.now(), ref: ref,
       };
       if (typeof cleanupFn === "function") this.cleanups[key] = cleanupFn;

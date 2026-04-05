@@ -12,5 +12,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("list_and_teardown", func(t *testing.T) { testListAndTeardown(t, env) })
 		t.Run("secret_dependency_check", func(t *testing.T) { testSecretDependencyCheck(t, env) })
 		t.Run("inline_files_redeploy_picks_up_new_code", func(t *testing.T) { testInlineFilesRedeployPicksUpNewCode(t, env) })
+		t.Run("topic_collision", func(t *testing.T) { testTopicCollision(t, env) })
 	})
 }

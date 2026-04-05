@@ -85,7 +85,9 @@
             "TOPIC_COLLISION"
           );
         }
-        _reg.register("topic", fullTopic, localTopic, null, null);
+        // Pass source explicitly — the closure var `source` is the deployment
+        // source, while __kit_currentSource may be an internal eval filename.
+        _reg.register("topic", fullTopic, localTopic, null, null, source);
         return scopedBus.subscribe(fullTopic, handler);
       },
       unsubscribe: _kitObj.bus.unsubscribe,

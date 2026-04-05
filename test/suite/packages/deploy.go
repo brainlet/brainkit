@@ -30,12 +30,10 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 	writePackageFile(t, dir, "manifest.json", `{
 		"name": "test-pkg",
 		"version": "1.0.0",
-		"services": {
-			"greeter": { "entry": "greeter.ts" }
-		}
+		"entry": "index.ts"
 	}`)
 	writePackageFile(t, dir, "config.ts", `export const PREFIX = "Hello";`)
-	writePackageFile(t, dir, "greeter.ts", `
+	writePackageFile(t, dir, "index.ts", `
 		import { PREFIX } from "./config";
 		bus.on("greet", (msg) => {
 			msg.reply({ text: PREFIX + " " + msg.payload.name });
@@ -53,14 +51,14 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 	case resp := <-deployCh:
 		require.True(t, resp.Deployed)
 		assert.Equal(t, "test-pkg", resp.Name)
-		assert.Len(t, resp.Services, 1)
+		assert.Equal(t, "test-pkg.ts", resp.Source)
 	case <-time.After(10 * time.Second):
 		t.Fatal("timeout waiting for package deploy")
 	}
 
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := sdk.SendToService(env.Kernel, ctx, "test-pkg/greeter.ts", "greet", map[string]string{"name": "World"})
+	sendPR, _ := sdk.SendToService(env.Kernel, ctx, "test-pkg", "greet", map[string]string{"name": "World"})
 	replyCh := make(chan map[string]any, 1)
 	replyCancel, _ := env.Kernel.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
 		var resp map[string]any
@@ -85,9 +83,9 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 	writePackageFile(t, dir, "manifest.json", `{
 		"name": "list-test",
 		"version": "2.0.0",
-		"services": { "svc": { "entry": "svc.ts" } }
+		"entry": "index.ts"
 	}`)
-	writePackageFile(t, dir, "svc.ts", `bus.on("ping", (msg) => { msg.reply({pong: true}); });`)
+	writePackageFile(t, dir, "index.ts", `bus.on("ping", (msg) => { msg.reply({pong: true}); });`)
 
 	pub, _ := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{Path: dir})
 	ch := make(chan messages.PackageDeployResp, 1)
@@ -104,6 +102,7 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 		cancel2()
 		require.Len(t, resp.Packages, 1)
 		assert.Equal(t, "list-test", resp.Packages[0].Name)
+		assert.Equal(t, "list-test.ts", resp.Packages[0].Source)
 	case <-time.After(5 * time.Second):
 		cancel2()
 		t.Fatal("timeout listing packages")
@@ -141,17 +140,19 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	writePackageFile(t, dir, "manifest.json", `{
 		"name": "needs-secret",
 		"version": "1.0.0",
-		"services": { "svc": { "entry": "svc.ts" } },
+		"entry": "index.ts",
 		"requires": { "secrets": ["MY_REQUIRED_SECRET"] }
 	}`)
-	writePackageFile(t, dir, "svc.ts", `bus.on("x", (msg) => { msg.reply({}); });`)
+	writePackageFile(t, dir, "index.ts", `bus.on("x", (msg) => { msg.reply({}); });`)
 
 	pub, _ := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
 	cancel, _ := env.Kernel.SubscribeRaw(ctx, pub.ReplyTo, func(msg messages.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok { errCh <- e }
+		if e, ok := resp["error"].(string); ok {
+			errCh <- e
+		}
 	})
 	defer cancel()
 
@@ -182,9 +183,6 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	}
 }
 
-// testInlineFilesRedeployPicksUpNewCode reproduces the bug where
-// `brainkit redeploy ./dir` sends updated code via PackageDeployMsg.Files
-// but the deployed service keeps running the old code.
 func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t, suite.WithPersistence())
 	ctx := context.Background()
@@ -192,15 +190,14 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	manifest := `{
 		"name": "evolve-pkg",
 		"version": "1.0.0",
-		"services": { "svc": { "entry": "svc.ts" } }
+		"entry": "index.ts"
 	}`
 
-	// ── Deploy v1: returns {"version": "v1"} ──
 	v1Code := `bus.on("check", (msg) => { msg.reply({ version: "v1" }); });`
 
 	pub, err := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
-		Files:    map[string]string{"svc.ts": v1Code},
+		Files:    map[string]string{"index.ts": v1Code},
 	})
 	require.NoError(t, err)
 
@@ -211,7 +208,7 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	case resp := <-deployCh:
 		cancel()
 		require.True(t, resp.Deployed)
-		t.Logf("v1 deployed: %v", resp.Services)
+		t.Logf("v1 deployed: %s", resp.Source)
 	case <-time.After(10 * time.Second):
 		cancel()
 		t.Fatal("timeout deploying v1")
@@ -219,41 +216,34 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	// Verify v1 behavior
-	v1Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg/svc.ts", "check", nil)
+	v1Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg", "check", nil)
 	require.Equal(t, "v1", v1Resp["version"], "v1 should return version=v1")
-	t.Logf("v1 verified: %v", v1Resp)
 
-	// ── Teardown v1 (same as CLI redeployDirectory does) ──
-	tearPub, _ := sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "evolve-pkg/svc.ts"})
-	tearCh := make(chan messages.KitTeardownResp, 1)
-	tearCancel, _ := sdk.SubscribeTo[messages.KitTeardownResp](env.Kernel, ctx, tearPub.ReplyTo,
-		func(resp messages.KitTeardownResp, _ messages.Message) { tearCh <- resp })
-	select {
-	case <-tearCh:
-		tearCancel()
-	case <-time.After(5 * time.Second):
-		tearCancel()
-		t.Fatal("timeout tearing down v1")
-	}
-
-	// ── Deploy v2: returns {"version": "v2"} ──
 	v2Code := `bus.on("check", (msg) => { msg.reply({ version: "v2" }); });`
 
 	pub2, err := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
-		Files:    map[string]string{"svc.ts": v2Code},
+		Files:    map[string]string{"index.ts": v2Code},
 	})
 	require.NoError(t, err)
 
-	deployCh2 := make(chan messages.PackageDeployResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kernel, ctx, pub2.ReplyTo,
-		func(resp messages.PackageDeployResp, _ messages.Message) { deployCh2 <- resp })
+	// Listen for raw response to capture errors
+	v2ReplyCh := make(chan messages.Message, 1)
+	cancel2, _ := env.Kernel.SubscribeRaw(ctx, pub2.ReplyTo, func(msg messages.Message) {
+		select {
+		case v2ReplyCh <- msg:
+		default:
+		}
+	})
 	select {
-	case resp := <-deployCh2:
+	case msg := <-v2ReplyCh:
 		cancel2()
+		var resp messages.PackageDeployResp
+		json.Unmarshal(msg.Payload, &resp)
+		if resp.Error != "" {
+			t.Fatalf("v2 deploy error: %s", resp.Error)
+		}
 		require.True(t, resp.Deployed)
-		t.Logf("v2 deployed: %v", resp.Services)
 	case <-time.After(10 * time.Second):
 		cancel2()
 		t.Fatal("timeout deploying v2")
@@ -261,10 +251,42 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	// ── THE CRITICAL CHECK: v2 must return "v2", not "v1" ──
-	v2Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg/svc.ts", "check", nil)
+	v2Resp := sendToServiceAndWait(t, env.Kernel, "evolve-pkg", "check", nil)
 	require.Equal(t, "v2", v2Resp["version"], "REDEPLOY BUG: v2 should return version=v2 but got %v", v2Resp["version"])
-	t.Logf("v2 verified: %v", v2Resp)
+}
+
+func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
+	env := suite.Full(t, suite.WithPersistence())
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	writePackageFile(t, dir, "manifest.json", `{
+		"name": "collision-test",
+		"version": "1.0.0",
+		"entry": "index.ts"
+	}`)
+	writePackageFile(t, dir, "index.ts", `
+		bus.on("greet", (msg) => { msg.reply({ from: "first" }); });
+		bus.on("greet", (msg) => { msg.reply({ from: "second" }); });
+	`)
+
+	pub, _ := sdk.Publish(env.Kernel, ctx, messages.PackageDeployMsg{Path: dir})
+	errCh := make(chan string, 1)
+	cancel, _ := env.Kernel.SubscribeRaw(ctx, pub.ReplyTo, func(msg messages.Message) {
+		var resp map[string]any
+		json.Unmarshal(msg.Payload, &resp)
+		if e, ok := resp["error"].(string); ok {
+			errCh <- e
+		}
+	})
+	defer cancel()
+
+	select {
+	case errMsg := <-errCh:
+		assert.Contains(t, errMsg, "already subscribed")
+	case <-time.After(10 * time.Second):
+		t.Fatal("expected topic collision error")
+	}
 }
 
 func sendToServiceAndWait(t *testing.T, k interface {
