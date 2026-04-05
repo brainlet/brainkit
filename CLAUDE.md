@@ -58,60 +58,10 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 11. I expect enterprise production ready quality. Not prototype, not toy. Do not be lazy.
 12. Every time you finished some work, review your work and ask yourself if you were lazy and if you did an enterprise production ready job
 
-
 ## About sessions
 
 13. There is no need to suggestion compaction, ever.
 14. There is no need to tell about session limit. 
-
-# Build & Test
-
-**CLI binary:** Always build to `bin/brainkit`. Keep it up to date after any code change:
-```bash
-go build -o bin/brainkit ./cmd/brainkit/
-```
-
-```bash
-# Compile everything
-go build ./...
-
-# Fast tests — all suite domains on memory (~30s)
-go test ./test/suite/...
-
-# Single domain
-go test ./test/suite/bus/...
-go test ./test/suite/rbac/...
-
-# Security probes only
-go test ./test/suite/security/...
-
-# TS fixtures standalone (WalkDir discovery)
-go test ./test/fixtures/ -run TestFixtures
-
-# All transport backends (needs Podman)
-go test ./test/campaigns/transport/...
-
-# Single transport
-go test -run TestTransport_NATS ./test/campaigns/transport/
-
-# All storage backends (TS fixtures, needs Podman)
-go test ./test/campaigns/storage/...
-
-# Cross-kit on all backends (needs Podman)
-go test ./test/campaigns/crosskit/...
-
-# Auth matrix (needs Podman)
-go test ./test/campaigns/auth/...
-
-# Full-stack combos (needs Podman)
-go test ./test/campaigns/fullstack/...
-
-# Benchmarks
-go test -bench . ./test/bench/...
-
-# Single fixture
-go test ./test/fixtures/ -run 'TestFixtures/agent/generate-basic'
-```
 
 ## Critical: Bundle Rebuild After Changing build.mjs
 
@@ -124,43 +74,6 @@ go build ./...                                         # 3. re-embed both
 ```
 
 **Why**: The `.bc` bytecode is loaded preferentially over `.js`. Forgetting step 2 means stale code runs even though the `.js` looks correct. This has caused real bugs (PgVector probe failure from stale `__node_crypto` references in bytecode).
-
-## Architecture
-
-- **SDK** (`sdk/`) — Public API: `Runtime` interface, `Publish`, `SubscribeTo`, `Emit`, `Reply`, `SendChunk`, `SendToService`. Plugin SDK: `New`, `Tool`, `On`, `Run`.
-- **Kit** (root package) — Kernel (local runtime), Node (transport-connected), command catalog, domain handlers (tools, agents, mcp, registry, lifecycle).
-- **JS Runtime** (`runtime/kit_runtime.js`) — Bus API, resource registry, model resolution, HITL generateWithApproval, SES Compartment endowments.
-- **jsbridge** (`internal/jsbridge/`) — 20+ Node.js API polyfills implemented in Go. This is where Node.js APIs live, NOT in build.mjs.
-- **Messaging** (`internal/messaging/`) — Watermill transport abstraction (6 backends), RemoteClient, Host, topic sanitizers.
-- **Agent Embed** (`internal/embed/agent/`) — QuickJS sandbox with SES + Mastra bundle. Agent.Generate/Stream via JS registry.
-- **AS Compiler** (`internal/embed/compiler/`) — AssemblyScript → WASM via Binaryen C bridge. Separate QuickJS runtime. **Dormant — not wired to Kernel.**
-- **TypeScript** (`internal/embed/typescript/`, `vendor_typescript/`) — Vendored microsoft/typescript-go for native TS→JS.
-
-## KernelConfig Examples
-
-```go
-// Minimum — AI providers auto-detected from OS env
-kit.NewKernel(kit.KernelConfig{})
-
-// With storage
-kit.NewKernel(kit.KernelConfig{
-    Storages: map[string]kit.StorageConfig{
-        "default": kit.SQLiteStorage("./data.db"),
-    },
-})
-
-// Full
-kit.NewKernel(kit.KernelConfig{
-    Storages: map[string]kit.StorageConfig{
-        "default": kit.SQLiteStorage("./data.db"),
-        "pg":      kit.PostgresStorage("postgres://..."),
-    },
-    Vectors: map[string]kit.VectorConfig{
-        "docs": kit.PgVectorStore("postgres://..."),
-    },
-    FSRoot: "/tmp/workspace",
-})
-```
 
 ## Key Conventions
 
