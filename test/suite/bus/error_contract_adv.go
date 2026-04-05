@@ -80,8 +80,9 @@ func testErrorContractBusNotConfiguredRBAC(t *testing.T, _ *suite.TestEnv) {
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
-// testErrorContractBusAlreadyExists — ALREADY_EXISTS for duplicate deploy.
-func testErrorContractBusAlreadyExists(t *testing.T, _ *suite.TestEnv) {
+// testErrorContractBusIdempotentDeploy — duplicate deploy succeeds (idempotent).
+// Deploy tears down existing + redeploys. No ALREADY_EXISTS error.
+func testErrorContractBusIdempotentDeploy(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
 	k := freshEnv.Kernel
 	ctx := context.Background()
@@ -92,8 +93,12 @@ func testErrorContractBusAlreadyExists(t *testing.T, _ *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	code, _ := busErrorCodeAdv(t, k, messages.KitDeployMsg{Source: "dup-test-adv.ts", Code: "// different"})
-	assert.Equal(t, "ALREADY_EXISTS", code)
+	// Second deploy with same source — should succeed (idempotent)
+	_, err = k.Deploy(ctx, "dup-test-adv.ts", `
+		const t2 = createTool({ id: "dup-adv-v2", description: "dup v2", execute: async () => ({}) });
+		kit.register("tool", "dup-adv-v2", t2);
+	`)
+	require.NoError(t, err, "idempotent deploy should succeed")
 }
 
 // testErrorContractBusDeployErrorBadSyntax — DEPLOY_ERROR for bad syntax.

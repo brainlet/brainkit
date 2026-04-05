@@ -114,7 +114,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("error_contract_bus_not_found", func(t *testing.T) { testErrorContractBusNotFound(t, env) })
 		t.Run("error_contract_bus_validation_error", func(t *testing.T) { testErrorContractBusValidationError(t, env) })
 		t.Run("error_contract_bus_not_configured_rbac", func(t *testing.T) { testErrorContractBusNotConfiguredRBAC(t, env) })
-		t.Run("error_contract_bus_already_exists", func(t *testing.T) { testErrorContractBusAlreadyExists(t, env) })
+		t.Run("error_contract_bus_idempotent_deploy", func(t *testing.T) { testErrorContractBusIdempotentDeploy(t, env) })
 		t.Run("error_contract_bus_deploy_error_bad_syntax", func(t *testing.T) { testErrorContractBusDeployErrorBadSyntax(t, env) })
 		t.Run("error_contract_errors_as_all_types", func(t *testing.T) { testErrorContractErrorsAsAllTypes(t, env) })
 		t.Run("error_contract_jsbridge_permission_denied", func(t *testing.T) { testErrorContractJSBridgePermissionDenied(t, env) })
