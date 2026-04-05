@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/brainlet/brainkit"
 	cliconfig "github.com/brainlet/brainkit/cmd/brainkit/config"
@@ -77,10 +78,25 @@ func newStartCmd() *cobra.Command {
 			<-sigCh
 
 			cmd.Println("\nShutting down...")
-			controlSrv.Shutdown(context.Background())
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			return node.Shutdown(ctx)
+
+			// Shutdown with a hard deadline — don't hang on stuck connections.
+			// Second Ctrl+C force-exits immediately.
+			shutdownDone := make(chan error, 1)
+			go func() {
+				shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer shutCancel()
+				controlSrv.Shutdown(shutCtx)
+				shutdownDone <- node.Shutdown(shutCtx)
+			}()
+
+			select {
+			case err := <-shutdownDone:
+				return err
+			case <-sigCh:
+				cmd.Println("\nForce exit.")
+				os.Exit(1)
+				return nil
+			}
 		},
 	}
 }
