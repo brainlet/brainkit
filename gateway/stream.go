@@ -45,6 +45,8 @@ type bufferedEvent struct {
 
 type streamEvent struct {
 	Type     string          `json:"type"`
+	Seq      int             `json:"seq"`
+	Total    int             `json:"total,omitempty"` // set on terminal events (end/error)
 	Event    string          `json:"event,omitempty"`
 	Data     json.RawMessage `json:"data"`
 	Payload  []byte          // raw message payload
@@ -181,37 +183,54 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 				continue
 			}
 
-			// Terminal: typed end/error OR untyped done=true
-			// Drain remaining events from eventCh first (they may have arrived
-			// out of order from GoChannel), then write the terminal event.
+			// Terminal: typed end/error OR untyped done=true.
 			if evt.isTerminal() || (evt.Type == "" && evt.isDoneMetadata()) {
-				// Non-blocking drain: read all buffered events without waiting.
-				// GoChannel buffers messages — anything already in the channel
-				// is captured; anything not yet sent is truly after the terminal.
-				for {
-					select {
-					case pending := <-s.eventCh:
-						if pending.Type == "heartbeat" || pending.isTerminal() || (pending.Type == "" && pending.isDoneMetadata()) {
+				if evt.isTerminal() && evt.Total > 0 {
+					// Sequenced terminal: the producer sent `total` events before
+					// this terminal. Wait until we've written all of them. This
+					// handles GoChannel's async delivery (goroutine per Publish)
+					// where events arrive out of order under CPU pressure.
+					// No timers — we wait for a known count.
+					pending := make(map[int]streamEvent) // seq → event (out-of-order buffer)
+					pending[evt.Seq] = evt                // park the terminal itself
+					written := s.eventCount               // how many data events written so far
+					for written < evt.Total {
+						next := <-s.eventCh
+						if next.Type == "heartbeat" {
 							continue
 						}
-						eName := pending.Type
-						if pending.Type == "event" && pending.Event != "" {
-							eName = pending.Event
+						if next.isTerminal() || (next.Type == "" && next.isDoneMetadata()) {
+							pending[next.Seq] = next
+							continue
+						}
+						// Write data event immediately (order doesn't matter for
+						// SSE — each event is independent. What matters is that
+						// ALL events are written before the terminal closes the
+						// connection.)
+						eName := next.Type
+						if next.Type == "event" && next.Event != "" {
+							eName = next.Event
 						}
 						s.mu.Lock()
 						did := formatStreamID(s.id, s.nextID)
-						dline := writeSSEEvent(w, flusher, did, eName, pending.Data)
+						dline := writeSSEEvent(w, flusher, did, eName, next.Data)
 						s.buffer = append(s.buffer, bufferedEvent{id: s.nextID, data: dline})
 						s.nextID++
 						s.eventCount++
+						written = s.eventCount
 						s.mu.Unlock()
-					default:
-						goto drainDone
 					}
-				}
-			drainDone:
-
-				if evt.isTerminal() {
+					// All data events written. Now write the terminal.
+					s.mu.Lock()
+					id := formatStreamID(s.id, s.nextID)
+					line := writeSSEEvent(w, flusher, id, evt.Type, evt.Data)
+					s.buffer = append(s.buffer, bufferedEvent{id: s.nextID, data: line})
+					s.nextID++
+					s.mu.Unlock()
+					s.terminate(evt.Type)
+				} else if evt.isTerminal() {
+					// Unsequenced terminal (total=0): legacy or no prior events.
+					// Write immediately — no events to wait for.
 					s.mu.Lock()
 					id := formatStreamID(s.id, s.nextID)
 					line := writeSSEEvent(w, flusher, id, evt.Type, evt.Data)
