@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/nats-io/nats.go"
 )
@@ -17,7 +17,7 @@ type PluginStateStore interface {
 }
 
 type memoryPluginStateStore struct {
-	mu    sync.Mutex
+	mu    syncx.Mutex
 	state map[string]string
 }
 

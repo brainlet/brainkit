@@ -2,7 +2,7 @@ package gateway
 
 import (
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 type routeType int
@@ -33,7 +33,7 @@ type RouteInfo struct {
 }
 
 type routeTable struct {
-	mu     sync.RWMutex
+	mu     syncx.RWMutex
 	routes []*route
 }
 

@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	_ "modernc.org/sqlite"
 )
@@ -41,9 +41,9 @@ type Server struct {
 	logger   func(format string, args ...any)
 
 	// DB access lock — RWMutex allows concurrent readers, serializes writers
-	dbMu sync.RWMutex
+	dbMu syncx.RWMutex
 	// baton-based connections for transactions
-	mu      sync.Mutex
+	mu      syncx.Mutex
 	batons  map[string]*sql.Tx
 	batonID int
 	// SQL cache for store_sql/close_sql

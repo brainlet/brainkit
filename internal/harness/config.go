@@ -2,7 +2,7 @@ package harness
 
 import (
 	"fmt"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 // ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ func validateHarnessConfig(cfg HarnessConfig) error {
 
 // defaultThreadLock creates a simple in-process mutex-based thread lock.
 func defaultThreadLock() *ThreadLock {
-	var mu sync.Mutex
+	var mu syncx.Mutex
 	locks := make(map[string]bool)
 	return &ThreadLock{
 		Acquire: func(threadID string) error {

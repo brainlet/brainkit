@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -26,7 +26,7 @@ type spawnedProcess struct {
 
 // ExecPolyfill provides child_process.exec and child_process.spawn.
 type ExecPolyfill struct {
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	nextID int
 	procs  map[int]*spawnedProcess
 	bridge *Bridge

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/packages"
@@ -37,7 +37,7 @@ func (d *kernelDeployer) Teardown(ctx context.Context, source string) error {
 type PackageDeployDomain struct {
 	kit *Kernel
 
-	mu       sync.Mutex
+	mu       syncx.Mutex
 	deployed map[string]*packages.Package // name → deployed package
 }
 

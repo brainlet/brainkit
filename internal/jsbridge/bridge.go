@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/brainlet/brainkit/internal/syncx"
+
 	quickjs "github.com/buke/quickjs-go"
 )
 
@@ -45,7 +47,7 @@ type Bridge struct {
 	ctx     *quickjs.Context
 	stdout  io.Writer
 	stderr  io.Writer
-	mu      sync.Mutex // serializes Eval/EvalBytecode calls from different goroutines
+	mu      syncx.Mutex // serializes Eval/EvalBytecode calls from different goroutines
 	depth   int32      // >0 when an eval is active
 	jsGorID int64      // goroutine ID of the JS thread (set during eval)
 

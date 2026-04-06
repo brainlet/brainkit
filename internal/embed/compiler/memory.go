@@ -3,13 +3,13 @@ package asembed
 import (
 	"encoding/binary"
 	"math"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 type LinearMemory struct {
 	data   []byte
 	offset int
-	mu     sync.Mutex
+	mu     syncx.Mutex
 
 	// ptrOverrides stores full 64-bit pointer values that don't fit in 32 bits.
 	// On ARM64, Binaryen allocates objects with 64-bit pointers, but the AS compiler

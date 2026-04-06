@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/messaging"
@@ -24,7 +24,7 @@ type streamSession struct {
 	replyTo       string // bus topic for this stream
 	correlationID string
 
-	mu         sync.RWMutex
+	mu         syncx.RWMutex
 	buffer     []bufferedEvent // append-only replay buffer for reconnection
 	nextID     int             // sequential SSE id counter
 	eventCount int             // total data events written (for MaxEvents cap)

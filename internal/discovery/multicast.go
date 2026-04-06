@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
@@ -22,7 +22,7 @@ const (
 type Multicast struct {
 	service string
 	self    *Peer
-	mu      sync.RWMutex
+	mu      syncx.RWMutex
 	peers   map[string]Peer
 	conn    *net.UDPConn
 	cancel  context.CancelFunc

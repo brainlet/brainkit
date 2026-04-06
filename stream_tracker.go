@@ -2,7 +2,7 @@ package brainkit
 
 import (
 	"context"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -13,7 +13,7 @@ import (
 // Started by bus_reply bridge on first done=false with type discriminator.
 // Stopped on done=true or self-terminates after maxLife.
 type streamTracker struct {
-	mu       sync.Mutex
+	mu       syncx.Mutex
 	active   map[string]context.CancelFunc
 	kernel   *Kernel
 	interval time.Duration

@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 	"time"
 
@@ -123,7 +123,7 @@ type Gateway struct {
 	rbacChecker  RBACChecker
 
 	// Stream session management
-	sessionsMu  sync.RWMutex
+	sessionsMu  syncx.RWMutex
 	sessions    map[string]*streamSession
 	sweepCancel context.CancelFunc
 }

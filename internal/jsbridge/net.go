@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 // Each socket is backed by a Go net.Conn with async reads via Bridge.Go().
 type NetPolyfill struct {
 	bridge *Bridge
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	conns  map[int64]*goConn
 	nextID atomic.Int64
 }

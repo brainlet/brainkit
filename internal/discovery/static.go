@@ -1,14 +1,14 @@
 package discovery
 
 import (
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/sdk"
 )
 
 // Static resolves peers from a fixed configuration.
 type Static struct {
-	mu    sync.RWMutex
+	mu    syncx.RWMutex
 	peers map[string]Peer
 }
 

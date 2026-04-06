@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
 
@@ -49,7 +49,7 @@ type Sandbox struct {
 	providers map[string]ProviderConfig
 	envVars   map[string]string
 
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	agents map[string]*Agent
 	closed bool
 }

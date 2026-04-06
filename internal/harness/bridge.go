@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -159,4 +159,4 @@ func (h *Harness) Subscribe(fn func(HarnessEvent)) func() {
 }
 
 // subscriberMu helpers to avoid exposing sync primitives
-var _ = sync.RWMutex{}
+var _ = syncx.RWMutex{}

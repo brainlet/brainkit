@@ -3,7 +3,7 @@ package tracing
 import (
 	"context"
 	"math/rand"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/google/uuid"
@@ -190,7 +190,7 @@ func newSpanID() string {
 
 // MemoryTraceStore stores spans in a ring buffer.
 type MemoryTraceStore struct {
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	spans  []Span
 	maxLen int
 	pos    int

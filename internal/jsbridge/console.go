@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -17,7 +17,7 @@ type ConsoleMessage struct {
 
 // ConsolePolyfill provides globalThis.console with message capture.
 type ConsolePolyfill struct {
-	mu       sync.Mutex
+	mu       syncx.Mutex
 	messages []ConsoleMessage
 	stdout   io.Writer
 	stderr   io.Writer

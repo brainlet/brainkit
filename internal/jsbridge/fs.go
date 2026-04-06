@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -24,12 +24,12 @@ type FSPolyfill struct {
 	root   string // workspace root — all paths resolve relative to this
 
 	// Track open file handles for auto-close on shutdown
-	handlesMu sync.Mutex
+	handlesMu syncx.Mutex
 	handles   map[int]*os.File
 	nextFD    int
 
 	// Track watchers for auto-close on shutdown
-	watchersMu sync.Mutex
+	watchersMu syncx.Mutex
 	watchers   []*fsnotify.Watcher
 }
 

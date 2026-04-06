@@ -2,14 +2,14 @@ package registry
 
 import (
 	"fmt"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 )
 
 // ToolRegistry manages all tools across the platform.
 type ToolRegistry struct {
-	mu    sync.RWMutex
+	mu    syncx.RWMutex
 	tools map[string]*RegisteredTool
 }
 

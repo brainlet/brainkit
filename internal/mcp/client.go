@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/client"
@@ -33,7 +33,7 @@ type ToolInfo struct {
 
 // MCPManager manages connections to multiple MCP servers.
 type MCPManager struct {
-	mu      sync.RWMutex
+	mu      syncx.RWMutex
 	clients map[string]*client.Client
 	tools   map[string][]ToolInfo
 }

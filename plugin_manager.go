@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"syscall"
 	"time"
 
@@ -29,7 +29,7 @@ type RunningPlugin struct {
 type pluginManager struct {
 	node         *Node
 	plugins      map[string]*pluginConn
-	mu           sync.Mutex
+	mu           syncx.Mutex
 	startCounter int32
 }
 
@@ -42,7 +42,7 @@ type pluginConn struct {
 	done      chan struct{} // closed when process exits AND no restart will happen
 	startedAt time.Time
 
-	mu       sync.Mutex
+	mu       syncx.Mutex
 	restarts int  // number of times restarted after crash
 	stopping bool // true when stopPlugin was called — prevents auto-restart
 }

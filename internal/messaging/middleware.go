@@ -3,7 +3,7 @@ package messaging
 import (
 	"fmt"
 	"strconv"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -69,7 +69,7 @@ func MaxConcurrencyMiddleware(n int) func(message.HandlerFunc) message.HandlerFu
 
 // Metrics tracks message processing statistics (thread-safe).
 type Metrics struct {
-	mu        sync.Mutex
+	mu        syncx.Mutex
 	published map[string]int
 	handled   map[string]int
 	errors    map[string]int

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/internal/messaging"
 	"github.com/brainlet/brainkit/internal/registry"
@@ -25,12 +25,12 @@ type pool struct {
 	config      PoolConfig
 	instances   []*Node
 	sharedTools *registry.ToolRegistry
-	mu          sync.Mutex
+	mu          syncx.Mutex
 }
 
 // InstanceManager manages pools of Kit instances with shared tool registries.
 type InstanceManager struct {
-	mu    sync.Mutex
+	mu    syncx.Mutex
 	pools map[string]*pool
 }
 

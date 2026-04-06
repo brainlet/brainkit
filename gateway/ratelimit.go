@@ -2,7 +2,7 @@ package gateway
 
 import (
 	"net/http"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"golang.org/x/time/rate"
 )
@@ -34,7 +34,7 @@ func RateLimiter(cfg RateLimitConfig) Middleware {
 
 // PerIPRateLimiter returns a middleware that limits requests per client IP.
 func PerIPRateLimiter(cfg RateLimitConfig) Middleware {
-	var mu sync.Mutex
+	var mu syncx.Mutex
 	limiters := make(map[string]*rate.Limiter)
 
 	getLimiter := func(ip string) *rate.Limiter {

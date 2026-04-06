@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 	"time"
 
@@ -89,7 +89,7 @@ type Kernel struct {
 	deployments map[string]*deploymentInfo
 	bridgeSubs  map[string]func()
 
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	closed bool
 
 	// Graceful shutdown

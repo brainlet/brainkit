@@ -1,7 +1,7 @@
 package registry
 
 import (
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
@@ -85,7 +85,7 @@ type entry struct {
 
 // ProviderRegistry manages all registered providers, vector stores, and storages.
 type ProviderRegistry struct {
-	mu           sync.RWMutex
+	mu           syncx.RWMutex
 	aiProviders  map[string]*entry
 	vectorStores map[string]*entry
 	storages     map[string]*entry

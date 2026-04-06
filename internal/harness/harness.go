@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 )
 
@@ -16,19 +16,19 @@ type Harness struct {
 	config HarnessConfig
 
 	subscribers []harnessSubscriber
-	subMu       sync.RWMutex
+	subMu       syncx.RWMutex
 	nextSubID   int
 
 	displayState *DisplayState
-	dsMu         sync.RWMutex
+	dsMu         syncx.RWMutex
 
 	tokenUsage TokenUsage
-	tuMu       sync.RWMutex
+	tuMu       syncx.RWMutex
 
 	threadLock *ThreadLock
 
 	heartbeats map[string]*time.Ticker
-	hbMu       sync.Mutex
+	hbMu       syncx.Mutex
 
 	initialized bool
 	closed      bool

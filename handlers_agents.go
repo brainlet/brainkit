@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -49,7 +49,7 @@ func (f *agentFilter) matches(info *AgentInfo) bool {
 
 // AgentsDomain handles agent lifecycle. Self-contained — no Kernel dependency.
 type AgentsDomain struct {
-	mu  sync.RWMutex
+	mu  syncx.RWMutex
 	reg map[string]*AgentInfo
 }
 

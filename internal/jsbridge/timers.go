@@ -3,7 +3,7 @@ package jsbridge
 import (
 	"context"
 	"strconv"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -20,7 +20,7 @@ type timerEntry struct {
 // delay>0 fires via Bridge.Go() + ctx.Schedule() (processed during Await's polling loop).
 type TimersPolyfill struct {
 	bridge *Bridge
-	mu     sync.Mutex
+	mu     syncx.Mutex
 	timers map[int32]*timerEntry
 	nextID int32
 	ctx    *quickjs.Context

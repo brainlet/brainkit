@@ -3,7 +3,7 @@ package rbac
 import (
 	"fmt"
 	"strings"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 )
 
@@ -49,7 +49,7 @@ type RoleAssignment struct {
 
 // Manager manages roles and role assignments.
 type Manager struct {
-	mu          sync.RWMutex
+	mu          syncx.RWMutex
 	roles       map[string]*Role
 	assignments map[string]RoleAssignment // source → assignment
 	defaultRole string

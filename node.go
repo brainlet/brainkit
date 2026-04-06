@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/discovery"
@@ -28,7 +28,7 @@ type Node struct {
 	pluginLifecycle *PluginLifecycleDomain
 	discovery       discovery.Provider // nil if not configured
 
-	mu      sync.Mutex
+	mu      syncx.Mutex
 	started bool
 }
 

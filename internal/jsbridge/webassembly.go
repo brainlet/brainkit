@@ -3,7 +3,7 @@ package jsbridge
 import (
 	"context"
 	"fmt"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 
 	quickjs "github.com/buke/quickjs-go"
@@ -15,7 +15,7 @@ import (
 // Enables JS libraries that ship WASM modules (like xxhash-wasm) to work in QuickJS.
 type WebAssemblyPolyfill struct {
 	bridge  *Bridge
-	mu      sync.Mutex
+	mu      syncx.Mutex
 	rt      wazero.Runtime
 	modules map[int64]api.Module
 	nextID  atomic.Int64

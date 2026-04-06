@@ -3,7 +3,7 @@ package sdk
 import (
 	"context"
 	"encoding/json"
-	"sync"
+	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -17,7 +17,7 @@ type Plugin struct {
 	version     string
 	description string
 
-	mu            sync.Mutex
+	mu            syncx.Mutex
 	tools         []toolRegistration
 	subscriptions []subscriptionRegistration
 	events        []eventRegistration
