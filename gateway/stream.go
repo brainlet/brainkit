@@ -190,35 +190,43 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 					// this terminal. Wait until we've written all of them. This
 					// handles GoChannel's async delivery (goroutine per Publish)
 					// where events arrive out of order under CPU pressure.
-					// No timers — we wait for a known count.
-					pending := make(map[int]streamEvent) // seq → event (out-of-order buffer)
-					pending[evt.Seq] = evt                // park the terminal itself
-					written := s.eventCount               // how many data events written so far
+					// Wait for all data events before writing terminal.
+					// Safety: heartbeat timeout catches producer death,
+					// maxDuration caps total wait, ctx.Done() handles
+					// client disconnect. No bare channel reads.
+					written := s.eventCount
+					reassemblyTimeout := time.NewTimer(s.config.HeartbeatTimeout)
+					defer reassemblyTimeout.Stop()
+				reassemble:
 					for written < evt.Total {
-						next := <-s.eventCh
-						if next.Type == "heartbeat" {
-							continue
+						select {
+						case next := <-s.eventCh:
+							reassemblyTimeout.Reset(s.config.HeartbeatTimeout)
+							if next.Type == "heartbeat" {
+								continue
+							}
+							if next.isTerminal() || (next.Type == "" && next.isDoneMetadata()) {
+								continue
+							}
+							eName := next.Type
+							if next.Type == "event" && next.Event != "" {
+								eName = next.Event
+							}
+							s.mu.Lock()
+							did := formatStreamID(s.id, s.nextID)
+							dline := writeSSEEvent(w, flusher, did, eName, next.Data)
+							s.buffer = append(s.buffer, bufferedEvent{id: s.nextID, data: dline})
+							s.nextID++
+							s.eventCount++
+							written = s.eventCount
+							s.mu.Unlock()
+						case <-reassemblyTimeout.C:
+							break reassemble
+						case <-maxDurationTimer.C:
+							break reassemble
+						case <-ctx.Done():
+							break reassemble
 						}
-						if next.isTerminal() || (next.Type == "" && next.isDoneMetadata()) {
-							pending[next.Seq] = next
-							continue
-						}
-						// Write data event immediately (order doesn't matter for
-						// SSE — each event is independent. What matters is that
-						// ALL events are written before the terminal closes the
-						// connection.)
-						eName := next.Type
-						if next.Type == "event" && next.Event != "" {
-							eName = next.Event
-						}
-						s.mu.Lock()
-						did := formatStreamID(s.id, s.nextID)
-						dline := writeSSEEvent(w, flusher, did, eName, next.Data)
-						s.buffer = append(s.buffer, bufferedEvent{id: s.nextID, data: dline})
-						s.nextID++
-						s.eventCount++
-						written = s.eventCount
-						s.mu.Unlock()
 					}
 					// All data events written. Now write the terminal.
 					s.mu.Lock()
