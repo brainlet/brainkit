@@ -38,6 +38,11 @@ func kernelCommand[Req messages.BrainkitMessage, Resp any](handler func(context.
 			if err != nil {
 				return nil, err
 			}
+			// nil response = pass-through (e.g., plugin tool responds directly to caller).
+			// Return nil so the host command handler skips publishing.
+			if out == nil {
+				return nil, nil
+			}
 			return json.Marshal(out)
 		},
 		invokeNode: func(ctx context.Context, node *Node, payload json.RawMessage) (json.RawMessage, error) {

@@ -83,10 +83,15 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	env = append(env, fmt.Sprintf("BRAINKIT_TRANSPORT=%s", pm.node.config.Messaging.Transport))
-	env = append(env, fmt.Sprintf("BRAINKIT_NATS_URL=%s", pm.node.config.Messaging.NATSURL))
-	env = append(env, fmt.Sprintf("BRAINKIT_NATS_NAME=%s", pm.node.config.Messaging.NATSName))
 	env = append(env, fmt.Sprintf("BRAINKIT_NAMESPACE=%s", pm.node.Kernel.Namespace()))
 	env = append(env, fmt.Sprintf("BRAINKIT_NODE_ID=%s", pm.node.nodeID))
+	// Pass ALL transport backend env vars — plugin connects to the same transport
+	env = append(env, fmt.Sprintf("BRAINKIT_NATS_URL=%s", pm.node.config.Messaging.NATSURL))
+	env = append(env, fmt.Sprintf("BRAINKIT_NATS_NAME=%s", pm.node.config.Messaging.NATSName))
+	env = append(env, fmt.Sprintf("BRAINKIT_AMQP_URL=%s", pm.node.config.Messaging.AMQPURL))
+	env = append(env, fmt.Sprintf("BRAINKIT_REDIS_URL=%s", pm.node.config.Messaging.RedisURL))
+	env = append(env, fmt.Sprintf("BRAINKIT_POSTGRES_URL=%s", pm.node.config.Messaging.PostgresURL))
+	env = append(env, fmt.Sprintf("BRAINKIT_SQLITE_PATH=%s", pm.node.config.Messaging.SQLitePath))
 	if len(cfg.Config) > 0 {
 		env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_CONFIG=%s", string(cfg.Config)))
 	}

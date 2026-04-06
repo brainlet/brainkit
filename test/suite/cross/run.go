@@ -78,8 +78,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 // makeNode creates a Node with NATS backend. Skips if Podman is unavailable.
 func makeNode(t *testing.T, env *suite.TestEnv, namespace string) *brainkit.Node {
 	t.Helper()
+	return makeNodeWithConfig(t, env, namespace, messagingCfgForBackend(t, "nats"))
+}
+
+// makeNodeWithConfig creates a Node with an explicit messaging config.
+// Used by cross-Kit tests where multiple nodes must share the same transport.
+func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, msgCfg brainkit.MessagingConfig) *brainkit.Node {
+	t.Helper()
 	env.RequirePodman(t)
-	msgCfg := messagingCfgForBackend(t, "nats")
 	tmpDir := t.TempDir()
 
 	node, err := brainkit.NewNode(brainkit.NodeConfig{

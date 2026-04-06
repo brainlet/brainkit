@@ -22,9 +22,13 @@ func (p *Plugin) Run() error {
 	logger := watermill.NopLogger{}
 	namespace := os.Getenv("BRAINKIT_NAMESPACE")
 	transport, err := messaging.NewTransportSet(messaging.TransportConfig{
-		Type:     os.Getenv("BRAINKIT_TRANSPORT"),
-		NATSURL:  os.Getenv("BRAINKIT_NATS_URL"),
-		NATSName: os.Getenv("BRAINKIT_NATS_NAME"),
+		Type:        os.Getenv("BRAINKIT_TRANSPORT"),
+		NATSURL:     os.Getenv("BRAINKIT_NATS_URL"),
+		NATSName:    os.Getenv("BRAINKIT_NATS_NAME"),
+		AMQPURL:     os.Getenv("BRAINKIT_AMQP_URL"),
+		RedisURL:    os.Getenv("BRAINKIT_REDIS_URL"),
+		PostgresURL: os.Getenv("BRAINKIT_POSTGRES_URL"),
+		SQLitePath:  os.Getenv("BRAINKIT_SQLITE_PATH"),
 	})
 	if err != nil {
 		return fmt.Errorf("sdk: transport: %w", err)
@@ -73,6 +77,12 @@ func (p *Plugin) Run() error {
 					replyMsg.Metadata.Set("correlationId", correlationID)
 				} else {
 					replyMsg.Metadata.Set("correlationId", wmsg.UUID)
+				}
+
+				// Pass-through: if the host forwarded a caller's replyTo,
+				// publish directly there (already namespace-resolved).
+				if replyTo := wmsg.Metadata.Get("replyTo"); replyTo != "" {
+					return transport.Publisher.Publish(replyTo, replyMsg)
 				}
 				return transport.Publisher.Publish(resolveTopic(toolTopic+".result"), replyMsg)
 			},

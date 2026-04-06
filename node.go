@@ -374,13 +374,30 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 			Executor: &registry.GoFuncExecutor{
 				Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 					topic := pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
-					resultTopic := topic + ".result"
 
-					// Tracing: span around plugin tool call
 					span := n.Kernel.tracer.StartSpan("plugin.tool:"+tool.Name, callCtx)
 					span.SetAttribute("plugin", manifest.Name)
 					span.SetAttribute("topic", topic)
 
+					// Pass-through path: if the call came through the bus command router,
+					// the context carries the caller's already-resolved replyTo. Forward it
+					// to the plugin so it responds directly — no intermediate subscription.
+					callerReplyTo := messaging.ReplyToFromContext(callCtx)
+					if callerReplyTo != "" {
+						_, err := n.Kernel.remote.PublishRawWithMeta(callCtx, topic, input, map[string]string{
+							"replyTo": callerReplyTo,
+						})
+						span.End(err)
+						if err != nil {
+							return nil, fmt.Errorf("publish plugin tool %s: %w", topic, err)
+						}
+						return nil, nil
+					}
+
+					// Fallback path: direct Go call (no bus command router, no replyTo).
+					// Subscribe to .result and wait — safe because this path doesn't
+					// nest inside a command handler.
+					resultTopic := topic + ".result"
 					correlationID := uuid.NewString()
 					waitCtx, cancel := context.WithCancel(callCtx)
 					defer cancel()

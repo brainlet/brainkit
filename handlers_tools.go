@@ -39,6 +39,11 @@ func (d *ToolsDomain) Call(ctx context.Context, req messages.ToolCallMsg) (*mess
 	if err != nil {
 		return nil, err
 	}
+	// nil result + nil error = pass-through (plugin responds directly to caller).
+	// Return nil so the command handler skips publishing a response.
+	if result == nil {
+		return nil, nil
+	}
 	return &messages.ToolCallResp{Result: result}, nil
 }
 

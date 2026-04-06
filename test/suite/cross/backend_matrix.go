@@ -19,8 +19,10 @@ import (
 func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 	env.RequirePodman(t)
 
-	nodeA := makeNode(t, env, "xk-a-suite")
-	nodeB := makeNode(t, env, "xk-b-suite")
+	// Both nodes must share the SAME transport for cross-Kit communication
+	sharedCfg := messagingCfgForBackend(t, "nats")
+	nodeA := makeNodeWithConfig(t, env, "xk-a-suite", sharedCfg)
+	nodeB := makeNodeWithConfig(t, env, "xk-b-suite", sharedCfg)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -55,8 +57,10 @@ func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 func testCrossKitErrorPropagation(t *testing.T, env *suite.TestEnv) {
 	env.RequirePodman(t)
 
-	nodeA := makeNode(t, env, "xe-a-suite")
-	_ = makeNode(t, env, "xe-b-suite") // Kit B must exist to receive the call
+	// Both nodes must share the SAME transport for cross-Kit communication
+	sharedCfg := messagingCfgForBackend(t, "nats")
+	nodeA := makeNodeWithConfig(t, env, "xe-a-suite", sharedCfg)
+	_ = makeNodeWithConfig(t, env, "xe-b-suite", sharedCfg) // Kit B must exist to receive the call
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
