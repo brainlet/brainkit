@@ -4,7 +4,7 @@ const result = await build({
   entryPoints: ['entry.mjs'],
   bundle: true,
   format: 'iife',
-  target: 'es2020',
+  target: 'esnext',
   platform: 'browser',
   outfile: '../ai_sdk_bundle.js',
   minify: true,

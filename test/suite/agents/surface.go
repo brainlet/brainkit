@@ -139,6 +139,7 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 			const addTool = createTool({
 				id: "add-agent-adv",
 				description: "adds two numbers",
+				inputSchema: z.object({ a: z.number(), b: z.number() }),
 				execute: async ({ context: input }) => {
 					var a = (input && input.a) || 0;
 					var b = (input && input.b) || 0;

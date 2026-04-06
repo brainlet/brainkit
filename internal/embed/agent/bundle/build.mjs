@@ -141,12 +141,14 @@ const moduleStubs = {
     export var dirname = P.dirname || function(p) { return p.replace(/\\/[^\\/]*$/, ""); };
     export var basename = P.basename || function(p) { return p.replace(/.*\\//, ""); };
     export var extname = P.extname || function(p) { var m = p.match(/\\.[^.]+$/); return m ? m[0] : ""; };
+    export var normalize = function(p) { return p.replace(/\\/+/g, "/").replace(/\\/$/,""); };
+    export var isAbsolute = function(p) { return p.charAt(0) === "/"; };
     export var parse = function(p) { var b = basename(p); var e = extname(p); return { root: "", dir: dirname(p), base: b, ext: e, name: b.replace(e, "") }; };
     export var relative = function(from, to) { return to; };
     export var sep = "/";
     export var delimiter = ":";
     export var posix = P;
-    export default { join, resolve, dirname, basename, extname, parse, relative, sep, delimiter, posix };
+    export default { join, resolve, dirname, basename, extname, normalize, isAbsolute, parse, relative, sep, delimiter, posix };
   `,
   "path/posix": `
     var P = globalThis.path || {};
@@ -368,11 +370,14 @@ const moduleStubs = {
     export default { createHook, executionAsyncId, triggerAsyncId, executionAsyncResource, AsyncLocalStorage, AsyncResource };
   `,
   "diagnostics_channel": `
-    export var channel = function() { return { subscribe: function() {}, unsubscribe: function() {}, publish: function() {}, hasSubscribers: false }; };
+    var _noop = function() {};
+    var _ch = function() { return { subscribe: _noop, unsubscribe: _noop, publish: _noop, hasSubscribers: false, bindStore: _noop, runStores: _noop }; };
+    export var channel = _ch;
+    export var tracingChannel = function(name) { return { start: _ch(), end: _ch(), asyncStart: _ch(), asyncEnd: _ch(), error: _ch(), subscribe: _noop, unsubscribe: _noop, hasSubscribers: false }; };
     export var hasSubscribers = function() { return false; };
-    export var subscribe = function() {};
-    export var unsubscribe = function() {};
-    export class Channel { constructor() { this.hasSubscribers = false; } subscribe() {} unsubscribe() {} publish() {} }
+    export var subscribe = _noop;
+    export var unsubscribe = _noop;
+    export class Channel { constructor() { this.hasSubscribers = false; } subscribe() {} unsubscribe() {} publish() {} bindStore() {} runStores() {} }
     export default { channel, hasSubscribers, subscribe, unsubscribe, Channel };
   `,
   "worker_threads": `
@@ -438,11 +443,23 @@ const result = await esbuild.build({
   bundle: true,
   format: "iife",
   platform: "browser",
-  target: "es2020",
+  target: "esnext",
   minify: true,
   treeShaking: true,
   plugins: [
     nodeStubPlugin,
+    // Force lru-cache to use CJS build — ESM version uses top-level await
+    // which esbuild can't bundle in IIFE format. CJS version works fine.
+    {
+      name: "lru-cache-cjs",
+      setup(build) {
+        build.onResolve({ filter: /^lru-cache$/ }, (args) => {
+          return {
+            path: import.meta.dirname + "/node_modules/lru-cache/dist/commonjs/index.js",
+          };
+        });
+      },
+    },
     // Redirect EXACT 'zod' imports to 'zod/v4' so all code uses ONE Zod version.
     {
       name: "zod-unify",
