@@ -45,5 +45,11 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("input_abuse_duplicate_register", func(t *testing.T) { testInputAbuseDuplicateRegister(t, env) })
 		t.Run("input_abuse_invalid_config", func(t *testing.T) { testInputAbuseInvalidConfig(t, env) })
 		t.Run("input_abuse_missing_type", func(t *testing.T) { testInputAbuseMissingType(t, env) })
+
+		// provider_management.go — provider add/remove via typed bus commands
+		t.Run("bus/provider_add", func(t *testing.T) { testProviderAddViaBus(t, env) })
+		t.Run("bus/provider_add_invalid", func(t *testing.T) { testProviderAddInvalidName(t, env) })
+		t.Run("bus/provider_remove", func(t *testing.T) { testProviderRemoveViaBus(t, env) })
+		t.Run("bus/provider_add_then_resolve_ts", func(t *testing.T) { testProviderAddThenResolveFromTS(t, env) })
 	})
 }
