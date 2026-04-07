@@ -401,6 +401,26 @@ func SubscribePluginStopResp(rt Runtime, ctx context.Context, topic string, hand
 	return SubscribeTo[messages.PluginStopResp](rt, ctx, topic, handler)
 }
 
+// PublishProviderAdd publishes a ProviderAddMsg and returns routing info for the response.
+func PublishProviderAdd(rt Runtime, ctx context.Context, msg messages.ProviderAddMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeProviderAddResp subscribes to the response topic for a ProviderAddMsg command.
+func SubscribeProviderAddResp(rt Runtime, ctx context.Context, topic string, handler func(messages.ProviderAddResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ProviderAddResp](rt, ctx, topic, handler)
+}
+
+// PublishProviderRemove publishes a ProviderRemoveMsg and returns routing info for the response.
+func PublishProviderRemove(rt Runtime, ctx context.Context, msg messages.ProviderRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeProviderRemoveResp subscribes to the response topic for a ProviderRemoveMsg command.
+func SubscribeProviderRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.ProviderRemoveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ProviderRemoveResp](rt, ctx, topic, handler)
+}
+
 // PublishRBACAssign publishes a RBACAssignMsg and returns routing info for the response.
 func PublishRBACAssign(rt Runtime, ctx context.Context, msg messages.RBACAssignMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -471,6 +491,36 @@ func SubscribeRegistryResolveResp(rt Runtime, ctx context.Context, topic string,
 	return SubscribeTo[messages.RegistryResolveResp](rt, ctx, topic, handler)
 }
 
+// PublishScheduleCancel publishes a ScheduleCancelMsg and returns routing info for the response.
+func PublishScheduleCancel(rt Runtime, ctx context.Context, msg messages.ScheduleCancelMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeScheduleCancelResp subscribes to the response topic for a ScheduleCancelMsg command.
+func SubscribeScheduleCancelResp(rt Runtime, ctx context.Context, topic string, handler func(messages.ScheduleCancelResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ScheduleCancelResp](rt, ctx, topic, handler)
+}
+
+// PublishScheduleCreate publishes a ScheduleCreateMsg and returns routing info for the response.
+func PublishScheduleCreate(rt Runtime, ctx context.Context, msg messages.ScheduleCreateMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeScheduleCreateResp subscribes to the response topic for a ScheduleCreateMsg command.
+func SubscribeScheduleCreateResp(rt Runtime, ctx context.Context, topic string, handler func(messages.ScheduleCreateResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ScheduleCreateResp](rt, ctx, topic, handler)
+}
+
+// PublishScheduleList publishes a ScheduleListMsg and returns routing info for the response.
+func PublishScheduleList(rt Runtime, ctx context.Context, msg messages.ScheduleListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeScheduleListResp subscribes to the response topic for a ScheduleListMsg command.
+func SubscribeScheduleListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.ScheduleListResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.ScheduleListResp](rt, ctx, topic, handler)
+}
+
 // PublishSecretsDelete publishes a SecretsDeleteMsg and returns routing info for the response.
 func PublishSecretsDelete(rt Runtime, ctx context.Context, msg messages.SecretsDeleteMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -519,6 +569,26 @@ func PublishSecretsSet(rt Runtime, ctx context.Context, msg messages.SecretsSetM
 // SubscribeSecretsSetResp subscribes to the response topic for a SecretsSetMsg command.
 func SubscribeSecretsSetResp(rt Runtime, ctx context.Context, topic string, handler func(messages.SecretsSetResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.SecretsSetResp](rt, ctx, topic, handler)
+}
+
+// PublishStorageAdd publishes a StorageAddMsg and returns routing info for the response.
+func PublishStorageAdd(rt Runtime, ctx context.Context, msg messages.StorageAddMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeStorageAddResp subscribes to the response topic for a StorageAddMsg command.
+func SubscribeStorageAddResp(rt Runtime, ctx context.Context, topic string, handler func(messages.StorageAddResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.StorageAddResp](rt, ctx, topic, handler)
+}
+
+// PublishStorageRemove publishes a StorageRemoveMsg and returns routing info for the response.
+func PublishStorageRemove(rt Runtime, ctx context.Context, msg messages.StorageRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeStorageRemoveResp subscribes to the response topic for a StorageRemoveMsg command.
+func SubscribeStorageRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.StorageRemoveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.StorageRemoveResp](rt, ctx, topic, handler)
 }
 
 // PublishTestRun publishes a TestRunMsg and returns routing info for the response.
@@ -579,6 +649,26 @@ func PublishTraceList(rt Runtime, ctx context.Context, msg messages.TraceListMsg
 // SubscribeTraceListResp subscribes to the response topic for a TraceListMsg command.
 func SubscribeTraceListResp(rt Runtime, ctx context.Context, topic string, handler func(messages.TraceListResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.TraceListResp](rt, ctx, topic, handler)
+}
+
+// PublishVectorAdd publishes a VectorAddMsg and returns routing info for the response.
+func PublishVectorAdd(rt Runtime, ctx context.Context, msg messages.VectorAddMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeVectorAddResp subscribes to the response topic for a VectorAddMsg command.
+func SubscribeVectorAddResp(rt Runtime, ctx context.Context, topic string, handler func(messages.VectorAddResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.VectorAddResp](rt, ctx, topic, handler)
+}
+
+// PublishVectorRemove publishes a VectorRemoveMsg and returns routing info for the response.
+func PublishVectorRemove(rt Runtime, ctx context.Context, msg messages.VectorRemoveMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeVectorRemoveResp subscribes to the response topic for a VectorRemoveMsg command.
+func SubscribeVectorRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(messages.VectorRemoveResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.VectorRemoveResp](rt, ctx, topic, handler)
 }
 
 // PublishWorkflowCancel publishes a WorkflowCancelMsg and returns routing info for the response.
