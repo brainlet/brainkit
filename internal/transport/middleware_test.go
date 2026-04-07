@@ -10,7 +10,7 @@ import (
 )
 
 func TestDepthMiddleware_AllowsNormalDepth(t *testing.T) {
-	handler := messaging.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
+	handler := transport.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
 		return nil, nil
 	})
 
@@ -24,7 +24,7 @@ func TestDepthMiddleware_AllowsNormalDepth(t *testing.T) {
 }
 
 func TestDepthMiddleware_RejectsCycle(t *testing.T) {
-	handler := messaging.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
+	handler := transport.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
 		return nil, nil
 	})
 
@@ -41,7 +41,7 @@ func TestDepthMiddleware_RejectsCycle(t *testing.T) {
 }
 
 func TestDepthMiddleware_NoDepthHeader(t *testing.T) {
-	handler := messaging.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
+	handler := transport.DepthMiddleware(func(msg *message.Message) ([]*message.Message, error) {
 		return nil, nil
 	})
 
@@ -53,7 +53,7 @@ func TestDepthMiddleware_NoDepthHeader(t *testing.T) {
 }
 
 func TestCallerIDMiddleware_StampsDefault(t *testing.T) {
-	mw := messaging.CallerIDMiddleware("default-kit")
+	mw := transport.CallerIDMiddleware("default-kit")
 	handler := mw(func(msg *message.Message) ([]*message.Message, error) {
 		return nil, nil
 	})
@@ -67,7 +67,7 @@ func TestCallerIDMiddleware_StampsDefault(t *testing.T) {
 }
 
 func TestCallerIDMiddleware_DoesNotOverwrite(t *testing.T) {
-	mw := messaging.CallerIDMiddleware("default-kit")
+	mw := transport.CallerIDMiddleware("default-kit")
 	handler := mw(func(msg *message.Message) ([]*message.Message, error) {
 		return nil, nil
 	})
@@ -82,7 +82,7 @@ func TestCallerIDMiddleware_DoesNotOverwrite(t *testing.T) {
 }
 
 func TestMetrics_SnapshotIsIsolated(t *testing.T) {
-	m := messaging.NewMetrics()
+	m := transport.NewMetrics()
 	m.Published("test.topic")
 	m.Published("test.topic")
 	m.Record("test.topic", 0, nil)

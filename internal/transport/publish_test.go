@@ -31,7 +31,7 @@ func TestPublishHandle_RoundTrip(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	messaging.Handle[testMsg](router, pubSub, func(ctx context.Context, env messaging.Envelope[testMsg]) error {
+	transport.Handle[testMsg](router, pubSub, func(ctx context.Context, env transport.Envelope[testMsg]) error {
 		received = env.Value
 		wg.Done()
 		return nil
@@ -45,7 +45,7 @@ func TestPublishHandle_RoundTrip(t *testing.T) {
 	defer router.Close()
 	<-router.Running()
 
-	err = messaging.Publish(pubSub, testMsg{Value: "hello"}, "test-caller")
+	err = transport.Publish(pubSub, testMsg{Value: "hello"}, "test-caller")
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestDecodeEnvelope(t *testing.T) {
 	wmsg.Metadata.Set("callerId", "test-caller")
 	wmsg.Metadata.Set("traceId", "trace-123")
 
-	env, err := messaging.DecodeEnvelope[testMsg](wmsg)
+	env, err := transport.DecodeEnvelope[testMsg](wmsg)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestDecodeEnvelope(t *testing.T) {
 
 func TestDecodeEnvelope_InvalidJSON(t *testing.T) {
 	wmsg := message.NewMessage(watermill.NewUUID(), []byte("not json"))
-	_, err := messaging.DecodeEnvelope[testMsg](wmsg)
+	_, err := transport.DecodeEnvelope[testMsg](wmsg)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -94,7 +94,7 @@ func TestPublish_StampsCallerID(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	messaging.Handle[testMsg](router, pubSub, func(ctx context.Context, env messaging.Envelope[testMsg]) error {
+	transport.Handle[testMsg](router, pubSub, func(ctx context.Context, env transport.Envelope[testMsg]) error {
 		gotCallerID = env.Raw.Metadata.Get("callerId")
 		wg.Done()
 		return nil
@@ -104,7 +104,7 @@ func TestPublish_StampsCallerID(t *testing.T) {
 	defer router.Close()
 	<-router.Running()
 
-	messaging.Publish(pubSub, testMsg{Value: "x"}, "my-kit")
+	transport.Publish(pubSub, testMsg{Value: "x"}, "my-kit")
 	wg.Wait()
 
 	if gotCallerID != "my-kit" {

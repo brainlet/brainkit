@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewTransport_Memory(t *testing.T) {
-	pub, sub, err := messaging.NewTransport(messaging.TransportConfig{Type: "memory"})
+	pub, sub, err := transport.NewTransport(transport.TransportConfig{Type: "memory"})
 	if err != nil {
 		t.Fatalf("memory transport: %v", err)
 	}
@@ -17,7 +17,7 @@ func TestNewTransport_Memory(t *testing.T) {
 }
 
 func TestNewTransport_Default(t *testing.T) {
-	pub, sub, err := messaging.NewTransport(messaging.TransportConfig{})
+	pub, sub, err := transport.NewTransport(transport.TransportConfig{})
 	if err != nil {
 		t.Fatalf("default transport: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestNewTransport_Default(t *testing.T) {
 }
 
 func TestNewTransport_UnknownType(t *testing.T) {
-	_, _, err := messaging.NewTransport(messaging.TransportConfig{Type: "invalid"})
+	_, _, err := transport.NewTransport(transport.TransportConfig{Type: "invalid"})
 	if err == nil {
 		t.Fatal("expected error for unknown transport type")
 	}
@@ -35,7 +35,7 @@ func TestNewTransport_UnknownType(t *testing.T) {
 
 func TestNewTransport_UnsupportedLegacyTypes(t *testing.T) {
 	for _, tp := range []string{"legacy-one", "legacy-two"} {
-		_, _, err := messaging.NewTransport(messaging.TransportConfig{Type: tp})
+		_, _, err := transport.NewTransport(transport.TransportConfig{Type: tp})
 		if err == nil {
 			t.Fatalf("expected error for unsupported transport %q", tp)
 		}
