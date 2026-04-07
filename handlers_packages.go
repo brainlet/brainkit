@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brainlet/brainkit/packages"
+	"github.com/brainlet/brainkit/internal/packages"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 

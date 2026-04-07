@@ -24,7 +24,7 @@ import (
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
-	"github.com/brainlet/brainkit/packages"
+	"github.com/brainlet/brainkit/internal/packages"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/tracing"
