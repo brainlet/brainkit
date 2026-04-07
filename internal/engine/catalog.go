@@ -7,8 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/brainlet/brainkit/internal/transport"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 )
@@ -403,6 +404,103 @@ func commandCatalog() *commandRegistry {
 					return nil, err
 				}
 				return &messages.PeersResolveResp{Namespace: addr}, nil
+			}),
+			// ── Provider Management ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ProviderAddMsg) (*messages.ProviderAddResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				config, err := deserializeProviderConfig(req.Type, req.Config)
+				if err != nil {
+					return nil, err
+				}
+				if err := kernel.RegisterAIProvider(req.Name, provreg.AIProviderType(req.Type), config); err != nil {
+					return nil, err
+				}
+				return &messages.ProviderAddResp{Added: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ProviderRemoveMsg) (*messages.ProviderRemoveResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				kernel.UnregisterAIProvider(req.Name)
+				return &messages.ProviderRemoveResp{Removed: true}, nil
+			}),
+			// ── Storage Management ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.StorageAddMsg) (*messages.StorageAddResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				cfg, err := deserializeStorageConfig(req.Type, req.Config)
+				if err != nil {
+					return nil, err
+				}
+				if err := kernel.AddStorage(req.Name, cfg); err != nil {
+					return nil, err
+				}
+				return &messages.StorageAddResp{Added: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.StorageRemoveMsg) (*messages.StorageRemoveResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				if err := kernel.RemoveStorage(req.Name); err != nil {
+					return nil, err
+				}
+				return &messages.StorageRemoveResp{Removed: true}, nil
+			}),
+			// ── Vector Store Management ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorAddMsg) (*messages.VectorAddResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				if err := kernel.RegisterVectorStore(req.Name, provreg.VectorStoreType(req.Type), nil); err != nil {
+					return nil, err
+				}
+				return &messages.VectorAddResp{Added: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorRemoveMsg) (*messages.VectorRemoveResp, error) {
+				if req.Name == "" {
+					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
+				}
+				kernel.UnregisterVectorStore(req.Name)
+				return &messages.VectorRemoveResp{Removed: true}, nil
+			}),
+			// ── Scheduling ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleCreateMsg) (*messages.ScheduleCreateResp, error) {
+				id, err := kernel.Schedule(ctx, ScheduleConfig{
+					Expression: req.Expression,
+					Topic:      req.Topic,
+					Payload:    req.Payload,
+				})
+				if err != nil {
+					return nil, err
+				}
+				return &messages.ScheduleCreateResp{ID: id}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleCancelMsg) (*messages.ScheduleCancelResp, error) {
+				if req.ID == "" {
+					return nil, &sdkerrors.ValidationError{Field: "id", Message: "is required"}
+				}
+				if err := kernel.Unschedule(ctx, req.ID); err != nil {
+					return nil, err
+				}
+				return &messages.ScheduleCancelResp{Cancelled: true}, nil
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleListMsg) (*messages.ScheduleListResp, error) {
+				schedules := kernel.ListSchedules()
+				infos := make([]messages.ScheduleInfo, 0, len(schedules))
+				for _, s := range schedules {
+					infos = append(infos, messages.ScheduleInfo{
+						ID:         s.ID,
+						Expression: s.Expression,
+						Topic:      s.Topic,
+						NextFire:   s.NextFire.Format("2006-01-02T15:04:05Z07:00"),
+						OneTime:    s.OneTime,
+						Source:     s.Source,
+					})
+				}
+				return &messages.ScheduleListResp{Schedules: infos}, nil
 			}),
 		}
 
