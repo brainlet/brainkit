@@ -1,0 +1,134 @@
+package types
+
+import (
+	"encoding/json"
+	"log/slog"
+	"time"
+)
+
+// KernelConfig configures the local runtime.
+type KernelConfig struct {
+	// Identity
+	Namespace string
+	CallerID  string
+
+	// AI providers
+	AIProviders map[string]AIProviderRegistration
+
+	// EnvVars overrides os.Getenv for specific keys.
+	EnvVars map[string]string
+
+	// Storage pool
+	Storages map[string]StorageConfig
+
+	// Vector pool
+	Vectors map[string]VectorConfig
+
+	// Filesystem sandbox root
+	FSRoot string
+
+	// Secrets
+	SecretStore SecretStore
+	SecretKey   string
+
+	// RBAC
+	Roles       map[string]Role
+	DefaultRole string
+
+	// Tracing
+	TraceStore      TraceStore
+	TraceSampleRate float64
+
+	// Infrastructure
+	MaxStackSize       int
+	SharedTools        any // *tools.ToolRegistry — uses any to avoid import cycle
+	MCPServers         map[string]MCPServerConfig
+	Observability      ObservabilityConfig
+	Store              KitStore
+	Probe              ProbeConfig
+	RetryPolicies      map[string]RetryPolicy
+	Logger             *slog.Logger
+	LogHandler         func(LogEntry)
+	ErrorHandler       func(error, ErrorContext)
+	Transport          any // *transport.Transport — uses any to avoid import cycle
+	DeferRouterStart   bool
+	MaxConcurrency     int
+	BusRateLimits      map[string]float64
+	ProviderKeyMapping map[string]string
+	PluginRegistries   []RegistryConfig
+	PluginDir          string
+}
+
+// RegistryConfig configures a plugin registry source.
+type RegistryConfig struct {
+	Name      string
+	URL       string
+	AuthToken string
+}
+
+// DefaultRegistry is the official brainlet plugin registry.
+var DefaultRegistry = RegistryConfig{
+	Name: "official",
+	URL:  "https://raw.githubusercontent.com/brainlet/plugins-registry/main/v1",
+}
+
+// ObservabilityConfig configures the tracing/observability system.
+type ObservabilityConfig struct {
+	Enabled     *bool
+	Strategy    string
+	ServiceName string
+}
+
+// RetryPolicy configures retry behavior for failed bus handlers.
+type RetryPolicy struct {
+	MaxRetries      int
+	InitialDelay    time.Duration
+	MaxDelay        time.Duration
+	BackoffFactor   float64
+	DeadLetterTopic string
+}
+
+// ScheduleConfig configures a new schedule via Kernel.Schedule().
+type ScheduleConfig struct {
+	ID         string
+	Expression string
+	Topic      string
+	Payload    json.RawMessage
+	Source     string
+}
+
+// NodeConfig configures a transport-connected runtime node.
+type NodeConfig struct {
+	Kernel    KernelConfig
+	Messaging MessagingConfig
+	NodeID    string
+	Namespace string
+	Plugins   []PluginConfig
+	Discovery DiscoveryConfig
+}
+
+// MessagingConfig configures the transport-backed runtime host.
+type MessagingConfig struct {
+	Transport   string
+	NATSURL     string
+	NATSName    string
+	AMQPURL     string
+	RedisURL    string
+	PostgresURL string
+	SQLitePath  string
+}
+
+// DiscoveryConfig configures the discovery mechanism.
+type DiscoveryConfig struct {
+	Type        string
+	ServiceName string
+	StaticPeers []PeerConfig
+}
+
+// PeerConfig configures a known peer.
+type PeerConfig struct {
+	Name      string
+	Namespace string
+	Address   string
+	Meta      map[string]string
+}
