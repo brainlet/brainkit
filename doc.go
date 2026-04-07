@@ -1,16 +1,30 @@
 // Package brainkit is an embeddable runtime for AI agent teams.
 //
-// Create a Kernel for standalone use or a Node for transport-connected deployment.
-// Deploy .ts code, register Go tools, configure AI providers, storage backends,
-// RBAC roles, secrets, and tracing — all through KernelConfig.
+// Create a runtime with [New]. Interact through typed async messages
+// using [sdk.Publish] and [sdk.SubscribeTo]:
 //
-//	k, _ := brainkit.NewKernel(brainkit.KernelConfig{
+//	kit, _ := brainkit.New(brainkit.Config{
 //	    Namespace: "myapp",
 //	    Storages: map[string]brainkit.StorageConfig{
 //	        "default": brainkit.SQLiteStorage("./data/app.db"),
 //	    },
+//	    Providers: []brainkit.ProviderConfig{
+//	        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
+//	    },
 //	})
-//	defer k.Close()
+//	defer kit.Close()
 //
-//	k.Deploy(ctx, "agent.ts", code)
+//	// Deploy a package (async)
+//	pr, _ := sdk.PublishPackageDeploy(kit, ctx, messages.PackageDeployMsg{
+//	    Path: "./agents/support.ts",
+//	})
+//	sdk.SubscribePackageDeployResp(kit, ctx, pr.ReplyTo,
+//	    func(resp messages.PackageDeployResp, msg messages.Message) {
+//	        fmt.Println("Deployed:", resp.Name)
+//	    },
+//	)
+//
+// Every feature is a typed bus command — deploy packages, manage providers,
+// schedule messages, manage secrets, control plugins. The SDK generates
+// type-safe Publish/Subscribe wrappers for every command.
 package brainkit
