@@ -271,8 +271,10 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		logger = slog.Default()
 	}
 
-	sharedTools := cfg.SharedTools
-	if sharedTools == nil {
+	var sharedTools *toolreg.ToolRegistry
+	if cfg.SharedTools != nil {
+		sharedTools = cfg.SharedTools.(*toolreg.ToolRegistry)
+	} else {
 		sharedTools = toolreg.New()
 	}
 
@@ -518,7 +520,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 
 	// Set up internal Watermill transport + router
 	if cfg.Transport != nil {
-		kernel.transport = cfg.Transport
+		kernel.transport = cfg.Transport.(*transport.Transport)
 		kernel.ownsTransport = false
 	} else {
 		transport, err := transport.NewTransportSet(transport.TransportConfig{Type: "memory"})
@@ -764,7 +766,7 @@ func resolveSecretStore(cfg KernelConfig, logger *slog.Logger) secrets.SecretSto
 		logger.Warn("SecretKey not set, secrets stored without encryption")
 	}
 
-	store, err := secrets.NewEncryptedKVStore(sqliteStore.db, key)
+	store, err := secrets.NewEncryptedKVStore(sqliteStore.DB, key)
 	if err != nil {
 		InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "CreateEncryptedSecretStore", Cause: err,

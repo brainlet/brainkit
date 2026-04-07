@@ -45,7 +45,7 @@ func (k *Kernel) handleHandlerFailure(msg messages.Message, topic string, handle
 	}
 
 	// Retry with backoff
-	delay := policy.computeDelay(retryCount)
+	delay := computeDelay(policy, retryCount)
 	nextRetry := retryCount + 1
 
 	k.logger.Warn("handler failed, retrying",
@@ -136,7 +136,7 @@ func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int) {
 	k.publish(context.Background(), messages.HandlerExhaustedEvent{}.BusTopic(), payload)
 }
 
-func (p *RetryPolicy) computeDelay(retryCount int) time.Duration {
+func computeDelay(p *RetryPolicy, retryCount int) time.Duration {
 	delay := p.InitialDelay
 	if delay == 0 {
 		delay = 1 * time.Second

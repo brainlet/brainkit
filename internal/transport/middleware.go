@@ -122,9 +122,3 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 	return snap
 }
 
-// MetricsSnapshot is a point-in-time copy of metrics data.
-type MetricsSnapshot struct {
-	Published map[string]int `json:"published"`
-	Handled   map[string]int `json:"handled"`
-	Errors    map[string]int `json:"errors"`
-}

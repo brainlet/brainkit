@@ -16,17 +16,4 @@ type Peer struct {
 	Meta      map[string]string `json:"meta,omitempty"`
 }
 
-// Config configures the discovery mechanism.
-type Config struct {
-	Type        string       // "static", "multicast", or "" (none)
-	ServiceName string       // multicast service name (default: "_brainkit._tcp")
-	StaticPeers []PeerConfig // for Type="static": list of known peers
-}
 
-// PeerConfig configures a known peer.
-type PeerConfig struct {
-	Name      string
-	Namespace string
-	Address   string
-	Meta      map[string]string
-}

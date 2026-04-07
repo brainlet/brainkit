@@ -154,7 +154,7 @@ var (
 // ── Scaling ──────────────────────────────────────────────────────────────────
 
 type InstanceManager = engine.InstanceManager
-type PoolConfig = types.PoolConfig
+type PoolConfig = engine.PoolConfig
 type PoolInfo = types.PoolInfo
 type ScalingStrategy = types.ScalingStrategy
 type ScalingDecision = types.ScalingDecision

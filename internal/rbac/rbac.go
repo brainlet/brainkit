@@ -7,45 +7,11 @@ import (
 	"time"
 )
 
-// Role defines a named set of permissions.
-type Role struct {
-	Name         string                  `json:"name"`
-	Bus          BusPermissions          `json:"bus"`
-	Commands     CommandPermissions      `json:"commands"`
-	Registration RegistrationPermissions `json:"registration"`
-}
 
-// BusPermissions controls which topics a role can publish/subscribe/emit.
-type BusPermissions struct {
-	Publish   TopicFilter `json:"publish"`
-	Subscribe TopicFilter `json:"subscribe"`
-	Emit      TopicFilter `json:"emit"`
-}
 
-// TopicFilter uses glob patterns with deny-before-allow evaluation.
-type TopicFilter struct {
-	Allow []string `json:"allow,omitempty"`
-	Deny  []string `json:"deny,omitempty"`
-}
 
-// CommandPermissions controls which catalog commands a role can invoke.
-type CommandPermissions struct {
-	Allow []string `json:"allow,omitempty"`
-	Deny  []string `json:"deny,omitempty"`
-}
 
-// RegistrationPermissions controls resource creation.
-type RegistrationPermissions struct {
-	Tools  bool `json:"tools"`
-	Agents bool `json:"agents"`
-}
 
-// RoleAssignment records an explicit role assignment.
-type RoleAssignment struct {
-	Source     string    `json:"source"`
-	Role      string    `json:"role"`
-	AssignedAt time.Time `json:"assignedAt"`
-}
 
 // Manager manages roles and role assignments.
 type Manager struct {

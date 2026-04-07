@@ -52,7 +52,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	}
 
 	// Create external transport
-	transport, err := transport.NewTransportSet(cfg.Messaging.transportConfig())
+	transport, err := transport.NewTransportSet(messagingToTransportConfig(cfg.Messaging))
 	if err != nil {
 		return nil, fmt.Errorf("brainkit: transport: %w", err)
 	}
@@ -486,4 +486,17 @@ func (n *Node) setPluginState(ctx context.Context, req messages.PluginStateSetMs
 func mustMarshalJSON(v any) json.RawMessage {
 	payload, _ := json.Marshal(v)
 	return payload
+}
+
+// messagingToTransportConfig converts MessagingConfig to transport.TransportConfig.
+func messagingToTransportConfig(cfg MessagingConfig) transport.TransportConfig {
+	return transport.TransportConfig{
+		Type:        cfg.Transport,
+		NATSURL:     cfg.NATSURL,
+		NATSName:    cfg.NATSName,
+		AMQPURL:     cfg.AMQPURL,
+		RedisURL:    cfg.RedisURL,
+		PostgresURL: cfg.PostgresURL,
+		SQLitePath:  cfg.SQLitePath,
+	}
 }

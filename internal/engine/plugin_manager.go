@@ -334,3 +334,15 @@ func (w *logWriter) Write(p []byte) (int, error) {
 	w.logger.Info(strings.TrimRight(string(p), "\n"), slog.String("plugin", w.plugin), slog.String("stream", "stderr"))
 	return len(p), nil
 }
+
+func pluginDefaults(cfg *PluginConfig) {
+	if cfg.MaxRestarts == 0 {
+		cfg.MaxRestarts = 5
+	}
+	if cfg.StartTimeout == 0 {
+		cfg.StartTimeout = 10 * time.Second
+	}
+	if cfg.ShutdownTimeout == 0 {
+		cfg.ShutdownTimeout = 5 * time.Second
+	}
+}

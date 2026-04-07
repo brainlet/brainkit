@@ -31,6 +31,26 @@ var (
 	DefaultStorageCapabilities  = types.DefaultStorageCapabilities
 )
 
+// Re-export AI provider type constants
+const (
+	AIProviderOpenAI      = types.AIProviderOpenAI
+	AIProviderAnthropic   = types.AIProviderAnthropic
+	AIProviderGoogle      = types.AIProviderGoogle
+	AIProviderMistral     = types.AIProviderMistral
+	AIProviderCohere      = types.AIProviderCohere
+	AIProviderGroq        = types.AIProviderGroq
+	AIProviderPerplexity  = types.AIProviderPerplexity
+	AIProviderDeepSeek    = types.AIProviderDeepSeek
+	AIProviderFireworks   = types.AIProviderFireworks
+	AIProviderTogetherAI  = types.AIProviderTogetherAI
+	AIProviderXAI         = types.AIProviderXAI
+	AIProviderAzure       = types.AIProviderAzure
+	AIProviderBedrock     = types.AIProviderBedrock
+	AIProviderVertex      = types.AIProviderVertex
+	AIProviderHuggingFace = types.AIProviderHuggingFace
+	AIProviderCerebras    = types.AIProviderCerebras
+)
+
 // Re-export all storage type constants
 const (
 	StorageInMemory = types.StorageInMemory
@@ -286,3 +306,9 @@ func (r *ProviderRegistry) HasStorage(name string) bool {
 	_, ok := r.storages[name]
 	return ok
 }
+
+// Additional re-exports
+type QdrantVectorConfig = types.QdrantVectorConfig
+type InMemoryStorageConfig = types.InMemoryStorageConfig
+
+const VectorStoreQdrant = types.VectorStoreQdrant

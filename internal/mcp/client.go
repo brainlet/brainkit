@@ -6,22 +6,15 @@ import (
 	"fmt"
 	"github.com/brainlet/brainkit/internal/syncx"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// ServerConfig defines an MCP server connection.
-type ServerConfig struct {
-	// Stdio transport: command + args (e.g., "npx", ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])
-	Command string            `json:"command,omitempty"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-
-	// HTTP transport: URL (e.g., "http://localhost:8080/mcp")
-	URL string `json:"url,omitempty"`
-}
+// ServerConfig is an alias for the shared MCPServerConfig type.
+type ServerConfig = types.MCPServerConfig
 
 // ToolInfo describes a tool from an MCP server.
 type ToolInfo struct {

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"time"
-
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 )
 
 // Result is the generic return from sandbox Eval.
@@ -86,7 +84,12 @@ type KernelMetrics struct {
 }
 
 // MCPServerConfig defines an MCP server connection.
-type MCPServerConfig = mcppkg.ServerConfig
+type MCPServerConfig struct {
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+}
 
 // ── Deploy Options ───────────────────────────────────────────────────────────
 
