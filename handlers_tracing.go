@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/brainlet/brainkit/tracing"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 

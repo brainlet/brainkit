@@ -27,7 +27,7 @@ import (
 	"github.com/brainlet/brainkit/packages"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/secrets"
-	"github.com/brainlet/brainkit/tracing"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/tools"

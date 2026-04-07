@@ -13,7 +13,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/brainlet/brainkit/tracing"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit/internal/tools"
-	"github.com/brainlet/brainkit/tracing"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 

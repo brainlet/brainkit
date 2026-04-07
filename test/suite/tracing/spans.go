@@ -12,7 +12,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
-	tracingpkg "github.com/brainlet/brainkit/tracing"
+	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

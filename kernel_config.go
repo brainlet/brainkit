@@ -11,7 +11,7 @@ import (
 	"github.com/brainlet/brainkit/internal/rbac"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/secrets"
-	"github.com/brainlet/brainkit/tracing"
+	"github.com/brainlet/brainkit/internal/tracing"
 )
 
 // RetryPolicy configures retry behavior for failed bus handlers.
