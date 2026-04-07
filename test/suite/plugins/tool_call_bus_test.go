@@ -10,7 +10,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/transport"
+	xport "github.com/brainlet/brainkit/internal/transport"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -24,7 +24,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 	dir := t.TempDir()
 	transportDB := dir + "/transport.db"
 
-	transport, err := transport.NewTransportSet(transport.TransportConfig{
+	transport, err := xport.NewTransportSet(xport.TransportConfig{
 		Type:       "sql-sqlite",
 		SQLitePath: transportDB,
 	})
@@ -57,7 +57,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 			return
 		}
 		// Fallback: publish to .result topic
-		ctx := transport.ContextWithCorrelationID(context.Background(), correlationID)
+		ctx := xport.ContextWithCorrelationID(context.Background(), correlationID)
 		kernel.PublishRaw(ctx, fakeResultTopic, resp)
 	})
 	require.NoError(t, err)
@@ -70,15 +70,15 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 			Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				// Pass-through: forward caller's replyTo to the plugin.
 				// Uses PublishRawWithMeta to stamp replyTo directly (already resolved).
-				callerReplyTo := transport.ReplyToFromContext(callCtx)
+				callerReplyTo := xport.ReplyToFromContext(callCtx)
 				if callerReplyTo != "" {
-					correlationID := transport.CorrelationIDFromContext(callCtx)
+					correlationID := xport.CorrelationIDFromContext(callCtx)
 					wmsg := message.NewMessage(watermill.NewUUID(), []byte(input))
 					wmsg.Metadata.Set("replyTo", callerReplyTo)
 					if correlationID != "" {
 						wmsg.Metadata.Set("correlationId", correlationID)
 					}
-					resolvedTopic := transport.SanitizeTopic(transport.NamespacedTopic("test-plugin-bus", fakeTopic))
+					resolvedTopic := transport.SanitizeTopic(xport.NamespacedTopic("test-plugin-bus", fakeTopic))
 					if err := transport.Publisher.Publish(resolvedTopic, wmsg); err != nil {
 						return nil, err
 					}
@@ -102,7 +102,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 				}
 				defer stop()
 
-				ctx := transport.ContextWithCorrelationID(callCtx, correlationID)
+				ctx := xport.ContextWithCorrelationID(callCtx, correlationID)
 				if _, pubErr := kernel.PublishRaw(ctx, fakeTopic, input); pubErr != nil {
 					return nil, pubErr
 				}
