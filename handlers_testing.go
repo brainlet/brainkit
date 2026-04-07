@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	braintest "github.com/brainlet/brainkit/testing"
+	braintest "github.com/brainlet/brainkit/internal/braintest"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
