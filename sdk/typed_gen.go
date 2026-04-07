@@ -7,7 +7,7 @@
 // The underlying async pub/sub pattern is unchanged — callers still manage
 // channels, select, and timeouts. These wrappers just add type safety.
 //
-// Regenerate: go run ./cmd/sdkgen/ -messages ./sdk/messages -out ./sdk/typed_gen.go
+// Regenerate: go run ./codegen/sdkgen/ -messages ./sdk/messages -out ./sdk/typed_gen.go
 package sdk
 
 import (
