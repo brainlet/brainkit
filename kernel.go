@@ -25,7 +25,7 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/packages"
-	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/secrets"
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/internal/libsql"

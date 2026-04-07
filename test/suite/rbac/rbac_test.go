@@ -3,7 +3,7 @@ package rbac
 import (
 	"testing"
 
-	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/test/suite"
 )
 

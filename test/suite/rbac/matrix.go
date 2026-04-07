@@ -7,7 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
-	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

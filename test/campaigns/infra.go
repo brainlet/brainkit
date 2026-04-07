@@ -13,7 +13,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/testcontainers/testcontainers-go/wait"

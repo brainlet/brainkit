@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/rbac"
+	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
