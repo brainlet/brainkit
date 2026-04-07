@@ -1,78 +1,80 @@
 package providers
 
 import (
-	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/syncx"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// AIProviderRegistration wraps a typed config for registration.
-type AIProviderRegistration struct {
-	Type   AIProviderType
-	Config any // one of the *ProviderConfig structs
-}
+// Type aliases from internal/types
+type AIProviderRegistration = types.AIProviderRegistration
+type AIProviderType = types.AIProviderType
+type AIProviderCapabilities = types.AIProviderCapabilities
+type VectorStoreRegistration = types.VectorStoreRegistration
+type VectorStoreType = types.VectorStoreType
+type VectorStoreCapabilities = types.VectorStoreCapabilities
+type VectorStoreInfo = types.VectorStoreInfo
+type StorageRegistration = types.StorageRegistration
+type StorageType = types.StorageType
+type StorageCapabilities = types.StorageCapabilities
+type StorageInfo = types.StorageInfo
+type ProviderInfo = types.ProviderInfo
+type ProbeConfig = types.ProbeConfig
+type ProbeResult = types.ProbeResult
 
-// VectorStoreRegistration wraps a typed config for registration.
-type VectorStoreRegistration struct {
-	Type   VectorStoreType
-	Config any // one of the *VectorConfig structs
-}
+// Re-export constants and functions from types
+var (
+	KnownAICapabilities        = types.KnownAICapabilities
+	DefaultVectorCapabilities   = types.DefaultVectorCapabilities
+	DefaultStorageCapabilities  = types.DefaultStorageCapabilities
+)
 
-// StorageRegistration wraps a typed config for registration.
-type StorageRegistration struct {
-	Type   StorageType
-	Config any // one of the *StorageConfig structs
-}
+// Re-export all storage type constants
+const (
+	StorageInMemory = types.StorageInMemory
+	StorageLibSQL   = types.StorageLibSQL
+	StoragePostgres = types.StoragePostgres
+	StorageMongoDB  = types.StorageMongoDB
+	StorageUpstash  = types.StorageUpstash
+)
 
-// ProviderInfo describes a registered AI provider.
-type ProviderInfo struct {
-	Name         string                `json:"name"`
-	Type         AIProviderType        `json:"type"`
-	Capabilities AIProviderCapabilities `json:"capabilities"`
-	Healthy      bool                  `json:"healthy"`
-	LastProbed   time.Time             `json:"lastProbed"`
-	LastError    string                `json:"lastError"`
-	Latency      time.Duration         `json:"latency"`
-}
+// Re-export vector store type constants
+const (
+	VectorStoreLibSQL  = types.VectorStoreLibSQL
+	VectorStorePg      = types.VectorStorePg
+	VectorStoreMongoDB = types.VectorStoreMongoDB
+)
 
-// VectorStoreInfo describes a registered vector store.
-type VectorStoreInfo struct {
-	Name         string                  `json:"name"`
-	Type         VectorStoreType         `json:"type"`
-	Capabilities VectorStoreCapabilities `json:"capabilities"`
-	Healthy      bool                    `json:"healthy"`
-	LastProbed   time.Time               `json:"lastProbed"`
-	LastError    string                  `json:"lastError"`
-	Latency      time.Duration           `json:"latency"`
-}
+// Re-export storage config types
+type LibSQLStorageConfig = types.LibSQLStorageConfig
+type PostgresStorageConfig = types.PostgresStorageConfig
+type MongoDBStorageConfig = types.MongoDBStorageConfig
+type UpstashStorageConfig = types.UpstashStorageConfig
 
-// StorageInfo describes a registered storage backend.
-type StorageInfo struct {
-	Name         string              `json:"name"`
-	Type         StorageType         `json:"type"`
-	Capabilities StorageCapabilities `json:"capabilities"`
-	Healthy      bool                `json:"healthy"`
-	LastProbed   time.Time           `json:"lastProbed"`
-	LastError    string              `json:"lastError"`
-	Latency      time.Duration       `json:"latency"`
-}
+// Re-export vector config types
+type LibSQLVectorConfig = types.LibSQLVectorConfig
+type PgVectorConfig = types.PgVectorConfig
+type MongoDBVectorConfig = types.MongoDBVectorConfig
 
-// ProbeResult is returned by explicit Probe* calls.
-type ProbeResult struct {
-	Available    bool          `json:"available"`
-	Capabilities any           `json:"capabilities"`
-	Latency      time.Duration `json:"latency"`
-	Error        string        `json:"error,omitempty"`
-}
-
-// ProbeConfig configures probing behavior.
-type ProbeConfig struct {
-	CacheTTL         time.Duration // default: 60s
-	ProbeOnRegister  bool          // default: true
-	ProbeTimeout     time.Duration // default: 5s
-	PeriodicInterval time.Duration // 0 = disabled
-}
+// Re-export provider config types
+type OpenAIProviderConfig = types.OpenAIProviderConfig
+type AnthropicProviderConfig = types.AnthropicProviderConfig
+type GoogleProviderConfig = types.GoogleProviderConfig
+type MistralProviderConfig = types.MistralProviderConfig
+type CohereProviderConfig = types.CohereProviderConfig
+type GroqProviderConfig = types.GroqProviderConfig
+type PerplexityProviderConfig = types.PerplexityProviderConfig
+type DeepSeekProviderConfig = types.DeepSeekProviderConfig
+type FireworksProviderConfig = types.FireworksProviderConfig
+type TogetherAIProviderConfig = types.TogetherAIProviderConfig
+type XAIProviderConfig = types.XAIProviderConfig
+type AzureProviderConfig = types.AzureProviderConfig
+type BedrockProviderConfig = types.BedrockProviderConfig
+type VertexProviderConfig = types.VertexProviderConfig
+type HuggingFaceProviderConfig = types.HuggingFaceProviderConfig
+type CerebrasProviderConfig = types.CerebrasProviderConfig
 
 // entry is the internal state for a registered resource.
 type entry struct {
