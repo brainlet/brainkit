@@ -1,6 +1,13 @@
-package sdk
+package plugin
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/brainlet/brainkit/sdk"
+)
+
+// Client is an alias for sdk.Runtime — the interface plugin handlers receive.
+type Client = sdk.Runtime
 
 // PluginManifest declares a plugin's capabilities.
 type PluginManifest struct {

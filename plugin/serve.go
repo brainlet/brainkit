@@ -1,4 +1,4 @@
-package sdk
+package plugin
 
 import (
 	"context"
@@ -12,9 +12,27 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	xport "github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
+
+// pluginClient implements sdk.Runtime for plugin processes connected via Watermill.
+type pluginClient struct {
+	remote    *xport.RemoteClient
+	namespace string
+}
+
+func (c *pluginClient) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
+	return c.remote.PublishRaw(ctx, topic, payload)
+}
+
+func (c *pluginClient) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+	return c.remote.SubscribeRaw(ctx, topic, handler)
+}
+
+func (c *pluginClient) Close() error { return nil }
 
 // Run starts the plugin, connects to the Watermill transport, publishes the
 // manifest, and runs the message router until shutdown.
@@ -133,12 +151,12 @@ func (p *Plugin) Run() error {
 			return out
 		}(),
 	}
-	pubResult, err := Publish(rt, context.Background(), manifestMsg)
+	pubResult, err := sdk.Publish(rt, context.Background(), manifestMsg)
 	if err != nil {
 		return fmt.Errorf("sdk: publish manifest: %w", err)
 	}
 	regCh := make(chan error, 1)
-	cancelReg, err := SubscribeTo[messages.PluginManifestResp](rt, context.Background(), pubResult.ReplyTo, func(resp messages.PluginManifestResp, msg messages.Message) {
+	cancelReg, err := sdk.SubscribeTo[messages.PluginManifestResp](rt, context.Background(), pubResult.ReplyTo, func(resp messages.PluginManifestResp, msg messages.Message) {
 		if resp.Error != "" {
 			regCh <- fmt.Errorf("sdk: register manifest: %s", resp.Error)
 		} else {
@@ -156,7 +174,7 @@ func (p *Plugin) Run() error {
 			return regErr
 		}
 	case <-time.After(30 * time.Second):
-		return &TimeoutError{Operation: "plugin manifest registration"}
+		return &sdkerrors.TimeoutError{Operation: "plugin manifest registration"}
 	}
 
 	// Call OnStart
