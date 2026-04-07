@@ -20,4 +20,4 @@ internal/docs/*
 
 playground
 
-bin/*
+bin/**.go binary
