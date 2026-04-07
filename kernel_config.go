@@ -10,7 +10,7 @@ import (
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/rbac"
 	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/secrets"
+	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/tracing"
 )
 

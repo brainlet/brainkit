@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/secrets"
+	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
