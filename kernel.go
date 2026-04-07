@@ -30,7 +30,7 @@ import (
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	toolreg "github.com/brainlet/brainkit/internal/registry"
+	toolreg "github.com/brainlet/brainkit/internal/tools"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"

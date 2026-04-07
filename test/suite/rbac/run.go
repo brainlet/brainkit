@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
@@ -120,7 +120,7 @@ func newRBACKernel(t *testing.T, defaultRole string) *brainkit.Kernel {
 	require.NoError(t, err)
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/sdk"
@@ -117,7 +117,7 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 	t.Cleanup(func() { k.Close() })
 
 	// Register test tools
-	err = brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	err = brainkit.RegisterTool(k, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
@@ -127,7 +127,7 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		t.Fatalf("RegisterTool echo: %v", err)
 	}
 
-	err = brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	err = brainkit.RegisterTool(k, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -182,13 +182,13 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 	}
 
 	// Register test tools on Node's kernel
-	brainkit.RegisterTool(n.Kernel, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(n.Kernel, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	brainkit.RegisterTool(n.Kernel, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(n.Kernel, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil

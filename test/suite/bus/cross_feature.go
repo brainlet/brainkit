@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -167,7 +167,7 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 	var eventCount atomic.Int64
 
 	type processIn struct{ Data string `json:"data"` }
-	brainkit.RegisterTool(k, "process-and-emit-adv", registry.TypedTool[processIn]{
+	brainkit.RegisterTool(k, "process-and-emit-adv", tools.TypedTool[processIn]{
 		Description: "processes and emits event",
 		Execute: func(ctx context.Context, in processIn) (any, error) {
 			sdk.Emit(k, ctx, messages.CustomEvent{
@@ -214,7 +214,7 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	defer k.Close()
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "traced-echo-adv", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k, "traced-echo-adv", tools.TypedTool[echoIn]{
 		Description: "echoes with tracing",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
@@ -302,7 +302,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k1, "echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k1, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
 	})
@@ -324,7 +324,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	brainkit.RegisterTool(k2, "echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k2, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
 	})

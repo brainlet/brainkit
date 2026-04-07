@@ -6,20 +6,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/tracing"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // ToolsDomain handles tool registry operations: call, resolve, register, list.
 type ToolsDomain struct {
-	tools    *registry.ToolRegistry
+	tools    *tools.ToolRegistry
 	eval     JSEvaluator
 	tracer   *tracing.Tracer
 	callerID string
 }
 
-func newToolsDomain(tools *registry.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID string) *ToolsDomain {
+func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID string) *ToolsDomain {
 	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, callerID: callerID}
 }
 
@@ -68,19 +68,19 @@ func (d *ToolsDomain) Resolve(_ context.Context, req messages.ToolResolveMsg) (*
 func (d *ToolsDomain) Register(_ context.Context, name, description string, inputSchema json.RawMessage, callerID string) (string, error) {
 	var fullName string
 	shortName := name
-	if registry.IsNewFormat(name) {
+	if tools.IsNewFormat(name) {
 		fullName = name
-		_, _, _, shortName = registry.ParseToolName(name)
+		_, _, _, shortName = tools.ParseToolName(name)
 	} else {
-		fullName = registry.ComposeName(callerID, callerID, "0.0.0", name)
+		fullName = tools.ComposeName(callerID, callerID, "0.0.0", name)
 	}
 
-	if err := d.tools.Register(registry.RegisteredTool{
+	if err := d.tools.Register(tools.RegisteredTool{
 		Name:        fullName,
 		ShortName:   shortName,
 		Description: description,
 		InputSchema: inputSchema,
-		Executor: &registry.GoFuncExecutor{
+		Executor: &tools.GoFuncExecutor{
 			Fn: func(ctx context.Context, _ string, input json.RawMessage) (json.RawMessage, error) {
 				rawInput := strings.TrimSpace(string(input))
 				if rawInput == "" {

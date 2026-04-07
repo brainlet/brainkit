@@ -9,7 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -148,10 +148,10 @@ func testPoolSharedTools(t *testing.T, env *suite.TestEnv) {
 	im := brainkit.NewInstanceManager()
 
 	cfg := poolNodeConfig(t)
-	sharedTools := registry.New()
+	sharedTools := tools.New()
 	cfg.Kernel.SharedTools = sharedTools
 
-	registry.Register(sharedTools, "stress-pool-echo", registry.TypedTool[struct {
+	tools.Register(sharedTools, "stress-pool-echo", tools.TypedTool[struct {
 		Msg string `json:"msg"`
 	}]{
 		Description: "pool echo tool",
@@ -276,10 +276,10 @@ func testPoolInstancesProcessMessages(t *testing.T, env *suite.TestEnv) {
 	im := brainkit.NewInstanceManager()
 
 	cfg := poolNodeConfig(t)
-	sharedTools := registry.New()
+	sharedTools := tools.New()
 	cfg.Kernel.SharedTools = sharedTools
 
-	registry.Register(sharedTools, "stress-ping", registry.TypedTool[struct{}]{
+	tools.Register(sharedTools, "stress-ping", tools.TypedTool[struct{}]{
 		Description: "ping tool",
 		Execute: func(ctx context.Context, input struct{}) (any, error) {
 			return map[string]string{"pong": "ok"}, nil

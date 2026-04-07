@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -30,7 +30,7 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 	defer node.Close()
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(node.Kernel, "host-echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(node.Kernel, "host-echo", tools.TypedTool[echoIn]{
 		Description: "echoes from host",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message, "source": "host"}, nil
@@ -115,7 +115,7 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 		A int `json:"a"`
 		B int `json:"b"`
 	}
-	brainkit.RegisterTool(node.Kernel, "add", registry.TypedTool[addIn]{
+	brainkit.RegisterTool(node.Kernel, "add", tools.TypedTool[addIn]{
 		Description: "adds numbers",
 		Execute: func(ctx context.Context, in addIn) (any, error) {
 			return map[string]int{"sum": in.A + in.B}, nil

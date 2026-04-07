@@ -11,7 +11,7 @@ import (
 	"github.com/brainlet/brainkit/internal/discovery"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
@@ -362,8 +362,8 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 
 	for _, tool := range manifest.Tools {
 		tool := tool
-		fullName := registry.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
-		_ = n.Kernel.Tools.Register(registry.RegisteredTool{
+		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
+		_ = n.Kernel.Tools.Register(tools.RegisteredTool{
 			Name:        fullName,
 			ShortName:   tool.Name,
 			Owner:       manifest.Owner,
@@ -371,7 +371,7 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 			Version:     manifest.Version,
 			Description: tool.Description,
 			InputSchema: json.RawMessage(tool.InputSchema),
-			Executor: &registry.GoFuncExecutor{
+			Executor: &tools.GoFuncExecutor{
 				Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 					topic := pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
 

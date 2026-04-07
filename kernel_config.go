@@ -7,7 +7,7 @@ import (
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/transport"
-	toolreg "github.com/brainlet/brainkit/internal/registry"
+	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/registry"
 	"github.com/brainlet/brainkit/secrets"

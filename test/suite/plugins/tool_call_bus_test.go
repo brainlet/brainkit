@@ -11,7 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
-	toolreg "github.com/brainlet/brainkit/internal/registry"
+	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/require"

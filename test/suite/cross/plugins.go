@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -354,7 +354,7 @@ func buildSubprocessNode(t *testing.T, env *suite.TestEnv) *brainkit.Node {
 	})
 	require.NoError(t, err)
 
-	brainkit.RegisterTool(node.Kernel, "host-add", registry.TypedTool[testutil.AddInput]{
+	brainkit.RegisterTool(node.Kernel, "host-add", tools.TypedTool[testutil.AddInput]{
 		Description: "adds two numbers (host-side)",
 		Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil

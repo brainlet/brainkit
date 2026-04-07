@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"github.com/brainlet/brainkit/internal/syncx"
 
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -92,7 +92,7 @@ type interceptorRegistration struct {
 // Tool registers a typed tool handler. Schema is auto-generated from In.
 func Tool[In, Out any](p *Plugin, name, description string, handler func(ctx context.Context, client Client, in In) (Out, error)) {
 	var zero In
-	schema := string(registry.StructToJSONSchema(zero))
+	schema := string(tools.StructToJSONSchema(zero))
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -135,7 +135,7 @@ func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event 
 // Event declares an event type this plugin will publish.
 func Event[E messages.BrainkitMessage](p *Plugin, description string) {
 	var zero E
-	schema := string(registry.StructToJSONSchema(zero))
+	schema := string(tools.StructToJSONSchema(zero))
 	topic := zero.BusTopic()
 
 	p.mu.Lock()

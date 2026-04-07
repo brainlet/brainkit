@@ -8,7 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -39,7 +39,7 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 	t.Cleanup(func() { k.Close() })
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
@@ -234,7 +234,7 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	defer k.Close()
 
 	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[echoIn]{
+	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return in, nil },
 	})

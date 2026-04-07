@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 )
 
 // BenchEnv is the shared benchmark environment.
@@ -34,7 +34,7 @@ func NewEnv(b *testing.B) *BenchEnv {
 	}
 
 	// Register echo tool (used by bus benchmarks).
-	if err := brainkit.RegisterTool(k, "echo", registry.TypedTool[echoInput]{
+	if err := brainkit.RegisterTool(k, "echo", tools.TypedTool[echoInput]{
 		Description: "echo",
 		Execute: func(ctx context.Context, input echoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil

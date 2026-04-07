@@ -7,7 +7,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/registry"
+	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -24,7 +24,7 @@ type pool struct {
 	name        string
 	config      PoolConfig
 	instances   []*Node
-	sharedTools *registry.ToolRegistry
+	sharedTools *tools.ToolRegistry
 	mu          syncx.Mutex
 }
 
@@ -54,7 +54,7 @@ func (im *InstanceManager) SpawnPool(name string, cfg PoolConfig) error {
 		count = 1
 	}
 
-	sharedTools := registry.New()
+	sharedTools := tools.New()
 
 	p := &pool{
 		name:        name,

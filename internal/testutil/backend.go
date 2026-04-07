@@ -13,7 +13,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
 	provreg "github.com/brainlet/brainkit/registry"
 	"github.com/docker/go-connections/nat"
@@ -282,13 +282,13 @@ func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
 	}
 	t.Cleanup(func() { k.Close() })
 
-	brainkit.RegisterTool(k, "echo", registry.TypedTool[EchoInput]{
+	brainkit.RegisterTool(k, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	brainkit.RegisterTool(k, "add", registry.TypedTool[AddInput]{
+	brainkit.RegisterTool(k, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/rbac"
@@ -258,7 +258,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 
 	// Register test tools
 	if cfg.Tools {
-		if err := brainkit.RegisterTool(k, "echo", registry.TypedTool[testutil.EchoInput]{
+		if err := brainkit.RegisterTool(k, "echo", tools.TypedTool[testutil.EchoInput]{
 			Description: "echoes the input message",
 			Execute: func(ctx context.Context, input testutil.EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message}, nil
@@ -267,7 +267,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 			t.Fatalf("suite.NewEnv: register echo: %v", err)
 		}
 
-		if err := brainkit.RegisterTool(k, "add", registry.TypedTool[testutil.AddInput]{
+		if err := brainkit.RegisterTool(k, "add", tools.TypedTool[testutil.AddInput]{
 			Description: "adds two numbers",
 			Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 				return map[string]int{"sum": input.A + input.B}, nil

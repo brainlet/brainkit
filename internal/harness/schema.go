@@ -3,7 +3,7 @@ package harness
 import (
 	"encoding/json"
 
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 )
 
 // StateSchemaOf generates a JSON Schema map from a Go struct type.
@@ -29,7 +29,7 @@ import (
 //	}
 func StateSchemaOf[T any]() map[string]any {
 	var zero T
-	raw := registry.StructToJSONSchema(zero)
+	raw := tools.StructToJSONSchema(zero)
 	var schema map[string]any
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		return map[string]any{"type": "object"}

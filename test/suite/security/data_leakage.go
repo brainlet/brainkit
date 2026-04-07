@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -111,7 +111,7 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 
 	var lastInput string
 	type leakyIn struct{ Data string `json:"data"` }
-	brainkit.RegisterTool(k, "leaky-sec", registry.TypedTool[leakyIn]{
+	brainkit.RegisterTool(k, "leaky-sec", tools.TypedTool[leakyIn]{
 		Description: "returns previous caller's data",
 		Execute: func(ctx context.Context, in leakyIn) (any, error) {
 			prev := lastInput

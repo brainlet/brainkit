@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -205,7 +205,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 			require.NoError(t, err)
 			defer node.Close()
 
-			brainkit.RegisterTool(node.Kernel, "host-multiply", registry.TypedTool[struct {
+			brainkit.RegisterTool(node.Kernel, "host-multiply", tools.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{
@@ -293,7 +293,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 			require.NoError(t, err)
 			defer node.Close()
 
-			brainkit.RegisterTool(node.Kernel, "host-multiply", registry.TypedTool[struct {
+			brainkit.RegisterTool(node.Kernel, "host-multiply", tools.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{

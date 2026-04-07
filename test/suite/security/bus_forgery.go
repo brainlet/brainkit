@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -382,7 +382,7 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 	defer k.Close()
 
 	type injectionInput struct{ Cmd string `json:"cmd"` }
-	brainkit.RegisterTool(k, "injector-sec", registry.TypedTool[injectionInput]{
+	brainkit.RegisterTool(k, "injector-sec", tools.TypedTool[injectionInput]{
 		Description: "returns crafted payload",
 		Execute: func(ctx context.Context, in injectionInput) (any, error) {
 			return map[string]string{

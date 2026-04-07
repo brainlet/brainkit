@@ -14,7 +14,7 @@ import (
 	"time"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	"github.com/brainlet/brainkit/internal/registry"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit"
 	provreg "github.com/brainlet/brainkit/registry"
@@ -407,7 +407,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
 
 	switch relPath {
 	case "tools/call-from-ts":
-		registry.Register(k.Tools, "uppercase", registry.TypedTool[struct {
+		tools.Register(k.Tools, "uppercase", tools.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "converts text to uppercase",
@@ -418,7 +418,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
 			},
 		})
 	case "agent/with-registered-tool":
-		registry.Register(k.Tools, "multiply", registry.TypedTool[struct {
+		tools.Register(k.Tools, "multiply", tools.TypedTool[struct {
 			A float64 `json:"a"`
 			B float64 `json:"b"`
 		}]{
@@ -444,7 +444,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
 			t.Cleanup(func() { cancel() })
 		}
 	case "composition/full-agent-workflow-memory":
-		registry.Register(k.Tools, "reverse", registry.TypedTool[struct {
+		tools.Register(k.Tools, "reverse", tools.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "reverses a string",
