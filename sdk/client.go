@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -14,7 +14,7 @@ type Client = Runtime
 
 // pluginClient implements Runtime for plugin processes connected via Watermill.
 type pluginClient struct {
-	remote    *messaging.RemoteClient
+	remote    *transport.RemoteClient
 	namespace string
 }
 

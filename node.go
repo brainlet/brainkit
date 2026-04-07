@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/discovery"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk"
@@ -52,7 +52,7 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 	}
 
 	// Create external transport
-	transport, err := messaging.NewTransportSet(cfg.Messaging.transportConfig())
+	transport, err := transport.NewTransportSet(cfg.Messaging.transportConfig())
 	if err != nil {
 		return nil, fmt.Errorf("brainkit: transport: %w", err)
 	}
@@ -382,7 +382,7 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 					// Pass-through path: if the call came through the bus command router,
 					// the context carries the caller's already-resolved replyTo. Forward it
 					// to the plugin so it responds directly — no intermediate subscription.
-					callerReplyTo := messaging.ReplyToFromContext(callCtx)
+					callerReplyTo := transport.ReplyToFromContext(callCtx)
 					if callerReplyTo != "" {
 						_, err := n.Kernel.remote.PublishRawWithMeta(callCtx, topic, input, map[string]string{
 							"replyTo": callerReplyTo,
@@ -418,7 +418,7 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 					}
 					defer stop()
 
-					if _, err := n.Kernel.remote.PublishRaw(messaging.ContextWithCorrelationID(callCtx, correlationID), topic, input); err != nil {
+					if _, err := n.Kernel.remote.PublishRaw(transport.ContextWithCorrelationID(callCtx, correlationID), topic, input); err != nil {
 						span.End(err)
 						return nil, fmt.Errorf("publish plugin tool %s: %w", topic, err)
 					}
@@ -461,7 +461,7 @@ func pluginToolTopic(owner, name, version, tool string) string {
 }
 
 func (n *Node) getPluginState(ctx context.Context, req messages.PluginStateGetMsg) (*messages.PluginStateGetResp, error) {
-	pluginID := messaging.CallerIDFromContext(ctx)
+	pluginID := transport.CallerIDFromContext(ctx)
 	if pluginID == "" {
 		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
 	}
@@ -473,7 +473,7 @@ func (n *Node) getPluginState(ctx context.Context, req messages.PluginStateGetMs
 }
 
 func (n *Node) setPluginState(ctx context.Context, req messages.PluginStateSetMsg) (*messages.PluginStateSetResp, error) {
-	pluginID := messaging.CallerIDFromContext(ctx)
+	pluginID := transport.CallerIDFromContext(ctx)
 	if pluginID == "" {
 		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
 	}

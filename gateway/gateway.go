@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -426,14 +426,14 @@ func mapHTTPStatus(resp []byte, err error) int {
 }
 
 // sanitizeErrorPayload redacts sensitive information from error JSON payloads
-// before sending to HTTP clients. Delegates to messaging.SanitizeErrorMessage.
+// before sending to HTTP clients. Delegates to transport.SanitizeErrorMessage.
 func sanitizeErrorPayload(payload []byte) []byte {
 	var parsed map[string]any
 	if json.Unmarshal(payload, &parsed) != nil {
 		return payload // not JSON — return as-is
 	}
 	if errMsg, ok := parsed["error"].(string); ok {
-		parsed["error"] = messaging.SanitizeErrorMessage(errMsg)
+		parsed["error"] = transport.SanitizeErrorMessage(errMsg)
 	}
 	sanitized, err := json.Marshal(parsed)
 	if err != nil {

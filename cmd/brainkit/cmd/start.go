@@ -16,7 +16,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	cliconfig "github.com/brainlet/brainkit/cmd/brainkit/config"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -145,7 +145,7 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 		}
 		defer unsub()
 
-		pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
 		if _, err := node.Kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
 			return
@@ -207,7 +207,7 @@ func controlStreamHandler(node *brainkit.Node) http.HandlerFunc {
 		}
 		defer unsub()
 
-		pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
 		if _, err := node.Kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
 			return

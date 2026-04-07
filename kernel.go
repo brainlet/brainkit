@@ -21,7 +21,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/packages"
@@ -68,10 +68,10 @@ type Kernel struct {
 	streamTracker        *streamTracker           // heartbeat goroutine manager for active streams
 
 	// Internal Watermill transport — always present
-	transport      *messaging.Transport
+	transport      *transport.Transport
 	router         *message.Router
-	remote         *messaging.RemoteClient
-	host           *messaging.Host
+	remote         *transport.RemoteClient
+	host           *transport.Host
 	ownsTransport  bool // true if Kernel created the transport (false if injected by Node)
 
 	config    KernelConfig
@@ -521,7 +521,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.transport = cfg.Transport
 		kernel.ownsTransport = false
 	} else {
-		transport, err := messaging.NewTransportSet(messaging.TransportConfig{Type: "memory"})
+		transport, err := transport.NewTransportSet(transport.TransportConfig{Type: "memory"})
 		if err != nil {
 			return fail(fmt.Errorf("brainkit: internal transport: %w", err))
 		}
@@ -530,7 +530,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		cleanups = append(cleanups, func() { transport.Close() })
 	}
 
-	kernel.remote = messaging.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, kernel.transport)
+	kernel.remote = transport.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, kernel.transport)
 
 	// SecretsDomain — needs kernel.remote for bus event publishing
 	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, cfg.CallerID, nil, kernel.refreshProviderIfSecret)
@@ -541,18 +541,18 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		return fail(fmt.Errorf("brainkit: router: %w", err))
 	}
 
-	metrics := messaging.NewMetrics()
+	metrics := transport.NewMetrics()
 	router.AddMiddleware(
-		messaging.DepthMiddleware,
-		messaging.CallerIDMiddleware(cfg.CallerID),
-		messaging.MetricsMiddleware(metrics),
+		transport.DepthMiddleware,
+		transport.CallerIDMiddleware(cfg.CallerID),
+		transport.MetricsMiddleware(metrics),
 	)
 	if cfg.MaxConcurrency > 0 {
-		router.AddMiddleware(messaging.MaxConcurrencyMiddleware(cfg.MaxConcurrency))
+		router.AddMiddleware(transport.MaxConcurrencyMiddleware(cfg.MaxConcurrency))
 	}
 
 	kernel.router = router
-	kernel.host = messaging.NewHostWithTransport(cfg.Namespace, router, kernel.transport)
+	kernel.host = transport.NewHostWithTransport(cfg.Namespace, router, kernel.transport)
 
 	if !cfg.DeferRouterStart {
 		// Standalone Kernel: register kernel-only bindings and start router now

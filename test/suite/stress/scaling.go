@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -181,7 +181,7 @@ func testPoolSharedTools(t *testing.T, env *suite.TestEnv) {
 // testStrategyStatic verifies StaticStrategy returns correct decisions.
 func testStrategyStatic(t *testing.T, env *suite.TestEnv) {
 	s := brainkit.NewStaticStrategy(3)
-	metrics := messaging.MetricsSnapshot{
+	metrics := transport.MetricsSnapshot{
 		Published: make(map[string]int),
 		Handled:   make(map[string]int),
 		Errors:    make(map[string]int),
@@ -202,7 +202,7 @@ func testStrategyStatic(t *testing.T, env *suite.TestEnv) {
 // testStrategyThreshold verifies ThresholdStrategy respects min/max bounds.
 func testStrategyThreshold(t *testing.T, env *suite.TestEnv) {
 	s := brainkit.NewThresholdStrategy(10, 2)
-	metrics := messaging.MetricsSnapshot{
+	metrics := transport.MetricsSnapshot{
 		Published: make(map[string]int),
 		Handled:   make(map[string]int),
 		Errors:    make(map[string]int),

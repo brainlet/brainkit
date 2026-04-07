@@ -9,7 +9,7 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
@@ -56,7 +56,7 @@ func (k *Kernel) registerApprovalBridges(qctx *quickjs.Context) {
 					defer unsub()
 
 					// Publish approval request with replyTo
-					pubCtx := messaging.WithPublishMeta(waitCtx, correlationID, replyTo)
+					pubCtx := transport.WithPublishMeta(waitCtx, correlationID, replyTo)
 					if _, pubErr := k.remote.PublishRaw(pubCtx, approvalTopic, payload); pubErr != nil {
 						qctx.Schedule(func(qctx *quickjs.Context) {
 							errVal := qctx.NewError(fmt.Errorf("await_approval: publish: %w", pubErr))

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
@@ -79,7 +79,7 @@ func decodeCommand[T any](payload json.RawMessage, topic string) (T, error) {
 		return out, nil
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
-		return out, messaging.NewDecodeFailure(topic, err)
+		return out, transport.NewDecodeFailure(topic, err)
 	}
 	return out, nil
 }
@@ -109,8 +109,8 @@ func (r *commandRegistry) Validate(topic string, payload json.RawMessage) error 
 	return spec.validate(payload)
 }
 
-func (r *commandRegistry) BindingsForNode(node *Node) []messaging.RawCommandBinding {
-	bindings := make([]messaging.RawCommandBinding, 0, len(r.ordered))
+func (r *commandRegistry) BindingsForNode(node *Node) []transport.RawCommandBinding {
+	bindings := make([]transport.RawCommandBinding, 0, len(r.ordered))
 	for _, spec := range r.ordered {
 		spec := spec
 		if spec.invokeNode == nil && spec.invokeKernel == nil {
@@ -119,7 +119,7 @@ func (r *commandRegistry) BindingsForNode(node *Node) []messaging.RawCommandBind
 		if shouldSkipCommand(spec.topic, node.Kernel) {
 			continue
 		}
-		bindings = append(bindings, messaging.RawCommandBinding{
+		bindings = append(bindings, transport.RawCommandBinding{
 			Name:  spec.topic,
 			Topic: spec.topic,
 			Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
@@ -221,7 +221,7 @@ func commandCatalog() *commandRegistry {
 				}
 				defer unsub()
 
-				pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+				pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
 				if _, err := kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
 					return nil, err
 				}
@@ -441,9 +441,9 @@ func shouldSkipCommand(topic string, kernel *Kernel) bool {
 
 // commandBindingsForKernel generates router bindings for a standalone Kernel.
 // Kernel-only commands are bound; node-only and unconfigured-domain commands are skipped.
-func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
+func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
 	catalog := commandCatalog()
-	bindings := make([]messaging.RawCommandBinding, 0, len(catalog.ordered))
+	bindings := make([]transport.RawCommandBinding, 0, len(catalog.ordered))
 	for _, spec := range catalog.ordered {
 		spec := spec
 		if spec.invokeKernel == nil {
@@ -452,7 +452,7 @@ func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
 		if shouldSkipCommand(spec.topic, kernel) {
 			continue // domain not configured
 		}
-		bindings = append(bindings, messaging.RawCommandBinding{
+		bindings = append(bindings, transport.RawCommandBinding{
 			Name:  spec.topic,
 			Topic: spec.topic,
 			Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
@@ -465,6 +465,6 @@ func commandBindingsForKernel(kernel *Kernel) []messaging.RawCommandBinding {
 
 // commandBindingsForNode generates router bindings for a Node.
 // Includes both kernel commands (delegated to node.Kernel) and node-specific commands.
-func commandBindingsForNode(node *Node) []messaging.RawCommandBinding {
+func commandBindingsForNode(node *Node) []transport.RawCommandBinding {
 	return commandCatalog().BindingsForNode(node)
 }

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"github.com/brainlet/brainkit/internal/syncx"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk"
 )
@@ -197,7 +197,7 @@ func (im *InstanceManager) EvaluateAndScale() {
 			continue
 		}
 
-		metrics := messaging.MetricsSnapshot{
+		metrics := transport.MetricsSnapshot{
 			Published: make(map[string]int),
 			Handled:   make(map[string]int),
 			Errors:    make(map[string]int),
@@ -237,7 +237,7 @@ func (im *InstanceManager) spawnInstance(p *pool, idx int) (*Node, error) {
 
 // ScalingStrategy evaluates metrics and pool state to make scaling decisions.
 type ScalingStrategy interface {
-	Evaluate(metrics messaging.MetricsSnapshot, pool PoolInfo) ScalingDecision
+	Evaluate(metrics transport.MetricsSnapshot, pool PoolInfo) ScalingDecision
 }
 
 // ScalingDecision describes a scaling action.
@@ -265,7 +265,7 @@ func NewStaticStrategy(target int) *StaticStrategy {
 	return &StaticStrategy{Target: target}
 }
 
-func (s *StaticStrategy) Evaluate(_ messaging.MetricsSnapshot, pool PoolInfo) ScalingDecision {
+func (s *StaticStrategy) Evaluate(_ transport.MetricsSnapshot, pool PoolInfo) ScalingDecision {
 	if pool.Current < s.Target {
 		return ScalingDecision{
 			Action: "scale-up",
@@ -300,7 +300,7 @@ func NewThresholdStrategy(scaleUp, scaleDown int) *ThresholdStrategy {
 	}
 }
 
-func (s *ThresholdStrategy) Evaluate(_ messaging.MetricsSnapshot, pool PoolInfo) ScalingDecision {
+func (s *ThresholdStrategy) Evaluate(_ transport.MetricsSnapshot, pool PoolInfo) ScalingDecision {
 	pending := pool.Pending
 
 	if pending > s.ScaleUpThreshold {

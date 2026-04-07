@@ -6,7 +6,7 @@ import (
 	"time"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	toolreg "github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/registry"
@@ -108,7 +108,7 @@ type KernelConfig struct {
 
 	// Transport is an optional external transport. If set, Kernel uses it instead of
 	// creating its own internal GoChannel transport. Used by Node to inject NATS.
-	Transport *messaging.Transport
+	Transport *transport.Transport
 
 	// DeferRouterStart skips starting the router during NewKernel.
 	// Used by Node to register node-specific command bindings before starting.

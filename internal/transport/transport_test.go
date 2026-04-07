@@ -1,9 +1,9 @@
-package messaging_test
+package transport_test
 
 import (
 	"testing"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 )
 
 func TestNewTransport_Memory(t *testing.T) {

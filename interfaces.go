@@ -8,7 +8,7 @@ import (
 )
 
 // BusPublisher sends and receives bus messages.
-// Implemented by *messaging.RemoteClient (via Kernel).
+// Implemented by *transport.RemoteClient (via Kernel).
 type BusPublisher interface {
 	PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error)
 	SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error)

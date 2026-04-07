@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 )
@@ -50,7 +50,7 @@ func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T,
 		return PublishResult{}, fmt.Errorf("marshal %T: %w", msg, err)
 	}
 
-	ctx = messaging.WithPublishMeta(ctx, correlationID, replyTo)
+	ctx = transport.WithPublishMeta(ctx, correlationID, replyTo)
 	msgID, err := rt.PublishRaw(ctx, topic, payload)
 	if err != nil {
 		return PublishResult{}, err

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -213,7 +213,7 @@ func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kernel, topic string, pay
 	}
 	defer unsub()
 
-	pubCtx := messaging.WithPublishMeta(ctx, correlationID, replyTo)
+	pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
 	_, err = k.PublishRaw(pubCtx, topic, payloadJSON)
 	if err != nil {
 		return storageResp{Error: "publish: " + err.Error()}

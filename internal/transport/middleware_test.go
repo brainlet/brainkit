@@ -1,4 +1,4 @@
-package messaging_test
+package transport_test
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 )
 
 func TestDepthMiddleware_AllowsNormalDepth(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 	"github.com/coder/websocket"
@@ -57,7 +57,7 @@ func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, match
 			continue
 		}
 
-		pubCtx := messaging.WithPublishMeta(ctx, reqID, replyTo)
+		pubCtx := transport.WithPublishMeta(ctx, reqID, replyTo)
 		if _, pubErr := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); pubErr != nil {
 			unsub()
 			continue

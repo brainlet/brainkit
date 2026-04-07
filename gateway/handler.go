@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -34,7 +34,7 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 	}
 	defer unsub()
 
-	pubCtx := messaging.WithPublishMeta(ctx, reqID, replyTo)
+	pubCtx := transport.WithPublishMeta(ctx, reqID, replyTo)
 	if _, err := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); err != nil {
 		http.Error(w, "publish failed", http.StatusBadGateway)
 		return

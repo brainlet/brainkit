@@ -10,7 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 )
@@ -408,7 +408,7 @@ func (gw *Gateway) handleStream(w http.ResponseWriter, r *http.Request, matched 
 		return
 	}
 
-	pubCtx := messaging.WithPublishMeta(r.Context(), reqID, replyTo)
+	pubCtx := transport.WithPublishMeta(r.Context(), reqID, replyTo)
 	if _, err := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); err != nil {
 		http.Error(w, "publish failed", http.StatusBadGateway)
 		return

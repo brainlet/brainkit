@@ -12,7 +12,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/messaging"
+	xport "github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
@@ -21,7 +21,7 @@ import (
 func (p *Plugin) Run() error {
 	logger := watermill.NopLogger{}
 	namespace := os.Getenv("BRAINKIT_NAMESPACE")
-	transport, err := messaging.NewTransportSet(messaging.TransportConfig{
+	transport, err := xport.NewTransportSet(xport.TransportConfig{
 		Type:        os.Getenv("BRAINKIT_TRANSPORT"),
 		NATSURL:     os.Getenv("BRAINKIT_NATS_URL"),
 		NATSName:    os.Getenv("BRAINKIT_NATS_NAME"),
@@ -41,13 +41,13 @@ func (p *Plugin) Run() error {
 	}
 
 	rt := &pluginClient{
-		remote:    messaging.NewRemoteClientWithTransport(namespace, fmt.Sprintf("plugin/%s/%s@%s", p.owner, p.name, p.version), transport),
+		remote:    xport.NewRemoteClientWithTransport(namespace, fmt.Sprintf("plugin/%s/%s@%s", p.owner, p.name, p.version), transport),
 		namespace: namespace,
 	}
 
 	// resolveTopic applies namespace + transport sanitizer (e.g., dots→dashes for NATS JetStream)
 	resolveTopic := func(logicalTopic string) string {
-		topic := messaging.NamespacedTopic(namespace, logicalTopic)
+		topic := xport.NamespacedTopic(namespace, logicalTopic)
 		return transport.SanitizeTopic(topic)
 	}
 

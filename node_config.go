@@ -2,7 +2,7 @@ package brainkit
 
 import (
 	"github.com/brainlet/brainkit/internal/discovery"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 )
 
 // MessagingConfig configures the transport-backed runtime host.
@@ -16,8 +16,8 @@ type MessagingConfig struct {
 	SQLitePath  string
 }
 
-func (cfg MessagingConfig) transportConfig() messaging.TransportConfig {
-	return messaging.TransportConfig{
+func (cfg MessagingConfig) transportConfig() transport.TransportConfig {
+	return transport.TransportConfig{
 		Type:        cfg.Transport,
 		NATSURL:     cfg.NATSURL,
 		NATSName:    cfg.NATSName,

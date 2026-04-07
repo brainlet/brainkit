@@ -12,7 +12,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit"
 	provreg "github.com/brainlet/brainkit/registry"
@@ -47,9 +47,9 @@ func AllBackends(t *testing.T) []string {
 }
 
 // MustCreateTransport creates a transport or fails the test.
-func MustCreateTransport(t *testing.T, cfg messaging.TransportConfig) *messaging.Transport {
+func MustCreateTransport(t *testing.T, cfg transport.TransportConfig) *transport.Transport {
 	t.Helper()
-	transport, err := messaging.NewTransportSet(cfg)
+	transport, err := transport.NewTransportSet(cfg)
 	if err != nil {
 		t.Fatalf("create transport: %v", err)
 	}
@@ -59,40 +59,40 @@ func MustCreateTransport(t *testing.T, cfg messaging.TransportConfig) *messaging
 
 // TransportConfigForBackend returns a TransportConfig for the given backend.
 // For Podman-based backends, starts the container and returns the URL.
-func TransportConfigForBackend(t *testing.T, backend string) messaging.TransportConfig {
+func TransportConfigForBackend(t *testing.T, backend string) transport.TransportConfig {
 	t.Helper()
 	switch backend {
 	case "memory", "":
-		return messaging.TransportConfig{Type: "memory"}
+		return transport.TransportConfig{Type: "memory"}
 	case "sql-sqlite":
-		return messaging.TransportConfig{
+		return transport.TransportConfig{
 			Type:       "sql-sqlite",
 			SQLitePath: filepath.Join(t.TempDir(), "transport.db"),
 		}
 	case "nats":
 		url := StartContainer(t, "nats:latest", "4222/tcp", []string{"-js"},
 			wait.ForLog("Server is ready").WithStartupTimeout(30*time.Second))
-		return messaging.TransportConfig{Type: "nats", NATSURL: url, NATSName: "test"}
+		return transport.TransportConfig{Type: "nats", NATSURL: url, NATSName: "test"}
 	case "amqp":
 		url := StartContainer(t, "rabbitmq:management", "5672/tcp", nil,
 			wait.ForLog("Ready to start client connection listeners").WithStartupTimeout(60*time.Second))
-		return messaging.TransportConfig{Type: "amqp", AMQPURL: fmt.Sprintf("amqp://guest:guest@%s/", url)}
+		return transport.TransportConfig{Type: "amqp", AMQPURL: fmt.Sprintf("amqp://guest:guest@%s/", url)}
 	case "redis":
 		url := StartContainer(t, "redis:latest", "6379/tcp", nil,
 			wait.ForLog("Ready to accept connections").WithStartupTimeout(30*time.Second))
-		return messaging.TransportConfig{Type: "redis", RedisURL: fmt.Sprintf("redis://%s/0", url)}
+		return transport.TransportConfig{Type: "redis", RedisURL: fmt.Sprintf("redis://%s/0", url)}
 	case "sql-postgres":
 		url := StartContainer(t, "postgres:16", "5432/tcp", nil,
 			wait.ForLog("database system is ready to accept connections").WithStartupTimeout(60*time.Second),
 			"POSTGRES_USER=test", "POSTGRES_PASSWORD=test", "POSTGRES_DB=brainkit",
 		)
-		return messaging.TransportConfig{
+		return transport.TransportConfig{
 			Type:        "sql-postgres",
 			PostgresURL: fmt.Sprintf("postgres://test:test@%s/brainkit?sslmode=disable", url),
 		}
 	default:
 		t.Fatalf("unknown backend: %s", backend)
-		return messaging.TransportConfig{}
+		return transport.TransportConfig{}
 	}
 }
 
@@ -185,7 +185,7 @@ func splitEnvVar(ev string) [2]string {
 // WaitForBackendReady verifies the transport is fully operational by publishing
 // a probe message and waiting for it to round-trip. Retries up to 3 times with
 // increasing delay for slow backends (SQL table creation, AMQP queue binding).
-func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
+func WaitForBackendReady(t *testing.T, transport *transport.Transport) {
 	t.Helper()
 
 	for attempt := 0; attempt < 5; attempt++ {

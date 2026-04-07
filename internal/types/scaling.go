@@ -1,7 +1,7 @@
 package types
 
 // MetricsSnapshot is a point-in-time copy of bus metrics data.
-// Defined here so ScalingStrategy doesn't import internal/messaging.
+// Defined here so ScalingStrategy doesn't import internal/transport.
 type MetricsSnapshot struct {
 	Published map[string]int `json:"published"`
 	Handled   map[string]int `json:"handled"`

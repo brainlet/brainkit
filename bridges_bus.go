@@ -12,7 +12,7 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/rbac"
 	"github.com/brainlet/brainkit/tracing"
@@ -87,7 +87,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			correlationID := uuid.NewString()
 			replyTo := topic + ".reply." + correlationID
 
-			ctx := messaging.WithPublishMeta(context.Background(), correlationID, replyTo)
+			ctx := transport.WithPublishMeta(context.Background(), correlationID, replyTo)
 			_, err := k.remote.PublishRaw(ctx, topic, payload)
 			span.End(err)
 			if err != nil {

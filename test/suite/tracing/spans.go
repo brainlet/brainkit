@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/messaging"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/registry"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -269,8 +269,8 @@ func testTraceContextPropagates(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Stamp trace context into the publish context
-	traceCtx := messaging.WithTraceIDs(ctx, "trace-abc-123", "span-parent-456", "")
-	traceCtx = messaging.WithSampled(traceCtx, "true")
+	traceCtx := transport.WithTraceIDs(ctx, "trace-abc-123", "span-parent-456", "")
+	traceCtx = transport.WithSampled(traceCtx, "true")
 
 	// Subscribe to a topic and capture metadata
 	receivedCh := make(chan map[string]string, 1)
