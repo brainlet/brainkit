@@ -22,5 +22,16 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// backend_advanced.go — ported from adversarial/backend_advanced_test.go
 		t.Run("schedule_fire_on_transport", func(t *testing.T) { testScheduleFireOnTransport(t, env) })
+
+		// bus_commands.go — schedule management via typed bus commands
+		t.Run("bus/create", func(t *testing.T) { testScheduleCreateViaBus(t, env) })
+		t.Run("bus/create_invalid", func(t *testing.T) { testScheduleCreateInvalidExpression(t, env) })
+		t.Run("bus/create_blocks_command", func(t *testing.T) { testScheduleCreateBlocksCommandTopic(t, env) })
+		t.Run("bus/list", func(t *testing.T) { testScheduleListViaBus(t, env) })
+		t.Run("bus/cancel", func(t *testing.T) { testScheduleCancelViaBus(t, env) })
+		t.Run("bus/fires_on_topic", func(t *testing.T) { testScheduleCreateFiresOnTopic(t, env) })
+		t.Run("bus/one_time_fires", func(t *testing.T) { testScheduleCreateOneTimeFires(t, env) })
+		t.Run("bus/fires_with_payload", func(t *testing.T) { testScheduleCreateWithPayload(t, env) })
+		t.Run("bus/cancel_stops_firing", func(t *testing.T) { testScheduleCancelStopsFiring(t, env) })
 	})
 }
