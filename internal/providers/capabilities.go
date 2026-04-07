@@ -1,4 +1,4 @@
-package registry
+package providers
 
 // AIProviderCapabilities describes what model types a provider supports.
 type AIProviderCapabilities struct {

@@ -1,4 +1,4 @@
-package registry
+package providers
 
 // AI provider config structs — one per provider, matching AI SDK constructor signatures.
 

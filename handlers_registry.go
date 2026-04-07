@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 

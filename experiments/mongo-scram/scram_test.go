@@ -14,7 +14,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit"
-	_ "github.com/brainlet/brainkit/registry"
+	_ "github.com/brainlet/brainkit/internal/providers"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 

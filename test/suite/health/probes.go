@@ -7,7 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

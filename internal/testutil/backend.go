@@ -15,7 +15,7 @@ import (
 	"github.com/brainlet/brainkit/internal/transport"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"

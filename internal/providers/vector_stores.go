@@ -1,4 +1,4 @@
-package registry
+package providers
 
 // Vector store config structs — one per backend, matching Mastra constructor signatures.
 

@@ -1,4 +1,4 @@
-package registry
+package providers
 
 import (
 	"github.com/brainlet/brainkit/internal/syncx"

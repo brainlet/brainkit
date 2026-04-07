@@ -17,7 +17,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/rbac"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/tracing"

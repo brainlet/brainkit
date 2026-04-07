@@ -1,4 +1,4 @@
-package registry
+package providers
 
 // AIProviderType identifies an AI SDK provider.
 type AIProviderType string

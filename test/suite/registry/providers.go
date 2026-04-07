@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"

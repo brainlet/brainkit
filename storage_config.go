@@ -1,6 +1,6 @@
 package brainkit
 
-import provreg "github.com/brainlet/brainkit/registry"
+import provreg "github.com/brainlet/brainkit/internal/providers"
 
 // StorageConfig configures a storage backend in the resource pool.
 // Deployments access it via storage("name") in .ts code.

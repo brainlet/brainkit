@@ -31,7 +31,7 @@ import (
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"golang.org/x/time/rate"

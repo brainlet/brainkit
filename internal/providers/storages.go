@@ -1,4 +1,4 @@
-package registry
+package providers
 
 // Storage config structs — one per backend, matching Mastra storage adapter constructors.
 

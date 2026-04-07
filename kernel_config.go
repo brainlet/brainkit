@@ -9,7 +9,7 @@ import (
 	"github.com/brainlet/brainkit/internal/transport"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/rbac"
-	"github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/secrets"
 	"github.com/brainlet/brainkit/tracing"
 )
@@ -44,7 +44,7 @@ type KernelConfig struct {
 	// AI providers — explicit config for custom base URLs.
 	// For simple API key usage, leave empty and set the env var
 	// (e.g., OPENAI_API_KEY) — auto-detected from os.Getenv.
-	AIProviders map[string]registry.AIProviderRegistration
+	AIProviders map[string]provreg.AIProviderRegistration
 
 	// EnvVars overrides os.Getenv for specific keys.
 	// process.env already reads os.Getenv directly, so this is only needed
@@ -84,7 +84,7 @@ type KernelConfig struct {
 	MCPServers    map[string]mcppkg.ServerConfig
 	Observability ObservabilityConfig
 	Store         KitStore
-	Probe         registry.ProbeConfig
+	Probe         provreg.ProbeConfig
 
 	// RetryPolicies maps topic glob patterns to retry configurations.
 	// When a bus handler throws, the matching policy determines retry behavior.

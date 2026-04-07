@@ -7,7 +7,7 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	provreg "github.com/brainlet/brainkit/registry"
+	provreg "github.com/brainlet/brainkit/internal/providers"
 )
 
 // registerControlBridges adds __go_brainkit_control for local-only registration operations
