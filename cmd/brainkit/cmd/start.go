@@ -31,30 +31,26 @@ func newStartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			nodeCfg, err := cliconfig.BuildNodeConfig(cfg)
+			bkCfg, err := cliconfig.BuildConfig(cfg)
 			if err != nil {
 				return fmt.Errorf("build config: %w", err)
 			}
-			node, err := brainkit.NewNode(nodeCfg)
+			kit, err := brainkit.New(bkCfg)
 			if err != nil {
-				return fmt.Errorf("create node: %w", err)
-			}
-			if err := node.Start(context.Background()); err != nil {
-				node.Close()
-				return fmt.Errorf("start: %w", err)
+				return fmt.Errorf("create: %w", err)
 			}
 
 			// Start control API server on a random local port
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
-				node.Close()
+				kit.Close()
 				return fmt.Errorf("control api listen: %w", err)
 			}
 			port := ln.Addr().(*net.TCPAddr).Port
 
 			mux := http.NewServeMux()
-			mux.HandleFunc("POST /api/bus", controlBusHandler(node))
-			mux.HandleFunc("POST /api/stream", controlStreamHandler(node))
+			mux.HandleFunc("POST /api/bus", controlBusHandler(kit))
+			mux.HandleFunc("POST /api/stream", controlStreamHandler(kit))
 			controlSrv := &http.Server{Handler: mux}
 			go controlSrv.Serve(ln)
 
@@ -65,9 +61,8 @@ func newStartCmd() *cobra.Command {
 			os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", port)), 0644)
 			defer os.Remove(pidFile)
 
-			logger := node.Kernel.Logger()
-			logger.Info("brainkit started",
-				slog.String("namespace", node.Kernel.Namespace()),
+			slog.Info("brainkit started",
+				slog.String("namespace", cfg.Namespace),
 				slog.String("transport", cfg.Transport),
 				slog.String("control", fmt.Sprintf("http://127.0.0.1:%d", port)),
 				slog.String("workspace", cfg.FSRoot),
@@ -77,7 +72,7 @@ func newStartCmd() *cobra.Command {
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			<-sigCh
 
-			logger.Info("shutting down")
+			slog.Info("shutting down")
 
 			// Shutdown with a hard deadline — don't hang on stuck connections.
 			// Second Ctrl+C force-exits immediately.
@@ -86,14 +81,14 @@ func newStartCmd() *cobra.Command {
 				shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer shutCancel()
 				controlSrv.Shutdown(shutCtx)
-				shutdownDone <- node.Shutdown(shutCtx)
+				shutdownDone <- kit.Shutdown(shutCtx)
 			}()
 
 			select {
 			case err := <-shutdownDone:
 				return err
 			case <-sigCh:
-				logger.Warn("force exit")
+				slog.Warn("force exit")
 				os.Exit(1)
 				return nil
 			}
@@ -104,7 +99,7 @@ func newStartCmd() *cobra.Command {
 // controlBusHandler handles POST /api/bus — generic bus request-reply over HTTP.
 // Body: {"topic":"kit.health","payload":{}}
 // Response: {"payload":{...}} or {"error":"..."}
-func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
+func controlBusHandler(kit *brainkit.Kit) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -133,7 +128,7 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 		replyTo := req.Topic + ".reply." + correlationID
 
 		replyCh := make(chan messages.Message, 1)
-		unsub, err := node.Kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
 			select {
 			case replyCh <- msg:
 			default:
@@ -146,7 +141,7 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 		defer unsub()
 
 		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := node.Kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
+		if _, err := kit.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
 			return
 		}
@@ -163,7 +158,7 @@ func controlBusHandler(node *brainkit.Node) http.HandlerFunc {
 // controlStreamHandler handles POST /api/stream — bus publish + stream all events as NDJSON.
 // Each intermediate message (done=false) is written as a JSON line and flushed.
 // The terminal message (done=true) is written last, then the response closes.
-func controlStreamHandler(node *brainkit.Node) http.HandlerFunc {
+func controlStreamHandler(kit *brainkit.Kit) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -195,7 +190,7 @@ func controlStreamHandler(node *brainkit.Node) http.HandlerFunc {
 		replyTo := req.Topic + ".reply." + correlationID
 
 		eventCh := make(chan messages.Message, 100)
-		unsub, err := node.Kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
 			select {
 			case eventCh <- msg:
 			default:
@@ -208,7 +203,7 @@ func controlStreamHandler(node *brainkit.Node) http.HandlerFunc {
 		defer unsub()
 
 		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := node.Kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
+		if _, err := kit.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
 			return
 		}

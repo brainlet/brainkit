@@ -93,45 +93,42 @@ func loadEnvFile(path string) {
 	}
 }
 
-func BuildNodeConfig(cfg *CLIConfig) (brainkit.NodeConfig, error) {
-	nc := brainkit.NodeConfig{
-		Kernel: brainkit.KernelConfig{
-			Namespace: cfg.Namespace,
-			FSRoot:    cfg.FSRoot,
-			SecretKey: cfg.SecretKey,
-			LogHandler: func(e brainkit.LogEntry) {
-				fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", e.Source, e.Level, e.Message)
-			},
-		},
-		Messaging: brainkit.MessagingConfig{
-			Transport:   cfg.Transport,
-			NATSURL:     cfg.NATSURL,
-			NATSName:    cfg.NATSName,
-			AMQPURL:     cfg.AMQPURL,
-			RedisURL:    cfg.RedisURL,
-			PostgresURL: cfg.PostgresURL,
-			SQLitePath:  cfg.SQLitePath,
+// BuildConfig creates a brainkit.Config from CLI configuration.
+func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
+	bc := brainkit.Config{
+		Namespace:  cfg.Namespace,
+		Transport:  cfg.Transport,
+		NATSURL:    cfg.NATSURL,
+		NATSName:   cfg.NATSName,
+		AMQPURL:    cfg.AMQPURL,
+		RedisURL:   cfg.RedisURL,
+		PostgresURL: cfg.PostgresURL,
+		SQLitePath: cfg.SQLitePath,
+		FSRoot:     cfg.FSRoot,
+		SecretKey:  cfg.SecretKey,
+		LogHandler: func(e brainkit.LogEntry) {
+			fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", e.Source, e.Level, e.Message)
 		},
 	}
 
 	if len(cfg.Storage) > 0 {
-		nc.Kernel.Storages = make(map[string]brainkit.StorageConfig)
+		bc.Storages = make(map[string]brainkit.StorageConfig)
 		for name, entry := range cfg.Storage {
-			nc.Kernel.Storages[name] = mapStorage(entry)
+			bc.Storages[name] = mapStorage(entry)
 		}
 	}
 
 	if len(cfg.Vectors) > 0 {
-		nc.Kernel.Vectors = make(map[string]brainkit.VectorConfig)
+		bc.Vectors = make(map[string]brainkit.VectorConfig)
 		for name, entry := range cfg.Vectors {
-			nc.Kernel.Vectors[name] = mapVector(entry)
+			bc.Vectors[name] = mapVector(entry)
 		}
 	}
 
 	if len(cfg.MCPServers) > 0 {
-		nc.Kernel.MCPServers = make(map[string]brainkit.MCPServerConfig)
+		bc.MCPServers = make(map[string]brainkit.MCPServerConfig)
 		for name, entry := range cfg.MCPServers {
-			nc.Kernel.MCPServers[name] = brainkit.MCPServerConfig{
+			bc.MCPServers[name] = brainkit.MCPServerConfig{
 				Command: entry.Command,
 				Args:    entry.Args,
 				Env:     entry.Env,
@@ -143,13 +140,14 @@ func BuildNodeConfig(cfg *CLIConfig) (brainkit.NodeConfig, error) {
 	if cfg.StorePath != "" {
 		store, err := brainkit.NewSQLiteStore(cfg.StorePath)
 		if err != nil {
-			return nc, fmt.Errorf("open store: %w", err)
+			return bc, fmt.Errorf("open store: %w", err)
 		}
-		nc.Kernel.Store = store
+		bc.Store = store
 	}
 
-	return nc, nil
+	return bc, nil
 }
+
 
 func mapStorage(e StorageEntry) brainkit.StorageConfig {
 	switch e.Type {
