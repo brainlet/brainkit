@@ -522,7 +522,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.transport = cfg.Transport.(*transport.Transport)
 		kernel.ownsTransport = false
 	} else {
-		transport, err := transport.NewTransportSet(transport.TransportConfig{Type: "memory"})
+		transport, err := transport.NewTransportSet(transport.TransportConfig{Type: "memory", Namespace: cfg.Namespace})
 		if err != nil {
 			return fail(fmt.Errorf("brainkit: internal transport: %w", err))
 		}

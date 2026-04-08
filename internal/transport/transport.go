@@ -24,7 +24,8 @@ import (
 
 // TransportConfig configures the transport backend.
 type TransportConfig struct {
-	Type     string // "memory" (default), "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+	Type      string // "memory" (default), "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+	Namespace string // consumer group name; default: "brainkit". Replicas with same namespace compete.
 
 	// NATS
 	NATSURL  string
@@ -43,9 +44,10 @@ type TransportConfig struct {
 
 // Transport bundles the concrete publisher/subscriber pair plus a shared closer.
 type Transport struct {
-	Publisher  message.Publisher
-	Subscriber message.Subscriber
-	closeFns   []func() error
+	Publisher        message.Publisher
+	Subscriber       message.Subscriber // consumer group = Namespace (competing consumers)
+	FanOutSubscriber message.Subscriber // unique group per instance (all replicas receive)
+	closeFns         []func() error
 
 	// TopicSanitizer transforms logical topic names into transport-safe names.
 	// Applied automatically by RemoteClient and Host.
@@ -101,9 +103,10 @@ func NewTransportSet(cfg TransportConfig) (*Transport, error) {
 			Persistent: true,
 		}, logger)
 		return &Transport{
-			Publisher:  pubSub,
-			Subscriber: pubSub,
-			closeFns:   []func() error{pubSub.Close},
+			Publisher:        pubSub,
+			Subscriber:       pubSub,
+			FanOutSubscriber: pubSub, // GoChannel: all subscribers get all messages by default
+			closeFns:         []func() error{pubSub.Close},
 		}, nil
 
 	case "nats":
@@ -145,11 +148,12 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		return &wmnats.SubjectDetail{Primary: safeTopic, QueueGroup: qg}
 	}
 
-	durablePrefix := cfg.NATSName
-	if durablePrefix == "" {
-		durablePrefix = "brainkit"
+	// Consumer group = namespace. Replicas with the same namespace compete.
+	consumerGroup := cfg.Namespace
+	if consumerGroup == "" {
+		consumerGroup = "brainkit"
 	}
-	durablePrefix = sanitizeDurable(durablePrefix)
+	consumerGroup = sanitizeDurable(consumerGroup)
 
 	publisher, err := wmnats.NewPublisher(wmnats.PublisherConfig{
 		URL:               url,
@@ -161,9 +165,10 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		return nil, fmt.Errorf("nats publisher: %w", err)
 	}
 
+	// Command subscriber — consumer group for competing consumers
 	subscriber, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
 		URL:               url,
-		QueueGroupPrefix:  durablePrefix,
+		QueueGroupPrefix:  consumerGroup,
 		SubscribersCount:  1,
 		CloseTimeout:      15 * time.Second,
 		AckWaitTimeout:    30 * time.Second,
@@ -172,7 +177,7 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		SubjectCalculator: natsSubjectCalc,
 		JetStream: wmnats.JetStreamConfig{
 			AutoProvision: true,
-			DurablePrefix: durablePrefix,
+			DurablePrefix: consumerGroup,
 			TrackMsgId:    true,
 		},
 	}, logger)
@@ -181,10 +186,35 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		return nil, fmt.Errorf("nats subscriber: %w", err)
 	}
 
+	// Fan-out subscriber — unique durable per instance, no queue group.
+	// Every instance with this subscriber receives ALL messages (broadcast).
+	fanOutID := consumerGroup + "-fo-" + watermill.NewShortUUID()
+	fanOutSub, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
+		URL:               url,
+		QueueGroupPrefix:  "", // no queue group = fan-out
+		SubscribersCount:  1,
+		CloseTimeout:      15 * time.Second,
+		AckWaitTimeout:    30 * time.Second,
+		SubscribeTimeout:  30 * time.Second,
+		Unmarshaler:       wmnats.JSONMarshaler{},
+		SubjectCalculator: natsSubjectCalc,
+		JetStream: wmnats.JetStreamConfig{
+			AutoProvision: true,
+			DurablePrefix: fanOutID,
+			TrackMsgId:    true,
+		},
+	}, logger)
+	if err != nil {
+		_ = publisher.Close()
+		_ = subscriber.Close()
+		return nil, fmt.Errorf("nats fan-out subscriber: %w", err)
+	}
+
 	return &Transport{
-		Publisher:  publisher,
-		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close)},
+		Publisher:        publisher,
+		Subscriber:       subscriber,
+		FanOutSubscriber: fanOutSub,
+		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), onceCloser(fanOutSub.Close)},
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer(".", "-", "/", "-", "@", "-", " ", "-")
 			return r.Replace(topic)
@@ -202,7 +232,14 @@ func newAMQPTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		amqpURL = "amqp://guest:guest@localhost:5672/"
 	}
 
-	amqpConfig := wmamqp.NewDurablePubSubConfig(amqpURL, wmamqp.GenerateQueueNameTopicName)
+	// Command subscriber — shared queue name for competing consumers
+	consumerGroup := cfg.Namespace
+	if consumerGroup == "" {
+		consumerGroup = "brainkit"
+	}
+	amqpConfig := wmamqp.NewDurablePubSubConfig(amqpURL, func(topic string) string {
+		return consumerGroup + "_" + topic
+	})
 
 	publisher, err := wmamqp.NewPublisher(amqpConfig, logger)
 	if err != nil {
@@ -215,12 +252,23 @@ func newAMQPTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		return nil, fmt.Errorf("amqp subscriber: %w", err)
 	}
 
+	// Fan-out subscriber — unique queue per instance
+	fanOutID := consumerGroup + "_fo_" + watermill.NewShortUUID()
+	fanOutConfig := wmamqp.NewDurablePubSubConfig(amqpURL, func(topic string) string {
+		return fanOutID + "_" + topic
+	})
+	fanOutSub, err := wmamqp.NewSubscriber(fanOutConfig, logger)
+	if err != nil {
+		_ = publisher.Close()
+		_ = subscriber.Close()
+		return nil, fmt.Errorf("amqp fan-out subscriber: %w", err)
+	}
+
 	return &Transport{
-		Publisher:  publisher,
-		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close)},
-		// AMQP: dots are native routing key delimiters — preserve them.
-		// Sanitize slashes, @, spaces which are invalid in exchange names.
+		Publisher:        publisher,
+		Subscriber:       subscriber,
+		FanOutSubscriber: fanOutSub,
+		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), onceCloser(fanOutSub.Close)},
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer("/", "-", "@", "-", " ", "-")
 			return r.Replace(topic)
@@ -253,11 +301,13 @@ func newRedisTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tr
 		return nil, fmt.Errorf("redis publisher: %w", err)
 	}
 
-	consumerGroup := "brainkit"
-	if cfg.NATSName != "" {
-		consumerGroup = sanitizeDurable(cfg.NATSName)
+	consumerGroup := cfg.Namespace
+	if consumerGroup == "" {
+		consumerGroup = "brainkit"
 	}
+	consumerGroup = sanitizeDurable(consumerGroup)
 
+	// Command subscriber — consumer group for competing consumers
 	subscriber, err := wmredis.NewSubscriber(wmredis.SubscriberConfig{
 		Client:        rdb,
 		Unmarshaller:  wmredis.DefaultMarshallerUnmarshaller{},
@@ -269,11 +319,25 @@ func newRedisTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tr
 		return nil, fmt.Errorf("redis subscriber: %w", err)
 	}
 
+	// Fan-out subscriber — unique consumer group per instance
+	fanOutGroup := consumerGroup + "-fo-" + watermill.NewShortUUID()
+	fanOutSub, err := wmredis.NewSubscriber(wmredis.SubscriberConfig{
+		Client:        rdb,
+		Unmarshaller:  wmredis.DefaultMarshallerUnmarshaller{},
+		ConsumerGroup: fanOutGroup,
+	}, logger)
+	if err != nil {
+		_ = publisher.Close()
+		_ = subscriber.Close()
+		rdb.Close()
+		return nil, fmt.Errorf("redis fan-out subscriber: %w", err)
+	}
+
 	return &Transport{
-		Publisher:  publisher,
-		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), rdb.Close},
-		// Redis keys accept any binary string — no sanitization needed
+		Publisher:        publisher,
+		Subscriber:       subscriber,
+		FanOutSubscriber: fanOutSub,
+		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), onceCloser(fanOutSub.Close), rdb.Close},
 	}, nil
 }
 
@@ -316,10 +380,10 @@ func newPostgresTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (
 	}
 
 	return &Transport{
-		Publisher:  publisher,
-		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
-		// SQL: topic becomes table name — must be valid SQL identifier
+		Publisher:        publisher,
+		Subscriber:       subscriber,
+		FanOutSubscriber: subscriber, // SQL: single-instance, no consumer group distinction
+		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer(".", "_", "/", "_", "@", "_", " ", "_")
 			return r.Replace(topic)
@@ -370,11 +434,10 @@ func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*T
 	}
 
 	return &Transport{
-		Publisher:  publisher,
-		Subscriber: subscriber,
-		closeFns:   []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
-		// SQLite watermill adapter handles table naming internally.
-		// But our topics may contain dots which become table names — sanitize.
+		Publisher:        publisher,
+		Subscriber:       subscriber,
+		FanOutSubscriber: subscriber, // SQLite: single-instance, no consumer group distinction
+		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
 		TopicSanitizer: func(topic string) string {
 			r := strings.NewReplacer(".", "_", "/", "_", "@", "_", " ", "_")
 			return r.Replace(topic)

@@ -50,8 +50,10 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		kernelCfg.CallerID = cfg.NodeID
 	}
 
-	// Create external transport
-	transport, err := transport.NewTransportSet(messagingToTransportConfig(cfg.Messaging))
+	// Create external transport — consumer group = namespace for competing consumers
+	tcfg := messagingToTransportConfig(cfg.Messaging)
+	tcfg.Namespace = kernelCfg.Namespace
+	transport, err := transport.NewTransportSet(tcfg)
 	if err != nil {
 		return nil, fmt.Errorf("brainkit: transport: %w", err)
 	}
