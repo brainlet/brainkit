@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	bkgw "github.com/brainlet/brainkit/gateway"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,16 +18,14 @@ import (
 
 // testAttackRequestBodyBomb — massive request body (10MB).
 func testAttackRequestBodyBomb(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-bomb.ts", `
+	testutil.Deploy(t, k, "gw-bomb.ts", `
 		bus.on("echo", function(msg) {
 			msg.reply({size: JSON.stringify(msg.payload).length});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("POST", "/bomb", "ts.gw-bomb.echo")
 
 	// 10MB request body
@@ -38,19 +36,17 @@ func testAttackRequestBodyBomb(t *testing.T, env *suite.TestEnv) {
 	}
 	defer resp.Body.Close()
 	// Either 200 (processed) or 4xx/5xx (rejected) — no crash
-	assert.True(t, k.Alive(ctx), "kernel should survive 10MB HTTP body")
+	assert.True(t, testutil.Alive(t, k), "kernel should survive 10MB HTTP body")
 }
 
 // testAttackMethodConfusion — HTTP method confusion on POST-only route.
 func testAttackMethodConfusion(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-method.ts", `
+	testutil.Deploy(t, k, "gw-method.ts", `
 		bus.on("data", function(msg) { msg.reply({ok: true}); });
 	`)
-	require.NoError(t, err)
 	gw.Handle("POST", "/api/data", "ts.gw-method.data")
 
 	// Try GET on a POST-only route
@@ -71,18 +67,16 @@ func testAttackMethodConfusion(t *testing.T, env *suite.TestEnv) {
 
 // testAttackConcurrentFlood — 100 concurrent requests hitting the same handler.
 func testAttackConcurrentFlood(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-flood.ts", `
+	testutil.Deploy(t, k, "gw-flood.ts", `
 		var count = 0;
 		bus.on("req", function(msg) {
 			count++;
 			msg.reply({count: count});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("GET", "/flood", "ts.gw-flood.req")
 
 	// 100 concurrent requests
@@ -111,16 +105,15 @@ func testAttackConcurrentFlood(t *testing.T, env *suite.TestEnv) {
 
 	t.Logf("100 concurrent: %d succeeded, %d failed", succeeded.Load(), failed.Load())
 	assert.Greater(t, succeeded.Load(), int64(0), "some requests should succeed")
-	assert.True(t, k.Alive(ctx))
+	assert.True(t, testutil.Alive(t, k))
 }
 
 // testAttackSSEClientDisconnect — SSE client disconnects mid-stream.
 func testAttackSSEClientDisconnect(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-sse.ts", `
+	testutil.Deploy(t, k, "gw-sse.ts", `
 		bus.on("stream", function(msg) {
 			for (var i = 0; i < 100; i++) {
 				msg.stream.text("chunk-" + i);
@@ -128,7 +121,6 @@ func testAttackSSEClientDisconnect(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({done: true});
 		});
 	`)
-	require.NoError(t, err)
 	gw.HandleStream("GET", "/sse-disconnect", "ts.gw-sse.stream")
 
 	// Connect, read 2 chunks, disconnect
@@ -143,12 +135,12 @@ func testAttackSSEClientDisconnect(t *testing.T, env *suite.TestEnv) {
 	resp.Body.Close() // DISCONNECT
 
 	time.Sleep(1 * time.Second)
-	assert.True(t, k.Alive(ctx), "kernel should survive SSE client disconnect")
+	assert.True(t, testutil.Alive(t, k), "kernel should survive SSE client disconnect")
 }
 
 // testAttackCORSBypass — CORS bypass with origin not in allowlist.
 func testAttackCORSBypass(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -161,8 +153,7 @@ func testAttackCORSBypass(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	ctx := context.Background()
-	_, _ = k.Deploy(ctx, "gw-cors.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)
+	testutil.Deploy(t, k, "gw-cors.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)
 	gw.Handle("GET", "/cors-api", "ts.gw-cors.api")
 
 	// Request with evil origin
@@ -179,17 +170,15 @@ func testAttackCORSBypass(t *testing.T, env *suite.TestEnv) {
 
 // testAttackErrorInfoLeak — error response leaks internal information.
 func testAttackErrorInfoLeak(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-err-leak.ts", `
+	testutil.Deploy(t, k, "gw-err-leak.ts", `
 		bus.on("crash", function(msg) {
 			// Throw with internal details
 			throw new Error("internal: connection to postgres://admin:password@db:5432/prod failed");
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("GET", "/crash", "ts.gw-err-leak.crash")
 
 	status, body := gwGet(t, gw, "/crash")
@@ -204,11 +193,10 @@ func testAttackErrorInfoLeak(t *testing.T, env *suite.TestEnv) {
 
 // testAttackSlowloris — keep the connection open with slow writes.
 func testAttackSlowloris(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, _ = k.Deploy(ctx, "gw-slow.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)
+	testutil.Deploy(t, k, "gw-slow.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)
 	gw.Handle("POST", "/slow-api", "ts.gw-slow.api")
 
 	// Start a request with a very slow body
@@ -237,19 +225,17 @@ func testAttackSlowloris(t *testing.T, env *suite.TestEnv) {
 
 // testAttackRouteRemovalViaBus — can any .ts deployment remove routes?
 func testAttackRouteRemovalViaBus(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, _ = k.Deploy(ctx, "gw-protected.ts", `bus.on("api", function(msg) { msg.reply({protected: true}); });`)
+	testutil.Deploy(t, k, "gw-protected.ts", `bus.on("api", function(msg) { msg.reply({protected: true}); });`)
 	gw.Handle("GET", "/protected", "ts.gw-protected.api")
 
 	// Attacker tries to remove the route via bus
-	_, err := k.Deploy(ctx, "gw-attacker.ts", `
+	testutil.Deploy(t, k, "gw-attacker.ts", `
 		var r = bus.publish("gateway.http.route.remove", {method: "GET", path: "/protected"});
 		output({replyTo: r.replyTo});
 	`)
-	require.NoError(t, err)
 
 	time.Sleep(500 * time.Millisecond)
 

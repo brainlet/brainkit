@@ -1,13 +1,13 @@
 package security
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +20,7 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "ghost-role-sec.ts", Code: `output("hi");`,
 		Order: 1, Role: "nonexistent-role-xyz",
 		DeployedAt: time.Now(),
@@ -28,7 +28,7 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 	store.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		Roles: map[string]rbac.Role{"service": rbac.RoleService},
@@ -45,18 +45,17 @@ func testStateStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-sec.db"))
 	require.NoError(t, err)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	_, err = k.Deploy(context.Background(), "survivor-sec.ts", `output("alive");`)
-	require.NoError(t, err)
+	secDeploy(t, k, "survivor-sec.ts", `output("alive");`)
 
 	store.DeleteDeployment("survivor-sec.ts")
 
-	deps := k.ListDeployments()
+	deps := secListDeployments(t, k)
 	found := false
 	for _, d := range deps {
 		if d.Source == "survivor-sec.ts" {

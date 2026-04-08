@@ -17,7 +17,7 @@ import (
 // secGateway creates a gateway with short timeout for security tests.
 func secGateway(t *testing.T, env *suite.TestEnv) *bkgw.Gateway {
 	t.Helper()
-	gw := bkgw.New(env.Kernel, bkgw.Config{
+	gw := bkgw.New(env.Kit, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
@@ -39,7 +39,7 @@ func secGwPost(t *testing.T, gw *bkgw.Gateway, path, body string) (int, string) 
 
 // testGatewayHeaderInjection — inject headers to forge callerID.
 func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -47,13 +47,11 @@ func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-header-sec.ts", `
+	secDeploy(t, k, "gw-header-sec.ts", `
 		bus.on("whoami", function(msg) {
 			msg.reply({callerId: msg.callerId, topic: msg.topic});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("POST", "/whoami-sec", "ts.gw-header-sec.whoami")
 
 	req, _ := http.NewRequest("POST", "http://"+gw.Addr()+"/whoami-sec", strings.NewReader(`{}`))
@@ -72,7 +70,7 @@ func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
 
 // testGatewayProtoPollutionViaHTTP — request body with __proto__ pollution.
 func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -80,8 +78,7 @@ func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-proto-sec.ts", `
+	secDeploy(t, k, "gw-proto-sec.ts", `
 		bus.on("check", function(msg) {
 			msg.reply({
 				hasProto: msg.payload.__proto__ !== undefined,
@@ -90,7 +87,6 @@ func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 			});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("POST", "/proto-check-sec", "ts.gw-proto-sec.check")
 
 	evilPayload := `{"__proto__":{"polluted":true},"constructor":{"prototype":{"pwned":true}},"data":"test"}`
@@ -101,7 +97,7 @@ func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 
 // testGatewayPathTraversalParams — path traversal in URL parameters.
 func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -109,13 +105,11 @@ func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-params-sec.ts", `
+	secDeploy(t, k, "gw-params-sec.ts", `
 		bus.on("get", function(msg) {
 			msg.reply({id: msg.payload.id});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("GET", "/items-sec/{id}", "ts.gw-params-sec.get", bkgw.WithParam("id", "id"))
 
 	evilPaths := []string{
@@ -135,12 +129,12 @@ func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
 			resp.Body.Close()
 		})
 	}
-	assert.True(t, k.Alive(ctx))
+	assert.True(t, secAlive(t, k))
 }
 
 // testGatewayWebSocketInjection — WebSocket message injection.
 func testGatewayWebSocketInjection(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -149,12 +143,11 @@ func testGatewayWebSocketInjection(t *testing.T, env *suite.TestEnv) {
 	defer gw.Stop()
 
 	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-ws-sec.ts", `
+	secDeploy(t, k, "gw-ws-sec.ts", `
 		bus.on("ws", function(msg) {
 			msg.reply({received: msg.payload});
 		});
 	`)
-	require.NoError(t, err)
 	gw.HandleWebSocket("/ws-attack-sec", "ts.gw-ws-sec.ws")
 
 	resp, err := http.Get("http://" + gw.Addr() + "/ws-attack-sec")
@@ -162,5 +155,6 @@ func testGatewayWebSocketInjection(t *testing.T, env *suite.TestEnv) {
 		return
 	}
 	resp.Body.Close()
-	assert.True(t, k.Alive(ctx))
+	_ = ctx
+	assert.True(t, secAlive(t, k))
 }

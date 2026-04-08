@@ -20,15 +20,14 @@ func testTokenOwnMailboxGetsToken(t *testing.T, env *suite.TestEnv) {
 	k := secReplyTokenKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "token-check-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "token-check-sec.ts", `
 		bus.on("check", function(msg) {
 			msg.reply({
 				hasToken: typeof msg.replyToken === "string" && msg.replyToken.length > 0,
 				tokenLength: msg.replyToken ? msg.replyToken.length : 0,
 			});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.token-check-sec.check", Payload: json.RawMessage(`{}`),
@@ -56,12 +55,11 @@ func testTokenLegitHandlerCanReply(t *testing.T, env *suite.TestEnv) {
 	k := secReplyTokenKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "legit-reply-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "legit-reply-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({legitimate: true, data: "response"});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.legit-reply-sec.api", Payload: json.RawMessage(`{}`),
@@ -83,14 +81,13 @@ func testTokenObserverCannotReply(t *testing.T, env *suite.TestEnv) {
 	k := secReplyTokenKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "protected-svc-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "protected-svc-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({from: "legitimate"});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	_, err = k.Deploy(ctx, "sneaky-observer-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "sneaky-observer-sec.ts", `
 		var replyResult = "UNKNOWN";
 		bus.subscribe("ts.protected-svc-sec.api", function(msg) {
 			try {
@@ -101,8 +98,7 @@ func testTokenObserverCannotReply(t *testing.T, env *suite.TestEnv) {
 			}
 		});
 		output("subscribed");
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.protected-svc-sec.api", Payload: json.RawMessage(`{}`),
@@ -120,7 +116,7 @@ func testTokenObserverCannotReply(t *testing.T, env *suite.TestEnv) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	result, _ := k.EvalTS(ctx, "__obs_reply.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__obs_reply.ts", `return String(globalThis.__module_result || "");`)
 	_ = result
 }
 
@@ -130,15 +126,14 @@ func testTokenStreamingWithToken(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := k.Deploy(ctx, "stream-token-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "stream-token-sec.ts", `
 		bus.on("stream", function(msg) {
 			msg.stream.text("chunk1");
 			msg.stream.text("chunk2");
 			msg.stream.progress(50, "half");
 			msg.stream.end({done: true});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.stream-token-sec.stream", Payload: json.RawMessage(`{}`),
@@ -170,7 +165,7 @@ func testTokenStreamingWithToken(t *testing.T, env *suite.TestEnv) {
 // testTokenNoRBACNoTokens — No RBAC = no tokens = observer CAN reply.
 func testTokenNoRBACNoTokens(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -178,12 +173,11 @@ func testTokenNoRBACNoTokens(t *testing.T, env *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	_, err = k.Deploy(ctx, "no-rbac-svc-sec.ts", `
+	secDeploy(t, k, "no-rbac-svc-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({from: "service"});
 		});
 	`)
-	require.NoError(t, err)
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.no-rbac-svc-sec.api", Payload: json.RawMessage(`{}`),
@@ -196,7 +190,7 @@ func testTokenNoRBACNoTokens(t *testing.T, env *suite.TestEnv) {
 	case p := <-ch:
 		assert.Contains(t, string(p), "service")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timeout — no-RBAC kernel should work without tokens")
+		t.Fatal("timeout — no-RBAC kit should work without tokens")
 	}
 }
 
@@ -212,15 +206,15 @@ func testTokenAuditEventEmitted(t *testing.T, env *suite.TestEnv) {
 	})
 	defer auditUnsub()
 
-	_, _ = k.Deploy(ctx, "audit-svc-sec.ts", `
+	secDeployWithRole(k, "audit-svc-sec.ts", `
 		bus.on("api", function(msg) { msg.reply({ok: true}); });
-	`, brainkit.WithRole("service"))
+	`, "service")
 
-	_, _ = k.Deploy(ctx, "audit-observer-sec.ts", `
+	secDeployWithRole(k, "audit-observer-sec.ts", `
 		bus.subscribe("ts.audit-svc-sec.api", function(msg) {
 			try { msg.reply({hijacked: true}); } catch(e) {}
 		});
-	`, brainkit.WithRole("observer"))
+	`, "observer")
 
 	sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.audit-svc-sec.api", Payload: json.RawMessage(`{}`),
@@ -240,21 +234,19 @@ func testTokenCrossDeploymentScoped(t *testing.T, env *suite.TestEnv) {
 	k := secReplyTokenKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "svc-a-token-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "svc-a-token-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({from: "A", token: msg.replyToken});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	_, err = k.Deploy(ctx, "svc-b-token-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "svc-b-token-sec.ts", `
 		bus.subscribe("ts.svc-a-token-sec.api", function(msg) {
 			try {
 				msg.reply({from: "B-impersonating-A"});
 			} catch(e) {}
 		});
-	`, brainkit.WithRole("admin"))
-	require.NoError(t, err)
+	`, "admin"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.svc-a-token-sec.api", Payload: json.RawMessage(`{}`),

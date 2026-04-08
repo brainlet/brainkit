@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -18,13 +19,13 @@ func testStorageAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageAdd(env.Kernel, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
 		Name:   "test-mem-stor",
 		Type:   "memory",
 		Config: json.RawMessage(`{}`),
 	})
 	respCh := make(chan messages.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kernel, ctx, pr.ReplyTo,
+	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
 		func(resp messages.StorageAddResp, msg messages.Message) { respCh <- resp })
 	defer unsub()
 
@@ -41,9 +42,9 @@ func testStorageAddViaBus(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kernel, ctx, messages.RegistryListMsg{Category: "storage"})
+	pr2, _ := sdk.Publish(env.Kit, ctx, messages.RegistryListMsg{Category: "storage"})
 	listCh := make(chan messages.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](env.Kernel, ctx, pr2.ReplyTo,
+	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
 		func(resp messages.RegistryListResp, msg messages.Message) { listCh <- resp })
 	defer unsub2()
 
@@ -62,19 +63,19 @@ func testStorageRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add
-	pr, _ := sdk.PublishStorageAdd(env.Kernel, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
 		Name: "test-rm-stor", Type: "memory", Config: json.RawMessage(`{}`),
 	})
 	ch := make(chan messages.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kernel, ctx, pr.ReplyTo,
+	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
 		func(resp messages.StorageAddResp, msg messages.Message) { ch <- resp })
 	<-ch
 	unsub()
 
 	// Remove
-	pr2, _ := sdk.PublishStorageRemove(env.Kernel, ctx, messages.StorageRemoveMsg{Name: "test-rm-stor"})
+	pr2, _ := sdk.PublishStorageRemove(env.Kit, ctx, messages.StorageRemoveMsg{Name: "test-rm-stor"})
 	rmCh := make(chan messages.StorageRemoveResp, 1)
-	unsub2, _ := sdk.SubscribeStorageRemoveResp(env.Kernel, ctx, pr2.ReplyTo,
+	unsub2, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr2.ReplyTo,
 		func(resp messages.StorageRemoveResp, msg messages.Message) { rmCh <- resp })
 	defer unsub2()
 
@@ -92,9 +93,9 @@ func testStorageRemoveNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageRemove(env.Kernel, ctx, messages.StorageRemoveMsg{Name: "nonexistent-stor"})
+	pr, _ := sdk.PublishStorageRemove(env.Kit, ctx, messages.StorageRemoveMsg{Name: "nonexistent-stor"})
 	rmCh := make(chan messages.StorageRemoveResp, 1)
-	unsub, _ := sdk.SubscribeStorageRemoveResp(env.Kernel, ctx, pr.ReplyTo,
+	unsub, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr.ReplyTo,
 		func(resp messages.StorageRemoveResp, msg messages.Message) { rmCh <- resp })
 	defer unsub()
 
@@ -119,13 +120,13 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	// Add SQLite storage at runtime via bus
-	pr, _ := sdk.PublishStorageAdd(env.Kernel, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
 		Name:   "dynamic-sql",
 		Type:   "sqlite",
 		Config: json.RawMessage(`{"path":"` + tmpDir + `/dynamic.db"}`),
 	})
 	addCh := make(chan messages.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kernel, ctx, pr.ReplyTo,
+	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
 		func(resp messages.StorageAddResp, msg messages.Message) { addCh <- resp })
 	resp := <-addCh
 	unsub()
@@ -148,16 +149,16 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`
-	env.Kernel.Deploy(ctx, "storage-test-dynamic.ts", code)
-	defer env.Kernel.Teardown(ctx, "storage-test-dynamic.ts")
+	testutil.Deploy(t, env.Kit, "storage-test-dynamic.ts", code)
+	defer testutil.Teardown(t, env.Kit, "storage-test-dynamic.ts")
 
 	// Send message to deployed service
-	pr2, _ := sdk.Publish(env.Kernel, ctx, messages.KitSendMsg{
+	pr2, _ := sdk.Publish(env.Kit, ctx, messages.KitSendMsg{
 		Topic:   "ts.storage-test-dynamic.storage-test",
 		Payload: json.RawMessage(`{}`),
 	})
 	sendCh := make(chan messages.KitSendResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.KitSendResp](env.Kernel, ctx, pr2.ReplyTo,
+	unsub2, _ := sdk.SubscribeTo[messages.KitSendResp](env.Kit, ctx, pr2.ReplyTo,
 		func(resp messages.KitSendResp, msg messages.Message) { sendCh <- resp })
 	defer unsub2()
 
@@ -186,11 +187,11 @@ func testStorageAddMemoryThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add in-memory storage at runtime
-	pr, _ := sdk.PublishStorageAdd(env.Kernel, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
 		Name: "dynamic-mem", Type: "memory", Config: json.RawMessage(`{}`),
 	})
 	addCh := make(chan messages.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kernel, ctx, pr.ReplyTo,
+	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
 		func(resp messages.StorageAddResp, msg messages.Message) { addCh <- resp })
 	<-addCh
 	unsub()
@@ -200,15 +201,12 @@ func testStorageAddMemoryThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 		const resolved = registry.resolve("storage", "dynamic-mem");
 		output(JSON.stringify(resolved));
 	`
-	env.Kernel.Deploy(ctx, "mem-stor-test.ts", code)
-	defer env.Kernel.Teardown(ctx, "mem-stor-test.ts")
+	testutil.Deploy(t, env.Kit, "mem-stor-test.ts", code)
+	defer testutil.Teardown(t, env.Kit, "mem-stor-test.ts")
 
-	result, err := env.Kernel.EvalTS(ctx, "__check_mem_stor.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__check_mem_stor.ts", `
 		return globalThis.__module_result || "null";
 	`)
-	if err != nil {
-		t.Fatalf("eval: %v", err)
-	}
 	if result == "null" || result == "" {
 		t.Fatal("expected storage to resolve, got null")
 	}

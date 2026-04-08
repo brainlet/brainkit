@@ -65,9 +65,9 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 	pgConnStr := fmt.Sprintf("postgresql://test:test@%s:%s/brainkit", host, mappedPort.Port())
 	t.Logf("Postgres at %s", pgConnStr)
 
-	// ── Create Kernel with Postgres storage ──
+	// ── Create Kit with Postgres storage ──
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test-storage-fail",
 		CallerID:  "test",
 		FSRoot:    tmpDir,
@@ -77,7 +77,7 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 		Store: mustStore(t, filepath.Join(tmpDir, "kit.db")),
 	})
 	if err != nil {
-		t.Fatalf("NewKernel: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	defer k.Close()
 
@@ -117,10 +117,7 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 		});
 	`
 
-	_, err = k.Deploy(ctx, "storage-fail-persist.ts", tsCode)
-	if err != nil {
-		t.Fatalf("Deploy: %v", err)
-	}
+	testutil.Deploy(t, k, "storage-fail-persist.ts", tsCode)
 
 	// ── Phase 1: Verify storage works while Postgres is alive ──
 	t.Log("Phase 1: Writing to storage with Postgres alive...")
@@ -187,12 +184,12 @@ type storageResp struct {
 	Count int    `json:"count"`
 }
 
-func busRoundTrip(t *testing.T, k *brainkit.Kernel, topic string, payload any) storageResp {
+func busRoundTrip(t *testing.T, k *brainkit.Kit, topic string, payload any) storageResp {
 	t.Helper()
 	return busRoundTripWithTimeout(t, k, topic, payload, 10*time.Second)
 }
 
-func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kernel, topic string, payload any, timeout time.Duration) storageResp {
+func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kit, topic string, payload any, timeout time.Duration) storageResp {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

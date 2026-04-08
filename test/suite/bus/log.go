@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -28,13 +29,13 @@ func testLogHandlerTSCompartment(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(logEnv.Kit, ctx, messages.KitDeployMsg{
 		Source: "log-test.ts",
 		Code:   `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`,
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	us, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	us, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer us()
 	select {
 	case <-ch:
@@ -70,13 +71,13 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+	pr1, err := sdk.Publish(logEnv.Kit, ctx, messages.KitDeployMsg{
 		Source: "file-a.ts",
 		Code:   `console.log("from file A");`,
 	})
 	require.NoError(t, err)
 	ch1 := make(chan messages.KitDeployResp, 1)
-	us1, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+	us1, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kit, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
 	defer us1()
 	select {
 	case <-ch1:
@@ -84,13 +85,13 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(logEnv.Kernel, ctx, messages.KitDeployMsg{
+	pr2, err := sdk.Publish(logEnv.Kit, ctx, messages.KitDeployMsg{
 		Source: "file-b.ts",
 		Code:   `console.log("from file B");`,
 	})
 	require.NoError(t, err)
 	ch2 := make(chan messages.KitDeployResp, 1)
-	us2, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kernel, ctx, pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch2 <- r })
+	us2, _ := sdk.SubscribeTo[messages.KitDeployResp](logEnv.Kit, ctx, pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch2 <- r })
 	defer us2()
 	select {
 	case <-ch2:
@@ -125,11 +126,10 @@ func testLogHandlerConcurrent(t *testing.T, _ *suite.TestEnv) {
 		mu.Unlock()
 	}))
 
-	ctx := context.Background()
 	for i := 0; i < 5; i++ {
 		src := "concurrent-log.ts"
-		concEnv.Kernel.Deploy(ctx, src, `console.log("concurrent"); output("ok");`)
-		concEnv.Kernel.Teardown(ctx, src)
+		testutil.Deploy(t, concEnv.Kit, src, `console.log("concurrent"); output("ok");`)
+		testutil.Teardown(t, concEnv.Kit, src)
 	}
 
 	mu.Lock()
@@ -144,13 +144,13 @@ func testLogHandlerNilDefault(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(nilEnv.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(nilEnv.Kit, ctx, messages.KitDeployMsg{
 		Source: "nil-test.ts",
 		Code:   `console.log("should not panic");`,
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	us, _ := sdk.SubscribeTo[messages.KitDeployResp](nilEnv.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	us, _ := sdk.SubscribeTo[messages.KitDeployResp](nilEnv.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer us()
 	select {
 	case <-ch:

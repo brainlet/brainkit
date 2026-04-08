@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -16,7 +17,7 @@ import (
 // testTransportMatrixToolsCall — tools.call roundtrip on the env's transport.
 // Ported from transport/matrix_test.go:TestBackendMatrix/tools_call.
 func testTransportMatrixToolsCall(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -44,7 +45,7 @@ func testTransportMatrixToolsCall(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixToolsList — tools.list returns tools.
 // Ported from transport/matrix_test.go:TestBackendMatrix/tools_list.
 func testTransportMatrixToolsList(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -67,7 +68,7 @@ func testTransportMatrixToolsList(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixToolsResolve — tools.resolve finds "echo".
 // Ported from transport/matrix_test.go:TestBackendMatrix/tools_resolve.
 func testTransportMatrixToolsResolve(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -90,24 +91,17 @@ func testTransportMatrixToolsResolve(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixFSWriteRead — fs write+read roundtrip.
 // Ported from transport/matrix_test.go:TestBackendMatrix/fs_write_read.
 func testTransportMatrixFSWriteRead(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	result, err := env.Kernel.EvalTS(ctx, "__test_matrix_fs.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__test_matrix_fs.ts", `
 		fs.writeFileSync("matrix-test-suite.txt", "backend:memory");
 		return fs.readFileSync("matrix-test-suite.txt", "utf8");
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "backend:memory", result)
 }
 
 // testTransportMatrixFSMkdirListStatDelete — fs mkdir, list, stat, delete.
 // Ported from transport/matrix_test.go:TestBackendMatrix/fs_mkdir_list_stat_delete.
 func testTransportMatrixFSMkdirListStatDelete(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	result, err := env.Kernel.EvalTS(ctx, "__test_matrix_fsdir.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__test_matrix_fsdir.ts", `
 		fs.mkdirSync("matrix-dir-suite", {recursive: true});
 		fs.writeFileSync("matrix-dir-suite/a.txt", "a");
 		var files = fs.readdirSync("matrix-dir-suite");
@@ -115,7 +109,6 @@ func testTransportMatrixFSMkdirListStatDelete(t *testing.T, env *suite.TestEnv) 
 		fs.unlinkSync("matrix-dir-suite/a.txt");
 		return JSON.stringify({fileCount: files.length, isDir: s.isDirectory()});
 	`)
-	require.NoError(t, err)
 	var resp struct {
 		FileCount int  `json:"fileCount"`
 		IsDir     bool `json:"isDir"`
@@ -128,7 +121,7 @@ func testTransportMatrixFSMkdirListStatDelete(t *testing.T, env *suite.TestEnv) 
 // testTransportMatrixAgentsListEmpty — agents.list returns non-nil.
 // Ported from transport/matrix_test.go:TestBackendMatrix/agents_list_empty.
 func testTransportMatrixAgentsListEmpty(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -151,7 +144,7 @@ func testTransportMatrixAgentsListEmpty(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixKitDeployTeardown — kit.deploy + call + teardown.
 // Ported from transport/matrix_test.go:TestBackendMatrix/kit_deploy_teardown.
 func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -218,7 +211,7 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixKitRedeploy — deploy then redeploy.
 // Ported from transport/matrix_test.go:TestBackendMatrix/kit_redeploy.
 func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -257,7 +250,7 @@ func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixRegistryHasList — registry.has + registry.list.
 // Ported from transport/matrix_test.go:TestBackendMatrix/registry_has_list.
 func testTransportMatrixRegistryHasList(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -297,7 +290,7 @@ func testTransportMatrixRegistryHasList(t *testing.T, env *suite.TestEnv) {
 // testTransportMatrixAsyncCorrelation — publish returns a correlation.
 // Ported from transport/matrix_test.go:TestBackendMatrix/async_correlation.
 func testTransportMatrixAsyncCorrelation(t *testing.T, env *suite.TestEnv) {
-	rt := sdk.Runtime(env.Kernel)
+	rt := sdk.Runtime(env.Kit)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

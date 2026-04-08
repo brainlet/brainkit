@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -16,13 +17,13 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "latency-test.ts",
 		Code:   `bus.on("ping", (msg) => { msg.reply({ pong: true }); });`,
 	})
 	require.NoError(t, err)
 	deployCh := make(chan struct{}, 1)
-	unsub, err := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) {
+	unsub, err := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) {
 		deployCh <- struct{}{}
 	})
 	require.NoError(t, err)
@@ -37,11 +38,11 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 	latencies := make([]time.Duration, 10)
 	for i := range latencies {
 		start := time.Now()
-		sendPR, err := sdk.SendToService(env.Kernel, ctx, "latency-test.ts", "ping", map[string]bool{"x": true})
+		sendPR, err := sdk.SendToService(env.Kit, ctx, "latency-test.ts", "ping", map[string]bool{"x": true})
 		require.NoError(t, err)
 
 		done := make(chan time.Duration, 1)
-		pongUnsub, err := env.Kernel.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+		pongUnsub, err := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
 			done <- time.Since(start)
 		})
 		require.NoError(t, err)
@@ -74,10 +75,6 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 func testPumpResponsiveAfterIdle(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(500 * time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	result, err := env.Kernel.EvalTS(ctx, "__idle_test.ts", `return "alive"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__idle_test.ts", `return "alive"`)
 	assert.Equal(t, "alive", result)
 }

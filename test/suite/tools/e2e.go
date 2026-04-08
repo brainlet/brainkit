@@ -15,7 +15,7 @@ import (
 // testToolPipeline — full pipeline: deploy .ts tool → list → call → teardown → verify gone.
 func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	ctx := env.T.Context()
-	rt := env.Kernel
+	rt := env.Kit
 
 	// 1. Deploy .ts code that creates a new tool
 	pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{

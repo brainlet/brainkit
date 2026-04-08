@@ -8,12 +8,14 @@ package security
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -151,12 +153,12 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // --- Shared helpers ---
 
-// secKernel creates a kernel with all 4 standard RBAC roles for security escape tests.
+// secRBACKernel creates a kit with all 4 standard RBAC roles for security escape tests.
 // Mirrors rbacAttackKernel from adversarial/rbac_escape_test.go.
-func secRBACKernel(t *testing.T) *brainkit.Kernel {
+func secRBACKernel(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,
@@ -183,12 +185,12 @@ func secRBACKernel(t *testing.T) *brainkit.Kernel {
 	return k
 }
 
-// secReplyTokenKernel creates a kernel for reply token tests.
+// secReplyTokenKernel creates a kit for reply token tests.
 // Mirrors replyTokenKernel from adversarial/reply_token_test.go.
-func secReplyTokenKernel(t *testing.T) *brainkit.Kernel {
+func secReplyTokenKernel(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,
@@ -212,7 +214,7 @@ func secReplyTokenKernel(t *testing.T) *brainkit.Kernel {
 }
 
 // secSendAndReceive publishes a typed message via SDK and waits for the reply.
-func secSendAndReceive(t *testing.T, k *brainkit.Kernel, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
+func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -239,6 +241,126 @@ func secSendAndReceive(t *testing.T, k *brainkit.Kernel, msg messages.BrainkitMe
 	case <-ctx.Done():
 		return nil, false
 	}
+}
+
+// secDeploy deploys .ts code via bus command.
+func secDeploy(t *testing.T, k *brainkit.Kit, source, code string) {
+	t.Helper()
+	testutil.Deploy(t, k, source, code)
+}
+
+// secDeployErr deploys .ts code and returns any error.
+func secDeployErr(k *brainkit.Kit, source, code string) error {
+	return testutil.DeployErr(k, source, code)
+}
+
+// secDeployWithRole deploys .ts code with an RBAC role.
+func secDeployWithRole(k *brainkit.Kit, source, code, role string) error {
+	return testutil.DeployWithOpts(k, source, code, role, "")
+}
+
+// secEvalTS evaluates TS code and returns the result string.
+func secEvalTS(t *testing.T, k *brainkit.Kit, source, code string) string {
+	t.Helper()
+	return testutil.EvalTS(t, k, source, code)
+}
+
+// secEvalTSErr evaluates TS code and returns (result, error).
+func secEvalTSErr(k *brainkit.Kit, source, code string) (string, error) {
+	return testutil.EvalTSErr(k, source, code)
+}
+
+// secTeardown tears down a deployment.
+func secTeardown(t *testing.T, k *brainkit.Kit, source string) {
+	t.Helper()
+	testutil.Teardown(t, k, source)
+}
+
+// secListDeployments lists current deployments.
+func secListDeployments(t *testing.T, k *brainkit.Kit) []messages.DeploymentInfo {
+	t.Helper()
+	return testutil.ListDeployments(t, k)
+}
+
+// secAlive checks if the kit is alive via health bus command.
+func secAlive(t *testing.T, k *brainkit.Kit) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(k, ctx, messages.KitHealthMsg{})
+	if err != nil {
+		return false
+	}
+
+	ch := make(chan bool, 1)
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+		ch <- true
+	})
+	if err != nil {
+		return false
+	}
+	defer unsub()
+
+	select {
+	case <-ch:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// secSchedule creates a schedule via the SDK bus command.
+func secSchedule(t *testing.T, k *brainkit.Kit, cfg brainkit.ScheduleConfig) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.Publish(k, ctx, messages.ScheduleCreateMsg{
+		Expression: cfg.Expression,
+		Topic:      cfg.Topic,
+		Payload:    cfg.Payload,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	type result struct {
+		id  string
+		err error
+	}
+	ch := make(chan result, 1)
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+		var resp struct {
+			ID    string `json:"id"`
+			Error string `json:"error"`
+		}
+		json.Unmarshal(m.Payload, &resp)
+		if resp.Error != "" {
+			ch <- result{err: errors.New(resp.Error)}
+		} else {
+			ch <- result{id: resp.ID}
+		}
+	})
+	if err != nil {
+		return "", err
+	}
+	defer unsub()
+
+	select {
+	case r := <-ch:
+		return r.id, r.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// secUnschedule cancels a schedule via the SDK bus command.
+func secUnschedule(t *testing.T, k *brainkit.Kit, id string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sdk.Publish(k, ctx, messages.ScheduleCancelMsg{ID: id})
 }
 
 // secResponseHasError checks if a bus response contains an error field.

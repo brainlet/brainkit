@@ -22,11 +22,11 @@ func testInputAbuseCallNonexistent(t *testing.T, env *suite.TestEnv) {
 // testInputAbuseWrongInputType — calling a tool with wrong input shape doesn't hang.
 func testInputAbuseWrongInputType(t *testing.T, env *suite.TestEnv) {
 	ctx := env.T.Context()
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{Name: "echo", Input: "not-an-object"})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "echo", Input: "not-an-object"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -56,14 +56,14 @@ func testInputAbuseOversizedInput(t *testing.T, env *suite.TestEnv) {
 		big[i] = 'x'
 	}
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": string(big)},
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

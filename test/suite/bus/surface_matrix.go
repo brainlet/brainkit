@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -18,7 +18,6 @@ import (
 // ── Surface matrix: Go SDK surface ──────────────────────────────────────
 
 // testSurfaceGoSDK — core operations from Go SDK surface.
-// Ported from adversarial/surface_matrix_test.go:TestSurfaceMatrix_GoSDK.
 func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
@@ -35,10 +34,10 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("secrets.set+get", func(t *testing.T) {
-		pr, err := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
+		pr, err := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
 		require.NoError(t, err)
 		ch := make(chan []byte, 1)
-		unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 		select {
 		case <-ch:
 		case <-time.After(3 * time.Second):
@@ -46,9 +45,9 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 		}
 		unsub()
 
-		pr2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "go-surface-suite"})
+		pr2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "go-surface-suite"})
 		ch2 := make(chan []byte, 1)
-		unsub2, _ := env.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+		unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
 		defer unsub2()
 		select {
 		case p := <-ch2:
@@ -59,22 +58,19 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("fs.write+read", func(t *testing.T) {
-		result, err := env.Kernel.EvalTS(ctx, "__test_surface.ts", `
+		result := testutil.EvalTS(t, env.Kit, "__test_surface.ts", `
 			fs.writeFileSync("go-surf-suite.txt", "from go");
 			return fs.readFileSync("go-surf-suite.txt", "utf8");
 		`)
-		require.NoError(t, err)
 		assert.Equal(t, "from go", result)
 	})
 
 	t.Run("bus.publish+reply", func(t *testing.T) {
-		_, err := env.Kernel.Deploy(ctx, "go-surface-svc-suite.ts", `bus.on("ping", function(msg) { msg.reply({pong:true}); });`)
-		require.NoError(t, err)
-		defer env.Kernel.Teardown(ctx, "go-surface-svc-suite.ts")
+		testutil.Deploy(t, env.Kit, "go-surface-svc-suite.ts", `bus.on("ping", function(msg) { msg.reply({pong:true}); });`)
 
-		pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
+		pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
 		ch := make(chan []byte, 1)
-		unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 		defer unsub()
 		select {
 		case p := <-ch:
@@ -85,15 +81,15 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("schedule+unschedule", func(t *testing.T) {
-		id, err := env.Kernel.Schedule(ctx, brainkit.ScheduleConfig{Expression: "in 1h", Topic: "go-sched-suite", Payload: json.RawMessage(`{}`)})
-		require.NoError(t, err)
+		id := testutil.Schedule(t, env.Kit, "in 1h", "go-sched-suite", json.RawMessage(`{}`))
 		require.NotEmpty(t, id)
-		env.Kernel.Unschedule(ctx, id)
+		testutil.Unschedule(t, env.Kit, id)
 	})
 
 	t.Run("metrics", func(t *testing.T) {
-		m := env.Kernel.Metrics()
-		assert.GreaterOrEqual(t, m.PumpCycles, int64(0))
+		payload, ok := env.SendAndReceive(t, messages.MetricsGetMsg{}, 5*time.Second)
+		require.True(t, ok)
+		assert.False(t, suite.ResponseHasError(payload))
 	})
 
 	t.Run("registry.list", func(t *testing.T) {
@@ -106,10 +102,7 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 // ── Surface matrix: TS Deployed surface ──────────────────────────────────
 
 // testSurfaceTSDeployed — operations from deployed .ts code.
-// Ported from adversarial/surface_matrix_test.go:TestSurfaceMatrix_TSDeployed.
 func testSurfaceTSDeployed(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	cases := []struct {
 		name   string
 		code   string
@@ -170,15 +163,13 @@ func testSurfaceTSDeployed(t *testing.T, env *suite.TestEnv) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			source := fmt.Sprintf("__ts_surface_suite_%s.ts", tc.name)
-			_, err := env.Kernel.Deploy(ctx, source, tc.code)
+			err := testutil.DeployErr(env.Kit, source, tc.code)
 			if err != nil {
 				t.Logf("deploy error (may be expected): %v", err)
 				return
 			}
-			defer env.Kernel.Teardown(ctx, source)
 
-			result, err := env.Kernel.EvalTS(ctx, "__get_result_suite.ts", `return String(globalThis.__module_result || "");`)
-			require.NoError(t, err)
+			result := testutil.EvalTS(t, env.Kit, "__get_result_suite.ts", `return String(globalThis.__module_result || "");`)
 			assert.Contains(t, result, tc.expect, "%s: expected %q in result", tc.name, tc.expect)
 		})
 	}
@@ -187,10 +178,7 @@ func testSurfaceTSDeployed(t *testing.T, env *suite.TestEnv) {
 // ── Surface matrix: EvalTS surface ──────────────────────────────────────
 
 // testSurfaceEvalTS — operations via direct EvalTS (global scope).
-// Ported from adversarial/surface_matrix_test.go:TestSurfaceMatrix_EvalTS.
 func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	cases := []struct {
 		name   string
 		code   string
@@ -209,8 +197,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := env.Kernel.EvalTS(ctx, fmt.Sprintf("__eval_suite_%s.ts", tc.name), tc.code)
-			require.NoError(t, err)
+			result := testutil.EvalTS(t, env.Kit, fmt.Sprintf("__eval_suite_%s.ts", tc.name), tc.code)
 			assert.Contains(t, result, tc.expect)
 		})
 	}
@@ -219,10 +206,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 // ── Surface matrix: Error consistency ───────────────────────────────────
 
 // testSurfaceErrorConsistency — same error looks the same from every surface.
-// Ported from adversarial/surface_matrix_test.go:TestSurfaceMatrix_ErrorConsistency.
 func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	t.Run("NOT_FOUND/go", func(t *testing.T) {
 		payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "ghost-tool-consistency-suite"}, 5*time.Second)
 		require.True(t, ok)
@@ -230,27 +214,24 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("NOT_FOUND/ts-deployed", func(t *testing.T) {
-		_, err := env.Kernel.Deploy(ctx, "err-consist-suite.ts", `
+		testutil.Deploy(t, env.Kit, "err-consist-suite.ts", `
 			var caught = "none";
 			try { await tools.call("ghost-tool-consistency-suite", {}); }
 			catch(e) { caught = e.message || "unknown"; }
 			output(caught);
 		`)
-		require.NoError(t, err)
-		defer env.Kernel.Teardown(ctx, "err-consist-suite.ts")
 
-		result, _ := env.Kernel.EvalTS(ctx, "__err_result_suite.ts", `return String(globalThis.__module_result || "");`)
+		result := testutil.EvalTS(t, env.Kit, "__err_result_suite.ts", `return String(globalThis.__module_result || "");`)
 		assert.Contains(t, result, "ghost-tool-consistency-suite", "error should mention the tool name")
 	})
 
 	t.Run("NOT_FOUND/evalts", func(t *testing.T) {
-		result, err := env.Kernel.EvalTS(ctx, "__err_eval_suite.ts", `
+		result := testutil.EvalTS(t, env.Kit, "__err_eval_suite.ts", `
 			var caught = "none";
 			try { __go_brainkit_request("tools.call", JSON.stringify({name:"ghost-tool-consistency-suite"})); }
 			catch(e) { caught = e.code || "NO_CODE"; }
 			return caught;
 		`)
-		require.NoError(t, err)
 		assert.Equal(t, "NOT_FOUND", result)
 	})
 
@@ -261,13 +242,12 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("VALIDATION_ERROR/evalts", func(t *testing.T) {
-		result, err := env.Kernel.EvalTS(ctx, "__val_eval_suite.ts", `
+		result := testutil.EvalTS(t, env.Kit, "__val_eval_suite.ts", `
 			var caught = "none";
 			try { __go_brainkit_request("secrets.set", JSON.stringify({name:"",value:"v"})); }
 			catch(e) { caught = e.code || "NO_CODE"; }
 			return caught;
 		`)
-		require.NoError(t, err)
 		assert.Equal(t, "VALIDATION_ERROR", result)
 	})
 }

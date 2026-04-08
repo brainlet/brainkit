@@ -13,10 +13,10 @@ import (
 )
 
 // Tests migrated from test/infra/workflow_bus_test.go — developer scenario tests.
-// These use env.Kernel (shared Full kernel with tools+storage).
+// These use env.Kit (shared Full kernel with tools+storage).
 
 func testToolCallInsideStep(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "tool-in-step.ts", `
 		const fetchStep = createStep({
 			id: "fetch-data",
@@ -65,7 +65,7 @@ func testToolCallInsideStep(t *testing.T, env *suite.TestEnv) {
 }
 
 func testBusEmitFromStep(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "bus-emit-step.ts", `
 		const emitStep = createStep({
 			id: "emit-event",
@@ -120,7 +120,7 @@ func testBusEmitFromStep(t *testing.T, env *suite.TestEnv) {
 }
 
 func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "branch-wf.ts", `
 		const classify = createStep({
 			id: "classify",
@@ -188,7 +188,7 @@ func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStepState(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "state-wf.ts", `
 		const initState = createStep({
 			id: "init",
@@ -251,7 +251,7 @@ func testStepState(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSuspendWithContextData(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "suspend-context.ts", `
 		const review = createStep({
 			id: "review",

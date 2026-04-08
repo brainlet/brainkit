@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func testStateCorruptionBadTranspile(t *testing.T, env *suite.TestEnv) {
 	var received []error
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
@@ -90,7 +91,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, env *suite.TestEn
 	store.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -113,7 +114,7 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-deploy-adv3.db"))
 	require.NoError(t, err)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)
@@ -154,7 +155,7 @@ func testStateCorruptionEmptyCode(t *testing.T, env *suite.TestEnv) {
 	var received []error
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
@@ -190,7 +191,7 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, env *suite.TestEnv) {
 	store.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -220,7 +221,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, env *suite.TestEnv) {
 	store.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -257,7 +258,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv
 	store.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		Roles: map[string]rbac.Role{"service": rbac.RoleService},

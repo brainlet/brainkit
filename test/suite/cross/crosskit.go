@@ -26,7 +26,7 @@ import (
 func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 	for _, backend := range testutil.AllBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			rt := testutil.NewTestKernelFullWithBackend(t, backend)
+			rt := testutil.NewTestKitFullWithBackend(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
@@ -92,7 +92,7 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 	for _, backend := range testutil.AllBackends(t) {
 		t.Run(backend, func(t *testing.T) {
-			rt := testutil.NewTestKernelFullWithBackend(t, backend)
+			rt := testutil.NewTestKitFullWithBackend(t, backend)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
@@ -183,17 +183,13 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 			defer cancel()
 
 			tmpDir := t.TempDir()
-			node, err := brainkit.NewNode(brainkit.NodeConfig{
-				Kernel: brainkit.KernelConfig{
-					Namespace: "plugin-cross",
-					CallerID:  "host",
-					FSRoot:    tmpDir,
-				},
-				Messaging: brainkit.MessagingConfig{
-					Transport: "nats",
-					NATSURL:   natsURL,
-					NATSName:  "brainkit-cross-plugin",
-				},
+			kit, err := brainkit.New(brainkit.Config{
+				Namespace: "plugin-cross",
+				CallerID:  "host",
+				FSRoot:    tmpDir,
+				Transport: "nats",
+				NATSURL:   natsURL,
+				NATSName:  "brainkit-cross-plugin",
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -203,9 +199,9 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				},
 			})
 			require.NoError(t, err)
-			defer node.Close()
+			defer kit.Close()
 
-			brainkit.RegisterTool(node.Kernel, "host-multiply", tools.TypedTool[struct {
+			brainkit.RegisterTool(kit, "host-multiply", tools.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{
@@ -218,20 +214,18 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				},
 			})
 
-			err = node.Start(ctx)
-			require.NoError(t, err)
 			time.Sleep(2 * time.Second)
 
 			toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer toolCancel()
 
-			pr1, err := sdk.Publish(node, toolCtx, messages.ToolCallMsg{
+			pr1, err := sdk.Publish(kit, toolCtx, messages.ToolCallMsg{
 				Name:  "echo",
 				Input: map[string]any{"message": "plugin->go test"},
 			})
 			require.NoError(t, err)
 			ch1 := make(chan messages.ToolCallResp, 1)
-			us1, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
+			us1, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
 			require.NoError(t, err)
 			defer us1()
 			var resp messages.ToolCallResp
@@ -271,17 +265,13 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 			defer cancel()
 
 			tmpDir := t.TempDir()
-			node, err := brainkit.NewNode(brainkit.NodeConfig{
-				Kernel: brainkit.KernelConfig{
-					Namespace: "plugin-cross-list",
-					CallerID:  "host",
-					FSRoot:    tmpDir,
-				},
-				Messaging: brainkit.MessagingConfig{
-					Transport: "nats",
-					NATSURL:   natsURL,
-					NATSName:  "brainkit-cross-plugin-list",
-				},
+			kit, err := brainkit.New(brainkit.Config{
+				Namespace: "plugin-cross-list",
+				CallerID:  "host",
+				FSRoot:    tmpDir,
+				Transport: "nats",
+				NATSURL:   natsURL,
+				NATSName:  "brainkit-cross-plugin-list",
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -291,9 +281,9 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				},
 			})
 			require.NoError(t, err)
-			defer node.Close()
+			defer kit.Close()
 
-			brainkit.RegisterTool(node.Kernel, "host-multiply", tools.TypedTool[struct {
+			brainkit.RegisterTool(kit, "host-multiply", tools.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{
@@ -306,17 +296,15 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				},
 			})
 
-			err = node.Start(ctx)
-			require.NoError(t, err)
 			time.Sleep(2 * time.Second)
 
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr2, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
+			pr2, err := sdk.Publish(kit, listCtx, messages.ToolListMsg{})
 			require.NoError(t, err)
 			ch2 := make(chan messages.ToolListResp, 1)
-			us2, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch2 <- r })
+			us2, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch2 <- r })
 			require.NoError(t, err)
 			defer us2()
 			var resp messages.ToolListResp
@@ -359,17 +347,13 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			defer cancel()
 
 			tmpDir := t.TempDir()
-			node, err := brainkit.NewNode(brainkit.NodeConfig{
-				Kernel: brainkit.KernelConfig{
-					Namespace: "ts-plugin-cross",
-					CallerID:  "host",
-					FSRoot:    tmpDir,
-				},
-				Messaging: brainkit.MessagingConfig{
-					Transport: "nats",
-					NATSURL:   natsURL,
-					NATSName:  "brainkit-ts-plugin",
-				},
+			kit, err := brainkit.New(brainkit.Config{
+				Namespace: "ts-plugin-cross",
+				CallerID:  "host",
+				FSRoot:    tmpDir,
+				Transport: "nats",
+				NATSURL:   natsURL,
+				NATSName:  "brainkit-ts-plugin",
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -379,14 +363,12 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				},
 			})
 			require.NoError(t, err)
-			defer node.Close()
+			defer kit.Close()
 
-			err = node.Start(ctx)
-			require.NoError(t, err)
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts that calls the plugin's "concat" tool
-			pr1, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
+			pr1, err := sdk.Publish(kit, ctx, messages.KitDeployMsg{
 				Source: "ts-calls-plugin-cross.ts",
 				Code: `
 					const pluginCaller = createTool({
@@ -402,7 +384,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			})
 			require.NoError(t, err)
 			ch1 := make(chan messages.KitDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[messages.KitDeployResp](node, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+			us1, _ := sdk.SubscribeTo[messages.KitDeployResp](kit, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
 			defer us1()
 			select {
 			case <-ch1:
@@ -413,13 +395,13 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			callCtx, callCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer callCancel()
 
-			pr2, err := sdk.Publish(node, callCtx, messages.ToolCallMsg{
+			pr2, err := sdk.Publish(kit, callCtx, messages.ToolCallMsg{
 				Name:  "plugin-caller",
 				Input: map[string]any{"x": "foo", "y": "bar"},
 			})
 			require.NoError(t, err)
 			ch2 := make(chan messages.ToolCallResp, 1)
-			us2, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+			us2, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
 			require.NoError(t, err)
 			defer us2()
 			var resp messages.ToolCallResp
@@ -434,9 +416,9 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["fromPlugin"].(map[string]any)
 			assert.Equal(t, "foobar", inner["result"])
 
-			spr1, _ := sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin-cross.ts"})
+			spr1, _ := sdk.Publish(kit, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin-cross.ts"})
 			sch1 := make(chan messages.KitTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](node, ctx, spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch1 <- r })
+			sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](kit, ctx, spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch1 <- r })
 			defer sun1()
 			select {
 			case <-sch1:
@@ -467,17 +449,13 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			defer cancel()
 
 			tmpDir := t.TempDir()
-			node, err := brainkit.NewNode(brainkit.NodeConfig{
-				Kernel: brainkit.KernelConfig{
-					Namespace: "ts-plugin-alongside-cross",
-					CallerID:  "host",
-					FSRoot:    tmpDir,
-				},
-				Messaging: brainkit.MessagingConfig{
-					Transport: "nats",
-					NATSURL:   natsURL,
-					NATSName:  "brainkit-ts-plugin-alongside",
-				},
+			kit, err := brainkit.New(brainkit.Config{
+				Namespace: "ts-plugin-alongside-cross",
+				CallerID:  "host",
+				FSRoot:    tmpDir,
+				Transport: "nats",
+				NATSURL:   natsURL,
+				NATSName:  "brainkit-ts-plugin-alongside",
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -487,14 +465,12 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				},
 			})
 			require.NoError(t, err)
-			defer node.Close()
+			defer kit.Close()
 
-			err = node.Start(ctx)
-			require.NoError(t, err)
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts tool
-			pr3, err := sdk.Publish(node, ctx, messages.KitDeployMsg{
+			pr3, err := sdk.Publish(kit, ctx, messages.KitDeployMsg{
 				Source: "ts-alongside-cross.ts",
 				Code: `
 					const tsTool = createTool({
@@ -507,7 +483,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			})
 			require.NoError(t, err)
 			ch3 := make(chan messages.KitDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[messages.KitDeployResp](node, ctx, pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch3 <- r })
+			us3, _ := sdk.SubscribeTo[messages.KitDeployResp](kit, ctx, pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch3 <- r })
 			defer us3()
 			select {
 			case <-ch3:
@@ -518,10 +494,10 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr4, err := sdk.Publish(node, listCtx, messages.ToolListMsg{})
+			pr4, err := sdk.Publish(kit, listCtx, messages.ToolListMsg{})
 			require.NoError(t, err)
 			ch4 := make(chan messages.ToolListResp, 1)
-			us4, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
+			us4, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
 			require.NoError(t, err)
 			defer us4()
 			var resp messages.ToolListResp
@@ -539,9 +515,9 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			assert.True(t, names["concat"], "plugin concat tool")
 			assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-			spr2, _ := sdk.Publish(node, ctx, messages.KitTeardownMsg{Source: "ts-alongside-cross.ts"})
+			spr2, _ := sdk.Publish(kit, ctx, messages.KitTeardownMsg{Source: "ts-alongside-cross.ts"})
 			sch2 := make(chan messages.KitTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](node, ctx, spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch2 <- r })
+			sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](kit, ctx, spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch2 <- r })
 			defer sun2()
 			select {
 			case <-sch2:

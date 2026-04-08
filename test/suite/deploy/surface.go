@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy two services with same handler topic name
-	pr1, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr1, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "ns-a-deploy-adv.ts",
 		Code: `
 			bus.on("greet", async (msg) => {
@@ -29,7 +30,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch1 := make(chan messages.KitDeployResp, 1)
-	unsub1, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+	unsub1, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
 	defer unsub1()
 	select {
 	case resp := <-ch1:
@@ -38,7 +39,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying ns-a")
 	}
 
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr2, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "ns-b-deploy-adv.ts",
 		Code: `
 			bus.on("greet", async (msg) => {
@@ -48,7 +49,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch2 := make(chan messages.KitDeployResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch2 <- r })
+	unsub2, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch2 <- r })
 	defer unsub2()
 	select {
 	case resp := <-ch2:
@@ -60,11 +61,11 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Send to service A — should get reply from A, not B
-	pr3, err := sdk.SendToService(env.Kernel, ctx, "ns-a-deploy-adv.ts", "greet", json.RawMessage(`{}`))
+	pr3, err := sdk.SendToService(env.Kit, ctx, "ns-a-deploy-adv.ts", "greet", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	replyCh := make(chan messages.Message, 1)
-	unsub3, err := env.Kernel.SubscribeRaw(ctx, pr3.ReplyTo, func(msg messages.Message) {
+	unsub3, err := env.Kit.SubscribeRaw(ctx, pr3.ReplyTo, func(msg messages.Message) {
 		if msg.Metadata["done"] == "true" {
 			select {
 			case replyCh <- msg:
@@ -84,8 +85,8 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for namespace isolation reply")
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "ns-a-deploy-adv.ts"})
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "ns-b-deploy-adv.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "ns-a-deploy-adv.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "ns-b-deploy-adv.ts"})
 }
 
 // testTSModuleImports — verify the 4-module import system works from deployed .ts code.
@@ -93,7 +94,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-imports-deploy-adv.ts",
 		Code: `
 			var checks = {
@@ -111,7 +112,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -120,7 +121,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying module imports check")
 	}
 
-	result, err := env.Kernel.EvalTS(ctx, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
+	result, err := testutil.EvalTS(t, env.Kit, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
 	require.NoError(t, err)
 
 	var checks map[string]bool
@@ -134,7 +135,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, checks["hasOutput"], "output should be available")
 	assert.True(t, checks["hasRegistry"], "registry should be available")
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-imports-deploy-adv.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-imports-deploy-adv.ts"})
 }
 
 // testTSAgentEndowments — verify Mastra endowments (createTool, createStep, createWorkflow, z) are available.
@@ -142,7 +143,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-agent-endowments.ts",
 		Code: `
 			var checks = {
@@ -157,7 +158,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -166,7 +167,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying agent endowments check")
 	}
 
-	result, err := env.Kernel.EvalTS(ctx, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
+	result, err := testutil.EvalTS(t, env.Kit, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
 	require.NoError(t, err)
 
 	var checks map[string]bool
@@ -176,7 +177,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, checks["hasCreateWorkflow"], "createWorkflow should be available")
 	assert.True(t, checks["hasZ"], "z should be available")
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-agent-endowments.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-agent-endowments.ts"})
 }
 
 // testTSAISDKEndowments — verify AI SDK endowments (model, generateText) are available.
@@ -184,7 +185,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-ai-endowments.ts",
 		Code: `
 			var checks = {
@@ -198,7 +199,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -207,7 +208,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying AI SDK endowments check")
 	}
 
-	result, err := env.Kernel.EvalTS(ctx, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
+	result, err := testutil.EvalTS(t, env.Kit, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
 	require.NoError(t, err)
 
 	var checks map[string]bool
@@ -215,7 +216,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, checks["hasModel"], "model should be available")
 	assert.True(t, checks["hasGenerateText"], "generateText should be available")
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-ai-endowments.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-ai-endowments.ts"})
 }
 
 // testTSDeployWithTool — deploy .ts that creates a tool via createTool + kit.register, then call it from Go.
@@ -223,7 +224,7 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-tool-deploy.ts",
 		Code: `
 			const calc = createTool({
@@ -240,7 +241,7 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -249,10 +250,10 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Call the tool from Go
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{Name: "surface-calc-deploy", Input: map[string]any{"a": 10, "b": 32}})
+	pr2, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "surface-calc-deploy", Input: map[string]any{"a": 10, "b": 32}})
 	require.NoError(t, err)
 	ch2 := make(chan messages.ToolCallResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+	unsub2, _ := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
 	defer unsub2()
 	var resp messages.ToolCallResp
 	select {
@@ -267,7 +268,7 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, float64(42), result["sum"])
 	assert.Equal(t, "ts-surface", result["source"])
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-tool-deploy.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-tool-deploy.ts"})
 }
 
 // testTSDeployWithWorkflow — deploy .ts that creates a Mastra workflow, runs it, and outputs the result.
@@ -275,7 +276,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-workflow-deploy.ts",
 		Code: `
 			const step1 = createStep({
@@ -309,7 +310,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -317,7 +318,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying workflow")
 	}
 
-	result, err := env.Kernel.EvalTS(ctx, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
+	result, err := testutil.EvalTS(t, env.Kit, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
 	require.NoError(t, err)
 
 	var parsed map[string]any
@@ -327,7 +328,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 		assert.Equal(t, "DEPLOY TEST!!!", r["result"])
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-workflow-deploy.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-workflow-deploy.ts"})
 }
 
 // testTSDeployWithBusService — deploy .ts as a bus service with bus.on, Go sends message, .ts replies.
@@ -335,7 +336,7 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-service-deploy.ts",
 		Code: `
 			bus.on("greet", async (msg) => {
@@ -346,7 +347,7 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -356,11 +357,11 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.SendToService(env.Kernel, ctx, "surface-service-deploy.ts", "greet", json.RawMessage(`{"name":"Go"}`))
+	pr2, err := sdk.SendToService(env.Kit, ctx, "surface-service-deploy.ts", "greet", json.RawMessage(`{"name":"Go"}`))
 	require.NoError(t, err)
 
 	replyCh := make(chan messages.Message, 1)
-	unsub2, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, pr2.ReplyTo, func(payload json.RawMessage, msg messages.Message) {
+	unsub2, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr2.ReplyTo, func(payload json.RawMessage, msg messages.Message) {
 		replyCh <- msg
 	})
 	require.NoError(t, err)
@@ -375,7 +376,7 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for service reply")
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-service-deploy.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-service-deploy.ts"})
 }
 
 // testTSDeployWithStreaming — deploy .ts service with streaming chunks then final reply.
@@ -383,7 +384,7 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "surface-streamer-deploy.ts",
 		Code: `
 			bus.on("stream", async (msg) => {
@@ -396,7 +397,7 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -406,11 +407,11 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.SendToService(env.Kernel, ctx, "surface-streamer-deploy.ts", "stream", json.RawMessage(`{}`))
+	pr2, err := sdk.SendToService(env.Kit, ctx, "surface-streamer-deploy.ts", "stream", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	finalCh := make(chan messages.Message, 1)
-	unsub2, err := env.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
+	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
 		if msg.Metadata["done"] == "true" {
 			select {
 			case finalCh <- msg:
@@ -432,7 +433,7 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for streaming completion")
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "surface-streamer-deploy.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-streamer-deploy.ts"})
 }
 
 // testTSFileExtensionHandling — deploy .js vs .ts file extension handling.
@@ -440,19 +441,19 @@ func testTSFileExtensionHandling(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// .ts should work (transpiled)
-	_, err := env.Kernel.Deploy(ctx, "ext-ts-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "ext-ts-deploy-adv.ts", `
 		const typed: string = "ts works";
 		output({ result: typed });
 	`)
 	require.NoError(t, err)
 
 	// .js should work (executed directly)
-	_, err = env.Kernel.Deploy(ctx, "ext-js-deploy-adv.js", `output("js works");`)
+	testutil.Deploy(t, env.Kit, "ext-js-deploy-adv.js", `output("js works");`)
 	require.NoError(t, err)
 
-	result, _ := env.Kernel.EvalTS(ctx, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := testutil.EvalTS(t, env.Kit, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "js works", result)
 
-	env.Kernel.Teardown(ctx, "ext-ts-deploy-adv.ts")
-	env.Kernel.Teardown(ctx, "ext-js-deploy-adv.js")
+	testutil.Teardown(t, env.Kit, "ext-ts-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "ext-js-deploy-adv.js")
 }

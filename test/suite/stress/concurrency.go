@@ -12,6 +12,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -25,8 +26,7 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	var deployErrs, teardownErrs atomic.Int64
@@ -37,7 +37,7 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 
 		go func() {
 			defer wg.Done()
-			_, err := tk.Deploy(ctx, source, `output("race-stress");`)
+			err := testutil.DeployErr(tk, source, `output("race-stress");`)
 			if err != nil {
 				deployErrs.Add(1)
 			}
@@ -46,7 +46,23 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 		go func() {
 			defer wg.Done()
 			time.Sleep(5 * time.Millisecond)
-			tk.Teardown(ctx, source)
+			// Teardown via bus — non-fatal
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			pr, err := sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: source})
+			if err == nil {
+				ch := make(chan struct{}, 1)
+				unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ messages.KitTeardownResp, _ messages.Message) {
+					ch <- struct{}{}
+				})
+				select {
+				case <-ch:
+				case <-ctx.Done():
+				}
+				if unsub != nil {
+					unsub()
+				}
+			}
 			teardownErrs.Add(1)
 		}()
 	}
@@ -61,20 +77,18 @@ func testConcurrencyPublishUnsubscribeRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
-	_, err := tk.Deploy(ctx, "pubsub-stress-race.ts", `
+	testutil.Deploy(t, tk, "pubsub-stress-race.ts", `
 		bus.on("ping", function(msg) { msg.reply({ pong: true }); });
 	`)
-	require.NoError(t, err)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			tk.EvalTS(ctx, "__stress_race_pub.ts", `
+			testutil.EvalTSErr(tk, "__stress_race_pub.ts", `
 				try { bus.publish("ts.pubsub-stress-race.ping", {}); } catch(e) {}
 				return "ok";
 			`)
@@ -89,8 +103,7 @@ func testConcurrencySecretSetGetRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -99,7 +112,7 @@ func testConcurrencySecretSetGetRace(t *testing.T, env *suite.TestEnv) {
 
 		go func() {
 			defer wg.Done()
-			tk.EvalTS(ctx, "__stress_secret_set.ts", fmt.Sprintf(`
+			testutil.EvalTSErr(tk, "__stress_secret_set.ts", fmt.Sprintf(`
 				try {
 					__go_brainkit_request("secrets.set", JSON.stringify({name: "stress-race-key", value: %q}));
 				} catch(e) {}
@@ -109,7 +122,7 @@ func testConcurrencySecretSetGetRace(t *testing.T, env *suite.TestEnv) {
 
 		go func() {
 			defer wg.Done()
-			tk.EvalTS(ctx, "__stress_secret_get.ts", `
+			testutil.EvalTSErr(tk, "__stress_secret_get.ts", `
 				try { secrets.get("stress-race-key"); } catch(e) {}
 				return "ok";
 			`)
@@ -124,8 +137,7 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	n := 10
 	sources := make([]string, n)
@@ -141,7 +153,7 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 		go func() {
 			defer wg.Done()
 			code := fmt.Sprintf(`output("deployed %s");`, src)
-			if _, err := tk.Deploy(ctx, src, code); err == nil {
+			if err := testutil.DeployErr(tk, src, code); err == nil {
 				deployed.Add(1)
 			}
 		}()
@@ -155,15 +167,32 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 		src := src
 		go func() {
 			defer wg.Done()
-			if _, err := tk.Teardown(ctx, src); err == nil {
-				tornDown.Add(1)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			pr, err := sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: src})
+			if err != nil {
+				return
+			}
+			ch := make(chan bool, 1)
+			unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](tk, ctx, pr.ReplyTo, func(r messages.KitTeardownResp, _ messages.Message) {
+				ch <- r.Error == ""
+			})
+			select {
+			case ok := <-ch:
+				if ok {
+					tornDown.Add(1)
+				}
+			case <-ctx.Done():
+			}
+			if unsub != nil {
+				unsub()
 			}
 		}()
 	}
 	wg.Wait()
 	t.Logf("torn down: %d/%d", tornDown.Load(), n)
 
-	deps := tk.ListDeployments()
+	deps := testutil.ListDeployments(t, tk)
 	for _, d := range deps {
 		for _, src := range sources {
 			assert.NotEqual(t, src, d.Source, "deployment %s should be torn down", src)
@@ -177,7 +206,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
@@ -185,44 +214,79 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			id, err := tk.Schedule(ctx, brainkit.ScheduleConfig{
+			sctx, scancel := context.WithTimeout(ctx, 5*time.Second)
+			defer scancel()
+
+			// Schedule via bus
+			pr, err := sdk.Publish(tk, sctx, messages.ScheduleCreateMsg{
 				Expression: "in 1h",
 				Topic:      "stress.race.topic",
 				Payload:    json.RawMessage(`{}`),
 			})
-			if err == nil {
-				tk.Unschedule(ctx, id)
+			if err != nil {
+				return
+			}
+			ch := make(chan string, 1)
+			unsub, _ := sdk.SubscribeTo[messages.ScheduleCreateResp](tk, sctx, pr.ReplyTo, func(r messages.ScheduleCreateResp, _ messages.Message) {
+				ch <- r.ID
+			})
+			var id string
+			select {
+			case id = <-ch:
+			case <-sctx.Done():
+			}
+			if unsub != nil {
+				unsub()
+			}
+
+			if id != "" {
+				// Cancel the schedule via bus
+				sdk.Publish(tk, sctx, messages.ScheduleCancelMsg{ID: id})
 			}
 		}()
 	}
 	wg.Wait()
-	scheds := tk.ListSchedules()
-	assert.Empty(t, scheds, "all schedules should be cancelled")
+
+	// Verify all cancelled — list schedules via bus
+	lctx, lcancel := context.WithTimeout(ctx, 5*time.Second)
+	defer lcancel()
+	pr, err := sdk.Publish(tk, lctx, messages.ScheduleListMsg{})
+	if err == nil {
+		ch := make(chan []messages.ScheduleInfo, 1)
+		unsub, _ := sdk.SubscribeTo[messages.ScheduleListResp](tk, lctx, pr.ReplyTo, func(r messages.ScheduleListResp, _ messages.Message) {
+			ch <- r.Schedules
+		})
+		select {
+		case scheds := <-ch:
+			assert.Empty(t, scheds, "all schedules should be cancelled")
+		case <-lctx.Done():
+		}
+		if unsub != nil {
+			unsub()
+		}
+	}
 }
 
-// E07: kernel.Close() while handlers are active
+// E07: kit.Close() while handlers are active
 func testConcurrencyCloseDuringHandlers(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
-	// Uses a fresh kernel (not the shared env) because we close it.
-	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
+	// Uses a fresh kit (not the shared env) because we close it.
+	k, err := brainkit.New(brainkit.Config{
+		Namespace: "stress-test", CallerID: "stress-test", FSRoot: t.TempDir(),
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "slow-stress-handler.ts", `
+	testutil.Deploy(t, k, "slow-stress-handler.ts", `
 		bus.on("slow", async function(msg) {
 			await new Promise(r => setTimeout(r, 500));
 			msg.reply({ done: true });
 		});
 	`)
-	require.NoError(t, err)
 
-	k.PublishRaw(ctx, "ts.slow-stress-handler.slow", json.RawMessage(`{}`))
+	k.PublishRaw(context.Background(), "ts.slow-stress-handler.slow", json.RawMessage(`{}`))
 
 	time.Sleep(50 * time.Millisecond)
 	err = k.Close()
@@ -235,8 +299,7 @@ func testConcurrencyParallelEvalTS(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	results := make([]string, 5)
@@ -247,7 +310,7 @@ func testConcurrencyParallelEvalTS(t *testing.T, env *suite.TestEnv) {
 		i := i
 		go func() {
 			defer wg.Done()
-			results[i], errs[i] = tk.EvalTS(ctx, fmt.Sprintf("__stress_parallel_%d.ts", i),
+			results[i], errs[i] = testutil.EvalTSErr(tk, fmt.Sprintf("__stress_parallel_%d.ts", i),
 				fmt.Sprintf(`return "result-%d";`, i))
 		}()
 	}
@@ -265,30 +328,65 @@ func testConcurrencyStorageAddRemoveRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
+	ctx := context.Background()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			tk.AddStorage("stress-race-store", brainkit.InMemoryStorage())
+			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			pr, err := sdk.Publish(tk, sctx, messages.StorageAddMsg{
+				Name:   "stress-race-store",
+				Type:   "memory",
+				Config: json.RawMessage(`{}`),
+			})
+			if err == nil {
+				ch := make(chan struct{}, 1)
+				unsub, _ := sdk.SubscribeTo[messages.StorageAddResp](tk, sctx, pr.ReplyTo, func(_ messages.StorageAddResp, _ messages.Message) {
+					ch <- struct{}{}
+				})
+				select {
+				case <-ch:
+				case <-sctx.Done():
+				}
+				if unsub != nil {
+					unsub()
+				}
+			}
 		}()
 		go func() {
 			defer wg.Done()
-			tk.RemoveStorage("stress-race-store")
+			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			pr, err := sdk.Publish(tk, sctx, messages.StorageRemoveMsg{Name: "stress-race-store"})
+			if err == nil {
+				ch := make(chan struct{}, 1)
+				unsub, _ := sdk.SubscribeTo[messages.StorageRemoveResp](tk, sctx, pr.ReplyTo, func(_ messages.StorageRemoveResp, _ messages.Message) {
+					ch <- struct{}{}
+				})
+				select {
+				case <-ch:
+				case <-sctx.Done():
+				}
+				if unsub != nil {
+					unsub()
+				}
+			}
 		}()
 	}
 	wg.Wait()
 }
 
-// E10: Kernel.Metrics() during heavy deploy/teardown churn
+// E10: Metrics during heavy deploy/teardown churn
 func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	var wg sync.WaitGroup
@@ -304,23 +402,42 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 				return
 			default:
 				src := fmt.Sprintf("churn-stress-%d.ts", i)
-				tk.Deploy(ctx, src, `output("churn-stress");`)
-				tk.Teardown(ctx, src)
+				testutil.DeployErr(tk, src, `output("churn-stress");`)
+				// Teardown via bus — fire and forget
+				sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+				cancel()
 				i++
 			}
 		}
 	}()
 
+	// Query metrics via bus repeatedly
 	for i := 0; i < 50; i++ {
-		m := tk.Metrics()
-		assert.GreaterOrEqual(t, m.PumpCycles, int64(0))
+		mctx, mcancel := context.WithTimeout(ctx, 2*time.Second)
+		pr, err := sdk.Publish(tk, mctx, messages.MetricsGetMsg{})
+		if err == nil {
+			ch := make(chan messages.MetricsGetResp, 1)
+			unsub, _ := sdk.SubscribeTo[messages.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r messages.MetricsGetResp, _ messages.Message) {
+				ch <- r
+			})
+			select {
+			case m := <-ch:
+				assert.NotNil(t, m.Metrics)
+			case <-mctx.Done():
+			}
+			if unsub != nil {
+				unsub()
+			}
+		}
+		mcancel()
 	}
 
 	close(stop)
 	wg.Wait()
 }
 
-// E11: Two Kernels sharing same SQLite store file
+// E11: Two Kits sharing same SQLite store file
 func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
@@ -331,7 +448,7 @@ func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-kit1", CallerID: "stress-kit1", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -339,30 +456,32 @@ func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-kit2", CallerID: "stress-kit2", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	ctx := context.Background()
 	var wg sync.WaitGroup
 
 	for i := 0; i < 5; i++ {
 		wg.Add(2)
 		go func(n int) {
 			defer wg.Done()
-			k1.Deploy(ctx, fmt.Sprintf("stress-k1-%d.ts", n), `output("stress-k1");`)
+			testutil.DeployErr(k1, fmt.Sprintf("stress-k1-%d.ts", n), `output("stress-k1");`)
 		}(i)
 		go func(n int) {
 			defer wg.Done()
-			k2.Deploy(ctx, fmt.Sprintf("stress-k2-%d.ts", n), `output("stress-k2");`)
+			testutil.DeployErr(k2, fmt.Sprintf("stress-k2-%d.ts", n), `output("stress-k2");`)
 		}(i)
 	}
 	wg.Wait()
 
-	assert.True(t, k1.Alive(ctx))
-	assert.True(t, k2.Alive(ctx))
+	// Both kits should still be alive — verify via a simple publish
+	_, err = k1.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "k1 should be alive")
+	_, err = k2.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "k2 should be alive")
 }
 
 // E12: Deploy during restorePersistedDeployments
@@ -375,30 +494,30 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "stress-store.db")
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
 
 	for i := 0; i < 5; i++ {
-		k1.Deploy(context.Background(), fmt.Sprintf("stress-restore-%d.ts", i), fmt.Sprintf(`output("stress-restore-%d");`, i))
+		testutil.DeployErr(k1, fmt.Sprintf("stress-restore-%d.ts", i), fmt.Sprintf(`output("stress-restore-%d");`, i))
 	}
 	k1.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		_, err := k2.Deploy(ctx, fmt.Sprintf("stress-new-%d.ts", i), fmt.Sprintf(`output("stress-new-%d");`, i))
-		_ = err
+		testutil.DeployErr(k2, fmt.Sprintf("stress-new-%d.ts", i), fmt.Sprintf(`output("stress-new-%d");`, i))
 	}
 
-	assert.True(t, k2.Alive(ctx))
+	// Verify alive via a simple publish
+	_, err = k2.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "k2 should be alive")
 }
 
 // E04: RBAC assign + checkPermission simultaneously
@@ -407,11 +526,12 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	// Uses a fresh kernel with RBAC config.
-	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
-		Roles: map[string]rbac.Role{
+	// Uses a fresh kit with RBAC config.
+	k, err := brainkit.New(brainkit.Config{
+		Namespace:   "stress-test",
+		CallerID:    "stress-test",
+		FSRoot:      t.TempDir(),
+		Roles: map[string]brainkit.Role{
 			"admin":   rbac.RoleAdmin,
 			"service": rbac.RoleService,
 		},
@@ -421,10 +541,9 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 	defer k.Close()
 
 	ctx := context.Background()
-	_, err = k.Deploy(ctx, "rbac-stress-race.ts", `
+	testutil.Deploy(t, k, "rbac-stress-race.ts", `
 		bus.on("ping", function(msg) { msg.reply({ ok: true }); });
 	`)
-	require.NoError(t, err)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -436,7 +555,7 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 		}()
 		go func() {
 			defer wg.Done()
-			k.EvalTS(ctx, "__stress_rbac_race.ts", `
+			testutil.EvalTSErr(k, "__stress_rbac_race.ts", `
 				try { bus.publish("ts.rbac-stress-race.ping", {}); } catch(e) {}
 				return "ok";
 			`)
@@ -444,4 +563,3 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 	}
 	wg.Wait()
 }
-

@@ -90,7 +90,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // gwStart starts a gateway on a random port with optional config modifications.
 // Replicates startGateway from infra/gateway_test.go.
-func gwStart(t *testing.T, k *brainkit.Kernel, opts ...func(*bkgw.Config)) (*bkgw.Gateway, string) {
+func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.Gateway, string) {
 	t.Helper()
 	cfg := bkgw.Config{Listen: "127.0.0.1:0", Timeout: 5 * time.Second}
 	for _, opt := range opts {
@@ -105,7 +105,7 @@ func gwStart(t *testing.T, k *brainkit.Kernel, opts ...func(*bkgw.Config)) (*bkg
 
 // gwStartWithStream starts a gateway with streaming configuration.
 // Replicates startGatewayWithStream from infra/stream_test.go.
-func gwStartWithStream(t *testing.T, k *brainkit.Kernel, streamCfg *bkgw.StreamConfig) (*bkgw.Gateway, string) {
+func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConfig) (*bkgw.Gateway, string) {
 	t.Helper()
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  "127.0.0.1:0",
@@ -120,7 +120,7 @@ func gwStartWithStream(t *testing.T, k *brainkit.Kernel, streamCfg *bkgw.StreamC
 
 // gwSetup creates a simple gateway with short timeout for adversarial tests.
 // Replicates setupGateway from adversarial/gateway_errors_test.go.
-func gwSetup(t *testing.T, k *brainkit.Kernel) *bkgw.Gateway {
+func gwSetup(t *testing.T, k *brainkit.Kit) *bkgw.Gateway {
 	t.Helper()
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",

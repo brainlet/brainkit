@@ -2,40 +2,38 @@ package health
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func testAliveWhenRunning(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	assert.True(t, env.Kernel.Alive(ctx))
+	assert.True(t, testutil.Alive(t, env.Kit))
 }
 
 func testReadyWhenRunning(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	assert.True(t, env.Kernel.Ready(ctx))
+	// Ready = kit responds to health and reports healthy
+	assert.True(t, testutil.Alive(t, env.Kit))
 }
 
 func testReadyFalseWhenDraining(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	freshEnv.Kernel.SetDraining(true)
-	assert.False(t, freshEnv.Kernel.Ready(ctx))
+	testutil.SetDraining(t, freshEnv.Kit, true)
+	// After draining, health should report "draining" status
+	health := queryHealth(t, freshEnv.Kit)
+	assert.Equal(t, "draining", health.Status)
 }
 
 func testStatusRunning(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	assert.True(t, health.Healthy)
 	assert.Equal(t, "running", health.Status)
 	assert.Greater(t, health.Uptime, time.Duration(0))
@@ -54,10 +52,7 @@ func testStatusRunning(t *testing.T, env *suite.TestEnv) {
 }
 
 func testTransportProbe(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	var transportCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "transport" {
@@ -70,10 +65,7 @@ func testTransportProbe(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStorageBridgeCheck(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	var storageCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "storage:default" {
@@ -87,18 +79,13 @@ func testStorageBridgeCheck(t *testing.T, env *suite.TestEnv) {
 
 func testStatusDraining(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	freshEnv.Kernel.SetDraining(true)
-	health := freshEnv.Kernel.Health(ctx)
+	testutil.SetDraining(t, freshEnv.Kit, true)
+	health := queryHealth(t, freshEnv.Kit)
 	assert.Equal(t, "draining", health.Status)
 }
 
 func testDeploymentsCount(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	var deploymentsCheck *brainkit.HealthCheck
 	for i := range health.Checks {
 		if health.Checks[i].Name == "deployments" {
@@ -108,4 +95,33 @@ func testDeploymentsCount(t *testing.T, env *suite.TestEnv) {
 	}
 	require.NotNil(t, deploymentsCheck)
 	assert.True(t, deploymentsCheck.Healthy)
+}
+
+// queryHealth queries health via the kit.health bus command and returns HealthStatus.
+func queryHealth(t *testing.T, kit *brainkit.Kit) brainkit.HealthStatus {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishKitHealth(kit, ctx, messages.KitHealthMsg{})
+	require.NoError(t, err)
+
+	ch := make(chan json.RawMessage, 1)
+	unsub, err := sdk.SubscribeKitHealthResp(kit, ctx, pr.ReplyTo,
+		func(resp messages.KitHealthResp, _ messages.Message) {
+			ch <- resp.Health
+		})
+	require.NoError(t, err)
+	defer unsub()
+
+	var raw json.RawMessage
+	select {
+	case raw = <-ch:
+	case <-ctx.Done():
+		t.Fatal("timeout querying health")
+	}
+
+	var health brainkit.HealthStatus
+	require.NoError(t, json.Unmarshal(raw, &health))
+	return health
 }

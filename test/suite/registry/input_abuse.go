@@ -3,6 +3,7 @@ package registry
 import (
 	"testing"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -10,7 +11,7 @@ import (
 
 // testInputAbuseEmptyProviderName — registering with empty name errors.
 func testInputAbuseEmptyProviderName(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(env.T.Context(), "__reg_empty_reg_adv.ts", `
+	result, err := testutil.EvalTSErr(env.Kit, "__reg_empty_reg_adv.ts", `
 		var caught = "none";
 		try { kit.register("tool", "", {}); }
 		catch(e) { caught = e.message || "error"; }
@@ -22,7 +23,7 @@ func testInputAbuseEmptyProviderName(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseDuplicateRegister — registering duplicate name via kit.register.
 func testInputAbuseDuplicateRegister(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(env.T.Context(), "__reg_dup_reg_adv.ts", `
+	result, err := testutil.EvalTSErr(env.Kit, "__reg_dup_reg_adv.ts", `
 		var caught = "none";
 		try {
 			var t1 = createTool({id: "dup-tool-reg-adv", description: "first", execute: async () => ({v: 1})});
@@ -42,7 +43,7 @@ func testInputAbuseDuplicateRegister(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseInvalidConfig — registering with invalid type errors.
 func testInputAbuseInvalidConfig(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(env.T.Context(), "__reg_invalid_reg_adv.ts", `
+	result, err := testutil.EvalTSErr(env.Kit, "__reg_invalid_reg_adv.ts", `
 		var caught = "none";
 		try { kit.register("banana", "test-reg-adv", {}); }
 		catch(e) { caught = e.message || "error"; }
@@ -54,7 +55,7 @@ func testInputAbuseInvalidConfig(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseMissingType — registering with empty type string errors.
 func testInputAbuseMissingType(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(env.T.Context(), "__reg_missing_type_reg_adv.ts", `
+	result, err := testutil.EvalTSErr(env.Kit, "__reg_missing_type_reg_adv.ts", `
 		var caught = "none";
 		try { kit.register("", "test-reg-adv", {}); }
 		catch(e) { caught = e.message || "error"; }

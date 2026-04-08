@@ -10,6 +10,7 @@ import (
 	"time"
 
 	bkgw "github.com/brainlet/brainkit/gateway"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -20,15 +21,14 @@ import (
 
 func testRequestResponseE2E(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	_, err := env.Kernel.Deploy(context.Background(), "gw-chat.ts", `
+	testutil.Deploy(t, env.Kit, "gw-chat.ts", `
 		bus.on("ask", (msg) => {
 			msg.reply({ answer: "hello " + (msg.payload.name || "world") });
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/chat", "ts.gw-chat.ask")
 
 	resp, err := http.Post(addr+"/api/chat", "application/json", strings.NewReader(`{"name":"david"}`))
@@ -44,12 +44,12 @@ func testRequestResponseE2E(t *testing.T, _ *suite.TestEnv) {
 
 func testTimeout504(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-slow.ts", `
+	testutil.Deploy(t, env.Kit, "gw-slow.ts", `
 		bus.on("slow", (msg) => { /* no reply */ });
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel, func(cfg *bkgw.Config) {
+	gw, addr := gwStart(t, env.Kit, func(cfg *bkgw.Config) {
 		cfg.Timeout = 1 * time.Second
 	})
 	gw.Handle("POST", "/api/slow", "ts.gw-slow.slow")
@@ -62,7 +62,7 @@ func testTimeout504(t *testing.T, _ *suite.TestEnv) {
 
 func testWebhook(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleWebhook("POST", "/webhook/test", "gateway.webhook.test")
 
 	resp, err := http.Post(addr+"/webhook/test", "application/json", strings.NewReader(`{"event":"test"}`))
@@ -75,11 +75,11 @@ func testWebhook(t *testing.T, _ *suite.TestEnv) {
 
 func testDrainReturns503(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/test", "gateway.test")
 
-	env.Kernel.SetDraining(true)
-	defer env.Kernel.SetDraining(false)
+	testutil.SetDraining(t, env.Kit, true)
+	defer testutil.SetDraining(t, env.Kit, false)
 
 	resp, err := http.Post(addr+"/api/test", "application/json", strings.NewReader(`{}`))
 	require.NoError(t, err)
@@ -89,11 +89,11 @@ func testDrainReturns503(t *testing.T, _ *suite.TestEnv) {
 
 func testDrainAllowsWebhooks(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleWebhook("POST", "/webhook/drain", "gateway.drain.webhook")
 
-	env.Kernel.SetDraining(true)
-	defer env.Kernel.SetDraining(false)
+	testutil.SetDraining(t, env.Kit, true)
+	defer testutil.SetDraining(t, env.Kit, false)
 
 	resp, err := http.Post(addr+"/webhook/drain", "application/json", strings.NewReader(`{}`))
 	require.NoError(t, err)
@@ -103,7 +103,7 @@ func testDrainAllowsWebhooks(t *testing.T, _ *suite.TestEnv) {
 
 func testNotFound(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	_, addr := gwStart(t, env.Kernel)
+	_, addr := gwStart(t, env.Kit)
 
 	resp, err := http.Get(addr + "/nonexistent")
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func testNotFound(t *testing.T, _ *suite.TestEnv) {
 
 func testCORSPreflight(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, addr := gwStart(t, env.Kernel, func(cfg *bkgw.Config) {
+	gw, addr := gwStart(t, env.Kit, func(cfg *bkgw.Config) {
 		cfg.CORS = &bkgw.CORSConfig{
 			AllowOrigins: []string{"http://localhost:3000"},
 			AllowMethods: []string{"GET", "POST"},
@@ -133,7 +133,7 @@ func testCORSPreflight(t *testing.T, _ *suite.TestEnv) {
 
 func testWithHTTPContext(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-ctx.ts", `
+	testutil.Deploy(t, env.Kit, "gw-ctx.ts", `
 		bus.on("ctx", (msg) => {
 			msg.reply({
 				method: msg.payload.method,
@@ -144,7 +144,7 @@ func testWithHTTPContext(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/context", "ts.gw-ctx.ctx", bkgw.WithHTTPContext())
 
 	resp, err := http.Post(addr+"/api/context", "application/json", strings.NewReader(`{"test":true}`))
@@ -162,14 +162,14 @@ func testWithHTTPContext(t *testing.T, _ *suite.TestEnv) {
 
 func testPathParams(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-params.ts", `
+	testutil.Deploy(t, env.Kit, "gw-params.ts", `
 		bus.on("call", (msg) => {
 			msg.reply({ tool: msg.payload.name, input: msg.payload.input || "none" });
 		});
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/tools/{name}", "ts.gw-params.call", bkgw.WithParam("name", "name"))
 
 	resp, err := http.Post(addr+"/api/tools/echo", "application/json", strings.NewReader(`{"input":"hello"}`))
@@ -186,7 +186,7 @@ func testPathParams(t *testing.T, _ *suite.TestEnv) {
 
 func testRouteTable(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kernel, bkgw.Config{Listen: "127.0.0.1:0"})
+	gw := bkgw.New(env.Kit, bkgw.Config{Listen: "127.0.0.1:0"})
 
 	gw.Handle("POST", "/api/chat", "gateway.chat", bkgw.OwnedBy("chat.ts"))
 	gw.HandleStream("GET", "/api/stream", "gateway.stream", bkgw.OwnedBy("chat.ts"))
@@ -205,24 +205,24 @@ func testRouteTable(t *testing.T, _ *suite.TestEnv) {
 
 func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-bus.ts", `
+	testutil.Deploy(t, env.Kit, "gw-bus.ts", `
 		bus.on("dynamic", (msg) => {
 			msg.reply({ dynamic: true });
 		});
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 
 	// Add route via bus command
-	pr, err := sdk.Publish(env.Kernel, context.Background(), messages.GatewayRouteAddMsg{
+	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteAddMsg{
 		Method: "POST", Path: "/api/dynamic", Topic: "ts.gw-bus.dynamic",
 		Type: "handle", Owner: "gw-bus.ts",
 	})
 	require.NoError(t, err)
 
 	done := make(chan messages.GatewayRouteAddResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteAddResp](env.Kernel, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteAddResp, msg messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteAddResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteAddResp, msg messages.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -253,16 +253,16 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 
 func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, _ := gwStart(t, env.Kernel)
+	gw, _ := gwStart(t, env.Kit)
 
 	gw.Handle("POST", "/a", "topic.a", bkgw.OwnedBy("svc.ts"))
 	gw.Handle("POST", "/b", "topic.b", bkgw.OwnedBy("svc.ts"))
 	gw.Handle("POST", "/c", "topic.c", bkgw.OwnedBy("other.ts"))
 	assert.Len(t, gw.ListRoutes(), 3)
 
-	pr, _ := sdk.Publish(env.Kernel, context.Background(), messages.GatewayRouteRemoveMsg{Owner: "svc.ts"})
+	pr, _ := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteRemoveMsg{Owner: "svc.ts"})
 	done := make(chan messages.GatewayRouteRemoveResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteRemoveResp](env.Kernel, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteRemoveResp, msg messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteRemoveResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteRemoveResp, msg messages.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -280,7 +280,7 @@ func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 
 func testHealthEndpoints(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	_, addr := gwStart(t, env.Kernel)
+	_, addr := gwStart(t, env.Kit)
 
 	resp, err := http.Get(addr + "/healthz")
 	require.NoError(t, err)
@@ -292,22 +292,22 @@ func testHealthEndpoints(t *testing.T, _ *suite.TestEnv) {
 
 func testReadyzDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	_, addr := gwStart(t, env.Kernel)
+	_, addr := gwStart(t, env.Kit)
 
 	resp, _ := http.Get(addr + "/readyz")
 	assert.Equal(t, 200, resp.StatusCode)
 	resp.Body.Close()
 
-	env.Kernel.SetDraining(true)
+	testutil.SetDraining(t, env.Kit, true)
 	resp, _ = http.Get(addr + "/readyz")
 	assert.Equal(t, 503, resp.StatusCode)
 	resp.Body.Close()
-	env.Kernel.SetDraining(false)
+	testutil.SetDraining(t, env.Kit, false)
 }
 
 func testSSEStreaming(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-sse.ts", `
+	testutil.Deploy(t, env.Kit, "gw-sse.ts", `
 		bus.on("stream", async (msg) => {
 			msg.stream.text("hello ");
 			msg.stream.text("world");
@@ -316,7 +316,7 @@ func testSSEStreaming(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream", "ts.gw-sse.stream")
 
 	resp, err := http.Get(addr + "/api/stream")
@@ -336,7 +336,7 @@ func testSSEStreaming(t *testing.T, _ *suite.TestEnv) {
 
 func testSSEProgressAndEvents(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-sse2.ts", `
+	testutil.Deploy(t, env.Kit, "gw-sse2.ts", `
 		bus.on("stream", async (msg) => {
 			msg.stream.progress(0.5, "halfway");
 			msg.stream.event("tool_start", { name: "search" });
@@ -346,7 +346,7 @@ func testSSEProgressAndEvents(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream2", "ts.gw-sse2.stream")
 
 	resp, err := http.Get(addr + "/api/stream2")
@@ -364,7 +364,7 @@ func testSSEProgressAndEvents(t *testing.T, _ *suite.TestEnv) {
 
 func testSSEErrorTerminates(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-sse-err.ts", `
+	testutil.Deploy(t, env.Kit, "gw-sse-err.ts", `
 		bus.on("stream", async (msg) => {
 			msg.stream.text("start");
 			msg.stream.error("something broke");
@@ -372,7 +372,7 @@ func testSSEErrorTerminates(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream-err", "ts.gw-sse-err.stream")
 
 	resp, err := http.Get(addr + "/api/stream-err")
@@ -389,14 +389,14 @@ func testSSEErrorTerminates(t *testing.T, _ *suite.TestEnv) {
 
 func testErrorResponse500(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-err.ts", `
+	testutil.Deploy(t, env.Kit, "gw-err.ts", `
 		bus.on("fail", (msg) => {
 			msg.reply({ error: "something went wrong" });
 		});
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/fail", "ts.gw-err.fail")
 
 	resp, err := http.Post(addr+"/api/fail", "application/json", strings.NewReader(`{}`))
@@ -412,7 +412,7 @@ func testErrorResponse500(t *testing.T, _ *suite.TestEnv) {
 
 func testHealthJSON(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	_, addr := gwStart(t, env.Kernel)
+	_, addr := gwStart(t, env.Kit)
 
 	resp, err := http.Get(addr + "/health")
 	require.NoError(t, err)
@@ -432,7 +432,7 @@ func testHealthJSON(t *testing.T, _ *suite.TestEnv) {
 
 func testRouteReplacement(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kernel, bkgw.Config{Listen: "127.0.0.1:0"})
+	gw := bkgw.New(env.Kit, bkgw.Config{Listen: "127.0.0.1:0"})
 
 	gw.Handle("POST", "/api/chat", "topic.v1", bkgw.OwnedBy("v1.ts"))
 	routes := gw.ListRoutes()
@@ -450,16 +450,16 @@ func testRouteReplacement(t *testing.T, _ *suite.TestEnv) {
 
 func testBusRouteList(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, _ := gwStart(t, env.Kernel)
+	gw, _ := gwStart(t, env.Kit)
 
 	gw.Handle("POST", "/a", "topic.a")
 	gw.HandleWebhook("POST", "/b", "topic.b")
 
-	pr, err := sdk.Publish(env.Kernel, context.Background(), messages.GatewayRouteListMsg{})
+	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteListMsg{})
 	require.NoError(t, err)
 
 	done := make(chan messages.GatewayRouteListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteListResp](env.Kernel, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteListResp, msg messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteListResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteListResp, msg messages.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -474,17 +474,17 @@ func testBusRouteList(t *testing.T, _ *suite.TestEnv) {
 
 func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw, _ := gwStart(t, env.Kernel)
+	gw, _ := gwStart(t, env.Kit)
 
 	gw.Handle("POST", "/a", "topic.a")
 	gw.Handle("POST", "/b", "topic.b")
 	gw.Handle("POST", "/c", "topic.c")
 
-	pr, err := sdk.Publish(env.Kernel, context.Background(), messages.GatewayStatusMsg{})
+	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayStatusMsg{})
 	require.NoError(t, err)
 
 	done := make(chan messages.GatewayStatusResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayStatusResp](env.Kernel, context.Background(), pr.ReplyTo, func(resp messages.GatewayStatusResp, msg messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.GatewayStatusResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayStatusResp, msg messages.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -501,7 +501,7 @@ func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 
 func testWebSocket(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	env.Kernel.Deploy(context.Background(), "gw-ws.ts", `
+	testutil.Deploy(t, env.Kit, "gw-ws.ts", `
 		bus.on("ws", (msg) => {
 			var data = msg.payload.data;
 			if (typeof data === "string") {
@@ -512,7 +512,7 @@ func testWebSocket(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStart(t, env.Kernel)
+	gw, addr := gwStart(t, env.Kit)
 	gw.HandleWebSocket("/ws", "ts.gw-ws.ws")
 
 	// Use the coder/websocket client
@@ -545,7 +545,7 @@ func testWebSocket(t *testing.T, _ *suite.TestEnv) {
 
 func testRateLimiting(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kernel, bkgw.Config{
+	gw := bkgw.New(env.Kit, bkgw.Config{
 		Listen:   ":0",
 		NoHealth: true,
 		RateLimit: &bkgw.RateLimitConfig{

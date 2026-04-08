@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -16,10 +17,7 @@ import (
 // testJSPublishReturnsReplyTo verifies that __go_brainkit_bus_publish
 // generates a replyTo and correlationId, and returns them to JS.
 func testJSPublishReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result, err := env.Kernel.EvalTS(ctx, "__test_bus_publish.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish.ts", `
 		var result = __go_brainkit_bus_publish("test.publish.target", JSON.stringify({hello: "world"}));
 		var parsed = JSON.parse(result);
 		return JSON.stringify({
@@ -27,7 +25,6 @@ func testJSPublishReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
 			hasCorrelationId: parsed.correlationId && parsed.correlationId.length > 0,
 		});
 	`)
-	require.NoError(t, err)
 
 	var parsed struct {
 		HasReplyTo       bool `json:"hasReplyTo"`
@@ -44,17 +41,16 @@ func testJSEmitFireAndForget(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	received := make(chan messages.Message, 1)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, "test.emit.target", func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "test.emit.target", func(msg messages.Message) {
 		received <- msg
 	})
 	require.NoError(t, err)
 	defer unsub()
 
-	_, err = env.Kernel.EvalTS(ctx, "__test_bus_emit.ts", `
+	testutil.EvalTS(t, env.Kit, "__test_bus_emit.ts", `
 		__go_brainkit_bus_emit("test.emit.target", JSON.stringify({event: "happened"}));
 		return "ok";
 	`)
-	require.NoError(t, err)
 
 	select {
 	case msg := <-received:
@@ -71,7 +67,7 @@ func testJSReplyDoneFlag(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := env.Kernel.EvalTS(ctx, "__test_reply_setup.ts", `
+	testutil.EvalTS(t, env.Kit, "__test_reply_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.reply.trigger");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -81,16 +77,15 @@ func testJSReplyDoneFlag(t *testing.T, env *suite.TestEnv) {
 		};
 		return "ok";
 	`)
-	require.NoError(t, err)
 
-	pubResult, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pubResult, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "test.reply.trigger",
 		Payload: json.RawMessage(`{"go":"true"}`),
 	})
 	require.NoError(t, err)
 
 	received := make(chan messages.Message, 2)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
 		received <- msg
 	})
 	require.NoError(t, err)
@@ -130,7 +125,7 @@ func testJSSubscribeReceivesMetadata(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	_, err := env.Kernel.EvalTS(ctx, "__test_sub_meta_setup.ts", `
+	testutil.EvalTS(t, env.Kit, "__test_sub_meta_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.meta.topic");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -145,16 +140,15 @@ func testJSSubscribeReceivesMetadata(t *testing.T, env *suite.TestEnv) {
 		};
 		return "ok";
 	`)
-	require.NoError(t, err)
 
-	pubResult, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pubResult, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "test.meta.topic",
 		Payload: json.RawMessage(`{"data":"test123"}`),
 	})
 	require.NoError(t, err)
 
 	done := make(chan json.RawMessage, 1)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
 		done <- json.RawMessage(msg.Payload)
 	})
 	require.NoError(t, err)
@@ -185,7 +179,7 @@ func testGoToJSRoundTrip(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := env.Kernel.EvalTS(ctx, "__test_roundtrip_setup.ts", `
+	testutil.EvalTS(t, env.Kit, "__test_roundtrip_setup.ts", `
 		var subId = __go_brainkit_subscribe("test.roundtrip.ask");
 		globalThis.__bus_subs[subId] = function(msg) {
 			if (msg.replyTo) {
@@ -194,16 +188,15 @@ func testGoToJSRoundTrip(t *testing.T, env *suite.TestEnv) {
 		};
 		return "ok";
 	`)
-	require.NoError(t, err)
 
-	pubResult, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pubResult, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "test.roundtrip.ask",
 		Payload: json.RawMessage(`{"question":"meaning of life"}`),
 	})
 	require.NoError(t, err)
 
 	done := make(chan json.RawMessage, 1)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
 		done <- json.RawMessage(msg.Payload)
 	})
 	require.NoError(t, err)
@@ -227,14 +220,14 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ greeting: "hello " + msg.payload.name });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	deployResult, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "greeter.ts",
 		Code:   tsCode,
 	})
 	require.NoError(t, err)
 
 	deployCh := make(chan messages.KitDeployResp, 1)
-	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) {
+	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) {
 		deployCh <- r
 	})
 	defer deployUnsub()
@@ -245,11 +238,11 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying")
 	}
 
-	pubResult, err := sdk.SendToService(env.Kernel, ctx, "greeter.ts", "greet", json.RawMessage(`{"name":"world"}`))
+	pubResult, err := sdk.SendToService(env.Kit, ctx, "greeter.ts", "greet", json.RawMessage(`{"name":"world"}`))
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)
-	replyUnsub, _ := env.Kernel.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
+	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg messages.Message) {
 		replyCh <- json.RawMessage(msg.Payload)
 	})
 	defer replyUnsub()
@@ -261,7 +254,7 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for reply from deployed .ts service")
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "greeter.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "greeter.ts"})
 }
 
 // testStreamingChunks verifies msg.send (chunks) + msg.reply (final) from a .ts service.
@@ -275,10 +268,10 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ text: "final", done: true });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{Source: "streamer.ts", Code: tsCode})
+	deployResult, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{Source: "streamer.ts", Code: tsCode})
 	require.NoError(t, err)
 	deployCh := make(chan messages.KitDeployResp, 1)
-	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { deployCh <- r })
+	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { deployCh <- r })
 	defer deployUnsub()
 	select {
 	case dr := <-deployCh:
@@ -289,12 +282,12 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 
 	replyTopic := "test.stream.reply"
 	received := make(chan messages.Message, 10)
-	replyUnsub, _ := env.Kernel.SubscribeRaw(ctx, replyTopic, func(msg messages.Message) {
+	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, replyTopic, func(msg messages.Message) {
 		received <- msg
 	})
 	defer replyUnsub()
 
-	_, err = sdk.SendToService(env.Kernel, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
+	_, err = sdk.SendToService(env.Kit, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
 	require.NoError(t, err)
 
 	var chunks []messages.Message
@@ -315,7 +308,7 @@ done:
 	assert.Equal(t, "true", lastMsg.Metadata["done"], "last message should have done=true")
 	assert.Contains(t, string(lastMsg.Payload), "final")
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "streamer.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "streamer.ts"})
 }
 
 // testKitRegisterAgentDiscovery verifies kit.register("agent") makes it
@@ -327,10 +320,10 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 	tsCode := `
 		kit.register("agent", "test-bot", {});
 	`
-	deployResult, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{Source: "bot.ts", Code: tsCode})
+	deployResult, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{Source: "bot.ts", Code: tsCode})
 	require.NoError(t, err)
 	deployCh := make(chan messages.KitDeployResp, 1)
-	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { deployCh <- r })
+	deployUnsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { deployCh <- r })
 	defer deployUnsub()
 	select {
 	case dr := <-deployCh:
@@ -339,10 +332,10 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying")
 	}
 
-	listResult, err := sdk.Publish(env.Kernel, ctx, messages.AgentListMsg{})
+	listResult, err := sdk.Publish(env.Kit, ctx, messages.AgentListMsg{})
 	require.NoError(t, err)
 	listCh := make(chan messages.AgentListResp, 1)
-	listUnsub, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kernel, ctx, listResult.ReplyTo, func(r messages.AgentListResp, m messages.Message) { listCh <- r })
+	listUnsub, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kit, ctx, listResult.ReplyTo, func(r messages.AgentListResp, m messages.Message) { listCh <- r })
 	defer listUnsub()
 	select {
 	case lr := <-listCh:
@@ -357,13 +350,13 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout listing agents")
 	}
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "bot.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "bot.ts"})
 	time.Sleep(100 * time.Millisecond)
 
-	listResult2, err := sdk.Publish(env.Kernel, ctx, messages.AgentListMsg{})
+	listResult2, err := sdk.Publish(env.Kit, ctx, messages.AgentListMsg{})
 	require.NoError(t, err)
 	listCh2 := make(chan messages.AgentListResp, 1)
-	listUnsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kernel, ctx, listResult2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { listCh2 <- r })
+	listUnsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kit, ctx, listResult2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { listCh2 <- r })
 	defer listUnsub2()
 	select {
 	case lr := <-listCh2:

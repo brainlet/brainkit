@@ -42,17 +42,17 @@ func testKitEval(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp := publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kernel, ctx, messages.KitEvalMsg{
+	resp := publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kit, ctx, messages.KitEvalMsg{
 		Code: `output(1 + 1)`,
 	})
 	assert.Equal(t, "2", resp.Result)
 
-	resp = publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kernel, ctx, messages.KitEvalMsg{
+	resp = publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kit, ctx, messages.KitEvalMsg{
 		Code: `output({ hello: "world" })`,
 	})
 	assert.JSONEq(t, `{"hello":"world"}`, resp.Result)
 
-	resp = publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kernel, ctx, messages.KitEvalMsg{
+	resp = publishAndWait[messages.KitEvalMsg, messages.KitEvalResp](t, env.Kit, ctx, messages.KitEvalMsg{
 		Code: `const x = await Promise.resolve(42); output(x)`,
 	})
 	assert.Equal(t, "42", resp.Result)
@@ -62,7 +62,7 @@ func testKitHealth(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp := publishAndWait[messages.KitHealthMsg, messages.KitHealthResp](t, env.Kernel, ctx, messages.KitHealthMsg{})
+	resp := publishAndWait[messages.KitHealthMsg, messages.KitHealthResp](t, env.Kit, ctx, messages.KitHealthMsg{})
 
 	var health struct {
 		Healthy bool   `json:"healthy"`
@@ -77,7 +77,7 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	deployResp := publishAndWait[messages.KitDeployMsg, messages.KitDeployResp](t, env.Kernel, ctx, messages.KitDeployMsg{
+	deployResp := publishAndWait[messages.KitDeployMsg, messages.KitDeployResp](t, env.Kit, ctx, messages.KitDeployMsg{
 		Source: "echo-svc-cmd.ts",
 		Code: `
 			bus.on("ping", (msg) => {
@@ -87,7 +87,7 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	})
 	require.True(t, deployResp.Deployed)
 
-	sendResp := publishAndWait[messages.KitSendMsg, messages.KitSendResp](t, env.Kernel, ctx, messages.KitSendMsg{
+	sendResp := publishAndWait[messages.KitSendMsg, messages.KitSendResp](t, env.Kit, ctx, messages.KitSendMsg{
 		Topic:   "ts.echo-svc-cmd.ping",
 		Payload: json.RawMessage(`{"value":"hello"}`),
 	})
@@ -101,7 +101,7 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	deployResp := publishAndWait[messages.KitDeployMsg, messages.KitDeployResp](t, env.Kernel, ctx, messages.KitDeployMsg{
+	deployResp := publishAndWait[messages.KitDeployMsg, messages.KitDeployResp](t, env.Kit, ctx, messages.KitDeployMsg{
 		Source: "async-svc-cmd.ts",
 		Code: `
 			bus.on("compute", async (msg) => {
@@ -112,7 +112,7 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	})
 	require.True(t, deployResp.Deployed)
 
-	sendResp := publishAndWait[messages.KitSendMsg, messages.KitSendResp](t, env.Kernel, ctx, messages.KitSendMsg{
+	sendResp := publishAndWait[messages.KitSendMsg, messages.KitSendResp](t, env.Kit, ctx, messages.KitSendMsg{
 		Topic:   "ts.async-svc-cmd.compute",
 		Payload: json.RawMessage(`{"a":3,"b":4}`),
 	})

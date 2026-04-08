@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,18 +19,16 @@ import (
 // testShutdownGracefulWithActiveDeployments — close with active deployments.
 func testShutdownGracefulWithActiveDeployments(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
 		err := env.Deploy("shutdown-svc-adv.ts", `bus.on("ping", function(msg) { msg.reply({ok:true}); });`)
 		require.NoError(t, err)
-		_, err = env.Kernel.Teardown(ctx, "shutdown-svc-adv.ts")
-		require.NoError(t, err)
+		testutil.Teardown(t, env.Kit, "shutdown-svc-adv.ts")
 	}
 	err := env.Deploy("final-svc-adv.ts", `bus.on("ping", function(msg) { msg.reply({ok:true}); });`)
 	require.NoError(t, err)
 
-	err = env.Kernel.Close()
+	err = env.Kit.Close()
 	assert.NoError(t, err)
 }
 
@@ -37,16 +38,19 @@ func testShutdownWithActiveSchedules(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	for i := 0; i < 10; i++ {
-		_, err := env.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
+		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
 			Expression: "every 1h",
 			Topic:      "shutdown-sched-adv",
 			Payload:    json.RawMessage(`{}`),
-			Source:     "test",
 		})
-		require.NoError(t, err)
+		ch := make(chan messages.ScheduleCreateResp, 1)
+		unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
+			func(resp messages.ScheduleCreateResp, msg messages.Message) { ch <- resp })
+		<-ch
+		unsub()
 	}
 
-	err := env.Kernel.Close()
+	err := env.Kit.Close()
 	assert.NoError(t, err)
 }
 
@@ -62,28 +66,26 @@ func testShutdownWithActiveSubscriptions(t *testing.T, _ *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	err = env.Kernel.Close()
+	err = env.Kit.Close()
 	assert.NoError(t, err)
 }
 
 // testShutdownDrainTimeoutAdv — drain with stuck handler forces close.
 func testShutdownDrainTimeoutAdv(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "stuck-adv.ts", `
+	testutil.Deploy(t, k, "stuck-adv.ts", `
 		bus.on("stuck", async function(msg) {
 			await new Promise(r => setTimeout(r, 60000)); // 60s — will exceed drain timeout
 		});
 	`)
-	require.NoError(t, err)
 
 	// Fire a message to the stuck handler
-	k.PublishRaw(ctx, "ts.stuck-adv.stuck", json.RawMessage(`{}`))
+	k.PublishRaw(context.Background(), "ts.stuck-adv.stuck", json.RawMessage(`{}`))
 	time.Sleep(50 * time.Millisecond) // let handler start
 
 	// Shutdown with 1s timeout — should force-close
@@ -96,7 +98,7 @@ func testShutdownDrainTimeoutAdv(t *testing.T, _ *suite.TestEnv) {
 // testShutdownConcurrentClose — multiple goroutines calling Close.
 func testShutdownConcurrentClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -116,19 +118,11 @@ func testShutdownConcurrentClose(t *testing.T, _ *suite.TestEnv) {
 func testShutdownStorageAccessBeforeClose(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 
-	// Add storage at runtime
-	err := env.Kernel.AddStorage("runtime-store-adv", brainkit.InMemoryStorage())
-	require.NoError(t, err)
-
 	// Use it
-	err = env.Deploy("storage-use-adv.ts", `output("using storage");`)
-	require.NoError(t, err)
-
-	// Remove it
-	err = env.Kernel.RemoveStorage("runtime-store-adv")
+	err := env.Deploy("storage-use-adv.ts", `output("using storage");`)
 	require.NoError(t, err)
 
 	// Close
-	err = env.Kernel.Close()
+	err = env.Kit.Close()
 	assert.NoError(t, err)
 }

@@ -17,10 +17,10 @@ func testListTools(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.McpListToolsMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.McpListToolsMsg{})
 	require.NoError(t, err)
 	ch := make(chan messages.McpListToolsResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.McpListToolsResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.McpListToolsResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.McpListToolsResp](env.Kit, ctx, pr.ReplyTo, func(r messages.McpListToolsResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.McpListToolsResp
@@ -43,14 +43,14 @@ func testCallTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.McpCallToolMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.McpCallToolMsg{
 		Server: "testmcp",
 		Tool:   "echo",
 		Args:   map[string]any{"message": "hello from mcp test"},
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.McpCallToolResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.McpCallToolResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.McpCallToolResp](env.Kit, ctx, pr.ReplyTo, func(r messages.McpCallToolResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.McpCallToolResp
@@ -70,13 +70,13 @@ func testCallToolViaRegistry(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "via registry"},
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.ToolCallResp

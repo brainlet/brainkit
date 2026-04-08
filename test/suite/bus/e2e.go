@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -37,14 +38,14 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	// Call A
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "ts.svc-a-adv.start",
 		Payload: json.RawMessage(`{"input":"hello"}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -71,7 +72,7 @@ func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "ts.streamer-adv.stream",
 		Payload: json.RawMessage(`{}`),
 	})
@@ -79,7 +80,7 @@ func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
 
 	var chunks []json.RawMessage
 	done := make(chan bool, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
 		chunks = append(chunks, json.RawMessage(m.Payload))
 		var parsed struct {
 			Type string `json:"type"`
@@ -114,24 +115,22 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// 1. Write input file via polyfill
-	_, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `
+	testutil.EvalTS(t, freshEnv.Kit, "__test_multi.ts", `
 		fs.writeFileSync("input.json", '{"items":["apple","banana","cherry"]}');
 		return "ok";
 	`)
-	require.NoError(t, err)
 
 	// 2. Read it back via polyfill
-	readData, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `return fs.readFileSync("input.json", "utf8");`)
-	require.NoError(t, err)
+	readData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
 
 	// 3. Process with the "echo" tool
-	pr, err := sdk.Publish(freshEnv.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(freshEnv.Kit, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": readData},
 	})
 	require.NoError(t, err)
 	callCh := make(chan messages.ToolCallResp, 1)
-	cancelCall, err := sdk.SubscribeTo[messages.ToolCallResp](freshEnv.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, _ messages.Message) { callCh <- r })
+	cancelCall, err := sdk.SubscribeTo[messages.ToolCallResp](freshEnv.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, _ messages.Message) { callCh <- r })
 	require.NoError(t, err)
 	defer cancelCall()
 	var callResp messages.ToolCallResp
@@ -145,11 +144,9 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	escaped := strings.ReplaceAll(string(callResp.Result), `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
 	writeCode := `fs.writeFileSync("output.json", '` + escaped + `'); return "ok";`
-	_, err = freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", writeCode)
-	require.NoError(t, err)
+	testutil.EvalTS(t, freshEnv.Kit, "__test_multi_write.ts", writeCode)
 
 	// 5. Read and verify output via polyfill
-	outData, err := freshEnv.Kernel.EvalTS(ctx, "__test_multi.ts", `return fs.readFileSync("output.json", "utf8");`)
-	require.NoError(t, err)
+	outData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_out.ts", `return fs.readFileSync("output.json", "utf8");`)
 	assert.Contains(t, outData, "echoed")
 }

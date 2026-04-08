@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bufio"
-	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	bkgw "github.com/brainlet/brainkit/gateway"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,17 +17,16 @@ import (
 
 func testStreamHeartbeatTimeout(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "hb-timeout.ts", `
+	testutil.Deploy(t, k.Kit, "hb-timeout.ts", `
 		bus.on("stall", async (msg) => {
 			msg.stream.text("start");
 			// Never sends end — should trigger heartbeat timeout
 			await new Promise(r => setTimeout(r, 60000));
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
 		HeartbeatTimeout:  3 * time.Second,
 		MaxDuration:       30 * time.Second,
@@ -47,7 +46,7 @@ func testStreamHeartbeatTimeout(t *testing.T, env *suite.TestEnv) {
 
 func testStreamMaxDuration(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "slow-stream.ts", `
+	testutil.Deploy(t, k.Kit, "slow-stream.ts", `
 		bus.on("slow", async (msg) => {
 			for (var i = 0; i < 100; i++) {
 				msg.stream.text("tick " + i);
@@ -56,10 +55,9 @@ func testStreamMaxDuration(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
 		HeartbeatTimeout:  10 * time.Second,
 		MaxDuration:       3 * time.Second,
@@ -79,7 +77,7 @@ func testStreamMaxDuration(t *testing.T, env *suite.TestEnv) {
 
 func testStreamMaxEvents(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "flood.ts", `
+	testutil.Deploy(t, k.Kit, "flood.ts", `
 		bus.on("flood", async (msg) => {
 			for (var i = 0; i < 20; i++) {
 				msg.stream.text("msg " + i);
@@ -87,10 +85,9 @@ func testStreamMaxEvents(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 10 * time.Second,
 		HeartbeatTimeout:  25 * time.Second,
 		MaxDuration:       30 * time.Second,
@@ -110,7 +107,7 @@ func testStreamMaxEvents(t *testing.T, env *suite.TestEnv) {
 func testStreamKeepaliveComments(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
 	// Handler has a 12s delay between events — heartbeat fires at 10s interval
-	_, err := k.Kernel.Deploy(context.Background(), "delayed.ts", `
+	testutil.Deploy(t, k.Kit, "delayed.ts", `
 		bus.on("delayed", async (msg) => {
 			msg.stream.text("first");
 			await new Promise(r => setTimeout(r, 12000));
@@ -118,10 +115,9 @@ func testStreamKeepaliveComments(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatTimeout: 25 * time.Second,
 		MaxDuration:      30 * time.Second,
 		MaxEvents:        10000,
@@ -141,7 +137,7 @@ func testStreamKeepaliveComments(t *testing.T, env *suite.TestEnv) {
 
 func testStreamReconnection(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "recon.ts", `
+	testutil.Deploy(t, k.Kit, "recon.ts", `
 		bus.on("stream", async (msg) => {
 			for (var i = 0; i < 8; i++) {
 				msg.stream.text("chunk " + i);
@@ -150,10 +146,9 @@ func testStreamReconnection(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({ final: true });
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
 		HeartbeatTimeout:  10 * time.Second,
 		MaxDuration:       30 * time.Second,
@@ -204,16 +199,15 @@ func testStreamReconnection(t *testing.T, env *suite.TestEnv) {
 
 func testStreamSessionExpired(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "expire.ts", `
+	testutil.Deploy(t, k.Kit, "expire.ts", `
 		bus.on("stream", async (msg) => {
 			msg.stream.text("hello");
 			msg.stream.end({});
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, &bkgw.StreamConfig{
+	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 10 * time.Second,
 		HeartbeatTimeout:  25 * time.Second,
 		MaxDuration:       30 * time.Second,
@@ -255,17 +249,16 @@ func testStreamConcurrent(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
 	for i := 0; i < 3; i++ {
 		name := []string{"svc-a", "svc-b", "svc-c"}[i]
-		_, err := k.Kernel.Deploy(context.Background(), name+".ts", `
+		testutil.Deploy(t, k.Kit, name+".ts", `
 			bus.on("stream", async (msg) => {
 				msg.stream.text("`+name+`");
 				msg.stream.end({});
 			});
 		`)
-		require.NoError(t, err)
 	}
 	time.Sleep(200 * time.Millisecond)
 
-	gw, addr := gwStartWithStream(t, k.Kernel, nil)
+	gw, addr := gwStartWithStream(t, k.Kit, nil)
 	gw.HandleStream("GET", "/api/a", "ts.svc-a.stream")
 	gw.HandleStream("GET", "/api/b", "ts.svc-b.stream")
 	gw.HandleStream("GET", "/api/c", "ts.svc-c.stream")
@@ -300,17 +293,16 @@ func testStreamConcurrent(t *testing.T, env *suite.TestEnv) {
 
 func testStreamGatewayShutdown(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t)
-	_, err := k.Kernel.Deploy(context.Background(), "shutdown-test.ts", `
+	testutil.Deploy(t, k.Kit, "shutdown-test.ts", `
 		bus.on("stream", async (msg) => {
 			msg.stream.text("start");
 			await new Promise(r => setTimeout(r, 30000));
 			msg.stream.end({});
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	gw := bkgw.New(k.Kernel, bkgw.Config{
+	gw := bkgw.New(k.Kit, bkgw.Config{
 		Listen:  "127.0.0.1:0",
 		Timeout: 5 * time.Second,
 		Stream: &bkgw.StreamConfig{

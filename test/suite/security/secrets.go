@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/rbac"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -22,7 +22,7 @@ import (
 func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "exfil-test-key-32-characters!!",
 		Roles: map[string]rbac.Role{
@@ -48,7 +48,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	<-ch
 	unsub()
 
-	_, err = k.Deploy(ctx, "exfil-service-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "exfil-service-sec.ts", `
 		var password = secrets.get("DB_PASSWORD_SEC");
 		var results = {};
 
@@ -73,8 +73,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.toolExfil = "BLOCKED:" + (e.code || ""); }
 
 		output(results);
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
 	var exfilDetected atomic.Int64
 	for _, topic := range []string{"incoming.exfil-sec", "events.exfil-sec"} {
@@ -93,7 +92,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	result, _ := k.EvalTS(ctx, "__exfil.ts", `
+	result, _ := secEvalTSErr(k, "__exfil.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -105,7 +104,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "observer-test-key-32chars!!!!",
 		Roles: map[string]rbac.Role{
@@ -121,7 +120,7 @@ func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 	sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "API_TOKEN_SEC", Value: "tok-secret-999"})
 	time.Sleep(100 * time.Millisecond)
 
-	_, err = k.Deploy(ctx, "observer-secret-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "observer-secret-sec.ts", `
 		var result = "UNKNOWN";
 		try {
 			var val = secrets.get("API_TOKEN_SEC");
@@ -134,19 +133,17 @@ func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 			result = "DENIED:" + (e.code || e.message);
 		}
 		output(result);
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer"))
 
-	result, _ := k.EvalTS(ctx, "__obs_sec.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__obs_sec.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "tok-secret", "observer should not be able to read secrets")
 }
 
 // testSecretEnvVarDump — deploy code that reads all environment variables.
 func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "env-dump-sec.ts", `
+	secDeploy(t, k, "env-dump-sec.ts", `
 		var envVars = {};
 		try {
 			if (typeof process !== "undefined" && process.env) {
@@ -165,9 +162,8 @@ func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { envVars.error = e.message; }
 		output(envVars);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__env_dump.ts", `
+	result, _ := secEvalTSErr(k, "__env_dump.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -178,7 +174,7 @@ func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
 func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "enum-test-key-32-characters!!",
 	})
@@ -195,7 +191,7 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 		unsub()
 	}
 
-	_, err = k.Deploy(ctx, "enum-secrets-sec.ts", `
+	secDeploy(t, k, "enum-secrets-sec.ts", `
 		var result = "UNKNOWN";
 		try {
 			var raw = __go_brainkit_request("secrets.list", "{}");
@@ -205,15 +201,14 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 		}
 		output(result);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__enum.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__enum.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Secret enumeration: %s", result)
 }
 
 // testSecretAuditEventSnooping — use audit events to learn when secrets are accessed.
 func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -245,7 +240,7 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 
 // testSecretRotateDOS — rotate a secret that another deployment is using (denial of service).
 func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -255,14 +250,13 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 	<-ch
 	unsub()
 
-	_, err := k.Deploy(ctx, "victim-secret-sec.ts", `
+	secDeploy(t, k, "victim-secret-sec.ts", `
 		var key = secrets.get("SHARED_KEY_SEC");
 		bus.on("check", function(msg) {
 			var current = secrets.get("SHARED_KEY_SEC");
 			msg.reply({original: key, current: current, match: key === current});
 		});
 	`)
-	require.NoError(t, err)
 
 	pr2, _ := sdk.Publish(k, ctx, messages.SecretsRotateMsg{Name: "SHARED_KEY_SEC", NewValue: "rotated-by-attacker"})
 	ch2 := make(chan []byte, 1)
@@ -299,7 +293,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "oracle-sec.db")
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "correct-key-32-characters-long!",
 	})
@@ -323,7 +317,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 	for _, wrongKey := range wrongKeys {
 		t.Run("key="+wrongKey[:secMin(10, len(wrongKey))], func(t *testing.T) {
 			store2, _ := brainkit.NewSQLiteStore(storePath)
-			k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+			k2, err := brainkit.New(brainkit.Config{
 				Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 				Store: store2, SecretKey: wrongKey,
 			})

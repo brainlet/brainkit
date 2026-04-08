@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -20,26 +21,25 @@ func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 	env.RequirePodman(t)
 
 	// Both nodes must share the SAME transport for cross-Kit communication
-	sharedCfg := messagingCfgForBackend(t, "nats")
-	nodeA := makeNodeWithConfig(t, env, "xk-a-suite", sharedCfg)
-	nodeB := makeNodeWithConfig(t, env, "xk-b-suite", sharedCfg)
+	sharedTF := transportFieldsForBackend(t, "nats")
+	kitA := makeNodeWithConfig(t, env, "xk-a-suite", sharedTF)
+	kitB := makeNodeWithConfig(t, env, "xk-b-suite", sharedTF)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Kit B handler
-	_, err := nodeB.Kernel.Deploy(ctx, "xk-handler-suite.ts", `
+	testutil.Deploy(t, kitB, "xk-handler-suite.ts", `
 		bus.on("ping", function(msg) { msg.reply({from: "kit-b", test: "suite"}); });
 	`)
-	require.NoError(t, err)
 
 	// Kit A publishes to Kit B
-	pr, err := sdk.PublishTo[messages.CustomMsg](nodeA, ctx, "xk-b-suite",
+	pr, err := sdk.PublishTo[messages.CustomMsg](kitA, ctx, "xk-b-suite",
 		messages.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := nodeA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -58,20 +58,20 @@ func testCrossKitErrorPropagation(t *testing.T, env *suite.TestEnv) {
 	env.RequirePodman(t)
 
 	// Both nodes must share the SAME transport for cross-Kit communication
-	sharedCfg := messagingCfgForBackend(t, "nats")
-	nodeA := makeNodeWithConfig(t, env, "xe-a-suite", sharedCfg)
-	_ = makeNodeWithConfig(t, env, "xe-b-suite", sharedCfg) // Kit B must exist to receive the call
+	sharedTF := transportFieldsForBackend(t, "nats")
+	kitA := makeNodeWithConfig(t, env, "xe-a-suite", sharedTF)
+	_ = makeNodeWithConfig(t, env, "xe-b-suite", sharedTF) // Kit B must exist to receive the call
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Call nonexistent tool on Kit B from Kit A
-	pr, err := sdk.PublishTo[messages.ToolCallMsg](nodeA, ctx, "xe-b-suite",
+	pr, err := sdk.PublishTo[messages.ToolCallMsg](kitA, ctx, "xe-b-suite",
 		messages.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := nodeA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	require.NoError(t, err)

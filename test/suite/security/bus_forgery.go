@@ -18,11 +18,11 @@ import (
 
 // testForgeryStealReplyTo — subscribe to someone else's replyTo to steal their response.
 func testForgeryStealReplyTo(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := k.Deploy(ctx, "steal-reply-sec.ts", `
+	err := secDeployErr(k, "steal-reply-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({secret: "classified-response-data"});
 		});
@@ -56,11 +56,11 @@ func testForgeryStealReplyTo(t *testing.T, env *suite.TestEnv) {
 
 // testForgeryInjectFakeReply — publish to a replyTo topic to inject a fake response.
 func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := k.Deploy(ctx, "slow-service-sec.ts", `
+	err := secDeployErr(k, "slow-service-sec.ts", `
 		bus.on("slow", async function(msg) {
 			await new Promise(r => setTimeout(r, 500));
 			msg.reply({real: true, data: "real-response"});
@@ -104,11 +104,11 @@ func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
 
 // testForgeryCorrelationIdCollision — two callers use same correlationId.
 func testForgeryCorrelationIdCollision(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := k.Deploy(ctx, "collision-svc-sec.ts", `
+	err := secDeployErr(k, "collision-svc-sec.ts", `
 		bus.on("echo", function(msg) {
 			msg.reply({echoed: msg.payload.data, correlationId: msg.correlationId});
 		});
@@ -145,7 +145,7 @@ func testForgeryCorrelationIdCollision(t *testing.T, env *suite.TestEnv) {
 // testForgeryRecursiveBusLoop — recursive bus message handler publishes to its own topic.
 func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err = k.Deploy(ctx, "recursive-sec.ts", `
+	err = secDeployErr(k, "recursive-sec.ts", `
 		var count = 0;
 		bus.on("loop", function(msg) {
 			count++;
@@ -175,39 +175,37 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 
 	select {
 	case <-ch:
-		// Got a reply — kernel survived
+		// Got a reply — kit survived
 	case <-time.After(5 * time.Second):
 		// Timeout is also OK
 	}
 
-	assert.True(t, k.Alive(ctx), "kernel should survive recursive bus loop")
+	assert.True(t, secAlive(t, k), "kit should survive recursive bus loop")
 }
 
 // testForgeryFloodBus — publish millions of messages to overwhelm the bus.
 func testForgeryFloodBus(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "flood-target-sec.ts", `
+	secDeploy(t, k, "flood-target-sec.ts", `
 		var count = 0;
 		bus.on("flood", function(msg) { count++; });
 	`)
-	require.NoError(t, err)
 
 	for i := 0; i < 10000; i++ {
 		k.PublishRaw(ctx, "ts.flood-target-sec.flood", json.RawMessage(`{"i":1}`))
 	}
 
 	time.Sleep(2 * time.Second)
-	assert.True(t, k.Alive(ctx), "kernel should survive 10K message flood")
+	assert.True(t, secAlive(t, k), "kit should survive 10K message flood")
 }
 
 // testForgerySubscriptionBomb — create thousands of subscriptions.
 func testForgerySubscriptionBomb(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "sub-bomb-sec.ts", `
+	secDeploy(t, k, "sub-bomb-sec.ts", `
 		var ids = [];
 		for (var i = 0; i < 1000; i++) {
 			try {
@@ -217,26 +215,24 @@ func testForgerySubscriptionBomb(t *testing.T, env *suite.TestEnv) {
 		}
 		output({created: ids.length});
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__bomb.ts", `
+	result, _ := secEvalTSErr(k, "__bomb.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
 	t.Logf("Subscription bomb: %s", result)
-	assert.True(t, k.Alive(ctx), "kernel should survive 1000 subscriptions")
+	assert.True(t, secAlive(t, k), "kit should survive 1000 subscriptions")
 
-	k.Teardown(ctx, "sub-bomb-sec.ts")
+	secTeardown(t, k, "sub-bomb-sec.ts")
 	time.Sleep(500 * time.Millisecond)
-	assert.True(t, k.Alive(ctx), "kernel should survive teardown of 1000 subscriptions")
+	assert.True(t, secAlive(t, k), "kit should survive teardown of 1000 subscriptions")
 }
 
 // testForgeryScheduleBomb — create thousands of schedules that fire immediately.
 func testForgeryScheduleBomb(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "sched-bomb-sec.ts", `
+	secDeploy(t, k, "sched-bomb-sec.ts", `
 		var ids = [];
 		for (var i = 0; i < 500; i++) {
 			try {
@@ -246,18 +242,16 @@ func testForgeryScheduleBomb(t *testing.T, env *suite.TestEnv) {
 		}
 		output({scheduled: ids.length});
 	`)
-	require.NoError(t, err)
 
 	time.Sleep(3 * time.Second)
-	assert.True(t, k.Alive(ctx), "kernel should survive 500 immediate schedules")
+	assert.True(t, secAlive(t, k), "kit should survive 500 immediate schedules")
 }
 
 // testForgeryCommandTopicBypass — publish to command topics that should be blocked from JS.
 func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "cmd-bypass-sec.ts", `
+	secDeploy(t, k, "cmd-bypass-sec.ts", `
 		var results = {};
 		var commandTopics = [
 			"tools.call", "tools.list", "tools.resolve",
@@ -278,9 +272,8 @@ func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
 		}
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__cmd_bypass.ts", `
+	result, _ := secEvalTSErr(k, "__cmd_bypass.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -300,20 +293,17 @@ func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
 
 // testForgeryToolNameCollision — two deployments register the same tool name.
 func testForgeryToolNameCollision(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "tool-a-sec.ts", `
+	secDeploy(t, k, "tool-a-sec.ts", `
 		var t = createTool({id: "shared-tool-sec", description: "v1", execute: async () => ({version: 1})});
 		kit.register("tool", "shared-tool-sec", t);
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "tool-b-sec.ts", `
+	secDeploy(t, k, "tool-b-sec.ts", `
 		var t = createTool({id: "shared-tool-sec", description: "v2", execute: async () => ({version: 2})});
 		kit.register("tool", "shared-tool-sec", t);
 	`)
-	require.NoError(t, err)
 
 	payload, ok := secSendAndReceive(t, k, messages.ToolCallMsg{Name: "shared-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
@@ -322,10 +312,9 @@ func testForgeryToolNameCollision(t *testing.T, env *suite.TestEnv) {
 
 // testForgeryMetadataInjection — deploy code that sends messages with crafted metadata.
 func testForgeryMetadataInjection(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "meta-inject-sec.ts", `
+	secDeploy(t, k, "meta-inject-sec.ts", `
 		var results = {};
 
 		try {
@@ -340,9 +329,8 @@ func testForgeryMetadataInjection(t *testing.T, env *suite.TestEnv) {
 
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__meta_inj.ts", `
+	result, _ := secEvalTSErr(k, "__meta_inj.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -351,21 +339,18 @@ func testForgeryMetadataInjection(t *testing.T, env *suite.TestEnv) {
 
 // testForgeryCrossDeploymentResult — deploy code that modifies __module_result of other deployments.
 func testForgeryCrossDeploymentResult(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "set-result-sec.ts", `output({realData: "from-set-result"});`)
-	require.NoError(t, err)
+	secDeploy(t, k, "set-result-sec.ts", `output({realData: "from-set-result"});`)
 
-	_, err = k.Deploy(ctx, "overwrite-result-sec.ts", `
+	secDeploy(t, k, "overwrite-result-sec.ts", `
 		try {
 			globalThis.__module_result = {hijacked: true};
 		} catch(e) {}
 		output("attacker");
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__check_result.ts", `
+	result, _ := secEvalTSErr(k, "__check_result.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || "");
 	`)
@@ -375,7 +360,7 @@ func testForgeryCrossDeploymentResult(t *testing.T, env *suite.TestEnv) {
 // testForgeryMaliciousGoTool — RegisterTool from Go with crafted payload to escape sandbox.
 func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -393,17 +378,15 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 		},
 	})
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "call-injector-sec.ts", `
+	secDeploy(t, k, "call-injector-sec.ts", `
 		var r = await tools.call("injector-sec", {cmd: "test"});
 		output({
 			result: r.result,
 			hasPollution: ({}).polluted === true,
 		});
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__inj.ts", `
+	result, _ := secEvalTSErr(k, "__inj.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

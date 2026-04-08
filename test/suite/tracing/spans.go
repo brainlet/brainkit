@@ -9,6 +9,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -24,11 +25,11 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 	env := suite.Full(t, suite.WithTracing(), suite.WithPersistence())
 	// Replace the tracer store with our own so we can inspect it.
 	// The suite WithTracing() already creates a MemoryTraceStore internally,
-	// but we need the reference. So we create our own kernel.
+	// but we need the reference. So we create our own kit.
 	tmpDir := t.TempDir()
 	kitStore, _ := brainkit.NewSQLiteStore(tmpDir + "/trace.db")
 	t.Cleanup(func() { kitStore.Close() })
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -46,19 +47,17 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 		},
 	})
 
-	env.Kernel = k
+	env.Kit = k
 	return env, store
 }
 
 func testCommandRequestCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
-	ctx := context.Background()
 
-	result, err := env.Kernel.EvalTS(ctx, "__trace_test.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__trace_test.ts", `
 		var list = tools.list();
 		return JSON.stringify(list);
 	`)
-	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
 	traces, err := store.ListTraces(tracingpkg.TraceQuery{})
@@ -70,17 +69,16 @@ func testHandlerCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 	ctx := context.Background()
 
-	_, err := env.Kernel.Deploy(ctx, "traced.ts", `
+	testutil.Deploy(t, env.Kit, "traced.ts", `
 		bus.on("ping", (msg) => {
 			msg.reply({ pong: true });
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := sdk.SendToService(env.Kernel, ctx, "traced.ts", "ping", map[string]bool{"x": true})
+	sendPR, _ := sdk.SendToService(env.Kit, ctx, "traced.ts", "ping", map[string]bool{"x": true})
 	replyCh := make(chan struct{}, 1)
-	replyCancel, _ := env.Kernel.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ messages.Message) { replyCh <- struct{}{} })
+	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ messages.Message) { replyCh <- struct{}{} })
 	defer replyCancel()
 	<-replyCh
 
@@ -105,9 +103,9 @@ func testQueryViaBus(t *testing.T, _ *suite.TestEnv) {
 	span := tracingpkg.NewTracer(store, 1.0).StartSpan("test.op", ctx)
 	span.End(nil)
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.TraceListMsg{Limit: 10})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.TraceListMsg{Limit: 10})
 	listCh := make(chan messages.TraceListResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.TraceListResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.TraceListResp, _ messages.Message) {
+	cancel, _ := sdk.SubscribeTo[messages.TraceListResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.TraceListResp, _ messages.Message) {
 		listCh <- resp
 	})
 	defer cancel()
@@ -126,9 +124,9 @@ func testNoStoreNoOp(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Minimal(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.ToolListMsg{})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
 	ch := make(chan messages.ToolListResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.ToolListResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.ToolListResp, _ messages.Message) {
+	cancel, _ := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.ToolListResp, _ messages.Message) {
 		ch <- resp
 	})
 	defer cancel()
@@ -145,9 +143,9 @@ func testToolCallCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 	<-ch
 
@@ -160,10 +158,8 @@ func testToolCallCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 
 func testDeployCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
-	ctx := context.Background()
 
-	_, err := env.Kernel.Deploy(ctx, "traced-deploy.ts", `output("traced");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, env.Kit, "traced-deploy.ts", `output("traced");`)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -187,16 +183,15 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 	env, _ := tracingEnv(t)
 	ctx := context.Background()
 
-	_, err := env.Kernel.Deploy(ctx, "source-a.ts", `
+	testutil.Deploy(t, env.Kit, "source-a.ts", `
 		bus.on("ping", function(msg) { msg.reply({ok:true}); });
 	`)
-	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.source-a.ping", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 	select {
 	case <-ch:
@@ -205,9 +200,9 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	pr2, _ := sdk.Publish(env.Kernel, ctx, messages.TraceListMsg{Limit: 100})
+	pr2, _ := sdk.Publish(env.Kit, ctx, messages.TraceListMsg{Limit: 100})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := env.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {
@@ -223,7 +218,7 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace:       "test",
 		CallerID:        "test",
 		FSRoot:          tmpDir,
@@ -257,7 +252,7 @@ func testTraceContextPropagates(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -274,14 +269,14 @@ func testTraceContextPropagates(t *testing.T, _ *suite.TestEnv) {
 
 	// Subscribe to a topic and capture metadata
 	receivedCh := make(chan map[string]string, 1)
-	unsub, err := k.SubscribeRawTo(ctx, k.Namespace(), "trace.test.target", func(msg messages.Message) {
+	unsub, err := k.SubscribeRawTo(ctx, "test", "trace.test.target", func(msg messages.Message) {
 		receivedCh <- msg.Metadata
 	})
 	require.NoError(t, err)
 	defer unsub()
 
 	// Publish via cross-namespace path (same namespace for test simplicity)
-	_, err = k.PublishRawTo(traceCtx, k.Namespace(), "trace.test.target", []byte(`{"test":true}`))
+	_, err = k.PublishRawTo(traceCtx, "test", "trace.test.target", []byte(`{"test":true}`))
 	require.NoError(t, err)
 
 	select {
@@ -302,9 +297,9 @@ func testEmptyStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Empty(t, traces)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.TraceGetMsg{TraceID: "nonexistent-trace-id"})
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.TraceGetMsg{TraceID: "nonexistent-trace-id"})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

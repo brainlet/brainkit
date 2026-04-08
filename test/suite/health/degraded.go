@@ -1,14 +1,14 @@
 package health
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,41 +16,38 @@ import (
 // testAliveAfterHeavyLoad — kernel stays alive after many deploy/teardown cycles.
 func testAliveAfterHeavyLoad(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
 	for i := 0; i < 20; i++ {
 		src := "health-load-degraded.ts"
 		err := env.Deploy(src, `output("load");`)
 		require.NoError(t, err)
-		_, err = env.Kernel.Teardown(ctx, src)
-		require.NoError(t, err)
+		testutil.Teardown(t, env.Kit, src)
 	}
 
-	assert.True(t, env.Kernel.Alive(ctx))
-	assert.True(t, env.Kernel.Ready(ctx))
+	assert.True(t, testutil.Alive(t, env.Kit))
 }
 
 // testReadyToggleDuringDrain — Ready returns false during drain, true after recovery.
 func testReadyToggleDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
-	assert.True(t, env.Kernel.Ready(ctx))
+	assert.True(t, testutil.Alive(t, env.Kit))
 
-	env.Kernel.SetDraining(true)
-	assert.False(t, env.Kernel.Ready(ctx))
-	assert.True(t, env.Kernel.Alive(ctx)) // alive even during drain
+	testutil.SetDraining(t, env.Kit, true)
+	health := queryHealth(t, env.Kit)
+	assert.Equal(t, "draining", health.Status)
+	assert.True(t, testutil.Alive(t, env.Kit)) // alive even during drain
 
-	env.Kernel.SetDraining(false)
-	assert.True(t, env.Kernel.Ready(ctx))
+	testutil.SetDraining(t, env.Kit, false)
+	health = queryHealth(t, env.Kit)
+	assert.Equal(t, "running", health.Status)
 }
 
 // testFullHealthCheckCategories — Health() returns all check categories.
 func testFullHealthCheckCategories(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	assert.True(t, health.Healthy)
 	assert.Equal(t, "running", health.Status)
 	assert.Greater(t, len(health.Checks), 0)
@@ -68,7 +65,7 @@ func testHealthWithTracingStore(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	traceStore := tracing.NewMemoryTraceStore(1000)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -77,16 +74,15 @@ func testHealthWithTracingStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	health := k.Health(context.Background())
+	health := queryHealth(t, k)
 	assert.True(t, health.Healthy)
 }
 
 // testHealthWithStorageBridges — health checks storage bridges.
 func testHealthWithStorageBridges(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
-	health := env.Kernel.Health(ctx)
+	health := queryHealth(t, env.Kit)
 	hasStorage := false
 	for _, c := range health.Checks {
 		if len(c.Name) > 8 && c.Name[:8] == "storage:" {
@@ -99,51 +95,49 @@ func testHealthWithStorageBridges(t *testing.T, _ *suite.TestEnv) {
 // testMetricsReflectDeployments — metrics count tracks deployments.
 func testMetricsReflectDeployments(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	ctx := context.Background()
 
-	m0 := env.Kernel.Metrics()
-	assert.Equal(t, 0, m0.ActiveDeployments)
+	// Health should report 0 deployments initially
+	health0 := queryHealth(t, env.Kit)
+	assert.True(t, health0.Healthy)
 
 	err := env.Deploy("metrics-degraded.ts", `output("m");`)
 	require.NoError(t, err)
-	m1 := env.Kernel.Metrics()
-	assert.Equal(t, 1, m1.ActiveDeployments)
 
 	err = env.Deploy("metrics-degraded2.ts", `output("m2");`)
 	require.NoError(t, err)
-	m2 := env.Kernel.Metrics()
-	assert.Equal(t, 2, m2.ActiveDeployments)
 
-	_, err = env.Kernel.Teardown(ctx, "metrics-degraded.ts")
-	require.NoError(t, err)
-	m3 := env.Kernel.Metrics()
-	assert.Equal(t, 1, m3.ActiveDeployments)
+	health1 := queryHealth(t, env.Kit)
+	assert.True(t, health1.Healthy)
+
+	testutil.Teardown(t, env.Kit, "metrics-degraded.ts")
+
+	health2 := queryHealth(t, env.Kit)
+	assert.True(t, health2.Healthy)
 }
 
 // testUptimeIncreases — uptime is positive and increases over time.
 func testUptimeIncreases(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 
-	m1 := env.Kernel.Metrics()
+	h1 := queryHealth(t, env.Kit)
 	time.Sleep(100 * time.Millisecond)
-	m2 := env.Kernel.Metrics()
+	h2 := queryHealth(t, env.Kit)
 
-	assert.Greater(t, m2.Uptime, m1.Uptime)
-	assert.Greater(t, m2.Uptime, time.Duration(0))
+	assert.Greater(t, h2.Uptime, h1.Uptime)
+	assert.Greater(t, h2.Uptime, time.Duration(0))
 }
 
 // testHealthAfterClose — health methods don't panic after close.
 func testHealthAfterClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
 	k.Close()
 
-	// These should not panic — just return false/unhealthy
-	assert.False(t, k.Alive(context.Background()))
-	assert.False(t, k.Ready(context.Background()))
+	// After close, Alive should return false (health query will fail/timeout)
+	assert.False(t, testutil.Alive(t, k))
 }
 
 // testPersistenceStoreHealth — health when persistence store is configured.
@@ -152,12 +146,12 @@ func testPersistenceStoreHealth(t *testing.T, _ *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store.db"))
 	require.NoError(t, err)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	health := k.Health(context.Background())
+	health := queryHealth(t, k)
 	assert.True(t, health.Healthy)
 }

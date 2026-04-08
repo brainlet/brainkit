@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -20,18 +20,13 @@ func testScheduleFireOnTransport(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	fired := make(chan []byte, 1)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, "sched.transport.fire.suite", func(m messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "sched.transport.fire.suite", func(m messages.Message) {
 		fired <- m.Payload
 	})
 	require.NoError(t, err)
 	defer unsub()
 
-	_, err = env.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
-		Expression: "in 200ms",
-		Topic:      "sched.transport.fire.suite",
-		Payload:    json.RawMessage(`{"scheduled":"suite"}`),
-	})
-	require.NoError(t, err)
+	testutil.Schedule(t, env.Kit, "in 200ms", "sched.transport.fire.suite", json.RawMessage(`{"scheduled":"suite"}`))
 
 	select {
 	case p := <-fired:

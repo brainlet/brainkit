@@ -2,6 +2,7 @@ package stress
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -22,11 +24,8 @@ func testExhaustionMemoryBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "mem-stress-bomb.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "mem-stress-bomb.ts", `
 		try {
 			var arr = [];
 			for (var i = 0; i < 100; i++) {
@@ -37,8 +36,8 @@ func testExhaustionMemoryBomb(t *testing.T, env *suite.TestEnv) {
 			output({error: e.message});
 		}
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive memory bomb")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive memory bomb")
 }
 
 // Attack: deploy code that creates deeply recursive function calls.
@@ -47,11 +46,8 @@ func testExhaustionStackOverflow(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "stack-stress-bomb.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "stack-stress-bomb.ts", `
 		function recurse(depth) {
 			if (depth > 500) return depth;
 			return recurse(depth + 1);
@@ -62,8 +58,8 @@ func testExhaustionStackOverflow(t *testing.T, env *suite.TestEnv) {
 			output({error: e.message || "stack overflow"});
 		}
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive JS stack overflow")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive JS stack overflow")
 }
 
 // Attack: deploy code that creates infinite promise chains
@@ -72,11 +68,8 @@ func testExhaustionPromiseFlood(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "promise-stress-flood.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "promise-stress-flood.ts", `
 		var count = 0;
 		function chain() {
 			count++;
@@ -92,8 +85,8 @@ func testExhaustionPromiseFlood(t *testing.T, env *suite.TestEnv) {
 			output({error: e.message});
 		}
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive promise flood")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive promise flood")
 }
 
 // Attack: deploy many services simultaneously that all try to use resources
@@ -102,8 +95,7 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -111,7 +103,7 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 		go func(n int) {
 			defer wg.Done()
 			src := fmt.Sprintf("deploy-stress-bomb-%d.ts", n)
-			tk.Deploy(ctx, src, fmt.Sprintf(`
+			testutil.DeployErr(tk, src, fmt.Sprintf(`
 				var t = createTool({id: "stress-bomb-tool-%d", description: "bomb", execute: async () => ({n: %d})});
 				kit.register("tool", "stress-bomb-tool-%d", t);
 				bus.on("ping", function(msg) { msg.reply({n: %d}); });
@@ -120,10 +112,14 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 	}
 	wg.Wait()
 
-	assert.True(t, tk.Alive(ctx), "kernel should survive 50 simultaneous deploys")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 50 simultaneous deploys")
 
+	ctx := context.Background()
 	for i := 0; i < 50; i++ {
-		tk.Teardown(ctx, fmt.Sprintf("deploy-stress-bomb-%d.ts", i))
+		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: fmt.Sprintf("deploy-stress-bomb-%d.ts", i)})
+		cancel()
 	}
 }
 
@@ -133,11 +129,8 @@ func testExhaustionFetchBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "fetch-stress-bomb.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "fetch-stress-bomb.ts", `
 		var count = 0;
 		var errors = 0;
 		for (var i = 0; i < 100; i++) {
@@ -148,8 +141,8 @@ func testExhaustionFetchBomb(t *testing.T, env *suite.TestEnv) {
 		}
 		output({fetched: count, errors: errors});
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive fetch bomb")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive fetch bomb")
 }
 
 // Attack: rapid deploy/teardown/redeploy cycle to stress lifecycle management
@@ -158,21 +151,24 @@ func testExhaustionLifecycleChurn(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
 		src := "churn-stress-test.ts"
-		tk.Deploy(ctx, src, fmt.Sprintf(`
+		testutil.DeployErr(tk, src, fmt.Sprintf(`
 			var t = createTool({id: "stress-churn-%d", description: "churn", execute: async () => ({})});
 			kit.register("tool", "stress-churn-%d", t);
 			bus.on("ping-%d", function(msg) { msg.reply({i: %d}); });
 		`, i, i, i, i))
-		tk.Teardown(ctx, src)
+		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+		cancel()
 	}
 
-	assert.True(t, tk.Alive(ctx), "kernel should survive 100 deploy/teardown cycles")
-	deps := tk.ListDeployments()
+	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 100 deploy/teardown cycles")
+	deps := testutil.ListDeployments(t, tk)
 	assert.Empty(t, deps, "no deployments should remain after churn")
 }
 
@@ -182,15 +178,12 @@ func testExhaustionOutputBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "output-stress-bomb.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "output-stress-bomb.ts", `
 		output("x".repeat(10 * 1024 * 1024));
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive 10MB output")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 10MB output")
 }
 
 // Attack: many concurrent EvalTS from Go side
@@ -199,8 +192,7 @@ func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	var errors int64
@@ -210,7 +202,7 @@ func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_, err := tk.EvalTS(ctx, fmt.Sprintf("__stress_concurrent_%d.ts", n),
+			_, err := testutil.EvalTSErr(tk, fmt.Sprintf("__stress_concurrent_%d.ts", n),
 				fmt.Sprintf(`return "result-%d";`, n))
 			if err != nil {
 				mu.Lock()
@@ -222,7 +214,8 @@ func testExhaustionConcurrentEvalTS(t *testing.T, env *suite.TestEnv) {
 	wg.Wait()
 
 	t.Logf("100 concurrent EvalTS: %d errors", errors)
-	assert.True(t, tk.Alive(ctx), "kernel should survive 100 concurrent EvalTS")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 100 concurrent EvalTS")
 }
 
 // Attack: deploy code that creates enormous JSON via bus.publish
@@ -231,11 +224,8 @@ func testExhaustionLargePayloadViaJS(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "large-stress-payload.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "large-stress-payload.ts", `
 		try {
 			var big = {data: "x".repeat(5 * 1024 * 1024)};
 			var r = bus.publish("incoming.stress-large-test", big);
@@ -244,8 +234,8 @@ func testExhaustionLargePayloadViaJS(t *testing.T, env *suite.TestEnv) {
 			output({error: e.message});
 		}
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive 5MB bus.publish from JS")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 5MB bus.publish from JS")
 }
 
 // Attack: deploy code that creates 10,000 timers
@@ -254,20 +244,17 @@ func testExhaustionTimerBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "timer-stress-bomb.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "timer-stress-bomb.ts", `
 		var count = 0;
 		for (var i = 0; i < 10000; i++) {
 			setTimeout(function() { count++; }, 1);
 		}
 		output({timersCreated: 10000});
 	`)
-	_ = err
 	time.Sleep(2 * time.Second)
-	assert.True(t, tk.Alive(ctx), "kernel should survive 10K timers")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 10K timers")
 }
 
 // Attack: 10MB secret value
@@ -276,7 +263,7 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -299,7 +286,8 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout storing 10MB secret")
 	}
 
-	assert.True(t, tk.Alive(ctx), "kernel should survive 10MB secret")
+	_, err = tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive 10MB secret")
 }
 
 // Attack: deploy code that modifies JSON.stringify to return infinite output
@@ -308,11 +296,8 @@ func testExhaustionJSONStringifyHijack(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "json-stress-hijack.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "json-stress-hijack.ts", `
 		try {
 			var orig = JSON.stringify;
 			JSON.stringify = function() { return "x".repeat(100000000); };
@@ -322,8 +307,8 @@ func testExhaustionJSONStringifyHijack(t *testing.T, env *suite.TestEnv) {
 			output("blocked:" + e.message);
 		}
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive JSON.stringify hijack")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive JSON.stringify hijack")
 }
 
 // Attack: deploy from Go with code that fills the filesystem
@@ -332,11 +317,8 @@ func testExhaustionFilesystemFill(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "fs-stress-fill.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "fs-stress-fill.ts", `
 		var written = 0;
 		try {
 			for (var i = 0; i < 100; i++) {
@@ -346,8 +328,8 @@ func testExhaustionFilesystemFill(t *testing.T, env *suite.TestEnv) {
 		} catch(e) {}
 		output({written: written});
 	`)
-	_ = err
-	assert.True(t, tk.Alive(ctx), "kernel should survive filesystem fill attempt")
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive filesystem fill attempt")
 }
 
 // Attack: deploy code that does setTimeout(fn, 0) in an infinite loop to starve the pump
@@ -356,11 +338,8 @@ func testExhaustionPumpStarvation(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := tk.Deploy(ctx, "pump-stress-starve.ts", `
+	tk := env.Kit
+	_ = testutil.DeployErr(tk, "pump-stress-starve.ts", `
 		var count = 0;
 		function starve() {
 			count++;
@@ -371,17 +350,17 @@ func testExhaustionPumpStarvation(t *testing.T, env *suite.TestEnv) {
 		starve();
 		output({started: true});
 	`)
-	_ = err
 
 	time.Sleep(3 * time.Second)
 
-	_, err = tk.Deploy(ctx, "after-stress-starve.ts", `output("still works");`)
+	err := testutil.DeployErr(tk, "after-stress-starve.ts", `output("still works");`)
 	if err == nil {
-		result, _ := tk.EvalTS(ctx, "__stress_after.ts", `return String(globalThis.__module_result || "");`)
+		result, _ := testutil.EvalTSErr(tk, "__stress_after.ts", `return String(globalThis.__module_result || "");`)
 		assert.Equal(t, "still works", result)
 	}
 
-	assert.True(t, tk.Alive(ctx), "kernel should survive pump starvation")
+	_, err = tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should survive pump starvation")
 }
 
 // Attack: persistence bomb -- save thousands of deployments to the store
@@ -394,80 +373,72 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(tmpDir + "/stress-bomb.db")
 	require.NoError(t, err)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
 		Store: store,
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	ctx := context.Background()
-
 	for i := 0; i < 100; i++ {
 		src := fmt.Sprintf("stress-persist-bomb-%d.ts", i)
-		k.Deploy(ctx, src, `output("bomb");`)
+		testutil.DeployErr(k, src, `output("bomb");`)
 	}
 
 	k.Close()
 
 	store2, _ := brainkit.NewSQLiteStore(tmpDir + "/stress-bomb.db")
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
 		Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	assert.True(t, k2.Alive(ctx), "kernel should recover from 100 persisted deployments")
+	_, err = k2.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err, "kit should recover from 100 persisted deployments")
 
-	deps := k2.ListDeployments()
+	deps := testutil.ListDeployments(t, k2)
 	assert.Equal(t, 100, len(deps), "all 100 deployments should be restored")
 }
 
-// testEvalTSInfiniteLoop — deploy while(true){}, then close kernel, verify no hang.
-// The original test was t.Skip (NEEDS-WORK). This approach tests clean kernel shutdown
-// under runaway JS by closing the kernel from a goroutine and checking it completes in time.
+// testEvalTSInfiniteLoop — deploy while(true){}, then close kit, verify no hang.
 func testEvalTSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
-	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace: "stress-inf", CallerID: "stress-inf", FSRoot: tmpDir,
+	k, err := brainkit.New(brainkit.Config{
+		Namespace: "stress-inf", CallerID: "stress-inf", FSRoot: t.TempDir(),
 	})
 	require.NoError(t, err)
 
 	// Deploy a runaway infinite loop — this blocks the JS thread.
-	// Deploy is async (Compartment init), so it may or may not block.
 	deployDone := make(chan error, 1)
 	go func() {
-		_, err := k.Deploy(context.Background(), "infinite.ts", `while(true){}`)
-		deployDone <- err
+		deployDone <- testutil.DeployErr(k, "infinite.ts", `while(true){}`)
 	}()
 
 	// Give it a brief moment to enter the loop
 	time.Sleep(200 * time.Millisecond)
 
-	// Close the kernel — this should interrupt QuickJS and release resources
+	// Close the kit — this should interrupt QuickJS and release resources
 	closeDone := make(chan struct{}, 1)
 	go func() {
 		k.Close()
 		close(closeDone)
 	}()
 
-	// Verify the kernel closes within a reasonable timeout
+	// Verify the kit closes within a reasonable timeout
 	select {
 	case <-closeDone:
-		// Kernel shut down cleanly — the infinite loop was interrupted
+		// Kit shut down cleanly — the infinite loop was interrupted
 	case <-time.After(15 * time.Second):
-		t.Fatal("kernel.Close() hung — infinite JS loop was not interrupted within 15s")
+		t.Fatal("kit.Close() hung — infinite JS loop was not interrupted within 15s")
 	}
 
-	// Deploy may have errored — either way, the kernel must not hang permanently
 	select {
 	case <-deployDone:
 	default:
-		// Deploy goroutine may still be running, that's acceptable as long as Close() returned
 	}
 }

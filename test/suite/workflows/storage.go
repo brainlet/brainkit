@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "test.db")
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 		Storages: map[string]brainkit.StorageConfig{
@@ -59,7 +60,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 	require.Equal(t, "suspended", resp.Status, "should suspend")
 	require.NotEmpty(t, resp.RunID)
 
-	result, err := k.EvalTS(context.Background(), "__check_storage.ts", `
+	result, err := testutil.EvalTSErr(k, "__check_storage.ts", `
 		var store = globalThis.__kit_store_holder.store;
 		var wfStore = await store.getStore("workflows");
 		var snapshot = await wfStore.loadWorkflowSnapshot({
@@ -74,7 +75,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 
 func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-status", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
@@ -117,7 +118,7 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 
 func testRuns(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-runs", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
@@ -178,7 +179,7 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 
 func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-async", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
@@ -266,7 +267,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-crash", FSRoot: tmpDir,
 		Store: store1,
 		Storages: map[string]brainkit.StorageConfig{
@@ -288,7 +289,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-crash", FSRoot: tmpDir,
 		Store: store2,
 		Storages: map[string]brainkit.StorageConfig{

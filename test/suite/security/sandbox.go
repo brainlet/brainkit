@@ -1,20 +1,17 @@
 package security
 
 import (
-	"context"
 	"testing"
 
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // testSandboxDirectBridgeAccess — reach the raw Go bridge from inside a Compartment.
 func testSandboxDirectBridgeAccess(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "escape-bridge-sec.ts", `
+	secDeploy(t, k, "escape-bridge-sec.ts", `
 		var leaked = "NO";
 		try {
 			if (typeof __go_brainkit_request === "function") leaked = "LEAKED:request";
@@ -34,23 +31,20 @@ func testSandboxDirectBridgeAccess(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { leaked = "ERROR:" + e.message; }
 		output(leaked);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__esc.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__esc.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "NO", result, "raw Go bridges should NOT be accessible inside Compartment")
 }
 
 // testSandboxHijackCompartment — access another deployment's compartment object.
 func testSandboxHijackCompartment(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "victim-sec.ts", `
+	secDeploy(t, k, "victim-sec.ts", `
 		bus.on("secret-data", function(msg) { msg.reply({secret: "classified-data-42"}); });
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "attacker-sec.ts", `
+	secDeploy(t, k, "attacker-sec.ts", `
 		var stolen = "FAILED";
 		try {
 			if (typeof globalThis !== "undefined" && globalThis.__kit_compartments) {
@@ -62,24 +56,21 @@ func testSandboxHijackCompartment(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { stolen = "BLOCKED:" + e.message; }
 		output(stolen);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__hijack.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__hijack.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "HIJACKED", "attacker should not access victim's compartment")
 }
 
 // testSandboxRegistryManipulation — access the internal resource registry directly.
 func testSandboxRegistryManipulation(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "legit-tool-sec.ts", `
+	secDeploy(t, k, "legit-tool-sec.ts", `
 		const t = createTool({id: "protected-tool-sec", description: "secret", execute: async () => ({data: "secret"})});
 		kit.register("tool", "protected-tool-sec", t);
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "registry-attack-sec.ts", `
+	secDeploy(t, k, "registry-attack-sec.ts", `
 		var results = {};
 		try {
 			if (typeof __kit_registry !== "undefined") {
@@ -94,9 +85,8 @@ func testSandboxRegistryManipulation(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.error = e.message; }
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__reg_atk.ts", `
+	result, _ := secEvalTSErr(k, "__reg_atk.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -105,10 +95,9 @@ func testSandboxRegistryManipulation(t *testing.T, env *suite.TestEnv) {
 
 // testSandboxBusSubsHijack — access __bus_subs to hijack another deployment's handlers.
 func testSandboxBusSubsHijack(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "bus-hijack-sec.ts", `
+	secDeploy(t, k, "bus-hijack-sec.ts", `
 		var leaked = "NO";
 		try {
 			if (typeof __bus_subs !== "undefined") {
@@ -124,18 +113,16 @@ func testSandboxBusSubsHijack(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { leaked = "BLOCKED:" + e.message; }
 		output(leaked);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__bus_hijack.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__bus_hijack.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "HIJACKED", "should not be able to hijack bus subscription handlers")
 }
 
 // testSandboxPrototypePollution — prototype pollution to inject into shared objects.
 func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "proto-pollute-sec.ts", `
+	err := secDeployErr(k, "proto-pollute-sec.ts", `
 		var results = {};
 		try {
 			Object.prototype.pwned = "yes";
@@ -164,12 +151,12 @@ func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
 		return // SES blocked during eval — that's fine
 	}
 
-	result, _ := k.EvalTS(ctx, "__proto.ts", `
+	result, _ := secEvalTSErr(k, "__proto.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
 
-	_, err = k.Deploy(ctx, "innocent-sec.ts", `
+	err = secDeployErr(k, "innocent-sec.ts", `
 		var clean = {};
 		clean.hasObjPwned = ({}).pwned === "yes";
 		clean.hasArrPwned = ([]).pwned === "yes";
@@ -177,7 +164,7 @@ func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
 		output(clean);
 	`)
 	if err == nil {
-		result2, _ := k.EvalTS(ctx, "__innocent.ts", `
+		result2, _ := secEvalTSErr(k, "__innocent.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -189,10 +176,9 @@ func testSandboxPrototypePollution(t *testing.T, env *suite.TestEnv) {
 
 // testSandboxEndowmentOverwrite — overwrite endowment functions to intercept all traffic.
 func testSandboxEndowmentOverwrite(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "overwrite-bus-sec.ts", `
+	secDeploy(t, k, "overwrite-bus-sec.ts", `
 		var results = {};
 		try {
 			var origPublish = bus.publish;
@@ -222,24 +208,21 @@ func testSandboxEndowmentOverwrite(t *testing.T, env *suite.TestEnv) {
 
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "check-intact-sec.ts", `
+	secDeploy(t, k, "check-intact-sec.ts", `
 		var r = bus.publish("incoming.test-intact-sec", {check: true});
 		output(r.replyTo ? "INTACT" : "BROKEN");
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__check.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__check.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "INTACT", result, "endowment overwrite should not cross Compartment boundaries")
 }
 
 // testSandboxGlobalThisAccess — reach globalThis from within a Compartment.
 func testSandboxGlobalThisAccess(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "globalthis-probe-sec.ts", `
+	err := secDeployErr(k, "globalthis-probe-sec.ts", `
 		var findings = [];
 
 		try {
@@ -269,16 +252,15 @@ func testSandboxGlobalThisAccess(t *testing.T, env *suite.TestEnv) {
 		return // SES blocked the probe — sandbox is working
 	}
 
-	result, _ := k.EvalTS(ctx, "__gt.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__gt.ts", `return String(globalThis.__module_result || "");`)
 	assert.NotContains(t, result, "leaked", "should not be able to access real globalThis from Compartment")
 }
 
 // testSandboxFSPathTraversal — file system escape via path traversal.
 func testSandboxFSPathTraversal(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "fs-escape-sec.ts", `
+	secDeploy(t, k, "fs-escape-sec.ts", `
 		var results = {};
 		var attacks = [
 			"../../../etc/passwd",
@@ -305,9 +287,8 @@ func testSandboxFSPathTraversal(t *testing.T, env *suite.TestEnv) {
 		}
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__fs_esc.ts", `
+	result, _ := secEvalTSErr(k, "__fs_esc.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -316,10 +297,9 @@ func testSandboxFSPathTraversal(t *testing.T, env *suite.TestEnv) {
 
 // testSandboxFSWriteEscape — write to a path that could affect the host system.
 func testSandboxFSWriteEscape(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "fs-write-escape-sec.ts", `
+	secDeploy(t, k, "fs-write-escape-sec.ts", `
 		var results = {};
 		var attacks = [
 			["../../../tmp/brainkit-escape-test", "pwned"],
@@ -336,23 +316,21 @@ func testSandboxFSWriteEscape(t *testing.T, env *suite.TestEnv) {
 		}
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__fs_w_esc.ts", `
+	result, _ := secEvalTSErr(k, "__fs_w_esc.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
 	`)
 	t.Logf("FS write escape results (writes are normalized into workspace): %s", result)
-	assert.True(t, k.Alive(ctx))
+	assert.True(t, secAlive(t, k))
 }
 
 // testSandboxRuntimeModification — deploy code that modifies the kit runtime itself.
 func testSandboxRuntimeModification(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "modify-runtime-sec.ts", `
+	secDeploy(t, k, "modify-runtime-sec.ts", `
 		var results = {};
 
 		try {
@@ -380,18 +358,17 @@ func testSandboxRuntimeModification(t *testing.T, env *suite.TestEnv) {
 
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__mod_rt.ts", `
+	result, _ := secEvalTSErr(k, "__mod_rt.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
 
-	_, err = k.Deploy(ctx, "after-modify-sec.ts", `
+	err := secDeployErr(k, "after-modify-sec.ts", `
 		output(typeof backdoor === "function" ? "BACKDOOR_FOUND" : "CLEAN");
 	`)
 	if err == nil {
-		result2, _ := k.EvalTS(ctx, "__after_mod.ts", `return String(globalThis.__module_result || "");`)
+		result2, _ := secEvalTSErr(k, "__after_mod.ts", `return String(globalThis.__module_result || "");`)
 		assert.Equal(t, "CLEAN", result2, "runtime modification should not affect new deployments")
 	}
 	_ = result

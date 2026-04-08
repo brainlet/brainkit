@@ -281,3 +281,154 @@ func PublishAndWait(t *testing.T, rt sdk.Runtime, msg messages.BrainkitMessage, 
 		return nil
 	}
 }
+
+// Schedule creates a schedule via the schedules.create bus command and returns the schedule ID.
+func Schedule(t *testing.T, rt sdk.Runtime, expression, topic string, payload json.RawMessage) string {
+	t.Helper()
+	id, err := ScheduleErr(rt, expression, topic, payload)
+	if err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+	return id
+}
+
+// ScheduleErr creates a schedule via bus command and returns the ID or error.
+func ScheduleErr(rt sdk.Runtime, expression, topic string, payload json.RawMessage) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishScheduleCreate(rt, ctx, messages.ScheduleCreateMsg{
+		Expression: expression,
+		Topic:      topic,
+		Payload:    payload,
+	})
+	if err != nil {
+		return "", fmt.Errorf("publish schedules.create: %w", err)
+	}
+
+	type result struct {
+		id  string
+		err error
+	}
+	ch := make(chan result, 1)
+	unsub, err := sdk.SubscribeScheduleCreateResp(rt, ctx, pr.ReplyTo,
+		func(resp messages.ScheduleCreateResp, _ messages.Message) {
+			if resp.Error != "" {
+				ch <- result{err: fmt.Errorf("%s: %s", resp.Code, resp.Error)}
+			} else {
+				ch <- result{id: resp.ID}
+			}
+		})
+	if err != nil {
+		return "", fmt.Errorf("subscribe schedules.create reply: %w", err)
+	}
+	defer unsub()
+
+	select {
+	case r := <-ch:
+		return r.id, r.err
+	case <-ctx.Done():
+		return "", fmt.Errorf("schedule: %w", ctx.Err())
+	}
+}
+
+// Alive checks if the kit is healthy via the kit.health bus command.
+func Alive(t *testing.T, rt sdk.Runtime) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishKitHealth(rt, ctx, messages.KitHealthMsg{})
+	if err != nil {
+		return false
+	}
+
+	ch := make(chan bool, 1)
+	unsub, err := sdk.SubscribeKitHealthResp(rt, ctx, pr.ReplyTo,
+		func(resp messages.KitHealthResp, _ messages.Message) {
+			ch <- resp.Error == ""
+		})
+	if err != nil {
+		return false
+	}
+	defer unsub()
+
+	select {
+	case ok := <-ch:
+		return ok
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// EvalModule deploys code as a module (for test framework support).
+// Uses kit.deploy to evaluate code as a module, then tears it down if teardown is true.
+func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
+	t.Helper()
+	Deploy(t, rt, source, code)
+}
+
+// Unschedule cancels a schedule via the schedules.cancel bus command.
+func Unschedule(t *testing.T, rt sdk.Runtime, id string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishScheduleCancel(rt, ctx, messages.ScheduleCancelMsg{ID: id})
+	if err != nil {
+		t.Fatalf("Unschedule(%s): publish: %v", id, err)
+	}
+
+	ch := make(chan error, 1)
+	unsub, err := sdk.SubscribeScheduleCancelResp(rt, ctx, pr.ReplyTo,
+		func(resp messages.ScheduleCancelResp, _ messages.Message) {
+			if resp.Error != "" {
+				ch <- fmt.Errorf("%s: %s", resp.Code, resp.Error)
+			} else {
+				ch <- nil
+			}
+		})
+	if err != nil {
+		t.Fatalf("Unschedule(%s): subscribe: %v", id, err)
+	}
+	defer unsub()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			t.Fatalf("Unschedule(%s): %v", id, err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("Unschedule(%s): timeout", id)
+	}
+}
+
+// ListSchedules returns the list of active schedules via the schedules.list bus command.
+func ListSchedules(t *testing.T, rt sdk.Runtime) []messages.ScheduleInfo {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishScheduleList(rt, ctx, messages.ScheduleListMsg{})
+	if err != nil {
+		t.Fatalf("ListSchedules: publish: %v", err)
+	}
+
+	ch := make(chan []messages.ScheduleInfo, 1)
+	unsub, err := sdk.SubscribeScheduleListResp(rt, ctx, pr.ReplyTo,
+		func(resp messages.ScheduleListResp, _ messages.Message) {
+			ch <- resp.Schedules
+		})
+	if err != nil {
+		t.Fatalf("ListSchedules: subscribe: %v", err)
+	}
+	defer unsub()
+
+	select {
+	case schedules := <-ch:
+		return schedules
+	case <-ctx.Done():
+		t.Fatalf("ListSchedules: timeout")
+		return nil
+	}
+}

@@ -14,8 +14,9 @@ import (
 func testLibSQLFileURLBlocked(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
 	ctx := context.Background()
+	_ = ctx
 
-	_, err := freshEnv.Kernel.Deploy(ctx, "file-url-test-sec.ts", `
+	secDeploy(t, freshEnv.Kit, "file-url-test-sec.ts", `
 		try {
 			var store = new LibSQLStore({ url: "file:./sneaky.db" });
 			output({ blocked: false });
@@ -23,10 +24,8 @@ func testLibSQLFileURLBlocked(t *testing.T, _ *suite.TestEnv) {
 			output({ blocked: true, code: e.code || "unknown", message: e.message || String(e) });
 		}
 	`)
-	require.NoError(t, err)
 
-	result, err := freshEnv.Kernel.EvalTS(ctx, "__get_output_sec.ts", `return globalThis.__module_result || "null";`)
-	require.NoError(t, err)
+	result := secEvalTS(t, freshEnv.Kit, "__get_output_sec.ts", `return globalThis.__module_result || "null";`)
 
 	var parsed struct {
 		Blocked bool   `json:"blocked"`
@@ -43,8 +42,9 @@ func testLibSQLFileURLBlocked(t *testing.T, _ *suite.TestEnv) {
 func testLibSQLHttpURLNotBlocked(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
 	ctx := context.Background()
+	_ = ctx
 
-	_, err := freshEnv.Kernel.Deploy(ctx, "http-url-test-sec.ts", `
+	secDeploy(t, freshEnv.Kit, "http-url-test-sec.ts", `
 		try {
 			var store = new LibSQLStore({ url: "http://127.0.0.1:9999" });
 			output({ code: "none" });
@@ -52,10 +52,8 @@ func testLibSQLHttpURLNotBlocked(t *testing.T, _ *suite.TestEnv) {
 			output({ code: e.code || "unknown", message: e.message || String(e) });
 		}
 	`)
-	require.NoError(t, err)
 
-	result, err := freshEnv.Kernel.EvalTS(ctx, "__get_output_http_sec.ts", `return globalThis.__module_result || "null";`)
-	require.NoError(t, err)
+	result := secEvalTS(t, freshEnv.Kit, "__get_output_http_sec.ts", `return globalThis.__module_result || "null";`)
 
 	var parsed struct {
 		Code    string `json:"code"`

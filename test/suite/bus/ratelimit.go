@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -36,7 +36,7 @@ func testBusRateLimitExceeds(t *testing.T, _ *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	_, err := rlEnv.Kernel.Deploy(ctx, "rate-test.ts", `
+	err := testutil.DeployWithOpts(rlEnv.Kit, "rate-test.ts", `
 		bus.on("test", async (msg) => {
 			var results = [];
 			for (var i = 0; i < 5; i++) {
@@ -49,13 +49,13 @@ func testBusRateLimitExceeds(t *testing.T, _ *suite.TestEnv) {
 			}
 			msg.reply({ results: results });
 		});
-	`, brainkit.WithRole("limited"))
+	`, "limited", "")
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := sdk.SendToService(rlEnv.Kernel, ctx, "rate-test.ts", "test", map[string]bool{"go": true})
+	sendPR, _ := sdk.SendToService(rlEnv.Kit, ctx, "rate-test.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := rlEnv.Kernel.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := rlEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp

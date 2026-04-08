@@ -17,10 +17,10 @@ func testToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolListMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.ToolListResp
@@ -41,10 +41,10 @@ func testToolsResolveEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolResolveMsg{Name: "echo"})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "echo"})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolResolveResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolResolveResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.ToolResolveResp
@@ -62,10 +62,10 @@ func testToolsResolveNotFound(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolResolveResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.ToolResolveResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -79,13 +79,13 @@ func testToolsCallEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "hello world"},
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.ToolCallResp
@@ -103,13 +103,13 @@ func testToolsCallAdd(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 		Name:  "add",
 		Input: map[string]any{"a": 17, "b": 25},
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.ToolCallResp
@@ -127,13 +127,13 @@ func testToolsCallNotFound(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 		Name:  "nonexistent",
 		Input: map[string]any{},
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.ToolCallResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:

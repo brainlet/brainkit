@@ -19,6 +19,31 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// transportFieldsForBackend converts a testutil transport config into brainkit.Config transport fields.
+type transportFields struct {
+	Transport   string
+	NATSURL     string
+	NATSName    string
+	AMQPURL     string
+	RedisURL    string
+	PostgresURL string
+	SQLitePath  string
+}
+
+func transportFieldsForBackend(t *testing.T, backend string) transportFields {
+	t.Helper()
+	tcfg := testutil.TransportConfigForBackend(t, backend)
+	return transportFields{
+		Transport:   tcfg.Type,
+		NATSURL:     tcfg.NATSURL,
+		NATSName:    tcfg.NATSName,
+		AMQPURL:     tcfg.AMQPURL,
+		RedisURL:    tcfg.RedisURL,
+		PostgresURL: tcfg.PostgresURL,
+		SQLitePath:  tcfg.SQLitePath,
+	}
+}
+
 // Run executes all cross-kit, plugin, and discovery tests.
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("cross", func(t *testing.T) {
@@ -75,46 +100,36 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // --- Shared helpers ---
 
-// makeNode creates a Node with NATS backend. Skips if Podman is unavailable.
-func makeNode(t *testing.T, env *suite.TestEnv, namespace string) *brainkit.Node {
+// makeNode creates a Kit with NATS transport. Skips if Podman is unavailable.
+func makeNode(t *testing.T, env *suite.TestEnv, namespace string) *brainkit.Kit {
 	t.Helper()
-	return makeNodeWithConfig(t, env, namespace, messagingCfgForBackend(t, "nats"))
+	return makeNodeWithConfig(t, env, namespace, transportFieldsForBackend(t, "nats"))
 }
 
-// makeNodeWithConfig creates a Node with an explicit messaging config.
+// makeNodeWithConfig creates a Kit with explicit transport fields.
 // Used by cross-Kit tests where multiple nodes must share the same transport.
-func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, msgCfg brainkit.MessagingConfig) *brainkit.Node {
+func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf transportFields) *brainkit.Kit {
 	t.Helper()
 	env.RequirePodman(t)
 	tmpDir := t.TempDir()
 
-	node, err := brainkit.NewNode(brainkit.NodeConfig{
-		Kernel:    brainkit.KernelConfig{Namespace: namespace, CallerID: "host", FSRoot: tmpDir},
-		Messaging: msgCfg,
+	kit, err := brainkit.New(brainkit.Config{
+		Namespace:   namespace,
+		CallerID:    "host",
+		FSRoot:      tmpDir,
+		Transport:   tf.Transport,
+		NATSURL:     tf.NATSURL,
+		NATSName:    tf.NATSName,
+		AMQPURL:     tf.AMQPURL,
+		RedisURL:    tf.RedisURL,
+		PostgresURL: tf.PostgresURL,
+		SQLitePath:  tf.SQLitePath,
 	})
 	if err != nil {
 		t.Fatalf("makeNode: %v", err)
 	}
-	if err := node.Start(context.Background()); err != nil {
-		t.Fatalf("makeNode start: %v", err)
-	}
-	t.Cleanup(func() { node.Close() })
-	return node
-}
-
-// messagingCfgForBackend creates a MessagingConfig from testutil transport config.
-func messagingCfgForBackend(t *testing.T, backend string) brainkit.MessagingConfig {
-	t.Helper()
-	tcfg := testutil.TransportConfigForBackend(t, backend)
-	return brainkit.MessagingConfig{
-		Transport:   tcfg.Type,
-		NATSURL:     tcfg.NATSURL,
-		NATSName:    tcfg.NATSName,
-		AMQPURL:     tcfg.AMQPURL,
-		RedisURL:    tcfg.RedisURL,
-		PostgresURL: tcfg.PostgresURL,
-		SQLitePath:  tcfg.SQLitePath,
-	}
+	t.Cleanup(func() { kit.Close() })
+	return kit
 }
 
 // startNATSContainer starts a NATS JetStream container and returns the URL.
@@ -149,15 +164,15 @@ func startNATSContainer(t *testing.T) string {
 	return fmt.Sprintf("nats://%s:%s", host, port.Port())
 }
 
-// publishAndWaitRaw publishes on a node and waits for raw payload.
-func publishAndWaitRaw(t *testing.T, node *brainkit.Node, ctx context.Context, msg messages.BrainkitMessage) []byte {
+// publishAndWaitRaw publishes on a Kit and waits for raw payload.
+func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg messages.BrainkitMessage) []byte {
 	t.Helper()
-	pr, err := sdk.Publish(node, ctx, msg)
+	pr, err := sdk.Publish(kit, ctx, msg)
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	ch := make(chan []byte, 1)
-	unsub, err := node.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -172,8 +187,8 @@ func publishAndWaitRaw(t *testing.T, node *brainkit.Node, ctx context.Context, m
 	}
 }
 
-// publishAndWaitJSON publishes on a node and returns the raw JSON payload.
-func publishAndWaitJSON(t *testing.T, node *brainkit.Node, ctx context.Context, msg messages.BrainkitMessage) json.RawMessage {
+// publishAndWaitJSON publishes on a Kit and returns the raw JSON payload.
+func publishAndWaitJSON(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg messages.BrainkitMessage) json.RawMessage {
 	t.Helper()
-	return json.RawMessage(publishAndWaitRaw(t, node, ctx, msg))
+	return json.RawMessage(publishAndWaitRaw(t, kit, ctx, msg))
 }

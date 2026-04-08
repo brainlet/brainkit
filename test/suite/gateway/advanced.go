@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,11 +18,10 @@ import (
 
 // testAdvSSEStreaming — SSE endpoint streams typed events.
 func testAdvSSEStreaming(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "sse-handler.ts", `
+	testutil.Deploy(t, k, "sse-handler.ts", `
 		bus.on("stream", function(msg) {
 			msg.stream.text("hello");
 			msg.stream.text("world");
@@ -30,7 +29,6 @@ func testAdvSSEStreaming(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({done: true});
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.HandleStream("GET", "/sse-test", "ts.sse-handler.stream")
 
@@ -58,16 +56,14 @@ func testAdvSSEStreaming(t *testing.T, env *suite.TestEnv) {
 
 // testAdvWebhookDelivery — webhook endpoint accepts POST.
 func testAdvWebhookDelivery(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "webhook-handler.ts", `
+	testutil.Deploy(t, k, "webhook-handler.ts", `
 		bus.on("webhook", function(msg) {
 			// Webhook doesn't reply — fire and forget
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.HandleWebhook("POST", "/webhook", "ts.webhook-handler.webhook")
 
@@ -77,18 +73,15 @@ func testAdvWebhookDelivery(t *testing.T, env *suite.TestEnv) {
 
 // testAdvMultipleRoutes — multiple routes coexist.
 func testAdvMultipleRoutes(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "multi-route-a.ts", `
+	testutil.Deploy(t, k, "multi-route-a.ts", `
 		bus.on("hello", function(msg) { msg.reply({route: "a"}); });
 	`)
-	require.NoError(t, err)
-	_, err = k.Deploy(ctx, "multi-route-b.ts", `
+	testutil.Deploy(t, k, "multi-route-b.ts", `
 		bus.on("world", function(msg) { msg.reply({route: "b"}); });
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("GET", "/route-a", "ts.multi-route-a.hello")
 	gw.Handle("GET", "/route-b", "ts.multi-route-b.world")
@@ -104,12 +97,11 @@ func testAdvMultipleRoutes(t *testing.T, env *suite.TestEnv) {
 
 // testAdvRouteReplacement — adding same route replaces handler.
 func testAdvRouteReplacement(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, _ = k.Deploy(ctx, "v1.ts", `bus.on("ver", function(msg) { msg.reply({v: 1}); });`)
-	_, _ = k.Deploy(ctx, "v2.ts", `bus.on("ver", function(msg) { msg.reply({v: 2}); });`)
+	testutil.Deploy(t, k, "v1.ts", `bus.on("ver", function(msg) { msg.reply({v: 1}); });`)
+	testutil.Deploy(t, k, "v2.ts", `bus.on("ver", function(msg) { msg.reply({v: 2}); });`)
 
 	gw.Handle("GET", "/version", "ts.v1.ver")
 	// Replace with v2
@@ -121,14 +113,12 @@ func testAdvRouteReplacement(t *testing.T, env *suite.TestEnv) {
 
 // testAdvConcurrentRequests — 20 concurrent HTTP requests.
 func testAdvConcurrentRequests(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "concurrent-gw.ts", `
+	testutil.Deploy(t, k, "concurrent-gw.ts", `
 		bus.on("req", function(msg) { msg.reply({ok: true}); });
 	`)
-	require.NoError(t, err)
 	gw.Handle("GET", "/concurrent", "ts.concurrent-gw.req")
 
 	var wg sync.WaitGroup
@@ -154,17 +144,15 @@ func testAdvConcurrentRequests(t *testing.T, env *suite.TestEnv) {
 
 // testAdvLargeResponse — handler returns large JSON.
 func testAdvLargeResponse(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "large-resp.ts", `
+	testutil.Deploy(t, k, "large-resp.ts", `
 		bus.on("big", function(msg) {
 			var data = "x".repeat(100000);
 			msg.reply({data: data, size: data.length});
 		});
 	`)
-	require.NoError(t, err)
 	gw.Handle("GET", "/large-response", "ts.large-resp.big")
 
 	resp, err := http.Get("http://" + gw.Addr() + "/large-response")
@@ -181,11 +169,10 @@ func testAdvLargeResponse(t *testing.T, env *suite.TestEnv) {
 
 // testAdvHealthDuringRequests — health stays ok during active HTTP traffic.
 func testAdvHealthDuringRequests(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, _ = k.Deploy(ctx, "health-gw.ts", `bus.on("ping", function(msg) { msg.reply({ok:true}); });`)
+	testutil.Deploy(t, k, "health-gw.ts", `bus.on("ping", function(msg) { msg.reply({ok:true}); });`)
 	gw.Handle("GET", "/health-ping", "ts.health-gw.ping")
 
 	// Fire requests

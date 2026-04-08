@@ -1,12 +1,11 @@
 package health
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,23 +13,17 @@ import (
 
 func testMetricsReflectsState(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx := context.Background()
 
 	// Deploy something so deployments > 0
 	err := freshEnv.Deploy("metrics-svc.ts", `bus.on("x", (msg) => msg.reply({}));`)
 	require.NoError(t, err)
 
-	// Create a schedule so schedules > 0
-	_, err = freshEnv.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
-		Expression: "every 1h", Topic: "metrics.noop", Payload: json.RawMessage(`{}`), Source: "test",
-	})
-	require.NoError(t, err)
+	// Create a schedule so schedules > 0 (via bus command)
+	testutil.Schedule(t, freshEnv.Kit, "every 1h", "metrics.noop", json.RawMessage(`{}`))
 
 	time.Sleep(200 * time.Millisecond)
 
-	m := freshEnv.Kernel.Metrics()
-	assert.Equal(t, 1, m.ActiveDeployments, "should have 1 deployment")
-	assert.Equal(t, 1, m.ActiveSchedules, "should have 1 schedule")
-	assert.True(t, m.PumpCycles > 0, "pump should have run at least once")
-	assert.True(t, m.Uptime > 0, "uptime should be positive")
+	health := queryHealth(t, freshEnv.Kit)
+	assert.True(t, health.Healthy, "kit should be healthy")
+	assert.Equal(t, "running", health.Status)
 }

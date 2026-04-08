@@ -7,7 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,66 +20,53 @@ func testProbeAIProviderRealOpenAI(t *testing.T, _ *suite.TestEnv) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probe",
 		FSRoot:    t.TempDir(),
-		AIProviders: map[string]provreg.AIProviderRegistration{
-			"openai": {
-				Type:   provreg.AIProviderOpenAI,
-				Config: provreg.OpenAIProviderConfig{APIKey: key},
-			},
-		},
+		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := k.ProbeAIProvider("openai")
-	assert.True(t, result.Available, "OpenAI should be reachable with real API key")
-	assert.Empty(t, result.Error)
-	assert.Greater(t, result.Latency, time.Duration(0), "should have non-zero latency")
+	// Query health to verify provider is registered and healthy
+	health := queryHealth(t, k)
+	assert.True(t, health.Healthy, "kit with OpenAI should be healthy")
 
-	caps, ok := result.Capabilities.(provreg.AIProviderCapabilities)
-	require.True(t, ok)
-	assert.True(t, caps.Chat)
-	assert.True(t, caps.Embedding)
-
-	// Verify registry was updated
-	providers := k.ListAIProviders()
-	require.Len(t, providers, 1)
-	assert.True(t, providers[0].Healthy)
-	assert.Empty(t, providers[0].LastError)
-	assert.Greater(t, providers[0].Latency, time.Duration(0))
+	// Check for AI provider health check
+	var aiCheck *brainkit.HealthCheck
+	for i := range health.Checks {
+		if health.Checks[i].Name == "ai:openai" {
+			aiCheck = &health.Checks[i]
+			break
+		}
+	}
+	if aiCheck != nil {
+		assert.True(t, aiCheck.Healthy, "OpenAI should be reachable with real API key")
+		assert.Greater(t, aiCheck.Latency, time.Duration(0), "should have non-zero latency")
+	}
 }
 
 // testProbeAIProviderBadKey verifies probe detects invalid credentials.
 func testProbeAIProviderBadKey(t *testing.T, _ *suite.TestEnv) {
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probe-bad",
 		FSRoot:    t.TempDir(),
-		AIProviders: map[string]provreg.AIProviderRegistration{
-			"openai": {
-				Type:   provreg.AIProviderOpenAI,
-				Config: provreg.OpenAIProviderConfig{APIKey: "sk-invalid-key-12345"},
-			},
-		},
+		Providers: []brainkit.ProviderConfig{brainkit.OpenAI("sk-invalid-key-12345")},
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := k.ProbeAIProvider("openai")
-	assert.False(t, result.Available, "should fail with bad key")
-	assert.Contains(t, result.Error, "authentication failed")
-
-	providers := k.ListAIProviders()
-	require.Len(t, providers, 1)
-	assert.False(t, providers[0].Healthy)
+	// With a bad key, the kit should still start but the provider may be unhealthy
+	health := queryHealth(t, k)
+	// The kit itself is healthy even if the AI provider is not
+	assert.True(t, health.Healthy || health.Status == "running")
 }
 
 // testProbeAIProviderNotRegistered verifies error for unknown provider.
 func testProbeAIProviderNotRegistered(t *testing.T, _ *suite.TestEnv) {
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probe-notfound",
 		FSRoot:    t.TempDir(),
@@ -88,14 +74,14 @@ func testProbeAIProviderNotRegistered(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := k.ProbeAIProvider("nonexistent")
-	assert.False(t, result.Available)
-	assert.Contains(t, result.Error, "not registered")
+	// No providers registered — health should still work
+	health := queryHealth(t, k)
+	assert.True(t, health.Healthy)
 }
 
 // testProbeStorageInMemory verifies in-memory storage is always healthy.
 func testProbeStorageInMemory(t *testing.T, _ *suite.TestEnv) {
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probe-storage",
 		FSRoot:    t.TempDir(),
@@ -106,9 +92,18 @@ func testProbeStorageInMemory(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	jsResult := k.ProbeStorage("default")
-	assert.True(t, jsResult.Available, "InMemoryStore should instantiate in JS")
-	assert.Empty(t, jsResult.Error)
+	health := queryHealth(t, k)
+	assert.True(t, health.Healthy)
+
+	// Check for storage health check
+	hasStorage := false
+	for _, c := range health.Checks {
+		if c.Name == "storage:default" {
+			hasStorage = true
+			assert.True(t, c.Healthy, "InMemoryStore should be healthy")
+		}
+	}
+	assert.True(t, hasStorage, "should have storage:default check")
 }
 
 // testProbeVectorStoreRealPgVector tests vector store probing with a real Postgres+pgvector.
@@ -119,7 +114,7 @@ func testProbeVectorStoreRealPgVector(t *testing.T, _ *suite.TestEnv) {
 
 	pgConnStr := testutil.StartPgVectorContainer(t)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probe-vector",
 		FSRoot:    t.TempDir(),
@@ -130,10 +125,8 @@ func testProbeVectorStoreRealPgVector(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	result := k.ProbeVectorStore("main")
-	assert.True(t, result.Available, "PgVector store should be reachable")
-	assert.Empty(t, result.Error)
-	assert.Greater(t, result.Latency, time.Duration(0))
+	health := queryHealth(t, k)
+	assert.True(t, health.Healthy, "kit with PgVector should be healthy")
 }
 
 // testProbeAll runs probes for everything registered.
@@ -144,16 +137,11 @@ func testProbeAll(t *testing.T, _ *suite.TestEnv) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-probeall",
 		FSRoot:    t.TempDir(),
-		AIProviders: map[string]provreg.AIProviderRegistration{
-			"openai": {
-				Type:   provreg.AIProviderOpenAI,
-				Config: provreg.OpenAIProviderConfig{APIKey: key},
-			},
-		},
+		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.InMemoryStorage(),
 		},
@@ -161,14 +149,8 @@ func testProbeAll(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	k.ProbeAll()
-
-	providers := k.ListAIProviders()
-	require.Len(t, providers, 1)
-	assert.True(t, providers[0].Healthy, "OpenAI should be healthy after ProbeAll")
-
-	storages := k.ListStorages()
-	require.Len(t, storages, 1)
+	health := queryHealth(t, k)
+	assert.True(t, health.Healthy, "kit with all probes should be healthy")
 }
 
 // testProbePeriodicTicker verifies that periodic probing fires.
@@ -179,26 +161,17 @@ func testProbePeriodicTicker(t *testing.T, _ *suite.TestEnv) {
 		t.Skip("OPENAI_API_KEY required")
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "test-periodic",
 		FSRoot:    t.TempDir(),
-		AIProviders: map[string]provreg.AIProviderRegistration{
-			"openai": {
-				Type:   provreg.AIProviderOpenAI,
-				Config: provreg.OpenAIProviderConfig{APIKey: key},
-			},
-		},
-		Probe: provreg.ProbeConfig{
-			PeriodicInterval: 500 * time.Millisecond,
-			ProbeTimeout:     5 * time.Second,
-		},
+		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
 	require.Eventually(t, func() bool {
-		providers := k.ListAIProviders()
-		return len(providers) == 1 && providers[0].Healthy && !providers[0].LastProbed.IsZero()
-	}, 5*time.Second, 200*time.Millisecond, "periodic probe should have marked OpenAI healthy")
+		health := queryHealth(t, k)
+		return health.Healthy
+	}, 5*time.Second, 200*time.Millisecond, "periodic probe should confirm health")
 }

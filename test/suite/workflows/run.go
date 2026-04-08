@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -55,7 +56,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 // wfPublishAndWait publishes a workflow command and waits for the typed response.
 // Generic helper replicating publishAndWait from infra/workflow_bus_test.go.
 func wfPublishAndWait[Req messages.BrainkitMessage, Resp any](
-	t *testing.T, k *brainkit.Kernel, msg Req, timeout time.Duration,
+	t *testing.T, k *brainkit.Kit, msg Req, timeout time.Duration,
 ) Resp {
 	t.Helper()
 	result, err := sdk.Publish(k, context.Background(), msg)
@@ -75,8 +76,7 @@ func wfPublishAndWait[Req messages.BrainkitMessage, Resp any](
 }
 
 // wfDeploy deploys a .ts file that registers a workflow.
-func wfDeploy(t *testing.T, k *brainkit.Kernel, source, code string) {
+func wfDeploy(t *testing.T, k *brainkit.Kit, source, code string) {
 	t.Helper()
-	_, err := k.Deploy(context.Background(), source, code)
-	require.NoError(t, err)
+	testutil.Deploy(t, k, source, code)
 }

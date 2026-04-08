@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -24,10 +25,10 @@ func testSetAndGet(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, err := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "api-key", Value: "sk-test-12345"})
+	pub, err := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "api-key", Value: "sk-test-12345"})
 	require.NoError(t, err)
 	respCh := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { respCh <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { respCh <- resp })
 	defer cancel()
 
 	select {
@@ -38,9 +39,9 @@ func testSetAndGet(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pub2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "api-key"})
+	pub2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "api-key"})
 	getCh := make(chan messages.SecretsGetResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kernel, ctx, pub2.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
+	cancel2, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
 	defer cancel2()
 
 	select {
@@ -55,15 +56,15 @@ func testDelete(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "temp", Value: "val"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "temp", Value: "val"})
 	setCh := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
 	<-setCh
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsDeleteMsg{Name: "temp"})
+	pub2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsDeleteMsg{Name: "temp"})
 	delCh := make(chan messages.SecretsDeleteResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.SecretsDeleteResp](env.Kernel, ctx, pub2.ReplyTo, func(resp messages.SecretsDeleteResp, _ messages.Message) { delCh <- resp })
+	cancel2, _ := sdk.SubscribeTo[messages.SecretsDeleteResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.SecretsDeleteResp, _ messages.Message) { delCh <- resp })
 	defer cancel2()
 
 	select {
@@ -73,9 +74,9 @@ func testDelete(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pub3, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "temp"})
+	pub3, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "temp"})
 	getCh := make(chan messages.SecretsGetResp, 1)
-	cancel3, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kernel, ctx, pub3.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
+	cancel3, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
 	defer cancel3()
 
 	select {
@@ -91,16 +92,16 @@ func testList(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	for _, name := range []string{"key-a", "key-b"} {
-		pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: name, Value: "val-" + name})
+		pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: name, Value: "val-" + name})
 		ch := make(chan messages.SecretsSetResp, 1)
-		cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+		cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 		<-ch
 		cancel()
 	}
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsListMsg{})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsListMsg{})
 	listCh := make(chan messages.SecretsListResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
 	defer cancel()
 
 	select {
@@ -118,15 +119,15 @@ func testRotate(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "rotate-me", Value: "old-value"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "rotate-me", Value: "old-value"})
 	ch := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 	<-ch
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsRotateMsg{Name: "rotate-me", NewValue: "new-value", Restart: false})
+	pub2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsRotateMsg{Name: "rotate-me", NewValue: "new-value", Restart: false})
 	rotateCh := make(chan messages.SecretsRotateResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.SecretsRotateResp](env.Kernel, ctx, pub2.ReplyTo, func(resp messages.SecretsRotateResp, _ messages.Message) { rotateCh <- resp })
+	cancel2, _ := sdk.SubscribeTo[messages.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.SecretsRotateResp, _ messages.Message) { rotateCh <- resp })
 	defer cancel2()
 
 	select {
@@ -137,9 +138,9 @@ func testRotate(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pub3, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "rotate-me"})
+	pub3, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "rotate-me"})
 	getCh := make(chan messages.SecretsGetResp, 1)
-	cancel3, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kernel, ctx, pub3.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
+	cancel3, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
 	defer cancel3()
 
 	select {
@@ -154,17 +155,16 @@ func testJSBridge(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "js-test-token", Value: "tok_abc123"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "js-test-token", Value: "tok_abc123"})
 	ch := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 	<-ch
 	cancel()
 
-	result, err := env.Kernel.EvalTS(ctx, "__test_secret.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__test_secret.ts", `
 		var val = secrets.get("js-test-token");
 		return val;
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "tok_abc123", result)
 }
 
@@ -173,12 +173,12 @@ func testAuditEvents(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	storedCh := make(chan messages.SecretsStoredEvent, 1)
-	cancelStored, _ := sdk.SubscribeTo[messages.SecretsStoredEvent](env.Kernel, ctx, "secrets.stored", func(evt messages.SecretsStoredEvent, _ messages.Message) { storedCh <- evt })
+	cancelStored, _ := sdk.SubscribeTo[messages.SecretsStoredEvent](env.Kit, ctx, "secrets.stored", func(evt messages.SecretsStoredEvent, _ messages.Message) { storedCh <- evt })
 	defer cancelStored()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "audit-test", Value: "val"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "audit-test", Value: "val"})
 	setCh := make(chan messages.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
+	cancelSet, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 
@@ -195,18 +195,18 @@ func testConcurrentAccess(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "concurrent", Value: "v0"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "concurrent", Value: "v0"})
 	ch := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 	<-ch
 	cancel()
 
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "concurrent"})
+			pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "concurrent"})
 			getCh := make(chan messages.SecretsGetResp, 1)
-			cancel, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
+			cancel, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
 			select {
 			case resp := <-getCh:
 				cancel()
@@ -229,15 +229,15 @@ func testDevModeNoEncryption(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t, suite.WithPersistence()) // no secret key
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "dev-secret", Value: "unencrypted"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "dev-secret", Value: "unencrypted"})
 	setCh := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
 	<-setCh
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsGetMsg{Name: "dev-secret"})
+	pub2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "dev-secret"})
 	getCh := make(chan messages.SecretsGetResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kernel, ctx, pub2.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
+	cancel2, _ := sdk.SubscribeTo[messages.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.SecretsGetResp, _ messages.Message) { getCh <- resp })
 	defer cancel2()
 
 	select {
@@ -252,15 +252,15 @@ func testListNeverLeaksValues(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "sensitive-key", Value: "sk-super-secret-do-not-leak"})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "sensitive-key", Value: "sk-super-secret-do-not-leak"})
 	ch := make(chan messages.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+	cancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 	<-ch
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsListMsg{})
+	pub2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsListMsg{})
 	listCh := make(chan messages.SecretsListResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kernel, ctx, pub2.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
+	cancel2, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
 	defer cancel2()
 
 	select {

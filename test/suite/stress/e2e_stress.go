@@ -16,13 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testE2EMultipleKernels — create 3 independent Kernels, each deploys and works independently.
+// testE2EMultipleKernels — create 3 independent Kits, each deploys and works independently.
 func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
-	kernels := make([]*brainkit.Kernel, 3)
+	kits := make([]*brainkit.Kit, 3)
 
 	for i := 0; i < 3; i++ {
 		tmpDir := t.TempDir()
-		k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		k, err := brainkit.New(brainkit.Config{
 			Namespace: fmt.Sprintf("multi-stress-%d", i),
 			CallerID:  fmt.Sprintf("multi-stress-%d", i),
 			FSRoot:    tmpDir,
@@ -38,14 +38,14 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 			},
 		})
 
-		kernels[i] = k
+		kits[i] = k
 	}
 
-	for i, k := range kernels {
+	for i, k := range kits {
 		payload, ok := sendAndReceive(t, k,
 			messages.ToolCallMsg{Name: fmt.Sprintf("echo-stress-%d", i), Input: map[string]any{"message": fmt.Sprintf("kernel-%d", i)}},
 			5*time.Second)
-		require.True(t, ok, "kernel %d didn't respond", i)
+		require.True(t, ok, "kit %d didn't respond", i)
 		assert.Contains(t, string(payload), fmt.Sprintf("kernel-%d", i))
 	}
 }
@@ -61,7 +61,7 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 
 	for i := range n {
 		go func(val int) {
-			pubResult, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{
+			pubResult, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
 			})
@@ -70,7 +70,7 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 				return
 			}
 			done := make(chan messages.ToolCallResp, 1)
-			unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kernel, ctx, pubResult.ReplyTo, func(r messages.ToolCallResp, m messages.Message) {
+			unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r messages.ToolCallResp, m messages.Message) {
 				done <- r
 			})
 			if err != nil {

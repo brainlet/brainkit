@@ -9,12 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // test100DeploysSimultaneously deploys 100 services at once.
@@ -23,9 +22,7 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
-
+	tk := env.Kit
 	var wg sync.WaitGroup
 	var succeeded, failed atomic.Int64
 
@@ -34,7 +31,7 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 		go func(n int) {
 			defer wg.Done()
 			src := fmt.Sprintf("stress-100-%d.ts", n)
-			_, err := tk.Deploy(ctx, src, fmt.Sprintf(`output("stress-100-%d");`, n))
+			err := testutil.DeployErr(tk, src, fmt.Sprintf(`output("stress-100-%d");`, n))
 			if err != nil {
 				failed.Add(1)
 			} else {
@@ -46,10 +43,15 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 
 	t.Logf("100 deploys: %d succeeded, %d failed", succeeded.Load(), failed.Load())
 	assert.Greater(t, succeeded.Load(), int64(0))
-	assert.True(t, tk.Alive(ctx))
+	// Verify alive via a simple publish
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err)
 
+	ctx := context.Background()
 	for i := 0; i < 100; i++ {
-		tk.Teardown(ctx, fmt.Sprintf("stress-100-%d.ts", i))
+		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: fmt.Sprintf("stress-100-%d.ts", i)})
+		cancel()
 	}
 }
 
@@ -59,7 +61,7 @@ func test1000BusPublishes(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	var received atomic.Int64
@@ -84,7 +86,8 @@ func test1000BusPublishes(t *testing.T, env *suite.TestEnv) {
 	count := received.Load()
 	t.Logf("1000 publishes: received %d", count)
 	assert.Greater(t, count, int64(500), "should receive majority of messages")
-	assert.True(t, tk.Alive(ctx))
+	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err)
 }
 
 // testSecretRotationDuringReads rotates a secret while 50 goroutines read it.
@@ -93,7 +96,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	// Set initial value
@@ -116,7 +119,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 				case <-stop:
 					return
 				default:
-					tk.EvalTS(ctx, "__stress_read_rot.ts", `return secrets.get("stress-rotating");`)
+					testutil.EvalTSErr(tk, "__stress_read_rot.ts", `return secrets.get("stress-rotating");`)
 					readCount.Add(1)
 				}
 			}
@@ -142,7 +145,8 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	wg.Wait()
 	t.Logf("reads during rotation: %d", readCount.Load())
 	assert.Greater(t, readCount.Load(), int64(0))
-	assert.True(t, tk.Alive(ctx))
+	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err)
 }
 
 // testDeployWhileEvalTS deploys new services while EvalTS is running.
@@ -151,8 +155,7 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
-	ctx := context.Background()
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 
@@ -160,22 +163,26 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			tk.EvalTS(ctx, fmt.Sprintf("__stress_eval_%d.ts", i), `return "eval-" + Math.random();`)
+			testutil.EvalTSErr(tk, fmt.Sprintf("__stress_eval_%d.ts", i), `return "eval-" + Math.random();`)
 		}
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		ctx := context.Background()
 		for i := 0; i < 20; i++ {
 			src := fmt.Sprintf("stress-parallel-deploy-%d.ts", i)
-			tk.Deploy(ctx, src, `output("stress-parallel");`)
-			tk.Teardown(ctx, src)
+			testutil.DeployErr(tk, src, `output("stress-parallel");`)
+			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+			cancel()
 		}
 	}()
 
 	wg.Wait()
-	assert.True(t, tk.Alive(ctx))
+	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err)
 }
 
 // testToolCallsUnderLoad fires 100 concurrent tool calls.
@@ -184,7 +191,7 @@ func testToolCallsUnderLoad(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 
 	var wg sync.WaitGroup
 	var succeeded atomic.Int64
@@ -214,7 +221,7 @@ func testScheduleStorm(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx := context.Background()
 
 	var received atomic.Int64
@@ -224,11 +231,13 @@ func testScheduleStorm(t *testing.T, env *suite.TestEnv) {
 	defer unsub()
 
 	for i := 0; i < 50; i++ {
-		tk.Schedule(ctx, brainkit.ScheduleConfig{
+		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sdk.Publish(tk, sctx, messages.ScheduleCreateMsg{
 			Expression: "in 200ms",
 			Topic:      "stress.sched.storm",
 			Payload:    json.RawMessage(fmt.Sprintf(`{"i":%d}`, i)),
 		})
+		cancel()
 	}
 
 	time.Sleep(3 * time.Second)
@@ -243,14 +252,13 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	tk := env.Kernel
+	tk := env.Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := tk.Deploy(ctx, "multi-stress-surface.ts", `
+	testutil.Deploy(t, tk, "multi-stress-surface.ts", `
 		bus.on("ts-ping", function(msg) { msg.reply({from: "ts"}); });
 	`)
-	require.NoError(t, err)
 
 	var wg sync.WaitGroup
 
@@ -286,10 +294,11 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			tk.EvalTS(ctx, "__stress_ms.ts", `return "eval-ok";`)
+			testutil.EvalTSErr(tk, "__stress_ms.ts", `return "eval-ok";`)
 		}
 	}()
 
 	wg.Wait()
-	assert.True(t, tk.Alive(ctx))
+	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	assert.NoError(t, err)
 }

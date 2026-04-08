@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -18,9 +17,8 @@ import (
 // testRBACObserverRegistersToolThenCalls — observer registers a tool (should be denied), then escalates.
 func testRBACObserverRegistersToolThenCalls(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "obs-escalate-sec.ts", `
+	err := secDeployWithRole(k, "obs-escalate-sec.ts", `
 		var results = {};
 
 		try {
@@ -40,10 +38,10 @@ func testRBACObserverRegistersToolThenCalls(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.rawBridge = "DENIED_OR_UNAVAILABLE"; }
 
 		output(results);
-	`, brainkit.WithRole("observer"))
+	`, "observer")
 	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__obs_esc.ts", `
+	result, _ := secEvalTSErr(k, "__obs_esc.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -60,7 +58,7 @@ func testRBACGatewayExfiltratesSecrets(t *testing.T, env *suite.TestEnv) {
 	sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "API_KEY_SEC", Value: "sk-secret-12345"})
 	time.Sleep(100 * time.Millisecond)
 
-	_, err := k.Deploy(ctx, "gw-secret-steal-sec.ts", `
+	err := secDeployWithRole(k, "gw-secret-steal-sec.ts", `
 		var results = {};
 
 		try {
@@ -79,10 +77,10 @@ func testRBACGatewayExfiltratesSecrets(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.emitGet = "DENIED:" + (e.code || ""); }
 
 		output(results);
-	`, brainkit.WithRole("gateway"))
+	`, "gateway")
 	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__gw_sec.ts", `
+	result, _ := secEvalTSErr(k, "__gw_sec.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -94,14 +92,13 @@ func testRBACObserverHijacksServiceHandler(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "legit-service-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "legit-service-sec.ts", `
 		bus.on("api", function(msg) {
 			msg.reply({legitimate: true, secret: "internal-data"});
 		});
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	_, err = k.Deploy(ctx, "observer-hijack-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "observer-hijack-sec.ts", `
 		var stolen = [];
 		try {
 			bus.subscribe("ts.legit-service-sec.api", function(msg) {
@@ -110,8 +107,7 @@ func testRBACObserverHijacksServiceHandler(t *testing.T, env *suite.TestEnv) {
 			});
 		} catch(e) {}
 		output("subscribed");
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer"))
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.legit-service-sec.api", Payload: json.RawMessage(`{"q":"test"}`),
@@ -136,9 +132,8 @@ func testRBACObserverHijacksServiceHandler(t *testing.T, env *suite.TestEnv) {
 // testRBACServiceTriesAdmin — service role tries to escalate to admin via RBAC bus commands.
 func testRBACServiceTriesAdmin(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "svc-escalate-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "svc-escalate-sec.ts", `
 		var results = {};
 
 		try {
@@ -157,10 +152,9 @@ func testRBACServiceTriesAdmin(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.revokeOther = "DENIED:" + (e.code || e.message); }
 
 		output(results);
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	result, _ := k.EvalTS(ctx, "__svc_esc.ts", `
+	result, _ := secEvalTSErr(k, "__svc_esc.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -172,9 +166,8 @@ func testRBACServiceTriesAdmin(t *testing.T, env *suite.TestEnv) {
 // testRBACBrokenReplyPatternExploit — FIXED: *.reply.* now works.
 func testRBACBrokenReplyPatternExploit(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "reply-bug-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "reply-bug-sec.ts", `
 		var results = {};
 
 		try {
@@ -194,10 +187,9 @@ func testRBACBrokenReplyPatternExploit(t *testing.T, env *suite.TestEnv) {
 		}
 
 		output(results);
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	result, _ := k.EvalTS(ctx, "__reply_bug.ts", `
+	result, _ := secEvalTSErr(k, "__reply_bug.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -208,18 +200,16 @@ func testRBACBrokenReplyPatternExploit(t *testing.T, env *suite.TestEnv) {
 // testRBACRoleSwapToolPersistence — deploy as one role, register tool, teardown, redeploy as different role.
 func testRBACRoleSwapToolPersistence(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "role-swap-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "role-swap-sec.ts", `
 		var t = createTool({id: "admin-power-sec", description: "admin only", execute: async ({cmd}) => ({executed: cmd})});
 		kit.register("tool", "admin-power-sec", t);
 		output("registered");
-	`, brainkit.WithRole("admin"))
-	require.NoError(t, err)
+	`, "admin"))
 
-	k.Teardown(ctx, "role-swap-sec.ts")
+	secTeardown(t, k, "role-swap-sec.ts")
 
-	_, err = k.Deploy(ctx, "role-swap-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "role-swap-sec.ts", `
 		var result = "UNKNOWN";
 		try {
 			var r = await tools.call("admin-power-sec", {cmd: "rm -rf"});
@@ -228,19 +218,17 @@ func testRBACRoleSwapToolPersistence(t *testing.T, env *suite.TestEnv) {
 			result = "DENIED:" + (e.code || e.message);
 		}
 		output(result);
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer"))
 
-	result, _ := k.EvalTS(ctx, "__swap.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := secEvalTSErr(k, "__swap.ts", `return String(globalThis.__module_result || "");`)
 	assert.Contains(t, result, "DENIED", "tool from torn-down admin deployment should not persist")
 }
 
 // testRBACScheduleToCommandTopic — service deploys code that schedules messages to command topics.
 func testRBACScheduleToCommandTopic(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "sched-cmd-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "sched-cmd-sec.ts", `
 		var results = {};
 
 		try {
@@ -254,10 +242,9 @@ func testRBACScheduleToCommandTopic(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.scheduledSecret = "DENIED:" + (e.code || e.message); }
 
 		output(results);
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
+	`, "service"))
 
-	result, _ := k.EvalTS(ctx, "__sched_cmd.ts", `
+	result, _ := secEvalTSErr(k, "__sched_cmd.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -267,9 +254,8 @@ func testRBACScheduleToCommandTopic(t *testing.T, env *suite.TestEnv) {
 // testRBACDeployInception — observer tries to deploy code that deploys MORE code.
 func testRBACDeployInception(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "inception-sec.ts", `
+	require.NoError(t, secDeployWithRole(k, "inception-sec.ts", `
 		var results = {};
 
 		try {
@@ -278,10 +264,9 @@ func testRBACDeployInception(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.deployViaBus = "DENIED:" + (e.code || e.message); }
 
 		output(results);
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer"))
 
-	result, _ := k.EvalTS(ctx, "__inception.ts", `
+	result, _ := secEvalTSErr(k, "__inception.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -291,9 +276,8 @@ func testRBACDeployInception(t *testing.T, env *suite.TestEnv) {
 // testRBACCallerIDForgery — forge callerID metadata to impersonate admin.
 func testRBACCallerIDForgery(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
-	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "forge-caller-sec.ts", `
+	_ = secDeployWithRole(k, "forge-caller-sec.ts", `
 		var results = {};
 
 		try {
@@ -302,7 +286,5 @@ func testRBACCallerIDForgery(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.publish = "denied"; }
 
 		output(results);
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
-	_ = err
+	`, "observer")
 }

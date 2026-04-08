@@ -76,15 +76,15 @@ func testPluginInProcessCallTool(t *testing.T, env *suite.TestEnv) {
 }
 
 func testPluginInProcessFSWriteRead(t *testing.T, env *suite.TestEnv) {
-	tk := testutil.NewTestKernelFull(t)
+	tk := testutil.NewTestKitFull(t)
 	fsCtx, fsCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer fsCancel()
 
-	result, err := tk.EvalTS(fsCtx, "__test-cross.ts", `
+	result := testutil.EvalTS(t, tk, "__test-cross.ts", `
 		fs.writeFileSync("plugin-data.json", '{"status":"ok"}');
 		return fs.readFileSync("plugin-data.json", "utf8");
 	`)
-	require.NoError(t, err)
+	_ = fsCtx
 	assert.Equal(t, `{"status":"ok"}`, result)
 }
 
@@ -152,18 +152,18 @@ func testPluginSubprocessEcho(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipping subprocess plugin test in short mode")
 	}
-	node := buildSubprocessNode(t, env)
+	kit := buildSubprocessKit(t, env)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(node, ctx, messages.ToolCallMsg{
+	pr1, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "hello from host"},
 	})
 	require.NoError(t, err)
 	ch1 := make(chan messages.ToolCallResp, 1)
-	us1, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
+	us1, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
 	require.NoError(t, err)
 	defer us1()
 	var resp messages.ToolCallResp
@@ -183,18 +183,18 @@ func testPluginSubprocessConcat(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipping subprocess plugin test in short mode")
 	}
-	node := buildSubprocessNode(t, env)
+	kit := buildSubprocessKit(t, env)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr2, err := sdk.Publish(node, ctx, messages.ToolCallMsg{
+	pr2, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
 		Name:  "concat",
 		Input: map[string]any{"a": "foo", "b": "bar"},
 	})
 	require.NoError(t, err)
 	ch2 := make(chan messages.ToolCallResp, 1)
-	us2, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+	us2, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
 	require.NoError(t, err)
 	defer us2()
 	var resp messages.ToolCallResp
@@ -213,18 +213,18 @@ func testPluginSubprocessHostToolStillWorks(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipping subprocess plugin test in short mode")
 	}
-	node := buildSubprocessNode(t, env)
+	kit := buildSubprocessKit(t, env)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr3, err := sdk.Publish(node, ctx, messages.ToolCallMsg{
+	pr3, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
 		Name:  "host-add",
 		Input: map[string]any{"a": 10, "b": 20},
 	})
 	require.NoError(t, err)
 	ch3 := make(chan messages.ToolCallResp, 1)
-	us3, err := sdk.SubscribeTo[messages.ToolCallResp](node, ctx, pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch3 <- r })
+	us3, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch3 <- r })
 	require.NoError(t, err)
 	defer us3()
 	var resp messages.ToolCallResp
@@ -243,15 +243,15 @@ func testPluginSubprocessToolsListShowsBoth(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipping subprocess plugin test in short mode")
 	}
-	node := buildSubprocessNode(t, env)
+	kit := buildSubprocessKit(t, env)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr4, err := sdk.Publish(node, ctx, messages.ToolListMsg{})
+	pr4, err := sdk.Publish(kit, ctx, messages.ToolListMsg{})
 	require.NoError(t, err)
 	ch4 := make(chan messages.ToolListResp, 1)
-	us4, err := sdk.SubscribeTo[messages.ToolListResp](node, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
+	us4, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
 	require.NoError(t, err)
 	defer us4()
 	var resp messages.ToolListResp
@@ -270,9 +270,9 @@ func testPluginSubprocessToolsListShowsBoth(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, names["host-add"], "host-side tool should be listed")
 }
 
-// buildSubprocessNode creates a full subprocess plugin Node with NATS.
-// Returns the started node. Cleans up on test completion.
-func buildSubprocessNode(t *testing.T, env *suite.TestEnv) *brainkit.Node {
+// buildSubprocessKit creates a full subprocess plugin Kit with NATS.
+// Returns the started kit. Cleans up on test completion.
+func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 	t.Helper()
 	env.RequirePodman(t)
 
@@ -333,17 +333,13 @@ func buildSubprocessNode(t *testing.T, env *suite.TestEnv) *brainkit.Node {
 
 	tmpDir := t.TempDir()
 
-	node, err := brainkit.NewNode(brainkit.NodeConfig{
-		Kernel: brainkit.KernelConfig{
-			Namespace: "plugin-e2e-cross",
-			CallerID:  "host",
-			FSRoot:    tmpDir,
-		},
-		Messaging: brainkit.MessagingConfig{
-			Transport: "nats",
-			NATSURL:   natsURL,
-			NATSName:  "brainkit-test-cross",
-		},
+	kit, err := brainkit.New(brainkit.Config{
+		Namespace: "plugin-e2e-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: "nats",
+		NATSURL:   natsURL,
+		NATSName:  "brainkit-test-cross",
 		Plugins: []brainkit.PluginConfig{
 			{
 				Name:         "testplugin",
@@ -354,22 +350,20 @@ func buildSubprocessNode(t *testing.T, env *suite.TestEnv) *brainkit.Node {
 	})
 	require.NoError(t, err)
 
-	brainkit.RegisterTool(node.Kernel, "host-add", tools.TypedTool[testutil.AddInput]{
+	brainkit.RegisterTool(kit, "host-add", tools.TypedTool[testutil.AddInput]{
 		Description: "adds two numbers (host-side)",
 		Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	err = node.Start(ctx)
-	require.NoError(t, err)
 	time.Sleep(2 * time.Second)
 
 	t.Cleanup(func() {
-		node.Close()
+		kit.Close()
 		natsContainer.Terminate(context.Background())
 		cancel()
 	})
 
-	return node
+	return kit
 }

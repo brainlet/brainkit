@@ -32,11 +32,11 @@ func testTwoServiceInteraction(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	time.Sleep(300 * time.Millisecond)
 
-	sendPR, err := sdk.SendToService(env.Kernel, ctx, "service-a-int.ts", "ask", map[string]string{"data": "hello"})
+	sendPR, err := sdk.SendToService(env.Kit, ctx, "service-a-int.ts", "ask", map[string]string{"data": "hello"})
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
 		replyCh <- json.RawMessage(msg.Payload)
 	})
 	defer unsub()

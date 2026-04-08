@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -139,10 +140,10 @@ func testBusMatrixGarbagePayload(t *testing.T, _ *suite.TestEnv) {
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
 
-				freshEnv.Kernel.PublishRaw(ctx, topic, g)
+				freshEnv.Kit.PublishRaw(ctx, topic, g)
 
 				time.Sleep(50 * time.Millisecond)
-				assert.True(t, freshEnv.Kernel.Alive(ctx), "kernel died after garbage to %s", topic)
+				assert.True(t, testutil.Alive(t, freshEnv.Kit), "kernel died after garbage to %s", topic)
 			})
 		}
 	}

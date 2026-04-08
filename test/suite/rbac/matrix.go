@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -239,7 +240,7 @@ func testMatrixOwnMailbox(t *testing.T, _ *suite.TestEnv) {
 
 func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"observer": rbac.RoleObserver},
 		DefaultRole: "observer",
@@ -254,23 +255,21 @@ func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) 
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
 	})
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "obs-pub-matrix.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "obs-pub-matrix.ts", `
 		var caught = "ALLOWED";
 		try { bus.publish("forbidden.topic", {}); }
 		catch(e) { caught = "DENIED"; }
 		output(caught);
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
-	defer k.Teardown(ctx, "obs-pub-matrix.ts")
+	`, "observer", ""))
+	defer testutil.Teardown(t, k, "obs-pub-matrix.ts")
 
-	result, _ := k.EvalTS(ctx, "__obs_result.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := testutil.EvalTSErr(k, "__obs_result.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "DENIED", result)
 }
 
 func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"service": rbac.RoleService},
 		DefaultRole: "service",
@@ -285,23 +284,21 @@ func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv)
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
 	})
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "svc-tool-matrix.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "svc-tool-matrix.ts", `
 		var caught = "ALLOWED";
 		try { await tools.call("echo", {message: "from service"}); }
 		catch(e) { caught = "DENIED:" + (e.message || ""); }
 		output(caught);
-	`, brainkit.WithRole("service"))
-	require.NoError(t, err)
-	defer k.Teardown(ctx, "svc-tool-matrix.ts")
+	`, "service", ""))
+	defer testutil.Teardown(t, k, "svc-tool-matrix.ts")
 
-	result, _ := k.EvalTS(ctx, "__svc_result.ts", `return String(globalThis.__module_result || "");`)
+	result, _ := testutil.EvalTSErr(k, "__svc_result.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "ALLOWED", result)
 }
 
 func testMatrixIntegrationGatewayDeniedEverything(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"gateway": rbac.RoleGateway},
 		DefaultRole: "gateway",
@@ -310,8 +307,7 @@ func testMatrixIntegrationGatewayDeniedEverything(t *testing.T, _ *suite.TestEnv
 	require.NoError(t, err)
 	defer k.Close()
 
-	ctx := context.Background()
-	_, err = k.Deploy(ctx, "gw-test-matrix.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "gw-test-matrix.ts", `
 		var results = {};
 
 		try { bus.publish("gateway.test", {}); results.gwPub = "ALLOWED"; }
@@ -330,11 +326,10 @@ func testMatrixIntegrationGatewayDeniedEverything(t *testing.T, _ *suite.TestEnv
 		catch(e) { results.gwEmit = "DENIED"; }
 
 		output(results);
-	`, brainkit.WithRole("gateway"))
-	require.NoError(t, err)
-	defer k.Teardown(ctx, "gw-test-matrix.ts")
+	`, "gateway", ""))
+	defer testutil.Teardown(t, k, "gw-test-matrix.ts")
 
-	result, _ := k.EvalTS(ctx, "__gw_result.ts", `
+	result, _ := testutil.EvalTSErr(k, "__gw_result.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});

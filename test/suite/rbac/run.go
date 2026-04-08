@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -72,14 +73,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 	})
 }
 
-// newRestrictedKernel creates a kernel with a custom "restricted" role for RBAC enforcement tests.
+// newRestrictedKernel creates a kit with a custom "restricted" role for RBAC enforcement tests.
 // Replicates startKernelWithRBAC from infra/rbac_test.go.
-func newRestrictedKernel(t *testing.T) *brainkit.Kernel {
+func newRestrictedKernel(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	storePath := t.TempDir() + "/rbac-test.db"
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Store: store,
 		Roles: map[string]rbac.Role{
 			"restricted": {
@@ -99,12 +100,12 @@ func newRestrictedKernel(t *testing.T) *brainkit.Kernel {
 	return k
 }
 
-// newRBACKernel creates a kernel with all 4 standard RBAC roles and a specified default role.
+// newRBACKernel creates a kit with all 4 standard RBAC roles and a specified default role.
 // Replicates rbacKernel from adversarial/rbac_enforcement_test.go.
-func newRBACKernel(t *testing.T, defaultRole string) *brainkit.Kernel {
+func newRBACKernel(t *testing.T, defaultRole string) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,
@@ -133,18 +134,17 @@ func newRBACKernel(t *testing.T, defaultRole string) *brainkit.Kernel {
 
 // bridgeDeployAndCheck deploys TS code with a role and reads the output() result.
 // Replicates deployAndCheck from adversarial/rbac_enforcement_test.go.
-func bridgeDeployAndCheck(t *testing.T, k *brainkit.Kernel, role, tsCode string) string {
+func bridgeDeployAndCheck(t *testing.T, k *brainkit.Kit, role, tsCode string) string {
 	t.Helper()
-	ctx := context.Background()
 	src := "rbac-enforce-" + role + ".ts"
 
-	_, err := k.Deploy(ctx, src, tsCode, brainkit.WithRole(role))
+	err := testutil.DeployWithOpts(k, src, tsCode, role, "")
 	if err != nil {
 		return "DEPLOY_FAILED:" + err.Error()
 	}
-	defer k.Teardown(ctx, src)
+	defer testutil.Teardown(t, k, src)
 
-	result, err := k.EvalTS(ctx, "__rbac_enforce_result.ts", `
+	result, err := testutil.EvalTSErr(k, "__rbac_enforce_result.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || "");
@@ -154,4 +154,3 @@ func bridgeDeployAndCheck(t *testing.T, k *brainkit.Kernel, role, tsCode string)
 	}
 	return result
 }
-

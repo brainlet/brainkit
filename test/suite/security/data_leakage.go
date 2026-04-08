@@ -18,8 +18,7 @@ import (
 
 // testLeakageErrorMessageContent — error messages reveal internal structure.
 func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
 	sensitivePatterns := []string{
 		"/Users/", "/home/", "/var/",
@@ -52,11 +51,10 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 	}
 
 	t.Run("fs-read-missing", func(t *testing.T) {
-		result, err := k.EvalTS(ctx, "__test.ts", `
+		result := secEvalTS(t, k, "__test.ts", `
 			try { fs.readFileSync("/internal/config/secrets.json"); return "LEAKED"; }
 			catch(e) { return e.code || "error"; }
 		`)
-		require.NoError(t, err)
 		assert.NotEqual(t, "LEAKED", result)
 		errStr := result
 		for _, pattern := range sensitivePatterns {
@@ -69,17 +67,15 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageSharedGlobalState — deployment A leaves data in globalThis that deployment B can find.
 func testLeakageSharedGlobalState(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "leaker-a-sec.ts", `
+	secDeploy(t, k, "leaker-a-sec.ts", `
 		globalThis.leaked_secret = "password123";
 		globalThis.__custom_data = {api_key: "sk-12345"};
 		output("set");
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "reader-b-sec.ts", `
+	secDeploy(t, k, "reader-b-sec.ts", `
 		var findings = {};
 		findings.leaked_secret = typeof globalThis.leaked_secret !== "undefined" ? globalThis.leaked_secret : "NOT_FOUND";
 		findings.custom_data = typeof globalThis.__custom_data !== "undefined" ? JSON.stringify(globalThis.__custom_data) : "NOT_FOUND";
@@ -89,9 +85,8 @@ func testLeakageSharedGlobalState(t *testing.T, env *suite.TestEnv) {
 		findings.agent_embed = typeof globalThis.__agent_embed !== "undefined" ? "VISIBLE" : "NOT_FOUND";
 		output(findings);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__leak.ts", `
+	result, _ := secEvalTSErr(k, "__leak.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -103,7 +98,7 @@ func testLeakageSharedGlobalState(t *testing.T, env *suite.TestEnv) {
 // testLeakageToolStateLeak — tool result contains data from a previous call.
 func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -135,11 +130,11 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageMetadataLeak — bus message metadata reveals internal routing info.
 func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := k.Deploy(ctx, "meta-leak-sec.ts", `
+	secDeploy(t, k, "meta-leak-sec.ts", `
 		bus.on("inspect", function(msg) {
 			msg.reply({
 				topic: msg.topic,
@@ -150,7 +145,6 @@ func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
 			});
 		});
 	`)
-	require.NoError(t, err)
 
 	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
 		Topic: "ts.meta-leak-sec.inspect", Payload: json.RawMessage(`{}`),
@@ -177,7 +171,7 @@ func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageSecretTimingSideChannel — timing side channel on secrets.get.
 func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	ctx := context.Background()
 
 	pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "TIMING_KEY_SEC", Value: "secret-value"})
@@ -189,7 +183,7 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	var existsTimes []time.Duration
 	for i := 0; i < 20; i++ {
 		start := time.Now()
-		result, err := k.EvalTS(ctx, "__timing_exists.ts", `
+		result, err := secEvalTSErr(k, "__timing_exists.ts", `
 			var val = secrets.get("TIMING_KEY_SEC");
 			return val.length > 0 ? "found" : "empty";
 		`)
@@ -203,7 +197,7 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	var missingTimes []time.Duration
 	for i := 0; i < 20; i++ {
 		start := time.Now()
-		result, err := k.EvalTS(ctx, "__timing_missing.ts", `
+		result, err := secEvalTSErr(k, "__timing_missing.ts", `
 			var val = secrets.get("NONEXISTENT_KEY_12345_SEC");
 			return val.length > 0 ? "found" : "empty";
 		`)
@@ -231,20 +225,19 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageDeploymentReconnaissance — deployment list reveals what's running.
 func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
 	for _, name := range []string{"admin-panel-sec.ts", "stripe-webhook-sec.ts", "internal-api-sec.ts", "db-migration-sec.ts"} {
-		k.Deploy(ctx, name, `output("running");`)
+		secDeployErr(k, name, `output("running");`)
 	}
 
-	_, err := k.Deploy(ctx, "recon-sec.ts", `
+	err := secDeployErr(k, "recon-sec.ts", `
 		var raw = __go_brainkit_request("kit.list", "{}");
 		var result = JSON.parse(raw);
 		output(result);
 	`)
 	if err == nil {
-		result, _ := k.EvalTS(ctx, "__recon.ts", `
+		result, _ := secEvalTSErr(k, "__recon.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -253,12 +246,12 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 		}
 	}
 
-	_, err = k.Deploy(ctx, "tool-recon-sec.ts", `
+	err = secDeployErr(k, "tool-recon-sec.ts", `
 		var raw = __go_brainkit_request("tools.list", "{}");
 		output(JSON.parse(raw));
 	`)
 	if err == nil {
-		result, _ := k.EvalTS(ctx, "__tool_recon.ts", `
+		result, _ := secEvalTSErr(k, "__tool_recon.ts", `
 			var r = globalThis.__module_result;
 			return JSON.stringify(r || {});
 		`)
@@ -268,10 +261,9 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageFilesystemReconnaissance — filesystem listing reveals workspace structure.
 func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.EvalTS(ctx, "__setup.ts", `
+	secEvalTS(t, k, "__setup.ts", `
 		fs.mkdirSync("config-sec", {recursive: true});
 		fs.mkdirSync("secrets-sec", {recursive: true});
 		fs.writeFileSync("config-sec/database.json", '{"host":"prod-db"}');
@@ -279,9 +271,8 @@ func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
 		fs.writeFileSync(".env-sec", "DB_PASSWORD=secret");
 		return "ok";
 	`)
-	require.NoError(t, err)
 
-	_, err = k.Deploy(ctx, "fs-recon-sec.ts", `
+	secDeploy(t, k, "fs-recon-sec.ts", `
 		var results = {};
 		try {
 			var root = fs.readdirSync(".");
@@ -308,9 +299,8 @@ func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
 
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__fs_recon.ts", `
+	result, _ := secEvalTSErr(k, "__fs_recon.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)
@@ -322,10 +312,9 @@ func testLeakageFilesystemReconnaissance(t *testing.T, env *suite.TestEnv) {
 
 // testLeakageProviderReconnaissance — probe provider registry to learn what AI providers are configured.
 func testLeakageProviderReconnaissance(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
-	ctx := context.Background()
+	k := suite.Full(t).Kit
 
-	_, err := k.Deploy(ctx, "provider-recon-sec.ts", `
+	secDeploy(t, k, "provider-recon-sec.ts", `
 		var results = {};
 
 		try {
@@ -350,9 +339,8 @@ func testLeakageProviderReconnaissance(t *testing.T, env *suite.TestEnv) {
 
 		output(results);
 	`)
-	require.NoError(t, err)
 
-	result, _ := k.EvalTS(ctx, "__prov_recon.ts", `
+	result, _ := secEvalTSErr(k, "__prov_recon.ts", `
 		var r = globalThis.__module_result;
 		return JSON.stringify(r || {});
 	`)

@@ -16,11 +16,11 @@ import (
 func testBusErrorResponseCarriesCode(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.ToolCallMsg{Name: "nonexistent-tool"})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "nonexistent-tool"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
 		ch <- json.RawMessage(msg.Payload)
 	})
 	require.NoError(t, err)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -152,6 +152,7 @@ func testBridgeObserverCanSubscribe(t *testing.T, _ *suite.TestEnv) {
 func testBridgeAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 	k := newRBACKernel(t, "admin")
 	ctx := context.Background()
+	_ = ctx
 
 	ops := []struct {
 		name string
@@ -168,11 +169,10 @@ func testBridgeAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 	for _, op := range ops {
 		t.Run(op.name, func(t *testing.T) {
 			src := "admin-" + op.name + ".ts"
-			_, err := k.Deploy(ctx, src, op.code, brainkit.WithRole("admin"))
-			require.NoError(t, err)
-			defer k.Teardown(ctx, src)
+			require.NoError(t, testutil.DeployWithOpts(k, src, op.code, "admin", ""))
+			defer testutil.Teardown(t, k, src)
 
-			result, _ := k.EvalTS(ctx, "__admin_result.ts", `return String(globalThis.__module_result || "");`)
+			result, _ := testutil.EvalTSErr(k, "__admin_result.ts", `return String(globalThis.__module_result || "");`)
 			assert.Equal(t, "ALLOWED", result, "admin should be allowed %s", op.name)
 		})
 	}

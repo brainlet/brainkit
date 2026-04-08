@@ -1,11 +1,11 @@
 package bus
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,24 +18,21 @@ type jsTestResult struct {
 	Duration int    `json:"duration"`
 }
 
-func startKernelForTestFramework(t *testing.T) *brainkit.Kernel {
+func startKitForTestFramework(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	env := suite.Minimal(t, suite.WithPersistence())
-	return env.Kernel
+	return env.Kit
 }
 
-func runJSTestFile(t *testing.T, k *brainkit.Kernel, code string) []jsTestResult {
+func runJSTestFile(t *testing.T, k *brainkit.Kit, code string) []jsTestResult {
 	t.Helper()
-	ctx := context.Background()
 
-	_, err := k.EvalModule(ctx, "__test_file.ts", code)
-	require.NoError(t, err)
+	testutil.EvalModule(t, k, "__test_file.ts", code)
 
-	resultJSON, err := k.EvalTS(ctx, "__run_tests.ts", `
+	resultJSON := testutil.EvalTS(t, k, "__run_tests.ts", `
 		var r = await globalThis.__runTests();
 		return r;
 	`)
-	require.NoError(t, err)
 
 	var results []jsTestResult
 	require.NoError(t, json.Unmarshal([]byte(resultJSON), &results))
@@ -43,7 +40,7 @@ func runJSTestFile(t *testing.T, k *brainkit.Kernel, code string) []jsTestResult
 }
 
 func testFrameworkPassingTests(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect } from "test";
@@ -69,7 +66,7 @@ func testFrameworkPassingTests(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testFrameworkFailingTest(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect } from "test";
@@ -90,7 +87,7 @@ func testFrameworkFailingTest(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testFrameworkAsyncTests(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect, sleep } from "test";
@@ -106,7 +103,7 @@ func testFrameworkAsyncTests(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testFrameworkDeployAndTest(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect, deploy } from "test";
@@ -125,7 +122,7 @@ func testFrameworkDeployAndTest(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testFrameworkHooks(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect, beforeAll, afterAll } from "test";
@@ -145,7 +142,7 @@ func testFrameworkHooks(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testFrameworkNotAssertions(t *testing.T, _ *suite.TestEnv) {
-	k := startKernelForTestFramework(t)
+	k := startKitForTestFramework(t)
 
 	results := runJSTestFile(t, k, `
 		import { test, expect } from "test";

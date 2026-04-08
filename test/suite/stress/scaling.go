@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/internal/types"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -16,15 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func poolNodeConfig(t *testing.T) brainkit.NodeConfig {
+func poolNodeConfig(t *testing.T) types.NodeConfig {
 	t.Helper()
-	return brainkit.NodeConfig{
-		Kernel: brainkit.KernelConfig{
+	return types.NodeConfig{
+		Kernel: types.KernelConfig{
 			Namespace: "pool-stress-test",
 			CallerID:  "pool-stress-test",
 			FSRoot:    t.TempDir(),
 		},
-		Messaging: brainkit.MessagingConfig{
+		Messaging: types.MessagingConfig{
 			Transport: "memory",
 		},
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -17,10 +18,10 @@ func testListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitListMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
 	ch := make(chan messages.KitListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.KitListResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.KitListResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var resp messages.KitListResp
@@ -36,7 +37,7 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "kit-test-1.ts",
 		Code: `
 			const t = createTool({
@@ -49,7 +50,7 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, err := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 	var deployResp messages.KitDeployResp
@@ -61,10 +62,10 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, deployResp.Deployed)
 
 	// List should show it
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.KitListMsg{})
+	pr2, err := sdk.Publish(env.Kit, ctx, messages.KitListMsg{})
 	require.NoError(t, err)
 	ch2 := make(chan messages.KitListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.KitListResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch2 <- r })
+	unsub2, _ := sdk.SubscribeTo[messages.KitListResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch2 <- r })
 	defer unsub2()
 	var listResp messages.KitListResp
 	select {
@@ -81,10 +82,10 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, found)
 
 	// Teardown
-	pr3, err := sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "kit-test-1.ts"})
+	pr3, err := sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "kit-test-1.ts"})
 	require.NoError(t, err)
 	ch3 := make(chan messages.KitTeardownResp, 1)
-	unsub3, _ := sdk.SubscribeTo[messages.KitTeardownResp](env.Kernel, ctx, pr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { ch3 <- r })
+	unsub3, _ := sdk.SubscribeTo[messages.KitTeardownResp](env.Kit, ctx, pr3.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { ch3 <- r })
 	defer unsub3()
 	var tearResp messages.KitTeardownResp
 	select {
@@ -99,13 +100,13 @@ func testRedeploy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "kit-redeploy.ts",
 		Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "redeploy-v1", t);`,
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -113,13 +114,13 @@ func testRedeploy(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.KitRedeployMsg{
+	pr2, err := sdk.Publish(env.Kit, ctx, messages.KitRedeployMsg{
 		Source: "kit-redeploy.ts",
 		Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "redeploy-v2", t);`,
 	})
 	require.NoError(t, err)
 	ch2 := make(chan messages.KitRedeployResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.KitRedeployResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { ch2 <- r })
+	unsub2, _ := sdk.SubscribeTo[messages.KitRedeployResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { ch2 <- r })
 	defer unsub2()
 	var redeployResp messages.KitRedeployResp
 	select {
@@ -129,20 +130,20 @@ func testRedeploy(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, redeployResp.Deployed)
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "kit-redeploy.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "kit-redeploy.ts"})
 }
 
 func testDeployInvalidCode(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "bad-code.ts",
 		Code:   `throw new Error("intentional failure");`,
 	})
 	require.NoError(t, err)
 	ch := make(chan string, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
 		var r struct {
 			Error string `json:"error"`
 		}
@@ -160,29 +161,23 @@ func testDeployInvalidCode(t *testing.T, env *suite.TestEnv) {
 
 // testDeployDuplicate verifies that deploying the same source twice is idempotent.
 func testDeployDuplicate(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
-	_, err := env.Kernel.Deploy(ctx, "dup-deploy.ts", `output("v1");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, env.Kit, "dup-deploy.ts", `output("v1");`)
 
 	// Deploy again with same source — idempotent, not error
-	_, err = env.Kernel.Deploy(ctx, "dup-deploy.ts", `output("v2");`)
+	err := testutil.DeployErr(env.Kit, "dup-deploy.ts", `output("v2");`)
 	require.NoError(t, err, "second deploy should succeed (idempotent)")
 
-	env.Kernel.Teardown(ctx, "dup-deploy.ts")
+	testutil.Teardown(t, env.Kit, "dup-deploy.ts")
 }
 
 // testConcurrentDeploySameSource verifies that deploying the same source concurrently
 // doesn't crash — the second deploy is idempotent.
 func testConcurrentDeploySameSource(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
-	_, err := env.Kernel.Deploy(ctx, "concurrent-src.ts", `output("first");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, env.Kit, "concurrent-src.ts", `output("first");`)
 
 	// Second deploy replaces the first (idempotent)
-	_, err = env.Kernel.Deploy(ctx, "concurrent-src.ts", `output("second");`)
+	err := testutil.DeployErr(env.Kit, "concurrent-src.ts", `output("second");`)
 	require.NoError(t, err, "second deploy should succeed (idempotent)")
 
-	env.Kernel.Teardown(ctx, "concurrent-src.ts")
+	testutil.Teardown(t, env.Kit, "concurrent-src.ts")
 }

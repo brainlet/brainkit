@@ -1,48 +1,48 @@
 package stress
 
 import (
-	"context"
 	"testing"
 
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
 
-// testGCSingleKernelCleanClose creates a single Kernel and closes it.
+// testGCSingleKernelCleanClose creates a single Kit and closes it.
 func testGCSingleKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "gc-stress-test",
 		CallerID:  "gc-stress-test",
 		FSRoot:    t.TempDir(),
 	})
 	if err != nil {
-		t.Fatalf("NewKernel: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	if err := k.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 }
 
-// testGCMultipleKernelCleanClose creates and destroys 5 Kernels sequentially.
+// testGCMultipleKernelCleanClose creates and destroys 5 Kits sequentially.
 func testGCMultipleKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
 	for i := 0; i < 5; i++ {
-		k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		k, err := brainkit.New(brainkit.Config{
 			Namespace: "gc-stress-multi",
 			CallerID:  "gc-stress-multi",
 			FSRoot:    t.TempDir(),
 		})
 		if err != nil {
-			t.Fatalf("NewKernel %d: %v", i, err)
+			t.Fatalf("New %d: %v", i, err)
 		}
 		if err := k.Close(); err != nil {
 			t.Fatalf("Close %d: %v", i, err)
@@ -50,20 +50,20 @@ func testGCMultipleKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
-// testGCTenKernelCleanClose stress test - 10 sequential Kernels.
+// testGCTenKernelCleanClose stress test - 10 sequential Kits.
 func testGCTenKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipped in short mode")
 	}
 
 	for i := 0; i < 10; i++ {
-		k, err := brainkit.NewKernel(brainkit.KernelConfig{
+		k, err := brainkit.New(brainkit.Config{
 			Namespace: "gc-stress-ten",
 			CallerID:  "gc-stress-ten",
 			FSRoot:    t.TempDir(),
 		})
 		if err != nil {
-			t.Fatalf("NewKernel %d: %v", i, err)
+			t.Fatalf("New %d: %v", i, err)
 		}
 		if err := k.Close(); err != nil {
 			t.Fatalf("Close %d: %v", i, err)
@@ -112,23 +112,21 @@ func testGCZeroLeakSESRuntime(t *testing.T, env *suite.TestEnv) {
 		t.Skip("skipped in short mode")
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "gc-stress-leak-test",
 		CallerID:  "gc-stress-leak-test",
 		FSRoot:    t.TempDir(),
 	})
 	if err != nil {
-		t.Fatalf("NewKernel: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	t.Cleanup(func() { k.Close() })
 
 	// Exercise the runtime
-	result, err := k.EvalTS(context.Background(), "__gc_stress_test.ts", `
+	result := testutil.EvalTS(t, k, "__gc_stress_test.ts", `
 		bus.emit("gc.stress.test", { msg: "hello" });
 		return JSON.stringify({ tools: tools.list().length, ns: kit.namespace });
 	`)
-	if err != nil {
-		t.Fatalf("EvalTS: %v", err)
-	}
 	t.Logf("EvalTS result: %s", result)
 
 	if err := k.Close(); err != nil {

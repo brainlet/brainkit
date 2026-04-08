@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -15,24 +15,22 @@ import (
 )
 
 func testPublishToCommandTopic(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(context.Background(), "__cmd_topic.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__cmd_topic.ts", `
 		var caught = "none";
 		try { __go_brainkit_bus_send("tools.call", JSON.stringify({})); }
 		catch(e) { caught = e.code || e.message || "error"; }
 		return caught;
 	`)
-	require.NoError(t, err)
 	assert.NotEqual(t, "none", result, "publishing to command topic should error")
 }
 
 func testEmitToCommandTopic(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(context.Background(), "__emit_cmd.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__emit_cmd.ts", `
 		var caught = "none";
 		try { bus.emit("tools.call", {}); }
 		catch(e) { caught = "error"; }
 		return caught;
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "error", result, "bus.emit should block command topics (bug #8 fixed)")
 }
 
@@ -50,11 +48,11 @@ func testSubscribeReceivesMetadataAdv(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.meta-check-adv.check", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -77,19 +75,18 @@ func testReplyWithoutReplyTo(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	sdk.Emit(env.Kernel, ctx, messages.CustomEvent{
+	sdk.Emit(env.Kit, ctx, messages.CustomEvent{
 		Topic: "ts.no-reply-adv.fire", Payload: json.RawMessage(`{}`),
 	})
 	time.Sleep(200 * time.Millisecond)
-	assert.True(t, env.Kernel.Alive(ctx))
+	assert.True(t, testutil.Alive(t, env.Kit))
 }
 
 func testSendToNonexistentService(t *testing.T, env *suite.TestEnv) {
-	result, err := env.Kernel.EvalTS(context.Background(), "__sendto_ghost.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__sendto_ghost.ts", `
 		var r = bus.sendTo("ghost-service.ts", "ask", {});
 		return r.replyTo ? "published" : "fail";
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "published", result)
 }
 
@@ -103,12 +100,12 @@ func testCorrelationIDPreserved(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.corr-echo-adv.echo", Payload: json.RawMessage(`{}`),
 	})
 
 	ch := make(chan messages.Message, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m })
 	defer unsub()
 
 	select {
@@ -131,13 +128,13 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.multi-reply-adv.multi", Payload: json.RawMessage(`{}`),
 	})
 
 	var received []json.RawMessage
 	done := make(chan bool, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
 		received = append(received, json.RawMessage(m.Payload))
 		if m.Metadata["done"] == "true" {
 			done <- true
@@ -154,9 +151,7 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSubscribeUnsubscribe(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
-	result, err := env.Kernel.EvalTS(ctx, "__sub_unsub.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__sub_unsub.ts", `
 		var received = 0;
 		var subId = bus.subscribe("events.count-test", function() { received++; });
 		bus.emit("events.count-test", {});
@@ -164,13 +159,10 @@ func testSubscribeUnsubscribe(t *testing.T, env *suite.TestEnv) {
 		bus.emit("events.count-test", {});
 		return "ok";
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "ok", result)
 }
 
 func testDeploymentNamespace(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	err := env.Deploy("ns-test-adv.ts", `
 		output({
 			source: kit.source,
@@ -180,7 +172,7 @@ func testDeploymentNamespace(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	result, _ := env.Kernel.EvalTS(ctx, "__ns_result.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__ns_result.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -192,17 +184,12 @@ func testScheduleWithPayload(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	fired := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, "sched.payload.test", func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, "sched.payload.test", func(m messages.Message) {
 		fired <- m.Payload
 	})
 	defer unsub()
 
-	_, err := env.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
-		Expression: "in 200ms",
-		Topic:      "sched.payload.test",
-		Payload:    json.RawMessage(`{"key":"value","num":42}`),
-	})
-	require.NoError(t, err)
+	testutil.Schedule(t, env.Kit, "in 200ms", "sched.payload.test", json.RawMessage(`{"key":"value","num":42}`))
 
 	select {
 	case p := <-fired:

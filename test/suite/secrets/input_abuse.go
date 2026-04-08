@@ -27,11 +27,11 @@ func testInputAbuseLargeValue(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	big := strings.Repeat("x", 100000) // 100KB secret
 	ctx := context.Background()
-	pub, err := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
+	pub, err := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
 	require.NoError(t, err)
 
 	ch := make(chan messages.SecretsSetResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+	unsub, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -62,12 +62,12 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 
 	for i := 0; i < 20; i++ {
 		name := strings.Join([]string{"bulk-sec-adv", strings.Repeat("x", i%5)}, "-")
-		pub, err := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{
+		pub, err := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{
 			Name: name, Value: strings.Repeat("v", i+1),
 		})
 		require.NoError(t, err)
 		ch := make(chan messages.SecretsSetResp, 1)
-		unsub, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
+		unsub, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { ch <- resp })
 		select {
 		case <-ch:
 		case <-time.After(5 * time.Second):
@@ -77,9 +77,9 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List should return without error or hang
-	pub, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsListMsg{})
+	pub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsListMsg{})
 	listCh := make(chan messages.SecretsListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kernel, ctx, pub.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
+	unsub, _ := sdk.SubscribeTo[messages.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.SecretsListResp, _ messages.Message) { listCh <- resp })
 	defer unsub()
 	select {
 	case resp := <-listCh:

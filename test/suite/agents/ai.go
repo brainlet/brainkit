@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -22,7 +23,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy .ts that creates a Mastra Agent and registers it
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "ai-agent-agent-adv.ts",
 		Code: `
 			const myAgent = new Agent({
@@ -42,7 +43,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -52,8 +53,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify output from generate
-	result, err := env.Kernel.EvalTS(ctx, "__read_ai_agent_adv.ts", `return globalThis.__module_result || "null"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__read_ai_agent_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
@@ -61,10 +61,10 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
 	// Verify agent was registered via AgentList
-	pr2, err := sdk.Publish(env.Kernel, ctx, messages.AgentListMsg{})
+	pr2, err := sdk.Publish(env.Kit, ctx, messages.AgentListMsg{})
 	require.NoError(t, err)
 	ch2 := make(chan messages.AgentListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kernel, ctx, pr2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { ch2 <- r })
+	unsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { ch2 <- r })
 	defer unsub2()
 	select {
 	case listResp := <-ch2:
@@ -80,10 +80,10 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Get status — should be "idle" by default
-	pr3, err := sdk.Publish(env.Kernel, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	pr3, err := sdk.Publish(env.Kit, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
 	require.NoError(t, err)
 	ch3 := make(chan messages.AgentGetStatusResp, 1)
-	unsub3, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kernel, ctx, pr3.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch3 <- r })
+	unsub3, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kit, ctx, pr3.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch3 <- r })
 	require.NoError(t, err)
 	defer unsub3()
 	var statusResp messages.AgentGetStatusResp
@@ -95,12 +95,12 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, "idle", statusResp.Status)
 
 	// Set status to "busy"
-	pr4, err := sdk.Publish(env.Kernel, ctx, messages.AgentSetStatusMsg{
+	pr4, err := sdk.Publish(env.Kit, ctx, messages.AgentSetStatusMsg{
 		Name: "ai-list-agent-adv", Status: "busy",
 	})
 	require.NoError(t, err)
 	ch4 := make(chan messages.AgentSetStatusResp, 1)
-	unsub4, _ := sdk.SubscribeTo[messages.AgentSetStatusResp](env.Kernel, ctx, pr4.ReplyTo, func(r messages.AgentSetStatusResp, m messages.Message) { ch4 <- r })
+	unsub4, _ := sdk.SubscribeTo[messages.AgentSetStatusResp](env.Kit, ctx, pr4.ReplyTo, func(r messages.AgentSetStatusResp, m messages.Message) { ch4 <- r })
 	defer unsub4()
 	select {
 	case <-ch4:
@@ -109,10 +109,10 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Re-get status — should be "busy"
-	pr5, err := sdk.Publish(env.Kernel, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	pr5, err := sdk.Publish(env.Kit, ctx, messages.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
 	require.NoError(t, err)
 	ch5 := make(chan messages.AgentGetStatusResp, 1)
-	unsub5, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kernel, ctx, pr5.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch5 <- r })
+	unsub5, err := sdk.SubscribeTo[messages.AgentGetStatusResp](env.Kit, ctx, pr5.ReplyTo, func(r messages.AgentGetStatusResp, m messages.Message) { ch5 <- r })
 	require.NoError(t, err)
 	defer unsub5()
 	select {
@@ -122,5 +122,5 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.Equal(t, "busy", statusResp.Status)
 
-	sdk.Publish(env.Kernel, ctx, messages.KitTeardownMsg{Source: "ai-agent-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "ai-agent-agent-adv.ts"})
 }

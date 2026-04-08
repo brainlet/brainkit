@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -24,28 +25,27 @@ func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	// Phase 1: Deploy
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)
 
-	_, err = k1.Deploy(context.Background(), "persist-test-matrix.ts", `output("persisted");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, k1, "persist-test-matrix.ts", `output("persisted");`)
 	k1.Close()
 
 	// Phase 2: Reopen with same store — deployment should be restored
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	deps := k2.ListDeployments()
+	deps := testutil.ListDeployments(t, k2)
 	found := false
 	for _, d := range deps {
 		if d.Source == "persist-test-matrix.ts" {
@@ -64,7 +64,7 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 1: Set secrets
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "test-master-key-1234567890",
 	})
@@ -84,7 +84,7 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Phase 2: Reopen — secret should be retrievable
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "test-master-key-1234567890",
 	})
@@ -114,29 +114,27 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	_, err = k1.Deploy(ctx, "first-matrix.ts", `output("first");`)
+	testutil.Deploy(t, k1, "first-matrix.ts", `output("first");`)
+	err = testutil.DeployWithOpts(k1, "second-matrix.ts", `output("second");`, "admin", "")
 	require.NoError(t, err)
-	_, err = k1.Deploy(ctx, "second-matrix.ts", `output("second");`, brainkit.WithRole("admin"))
-	require.NoError(t, err)
-	_, err = k1.Deploy(ctx, "third-matrix.ts", `output("third");`, brainkit.WithPackageName("my-pkg"))
+	err = testutil.DeployWithOpts(k1, "third-matrix.ts", `output("third");`, "", "my-pkg")
 	require.NoError(t, err)
 	k1.Close()
 
 	// Phase 2: Reopen
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	deps := k2.ListDeployments()
+	deps := testutil.ListDeployments(t, k2)
 	sources := make([]string, len(deps))
 	for i, d := range deps {
 		sources[i] = d.Source
@@ -154,26 +152,25 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	k1.Schedule(ctx, brainkit.ScheduleConfig{Expression: "every 1h", Topic: "sched.hourly.matrix", Payload: json.RawMessage(`{}`)})
-	k1.Schedule(ctx, brainkit.ScheduleConfig{Expression: "every 5m", Topic: "sched.fivemin.matrix", Payload: json.RawMessage(`{}`)})
-	k1.Schedule(ctx, brainkit.ScheduleConfig{Expression: "in 24h", Topic: "sched.onetime.matrix", Payload: json.RawMessage(`{}`)})
+	testutil.Schedule(t, k1, "every 1h", "sched.hourly.matrix", json.RawMessage(`{}`))
+	testutil.Schedule(t, k1, "every 5m", "sched.fivemin.matrix", json.RawMessage(`{}`))
+	testutil.Schedule(t, k1, "in 24h", "sched.onetime.matrix", json.RawMessage(`{}`))
 	k1.Close()
 
 	// Reopen
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	scheds := k2.ListSchedules()
+	scheds := listSchedules(t, k2)
 	assert.GreaterOrEqual(t, len(scheds), 2, "at least 2 schedules should survive (one-time may have fired)")
 }
 
@@ -185,20 +182,19 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Phase 1: Deploy with bus handler
 	store1, _ := brainkit.NewSQLiteStore(storePath)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
 
-	_, err = k1.Deploy(context.Background(), "handler-matrix.ts", `
+	testutil.Deploy(t, k1, "handler-matrix.ts", `
 		bus.on("ping", function(msg) { msg.reply({alive: true}); });
 	`)
-	require.NoError(t, err)
 	k1.Close()
 
 	// Phase 2: Reopen — handler should be active again
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
@@ -221,5 +217,29 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 		assert.Contains(t, string(p), "alive")
 	case <-ctx.Done():
 		t.Fatal("timeout — handler should be active after restart")
+	}
+}
+
+// listSchedules queries the schedule list via bus command.
+func listSchedules(t *testing.T, k *brainkit.Kit) []messages.ScheduleInfo {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pr, err := sdk.PublishScheduleList(k, ctx, messages.ScheduleListMsg{})
+	require.NoError(t, err)
+
+	ch := make(chan messages.ScheduleListResp, 1)
+	unsub, err := sdk.SubscribeScheduleListResp(k, ctx, pr.ReplyTo,
+		func(resp messages.ScheduleListResp, _ messages.Message) { ch <- resp })
+	require.NoError(t, err)
+	defer unsub()
+
+	select {
+	case resp := <-ch:
+		return resp.Schedules
+	case <-ctx.Done():
+		t.Fatal("timeout listing schedules")
+		return nil
 	}
 }

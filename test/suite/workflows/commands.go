@@ -12,10 +12,10 @@ import (
 )
 
 // Tests migrated from test/infra/workflow_bus_test.go — happy path + error paths.
-// These use env.Kernel (shared Full kernel with tools+storage).
+// These use env.Kit (shared Full kernel with tools+storage).
 
 func testStartSequential(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "seq-wf.ts", `
 		const step1 = createStep({
 			id: "upper",
@@ -48,7 +48,7 @@ func testStartSequential(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStartParallel(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "par-wf.ts", `
 		const stepA = createStep({
 			id: "a", inputSchema: z.object({ x: z.number() }),
@@ -78,7 +78,7 @@ func testStartParallel(t *testing.T, env *suite.TestEnv) {
 }
 
 func testList(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "list-wf.ts", `
 		const wf = createWorkflow({
 			id: "list-test",
@@ -107,7 +107,7 @@ func testList(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSuspendResume(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "suspend-wf.ts", `
 		const approval = createStep({
 			id: "approval",
@@ -149,7 +149,7 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 }
 
 func testCancel(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "cancel-wf.ts", `
 		const approval = createStep({
 			id: "wait",
@@ -194,7 +194,7 @@ func testCancel(t *testing.T, env *suite.TestEnv) {
 }
 
 func testWithToolCall(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "tool-wf.ts", `
 		const callTool = createStep({
 			id: "call-echo",
@@ -224,7 +224,7 @@ func testWithToolCall(t *testing.T, env *suite.TestEnv) {
 
 func testNotFound(t *testing.T, env *suite.TestEnv) {
 	resp := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
-		t, env.Kernel,
+		t, env.Kit,
 		messages.WorkflowStartMsg{Name: "ghost-workflow"},
 		5*time.Second,
 	)
@@ -234,7 +234,7 @@ func testNotFound(t *testing.T, env *suite.TestEnv) {
 
 func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	resp := wfPublishAndWait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](
-		t, env.Kernel,
+		t, env.Kit,
 		messages.WorkflowResumeMsg{Name: "any", RunID: "fake-run-id", ResumeData: json.RawMessage(`{}`)},
 		5*time.Second,
 	)
@@ -244,7 +244,7 @@ func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
 
 func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	resp := wfPublishAndWait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](
-		t, env.Kernel,
+		t, env.Kit,
 		messages.WorkflowStatusMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
@@ -254,7 +254,7 @@ func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
 
 func testCancelNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	resp := wfPublishAndWait[messages.WorkflowCancelMsg, messages.WorkflowCancelResp](
-		t, env.Kernel,
+		t, env.Kit,
 		messages.WorkflowCancelMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
@@ -263,7 +263,7 @@ func testCancelNonexistentRun(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStepWithError(t *testing.T, env *suite.TestEnv) {
-	k := env.Kernel
+	k := env.Kit
 	wfDeploy(t, k, "error-wf.ts", `
 		const failStep = createStep({
 			id: "fail",

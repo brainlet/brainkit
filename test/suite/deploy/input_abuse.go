@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,32 +17,32 @@ import (
 // testDeployEmptySource — empty source name is rejected.
 func testDeployEmptySource(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
-	_, err := env.Kernel.Deploy(ctx, "", `output("hello");`)
+	testutil.Deploy(t, env.Kit, "", `output("hello");`)
 	assert.Error(t, err, "empty source should be rejected")
-	_, err2 := env.Kernel.Deploy(ctx, "   ", `output("hello");`)
+	_, err2 := env.Kit.Deploy(ctx, "   ", `output("hello");`)
 	assert.Error(t, err2, "whitespace-only source should be rejected")
 }
 
 // testDeployEmptyCode — deploy with completely empty code.
 func testDeployEmptyCode(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
-	_, err := env.Kernel.Deploy(ctx, "empty-deploy-adv.ts", "")
+	testutil.Deploy(t, env.Kit, "empty-deploy-adv.ts", "")
 	// Should succeed or fail cleanly — never panic
 	if err != nil {
 		return
 	}
-	env.Kernel.Teardown(ctx, "empty-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "empty-deploy-adv.ts")
 }
 
 // testDeployHugeCode — deploy 1MB of code (mostly comments).
 func testDeployHugeCode(t *testing.T, env *suite.TestEnv) {
 	big := "// " + strings.Repeat("x", 1024*1024) + "\noutput('big');"
-	_, err := env.Kernel.Deploy(context.Background(), "huge-deploy-adv.ts", big)
+	_, err := env.Kit.Deploy(context.Background(), "huge-deploy-adv.ts", big)
 	// Should succeed or fail cleanly — never hang
 	if err != nil {
 		return
 	}
-	env.Kernel.Teardown(context.Background(), "huge-deploy-adv.ts")
+	env.Kit.Teardown(context.Background(), "huge-deploy-adv.ts")
 }
 
 // testDeploySourcePathTraversal — source with path traversal characters.
@@ -56,11 +57,11 @@ func testDeploySourcePathTraversal(t *testing.T, env *suite.TestEnv) {
 	}
 	for _, source := range cases {
 		t.Run(source, func(t *testing.T) {
-			_, err := env.Kernel.Deploy(ctx, source, `output("hi");`)
+			testutil.Deploy(t, env.Kit, source, `output("hi");`)
 			// Should either succeed (source is just an identifier) or error cleanly — never panic
 			_ = err
 			if err == nil {
-				env.Kernel.Teardown(ctx, source)
+				testutil.Teardown(t, env.Kit, source)
 			}
 		})
 	}
@@ -69,19 +70,19 @@ func testDeploySourcePathTraversal(t *testing.T, env *suite.TestEnv) {
 // testDeployThenImmediateTeardown — deploy and immediately teardown.
 func testDeployThenImmediateTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
-	_, err := env.Kernel.Deploy(ctx, "instant-teardown-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "instant-teardown-deploy-adv.ts", `
 		const t = createTool({ id: "instant-td-tool", description: "td", execute: async () => ({}) });
 		kit.register("tool", "instant-td-tool", t);
 	`)
 	require.NoError(t, err)
 
 	// Immediately teardown without waiting
-	removed, err := env.Kernel.Teardown(ctx, "instant-teardown-deploy-adv.ts")
+	removed, err := testutil.Teardown(t, env.Kit, "instant-teardown-deploy-adv.ts")
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, removed, 0)
 
 	// Verify deployment is gone
-	deps := env.Kernel.ListDeployments()
+	deps := testutil.ListDeployments(t, env.Kit)
 	for _, d := range deps {
 		assert.NotEqual(t, "instant-teardown-deploy-adv.ts", d.Source, "torn down deployment should not be listed")
 	}
@@ -90,19 +91,19 @@ func testDeployThenImmediateTeardown(t *testing.T, env *suite.TestEnv) {
 // testDeployDuplicateSource — deploy same source twice without teardown.
 func testDeployDuplicateSource(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
-	_, err := env.Kernel.Deploy(ctx, "dup-deploy-adv.ts", `output("v1");`)
+	testutil.Deploy(t, env.Kit, "dup-deploy-adv.ts", `output("v1");`)
 	require.NoError(t, err)
 
 	// Second deploy is idempotent — tears down and redeploys
-	_, err2 := env.Kernel.Deploy(ctx, "dup-deploy-adv.ts", `output("v2");`)
+	_, err2 := env.Kit.Deploy(ctx, "dup-deploy-adv.ts", `output("v2");`)
 	assert.NoError(t, err2, "duplicate deploy should succeed (idempotent)")
 
-	env.Kernel.Teardown(ctx, "dup-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "dup-deploy-adv.ts")
 }
 
 // testDeployInvalidTSSyntax — deploy code with invalid TypeScript syntax.
 func testDeployInvalidTSSyntax(t *testing.T, env *suite.TestEnv) {
-	_, err := env.Kernel.Deploy(context.Background(), "invalid-syntax-deploy-adv.ts", "const x: = {{{;;;")
+	_, err := env.Kit.Deploy(context.Background(), "invalid-syntax-deploy-adv.ts", "const x: = {{{;;;")
 	assert.Error(t, err)
 	// Error could come from transpiler OR QuickJS eval — both are valid
 	assert.True(t, strings.Contains(err.Error(), "transpile") || strings.Contains(err.Error(), "eval"),
@@ -112,23 +113,23 @@ func testDeployInvalidTSSyntax(t *testing.T, env *suite.TestEnv) {
 // testDeployNullBytesInSourceName — source name containing null bytes.
 func testDeployNullBytesInSourceName(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
-	_, err := env.Kernel.Deploy(ctx, "null\x00byte-deploy-adv.ts", `output("null");`)
+	testutil.Deploy(t, env.Kit, "null\x00byte-deploy-adv.ts", `output("null");`)
 	// Should either succeed (source is just an identifier) or error cleanly — never panic
 	if err != nil {
 		return
 	}
-	env.Kernel.Teardown(ctx, "null\x00byte-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "null\x00byte-deploy-adv.ts")
 }
 
 // testDeployThrowsDuringInit — deploy code that throws during initialization.
 func testDeployThrowsDuringInit(t *testing.T, env *suite.TestEnv) {
-	_, err := env.Kernel.Deploy(context.Background(), "throw-init-deploy-adv.ts", `
+	_, err := env.Kit.Deploy(context.Background(), "throw-init-deploy-adv.ts", `
 		throw new Error("init explosion");
 	`)
 	assert.Error(t, err)
 
 	// Deployment should be cleaned up — not left in a half-state
-	deps := env.Kernel.ListDeployments()
+	deps := testutil.ListDeployments(t, env.Kit)
 	for _, d := range deps {
 		assert.NotEqual(t, "throw-init-deploy-adv.ts", d.Source, "failed deployment should not be listed")
 	}
@@ -138,7 +139,7 @@ func testDeployThrowsDuringInit(t *testing.T, env *suite.TestEnv) {
 func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
-	_, err := env.Kernel.Deploy(ctx, "partial-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "partial-deploy-adv.ts", `
 		const t = createTool({ id: "partial-adv-tool", description: "partial", execute: async () => ({}) });
 		kit.register("tool", "partial-adv-tool", t);
 		throw new Error("after registration");
@@ -146,11 +147,11 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	assert.Error(t, err)
 
 	// The tool should have been cleaned up by teardown
-	pr, pubErr := sdk.Publish(env.Kernel, ctx, messages.ToolResolveMsg{Name: "partial-adv-tool"})
+	pr, pubErr := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "partial-adv-tool"})
 	require.NoError(t, pubErr)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -165,20 +166,20 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 func testDeployDottedSourceName(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
-	_, err := env.Kernel.Deploy(ctx, "my.dotted.agent-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "my.dotted.agent-deploy-adv.ts", `
 		bus.on("ask", function(msg) { msg.reply({ answer: "dotted" }); });
 	`)
 	require.NoError(t, err)
 
 	// Verify the mailbox resolves correctly despite dots
-	result, err := env.Kernel.EvalTS(ctx, "__dotted_test-deploy-adv.ts", `
+	result, err := testutil.EvalTS(t, env.Kit, "__dotted_test-deploy-adv.ts", `
 		var r = bus.publish("ts.my.dotted.agent-deploy-adv.ask", { q: "test" });
 		return r.replyTo;
 	`)
 	require.NoError(t, err)
 	assert.Contains(t, result, "ts.my.dotted.agent-deploy-adv.ask.reply.")
 
-	env.Kernel.Teardown(ctx, "my.dotted.agent-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "my.dotted.agent-deploy-adv.ts")
 }
 
 // testDeployRedeployDifferentTools — redeploy replaces tools: old tool should be gone.
@@ -186,23 +187,23 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Deploy v1 with tool A
-	_, err := env.Kernel.Deploy(ctx, "evolving-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "evolving-deploy-adv.ts", `
 		const a = createTool({ id: "tool-a-adv", description: "v1", execute: async () => ({ v: 1 }) });
 		kit.register("tool", "tool-a-adv", a);
 	`)
 	require.NoError(t, err)
 
 	// Redeploy with tool B (no tool A)
-	_, err = env.Kernel.Deploy(ctx, "evolving-deploy-adv.ts", `
+	testutil.Deploy(t, env.Kit, "evolving-deploy-adv.ts", `
 		const b = createTool({ id: "tool-b-adv", description: "v2", execute: async () => ({ v: 2 }) });
 		kit.register("tool", "tool-b-adv", b);
 	`)
 	require.NoError(t, err)
 
 	// tool-a should not exist
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.ToolResolveMsg{Name: "tool-a-adv"})
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "tool-a-adv"})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 	select {
 	case payload := <-ch:
@@ -211,5 +212,5 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	env.Kernel.Teardown(ctx, "evolving-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "evolving-deploy-adv.ts")
 }

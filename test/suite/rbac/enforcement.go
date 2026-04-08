@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -16,13 +17,13 @@ import (
 )
 
 // Tests migrated from test/infra/rbac_test.go (12 tests).
-// Each test creates its own kernel with the specific RBAC config it needs.
+// Each test creates its own kit with the specific RBAC config it needs.
 
 func testRestrictedCannotPublishForbidden(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "restricted-rbac.ts", `
+	testutil.Deploy(t, k, "restricted-rbac.ts", `
 		bus.on("test", async (msg) => {
 			try {
 				bus.publish("secrets.set", { name: "hack", value: "pwned" });
@@ -32,7 +33,6 @@ func testRestrictedCannotPublishForbidden(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "restricted-rbac.ts", "test", map[string]bool{"go": true})
@@ -59,7 +59,7 @@ func testRestrictedCannotRegisterTools(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "no-tools-rbac.ts", `
+	testutil.Deploy(t, k, "no-tools-rbac.ts", `
 		bus.on("test", async (msg) => {
 			try {
 				kit.register("tool", "hack-tool", { execute: () => {} });
@@ -69,7 +69,6 @@ func testRestrictedCannotRegisterTools(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "no-tools-rbac.ts", "test", map[string]bool{"go": true})
@@ -96,12 +95,11 @@ func testOwnMailboxAlwaysAllowed(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "own-mailbox-rbac.ts", `
+	testutil.Deploy(t, k, "own-mailbox-rbac.ts", `
 		bus.on("ping", (msg) => {
 			msg.reply({ pong: true });
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "own-mailbox-rbac.ts", "ping", map[string]bool{"x": true})
@@ -124,7 +122,7 @@ func testOwnMailboxAlwaysAllowed(t *testing.T, _ *suite.TestEnv) {
 func testAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 	storePath := t.TempDir() + "/rbac-admin.db"
 	store, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Store:       store,
 		Roles:       map[string]rbac.Role{},
 		DefaultRole: "admin",
@@ -133,13 +131,12 @@ func testAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 	defer k.Close()
 	ctx := context.Background()
 
-	_, err = k.Deploy(ctx, "admin-rbac.ts", `
+	testutil.Deploy(t, k, "admin-rbac.ts", `
 		bus.on("test", async (msg) => {
 			bus.emit("events.custom", { data: "admin-sent" });
 			msg.reply({ ok: true });
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "admin-rbac.ts", "test", map[string]bool{"go": true})
@@ -236,7 +233,7 @@ func testPermissionDeniedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 		})
 	defer cancelDenied()
 
-	_, _ = k.Deploy(ctx, "denied-evt-rbac.ts", `
+	testutil.Deploy(t, k, "denied-evt-rbac.ts", `
 		bus.on("trigger", async (msg) => {
 			try { bus.publish("secrets.set", {}); } catch(e) {}
 			msg.reply({ done: true });
@@ -264,7 +261,7 @@ func testWithRoleOnDeploy(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "observer-svc-rbac.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "observer-svc-rbac.ts", `
 		bus.on("test", async (msg) => {
 			try {
 				bus.publish("events.something", { data: "test" });
@@ -273,8 +270,7 @@ func testWithRoleOnDeploy(t *testing.T, _ *suite.TestEnv) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer", ""))
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "observer-svc-rbac.ts", "test", map[string]bool{"go": true})
@@ -299,10 +295,10 @@ func testWithRoleOnDeploy(t *testing.T, _ *suite.TestEnv) {
 func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := t.TempDir() + "/rbac-persist.db"
 
-	// Phase 1: Create kernel, deploy with role, close
+	// Phase 1: Create kit, deploy with role, close
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Store: store1,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -311,17 +307,16 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	code := `bus.on("ping", (msg) => msg.reply({ pong: true }));`
-	_, err = k1.Deploy(context.Background(), "watched-rbac.ts", code, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	require.NoError(t, testutil.DeployWithOpts(k1, "watched-rbac.ts", code, "observer", ""))
 
-	deployments := k1.ListDeployments()
+	deployments := testutil.ListDeployments(t, k1)
 	require.Len(t, deployments, 1)
 	k1.Close()
 
 	// Phase 2: Reopen with same store — deployment auto-redeploys with persisted role
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Store: store2,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -330,7 +325,7 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	deployments2 := k2.ListDeployments()
+	deployments2 := testutil.ListDeployments(t, k2)
 	require.Len(t, deployments2, 1, "deployment should be restored from persistence")
 	assert.Equal(t, "watched-rbac.ts", deployments2[0].Source)
 
@@ -345,8 +340,7 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`
-	_, err = k2.Deploy(context.Background(), "admin-checker.ts", adminCode, brainkit.WithRole("admin"))
-	require.NoError(t, err)
+	require.NoError(t, testutil.DeployWithOpts(k2, "admin-checker.ts", adminCode, "admin", ""))
 
 	// Verify the observer's restored deployment is functional
 	time.Sleep(100 * time.Millisecond)
@@ -374,7 +368,7 @@ func testSecretBridgeEnforcement(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "secret-reader-rbac.ts", `
+	testutil.Deploy(t, k, "secret-reader-rbac.ts", `
 		bus.on("read", async (msg) => {
 			try {
 				var val = secrets.get("test-secret");
@@ -384,7 +378,6 @@ func testSecretBridgeEnforcement(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "secret-reader-rbac.ts", "read", map[string]bool{"go": true})
@@ -409,7 +402,7 @@ func testGatewayRouteEnforcement(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	_, err := k.Deploy(ctx, "route-adder-rbac.ts", `
+	testutil.Deploy(t, k, "route-adder-rbac.ts", `
 		bus.on("try-route", async (msg) => {
 			try {
 				bus.publish("gateway.http.route.add", {
@@ -421,7 +414,6 @@ func testGatewayRouteEnforcement(t *testing.T, _ *suite.TestEnv) {
 			}
 		});
 	`)
-	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
 	sendPR, _ := sdk.SendToService(k, ctx, "route-adder-rbac.ts", "try-route", map[string]bool{"go": true})
@@ -475,7 +467,7 @@ func testCommandMatrix(t *testing.T, _ *suite.TestEnv) {
 func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	storePath := t.TempDir() + "/isolation.db"
 	store, _ := brainkit.NewSQLiteStore(storePath)
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Store: store,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -487,7 +479,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Deploy A with admin — can emit anywhere
-	_, err = k.Deploy(ctx, "admin-svc-rbac.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "admin-svc-rbac.ts", `
 		bus.on("test", async (msg) => {
 			try {
 				bus.emit("events.custom", { from: "admin" });
@@ -496,11 +488,10 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, brainkit.WithRole("admin"))
-	require.NoError(t, err)
+	`, "admin", ""))
 
 	// Deploy B with observer — cannot emit
-	_, err = k.Deploy(ctx, "observer-svc-rbac.ts", `
+	require.NoError(t, testutil.DeployWithOpts(k, "observer-svc-rbac.ts", `
 		bus.on("test", async (msg) => {
 			try {
 				bus.emit("events.custom", { from: "observer" });
@@ -509,8 +500,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 				msg.reply({ error: e.message });
 			}
 		});
-	`, brainkit.WithRole("observer"))
-	require.NoError(t, err)
+	`, "observer", ""))
 	time.Sleep(200 * time.Millisecond)
 
 	// Admin should succeed
@@ -550,7 +540,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 // testRBACDeniedFromTS — observer role .ts deployment tries bus operations it shouldn't access.
 func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -560,26 +550,23 @@ func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	ctx := context.Background()
-
 	// Observer cannot publish to arbitrary topics (only subscribe)
 	t.Run("bus.publish/denied", func(t *testing.T) {
-		_, err := k.Deploy(ctx, "rbac-bus-deny.ts", `
+		require.NoError(t, testutil.DeployWithOpts(k, "rbac-bus-deny.ts", `
 			var caught = "none";
 			try { bus.publish("forbidden.topic", {}); }
 			catch(e) { caught = "DENIED:" + (e.message || ""); }
 			output(caught);
-		`, brainkit.WithRole("observer"))
-		require.NoError(t, err)
-		defer k.Teardown(ctx, "rbac-bus-deny.ts")
+		`, "observer", ""))
+		defer testutil.Teardown(t, k, "rbac-bus-deny.ts")
 
-		result, _ := k.EvalTS(ctx, "__rbac_bus_result.ts", `return String(globalThis.__module_result || "");`)
+		result, _ := testutil.EvalTSErr(k, "__rbac_bus_result.ts", `return String(globalThis.__module_result || "");`)
 		assert.Contains(t, result, "DENIED", "observer should be denied bus.publish to forbidden topic")
 	})
 
 	// Observer CAN subscribe (observer role allows subscribe to *)
 	t.Run("bus.subscribe/allowed", func(t *testing.T) {
-		_, err := k.Deploy(ctx, "rbac-bus-allow.ts", `
+		require.NoError(t, testutil.DeployWithOpts(k, "rbac-bus-allow.ts", `
 			var caught = "none";
 			try {
 				var subId = bus.subscribe("events.anything", function() {});
@@ -587,11 +574,10 @@ func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 				caught = "ALLOWED";
 			} catch(e) { caught = "DENIED:" + (e.message || ""); }
 			output(caught);
-		`, brainkit.WithRole("observer"))
-		require.NoError(t, err)
-		defer k.Teardown(ctx, "rbac-bus-allow.ts")
+		`, "observer", ""))
+		defer testutil.Teardown(t, k, "rbac-bus-allow.ts")
 
-		result, _ := k.EvalTS(ctx, "__rbac_sub_result.ts", `return String(globalThis.__module_result || "");`)
+		result, _ := testutil.EvalTSErr(k, "__rbac_sub_result.ts", `return String(globalThis.__module_result || "");`)
 		assert.Equal(t, "ALLOWED", result, "observer should be allowed bus.subscribe")
 	})
 }
@@ -599,7 +585,7 @@ func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 // testInputAbuseRBACEmptySource — RBACAssignMsg{Source: "", Role: "admin"} must return VALIDATION_ERROR.
 func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
@@ -631,7 +617,7 @@ func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
 // testInputAbuseRBACNonexistentRole — assigning a nonexistent role should error.
 func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})

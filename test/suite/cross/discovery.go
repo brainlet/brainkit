@@ -83,32 +83,29 @@ func testDiscoveryClose(t *testing.T, _ *suite.TestEnv) {
 
 // testDiscoveryStaticPeersBus — bus-level discovery (from test/infra/discovery_test.go)
 func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
-	node, err := brainkit.NewNode(brainkit.NodeConfig{
-		Kernel: brainkit.KernelConfig{
-			Namespace: "test-disc-cross",
-			CallerID:  "test-node",
-		},
-		Messaging: brainkit.MessagingConfig{Transport: "memory"},
-		Discovery: discovery.Config{
+	kit, err := brainkit.New(brainkit.Config{
+		Namespace: "test-disc-cross",
+		CallerID:  "test-node",
+		Transport: "memory",
+		Discovery: brainkit.DiscoveryConfig{
 			Type: "static",
-			StaticPeers: []discovery.PeerConfig{
+			StaticPeers: []brainkit.PeerConfig{
 				{Name: "peer-a", Namespace: "ns-a", Address: "localhost:4222"},
 				{Name: "peer-b", Namespace: "ns-b", Address: "localhost:4223"},
 			},
 		},
 	})
 	require.NoError(t, err)
-	require.NoError(t, node.Start(context.Background()))
-	defer node.Close()
+	defer kit.Close()
 
 	ctx := context.Background()
 
 	// peers.list via bus
-	pr, err := sdk.Publish(node, ctx, messages.PeersListMsg{})
+	pr, err := sdk.Publish(kit, ctx, messages.PeersListMsg{})
 	require.NoError(t, err)
 
 	listCh := make(chan messages.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.PeersListResp](node, ctx, pr.ReplyTo, func(resp messages.PeersListResp, _ messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.PeersListResp](kit, ctx, pr.ReplyTo, func(resp messages.PeersListResp, _ messages.Message) {
 		listCh <- resp
 	})
 	defer unsub()

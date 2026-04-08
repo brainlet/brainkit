@@ -17,7 +17,7 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	_, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "echo-svc.ts",
 		Code: `
 			bus.on("ping", (msg) => {
@@ -29,10 +29,10 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 
 	relayCh := make(chan json.RawMessage, 1)
-	pr, err := sdk.SendToService(env.Kernel, ctx, "echo-svc.ts", "ping", map[string]string{"hello": "world"})
+	pr, err := sdk.SendToService(env.Kit, ctx, "echo-svc.ts", "ping", map[string]string{"hello": "world"})
 	require.NoError(t, err)
 
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, pr.ReplyTo, func(payload json.RawMessage, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo, func(payload json.RawMessage, msg messages.Message) {
 		relayCh <- payload
 	})
 	require.NoError(t, err)
@@ -53,20 +53,20 @@ func testSDKReplyGoToGo(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, "test.approval.request",
+	_, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, "test.approval.request",
 		func(payload json.RawMessage, msg messages.Message) {
-			sdk.Reply(env.Kernel, ctx, msg, map[string]bool{"approved": true})
+			sdk.Reply(env.Kit, ctx, msg, map[string]bool{"approved": true})
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "test.approval.request",
 		Payload: json.RawMessage(`{"action":"delete"}`),
 	})
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, pr.ReplyTo,
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
 		func(payload json.RawMessage, msg messages.Message) {
 			replyCh <- payload
 		})
@@ -87,23 +87,23 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, "test.stream.request",
+	_, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, "test.stream.request",
 		func(payload json.RawMessage, msg messages.Message) {
-			sdk.SendChunk(env.Kernel, ctx, msg, map[string]int{"chunk": 1})
-			sdk.SendChunk(env.Kernel, ctx, msg, map[string]int{"chunk": 2})
-			sdk.SendChunk(env.Kernel, ctx, msg, map[string]int{"chunk": 3})
-			sdk.Reply(env.Kernel, ctx, msg, map[string]any{"done": true, "total": 3})
+			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 1})
+			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 2})
+			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 3})
+			sdk.Reply(env.Kit, ctx, msg, map[string]any{"done": true, "total": 3})
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic:   "test.stream.request",
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
 
 	var received []json.RawMessage
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, pr.ReplyTo,
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
 		func(payload json.RawMessage, msg messages.Message) {
 			received = append(received, payload)
 		})
@@ -118,7 +118,7 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{
+	_, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
 		Source: "calc.ts",
 		Code: `
 			bus.on("add", (msg) => {
@@ -131,11 +131,11 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	pr, err := sdk.SendToService(env.Kernel, ctx, "calc.ts", "add", map[string]int{"a": 17, "b": 25})
+	pr, err := sdk.SendToService(env.Kit, ctx, "calc.ts", "add", map[string]int{"a": 17, "b": 25})
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kernel, ctx, pr.ReplyTo,
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
 		func(payload json.RawMessage, msg messages.Message) {
 			replyCh <- payload
 		})

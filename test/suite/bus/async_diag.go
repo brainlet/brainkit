@@ -20,10 +20,10 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kernel, ctx, messages.KitDeployMsg{Source: source, Code: code})
+	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{Source: source, Code: code})
 	require.NoError(t, err)
 	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kernel, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -32,10 +32,10 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	pr2, err := sdk.SendToService(env.Kernel, ctx, source, "test", json.RawMessage(`{}`))
+	pr2, err := sdk.SendToService(env.Kit, ctx, source, "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
 	replyCh := make(chan messages.Message, 1)
-	unsub2, _ := env.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
+	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
 		if msg.Metadata["done"] == "true" {
 			replyCh <- msg
 		}

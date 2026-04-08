@@ -17,13 +17,13 @@ func testCorrelationIDFiltering(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := sdk.Publish(env.Kernel, ctx, messages.ToolListMsg{})
+	result, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.CorrelationID, "Publish must return a correlationID")
 	assert.NotEmpty(t, result.ReplyTo, "Publish must return a ReplyTo topic")
 
 	received := make(chan messages.ToolListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kernel, ctx, result.ReplyTo, func(resp messages.ToolListResp, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, result.ReplyTo, func(resp messages.ToolListResp, msg messages.Message) {
 		received <- resp
 	})
 	require.NoError(t, err)
@@ -50,13 +50,13 @@ func testMultipleInFlight(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			pubResult, err := sdk.Publish(env.Kernel, ctx, messages.ToolListMsg{})
+			pubResult, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
 			if err != nil {
 				errors[idx] = err
 				return
 			}
 			done := make(chan messages.ToolListResp, 1)
-			unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kernel, ctx, pubResult.ReplyTo, func(r messages.ToolListResp, m messages.Message) {
+			unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, pubResult.ReplyTo, func(r messages.ToolListResp, m messages.Message) {
 				done <- r
 			})
 			if err != nil {
@@ -83,14 +83,14 @@ func testMultipleInFlight(t *testing.T, env *suite.TestEnv) {
 func testContextCancellation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _ = sdk.Publish(env.Kernel, ctx, messages.ToolListMsg{})
+	_, _ = sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
 }
 
 func testSubscribeCancellation(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	count := 0
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kernel, ctx, "tools.list.reply.test", func(resp messages.ToolListResp, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, "tools.list.reply.test", func(resp messages.ToolListResp, msg messages.Message) {
 		count++
 	})
 	require.NoError(t, err)

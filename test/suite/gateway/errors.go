@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	bkgw "github.com/brainlet/brainkit/gateway"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,11 +16,10 @@ import (
 
 // testErrNotFound — route to nonexistent tool -> 404.
 func testErrNotFound(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-404.ts", `
+	testutil.Deploy(t, k, "gw-404.ts", `
 		bus.on("call-ghost", async function(msg) {
 			try {
 				var r = await tools.call("ghost-tool-404", {});
@@ -30,7 +29,6 @@ func testErrNotFound(t *testing.T, env *suite.TestEnv) {
 			}
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("GET", "/not-found-test", "ts.gw-404.call-ghost")
 
@@ -43,17 +41,15 @@ func testErrNotFound(t *testing.T, env *suite.TestEnv) {
 
 // testErrTimeout — route to handler that never replies -> 504.
 func testErrTimeout(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-timeout.ts", `
+	testutil.Deploy(t, k, "gw-timeout.ts", `
 		bus.on("slow", async function(msg) {
 			// Never reply — gateway should timeout
 			await new Promise(r => setTimeout(r, 60000));
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("GET", "/timeout-test", "ts.gw-timeout.slow")
 
@@ -64,16 +60,14 @@ func testErrTimeout(t *testing.T, env *suite.TestEnv) {
 
 // testErrValidResponse — successful handler -> 200.
 func testErrValidResponse(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-ok.ts", `
+	testutil.Deploy(t, k, "gw-ok.ts", `
 		bus.on("greet", function(msg) {
 			msg.reply({greeting: "hello", name: msg.payload.name || "world"});
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("POST", "/greet", "ts.gw-ok.greet")
 
@@ -84,7 +78,7 @@ func testErrValidResponse(t *testing.T, env *suite.TestEnv) {
 
 // testErrNoRoute — request to unregistered path -> 404 from mux.
 func testErrNoRoute(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
 	status, _ := gwGet(t, gw, "/does-not-exist")
@@ -93,7 +87,7 @@ func testErrNoRoute(t *testing.T, env *suite.TestEnv) {
 
 // testErrHealthEndpoints — /healthz, /readyz, /health all work.
 func testErrHealthEndpoints(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
 	status1, body1 := gwGet(t, gw, "/healthz")
@@ -116,7 +110,7 @@ func testErrHealthEndpoints(t *testing.T, env *suite.TestEnv) {
 
 // testErrCORS — OPTIONS preflight returns CORS headers.
 func testErrCORS(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := bkgw.New(k, bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
@@ -142,16 +136,14 @@ func testErrCORS(t *testing.T, env *suite.TestEnv) {
 
 // testErrHandlerError — handler returns {error: ...} -> 500.
 func testErrHandlerError(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-err.ts", `
+	testutil.Deploy(t, k, "gw-err.ts", `
 		bus.on("fail", function(msg) {
 			msg.reply({error: "something went wrong", code: "INTERNAL_ERROR"});
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("GET", "/error-test", "ts.gw-err.fail")
 
@@ -162,17 +154,15 @@ func testErrHandlerError(t *testing.T, env *suite.TestEnv) {
 
 // testErrLargePayload — 100KB POST body through gateway.
 func testErrLargePayload(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-big.ts", `
+	testutil.Deploy(t, k, "gw-big.ts", `
 		bus.on("big", function(msg) {
 			var size = JSON.stringify(msg.payload).length;
 			msg.reply({received: true, size: size});
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("POST", "/big", "ts.gw-big.big")
 
@@ -184,16 +174,14 @@ func testErrLargePayload(t *testing.T, env *suite.TestEnv) {
 
 // testErrPathParams — path parameters extracted correctly.
 func testErrPathParams(t *testing.T, env *suite.TestEnv) {
-	k := suite.Full(t).Kernel
+	k := suite.Full(t).Kit
 	gw := gwSetup(t, k)
 
-	ctx := context.Background()
-	_, err := k.Deploy(ctx, "gw-params.ts", `
+	testutil.Deploy(t, k, "gw-params.ts", `
 		bus.on("user", function(msg) {
 			msg.reply({userId: msg.payload.id, method: msg.payload.method || "unknown"});
 		});
 	`)
-	require.NoError(t, err)
 
 	gw.Handle("POST", "/users/{id}", "ts.gw-params.user",
 		bkgw.WithParam("id", "id"),

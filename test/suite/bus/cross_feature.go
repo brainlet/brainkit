@@ -10,25 +10,23 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // testCrossDeployCallsGoTool — .ts calls Go tool during init, verifies result.
 func testCrossDeployCallsGoTool(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
-	_, err := env.Kernel.Deploy(ctx, "call-go-adv.ts", `
+	testutil.Deploy(t, env.Kit, "call-go-adv.ts", `
 		var result = await tools.call("echo", {message: "from-deploy"});
 		output({toolResult: result, calledDuringDeploy: true});
 	`)
-	require.NoError(t, err)
 
-	result, _ := env.Kernel.EvalTS(ctx, "__cg_adv.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__cg_adv.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -39,10 +37,8 @@ func testCrossDeployCallsGoTool(t *testing.T, env *suite.TestEnv) {
 
 // testCrossTSToolCallsAnotherTSTool — service A registers tool, service B calls it.
 func testCrossTSToolCallsAnotherTSTool(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	// Service A: register a tool
-	_, err := env.Kernel.Deploy(ctx, "svc-a-tool-adv.ts", `
+	testutil.Deploy(t, env.Kit, "svc-a-tool-adv.ts", `
 		const doubler = createTool({
 			id: "doubler-adv",
 			description: "doubles a number",
@@ -51,16 +47,14 @@ func testCrossTSToolCallsAnotherTSTool(t *testing.T, env *suite.TestEnv) {
 		});
 		kit.register("tool", "doubler-adv", doubler);
 	`)
-	require.NoError(t, err)
 
 	// Service B: call A's tool
-	_, err = env.Kernel.Deploy(ctx, "svc-b-caller-adv.ts", `
+	testutil.Deploy(t, env.Kit, "svc-b-caller-adv.ts", `
 		var result = await tools.call("doubler-adv", {n: 21});
 		output(result);
 	`)
-	require.NoError(t, err)
 
-	result, _ := env.Kernel.EvalTS(ctx, "__ab_adv.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__ab_adv.ts", `
 		var r = globalThis.__module_result;
 		if (typeof r === "string") return r;
 		return JSON.stringify(r || {});
@@ -80,11 +74,11 @@ func testCrossHandlerCallsTool(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.handler-tool-adv.process", Payload: json.RawMessage(`{"data":"chain-test"}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -101,9 +95,9 @@ func testCrossHandlerReadsSecret(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret first
-	pr0, _ := sdk.Publish(env.Kernel, ctx, messages.SecretsSetMsg{Name: "API_KEY_ADV", Value: "sk-test-123"})
+	pr0, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "API_KEY_ADV", Value: "sk-test-123"})
 	ch0 := make(chan []byte, 1)
-	unsub0, _ := env.Kernel.SubscribeRaw(ctx, pr0.ReplyTo, func(m messages.Message) { ch0 <- m.Payload })
+	unsub0, _ := env.Kit.SubscribeRaw(ctx, pr0.ReplyTo, func(m messages.Message) { ch0 <- m.Payload })
 	<-ch0
 	unsub0()
 
@@ -115,11 +109,11 @@ func testCrossHandlerReadsSecret(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.secret-handler-adv.check", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -144,11 +138,11 @@ func testCrossHandlerWritesFS(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kernel, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
 		Topic: "ts.fs-handler-adv.save", Payload: json.RawMessage(`{"content":"from handler"}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -162,7 +156,7 @@ func testCrossHandlerWritesFS(t *testing.T, env *suite.TestEnv) {
 // testCrossGoToolEmitsBusEvent — Go tool publishes bus event as side effect.
 func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	k := freshEnv.Kernel
+	k := freshEnv.Kit
 
 	var eventCount atomic.Int64
 
@@ -206,7 +200,7 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	traceStore := tracing.NewMemoryTraceStore(1000)
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		TraceStore: traceStore,
 	})
@@ -250,43 +244,41 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 // testCrossHealthDuringDeployChurn — health stays good during rapid deploy/teardown.
 func testCrossHealthDuringDeployChurn(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	k := freshEnv.Kernel
-	ctx := context.Background()
+	k := freshEnv.Kit
 
 	for i := 0; i < 10; i++ {
 		src := fmt.Sprintf("churn-%d-adv.ts", i)
-		k.Deploy(ctx, src, `output("churn");`)
-		assert.True(t, k.Alive(ctx), "alive during churn iteration %d", i)
-		k.Teardown(ctx, src)
+		testutil.Deploy(t, k, src, `output("churn");`)
+		assert.True(t, testutil.Alive(t, k), "alive during churn iteration %d", i)
+		testutil.Teardown(t, k, src)
 	}
 
-	health := k.Health(ctx)
-	assert.True(t, health.Healthy)
-	assert.Equal(t, "running", health.Status)
+	assert.True(t, testutil.Alive(t, k))
 }
 
 // testCrossMetricsTrackSchedules — metrics reflect schedule count.
 func testCrossMetricsTrackSchedules(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	k := freshEnv.Kernel
+	k := freshEnv.Kit
 	ctx := context.Background()
 
-	m0 := k.Metrics()
-	assert.Equal(t, 0, m0.ActiveSchedules)
+	s0 := testutil.ListSchedules(t, k)
+	assert.Equal(t, 0, len(s0))
 
-	id1, _ := k.Schedule(ctx, brainkit.ScheduleConfig{Expression: "every 1h", Topic: "m.sched1-adv", Payload: json.RawMessage(`{}`)})
-	id2, _ := k.Schedule(ctx, brainkit.ScheduleConfig{Expression: "every 2h", Topic: "m.sched2-adv", Payload: json.RawMessage(`{}`)})
+	id1 := testutil.Schedule(t, k, "every 1h", "m.sched1-adv", json.RawMessage(`{}`))
+	id2 := testutil.Schedule(t, k, "every 2h", "m.sched2-adv", json.RawMessage(`{}`))
+	_ = ctx
 
-	m1 := k.Metrics()
-	assert.Equal(t, 2, m1.ActiveSchedules)
+	s1 := testutil.ListSchedules(t, k)
+	assert.Equal(t, 2, len(s1))
 
-	k.Unschedule(ctx, id1)
-	m2 := k.Metrics()
-	assert.Equal(t, 1, m2.ActiveSchedules)
+	testutil.Unschedule(t, k, id1)
+	s2 := testutil.ListSchedules(t, k)
+	assert.Equal(t, 1, len(s2))
 
-	k.Unschedule(ctx, id2)
-	m3 := k.Metrics()
-	assert.Equal(t, 0, m3.ActiveSchedules)
+	testutil.Unschedule(t, k, id2)
+	s3 := testutil.ListSchedules(t, k)
+	assert.Equal(t, 0, len(s3))
 }
 
 // testCrossDeployWithPersistenceAndRestart — deploy, persist, restart, verify handler works.
@@ -296,7 +288,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Phase 1: Deploy handler, persist
 	store1, _ := brainkit.NewSQLiteStore(storePath)
-	k1, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k1, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -307,18 +299,17 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
 	})
 
-	_, err = k1.Deploy(context.Background(), "persist-handler-adv.ts", `
+	testutil.Deploy(t, k1, "persist-handler-adv.ts", `
 		bus.on("ask", async function(msg) {
 			var r = await tools.call("echo", {message: "persisted:" + msg.payload.q});
 			msg.reply(r);
 		});
 	`)
-	require.NoError(t, err)
 	k1.Close()
 
 	// Phase 2: Restart, call handler, verify it works
 	store2, _ := brainkit.NewSQLiteStore(storePath)
-	k2, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k2, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
@@ -25,10 +26,10 @@ func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	var errorCalled bool
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
-		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+		ErrorHandler: func(err error) {
 			errorCalled = true
 		},
 	})
@@ -39,8 +40,7 @@ func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 	store.Close()
 
 	// Deploy should still succeed in memory
-	_, err = k.Deploy(context.Background(), "broken-store-cascade.ts", `output("works in memory");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, k, "broken-store-cascade.ts", `output("works in memory");`)
 
 	// ErrorHandler should have been called for the persistence failure
 	time.Sleep(100 * time.Millisecond)
@@ -67,9 +67,9 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret, then rotate it — no plugins running, so restart is a no-op
-	pr1, _ := sdk.Publish(freshEnv.Kernel, ctx, messages.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
+	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, messages.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
 	ch1 := make(chan []byte, 1)
-	unsub1, _ := freshEnv.Kernel.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
+	unsub1, _ := freshEnv.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
 	select {
 	case <-ch1:
 	case <-time.After(3 * time.Second):
@@ -78,9 +78,9 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	unsub1()
 
 	// Rotate
-	pr2, _ := sdk.Publish(freshEnv.Kernel, ctx, messages.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
+	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, messages.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := freshEnv.Kernel.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := freshEnv.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {
@@ -97,19 +97,18 @@ func testCascadeHandlerThrowNoReplyTo(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
 	ctx := context.Background()
 
-	_, err := freshEnv.Kernel.Deploy(ctx, "no-reply-cascade.ts", `
+	testutil.Deploy(t, freshEnv.Kit, "no-reply-cascade.ts", `
 		bus.on("fire", function(msg) { throw new Error("no replyTo crash"); });
 	`)
-	require.NoError(t, err)
 
 	// Emit (no replyTo) — handler will throw but there's nowhere to send the error
 	failed := make(chan bool, 1)
-	unsub, _ := sdk.SubscribeTo[messages.HandlerFailedEvent](freshEnv.Kernel, ctx, "bus.handler.failed", func(e messages.HandlerFailedEvent, m messages.Message) {
+	unsub, _ := sdk.SubscribeTo[messages.HandlerFailedEvent](freshEnv.Kit, ctx, "bus.handler.failed", func(e messages.HandlerFailedEvent, m messages.Message) {
 		failed <- true
 	})
 	defer unsub()
 
-	sdk.Emit(freshEnv.Kernel, ctx, messages.CustomEvent{Topic: "ts.no-reply-cascade.fire", Payload: json.RawMessage(`{}`)})
+	sdk.Emit(freshEnv.Kit, ctx, messages.CustomEvent{Topic: "ts.no-reply-cascade.fire", Payload: json.RawMessage(`{}`)})
 
 	select {
 	case <-failed:
@@ -124,29 +123,26 @@ func testCascadeTeardownCleansSubscriptions(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
 	ctx := context.Background()
 
-	_, err := freshEnv.Kernel.Deploy(ctx, "sub-cleanup-cascade.ts", `
+	testutil.Deploy(t, freshEnv.Kit, "sub-cleanup-cascade.ts", `
 		bus.on("ping", function(msg) { msg.reply({ pong: true }); });
 	`)
-	require.NoError(t, err)
 
 	// Verify it works
-	result, err := freshEnv.Kernel.EvalTS(ctx, "__ping-cascade.ts", `
+	result := testutil.EvalTS(t, freshEnv.Kit, "__ping-cascade.ts", `
 		var r = bus.publish("ts.sub-cleanup-cascade.ping", {});
 		return r.replyTo ? "ok" : "fail";
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "ok", result)
 
 	// Teardown
-	_, err = freshEnv.Kernel.Teardown(ctx, "sub-cleanup-cascade.ts")
-	require.NoError(t, err)
+	testutil.Teardown(t, freshEnv.Kit, "sub-cleanup-cascade.ts")
 
 	// Publish again — should not get a response (handler is gone)
-	pr, err := sdk.Publish(freshEnv.Kernel, ctx, messages.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
+	pr, err := sdk.Publish(freshEnv.Kit, ctx, messages.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	ch := make(chan bool, 1)
-	unsub, _ := freshEnv.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- true })
+	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- true })
 	defer unsub()
 
 	select {
@@ -165,10 +161,10 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(tmpDir + "/store-cascade-concurrent.db")
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
-		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+		ErrorHandler: func(err error) {
 			mu.Lock()
 			count++
 			mu.Unlock()
@@ -184,11 +180,7 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			k.Schedule(context.Background(), brainkit.ScheduleConfig{
-				Expression: "in 1h",
-				Topic:      fmt.Sprintf("concurrent-err-cascade-%d", i),
-				Payload:    json.RawMessage(`{}`),
-			})
+			testutil.ScheduleErr(k, "in 1h", fmt.Sprintf("concurrent-err-cascade-%d", i), json.RawMessage(`{}`))
 		}(i)
 	}
 	wg.Wait()
@@ -204,32 +196,29 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 // testCascadePublishDuringDrain — C03: bus.publish during kernel drain.
 func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx := context.Background()
 
 	// Deploy a service
-	_, err := freshEnv.Kernel.Deploy(ctx, "drain-pub-cascade.ts", `
+	testutil.Deploy(t, freshEnv.Kit, "drain-pub-cascade.ts", `
 		bus.on("ask", function(msg) { msg.reply({ ok: true }); });
 	`)
-	require.NoError(t, err)
 
 	// Start draining
-	freshEnv.Kernel.SetDraining(true)
+	testutil.SetDraining(t, freshEnv.Kit, true)
 
 	// Publish should still work (publish isn't affected by drain — only handlers are)
-	result, err := freshEnv.Kernel.EvalTS(ctx, "__drain_pub_cascade.ts", `
+	result := testutil.EvalTS(t, freshEnv.Kit, "__drain_pub_cascade.ts", `
 		var r = bus.publish("ts.drain-pub-cascade.ask", {});
 		return r.replyTo ? "published" : "fail";
 	`)
-	require.NoError(t, err)
 	assert.Equal(t, "published", result)
 
-	freshEnv.Kernel.SetDraining(false)
+	testutil.SetDraining(t, freshEnv.Kit, false)
 }
 
 // testCascadeEvalTSDuringClose — C04: EvalTS during kernel close.
 func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -238,14 +227,14 @@ func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
 	k.Close()
 
 	// EvalTS after close should error, not panic
-	_, err = k.EvalTS(context.Background(), "__after_close_cascade.ts", `return "should not run";`)
+	_, err = testutil.EvalTSErr(k, "__after_close_cascade.ts", `return "should not run";`)
 	assert.Error(t, err)
 }
 
 // testCascadeRetryExhausted — C06: Handler throws, retry exhausted.
 func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},
@@ -254,10 +243,9 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	_, err = k.Deploy(context.Background(), "retry-test-cascade.ts", `
+	testutil.Deploy(t, k, "retry-test-cascade.ts", `
 		bus.on("boom", function(msg) { throw new Error("always fails"); });
 	`)
-	require.NoError(t, err)
 
 	// Subscribe to exhaustion events
 	exhausted := make(chan bool, 1)
@@ -280,20 +268,14 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 // testCascadeScheduleNoHandler — C10: Schedule fires but no handler exists.
 func testCascadeScheduleNoHandler(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx := context.Background()
 
 	// Schedule a message to a topic nobody listens to
-	id, err := freshEnv.Kernel.Schedule(ctx, brainkit.ScheduleConfig{
-		Expression: "in 100ms",
-		Topic:      "ghost.topic.nobody.listens.cascade",
-		Payload:    json.RawMessage(`{"ghost": true}`),
-	})
-	require.NoError(t, err)
+	id := testutil.Schedule(t, freshEnv.Kit, "in 100ms", "ghost.topic.nobody.listens.cascade", json.RawMessage(`{"ghost": true}`))
 	require.NotEmpty(t, id)
 
 	// Wait for it to fire
 	time.Sleep(500 * time.Millisecond)
 
-	// Kernel should still be healthy — no panic from publishing to a topic with no subscribers
-	assert.True(t, freshEnv.Kernel.Alive(ctx))
+	// Kit should still be healthy — no panic from publishing to a topic with no subscribers
+	assert.True(t, testutil.Alive(t, freshEnv.Kit))
 }
