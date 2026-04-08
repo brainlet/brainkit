@@ -199,26 +199,28 @@ func testAttackSlowloris(t *testing.T, env *suite.TestEnv) {
 	testutil.Deploy(t, k, "gw-slow.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)
 	gw.Handle("POST", "/slow-api", "ts.gw-slow.api")
 
-	// Start a request with a very slow body
+	// Start a slow request in a goroutine
 	pr, pw := io.Pipe()
 	go func() {
-		// Write one byte per second
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 10; i++ {
 			pw.Write([]byte("{"))
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 		pw.Write([]byte(`"data":"test"}`))
 		pw.Close()
 	}()
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post("http://"+gw.Addr()+"/slow-api", "application/json", pr)
-	if err != nil {
-		return // timeout is OK
-	}
-	resp.Body.Close()
+	// Fire the slow POST in background — it blocks on the pipe writer
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Post("http://"+gw.Addr()+"/slow-api", "application/json", pr)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
 
-	// Gateway should still serve other requests while this slow one is in progress
+	// Wait for the slow request to be in-flight, then check health
+	time.Sleep(300 * time.Millisecond)
 	status, _ := gwGet(t, gw, "/healthz")
 	assert.Equal(t, 200, status, "gateway should serve health during slow request")
 }

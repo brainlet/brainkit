@@ -230,9 +230,17 @@ func Alive(t *testing.T, rt sdk.Runtime) bool {
 
 // ── EvalModule ──────────────────────────────────────────────────────────────
 
+// EvalModule evaluates code as an ES module (supports import statements).
+// Different from Deploy which uses EvalTS (no import support).
 func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
-	Deploy(t, rt, source, code)
+	payload, err := roundTrip(rt, sdk.KitEvalModuleMsg{Source: source, Code: code}, 15*time.Second)
+	if err != nil {
+		t.Fatalf("EvalModule(%s): %v", source, err)
+	}
+	if _, err := decodeResp[sdk.KitEvalModuleResp](payload); err != nil {
+		t.Fatalf("EvalModule(%s): %v", source, err)
+	}
 }
 
 // ── PublishAndWait (raw) ────────────────────────────────────────────────────

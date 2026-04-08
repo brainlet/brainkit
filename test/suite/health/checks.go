@@ -1,7 +1,6 @@
 package health
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -99,28 +98,14 @@ func testDeploymentsCount(t *testing.T, env *suite.TestEnv) {
 // queryHealth queries health via the kit.health bus command and returns HealthStatus.
 func queryHealth(t *testing.T, kit *brainkit.Kit) brainkit.HealthStatus {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
-	pr, err := sdk.PublishKitHealth(kit, ctx, sdk.KitHealthMsg{})
-	require.NoError(t, err)
+	raw := testutil.PublishAndWait(t, kit, sdk.KitHealthMsg{}, 10*time.Second)
 
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := sdk.SubscribeKitHealthResp(kit, ctx, pr.ReplyTo,
-		func(resp sdk.KitHealthResp, _ sdk.Message) {
-			ch <- resp.Health
-		})
-	require.NoError(t, err)
-	defer unsub()
-
-	var raw json.RawMessage
-	select {
-	case raw = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout querying health")
-	}
+	// KitHealthResp.Health is a json.RawMessage containing the HealthStatus
+	var resp sdk.KitHealthResp
+	require.NoError(t, json.Unmarshal(raw, &resp))
 
 	var health brainkit.HealthStatus
-	require.NoError(t, json.Unmarshal(raw, &health))
+	require.NoError(t, json.Unmarshal(resp.Health, &health))
 	return health
 }

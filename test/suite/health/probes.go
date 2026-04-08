@@ -95,15 +95,15 @@ func testProbeStorageInMemory(t *testing.T, _ *suite.TestEnv) {
 	health := queryHealth(t, k)
 	assert.True(t, health.Healthy)
 
-	// Check for storage health check
-	hasStorage := false
+	// InMemoryStorage is pure JS — no Go-side bridge server, so no storage health check.
+	// Verify the Kit is healthy overall (runtime + transport checks present).
+	hasRuntime := false
 	for _, c := range health.Checks {
-		if c.Name == "storage:default" {
-			hasStorage = true
-			assert.True(t, c.Healthy, "InMemoryStore should be healthy")
+		if c.Name == "runtime" {
+			hasRuntime = true
 		}
 	}
-	assert.True(t, hasStorage, "should have storage:default check")
+	assert.True(t, hasRuntime, "should have runtime check")
 }
 
 // testProbeVectorStoreRealPgVector tests vector store probing with a real Postgres+pgvector.

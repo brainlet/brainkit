@@ -203,6 +203,14 @@ func commandCatalog() *commandRegistry {
 				}
 				return &sdk.KitEvalTSResp{Result: result}, nil
 			}),
+			// ── EvalModule (ES module evaluation with import support) ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalModuleMsg) (*sdk.KitEvalModuleResp, error) {
+				result, err := kernel.EvalModule(ctx, req.Source, req.Code)
+				if err != nil {
+					return nil, err
+				}
+				return &sdk.KitEvalModuleResp{Result: result}, nil
+			}),
 			// ── SetDraining ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSetDrainingMsg) (*sdk.KitSetDrainingResp, error) {
 				kernel.SetDraining(req.Draining)

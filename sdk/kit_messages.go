@@ -180,6 +180,20 @@ type ClusterPeerInfo struct {
 	StartedAt string `json:"startedAt"`
 }
 
+// ── EvalModule (ES module evaluation with import support) ──
+
+type KitEvalModuleMsg struct {
+	Source string `json:"source"`
+	Code   string `json:"code"`
+}
+
+func (KitEvalModuleMsg) BusTopic() string { return "kit.eval-module" }
+
+type KitEvalModuleResp struct {
+	ResultMeta
+	Result string `json:"result"`
+}
+
 // ── Send (request-reply from Go) ──
 
 type KitSendMsg struct {
