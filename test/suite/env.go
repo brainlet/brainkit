@@ -15,19 +15,18 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/rbac"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/internal/types"
+	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 )
 
 // TestEnv is the shared test environment for all suite domains.
-// It holds a Kernel (always), optional Nodes (for cross-kit), and the config that created them.
 type TestEnv struct {
-	Kernel *brainkit.Kernel
-	Nodes  []*brainkit.Node
+	Kit    *brainkit.Kit
+	Nodes  []*brainkit.Kit
 	Config EnvConfig
 	T      *testing.T
 }
@@ -134,9 +133,8 @@ func WithAI() EnvOption {
 	return func(c *EnvConfig) { c.AIProviders = true }
 }
 
-// Full creates a fully-configured TestEnv matching what NewTestKernelFull does:
+// Full creates a fully-configured TestEnv matching what NewTestKitFull does:
 // storage (SQLite + InMemory), vectors (SQLite), AI auto-detect, FSRoot, echo+add tools.
-// Additional options layer on top.
 func Full(t *testing.T, opts ...EnvOption) *TestEnv {
 	t.Helper()
 	testutil.LoadEnv(t)
@@ -162,7 +160,7 @@ func Full(t *testing.T, opts ...EnvOption) *TestEnv {
 	return NewEnv(t, cfg)
 }
 
-// Minimal creates a bare kernel with no storage, no vectors, no AI, no tools.
+// Minimal creates a bare Kit with no storage, no vectors, no AI, no tools.
 func Minimal(t *testing.T, opts ...EnvOption) *TestEnv {
 	t.Helper()
 	testutil.LoadEnv(t)
@@ -181,15 +179,12 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 
 	tmpDir := t.TempDir()
 
-	// Build AI providers from env
-	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	// Build providers from env
+	var providers []brainkit.ProviderConfig
 	envVars := make(map[string]string)
 	if cfg.AIProviders {
 		if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-			aiProviders["openai"] = provreg.AIProviderRegistration{
-				Type:   provreg.AIProviderOpenAI,
-				Config: provreg.OpenAIProviderConfig{APIKey: key},
-			}
+			providers = append(providers, brainkit.OpenAI(key))
 			envVars["OPENAI_API_KEY"] = key
 		}
 	}
@@ -199,15 +194,14 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		fsRoot = tmpDir
 	}
 
-	kernelCfg := brainkit.KernelConfig{
+	kitCfg := brainkit.Config{
 		Namespace:      "test",
 		CallerID:       "test-caller",
 		FSRoot:         fsRoot,
-		AIProviders:    aiProviders,
+		Providers:      providers,
 		EnvVars:        envVars,
 		Storages:       cfg.Storages,
 		Vectors:        cfg.Vectors,
-		MCPServers:     cfg.MCPServers,
 		BusRateLimits:  cfg.BusRateLimits,
 		RetryPolicies:  cfg.RetryPolicies,
 		LogHandler:     cfg.LogHandler,
@@ -222,43 +216,55 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 			t.Fatalf("suite.NewEnv: open store: %v", err)
 		}
 		t.Cleanup(func() { store.Close() })
-		kernelCfg.Store = store
+		kitCfg.Store = store
 	}
 
 	// Secret key
 	if cfg.SecretKey != "" {
-		kernelCfg.SecretKey = cfg.SecretKey
+		kitCfg.SecretKey = cfg.SecretKey
 	}
 
 	// RBAC
 	if len(cfg.RBAC) > 0 {
-		kernelCfg.Roles = cfg.RBAC
-		kernelCfg.DefaultRole = cfg.DefaultRole
+		kitCfg.Roles = cfg.RBAC
+		kitCfg.DefaultRole = cfg.DefaultRole
 	}
 
 	// Tracing
 	if cfg.Tracing {
-		kernelCfg.TraceStore = tracing.NewMemoryTraceStore(1000)
+		kitCfg.TraceStore = tracing.NewMemoryTraceStore(1000)
 	}
 
-	// Transport: if specified, create from testutil
+	// MCP servers
+	if len(cfg.MCPServers) > 0 {
+		kitCfg.MCPServers = cfg.MCPServers
+	}
+
+	// Transport: if specified, start container, probe, pass URLs
 	if cfg.Transport != "" && cfg.Transport != "memory" {
-		transportCfg := testutil.TransportConfigForBackend(t, cfg.Transport)
-		transport := testutil.MustCreateTransport(t, transportCfg)
-		t.Cleanup(func() { transport.Close() })
-		testutil.WaitForBackendReady(t, transport)
-		kernelCfg.Transport = transport
+		tcfg := testutil.TransportConfigForBackend(t, cfg.Transport)
+		probe := testutil.MustCreateTransport(t, tcfg)
+		testutil.WaitForBackendReady(t, probe)
+		probe.Close()
+
+		kitCfg.Transport = tcfg.Type
+		kitCfg.NATSURL = tcfg.NATSURL
+		kitCfg.NATSName = tcfg.NATSName
+		kitCfg.AMQPURL = tcfg.AMQPURL
+		kitCfg.RedisURL = tcfg.RedisURL
+		kitCfg.PostgresURL = tcfg.PostgresURL
+		kitCfg.SQLitePath = tcfg.SQLitePath
 	}
 
-	k, err := brainkit.NewKernel(kernelCfg)
+	kit, err := brainkit.New(kitCfg)
 	if err != nil {
-		t.Fatalf("suite.NewEnv: NewKernel: %v", err)
+		t.Fatalf("suite.NewEnv: brainkit.New: %v", err)
 	}
-	t.Cleanup(func() { k.Close() })
+	t.Cleanup(func() { kit.Close() })
 
 	// Register test tools
 	if cfg.Tools {
-		if err := brainkit.RegisterTool(k, "echo", tools.TypedTool[testutil.EchoInput]{
+		if err := brainkit.RegisterTool(kit, "echo", tools.TypedTool[testutil.EchoInput]{
 			Description: "echoes the input message",
 			Execute: func(ctx context.Context, input testutil.EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message}, nil
@@ -267,7 +273,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 			t.Fatalf("suite.NewEnv: register echo: %v", err)
 		}
 
-		if err := brainkit.RegisterTool(k, "add", tools.TypedTool[testutil.AddInput]{
+		if err := brainkit.RegisterTool(kit, "add", tools.TypedTool[testutil.AddInput]{
 			Description: "adds two numbers",
 			Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 				return map[string]int{"sum": input.A + input.B}, nil
@@ -278,7 +284,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	}
 
 	return &TestEnv{
-		Kernel: k,
+		Kit:    kit,
 		Config: cfg,
 		T:      t,
 	}
@@ -286,15 +292,19 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 
 // --- Shared test helpers ---
 
-// Deploy deploys .ts code into the kernel and returns any error.
+// Deploy deploys .ts code via bus command and returns any error.
 func (e *TestEnv) Deploy(source, code string) error {
-	_, err := e.Kernel.Deploy(context.Background(), source, code)
-	return err
+	return testutil.DeployErr(e.Kit, source, code)
+}
+
+// DeployWithRole deploys with an RBAC role.
+func (e *TestEnv) DeployWithRole(source, code, role string) error {
+	return testutil.DeployWithOpts(e.Kit, source, code, role, "")
 }
 
 // EvalTS evaluates TypeScript code and returns the result string.
 func (e *TestEnv) EvalTS(code string) (string, error) {
-	return e.Kernel.EvalTS(context.Background(), "__suite_eval.ts", code)
+	return testutil.EvalTSErr(e.Kit, "__suite_eval.ts", code)
 }
 
 // PublishAndWait publishes a typed message and waits for the reply payload.
@@ -303,13 +313,13 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg messages.BrainkitMessage, tim
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(e.Kernel, ctx, msg)
+	pr, err := sdk.Publish(e.Kit, ctx, msg)
 	if err != nil {
 		return nil, err
 	}
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := e.Kernel.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := e.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
 		select {
 		case ch <- json.RawMessage(m.Payload):
 		default:
@@ -329,8 +339,6 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg messages.BrainkitMessage, tim
 }
 
 // SendAndReceive publishes a typed message and waits for the raw response.
-// Returns (payload, true) on success or (nil, false) on timeout/error.
-// Replaces the adversarial/helpers_test.go sendAndReceive function.
 func (e *TestEnv) SendAndReceive(t *testing.T, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	payload, err := e.PublishAndWait(t, msg, timeout)
@@ -374,4 +382,16 @@ func (e *TestEnv) RequirePodman(t *testing.T) {
 	if !testutil.PodmanAvailable() {
 		t.Skip("needs Podman")
 	}
+}
+
+// NewSQLiteStoreForTest creates a SQLite KitStore in tmpDir. Exposed for persistence tests.
+func NewSQLiteStoreForTest(t *testing.T) types.KitStore {
+	t.Helper()
+	storePath := filepath.Join(t.TempDir(), "test-store.db")
+	store, err := brainkit.NewSQLiteStore(storePath)
+	if err != nil {
+		t.Fatalf("NewSQLiteStoreForTest: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
 }
