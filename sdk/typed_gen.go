@@ -121,6 +121,16 @@ func SubscribeKitEvalResp(rt Runtime, ctx context.Context, topic string, handler
 	return SubscribeTo[messages.KitEvalResp](rt, ctx, topic, handler)
 }
 
+// PublishKitEvalTS publishes a KitEvalTSMsg and returns routing info for the response.
+func PublishKitEvalTS(rt Runtime, ctx context.Context, msg messages.KitEvalTSMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitEvalTSResp subscribes to the response topic for a KitEvalTSMsg command.
+func SubscribeKitEvalTSResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitEvalTSResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.KitEvalTSResp](rt, ctx, topic, handler)
+}
+
 // PublishKitHealth publishes a KitHealthMsg and returns routing info for the response.
 func PublishKitHealth(rt Runtime, ctx context.Context, msg messages.KitHealthMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -159,6 +169,16 @@ func PublishKitSend(rt Runtime, ctx context.Context, msg messages.KitSendMsg, op
 // SubscribeKitSendResp subscribes to the response topic for a KitSendMsg command.
 func SubscribeKitSendResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitSendResp, messages.Message)) (func(), error) {
 	return SubscribeTo[messages.KitSendResp](rt, ctx, topic, handler)
+}
+
+// PublishKitSetDraining publishes a KitSetDrainingMsg and returns routing info for the response.
+func PublishKitSetDraining(rt Runtime, ctx context.Context, msg messages.KitSetDrainingMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitSetDrainingResp subscribes to the response topic for a KitSetDrainingMsg command.
+func SubscribeKitSetDrainingResp(rt Runtime, ctx context.Context, topic string, handler func(messages.KitSetDrainingResp, messages.Message)) (func(), error) {
+	return SubscribeTo[messages.KitSetDrainingResp](rt, ctx, topic, handler)
 }
 
 // PublishKitTeardown publishes a KitTeardownMsg and returns routing info for the response.

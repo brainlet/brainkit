@@ -195,7 +195,20 @@ func commandCatalog() *commandRegistry {
 					Resources: resourceInfosToMessages(resources),
 				}, nil
 			}),
-			// ── Eval ──
+			// ── EvalTS (raw TS evaluation in current runtime context) ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitEvalTSMsg) (*messages.KitEvalTSResp, error) {
+				result, err := kernel.EvalTS(ctx, req.Source, req.Code)
+				if err != nil {
+					return nil, err
+				}
+				return &messages.KitEvalTSResp{Result: result}, nil
+			}),
+			// ── SetDraining ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitSetDrainingMsg) (*messages.KitSetDrainingResp, error) {
+				kernel.SetDraining(req.Draining)
+				return &messages.KitSetDrainingResp{Draining: req.Draining}, nil
+			}),
+			// ── Eval (deploy + read __module_result) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitEvalMsg) (*messages.KitEvalResp, error) {
 				source := "__cli_eval_" + uuid.NewString() + ".ts"
 				if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {

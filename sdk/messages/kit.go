@@ -132,6 +132,33 @@ type KitEvalResp struct {
 	Result string `json:"result"`
 }
 
+// ── EvalTS (raw TS evaluation in current runtime context) ──
+
+type KitEvalTSMsg struct {
+	Source string `json:"source"`
+	Code   string `json:"code"`
+}
+
+func (KitEvalTSMsg) BusTopic() string { return "kit.eval-ts" }
+
+type KitEvalTSResp struct {
+	ResultMeta
+	Result string `json:"result"`
+}
+
+// ── Draining ──
+
+type KitSetDrainingMsg struct {
+	Draining bool `json:"draining"`
+}
+
+func (KitSetDrainingMsg) BusTopic() string { return "kit.set-draining" }
+
+type KitSetDrainingResp struct {
+	ResultMeta
+	Draining bool `json:"draining"`
+}
+
 // ── Send (request-reply from Go) ──
 
 type KitSendMsg struct {
