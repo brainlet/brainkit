@@ -1,10 +1,12 @@
 package suite
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/rbac"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +14,7 @@ import (
 
 func TestEnv_Full_Smoke(t *testing.T) {
 	env := Full(t)
-	require.NotNil(t, env.Kernel)
+	require.NotNil(t, env.Kit)
 	result, err := env.EvalTS(`return "hello"`)
 	require.NoError(t, err)
 	assert.Equal(t, "hello", result)
@@ -20,10 +22,12 @@ func TestEnv_Full_Smoke(t *testing.T) {
 
 func TestEnv_Full_ToolsRegistered(t *testing.T) {
 	env := Full(t)
-	// Verify echo and add tools are registered
-	tools := env.Kernel.Tools.List("")
+	// Verify echo and add tools via bus command
+	payload := testutil.PublishAndWait(t, env.Kit, messages.ToolListMsg{}, 5*time.Second)
+	var resp messages.ToolListResp
+	require.NoError(t, json.Unmarshal(payload, &resp))
 	names := make(map[string]bool)
-	for _, tool := range tools {
+	for _, tool := range resp.Tools {
 		names[tool.ShortName] = true
 	}
 	assert.True(t, names["echo"], "echo tool should be registered")
@@ -35,25 +39,27 @@ func TestEnv_Full_WithRBAC(t *testing.T) {
 		"admin":   rbac.RoleAdmin,
 		"service": rbac.RoleService,
 	}, "service"), WithPersistence())
-	require.NotNil(t, env.Kernel)
+	require.NotNil(t, env.Kit)
 	assert.Equal(t, "sqlite", env.Config.Persistence)
 }
 
 func TestEnv_Full_WithTracing(t *testing.T) {
 	env := Full(t, WithTracing())
-	require.NotNil(t, env.Kernel)
+	require.NotNil(t, env.Kit)
 	assert.True(t, env.Config.Tracing)
 }
 
 func TestEnv_Minimal_Smoke(t *testing.T) {
 	env := Minimal(t)
-	require.NotNil(t, env.Kernel)
+	require.NotNil(t, env.Kit)
 }
 
 func TestEnv_Minimal_NoTools(t *testing.T) {
 	env := Minimal(t)
-	tools := env.Kernel.Tools.List("")
-	assert.Empty(t, tools, "minimal env should have no tools")
+	payload := testutil.PublishAndWait(t, env.Kit, messages.ToolListMsg{}, 5*time.Second)
+	var resp messages.ToolListResp
+	require.NoError(t, json.Unmarshal(payload, &resp))
+	assert.Empty(t, resp.Tools, "minimal env should have no tools")
 }
 
 func TestEnv_SendAndReceive(t *testing.T) {
