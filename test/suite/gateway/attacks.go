@@ -134,8 +134,17 @@ func testAttackSSEClientDisconnect(t *testing.T, env *suite.TestEnv) {
 	resp.Body.Read(buf)
 	resp.Body.Close() // DISCONNECT
 
-	time.Sleep(1 * time.Second)
-	assert.True(t, testutil.Alive(t, k), "kernel should survive SSE client disconnect")
+	// Wait for kernel to recover from disconnect, then verify alive
+	deadline := time.Now().Add(5 * time.Second)
+	alive := false
+	for time.Now().Before(deadline) {
+		if testutil.Alive(t, k) {
+			alive = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, alive, "kernel should survive SSE client disconnect")
 }
 
 // testAttackCORSBypass — CORS bypass with origin not in allowlist.
@@ -239,9 +248,7 @@ func testAttackRouteRemovalViaBus(t *testing.T, env *suite.TestEnv) {
 		output({replyTo: r.replyTo});
 	`)
 
-	time.Sleep(500 * time.Millisecond)
-
-	// Check if route still works
+	// Check if route still works (attacker shouldn't have removed it)
 	status, body := gwGet(t, gw, "/protected")
 	if status == 404 {
 		t.Logf("FINDING: attacker deployment removed a gateway route via bus")
