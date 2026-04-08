@@ -9,8 +9,9 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/engine"
 	xport "github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/internal/types"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
@@ -19,7 +20,8 @@ import (
 
 // TestPluginToolCallViaBusSQLite verifies that tools.call for a plugin-style
 // tool works on SQLite transport with the pass-through replyTo protocol.
-// The host forwards the caller's replyTo to the plugin, the plugin responds directly.
+// Uses internal/engine directly because it tests low-level plugin protocol
+// that requires direct transport and tool registry access.
 func TestPluginToolCallViaBusSQLite(t *testing.T) {
 	dir := t.TempDir()
 	transportDB := dir + "/transport.db"
@@ -31,7 +33,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 	require.NoError(t, err)
 	defer transport.Close()
 
-	kernel, err := brainkit.NewKernel(brainkit.KernelConfig{
+	kernel, err := engine.NewKernel(types.KernelConfig{
 		Namespace: "test-plugin-bus",
 		Transport: transport,
 	})
@@ -39,7 +41,6 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 	defer kernel.Close()
 
 	// Simulate plugin side: subscribe to tool topic, respond.
-	// Mirrors sdk/serve.go handler — checks for replyTo in metadata.
 	fakeTopic := "fake.plugin.tool.echo"
 	fakeResultTopic := fakeTopic + ".result"
 
@@ -51,25 +52,20 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 		replyMsg := message.NewMessage(watermill.NewUUID(), resp)
 		replyMsg.Metadata.Set("correlationId", correlationID)
 
-		// Pass-through: if host forwarded a replyTo, publish directly there.
 		if replyTo := msg.Metadata["replyTo"]; replyTo != "" {
 			transport.Publisher.Publish(replyTo, replyMsg)
 			return
 		}
-		// Fallback: publish to .result topic
 		ctx := xport.ContextWithCorrelationID(context.Background(), correlationID)
 		kernel.PublishRaw(ctx, fakeResultTopic, resp)
 	})
 	require.NoError(t, err)
 
-	// Register tool with pass-through executor (mirrors processPluginManifest).
 	kernel.Tools.Register(toolreg.RegisteredTool{
 		Name:      "test/echo@0.1.0/echo",
 		ShortName: "echo",
 		Executor: &toolreg.GoFuncExecutor{
 			Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
-				// Pass-through: forward caller's replyTo to the plugin.
-				// Uses PublishRawWithMeta to stamp replyTo directly (already resolved).
 				callerReplyTo := xport.ReplyToFromContext(callCtx)
 				if callerReplyTo != "" {
 					correlationID := xport.CorrelationIDFromContext(callCtx)
@@ -85,7 +81,6 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 					return nil, nil
 				}
 
-				// Fallback: direct call — subscribe and wait.
 				correlationID := fmt.Sprintf("%d", time.Now().UnixNano())
 				waitCtx, cancel := context.WithCancel(callCtx)
 				defer cancel()
@@ -119,7 +114,6 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 		},
 	})
 
-	// Test 1: direct executor call (fallback path — subscribe and wait)
 	t.Run("direct_executor", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -130,7 +124,6 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 		t.Logf("direct: %s", string(result))
 	})
 
-	// Test 2: via bus tools.call command (pass-through path)
 	t.Run("via_bus_command", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -154,12 +147,11 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 		case payload := <-replyCh:
 			elapsed := time.Since(start)
 			t.Logf("bus response in %s: %s", elapsed.Round(time.Millisecond), string(payload))
-			require.Less(t, elapsed, 3*time.Second, "plugin tool call via bus must complete in <3s")
+			require.Less(t, elapsed, 3*time.Second)
 			var resp messages.ToolCallResp
 			require.NoError(t, json.Unmarshal(payload, &resp))
-			require.Empty(t, resp.Error, "plugin tool call must not return an error")
-			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null",
-				"plugin tool call must return a non-null result, got: %s", string(resp.Result))
+			require.Empty(t, resp.Error)
+			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null")
 		case <-ctx.Done():
 			t.Fatal("REGRESSION: tools.call via bus for plugin-style tool times out on SQLite transport")
 		}
