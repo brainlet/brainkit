@@ -25,7 +25,6 @@ func testRequestResponseE2E(t *testing.T, _ *suite.TestEnv) {
 			msg.reply({ answer: "hello " + (msg.payload.name || "world") });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/chat", "ts.gw-chat.ask")
@@ -46,7 +45,6 @@ func testTimeout504(t *testing.T, _ *suite.TestEnv) {
 	testutil.Deploy(t, env.Kit, "gw-slow.ts", `
 		bus.on("slow", (msg) => { /* no reply */ });
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit, func(cfg *bkgw.Config) {
 		cfg.Timeout = 1 * time.Second
@@ -141,7 +139,6 @@ func testWithHTTPContext(t *testing.T, _ *suite.TestEnv) {
 			});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/context", "ts.gw-ctx.ctx", bkgw.WithHTTPContext())
@@ -166,7 +163,6 @@ func testPathParams(t *testing.T, _ *suite.TestEnv) {
 			msg.reply({ tool: msg.payload.name, input: msg.payload.input || "none" });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/tools/{name}", "ts.gw-params.call", bkgw.WithParam("name", "name"))
@@ -209,7 +205,6 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 			msg.reply({ dynamic: true });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 
@@ -313,7 +308,6 @@ func testSSEStreaming(t *testing.T, _ *suite.TestEnv) {
 			msg.stream.end({ done: true });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream", "ts.gw-sse.stream")
@@ -343,7 +337,6 @@ func testSSEProgressAndEvents(t *testing.T, _ *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream2", "ts.gw-sse2.stream")
@@ -369,7 +362,6 @@ func testSSEErrorTerminates(t *testing.T, _ *suite.TestEnv) {
 			msg.stream.error("something broke");
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.HandleStream("GET", "/api/stream-err", "ts.gw-sse-err.stream")
@@ -393,7 +385,6 @@ func testErrorResponse500(t *testing.T, _ *suite.TestEnv) {
 			msg.reply({ error: "something went wrong" });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.Handle("POST", "/api/fail", "ts.gw-err.fail")
@@ -509,7 +500,6 @@ func testWebSocket(t *testing.T, _ *suite.TestEnv) {
 			msg.reply({ echo: data, sessionId: msg.payload.sessionId });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStart(t, env.Kit)
 	gw.HandleWebSocket("/ws", "ts.gw-ws.ws")

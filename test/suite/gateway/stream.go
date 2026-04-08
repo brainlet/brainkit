@@ -24,7 +24,6 @@ func testStreamHeartbeatTimeout(t *testing.T, env *suite.TestEnv) {
 			await new Promise(r => setTimeout(r, 60000));
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
@@ -55,7 +54,6 @@ func testStreamMaxDuration(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
@@ -85,7 +83,6 @@ func testStreamMaxEvents(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 10 * time.Second,
@@ -115,7 +112,6 @@ func testStreamKeepaliveComments(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatTimeout: 25 * time.Second,
@@ -146,7 +142,6 @@ func testStreamReconnection(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({ final: true });
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 1 * time.Second,
@@ -205,7 +200,6 @@ func testStreamSessionExpired(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, &bkgw.StreamConfig{
 		HeartbeatInterval: 10 * time.Second,
@@ -256,7 +250,6 @@ func testStreamConcurrent(t *testing.T, env *suite.TestEnv) {
 			});
 		`)
 	}
-	time.Sleep(200 * time.Millisecond)
 
 	gw, addr := gwStartWithStream(t, k.Kit, nil)
 	gw.HandleStream("GET", "/api/a", "ts.svc-a.stream")
@@ -300,7 +293,6 @@ func testStreamGatewayShutdown(t *testing.T, env *suite.TestEnv) {
 			msg.stream.end({});
 		});
 	`)
-	time.Sleep(200 * time.Millisecond)
 
 	gw := bkgw.New(k.Kit, bkgw.Config{
 		Listen:  "127.0.0.1:0",

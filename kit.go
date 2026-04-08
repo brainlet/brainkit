@@ -116,6 +116,28 @@ func (k *Kit) ReplyRaw(ctx context.Context, replyTo, correlationID string, paylo
 	return k.kernel.ReplyRaw(ctx, replyTo, correlationID, payload, done)
 }
 
+// --- Health probes (gateway type-asserts for these) ---
+
+// Alive returns true if the QuickJS runtime can evaluate a trivial expression.
+func (k *Kit) Alive(ctx context.Context) bool {
+	return k.kernel.Alive(ctx)
+}
+
+// Ready returns true if the Kit can serve traffic (not draining, runtime alive).
+func (k *Kit) Ready(ctx context.Context) bool {
+	return k.kernel.Ready(ctx)
+}
+
+// HealthJSON returns the full health status as JSON.
+func (k *Kit) HealthJSON(ctx context.Context) json.RawMessage {
+	return k.kernel.HealthJSON(ctx)
+}
+
+// IsDraining returns true during the drain phase.
+func (k *Kit) IsDraining() bool {
+	return k.kernel.IsDraining()
+}
+
 // --- Lifecycle ---
 
 // Shutdown drains in-flight handlers then closes. Use Close() for quick shutdown.

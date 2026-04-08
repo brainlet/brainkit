@@ -11,6 +11,10 @@ The folder is on `internal/docs/superpowers`
 
 Make sure the env var `USER_TYPE` with value `"ant"` is set.
 
+# Testing
+
+When using `go test` don't pipe to grep, put the output into a temporary file that you can come back after to have details. It will avoid you from executing the same command multiple times and be wasteful of time + tokens.
+
 # brainkit
 
 A Go runtime library that embeds QuickJS (JS/TS) and Watermill (pub/sub) into a single platform for AI agent teams. Two projects exist: **brainkit** (this library) and **brainlet** (the product using it). Nothing else — no brainlink, no capclaude.

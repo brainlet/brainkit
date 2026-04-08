@@ -12,6 +12,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	bkgw "github.com/brainlet/brainkit/gateway"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -89,7 +90,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 }
 
 // gwStart starts a gateway on a random port with optional config modifications.
-// Replicates startGateway from infra/gateway_test.go.
+// Waits for the gateway to be ready (healthz returns 200) before returning.
 func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.Gateway, string) {
 	t.Helper()
 	cfg := bkgw.Config{Listen: "127.0.0.1:0", Timeout: 5 * time.Second}
@@ -99,12 +100,12 @@ func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.G
 	gw := bkgw.New(k, cfg)
 	require.NoError(t, gw.Start())
 	t.Cleanup(func() { gw.Stop() })
-	time.Sleep(50 * time.Millisecond)
-	return gw, "http://" + gw.Addr()
+	addr := "http://" + gw.Addr()
+	gwWaitReady(t, addr)
+	return gw, addr
 }
 
 // gwStartWithStream starts a gateway with streaming configuration.
-// Replicates startGatewayWithStream from infra/stream_test.go.
 func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConfig) (*bkgw.Gateway, string) {
 	t.Helper()
 	gw := bkgw.New(k, bkgw.Config{
@@ -114,12 +115,12 @@ func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConf
 	})
 	require.NoError(t, gw.Start())
 	t.Cleanup(func() { gw.Stop() })
-	time.Sleep(50 * time.Millisecond)
-	return gw, "http://" + gw.Addr()
+	addr := "http://" + gw.Addr()
+	gwWaitReady(t, addr)
+	return gw, addr
 }
 
 // gwSetup creates a simple gateway with short timeout for adversarial tests.
-// Replicates setupGateway from adversarial/gateway_errors_test.go.
 func gwSetup(t *testing.T, k *brainkit.Kit) *bkgw.Gateway {
 	t.Helper()
 	gw := bkgw.New(k, bkgw.Config{
@@ -128,7 +129,58 @@ func gwSetup(t *testing.T, k *brainkit.Kit) *bkgw.Gateway {
 	})
 	require.NoError(t, gw.Start())
 	t.Cleanup(func() { gw.Stop() })
+	gwWaitReady(t, "http://"+gw.Addr())
 	return gw
+}
+
+// ── Reliability helpers ──────────────────────────────────────────────────────
+
+// gwWaitReady waits for the gateway HTTP server to accept connections.
+// Polls any path — a response (even 404) means the server is up.
+func gwWaitReady(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(addr + "/__ready_probe")
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("gateway not accepting connections after 5s")
+}
+
+// gwWaitForStatus polls a path until the expected status code is returned.
+// Used after deploy (wait for non-404) and after SetDraining (wait for 503).
+func gwWaitForStatus(t *testing.T, method, url string, expected int) {
+	t.Helper()
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var resp *http.Response
+		var err error
+		if method == "POST" {
+			resp, err = client.Post(url, "application/json", strings.NewReader("{}"))
+		} else {
+			resp, err = client.Get(url)
+		}
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == expected {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("expected status %d at %s after 5s", expected, url)
+}
+
+// gwWaitForDeploy deploys .ts code and waits for the gateway route to return non-404.
+func gwWaitForDeploy(t *testing.T, kit *brainkit.Kit, addr, source, code, method, path string) {
+	t.Helper()
+	testutil.Deploy(t, kit, source, code)
+	gwWaitForStatus(t, method, addr+path, 200)
 }
 
 // gwGet performs an HTTP GET and returns status code + body string.
