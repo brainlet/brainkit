@@ -4,7 +4,6 @@
 package auth_test
 
 import (
-	"context"
 	"net"
 	"path/filepath"
 	"testing"
@@ -31,10 +30,10 @@ func waitForTCP(t *testing.T, addr string, timeout time.Duration) {
 	t.Fatalf("TCP probe failed: %s not accepting connections after %v", addr, timeout)
 }
 
-func newKernel(t *testing.T, envVars map[string]string) *brainkit.Kernel {
+func newKit(t *testing.T, envVars map[string]string) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test",
 		CallerID:  "auth-test",
 		FSRoot:    tmpDir,
@@ -50,10 +49,8 @@ func newKernel(t *testing.T, envVars map[string]string) *brainkit.Kernel {
 
 // evalStore deploys a minimal .ts that connects to a store, writes a thread,
 // reads it back, and returns the result as JSON.
-func evalStore(t *testing.T, k *brainkit.Kernel, storeType, storeCode string) string {
+func evalStore(t *testing.T, k *brainkit.Kit, storeType, storeCode string) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	code := `
 		try {
@@ -75,8 +72,7 @@ func evalStore(t *testing.T, k *brainkit.Kernel, storeType, storeCode string) st
 			return JSON.stringify({ error: e.message.substring(0, 300), backend: "` + storeType + `" });
 		}
 	`
-	result, err := k.EvalTS(ctx, "__auth_test.ts", code)
-	require.NoError(t, err, "EvalTS failed")
+	result := testutil.EvalTS(t, k, "__auth_test.ts", code)
 	t.Logf("[%s] %s", storeType, result)
 	return result
 }
@@ -91,7 +87,7 @@ func TestPostgres_SCRAM_SHA256(t *testing.T) {
 		"POSTGRES_USER=scramuser", "POSTGRES_PASSWORD=scrampass", "POSTGRES_DB=authtest")
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"POSTGRES_URL": "postgresql://scramuser:scrampass@" + addr + "/authtest",
 	})
 
@@ -115,7 +111,7 @@ func TestPostgres_MD5(t *testing.T) {
 		"POSTGRES_HOST_AUTH_METHOD=md5")
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"POSTGRES_URL": "postgresql://md5user:md5pass@" + addr + "/authtest",
 	})
 
@@ -138,7 +134,7 @@ func TestPostgres_Trust(t *testing.T) {
 		"POSTGRES_USER=trustuser", "POSTGRES_HOST_AUTH_METHOD=trust")
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"POSTGRES_URL": "postgresql://trustuser@" + addr + "/trustuser?sslmode=disable",
 	})
 

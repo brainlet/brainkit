@@ -10,27 +10,28 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // testStateCorruptionBadTranspile — persisted deployment with bad code, good deployment survives (D02).
-func testStateCorruptionBadTranspile(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-deploy-adv.db")
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "bad-deploy-adv.ts", Code: "const x: = {{{;;;", Order: 1,
 		DeployedAt: time.Now(),
 	})
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "good-deploy-adv.ts", Code: `output("survived");`, Order: 2,
 		DeployedAt: time.Now(),
 	})
@@ -43,7 +44,7 @@ func testStateCorruptionBadTranspile(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
-		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
 			mu.Unlock()
@@ -53,7 +54,7 @@ func testStateCorruptionBadTranspile(t *testing.T, env *suite.TestEnv) {
 	defer k.Close()
 
 	// The good deployment should still be active
-	deps := k.ListDeployments()
+	deps := testutil.ListDeployments(t, k)
 	found := false
 	for _, d := range deps {
 		if d.Source == "good-deploy-adv.ts" {
@@ -76,16 +77,16 @@ func testStateCorruptionBadTranspile(t *testing.T, env *suite.TestEnv) {
 }
 
 // testStateCorruptionDuplicatePersistedSource — duplicate persisted source resolves to one deployment (D06).
-func testStateCorruptionDuplicatePersistedSource(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-deploy-adv2.db")
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "dup-persist-deploy-adv.ts", Code: `output("v1");`, Order: 1, DeployedAt: time.Now(),
 	})
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "dup-persist-deploy-adv.ts", Code: `output("v2");`, Order: 2, DeployedAt: time.Now(),
 	})
 	store.Close()
@@ -98,7 +99,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, env *suite.TestEn
 	require.NoError(t, err)
 	defer k.Close()
 
-	deps := k.ListDeployments()
+	deps := testutil.ListDeployments(t, k)
 	count := 0
 	for _, d := range deps {
 		if d.Source == "dup-persist-deploy-adv.ts" {
@@ -109,7 +110,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, env *suite.TestEn
 }
 
 // testStateCorruptionStoreWipedMidlife — store wiped mid-life, in-memory state survives (D07).
-func testStateCorruptionStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionStoreWipedMidlife(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-deploy-adv3.db"))
 	require.NoError(t, err)
@@ -120,14 +121,13 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	_, err = k.Deploy(t.Context(), "survivor-deploy-adv.ts", `output("alive");`)
-	require.NoError(t, err)
+	testutil.Deploy(t, k, "survivor-deploy-adv.ts", `output("alive");`)
 
 	// Wipe store behind brainkit's back
 	store.DeleteDeployment("survivor-deploy-adv.ts")
 
 	// In-memory deployment still active
-	deps := k.ListDeployments()
+	deps := testutil.ListDeployments(t, k)
 	found := false
 	for _, d := range deps {
 		if d.Source == "survivor-deploy-adv.ts" {
@@ -138,14 +138,14 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 }
 
 // testStateCorruptionEmptyCode — persisted deployment with empty code (D01).
-func testStateCorruptionEmptyCode(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-empty-deploy-adv.db")
 
 	// Create store, save a deployment with empty code
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "empty-deploy-adv.ts", Code: "", Order: 1,
 		DeployedAt: time.Now(),
 	})
@@ -158,7 +158,7 @@ func testStateCorruptionEmptyCode(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
-		ErrorHandler: func(err error, ctx brainkit.ErrorContext) {
+		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
 			mu.Unlock()
@@ -172,13 +172,13 @@ func testStateCorruptionEmptyCode(t *testing.T, env *suite.TestEnv) {
 }
 
 // testStateCorruptionZeroDurationSchedule — schedule with zero duration (D03).
-func testStateCorruptionZeroDurationSchedule(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-zerodur-deploy-adv.db")
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveSchedule(brainkit.PersistedSchedule{
+	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "zero-dur-deploy-adv",
 		Expression: "every 0s",
 		Duration:   0,
@@ -198,17 +198,17 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	assert.True(t, k.Alive(context.Background()))
+	assert.True(t, testutil.Alive(t, k))
 }
 
 // testStateCorruptionPastScheduleFires — persisted schedule with past NextFire fires immediately (D04).
-func testStateCorruptionPastScheduleFires(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-past-deploy-adv.db")
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveSchedule(brainkit.PersistedSchedule{
+	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "past-sched-deploy-adv",
 		Expression: "every 1h",
 		Duration:   time.Hour,
@@ -239,18 +239,18 @@ func testStateCorruptionPastScheduleFires(t *testing.T, env *suite.TestEnv) {
 	case <-fired:
 		// Good — past schedule caught up
 	case <-time.After(3 * time.Second):
-		// Also OK — schedule might have already fired during NewKernel before we subscribed
+		// Also OK — schedule might have already fired during brainkit.New before we subscribed
 	}
 }
 
 // testStateCorruptionNonexistentRoleOnDeploy — role assigned to nonexistent role name (D08).
-func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
+func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-ghostrole-deploy-adv.db")
 
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
-	store.SaveDeployment(brainkit.PersistedDeployment{
+	store.SaveDeployment(types.PersistedDeployment{
 		Source: "ghost-role-deploy-adv.ts", Code: `output("hi");`,
 		Order: 1, Role: "nonexistent-role-xyz-deploy-adv",
 		DeployedAt: time.Now(),
@@ -266,7 +266,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv
 	require.NoError(t, err)
 	defer k.Close()
 
-	// Kernel should start despite nonexistent role — RBAC.Assign would fail
+	// Kit should start despite nonexistent role — RBAC.Assign would fail
 	// but the deployment itself should still work (role assignment is best-effort)
 	assert.NotNil(t, k)
 }

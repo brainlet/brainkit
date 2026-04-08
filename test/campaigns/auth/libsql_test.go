@@ -1,7 +1,7 @@
 package auth_test
 
 import (
-	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,11 +14,11 @@ import (
 // TestLibSQL_EmbeddedNoAuth — libsql embedded with no auth.
 // Ported from test/auth/auth_test.go:TestLibSQL_EmbeddedNoAuth.
 func TestLibSQL_EmbeddedNoAuth(t *testing.T) {
-	k := newKernel(t, map[string]string{})
-
-	url := k.StorageURL("default")
-	require.NotEmpty(t, url, "embedded storage URL should be set")
-	os.Setenv("LIBSQL_URL", url)
+	// Create the kit with a LIBSQL_URL pointing to an embedded SQLite file.
+	libsqlPath := filepath.Join(t.TempDir(), "libsql-test.db")
+	k := newKit(t, map[string]string{
+		"LIBSQL_URL": "file:" + libsqlPath,
+	})
 
 	result := evalStore(t, k, "libsql-embedded", `
 		var store = new embed.LibSQLStore({
@@ -41,7 +41,7 @@ func TestLibSQL_ContainerNoAuth(t *testing.T) {
 		[]string{"sqld", "--http-listen-addr", "0.0.0.0:8080"},
 		wait.ForHTTP("/health").WithStartupTimeout(30*time.Second))
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"LIBSQL_URL": "http://" + addr,
 	})
 

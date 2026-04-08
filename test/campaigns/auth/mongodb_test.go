@@ -19,7 +19,7 @@ func TestMongoDB_SCRAM_SHA256(t *testing.T) {
 		"MONGO_INITDB_ROOT_USERNAME=scramuser", "MONGO_INITDB_ROOT_PASSWORD=scrampass")
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"MONGODB_URL":     "mongodb://scramuser:scrampass@" + addr,
 		"MONGODB_LOG_ALL": "off",
 	})
@@ -44,7 +44,7 @@ func TestMongoDB_SCRAM_SHA1(t *testing.T) {
 		"MONGO_INITDB_ROOT_USERNAME=sha1user", "MONGO_INITDB_ROOT_PASSWORD=sha1pass")
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"MONGODB_URL":     "mongodb://sha1user:sha1pass@" + addr + "/?authMechanism=SCRAM-SHA-1",
 		"MONGODB_LOG_ALL": "off",
 	})
@@ -67,7 +67,7 @@ func TestMongoDB_NoAuth(t *testing.T) {
 		wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second))
 	waitForTCP(t, addr, 15*time.Second)
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"MONGODB_URL": "mongodb://" + addr,
 	})
 

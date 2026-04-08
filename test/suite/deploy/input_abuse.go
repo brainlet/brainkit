@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
-	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,18 +16,15 @@ import (
 
 // testDeployEmptySource — empty source name is rejected.
 func testDeployEmptySource(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-	testutil.Deploy(t, env.Kit, "", `output("hello");`)
+	err := testutil.DeployErr(env.Kit, "", `output("hello");`)
 	assert.Error(t, err, "empty source should be rejected")
-	_, err2 := env.Kit.Deploy(ctx, "   ", `output("hello");`)
+	err2 := testutil.DeployErr(env.Kit, "   ", `output("hello");`)
 	assert.Error(t, err2, "whitespace-only source should be rejected")
 }
 
 // testDeployEmptyCode — deploy with completely empty code.
 func testDeployEmptyCode(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-	testutil.Deploy(t, env.Kit, "empty-deploy-adv.ts", "")
-	// Should succeed or fail cleanly — never panic
+	err := testutil.DeployErr(env.Kit, "empty-deploy-adv.ts", "")
 	if err != nil {
 		return
 	}
@@ -37,17 +34,15 @@ func testDeployEmptyCode(t *testing.T, env *suite.TestEnv) {
 // testDeployHugeCode — deploy 1MB of code (mostly comments).
 func testDeployHugeCode(t *testing.T, env *suite.TestEnv) {
 	big := "// " + strings.Repeat("x", 1024*1024) + "\noutput('big');"
-	_, err := env.Kit.Deploy(context.Background(), "huge-deploy-adv.ts", big)
-	// Should succeed or fail cleanly — never hang
+	err := testutil.DeployErr(env.Kit, "huge-deploy-adv.ts", big)
 	if err != nil {
 		return
 	}
-	env.Kit.Teardown(context.Background(), "huge-deploy-adv.ts")
+	testutil.Teardown(t, env.Kit, "huge-deploy-adv.ts")
 }
 
 // testDeploySourcePathTraversal — source with path traversal characters.
 func testDeploySourcePathTraversal(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
 	cases := []string{
 		"../escape-deploy-adv.ts",
 		"path/with\x00null-deploy-adv.ts",
@@ -57,9 +52,7 @@ func testDeploySourcePathTraversal(t *testing.T, env *suite.TestEnv) {
 	}
 	for _, source := range cases {
 		t.Run(source, func(t *testing.T) {
-			testutil.Deploy(t, env.Kit, source, `output("hi");`)
-			// Should either succeed (source is just an identifier) or error cleanly — never panic
-			_ = err
+			err := testutil.DeployErr(env.Kit, source, `output("hi");`)
 			if err == nil {
 				testutil.Teardown(t, env.Kit, source)
 			}
@@ -69,17 +62,13 @@ func testDeploySourcePathTraversal(t *testing.T, env *suite.TestEnv) {
 
 // testDeployThenImmediateTeardown — deploy and immediately teardown.
 func testDeployThenImmediateTeardown(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
 	testutil.Deploy(t, env.Kit, "instant-teardown-deploy-adv.ts", `
 		const t = createTool({ id: "instant-td-tool", description: "td", execute: async () => ({}) });
 		kit.register("tool", "instant-td-tool", t);
 	`)
-	require.NoError(t, err)
 
 	// Immediately teardown without waiting
-	removed, err := testutil.Teardown(t, env.Kit, "instant-teardown-deploy-adv.ts")
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, removed, 0)
+	testutil.Teardown(t, env.Kit, "instant-teardown-deploy-adv.ts")
 
 	// Verify deployment is gone
 	deps := testutil.ListDeployments(t, env.Kit)
@@ -90,31 +79,26 @@ func testDeployThenImmediateTeardown(t *testing.T, env *suite.TestEnv) {
 
 // testDeployDuplicateSource — deploy same source twice without teardown.
 func testDeployDuplicateSource(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
 	testutil.Deploy(t, env.Kit, "dup-deploy-adv.ts", `output("v1");`)
-	require.NoError(t, err)
 
 	// Second deploy is idempotent — tears down and redeploys
-	_, err2 := env.Kit.Deploy(ctx, "dup-deploy-adv.ts", `output("v2");`)
-	assert.NoError(t, err2, "duplicate deploy should succeed (idempotent)")
+	err := testutil.DeployErr(env.Kit, "dup-deploy-adv.ts", `output("v2");`)
+	assert.NoError(t, err, "duplicate deploy should succeed (idempotent)")
 
 	testutil.Teardown(t, env.Kit, "dup-deploy-adv.ts")
 }
 
 // testDeployInvalidTSSyntax — deploy code with invalid TypeScript syntax.
 func testDeployInvalidTSSyntax(t *testing.T, env *suite.TestEnv) {
-	_, err := env.Kit.Deploy(context.Background(), "invalid-syntax-deploy-adv.ts", "const x: = {{{;;;")
+	err := testutil.DeployErr(env.Kit, "invalid-syntax-deploy-adv.ts", "const x: = {{{;;;")
 	assert.Error(t, err)
-	// Error could come from transpiler OR QuickJS eval — both are valid
-	assert.True(t, strings.Contains(err.Error(), "transpile") || strings.Contains(err.Error(), "eval"),
+	assert.True(t, strings.Contains(err.Error(), "transpile") || strings.Contains(err.Error(), "eval") || strings.Contains(err.Error(), "DEPLOY_ERROR"),
 		"expected transpile or eval error, got: %s", err.Error())
 }
 
 // testDeployNullBytesInSourceName — source name containing null bytes.
 func testDeployNullBytesInSourceName(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-	testutil.Deploy(t, env.Kit, "null\x00byte-deploy-adv.ts", `output("null");`)
-	// Should either succeed (source is just an identifier) or error cleanly — never panic
+	err := testutil.DeployErr(env.Kit, "null\x00byte-deploy-adv.ts", `output("null");`)
 	if err != nil {
 		return
 	}
@@ -123,7 +107,7 @@ func testDeployNullBytesInSourceName(t *testing.T, env *suite.TestEnv) {
 
 // testDeployThrowsDuringInit — deploy code that throws during initialization.
 func testDeployThrowsDuringInit(t *testing.T, env *suite.TestEnv) {
-	_, err := env.Kit.Deploy(context.Background(), "throw-init-deploy-adv.ts", `
+	err := testutil.DeployErr(env.Kit, "throw-init-deploy-adv.ts", `
 		throw new Error("init explosion");
 	`)
 	assert.Error(t, err)
@@ -139,7 +123,7 @@ func testDeployThrowsDuringInit(t *testing.T, env *suite.TestEnv) {
 func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
-	testutil.Deploy(t, env.Kit, "partial-deploy-adv.ts", `
+	err := testutil.DeployErr(env.Kit, "partial-deploy-adv.ts", `
 		const t = createTool({ id: "partial-adv-tool", description: "partial", execute: async () => ({}) });
 		kit.register("tool", "partial-adv-tool", t);
 		throw new Error("after registration");
@@ -164,19 +148,15 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 
 // testDeployDottedSourceName — dots in source name interact with bus topic resolution.
 func testDeployDottedSourceName(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	testutil.Deploy(t, env.Kit, "my.dotted.agent-deploy-adv.ts", `
 		bus.on("ask", function(msg) { msg.reply({ answer: "dotted" }); });
 	`)
-	require.NoError(t, err)
 
 	// Verify the mailbox resolves correctly despite dots
-	result, err := testutil.EvalTS(t, env.Kit, "__dotted_test-deploy-adv.ts", `
+	result := testutil.EvalTS(t, env.Kit, "__dotted_test-deploy-adv.ts", `
 		var r = bus.publish("ts.my.dotted.agent-deploy-adv.ask", { q: "test" });
 		return r.replyTo;
 	`)
-	require.NoError(t, err)
 	assert.Contains(t, result, "ts.my.dotted.agent-deploy-adv.ask.reply.")
 
 	testutil.Teardown(t, env.Kit, "my.dotted.agent-deploy-adv.ts")
@@ -191,14 +171,12 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 		const a = createTool({ id: "tool-a-adv", description: "v1", execute: async () => ({ v: 1 }) });
 		kit.register("tool", "tool-a-adv", a);
 	`)
-	require.NoError(t, err)
 
 	// Redeploy with tool B (no tool A)
 	testutil.Deploy(t, env.Kit, "evolving-deploy-adv.ts", `
 		const b = createTool({ id: "tool-b-adv", description: "v2", execute: async () => ({ v: 2 }) });
 		kit.register("tool", "tool-b-adv", b);
 	`)
-	require.NoError(t, err)
 
 	// tool-a should not exist
 	pr, _ := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "tool-a-adv"})

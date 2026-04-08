@@ -10,62 +10,65 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 func BenchmarkDeploy_1KB(b *testing.B) {
-	k := benchKernel(b)
-	ctx := context.Background()
+	k := benchKit(b)
 	code := `bus.on("x", (msg) => msg.reply({}));`
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		source := fmt.Sprintf("bench-%d.ts", i)
-		k.Deploy(ctx, source, code)
-		k.Teardown(ctx, source)
+		testutil.DeployErr(k, source, code)
+		// Teardown via bus — fire and forget for bench
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+		cancel()
 	}
 }
 
 func BenchmarkDeploy_10KB(b *testing.B) {
-	k := benchKernel(b)
-	ctx := context.Background()
+	k := benchKit(b)
 	code := `bus.on("x", (msg) => msg.reply({})); ` + strings.Repeat("// padding line\n", 500)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
-		k.Deploy(ctx, source, code)
-		k.Teardown(ctx, source)
+		testutil.DeployErr(k, source, code)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+		cancel()
 	}
 }
 
 func BenchmarkEvalTS_Trivial(b *testing.B) {
-	k := benchKernel(b)
-	ctx := context.Background()
+	k := benchKit(b)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		k.EvalTS(ctx, "bench.ts", `return "ok"`)
+		testutil.EvalTSErr(k, "bench.ts", `return "ok"`)
 	}
 }
 
 func BenchmarkEvalTS_JSONParse(b *testing.B) {
-	k := benchKernel(b)
-	ctx := context.Background()
+	k := benchKit(b)
 	payload := `{"key":"` + strings.Repeat("x", 1000) + `"}`
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		k.EvalTS(ctx, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload))
+		testutil.EvalTSErr(k, "bench.ts", fmt.Sprintf(`return JSON.stringify(JSON.parse('%s'))`, payload))
 	}
 }
 
 func BenchmarkBusRoundtrip(b *testing.B) {
-	k := benchKernel(b)
+	k := benchKit(b)
 	ctx := context.Background()
 
-	k.Deploy(ctx, "bench-handler.ts", `bus.on("bench", (msg) => msg.reply({ ok: true }));`)
+	testutil.DeployErr(k, "bench-handler.ts", `bus.on("bench", (msg) => msg.reply({ ok: true }));`)
 	time.Sleep(200 * time.Millisecond)
 
 	b.ResetTimer()
@@ -79,7 +82,7 @@ func BenchmarkBusRoundtrip(b *testing.B) {
 }
 
 func BenchmarkToolCall(b *testing.B) {
-	k := benchKernel(b)
+	k := benchKit(b)
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -98,10 +101,10 @@ func BenchmarkToolCall(b *testing.B) {
 }
 
 func BenchmarkPumpThroughput(b *testing.B) {
-	k := benchKernel(b)
+	k := benchKit(b)
 	ctx := context.Background()
 
-	k.Deploy(ctx, "pump-bench.ts", `bus.on("pump", (msg) => msg.reply({ ok: true }));`)
+	testutil.DeployErr(k, "pump-bench.ts", `bus.on("pump", (msg) => msg.reply({ ok: true }));`)
 	time.Sleep(200 * time.Millisecond)
 
 	b.ResetTimer()
@@ -121,43 +124,39 @@ func BenchmarkRestartRecovery(b *testing.B) {
 				b.StopTimer()
 				storePath := filepath.Join(b.TempDir(), "restart-bench.db")
 				store, _ := brainkit.NewSQLiteStore(storePath)
-				k, _ := brainkit.NewKernel(brainkit.KernelConfig{Store: store, Namespace: "bench", CallerID: "bench"})
+				k, _ := brainkit.New(brainkit.Config{Store: store, Namespace: "bench", CallerID: "bench"})
 				for j := 0; j < n; j++ {
-					k.Deploy(context.Background(), fmt.Sprintf("svc-%d.ts", j),
+					testutil.DeployErr(k, fmt.Sprintf("svc-%d.ts", j),
 						`bus.on("x", (msg) => msg.reply({}));`)
 				}
 				k.Close()
 
 				b.StartTimer()
 				store2, _ := brainkit.NewSQLiteStore(storePath)
-				k2, _ := brainkit.NewKernel(brainkit.KernelConfig{Store: store2, Namespace: "bench", CallerID: "bench"})
+				k2, _ := brainkit.New(brainkit.Config{Store: store2, Namespace: "bench", CallerID: "bench"})
 				k2.Close()
 			}
 		})
 	}
 }
 
-// benchKernel creates a minimal Kernel for benchmarks.
-// Does NOT use testutil.NewTestKernelFull because it takes *testing.T.
-func benchKernel(b *testing.B) *brainkit.Kernel {
+// benchKit creates a minimal Kit for benchmarks.
+func benchKit(b *testing.B) *brainkit.Kit {
 	b.Helper()
 	tmpDir := b.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
 	})
 	if err != nil {
-		b.Fatalf("benchKernel: %v", err)
+		b.Fatalf("benchKit: %v", err)
 	}
 
-	// Register echo tool for BenchmarkToolCall
-	brainkit.RegisterTool(k, "echo", struct {
-		Description string
-		Execute     func(ctx context.Context, input struct{ Message string }) (any, error)
-	}{
+	type echoIn struct{ Message string `json:"message"` }
+	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echo",
-		Execute: func(ctx context.Context, input struct{ Message string }) (any, error) {
+		Execute: func(ctx context.Context, input echoIn) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})

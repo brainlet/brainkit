@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/bench"
@@ -15,10 +16,10 @@ import (
 // Run executes all bus domain benchmarks against the given environment.
 func Run(b *testing.B, env *bench.BenchEnv) {
 	ctx := context.Background()
-	k := env.Kernel
+	k := env.Kit
 
 	// Deploy a handler for roundtrip and pump benchmarks.
-	if _, err := k.Deploy(ctx, "bench-handler.ts", `bus.on("bench", (msg) => msg.reply({ ok: true }));`); err != nil {
+	if err := testutil.DeployErr(k, "bench-handler.ts", `bus.on("bench", (msg) => msg.reply({ ok: true }));`); err != nil {
 		b.Fatalf("deploy bench-handler: %v", err)
 	}
 	time.Sleep(200 * time.Millisecond)

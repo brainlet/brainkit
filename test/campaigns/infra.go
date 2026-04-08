@@ -261,11 +261,11 @@ func (inf *Infra) RunFixtures(t *testing.T, patterns ...string) {
 	root := fixturesRoot(t)
 	runner := fixtures.NewRunner(root)
 
-	// Wire up a kernel factory that uses our infra containers.
-	runner.WithKernelFactory(func(t *testing.T, needs fixtures.FixtureNeeds) *brainkit.Kernel {
+	// Wire up a kit factory that uses our infra containers.
+	runner.WithKitFactory(func(t *testing.T, needs fixtures.FixtureNeeds) *brainkit.Kit {
 		t.Helper()
 		env := inf.Env(t)
-		return env.Kernel
+		return env.Kit
 	})
 
 	runner.RunMatching(t, patterns...)

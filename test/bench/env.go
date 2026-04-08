@@ -14,23 +14,23 @@ import (
 // BenchEnv is the shared benchmark environment.
 // Mirrors suite.TestEnv but takes *testing.B instead of *testing.T.
 type BenchEnv struct {
-	Kernel *brainkit.Kernel
+	Kit *brainkit.Kit
 }
 
-// NewEnv creates a BenchEnv with a fully configured kernel for benchmarks.
-// The kernel is created once and reused across all sub-benchmarks.
+// NewEnv creates a BenchEnv with a fully configured kit for benchmarks.
+// The kit is created once and reused across all sub-benchmarks.
 // Caller must call b.Cleanup or defer env.Close().
 func NewEnv(b *testing.B) *BenchEnv {
 	b.Helper()
 	tmpDir := b.TempDir()
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
 	})
 	if err != nil {
-		b.Fatalf("bench.NewEnv: NewKernel: %v", err)
+		b.Fatalf("bench.NewEnv: New: %v", err)
 	}
 
 	// Register echo tool (used by bus benchmarks).
@@ -45,7 +45,7 @@ func NewEnv(b *testing.B) *BenchEnv {
 
 	b.Cleanup(func() { k.Close() })
 
-	return &BenchEnv{Kernel: k}
+	return &BenchEnv{Kit: k}
 }
 
 type echoInput struct {

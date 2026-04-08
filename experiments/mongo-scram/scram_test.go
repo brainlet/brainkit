@@ -6,7 +6,6 @@
 package mongoscram
 
 import (
-	"context"
 	"net"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,7 @@ import (
 func TestSCRAMCrypto(t *testing.T) {
 	testutil.LoadEnv(t)
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
@@ -32,10 +31,8 @@ func TestSCRAMCrypto(t *testing.T) {
 	}
 	defer k.Close()
 
-	ctx := context.Background()
-
 	// Test crypto primitives used by SCRAM-SHA-256
-	result, err := k.EvalTS(ctx, "__scram_crypto.ts", `
+	result := testutil.EvalTS(t, k, "__scram_crypto.ts", `
 		var crypto = globalThis.crypto;
 		var results = {};
 
@@ -125,9 +122,6 @@ func TestSCRAMCrypto(t *testing.T) {
 
 		return JSON.stringify(results);
 	`)
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Logf("Crypto: %s", result)
 }
 
@@ -154,7 +148,7 @@ func TestSCRAMJSAuth(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	k, err := brainkit.New(brainkit.Config{
 		Namespace: "test", CallerID: "test-scram", FSRoot: tmpDir,
 		EnvVars: map[string]string{
 			"MONGODB_URL": "mongodb://test:test@" + mongoAddr,
@@ -171,10 +165,7 @@ func TestSCRAMJSAuth(t *testing.T) {
 	}
 	defer k.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	result, err := k.EvalTS(ctx, "__scram.ts", `
+	result := testutil.EvalTS(t, k, "__scram.ts", `
 		try {
 			var embed = globalThis.__agent_embed;
 			var store = new embed.MongoDBStore({
@@ -190,8 +181,5 @@ func TestSCRAMJSAuth(t *testing.T) {
 			return JSON.stringify({ error: e.message.substring(0, 200), stack: (e.stack || "").substring(0, 500) });
 		}
 	`)
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Logf("Result: %s", result)
 }

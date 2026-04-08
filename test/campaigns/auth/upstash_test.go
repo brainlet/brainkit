@@ -18,7 +18,7 @@ func TestUpstash_TokenAuth(t *testing.T) {
 		t.Skip("needs UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in .env")
 	}
 
-	k := newKernel(t, map[string]string{
+	k := newKit(t, map[string]string{
 		"UPSTASH_REDIS_REST_URL":   url,
 		"UPSTASH_REDIS_REST_TOKEN": token,
 	})
@@ -36,7 +36,7 @@ func TestUpstash_TokenAuth(t *testing.T) {
 // TestInMemory_NoAuth — InMemory store (no auth, baseline).
 // Ported from test/auth/auth_test.go:TestInMemory_NoAuth.
 func TestInMemory_NoAuth(t *testing.T) {
-	k := newKernel(t, map[string]string{})
+	k := newKit(t, map[string]string{})
 
 	result := evalStore(t, k, "inmemory", `
 		var store = new embed.InMemoryStore();

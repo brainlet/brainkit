@@ -121,8 +121,7 @@ func testTSModuleImports(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying module imports check")
 	}
 
-	result, err := testutil.EvalTS(t, env.Kit, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__read_imports_adv.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -167,8 +166,7 @@ func testTSAgentEndowments(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying agent endowments check")
 	}
 
-	result, err := testutil.EvalTS(t, env.Kit, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__read_agent_endowments.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -208,8 +206,7 @@ func testTSAISDKEndowments(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying AI SDK endowments check")
 	}
 
-	result, err := testutil.EvalTS(t, env.Kit, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__read_ai_endowments.ts", `return globalThis.__module_result || "null"`)
 
 	var checks map[string]bool
 	require.NoError(t, json.Unmarshal([]byte(result), &checks))
@@ -318,8 +315,7 @@ func testTSDeployWithWorkflow(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout deploying workflow")
 	}
 
-	result, err := testutil.EvalTS(t, env.Kit, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
-	require.NoError(t, err)
+	result := testutil.EvalTS(t, env.Kit, "__read_wf_deploy.ts", `return globalThis.__module_result || "null"`)
 
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
@@ -438,20 +434,16 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 
 // testTSFileExtensionHandling — deploy .js vs .ts file extension handling.
 func testTSFileExtensionHandling(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	// .ts should work (transpiled)
 	testutil.Deploy(t, env.Kit, "ext-ts-deploy-adv.ts", `
 		const typed: string = "ts works";
 		output({ result: typed });
 	`)
-	require.NoError(t, err)
 
 	// .js should work (executed directly)
 	testutil.Deploy(t, env.Kit, "ext-js-deploy-adv.js", `output("js works");`)
-	require.NoError(t, err)
 
-	result, _ := testutil.EvalTS(t, env.Kit, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
+	result := testutil.EvalTS(t, env.Kit, "__read_ext_adv.ts", `return String(globalThis.__module_result || "");`)
 	assert.Equal(t, "js works", result)
 
 	testutil.Teardown(t, env.Kit, "ext-ts-deploy-adv.ts")
