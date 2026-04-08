@@ -130,31 +130,27 @@ func testStorageRuntimeSQLiteAdd(t *testing.T, env *suite.TestEnv) {
 	sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "sqlite-runtime-reg-adv"})
 }
 
-// testStorageRuntimeListResources — ListResources equivalent via registry.list bus command.
+// testStorageRuntimeListResources — verify registered tool appears in tool.list bus command.
 func testStorageRuntimeListResources(t *testing.T, env *suite.TestEnv) {
-	// After deployment
 	testutil.Deploy(t, env.Kit, "res-test-reg-adv.ts", `
 		const t = createTool({id: "res-tool-reg-adv", description: "test", execute: async () => ({})});
 		kit.register("tool", "res-tool-reg-adv", t);
 	`)
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, "res-test-reg-adv.ts") })
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Verify tool appears in registry list
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "tool"})
-	listCh := make(chan sdk.RegistryListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.RegistryListResp, _ sdk.Message) { listCh <- resp })
-	defer unsub()
-
-	select {
-	case resp := <-listCh:
-		assert.Contains(t, string(resp.Items), "res-tool-reg-adv")
-	case <-ctx.Done():
-		t.Fatal("timeout listing tools")
+	// Verify tool appears via tool.list bus command
+	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
+	var resp sdk.ToolListResp
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
+	found := false
+	for _, tool := range resp.Tools {
+		if strings.Contains(tool.Name, "res-tool-reg-adv") || tool.ShortName == "res-tool-reg-adv" {
+			found = true
+		}
+	}
+	assert.True(t, found, "res-tool-reg-adv should appear in tool.list")
 }
 
 // testStorageRuntimeResourcesFromSource — track resources by deployment source via EvalTS.
@@ -165,23 +161,19 @@ func testStorageRuntimeResourcesFromSource(t *testing.T, env *suite.TestEnv) {
 	`)
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, "source-track-reg-adv.ts") })
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Verify the tool is registered
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "tool"})
-	listCh := make(chan sdk.RegistryListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.RegistryListResp, _ sdk.Message) { listCh <- resp })
-	defer unsub()
-
-	select {
-	case resp := <-listCh:
-		assert.True(t, strings.Contains(string(resp.Items), "tracked-tool-reg-adv"),
-			"should have tool from source")
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	// Verify the tool is registered via tool.list
+	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
+	var resp sdk.ToolListResp
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
+	found := false
+	for _, tool := range resp.Tools {
+		if strings.Contains(tool.Name, "tracked-tool-reg-adv") || tool.ShortName == "tracked-tool-reg-adv" {
+			found = true
+		}
+	}
+	assert.True(t, found, "should have tool from source")
 }
 
 // testStorageRuntimeScalingPool — basic pool lifecycle.
