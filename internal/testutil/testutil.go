@@ -3,7 +3,6 @@ package testutil
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,17 +11,16 @@ import (
 	"testing"
 	"time"
 
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
-	provreg "github.com/brainlet/brainkit/internal/providers"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// TestKernel wraps a Kernel and exposes both sdk.Runtime and *Kernel for setup.
-type TestKernel struct {
-	*brainkit.Kernel
+// TestKit wraps a Kit for test convenience.
+type TestKit struct {
+	*brainkit.Kit
 }
 
 // EchoInput is the input type for the echo test tool.
@@ -65,7 +63,7 @@ func LoadEnv(t *testing.T) {
 	envPath := filepath.Join(root, ".env")
 	f, err := os.Open(envPath)
 	if err != nil {
-		return // no .env, that's fine
+		return
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -81,27 +79,24 @@ func LoadEnv(t *testing.T) {
 	}
 }
 
-// NewTestKernelFull creates a Kernel with workspace, storage, AI provider, and a registered Go tool.
-func NewTestKernelFull(t *testing.T) *TestKernel {
+// NewTestKitFull creates a Kit with workspace, storage, AI provider, and registered Go tools.
+func NewTestKitFull(t *testing.T) *TestKit {
 	t.Helper()
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	var providers []brainkit.ProviderConfig
 	envVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		aiProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
+		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace:   "test",
-		CallerID:    "test-caller",
-		FSRoot:      tmpDir,
-		AIProviders: aiProviders,
+	kit, err := brainkit.New(brainkit.Config{
+		Namespace: "test",
+		CallerID:  "test-caller",
+		FSRoot:    tmpDir,
+		Providers: providers,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 			"mem":     brainkit.InMemoryStorage(),
@@ -112,12 +107,11 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		EnvVars: envVars,
 	})
 	if err != nil {
-		t.Fatalf("NewKernel: %v", err)
+		t.Fatalf("brainkit.New: %v", err)
 	}
-	t.Cleanup(func() { k.Close() })
+	t.Cleanup(func() { kit.Close() })
 
-	// Register test tools
-	err = brainkit.RegisterTool(k, "echo", tools.TypedTool[EchoInput]{
+	err = brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
@@ -127,7 +121,7 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		t.Fatalf("RegisterTool echo: %v", err)
 	}
 
-	err = brainkit.RegisterTool(k, "add", tools.TypedTool[AddInput]{
+	err = brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
@@ -137,70 +131,58 @@ func NewTestKernelFull(t *testing.T) *TestKernel {
 		t.Fatalf("RegisterTool add: %v", err)
 	}
 
-	return &TestKernel{k}
+	return &TestKit{kit}
 }
 
-// NewTestKernel creates a Kernel as sdk.Runtime.
-func NewTestKernel(t *testing.T) sdk.Runtime {
+// NewTestKit creates a Kit as sdk.Runtime.
+func NewTestKit(t *testing.T) sdk.Runtime {
 	t.Helper()
-	return NewTestKernelFull(t)
+	return NewTestKitFull(t)
 }
 
-// NewTestNode creates a Node with memory transport.
+// NewTestNode creates a Kit with memory transport.
 func NewTestNode(t *testing.T) sdk.Runtime {
 	t.Helper()
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	nodeProviders := make(map[string]provreg.AIProviderRegistration)
-	nodeEnvVars := make(map[string]string)
+	var providers []brainkit.ProviderConfig
+	envVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		nodeProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
-		nodeEnvVars["OPENAI_API_KEY"] = key
+		providers = append(providers, brainkit.OpenAI(key))
+		envVars["OPENAI_API_KEY"] = key
 	}
 
-	n, err := brainkit.NewNode(brainkit.NodeConfig{
-		Kernel: brainkit.KernelConfig{
-			Namespace:   "test",
-			CallerID:    "test-node",
-			FSRoot:      tmpDir,
-			AIProviders: nodeProviders,
-			EnvVars:     nodeEnvVars,
-			Storages: map[string]brainkit.StorageConfig{
-				"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
-			},
+	kit, err := brainkit.New(brainkit.Config{
+		Namespace: "test",
+		CallerID:  "test-node",
+		FSRoot:    tmpDir,
+		Transport: "memory",
+		Providers: providers,
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		Messaging: brainkit.MessagingConfig{
-			Transport: "memory",
-		},
+		EnvVars: envVars,
 	})
 	if err != nil {
-		t.Fatalf("NewNode: %v", err)
+		t.Fatalf("brainkit.New (node): %v", err)
 	}
 
-	// Register test tools on Node's kernel
-	brainkit.RegisterTool(n.Kernel, "echo", tools.TypedTool[EchoInput]{
+	brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	brainkit.RegisterTool(n.Kernel, "add", tools.TypedTool[AddInput]{
+	brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	if err := n.Start(context.Background()); err != nil {
-		n.Close()
-		t.Fatalf("Node.Start: %v", err)
-	}
-	t.Cleanup(func() { n.Close() })
-	return n
+	t.Cleanup(func() { kit.Close() })
+	return kit
 }
 
 // HasAIKey returns true if an AI provider key is available.
@@ -237,11 +219,10 @@ func StartPgVectorContainer(t *testing.T) string {
 		"POSTGRES_PASSWORD=test",
 		"POSTGRES_DB=brainkit",
 	)
-	return fmt.Sprintf("postgresql://test:test@%s/brainkit", addr)
+	return "postgresql://test:test@" + addr + "/brainkit"
 }
 
 // ConcurrentDo runs fn in n goroutines and waits for all to complete.
-// Captures panics and reports which goroutine (by index) failed.
 func ConcurrentDo(t *testing.T, n int, fn func(i int)) {
 	t.Helper()
 	var wg sync.WaitGroup
@@ -260,15 +241,14 @@ func ConcurrentDo(t *testing.T, n int, fn func(i int)) {
 	wg.Wait()
 }
 
-// WaitForBusMessage subscribes to a topic, waits for one message, unsubscribes, returns it.
-// Fails with timeout if no message arrives within the deadline.
-func WaitForBusMessage(t *testing.T, k *brainkit.Kernel, topic string, timeout time.Duration) messages.Message {
+// WaitForBusMessage subscribes to a topic, waits for one message, returns it.
+func WaitForBusMessage(t *testing.T, rt sdk.Runtime, topic string, timeout time.Duration) messages.Message {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	ch := make(chan messages.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	unsub, err := rt.SubscribeRaw(ctx, topic, func(msg messages.Message) {
 		select {
 		case ch <- msg:
 		default:
@@ -284,7 +264,6 @@ func WaitForBusMessage(t *testing.T, k *brainkit.Kernel, topic string, timeout t
 		return msg
 	case <-ctx.Done():
 		t.Fatalf("WaitForBusMessage: timeout waiting for message on %s", topic)
-		return messages.Message{} // unreachable
+		return messages.Message{}
 	}
 }
-

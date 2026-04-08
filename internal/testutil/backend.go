@@ -15,7 +15,6 @@ import (
 	"github.com/brainlet/brainkit/internal/transport"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -239,63 +238,65 @@ func RequiresNetworkTransport(t *testing.T, backend string) {
 	}
 }
 
-// NewTestKernelFullWithBackend creates a fully configured Kernel on the given transport backend.
-// Probes the transport for readiness before creating the Kernel — prevents hangs on slow
+// NewTestKitFullWithBackend creates a fully configured Kit on the given transport backend.
+// Probes the transport for readiness before creating the Kit — prevents hangs on slow
 // backends (AMQP queue binding, SQL table creation, etc.).
-func NewTestKernelFullWithBackend(t *testing.T, backend string) *TestKernel {
+func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 	t.Helper()
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	var providers []brainkit.ProviderConfig
 	envVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		aiProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
+		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	cfg := TransportConfigForBackend(t, backend)
-	transport := MustCreateTransport(t, cfg)
-	t.Cleanup(func() { transport.Close() })
+	// Get transport config (starts containers if needed)
+	tcfg := TransportConfigForBackend(t, backend)
 
-	// Probe transport readiness — ensures round-trip pub/sub works before
-	// creating the Kernel. SQL backends need table creation, AMQP needs
-	// queue binding, all of which may take time after container start.
-	WaitForBackendReady(t, transport)
+	// Probe readiness with a temporary transport before creating Kit
+	probe := MustCreateTransport(t, tcfg)
+	WaitForBackendReady(t, probe)
+	probe.Close()
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
+	kit, err := brainkit.New(brainkit.Config{
 		Namespace:   "test",
 		CallerID:    "test-" + backend,
 		FSRoot:      tmpDir,
-		AIProviders: aiProviders,
+		Providers:   providers,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		EnvVars:   envVars,
-		Transport: transport,
+		EnvVars:     envVars,
+		Transport:   tcfg.Type,
+		NATSURL:     tcfg.NATSURL,
+		NATSName:    tcfg.NATSName,
+		AMQPURL:     tcfg.AMQPURL,
+		RedisURL:    tcfg.RedisURL,
+		PostgresURL: tcfg.PostgresURL,
+		SQLitePath:  tcfg.SQLitePath,
 	})
 	if err != nil {
-		t.Fatalf("NewKernel(%s): %v", backend, err)
+		t.Fatalf("brainkit.New(%s): %v", backend, err)
 	}
-	t.Cleanup(func() { k.Close() })
+	t.Cleanup(func() { kit.Close() })
 
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[EchoInput]{
+	brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
 	})
-	brainkit.RegisterTool(k, "add", tools.TypedTool[AddInput]{
+	brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
 	})
 
-	return &TestKernel{k}
+	return &TestKit{kit}
 }
 
 // BuildTestPlugin compiles the testplugin binary and returns its path.
