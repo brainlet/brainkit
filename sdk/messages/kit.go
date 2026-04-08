@@ -5,8 +5,10 @@ import "encoding/json"
 // ── Kit lifecycle messages ──
 
 type KitDeployMsg struct {
-	Source string `json:"source"`
-	Code   string `json:"code"`
+	Source      string `json:"source"`
+	Code        string `json:"code"`
+	Role        string `json:"role,omitempty"`
+	PackageName string `json:"packageName,omitempty"`
 }
 
 func (KitDeployMsg) BusTopic() string { return "kit.deploy" }

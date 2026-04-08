@@ -48,7 +48,7 @@ type Package struct {
 	Files   map[string]string `json:"files"`
 }
 
-// ── Internal type re-exports needed by consumers ─────────────────────────────
+// ── Health & Metrics ────────────────────────────────────────────────────────
 
 // HealthStatus is the full health report.
 type HealthStatus = types.HealthStatus
@@ -58,13 +58,6 @@ type HealthCheck = types.HealthCheck
 
 // KernelMetrics is a point-in-time snapshot.
 type KernelMetrics = types.KernelMetrics
-
-// DeploymentInfo describes a deployed package.
-type DeploymentInfo struct {
-	Source    string         `json:"source"`
-	CreatedAt string         `json:"createdAt"`
-	Resources []ResourceInfo `json:"resources,omitempty"`
-}
 
 // ── Scaling ──────────────────────────────────────────────────────────────────
 
@@ -100,11 +93,10 @@ var (
 // TypedTool defines a tool with a typed Go struct for input.
 type TypedTool[T any] = tools.TypedTool[T]
 
-// RegisterTool registers a typed Go tool on a Kernel.
-// Accepts *Kit or *Kernel (via Kit.kernel or directly).
+// RegisterTool registers a typed Go tool on a Kit runtime.
 // Go-only: tool execution requires a Go function pointer, can't be a bus message.
-func RegisterTool[T any](k *Kernel, name string, tool TypedTool[T]) error {
-	return engine.RegisterTool(k, name, tool)
+func RegisterTool[T any](k *Kit, name string, tool TypedTool[T]) error {
+	return engine.RegisterTool(k.kernel, name, tool)
 }
 
 // ── Client ───────────────────────────────────────────────────────────────────
@@ -139,45 +131,6 @@ var (
 
 // DefaultRegistry is the official brainlet plugin registry.
 var DefaultRegistry = types.DefaultRegistry
-
-// ErrorContext provides context about where a non-fatal error occurred.
-type ErrorContext = types.ErrorContext
-
-// InvokeErrorHandler calls the handler if non-nil, otherwise logs.
-var InvokeErrorHandler = types.InvokeErrorHandler
-
-// ── Persistence types (for KitStore implementors) ────────────────────────────
-
-// PersistedDeployment is the on-disk format for a .ts deployment.
-type PersistedDeployment = types.PersistedDeployment
-
-// PersistedSchedule is the on-disk format for a scheduled bus message.
-type PersistedSchedule = types.PersistedSchedule
-
-// InstalledPlugin is the on-disk format for an installed plugin binary.
-type InstalledPlugin = types.InstalledPlugin
-
-// RunningPluginRecord is the on-disk format for a running plugin.
-type RunningPluginRecord = types.RunningPluginRecord
-
-// RunningPlugin describes a running plugin process.
-type RunningPlugin = types.RunningPlugin
-
-// ── Deploy options (for engine internal use, exposed for testutil) ────────────
-
-// DeployOption configures a Deploy call.
-type DeployOption = types.DeployOption
-
-var (
-	WithRole        = types.WithRole
-	WithPackageName = types.WithPackageName
-	WithRestoring   = types.WithRestoring
-)
-
-// ── Observability ────────────────────────────────────────────────────────────
-
-// ObservabilityConfig configures the tracing/observability system.
-type ObservabilityConfig = types.ObservabilityConfig
 
 // ── Encoding helper ──────────────────────────────────────────────────────────
 

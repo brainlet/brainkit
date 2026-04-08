@@ -25,7 +25,14 @@ func newLifecycleDomain(k *Kernel) *LifecycleDomain {
 }
 
 func (d *LifecycleDomain) Deploy(ctx context.Context, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
-	resources, err := d.kit.Deploy(ctx, req.Source, req.Code)
+	var opts []DeployOption
+	if req.Role != "" {
+		opts = append(opts, WithRole(req.Role))
+	}
+	if req.PackageName != "" {
+		opts = append(opts, WithPackageName(req.PackageName))
+	}
+	resources, err := d.kit.Deploy(ctx, req.Source, req.Code, opts...)
 	if err != nil {
 		return nil, err
 	}

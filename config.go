@@ -16,6 +16,9 @@ type Config struct {
 	// Namespace identifies this runtime on the bus. Default: "user".
 	Namespace string
 
+	// CallerID identifies this runtime instance in message metadata. Default: Namespace.
+	CallerID string
+
 	// Transport backend. Empty = in-memory (standalone, no plugins).
 	// Supported: "nats", "amqp", "redis", "sql-sqlite", "sql-postgres".
 	Transport string
@@ -115,6 +118,7 @@ type Config struct {
 func (c Config) toKernelConfig() types.KernelConfig {
 	cfg := types.KernelConfig{
 		Namespace:          c.Namespace,
+		CallerID:           c.CallerID,
 		FSRoot:             c.FSRoot,
 		Storages:           c.Storages,
 		Vectors:            c.Vectors,
