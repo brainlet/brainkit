@@ -13,6 +13,10 @@ import (
 // All fields are optional with sensible defaults. The zero value creates a
 // standalone in-memory runtime with no persistence and auto-detected AI providers.
 type Config struct {
+	// ClusterID identifies the logical group of runtimes. Default: "default".
+	// All runtimes on the same transport with the same ClusterID discover each other.
+	ClusterID string
+
 	// Namespace identifies this runtime on the bus. Default: "user".
 	Namespace string
 
@@ -117,6 +121,8 @@ type Config struct {
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
 func (c Config) toKernelConfig() types.KernelConfig {
 	cfg := types.KernelConfig{
+		ClusterID:          c.ClusterID,
+		RuntimeID:          runtimeID,
 		Namespace:          c.Namespace,
 		CallerID:           c.CallerID,
 		FSRoot:             c.FSRoot,

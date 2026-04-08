@@ -532,6 +532,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	}
 
 	kernel.remote = transport.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, kernel.transport)
+	kernel.remote.SetIdentity(cfg.ClusterID, cfg.RuntimeID)
 
 	// SecretsDomain — needs kernel.remote for bus event publishing
 	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, cfg.CallerID, nil, kernel.refreshProviderIfSecret)

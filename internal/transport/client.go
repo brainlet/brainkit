@@ -15,6 +15,8 @@ import (
 type RemoteClient struct {
 	namespace      string
 	callerID       string
+	clusterID      string
+	runtimeID      string
 	pub            message.Publisher
 	sub            message.Subscriber
 	topicSanitizer func(string) string
@@ -40,6 +42,12 @@ func NewRemoteClientWithTransport(namespace, callerID string, transport *Transpo
 	}
 }
 
+// SetIdentity configures cluster and runtime identity for message metadata.
+func (c *RemoteClient) SetIdentity(clusterID, runtimeID string) {
+	c.clusterID = clusterID
+	c.runtimeID = runtimeID
+}
+
 func (c *RemoteClient) resolvedTopic(logicalTopic string) string {
 	topic := NamespacedTopic(c.namespace, logicalTopic)
 	if c.topicSanitizer != nil {
@@ -56,13 +64,27 @@ func (c *RemoteClient) resolvedTopicForNamespace(targetNamespace, logicalTopic s
 	return topic
 }
 
+// stampIdentity writes all identity metadata onto a Watermill message.
+func (c *RemoteClient) stampIdentity(wmsg *message.Message) {
+	if c.callerID != "" {
+		wmsg.Metadata.Set("callerId", c.callerID)
+	}
+	if c.namespace != "" {
+		wmsg.Metadata.Set("namespace", c.namespace)
+	}
+	if c.clusterID != "" {
+		wmsg.Metadata.Set("clusterID", c.clusterID)
+	}
+	if c.runtimeID != "" {
+		wmsg.Metadata.Set("runtimeID", c.runtimeID)
+	}
+}
+
 // PublishRawToNamespace publishes to a specific namespace, bypassing the client's own namespace.
 func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespace, logicalTopic string, payload json.RawMessage) (string, error) {
 	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
 	wmsg.SetContext(ctx)
-	if c.callerID != "" {
-		wmsg.Metadata.Set("callerId", c.callerID)
-	}
+	c.stampIdentity(wmsg)
 	correlationID := CorrelationIDFromContext(ctx)
 	if correlationID == "" {
 		correlationID = uuid.NewString()
@@ -138,9 +160,7 @@ func (c *RemoteClient) SubscribeRawToNamespace(ctx context.Context, targetNamesp
 func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payload json.RawMessage) (string, error) {
 	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
 	wmsg.SetContext(ctx)
-	if c.callerID != "" {
-		wmsg.Metadata.Set("callerId", c.callerID)
-	}
+	c.stampIdentity(wmsg)
 
 	// Always generate or reuse correlationID
 	correlationID := CorrelationIDFromContext(ctx)
@@ -190,9 +210,7 @@ func (c *RemoteClient) PublishRaw(ctx context.Context, logicalTopic string, payl
 func (c *RemoteClient) PublishRawWithMeta(ctx context.Context, logicalTopic string, payload json.RawMessage, extra map[string]string) (string, error) {
 	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
 	wmsg.SetContext(ctx)
-	if c.callerID != "" {
-		wmsg.Metadata.Set("callerId", c.callerID)
-	}
+	c.stampIdentity(wmsg)
 
 	correlationID := CorrelationIDFromContext(ctx)
 	if correlationID == "" {

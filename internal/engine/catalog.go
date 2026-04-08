@@ -247,6 +247,18 @@ func commandCatalog() *commandRegistry {
 					return nil, ctx.Err()
 				}
 			}),
+			// ── Cluster identity ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ClusterPeersMsg) (*sdk.ClusterPeersResp, error) {
+				return &sdk.ClusterPeersResp{
+					Peers: []sdk.ClusterPeerInfo{{
+						ClusterID: kernel.config.ClusterID,
+						RuntimeID: kernel.config.RuntimeID,
+						Namespace: kernel.config.Namespace,
+						CallerID:  kernel.config.CallerID,
+						StartedAt: kernel.startedAt.Format("2006-01-02T15:04:05Z07:00"),
+					}},
+				}, nil
+			}),
 			// ── Health (bus) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitHealthMsg) (*sdk.KitHealthResp, error) {
 				return &sdk.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil

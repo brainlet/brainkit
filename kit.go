@@ -7,7 +7,16 @@ import (
 
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/google/uuid"
 )
+
+// runtimeID is generated once per process. All Kit instances in the same
+// Go process share this ID. Used to distinguish local vs remote messages.
+var runtimeID = uuid.NewString()
+
+// RuntimeID returns the process-level identity shared by all Kits.
+// Two Kits with the same RuntimeID are in the same OS process.
+func RuntimeID() string { return runtimeID }
 
 // Kit is a brainkit runtime.
 //

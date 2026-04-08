@@ -161,6 +161,25 @@ type KitSetDrainingResp struct {
 	Draining bool `json:"draining"`
 }
 
+// ── Cluster identity ──
+
+type ClusterPeersMsg struct{}
+
+func (ClusterPeersMsg) BusTopic() string { return "cluster.peers" }
+
+type ClusterPeersResp struct {
+	ResultMeta
+	Peers []ClusterPeerInfo `json:"peers"`
+}
+
+type ClusterPeerInfo struct {
+	ClusterID string `json:"clusterId"`
+	RuntimeID string `json:"runtimeId"`
+	Namespace string `json:"namespace"`
+	CallerID  string `json:"callerId"`
+	StartedAt string `json:"startedAt"`
+}
+
 // ── Send (request-reply from Go) ──
 
 type KitSendMsg struct {

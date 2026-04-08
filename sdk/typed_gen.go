@@ -52,6 +52,16 @@ func SubscribeAgentSetStatusResp(rt Runtime, ctx context.Context, topic string, 
 	return SubscribeTo[AgentSetStatusResp](rt, ctx, topic, handler)
 }
 
+// PublishClusterPeers publishes a ClusterPeersMsg and returns routing info for the response.
+func PublishClusterPeers(rt Runtime, ctx context.Context, msg ClusterPeersMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeClusterPeersResp subscribes to the response topic for a ClusterPeersMsg command.
+func SubscribeClusterPeersResp(rt Runtime, ctx context.Context, topic string, handler func(ClusterPeersResp, Message)) (func(), error) {
+	return SubscribeTo[ClusterPeersResp](rt, ctx, topic, handler)
+}
+
 // PublishGatewayRouteAdd publishes a GatewayRouteAddMsg and returns routing info for the response.
 func PublishGatewayRouteAdd(rt Runtime, ctx context.Context, msg GatewayRouteAddMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

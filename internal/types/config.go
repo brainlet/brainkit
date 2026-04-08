@@ -9,6 +9,8 @@ import (
 // KernelConfig configures the local runtime.
 type KernelConfig struct {
 	// Identity
+	ClusterID string
+	RuntimeID string
 	Namespace string
 	CallerID  string
 
