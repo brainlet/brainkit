@@ -6,14 +6,16 @@ import "encoding/json"
 
 type KitDeployedEvent struct {
 	Source    string         `json:"source"`
+	RuntimeID string         `json:"runtimeId,omitempty"` // who deployed — for propagation skip-self
 	Resources []ResourceInfo `json:"resources,omitempty"`
 }
 
 func (KitDeployedEvent) BusTopic() string { return "kit.deployed" }
 
 type KitTeardownedEvent struct {
-	Source  string `json:"source"`
-	Removed int    `json:"removed"`
+	Source    string `json:"source"`
+	RuntimeID string `json:"runtimeId,omitempty"` // who tore down — for propagation skip-self
+	Removed   int    `json:"removed"`
 }
 
 func (KitTeardownedEvent) BusTopic() string { return "kit.teardown.done" }

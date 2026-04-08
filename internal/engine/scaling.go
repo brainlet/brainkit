@@ -11,6 +11,16 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
+// PoolMode controls how pool instances relate to each other.
+type PoolMode string
+
+const (
+	// PoolSharded gives each instance a different namespace (workload isolation).
+	PoolSharded PoolMode = "sharded"
+	// PoolReplicated gives all instances the same namespace (horizontal scaling via competing consumers).
+	PoolReplicated PoolMode = "replicated"
+)
+
 // PoolConfig configures a Kit pool.
 type PoolConfig struct {
 	Base         NodeConfig
@@ -18,6 +28,7 @@ type PoolConfig struct {
 	Min          int
 	Max          int
 	Strategy     ScalingStrategy
+	Mode         PoolMode // default: PoolSharded
 }
 
 type pool struct {
@@ -221,7 +232,17 @@ func (im *InstanceManager) EvaluateAndScale() {
 
 func (im *InstanceManager) spawnInstance(p *pool, idx int) (*Node, error) {
 	cfg := p.config.Base
-	cfg.Kernel.Namespace = fmt.Sprintf("%s-%s-%d", p.name, cfg.Kernel.Namespace, idx)
+	switch p.config.Mode {
+	case PoolReplicated:
+		// Same namespace — consumer group distributes messages between replicas.
+		// Different CallerID for tracing/debugging.
+		if cfg.Kernel.CallerID == "" {
+			cfg.Kernel.CallerID = cfg.Kernel.Namespace
+		}
+		cfg.Kernel.CallerID = fmt.Sprintf("%s-replica-%d", cfg.Kernel.CallerID, idx)
+	default: // PoolSharded
+		cfg.Kernel.Namespace = fmt.Sprintf("%s-%s-%d", p.name, cfg.Kernel.Namespace, idx)
+	}
 	cfg.Kernel.SharedTools = p.sharedTools
 
 	node, err := NewNode(cfg)

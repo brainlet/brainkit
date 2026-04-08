@@ -19,6 +19,7 @@ type RemoteClient struct {
 	runtimeID      string
 	pub            message.Publisher
 	sub            message.Subscriber
+	fanOutSub      message.Subscriber
 	topicSanitizer func(string) string
 }
 
@@ -38,6 +39,7 @@ func NewRemoteClientWithTransport(namespace, callerID string, transport *Transpo
 		callerID:       callerID,
 		pub:            transport.Publisher,
 		sub:            transport.Subscriber,
+		fanOutSub:      transport.FanOutSubscriber,
 		topicSanitizer: transport.TopicSanitizer,
 	}
 }
@@ -270,6 +272,43 @@ func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID
 func (c *RemoteClient) SubscribeRaw(ctx context.Context, logicalTopic string, handler func(sdk.Message)) (func(), error) {
 	subCtx, cancel := context.WithCancel(ctx)
 	ch, err := c.sub.Subscribe(subCtx, c.resolvedTopic(logicalTopic))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	go func() {
+		for {
+			select {
+			case <-subCtx.Done():
+				return
+			case wmsg, ok := <-ch:
+				if !ok {
+					return
+				}
+				handler(sdk.Message{
+					Topic:    logicalTopic,
+					Payload:  append([]byte(nil), wmsg.Payload...),
+					CallerID: wmsg.Metadata.Get("callerId"),
+					Metadata: cloneMetadata(wmsg.Metadata),
+				})
+				wmsg.Ack()
+			}
+		}
+	}()
+
+	return cancel, nil
+}
+
+// SubscribeRawFanOut subscribes using the fan-out subscriber (all replicas receive).
+// Used for events like deployment propagation where every replica needs the message.
+func (c *RemoteClient) SubscribeRawFanOut(ctx context.Context, logicalTopic string, handler func(sdk.Message)) (func(), error) {
+	if c.fanOutSub == nil {
+		// Fallback to regular subscriber if no fan-out subscriber configured
+		return c.SubscribeRaw(ctx, logicalTopic, handler)
+	}
+	subCtx, cancel := context.WithCancel(ctx)
+	ch, err := c.fanOutSub.Subscribe(subCtx, c.resolvedTopic(logicalTopic))
 	if err != nil {
 		cancel()
 		return nil, err

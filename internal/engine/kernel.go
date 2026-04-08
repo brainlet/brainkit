@@ -576,6 +576,12 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.redeployPersistedDeployments()
 	}
 
+	// Subscribe to deployment propagation events (for multi-replica sync).
+	// Uses fan-out subscriber so ALL replicas receive deploy/teardown events.
+	if cfg.Store != nil {
+		kernel.subscribeToDeploymentPropagation()
+	}
+
 	// Restore persisted schedules
 	if cfg.Store != nil {
 		kernel.restoreSchedules()
@@ -1360,4 +1366,59 @@ func extractProviderCredentials(reg provreg.AIProviderRegistration) struct{ APIK
 	default:
 		return struct{ APIKey, BaseURL string }{}
 	}
+}
+
+// subscribeToDeploymentPropagation listens for deploy/teardown events from other replicas.
+// Uses the fan-out subscriber so ALL replicas receive these events.
+// When a deploy event from a different RuntimeID arrives, loads the deployment from
+// the shared KitStore and deploys locally.
+func (k *Kernel) subscribeToDeploymentPropagation() {
+	// Listen for deploy events
+	_, _ = k.remote.SubscribeRawFanOut(context.Background(), "kit.deployed", func(msg sdk.Message) {
+		var evt sdk.KitDeployedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return
+		}
+		// Skip events from self
+		if evt.RuntimeID == k.config.RuntimeID {
+			return
+		}
+		// Load from shared store and deploy locally
+		dep, err := k.config.Store.LoadDeployment(evt.Source)
+		if err != nil {
+			k.logger.Warn("propagation: load deployment failed",
+				slog.String("source", evt.Source),
+				slog.String("error", err.Error()))
+			return
+		}
+		if _, err := k.Deploy(context.Background(), dep.Source, dep.Code, WithRestoring()); err != nil {
+			k.logger.Warn("propagation: deploy failed",
+				slog.String("source", evt.Source),
+				slog.String("error", err.Error()))
+		} else {
+			k.logger.Info("propagation: deployed from replica",
+				slog.String("source", evt.Source),
+				slog.String("runtimeID", evt.RuntimeID))
+		}
+	})
+
+	// Listen for teardown events
+	_, _ = k.remote.SubscribeRawFanOut(context.Background(), "kit.teardown.done", func(msg sdk.Message) {
+		var evt sdk.KitTeardownedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return
+		}
+		if evt.RuntimeID == k.config.RuntimeID {
+			return
+		}
+		if _, err := k.Teardown(context.Background(), evt.Source); err != nil {
+			k.logger.Warn("propagation: teardown failed",
+				slog.String("source", evt.Source),
+				slog.String("error", err.Error()))
+		} else {
+			k.logger.Info("propagation: torn down from replica",
+				slog.String("source", evt.Source),
+				slog.String("runtimeID", evt.RuntimeID))
+		}
+	})
 }

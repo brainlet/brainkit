@@ -82,6 +82,16 @@ type ScalingStrategy = types.ScalingStrategy
 // PoolInfo describes pool state.
 type PoolInfo = types.PoolInfo
 
+// PoolMode controls how pool instances relate to each other.
+type PoolMode = engine.PoolMode
+
+const (
+	// PoolSharded gives each instance a different namespace (workload isolation).
+	PoolSharded = engine.PoolSharded
+	// PoolReplicated gives all instances the same namespace (horizontal scaling).
+	PoolReplicated = engine.PoolReplicated
+)
+
 var (
 	NewInstanceManager   = engine.NewInstanceManager
 	NewStaticStrategy    = engine.NewStaticStrategy

@@ -38,6 +38,7 @@ func (d *LifecycleDomain) Deploy(ctx context.Context, req sdk.KitDeployMsg) (*sd
 	}
 	_ = d.publishLifecycleEvent(ctx, sdk.KitDeployedEvent{
 		Source:    req.Source,
+		RuntimeID: d.kit.config.RuntimeID,
 		Resources: resourceInfosToMessages(resources),
 	})
 	return &sdk.KitDeployResp{
@@ -52,8 +53,9 @@ func (d *LifecycleDomain) Teardown(ctx context.Context, req sdk.KitTeardownMsg) 
 		return nil, err
 	}
 	_ = d.publishLifecycleEvent(ctx, sdk.KitTeardownedEvent{
-		Source:  req.Source,
-		Removed: removed,
+		Source:    req.Source,
+		RuntimeID: d.kit.config.RuntimeID,
+		Removed:   removed,
 	})
 	return &sdk.KitTeardownResp{Removed: removed}, nil
 }
