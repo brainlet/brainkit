@@ -8,102 +8,106 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/google/uuid"
 )
 
-// Deploy deploys .ts code via the kit.deploy bus command and waits for the response.
-// Fails the test on error or timeout.
+// ── Core pattern: subscribe FIRST, then publish ─────────────────────────────
+// GoChannel transport delivers synchronously during Publish. If we publish
+// before subscribing, the response arrives before the subscription is set up.
+// Fix: generate replyTo, subscribe to it, THEN publish with that replyTo.
+
+// roundTrip subscribes to a replyTo topic, publishes a command, and waits for
+// the raw response payload. This is the safe pattern for GoChannel transport.
+func roundTrip(rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Generate replyTo and subscribe BEFORE publishing
+	correlationID := uuid.NewString()
+	replyTo := msg.BusTopic() + ".reply." + correlationID
+
+	ch := make(chan json.RawMessage, 1)
+	unsub, err := rt.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
+		select {
+		case ch <- json.RawMessage(m.Payload):
+		default:
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscribe %s: %w", replyTo, err)
+	}
+	defer unsub()
+
+	// Now publish with the pre-subscribed replyTo
+	if _, err := sdk.Publish(rt, ctx, msg, sdk.WithReplyTo(replyTo)); err != nil {
+		return nil, fmt.Errorf("publish %s: %w", msg.BusTopic(), err)
+	}
+
+	select {
+	case payload := <-ch:
+		return payload, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%s: %w", msg.BusTopic(), ctx.Err())
+	}
+}
+
+// decodeResp unmarshals a response and checks for error field.
+func decodeResp[T any](payload json.RawMessage) (T, error) {
+	var resp T
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return resp, fmt.Errorf("decode response: %w", err)
+	}
+	// Check for error in ResultMeta
+	var meta struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	json.Unmarshal(payload, &meta)
+	if meta.Error != "" {
+		return resp, fmt.Errorf("%s: %s", meta.Code, meta.Error)
+	}
+	return resp, nil
+}
+
+// ── Deploy ──────────────────────────────────────────────────────────────────
+
 func Deploy(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
-	err := DeployErr(rt, source, code)
-	if err != nil {
+	if err := DeployErr(rt, source, code); err != nil {
 		t.Fatalf("Deploy(%s): %v", source, err)
 	}
 }
 
-// DeployErr deploys .ts code via the kit.deploy bus command and returns any error.
 func DeployErr(rt sdk.Runtime, source, code string) error {
 	return DeployWithOpts(rt, source, code, "", "")
 }
 
-// DeployWithOpts deploys with optional RBAC role and package name.
 func DeployWithOpts(rt sdk.Runtime, source, code, role, packageName string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitDeploy(rt, ctx, sdk.KitDeployMsg{
-		Source:      source,
-		Code:        code,
-		Role:        role,
-		PackageName: packageName,
-	})
+	payload, err := roundTrip(rt, sdk.KitDeployMsg{
+		Source: source, Code: code, Role: role, PackageName: packageName,
+	}, 15*time.Second)
 	if err != nil {
-		return fmt.Errorf("publish kit.deploy: %w", err)
-	}
-
-	ch := make(chan error, 1)
-	unsub, err := sdk.SubscribeKitDeployResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitDeployResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- fmt.Errorf("%s: %s", resp.Code, resp.Error)
-			} else {
-				ch <- nil
-			}
-		})
-	if err != nil {
-		return fmt.Errorf("subscribe kit.deploy reply: %w", err)
-	}
-	defer unsub()
-
-	select {
-	case err := <-ch:
 		return err
-	case <-ctx.Done():
-		return fmt.Errorf("deploy %s: %w", source, ctx.Err())
 	}
+	_, err = decodeResp[sdk.KitDeployResp](payload)
+	return err
 }
 
-// DeployWithResources deploys and returns the resource list.
 func DeployWithResources(t *testing.T, rt sdk.Runtime, source, code string) []sdk.ResourceInfo {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitDeploy(rt, ctx, sdk.KitDeployMsg{Source: source, Code: code})
+	payload, err := roundTrip(rt, sdk.KitDeployMsg{Source: source, Code: code}, 15*time.Second)
 	if err != nil {
-		t.Fatalf("Deploy(%s): publish: %v", source, err)
+		t.Fatalf("Deploy(%s): %v", source, err)
 	}
-
-	type result struct {
-		resources []sdk.ResourceInfo
-		err       error
-	}
-	ch := make(chan result, 1)
-	unsub, err := sdk.SubscribeKitDeployResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitDeployResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- result{err: fmt.Errorf("%s: %s", resp.Code, resp.Error)}
-			} else {
-				ch <- result{resources: resp.Resources}
-			}
-		})
+	resp, err := decodeResp[sdk.KitDeployResp](payload)
 	if err != nil {
-		t.Fatalf("Deploy(%s): subscribe: %v", source, err)
+		t.Fatalf("Deploy(%s): %v", source, err)
 	}
-	defer unsub()
-
-	select {
-	case r := <-ch:
-		if r.err != nil {
-			t.Fatalf("Deploy(%s): %v", source, r.err)
-		}
-		return r.resources
-	case <-ctx.Done():
-		t.Fatalf("Deploy(%s): timeout", source)
-		return nil
-	}
+	return resp.Resources
 }
 
-// EvalTS evaluates TypeScript code in the current runtime context via kit.eval-ts bus command.
+// ── EvalTS ──────────────────────────────────────────────────────────────────
+
 func EvalTS(t *testing.T, rt sdk.Runtime, source, code string) string {
 	t.Helper()
 	result, err := EvalTSErr(rt, source, code)
@@ -113,175 +117,58 @@ func EvalTS(t *testing.T, rt sdk.Runtime, source, code string) string {
 	return result
 }
 
-// EvalTSErr evaluates TypeScript code and returns result or error.
 func EvalTSErr(rt sdk.Runtime, source, code string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitEvalTS(rt, ctx, sdk.KitEvalTSMsg{Source: source, Code: code})
+	payload, err := roundTrip(rt, sdk.KitEvalTSMsg{Source: source, Code: code}, 15*time.Second)
 	if err != nil {
-		return "", fmt.Errorf("publish kit.eval-ts: %w", err)
+		return "", err
 	}
-
-	type evalResult struct {
-		val string
-		err error
-	}
-	ch := make(chan evalResult, 1)
-	unsub, err := sdk.SubscribeKitEvalTSResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitEvalTSResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- evalResult{err: fmt.Errorf("%s: %s", resp.Code, resp.Error)}
-			} else {
-				ch <- evalResult{val: resp.Result}
-			}
-		})
+	resp, err := decodeResp[sdk.KitEvalTSResp](payload)
 	if err != nil {
-		return "", fmt.Errorf("subscribe kit.eval-ts reply: %w", err)
+		return "", err
 	}
-	defer unsub()
-
-	select {
-	case r := <-ch:
-		return r.val, r.err
-	case <-ctx.Done():
-		return "", fmt.Errorf("eval-ts %s: %w", source, ctx.Err())
-	}
+	return resp.Result, nil
 }
 
-// SetDraining sets the draining state via kit.set-draining bus command.
+// ── SetDraining ─────────────────────────────────────────────────────────────
+
 func SetDraining(t *testing.T, rt sdk.Runtime, draining bool) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitSetDraining(rt, ctx, sdk.KitSetDrainingMsg{Draining: draining})
+	_, err := roundTrip(rt, sdk.KitSetDrainingMsg{Draining: draining}, 5*time.Second)
 	if err != nil {
-		t.Fatalf("SetDraining: publish: %v", err)
-	}
-
-	ch := make(chan error, 1)
-	unsub, err := sdk.SubscribeKitSetDrainingResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitSetDrainingResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- fmt.Errorf("%s", resp.Error)
-			} else {
-				ch <- nil
-			}
-		})
-	if err != nil {
-		t.Fatalf("SetDraining: subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case err := <-ch:
-		if err != nil {
-			t.Fatalf("SetDraining: %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatalf("SetDraining: timeout")
+		t.Fatalf("SetDraining: %v", err)
 	}
 }
 
-// Teardown tears down a deployment via kit.teardown bus command.
+// ── Teardown ────────────────────────────────────────────────────────────────
+
 func Teardown(t *testing.T, rt sdk.Runtime, source string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitTeardown(rt, ctx, sdk.KitTeardownMsg{Source: source})
+	payload, err := roundTrip(rt, sdk.KitTeardownMsg{Source: source}, 10*time.Second)
 	if err != nil {
-		t.Fatalf("Teardown(%s): publish: %v", source, err)
+		t.Fatalf("Teardown(%s): %v", source, err)
 	}
-
-	ch := make(chan error, 1)
-	unsub, err := sdk.SubscribeKitTeardownResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitTeardownResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- fmt.Errorf("%s", resp.Error)
-			} else {
-				ch <- nil
-			}
-		})
-	if err != nil {
-		t.Fatalf("Teardown(%s): subscribe: %v", source, err)
-	}
-	defer unsub()
-
-	select {
-	case err := <-ch:
-		if err != nil {
-			t.Fatalf("Teardown(%s): %v", source, err)
-		}
-	case <-ctx.Done():
-		t.Fatalf("Teardown(%s): timeout", source)
+	if _, err := decodeResp[sdk.KitTeardownResp](payload); err != nil {
+		t.Fatalf("Teardown(%s): %v", source, err)
 	}
 }
 
-// ListDeployments lists current deployments via bus command.
+// ── ListDeployments ─────────────────────────────────────────────────────────
+
 func ListDeployments(t *testing.T, rt sdk.Runtime) []sdk.DeploymentInfo {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitList(rt, ctx, sdk.KitListMsg{})
+	payload, err := roundTrip(rt, sdk.KitListMsg{}, 10*time.Second)
 	if err != nil {
-		t.Fatalf("ListDeployments: publish: %v", err)
+		t.Fatalf("ListDeployments: %v", err)
 	}
-
-	ch := make(chan []sdk.DeploymentInfo, 1)
-	unsub, err := sdk.SubscribeKitListResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitListResp, _ sdk.Message) {
-			ch <- resp.Deployments
-		})
+	resp, err := decodeResp[sdk.KitListResp](payload)
 	if err != nil {
-		t.Fatalf("ListDeployments: subscribe: %v", err)
+		t.Fatalf("ListDeployments: %v", err)
 	}
-	defer unsub()
-
-	select {
-	case deps := <-ch:
-		return deps
-	case <-ctx.Done():
-		t.Fatalf("ListDeployments: timeout")
-		return nil
-	}
+	return resp.Deployments
 }
 
-// PublishAndWait publishes a typed message and waits for the raw reply payload.
-func PublishAndWait(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) json.RawMessage {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+// ── Schedule ────────────────────────────────────────────────────────────────
 
-	pr, err := sdk.Publish(rt, ctx, msg)
-	if err != nil {
-		t.Fatalf("PublishAndWait: publish %s: %v", msg.BusTopic(), err)
-	}
-
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
-		select {
-		case ch <- json.RawMessage(m.Payload):
-		default:
-		}
-	})
-	if err != nil {
-		t.Fatalf("PublishAndWait: subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case payload := <-ch:
-		return payload
-	case <-ctx.Done():
-		t.Fatalf("PublishAndWait %s: timeout after %v", msg.BusTopic(), timeout)
-		return nil
-	}
-}
-
-// Schedule creates a schedule via the schedules.create bus command and returns the schedule ID.
 func Schedule(t *testing.T, rt sdk.Runtime, expression, topic string, payload json.RawMessage) string {
 	t.Helper()
 	id, err := ScheduleErr(rt, expression, topic, payload)
@@ -291,143 +178,70 @@ func Schedule(t *testing.T, rt sdk.Runtime, expression, topic string, payload js
 	return id
 }
 
-// ScheduleErr creates a schedule via bus command and returns the ID or error.
-func ScheduleErr(rt sdk.Runtime, expression, topic string, payload json.RawMessage) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishScheduleCreate(rt, ctx, sdk.ScheduleCreateMsg{
-		Expression: expression,
-		Topic:      topic,
-		Payload:    payload,
-	})
+func ScheduleErr(rt sdk.Runtime, expression, topic string, schedPayload json.RawMessage) (string, error) {
+	payload, err := roundTrip(rt, sdk.ScheduleCreateMsg{
+		Expression: expression, Topic: topic, Payload: schedPayload,
+	}, 10*time.Second)
 	if err != nil {
-		return "", fmt.Errorf("publish schedules.create: %w", err)
+		return "", err
 	}
-
-	type result struct {
-		id  string
-		err error
-	}
-	ch := make(chan result, 1)
-	unsub, err := sdk.SubscribeScheduleCreateResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- result{err: fmt.Errorf("%s: %s", resp.Code, resp.Error)}
-			} else {
-				ch <- result{id: resp.ID}
-			}
-		})
+	resp, err := decodeResp[sdk.ScheduleCreateResp](payload)
 	if err != nil {
-		return "", fmt.Errorf("subscribe schedules.create reply: %w", err)
+		return "", err
 	}
-	defer unsub()
+	return resp.ID, nil
+}
 
-	select {
-	case r := <-ch:
-		return r.id, r.err
-	case <-ctx.Done():
-		return "", fmt.Errorf("schedule: %w", ctx.Err())
+// ── Unschedule ──────────────────────────────────────────────────────────────
+
+func Unschedule(t *testing.T, rt sdk.Runtime, id string) {
+	t.Helper()
+	payload, err := roundTrip(rt, sdk.ScheduleCancelMsg{ID: id}, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Unschedule(%s): %v", id, err)
+	}
+	if _, err := decodeResp[sdk.ScheduleCancelResp](payload); err != nil {
+		t.Fatalf("Unschedule(%s): %v", id, err)
 	}
 }
 
-// Alive checks if the kit is healthy via the kit.health bus command.
+// ── ListSchedules ───────────────────────────────────────────────────────────
+
+func ListSchedules(t *testing.T, rt sdk.Runtime) []sdk.ScheduleInfo {
+	t.Helper()
+	payload, err := roundTrip(rt, sdk.ScheduleListMsg{}, 5*time.Second)
+	if err != nil {
+		t.Fatalf("ListSchedules: %v", err)
+	}
+	resp, err := decodeResp[sdk.ScheduleListResp](payload)
+	if err != nil {
+		t.Fatalf("ListSchedules: %v", err)
+	}
+	return resp.Schedules
+}
+
+// ── Alive ───────────────────────────────────────────────────────────────────
+
 func Alive(t *testing.T, rt sdk.Runtime) bool {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishKitHealth(rt, ctx, sdk.KitHealthMsg{})
-	if err != nil {
-		return false
-	}
-
-	ch := make(chan bool, 1)
-	unsub, err := sdk.SubscribeKitHealthResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.KitHealthResp, _ sdk.Message) {
-			ch <- resp.Error == ""
-		})
-	if err != nil {
-		return false
-	}
-	defer unsub()
-
-	select {
-	case ok := <-ch:
-		return ok
-	case <-ctx.Done():
-		return false
-	}
+	_, err := roundTrip(rt, sdk.KitHealthMsg{}, 5*time.Second)
+	return err == nil
 }
 
-// EvalModule deploys code as a module (for test framework support).
-// Uses kit.deploy to evaluate code as a module, then tears it down if teardown is true.
+// ── EvalModule ──────────────────────────────────────────────────────────────
+
 func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
 	Deploy(t, rt, source, code)
 }
 
-// Unschedule cancels a schedule via the schedules.cancel bus command.
-func Unschedule(t *testing.T, rt sdk.Runtime, id string) {
+// ── PublishAndWait (raw) ────────────────────────────────────────────────────
+
+func PublishAndWait(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) json.RawMessage {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishScheduleCancel(rt, ctx, sdk.ScheduleCancelMsg{ID: id})
+	payload, err := roundTrip(rt, msg, timeout)
 	if err != nil {
-		t.Fatalf("Unschedule(%s): publish: %v", id, err)
+		t.Fatalf("PublishAndWait %s: %v", msg.BusTopic(), err)
 	}
-
-	ch := make(chan error, 1)
-	unsub, err := sdk.SubscribeScheduleCancelResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCancelResp, _ sdk.Message) {
-			if resp.Error != "" {
-				ch <- fmt.Errorf("%s: %s", resp.Code, resp.Error)
-			} else {
-				ch <- nil
-			}
-		})
-	if err != nil {
-		t.Fatalf("Unschedule(%s): subscribe: %v", id, err)
-	}
-	defer unsub()
-
-	select {
-	case err := <-ch:
-		if err != nil {
-			t.Fatalf("Unschedule(%s): %v", id, err)
-		}
-	case <-ctx.Done():
-		t.Fatalf("Unschedule(%s): timeout", id)
-	}
-}
-
-// ListSchedules returns the list of active schedules via the schedules.list bus command.
-func ListSchedules(t *testing.T, rt sdk.Runtime) []sdk.ScheduleInfo {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pr, err := sdk.PublishScheduleList(rt, ctx, sdk.ScheduleListMsg{})
-	if err != nil {
-		t.Fatalf("ListSchedules: publish: %v", err)
-	}
-
-	ch := make(chan []sdk.ScheduleInfo, 1)
-	unsub, err := sdk.SubscribeScheduleListResp(rt, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleListResp, _ sdk.Message) {
-			ch <- resp.Schedules
-		})
-	if err != nil {
-		t.Fatalf("ListSchedules: subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case schedules := <-ch:
-		return schedules
-	case <-ctx.Done():
-		t.Fatalf("ListSchedules: timeout")
-		return nil
-	}
+	return payload
 }

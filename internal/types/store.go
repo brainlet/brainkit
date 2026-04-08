@@ -227,7 +227,8 @@ func (s *SQLiteStore) LoadDeployment(source string) (PersistedDeployment, error)
 // --- Schedule deduplication ---
 
 func (s *SQLiteStore) ClaimScheduleFire(scheduleID string, fireTime time.Time) (bool, error) {
-	truncated := fireTime.Truncate(time.Second).Format(time.RFC3339)
+	// Truncate to 100ms — fine enough for sub-second schedules, coarse enough for replica dedup.
+	truncated := fireTime.Truncate(100 * time.Millisecond).Format(time.RFC3339Nano)
 	result, err := s.DB.Exec(
 		"INSERT OR IGNORE INTO schedule_fires (schedule_id, fire_time, claimed_at) VALUES (?, ?, ?)",
 		scheduleID, truncated, time.Now().Format(time.RFC3339),
