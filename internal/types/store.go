@@ -17,12 +17,18 @@ type KitStore interface {
 	// Deployments
 	SaveDeployment(d PersistedDeployment) error
 	LoadDeployments() ([]PersistedDeployment, error)
+	LoadDeployment(source string) (PersistedDeployment, error)
 	DeleteDeployment(source string) error
 
 	// Schedules
 	SaveSchedule(s PersistedSchedule) error
 	LoadSchedules() ([]PersistedSchedule, error)
 	DeleteSchedule(id string) error
+
+	// Schedule deduplication (for multi-replica)
+	// ClaimScheduleFire atomically claims a schedule fire.
+	// Returns true if this replica claimed it, false if another already did.
+	ClaimScheduleFire(scheduleID string, fireTime time.Time) (bool, error)
 
 	// Installed plugins
 	SaveInstalledPlugin(p InstalledPlugin) error
@@ -121,6 +127,12 @@ CREATE TABLE IF NOT EXISTS plugin_state (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (plugin_id, key)
 );
+CREATE TABLE IF NOT EXISTS schedule_fires (
+    schedule_id TEXT NOT NULL,
+    fire_time   TEXT NOT NULL,
+    claimed_at  TEXT NOT NULL,
+    PRIMARY KEY (schedule_id, fire_time)
+);
 `
 
 // SQLiteStore implements KitStore using pure Go SQLite (modernc.org/sqlite).
@@ -199,6 +211,32 @@ func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
 func (s *SQLiteStore) DeleteDeployment(source string) error {
 	_, err := s.DB.Exec("DELETE FROM deployments WHERE source = ?", source)
 	return err
+}
+
+func (s *SQLiteStore) LoadDeployment(source string) (PersistedDeployment, error) {
+	row := s.DB.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments WHERE source = ?", source)
+	var d PersistedDeployment
+	var deployedAtStr string
+	if err := row.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName, &d.Role); err != nil {
+		return d, err
+	}
+	d.DeployedAt, _ = time.Parse(time.RFC3339, deployedAtStr)
+	return d, nil
+}
+
+// --- Schedule deduplication ---
+
+func (s *SQLiteStore) ClaimScheduleFire(scheduleID string, fireTime time.Time) (bool, error) {
+	truncated := fireTime.Truncate(time.Second).Format(time.RFC3339)
+	result, err := s.DB.Exec(
+		"INSERT OR IGNORE INTO schedule_fires (schedule_id, fire_time, claimed_at) VALUES (?, ?, ?)",
+		scheduleID, truncated, time.Now().Format(time.RFC3339),
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, _ := result.RowsAffected()
+	return rows > 0, nil
 }
 
 // --- Schedules ---

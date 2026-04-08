@@ -44,6 +44,16 @@ func (k *Kernel) fireSchedule(entry *scheduleEntry) {
 	if k.IsDraining() {
 		return
 	}
+
+	// Schedule deduplication: if shared store exists, try to claim this fire.
+	// Only one replica wins — others skip. On error, fire anyway (single-replica safety).
+	if k.config.Store != nil {
+		claimed, err := k.config.Store.ClaimScheduleFire(entry.ID, time.Now())
+		if err == nil && !claimed {
+			return
+		}
+	}
+
 	k.publish(context.Background(), entry.Topic, entry.Payload)
 
 	if entry.OneTime {
