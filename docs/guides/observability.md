@@ -18,7 +18,7 @@ console.error("failed");    // [my-service.ts] [error] failed
 By default, logs go to `log.Printf`. Override with a custom handler:
 
 ```go
-k, err := brainkit.NewKernel(brainkit.KernelConfig{
+kit, err := brainkit.New(brainkit.Config{
     LogHandler: func(entry brainkit.LogEntry) {
         // entry.Source:  "my-service.ts" or "kernel"
         // entry.Level:   "log", "warn", "error", "debug", "info"

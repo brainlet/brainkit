@@ -22,37 +22,27 @@ The Kernel is the local runtime. It owns all state:
 - Zero or more deployed `.ts` files, each in its own SES Compartment
 - Zero or more embedded SQLite storage bridges (libsql HTTP servers)
 
-A standalone Kernel uses an in-process GoChannel transport — messages never leave the process. This is the default and the fastest configuration.
+A standalone Kit uses an in-memory transport — messages never leave the process. This is the default and fastest configuration.
 
 ```go
 // AI providers auto-detected from os.Getenv (e.g. OPENAI_API_KEY)
-k, err := brainkit.NewKernel(brainkit.KernelConfig{
+kit, err := brainkit.New(brainkit.Config{
     Namespace: "my-kit",
     FSRoot:    "/tmp/workspace",
 })
-defer k.Close()
+defer kit.Close()
 ```
 
-### Node
+### Transport-Connected Kit
 
-A Node wraps a Kernel with an external transport. It adds:
-
-- Plugin subprocess management (launch, READY handshake, auto-restart, SIGTERM shutdown)
-- Plugin state persistence (in-memory or NATS KV)
-- Node-specific command bindings (plugin.manifest, plugin.state.get/set)
-
-The critical detail: Node creates the external transport, then injects it into `KernelConfig.Transport` with `DeferRouterStart = true`. This means the Kernel uses the external transport instead of creating its own GoChannel, and Node gets to register its plugin-specific command bindings before the router starts processing messages.
+When `Config.Transport` is set, Kit creates a transport-connected runtime with plugin support and cross-Kit networking. Internally this creates a Node (Kernel + external transport + plugin manager), but the public API is the same `*Kit`.
 
 ```go
-n, err := brainkit.NewNode(brainkit.NodeConfig{
-    Kernel: brainkit.KernelConfig{
-        Namespace: "my-kit",
-        FSRoot:    "/tmp/workspace",
-    },
-    Messaging: brainkit.MessagingConfig{
-        Transport: "nats",
-        NATSURL:   "nats://localhost:4222",
-    },
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-kit",
+    FSRoot:    "/tmp/workspace",
+    Transport: "nats",
+    NATSURL:   "nats://localhost:4222",
     Plugins: []brainkit.PluginConfig{
         {Name: "my-plugin", Binary: "./my-plugin", AutoRestart: true},
     },

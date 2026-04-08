@@ -16,28 +16,27 @@ import (
 )
 
 func main() {
-    k, err := brainkit.NewKernel(brainkit.KernelConfig{
+    kit, err := brainkit.New(brainkit.Config{
         Namespace: "my-app",
         FSRoot:    "/tmp/my-app",
     })
     if err != nil {
         log.Fatal(err)
     }
-    defer k.Close()
+    defer kit.Close()
 
-    // Kernel is running — GoChannel transport, AI providers auto-detected from env, no storage
-    fmt.Println("Kernel ready, namespace:", k.Namespace())
+    // Kit is running — in-memory transport, AI providers auto-detected from env, no storage
+    fmt.Println("Kit ready")
 }
 ```
 
-This creates a Kernel with an in-process message bus (GoChannel transport). No containers, no external services, no API keys needed.
+This creates a Kit with an in-memory message bus. No containers, no external services, no API keys needed.
 
-## Full Kernel with AI + Storage
+## Full Kit with AI + Storage
 
 ```go
-// Pattern from internal/testutil/testutil.go — NewTestKernelFull
 // AI providers are auto-detected from os.Getenv (e.g. OPENAI_API_KEY)
-k, err := brainkit.NewKernel(brainkit.KernelConfig{
+kit, err := brainkit.New(brainkit.Config{
     Namespace: "my-app",
     CallerID:  "my-app",
     FSRoot:    "/tmp/my-app",
@@ -183,25 +182,18 @@ sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "calc.ts"})
 
 Teardown removes all resources created by the deployment — tools are deregistered, bus subscriptions cancelled, agent registrations removed, Compartment reference dropped.
 
-## Using a Node (External Transport)
+## Using an External Transport
 
-For multi-Kit communication or plugin support, use a Node with an external transport:
+For multi-Kit communication or plugin support, set a transport backend:
 
 ```go
-n, err := brainkit.NewNode(brainkit.NodeConfig{
-    Kernel: brainkit.KernelConfig{
-        Namespace: "my-app",
-        FSRoot:    "/tmp/my-app",
-    },
-    Messaging: brainkit.MessagingConfig{
-        Transport: "nats",
-        NATSURL:   "nats://localhost:4222",
-    },
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    FSRoot:    "/tmp/my-app",
+    Transport: "nats",
+    NATSURL:   "nats://localhost:4222",
 })
 if err != nil {
-    log.Fatal(err)
-}
-if err := n.Start(ctx); err != nil {
     log.Fatal(err)
 }
 defer n.Close()
