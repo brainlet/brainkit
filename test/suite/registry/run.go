@@ -51,5 +51,17 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("bus/provider_add_invalid", func(t *testing.T) { testProviderAddInvalidName(t, env) })
 		t.Run("bus/provider_remove", func(t *testing.T) { testProviderRemoveViaBus(t, env) })
 		t.Run("bus/provider_add_then_resolve_ts", func(t *testing.T) { testProviderAddThenResolveFromTS(t, env) })
+
+		// storage_management.go — storage add/remove via typed bus commands
+		t.Run("bus/storage_add", func(t *testing.T) { testStorageAddViaBus(t, env) })
+		t.Run("bus/storage_remove", func(t *testing.T) { testStorageRemoveViaBus(t, env) })
+		t.Run("bus/storage_remove_nonexistent", func(t *testing.T) { testStorageRemoveNonexistent(t, env) })
+		t.Run("bus/storage_add_sqlite_deploy", func(t *testing.T) { testStorageAddSQLiteThenDeployUses(t, env) })
+		t.Run("bus/storage_add_memory_deploy", func(t *testing.T) { testStorageAddMemoryThenDeployUses(t, env) })
+
+		// vector_management.go — vector add/remove via typed bus commands
+		t.Run("bus/vector_add", func(t *testing.T) { testVectorAddViaBus(t, env) })
+		t.Run("bus/vector_remove", func(t *testing.T) { testVectorRemoveViaBus(t, env) })
+		t.Run("bus/vector_add_then_resolve_ts", func(t *testing.T) { testVectorAddThenResolveFromTS(t, env) })
 	})
 }
