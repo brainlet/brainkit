@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,7 @@ func testEveryFiresRepeatedly(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	var count atomic.Int32
-	unsub, err := env.Kit.SubscribeRaw(ctx, "test.tick", func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "test.tick", func(msg sdk.Message) {
 		count.Add(1)
 	})
 	require.NoError(t, err)
@@ -41,7 +40,7 @@ func testInFiresOnce(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	var count atomic.Int32
-	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "test.once", func(msg messages.Message) {
+	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "test.once", func(msg sdk.Message) {
 		count.Add(1)
 	})
 	defer unsub()
@@ -52,10 +51,10 @@ func testInFiresOnce(t *testing.T, _ *suite.TestEnv) {
 	assert.Equal(t, int32(1), count.Load(), "in 100ms should fire exactly once")
 
 	// Verify schedule was removed by listing via bus
-	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, messages.ScheduleListMsg{})
-	listCh := make(chan messages.ScheduleListResp, 1)
+	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
+	listCh := make(chan sdk.ScheduleListResp, 1)
 	listUnsub, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleListResp, msg messages.Message) { listCh <- resp })
+		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
 	defer listUnsub()
 
 	select {
@@ -71,7 +70,7 @@ func testUnschedule(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	var count atomic.Int32
-	unsub, _ := env.Kit.SubscribeRaw(ctx, "test.cancel", func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, "test.cancel", func(msg sdk.Message) {
 		count.Add(1)
 	})
 	defer unsub()
@@ -81,10 +80,10 @@ func testUnschedule(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(250 * time.Millisecond)
 
 	// Cancel via bus command
-	pr, _ := sdk.PublishScheduleCancel(env.Kit, ctx, messages.ScheduleCancelMsg{ID: id})
-	cancelCh := make(chan messages.ScheduleCancelResp, 1)
+	pr, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: id})
+	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
 	cancelUnsub, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCancelResp, msg messages.Message) { cancelCh <- resp })
+		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
 	<-cancelCh
 	cancelUnsub()
 
@@ -113,10 +112,10 @@ func testTeardownCancelsSchedules(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 
 	// List schedules via bus
-	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, messages.ScheduleListMsg{})
-	listCh := make(chan messages.ScheduleListResp, 1)
+	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
+	listCh := make(chan sdk.ScheduleListResp, 1)
 	listUnsub, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleListResp, msg messages.Message) { listCh <- resp })
+		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
 	select {
 	case resp := <-listCh:
 		assert.Greater(t, len(resp.Schedules), 0, "should have at least one schedule")
@@ -129,10 +128,10 @@ func testTeardownCancelsSchedules(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 
 	// List schedules again
-	pr2, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, messages.ScheduleListMsg{})
-	listCh2 := make(chan messages.ScheduleListResp, 1)
+	pr2, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
+	listCh2 := make(chan sdk.ScheduleListResp, 1)
 	listUnsub2, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.ScheduleListResp, msg messages.Message) { listCh2 <- resp })
+		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh2 <- resp })
 	defer listUnsub2()
 
 	select {
@@ -157,7 +156,7 @@ func testE2EScheduleFires(t *testing.T, _ *suite.TestEnv) {
 
 	// Subscribe to know when schedule fires
 	fired := make(chan []byte, 1)
-	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "ts.sched-handler-e2e.tick", func(m messages.Message) {
+	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "ts.sched-handler-e2e.tick", func(m sdk.Message) {
 		fired <- m.Payload
 	})
 	defer unsub()
@@ -188,7 +187,7 @@ func testInputAbuseScheduleEmptyTopic(t *testing.T, _ *suite.TestEnv) {
 	// Either succeeds or errors — no panic
 	if err == nil {
 		ctx := context.Background()
-		sdk.PublishScheduleCancel(freshEnv.Kit, ctx, messages.ScheduleCancelMsg{ID: id})
+		sdk.PublishScheduleCancel(freshEnv.Kit, ctx, sdk.ScheduleCancelMsg{ID: id})
 	}
 }
 
@@ -198,7 +197,7 @@ func testDrainSkipsFiring(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	var count atomic.Int32
-	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "test.drain", func(msg messages.Message) {
+	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, "test.drain", func(msg sdk.Message) {
 		count.Add(1)
 	})
 	defer unsub()

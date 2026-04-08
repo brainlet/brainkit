@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/packages"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // PackagesDomain handles packages.search/install/remove/update/list/info bus commands.
@@ -19,70 +19,70 @@ func newPackagesDomain(mgr *packages.Manager) *PackagesDomain {
 	return &PackagesDomain{packages: mgr}
 }
 
-func (d *PackagesDomain) Search(_ context.Context, req messages.PackagesSearchMsg) (*messages.PackagesSearchResp, error) {
+func (d *PackagesDomain) Search(_ context.Context, req sdk.PackagesSearchMsg) (*sdk.PackagesSearchResp, error) {
 	results, err := d.packages.Search(req.Query, req.Capabilities)
 	if err != nil {
 		return nil, err
 	}
-	summaries := make([]messages.PluginSummary, len(results))
+	summaries := make([]sdk.PluginSummary, len(results))
 	for i, r := range results {
-		summaries[i] = messages.PluginSummary{
+		summaries[i] = sdk.PluginSummary{
 			Name: r.Name, Owner: r.Owner, Version: r.Version,
 			Description: r.Description, Capabilities: r.Capabilities,
 		}
 	}
-	return &messages.PackagesSearchResp{Plugins: summaries}, nil
+	return &sdk.PackagesSearchResp{Plugins: summaries}, nil
 }
 
-func (d *PackagesDomain) Install(_ context.Context, req messages.PackagesInstallMsg) (*messages.PackagesInstallResp, error) {
+func (d *PackagesDomain) Install(_ context.Context, req sdk.PackagesInstallMsg) (*sdk.PackagesInstallResp, error) {
 	owner, name := parsePluginName(req.Name)
 	installed, err := d.packages.Install(owner, name, req.Version)
 	if err != nil {
 		return nil, err
 	}
-	return &messages.PackagesInstallResp{
+	return &sdk.PackagesInstallResp{
 		Installed: true, Name: installed.Name,
 		Version: installed.Version, Path: installed.BinaryPath,
 	}, nil
 }
 
-func (d *PackagesDomain) Remove(_ context.Context, req messages.PackagesRemoveMsg) (*messages.PackagesRemoveResp, error) {
+func (d *PackagesDomain) Remove(_ context.Context, req sdk.PackagesRemoveMsg) (*sdk.PackagesRemoveResp, error) {
 	if err := d.packages.Remove(req.Name); err != nil {
 		return nil, err
 	}
-	return &messages.PackagesRemoveResp{Removed: true}, nil
+	return &sdk.PackagesRemoveResp{Removed: true}, nil
 }
 
-func (d *PackagesDomain) Update(_ context.Context, req messages.PackagesUpdateMsg) (*messages.PackagesUpdateResp, error) {
+func (d *PackagesDomain) Update(_ context.Context, req sdk.PackagesUpdateMsg) (*sdk.PackagesUpdateResp, error) {
 	owner, name := parsePluginName(req.Name)
 	old, newVer, err := d.packages.Update(owner, name)
 	if err != nil {
 		return nil, err
 	}
-	return &messages.PackagesUpdateResp{Updated: old != newVer, OldVersion: old, NewVersion: newVer}, nil
+	return &sdk.PackagesUpdateResp{Updated: old != newVer, OldVersion: old, NewVersion: newVer}, nil
 }
 
-func (d *PackagesDomain) List(_ context.Context, _ messages.PackagesListMsg) (*messages.PackagesListResp, error) {
+func (d *PackagesDomain) List(_ context.Context, _ sdk.PackagesListMsg) (*sdk.PackagesListResp, error) {
 	installed, err := d.packages.ListInstalled()
 	if err != nil {
 		return nil, err
 	}
-	infos := make([]messages.InstalledPluginInfo, len(installed))
+	infos := make([]sdk.InstalledPluginInfo, len(installed))
 	for i, p := range installed {
-		infos[i] = messages.InstalledPluginInfo{
+		infos[i] = sdk.InstalledPluginInfo{
 			Name: p.Name, Owner: p.Owner, Version: p.Version,
 			BinaryPath: p.BinaryPath, InstalledAt: p.InstalledAt.Format(time.RFC3339),
 		}
 	}
-	return &messages.PackagesListResp{Plugins: infos}, nil
+	return &sdk.PackagesListResp{Plugins: infos}, nil
 }
 
-func (d *PackagesDomain) Info(_ context.Context, req messages.PackagesInfoMsg) (*messages.PackagesInfoResp, error) {
+func (d *PackagesDomain) Info(_ context.Context, req sdk.PackagesInfoMsg) (*sdk.PackagesInfoResp, error) {
 	installed, err := d.packages.GetInstalled(req.Name)
 	if err != nil {
 		return nil, err
 	}
-	return &messages.PackagesInfoResp{Manifest: json.RawMessage(installed.Manifest)}, nil
+	return &sdk.PackagesInfoResp{Manifest: json.RawMessage(installed.Manifest)}, nil
 }
 
 func parsePluginName(fullName string) (owner, name string) {

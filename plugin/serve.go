@@ -15,7 +15,6 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	xport "github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // pluginClient implements sdk.Runtime for plugin processes connected via Watermill.
@@ -28,7 +27,7 @@ func (c *pluginClient) PublishRaw(ctx context.Context, topic string, payload jso
 	return c.remote.PublishRaw(ctx, topic, payload)
 }
 
-func (c *pluginClient) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (c *pluginClient) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return c.remote.SubscribeRaw(ctx, topic, handler)
 }
 
@@ -80,7 +79,7 @@ func (p *Plugin) Run() error {
 			transport.Subscriber,
 			func(wmsg *message.Message) error {
 				result, toolErr := toolHandler(context.Background(), rt, json.RawMessage(wmsg.Payload))
-				resp := messages.ToolCallResp{}
+				resp := sdk.ToolCallResp{}
 				if toolErr != nil {
 					resp.SetError(toolErr.Error())
 				} else {
@@ -130,7 +129,7 @@ func (p *Plugin) Run() error {
 	<-router.Running()
 
 	manifest := p.buildManifest()
-	manifestMsg := messages.PluginManifestMsg{
+	manifestMsg := sdk.PluginManifestMsg{
 		Owner:       manifest.Owner,
 		Name:        manifest.Name,
 		Version:     manifest.Version,
@@ -156,7 +155,7 @@ func (p *Plugin) Run() error {
 		return fmt.Errorf("sdk: publish manifest: %w", err)
 	}
 	regCh := make(chan error, 1)
-	cancelReg, err := sdk.SubscribeTo[messages.PluginManifestResp](rt, context.Background(), pubResult.ReplyTo, func(resp messages.PluginManifestResp, msg messages.Message) {
+	cancelReg, err := sdk.SubscribeTo[sdk.PluginManifestResp](rt, context.Background(), pubResult.ReplyTo, func(resp sdk.PluginManifestResp, msg sdk.Message) {
 		if resp.Error != "" {
 			regCh <- fmt.Errorf("sdk: register manifest: %s", resp.Error)
 		} else {
@@ -203,10 +202,10 @@ func (p *Plugin) Run() error {
 	return router.Close()
 }
 
-func toPluginToolDefs(defs []ToolDefinition) []messages.PluginToolDef {
-	out := make([]messages.PluginToolDef, 0, len(defs))
+func toPluginToolDefs(defs []ToolDefinition) []sdk.PluginToolDef {
+	out := make([]sdk.PluginToolDef, 0, len(defs))
 	for _, def := range defs {
-		out = append(out, messages.PluginToolDef{
+		out = append(out, sdk.PluginToolDef{
 			Name:        def.Name,
 			Description: def.Description,
 			InputSchema: def.InputSchema,

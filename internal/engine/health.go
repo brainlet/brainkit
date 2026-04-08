@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 
@@ -142,7 +142,7 @@ func (k *Kernel) checkTransport(ctx context.Context) HealthCheck {
 	probeTopic := "health.probe." + uuid.NewString()
 	received := make(chan bool, 1)
 
-	unsub, err := k.SubscribeRaw(checkCtx, probeTopic, func(msg messages.Message) {
+	unsub, err := k.SubscribeRaw(checkCtx, probeTopic, func(msg sdk.Message) {
 		select {
 		case received <- true:
 		default:

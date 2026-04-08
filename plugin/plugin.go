@@ -6,7 +6,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	tools "github.com/brainlet/brainkit/internal/tools"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // Plugin is the builder returned by New(). Authors register capabilities on it.
@@ -133,7 +133,7 @@ func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event 
 }
 
 // Event declares an event type this plugin will publish.
-func Event[E messages.BrainkitMessage](p *Plugin, description string) {
+func Event[E sdk.BrainkitMessage](p *Plugin, description string) {
 	var zero E
 	schema := string(tools.StructToJSONSchema(zero))
 	topic := zero.BusTopic()

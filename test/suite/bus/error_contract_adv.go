@@ -16,14 +16,13 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // busErrorCodeAdv publishes a message and extracts the error code+details from the response.
-func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessage) (string, map[string]any) {
+func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage) (string, map[string]any) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -32,7 +31,7 @@ func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessage
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	require.NoError(t, err)
@@ -55,7 +54,7 @@ func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessage
 
 // testErrorContractBusNotFound — NOT_FOUND for nonexistent tool.
 func testErrorContractBusNotFound(t *testing.T, env *suite.TestEnv) {
-	code, details := busErrorCodeAdv(t, env.Kit, messages.ToolCallMsg{Name: "nonexistent-tool-xyz-adv"})
+	code, details := busErrorCodeAdv(t, env.Kit, sdk.ToolCallMsg{Name: "nonexistent-tool-xyz-adv"})
 	assert.Equal(t, "NOT_FOUND", code)
 	if details != nil {
 		assert.Equal(t, "nonexistent-tool-xyz-adv", details["name"])
@@ -64,7 +63,7 @@ func testErrorContractBusNotFound(t *testing.T, env *suite.TestEnv) {
 
 // testErrorContractBusValidationError — VALIDATION_ERROR for empty secret name.
 func testErrorContractBusValidationError(t *testing.T, env *suite.TestEnv) {
-	code, _ := busErrorCodeAdv(t, env.Kit, messages.SecretsSetMsg{Name: "", Value: "val"})
+	code, _ := busErrorCodeAdv(t, env.Kit, sdk.SecretsSetMsg{Name: "", Value: "val"})
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
@@ -78,7 +77,7 @@ func testErrorContractBusNotConfiguredRBAC(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	code, _ := busErrorCodeAdv(t, k, messages.RBACAssignMsg{Source: "", Role: "admin"})
+	code, _ := busErrorCodeAdv(t, k, sdk.RBACAssignMsg{Source: "", Role: "admin"})
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
@@ -103,7 +102,7 @@ func testErrorContractBusIdempotentDeploy(t *testing.T, _ *suite.TestEnv) {
 
 // testErrorContractBusDeployErrorBadSyntax — DEPLOY_ERROR for bad syntax.
 func testErrorContractBusDeployErrorBadSyntax(t *testing.T, env *suite.TestEnv) {
-	code, details := busErrorCodeAdv(t, env.Kit, messages.KitDeployMsg{
+	code, details := busErrorCodeAdv(t, env.Kit, sdk.KitDeployMsg{
 		Source: "bad-syntax-adv.ts",
 		Code:   "const x: number = {{{invalid syntax;;;",
 	})

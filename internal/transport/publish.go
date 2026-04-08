@@ -7,11 +7,11 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // Publish stamps internal metadata, serializes the typed message, and sends it to the transport.
-func Publish[T messages.BrainkitMessage](pub message.Publisher, msg T, callerID string) error {
+func Publish[T sdk.BrainkitMessage](pub message.Publisher, msg T, callerID string) error {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal %T: %w", msg, err)
@@ -24,7 +24,7 @@ func Publish[T messages.BrainkitMessage](pub message.Publisher, msg T, callerID 
 // Handle registers a typed handler on the message's topic.
 // When a message arrives on the topic, it's decoded into Envelope[T] and the handler is called.
 // Return nil to Ack (message processed), return error to Nack (retry/DLQ depending on transport).
-func Handle[T messages.BrainkitMessage](
+func Handle[T sdk.BrainkitMessage](
 	router *message.Router,
 	sub message.Subscriber,
 	fn func(context.Context, Envelope[T]) error,

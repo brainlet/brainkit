@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +12,7 @@ import (
 
 // testInputAbuseCallNonexistent — calling a nonexistent tool returns NOT_FOUND.
 func testInputAbuseCallNonexistent(t *testing.T, env *suite.TestEnv) {
-	payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "absolutely-does-not-exist-tool-adv"}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "absolutely-does-not-exist-tool-adv"}, 5*time.Second)
 	require.True(t, ok, "should receive a response, not timeout")
 	code := suite.ResponseCode(payload)
 	assert.Equal(t, "NOT_FOUND", code)
@@ -22,11 +21,11 @@ func testInputAbuseCallNonexistent(t *testing.T, env *suite.TestEnv) {
 // testInputAbuseWrongInputType — calling a tool with wrong input shape doesn't hang.
 func testInputAbuseWrongInputType(t *testing.T, env *suite.TestEnv) {
 	ctx := env.T.Context()
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "echo", Input: "not-an-object"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "echo", Input: "not-an-object"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -40,7 +39,7 @@ func testInputAbuseWrongInputType(t *testing.T, env *suite.TestEnv) {
 
 // testInputAbuseEmptyToolName — calling with empty tool name returns error.
 func testInputAbuseEmptyToolName(t *testing.T, env *suite.TestEnv) {
-	payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok, "should receive a response, not timeout")
 	// Should return an error of some kind
 	assert.True(t, suite.ResponseHasError(payload) || suite.ResponseCode(payload) != "", "empty name should produce error response")
@@ -56,14 +55,14 @@ func testInputAbuseOversizedInput(t *testing.T, env *suite.TestEnv) {
 		big[i] = 'x'
 	}
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": string(big)},
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

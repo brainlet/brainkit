@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +20,7 @@ func testScheduleFireOnTransport(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	fired := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, "sched.transport.fire.suite", func(m messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "sched.transport.fire.suite", func(m sdk.Message) {
 		fired <- m.Payload
 	})
 	require.NoError(t, err)

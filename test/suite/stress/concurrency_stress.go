@@ -11,7 +11,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
@@ -50,7 +49,7 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: fmt.Sprintf("stress-100-%d.ts", i)})
+		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: fmt.Sprintf("stress-100-%d.ts", i)})
 		cancel()
 	}
 }
@@ -65,7 +64,7 @@ func test1000BusPublishes(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	var received atomic.Int64
-	unsub, _ := tk.SubscribeRaw(ctx, "incoming.stress.pub", func(m messages.Message) {
+	unsub, _ := tk.SubscribeRaw(ctx, "incoming.stress.pub", func(m sdk.Message) {
 		received.Add(1)
 	})
 	defer unsub()
@@ -100,9 +99,9 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set initial value
-	pr, _ := sdk.Publish(tk, ctx, messages.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
+	pr, _ := sdk.Publish(tk, ctx, sdk.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
 	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 
@@ -130,11 +129,11 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 1; i <= 10; i++ {
-			pr, _ := sdk.Publish(tk, ctx, messages.SecretsRotateMsg{
+			pr, _ := sdk.Publish(tk, ctx, sdk.SecretsRotateMsg{
 				Name: "stress-rotating", NewValue: fmt.Sprintf("v%d", i),
 			})
 			ch := make(chan []byte, 1)
-			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 			<-ch
 			unsub()
 			time.Sleep(50 * time.Millisecond)
@@ -175,7 +174,7 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 			src := fmt.Sprintf("stress-parallel-deploy-%d.ts", i)
 			testutil.DeployErr(tk, src, `output("stress-parallel");`)
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+			sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
 			cancel()
 		}
 	}()
@@ -200,7 +199,7 @@ func testToolCallsUnderLoad(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			payload, ok := sendAndReceive(t, tk, messages.ToolCallMsg{
+			payload, ok := sendAndReceive(t, tk, sdk.ToolCallMsg{
 				Name:  "echo",
 				Input: map[string]any{"message": fmt.Sprintf("stress-%d", n)},
 			}, 10*time.Second)
@@ -225,14 +224,14 @@ func testScheduleStorm(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	var received atomic.Int64
-	unsub, _ := tk.SubscribeRaw(ctx, "stress.sched.storm", func(m messages.Message) {
+	unsub, _ := tk.SubscribeRaw(ctx, "stress.sched.storm", func(m sdk.Message) {
 		received.Add(1)
 	})
 	defer unsub()
 
 	for i := 0; i < 50; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, messages.ScheduleCreateMsg{
+		sdk.Publish(tk, sctx, sdk.ScheduleCreateMsg{
 			Expression: "in 200ms",
 			Topic:      "stress.sched.storm",
 			Payload:    json.RawMessage(fmt.Sprintf(`{"i":%d}`, i)),
@@ -267,7 +266,7 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sendAndReceive(t, tk, messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go"}}, 5*time.Second)
+			sendAndReceive(t, tk, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go"}}, 5*time.Second)
 		}
 	}()
 
@@ -276,11 +275,11 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			pr, _ := sdk.Publish(tk, ctx, messages.CustomMsg{
+			pr, _ := sdk.Publish(tk, ctx, sdk.CustomMsg{
 				Topic: "ts.multi-stress-surface.ts-ping", Payload: json.RawMessage(`{}`),
 			})
 			ch := make(chan []byte, 1)
-			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 			select {
 			case <-ch:
 			case <-time.After(5 * time.Second):

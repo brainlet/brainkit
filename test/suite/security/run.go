@@ -17,7 +17,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -214,7 +213,7 @@ func secReplyTokenKernel(t *testing.T) *brainkit.Kit {
 }
 
 // secSendAndReceive publishes a typed message via SDK and waits for the reply.
-func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
+func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -226,7 +225,7 @@ func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg messages.BrainkitMessa
 	}
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	if err != nil {
@@ -277,7 +276,7 @@ func secTeardown(t *testing.T, k *brainkit.Kit, source string) {
 }
 
 // secListDeployments lists current deployments.
-func secListDeployments(t *testing.T, k *brainkit.Kit) []messages.DeploymentInfo {
+func secListDeployments(t *testing.T, k *brainkit.Kit) []sdk.DeploymentInfo {
 	t.Helper()
 	return testutil.ListDeployments(t, k)
 }
@@ -288,13 +287,13 @@ func secAlive(t *testing.T, k *brainkit.Kit) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, messages.KitHealthMsg{})
+	pr, err := sdk.Publish(k, ctx, sdk.KitHealthMsg{})
 	if err != nil {
 		return false
 	}
 
 	ch := make(chan bool, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- true
 	})
 	if err != nil {
@@ -316,7 +315,7 @@ func secSchedule(t *testing.T, k *brainkit.Kit, cfg brainkit.ScheduleConfig) (st
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, messages.ScheduleCreateMsg{
+	pr, err := sdk.Publish(k, ctx, sdk.ScheduleCreateMsg{
 		Expression: cfg.Expression,
 		Topic:      cfg.Topic,
 		Payload:    cfg.Payload,
@@ -330,7 +329,7 @@ func secSchedule(t *testing.T, k *brainkit.Kit, cfg brainkit.ScheduleConfig) (st
 		err error
 	}
 	ch := make(chan result, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		var resp struct {
 			ID    string `json:"id"`
 			Error string `json:"error"`
@@ -360,7 +359,7 @@ func secUnschedule(t *testing.T, k *brainkit.Kit, id string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	sdk.Publish(k, ctx, messages.ScheduleCancelMsg{ID: id})
+	sdk.Publish(k, ctx, sdk.ScheduleCancelMsg{ID: id})
 }
 
 // secResponseHasError checks if a bus response contains an error field.

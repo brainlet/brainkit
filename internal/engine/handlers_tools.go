@@ -8,7 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // ToolsDomain handles tool registry operations: call, resolve, register, list.
@@ -24,7 +24,7 @@ func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing
 }
 
 // Call executes a registered tool by name and returns the typed response.
-func (d *ToolsDomain) Call(ctx context.Context, req messages.ToolCallMsg) (*messages.ToolCallResp, error) {
+func (d *ToolsDomain) Call(ctx context.Context, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
 	tool, err := d.tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
@@ -44,16 +44,16 @@ func (d *ToolsDomain) Call(ctx context.Context, req messages.ToolCallMsg) (*mess
 	if result == nil {
 		return nil, nil
 	}
-	return &messages.ToolCallResp{Result: result}, nil
+	return &sdk.ToolCallResp{Result: result}, nil
 }
 
 // Resolve looks up a tool by name and returns its registration info.
-func (d *ToolsDomain) Resolve(_ context.Context, req messages.ToolResolveMsg) (*messages.ToolResolveResp, error) {
+func (d *ToolsDomain) Resolve(_ context.Context, req sdk.ToolResolveMsg) (*sdk.ToolResolveResp, error) {
 	tool, err := d.tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
 	}
-	resp := &messages.ToolResolveResp{
+	resp := &sdk.ToolResolveResp{
 		Name:        tool.Name,
 		ShortName:   tool.ShortName,
 		Description: tool.Description,
@@ -115,18 +115,18 @@ func (d *ToolsDomain) Unregister(_ context.Context, name string) error {
 }
 
 // List returns all registered tools, optionally filtered.
-func (d *ToolsDomain) List(_ context.Context, req messages.ToolListMsg) (*messages.ToolListResp, error) {
+func (d *ToolsDomain) List(_ context.Context, req sdk.ToolListMsg) (*sdk.ToolListResp, error) {
 	toolList := d.tools.List(req.Namespace)
-	var infos []messages.ToolInfo
+	var infos []sdk.ToolInfo
 	for _, t := range toolList {
-		infos = append(infos, messages.ToolInfo{
+		infos = append(infos, sdk.ToolInfo{
 			Name:        t.Name,
 			ShortName:   t.ShortName,
 			Description: t.Description,
 		})
 	}
 	if infos == nil {
-		infos = []messages.ToolInfo{}
+		infos = []sdk.ToolInfo{}
 	}
-	return &messages.ToolListResp{Tools: infos}, nil
+	return &sdk.ToolListResp{Tools: infos}, nil
 }

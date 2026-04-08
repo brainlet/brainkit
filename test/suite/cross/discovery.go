@@ -8,7 +8,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/discovery"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,11 +100,11 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// peers.list via bus
-	pr, err := sdk.Publish(kit, ctx, messages.PeersListMsg{})
+	pr, err := sdk.Publish(kit, ctx, sdk.PeersListMsg{})
 	require.NoError(t, err)
 
-	listCh := make(chan messages.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.PeersListResp](kit, ctx, pr.ReplyTo, func(resp messages.PeersListResp, _ messages.Message) {
+	listCh := make(chan sdk.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit, ctx, pr.ReplyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer unsub()

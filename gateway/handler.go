@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched *route, pathParams map[string]string) {
@@ -21,8 +21,8 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 	ctx, cancel := context.WithTimeout(r.Context(), gw.config.Timeout)
 	defer cancel()
 
-	replyCh := make(chan messages.Message, 1)
-	unsub, err := gw.rt.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+	replyCh := make(chan sdk.Message, 1)
+	unsub, err := gw.rt.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 		select {
 		case replyCh <- msg:
 		default:

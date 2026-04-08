@@ -9,7 +9,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func testNodeCommandsPluginList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, messages.PluginListRunningMsg{})
+	p := publishAndWaitRaw(t, kit, ctx, sdk.PluginListRunningMsg{})
 	assert.Contains(t, string(p), "plugins")
 }
 
@@ -31,7 +30,7 @@ func testNodeCommandsPluginStopNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, messages.PluginStopMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginStopMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p), "stopping nonexistent plugin should error")
 }
 
@@ -40,7 +39,7 @@ func testNodeCommandsPluginRestartNonexistent(t *testing.T, env *suite.TestEnv) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, messages.PluginRestartMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginRestartMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p))
 }
 
@@ -49,7 +48,7 @@ func testNodeCommandsPluginStatusNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, messages.PluginStatusMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginStatusMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p))
 }
 
@@ -59,11 +58,11 @@ func testNodeCommandsPluginStateGetSet(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set state
-	p1 := publishAndWaitRaw(t, kit, ctx, messages.PluginStateSetMsg{Key: "test-key", Value: "test-value"})
+	p1 := publishAndWaitRaw(t, kit, ctx, sdk.PluginStateSetMsg{Key: "test-key", Value: "test-value"})
 	assert.Contains(t, string(p1), "ok")
 
 	// Get state
-	p2 := publishAndWaitRaw(t, kit, ctx, messages.PluginStateGetMsg{Key: "test-key"})
+	p2 := publishAndWaitRaw(t, kit, ctx, sdk.PluginStateGetMsg{Key: "test-key"})
 	assert.Contains(t, string(p2), "test-value")
 }
 
@@ -72,7 +71,7 @@ func testNodeCommandsPackageListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, messages.PackageListDeployedMsg{})
+	p := publishAndWaitRaw(t, kit, ctx, sdk.PackageListDeployedMsg{})
 	assert.Contains(t, string(p), "packages")
 }
 
@@ -87,11 +86,11 @@ func testNodeCommandsDeployOnNode(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Call
-	pr, _ := sdk.Publish(kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(kit, ctx, sdk.CustomMsg{
 		Topic: "ts.node-deploy-cross.hello", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

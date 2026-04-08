@@ -14,7 +14,7 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -230,7 +230,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 
 	// The past schedule should fire immediately on restore
 	fired := make(chan bool, 1)
-	unsub, _ := k.SubscribeRaw(context.Background(), "past.fire-deploy-adv", func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(context.Background(), "past.fire-deploy-adv", func(m sdk.Message) {
 		fired <- true
 	})
 	defer unsub()

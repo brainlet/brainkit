@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,11 +47,11 @@ func testSubscribeReceivesMetadataAdv(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.meta-check-adv.check", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -75,7 +74,7 @@ func testReplyWithoutReplyTo(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	sdk.Emit(env.Kit, ctx, messages.CustomEvent{
+	sdk.Emit(env.Kit, ctx, sdk.CustomEvent{
 		Topic: "ts.no-reply-adv.fire", Payload: json.RawMessage(`{}`),
 	})
 	time.Sleep(200 * time.Millisecond)
@@ -100,12 +99,12 @@ func testCorrelationIDPreserved(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.corr-echo-adv.echo", Payload: json.RawMessage(`{}`),
 	})
 
-	ch := make(chan messages.Message, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m })
+	ch := make(chan sdk.Message, 1)
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
 	defer unsub()
 
 	select {
@@ -128,13 +127,13 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.multi-reply-adv.multi", Payload: json.RawMessage(`{}`),
 	})
 
 	var received []json.RawMessage
 	done := make(chan bool, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		received = append(received, json.RawMessage(m.Payload))
 		if m.Metadata["done"] == "true" {
 			done <- true
@@ -184,7 +183,7 @@ func testScheduleWithPayload(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	fired := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, "sched.payload.test", func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, "sched.payload.test", func(m sdk.Message) {
 		fired <- m.Payload
 	})
 	defer unsub()

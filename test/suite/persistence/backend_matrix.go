@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,9 +70,9 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k1, ctx, messages.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
+	pr, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	select {
 	case <-ch:
 	case <-time.After(5 * time.Second):
@@ -91,9 +90,9 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pr2, _ := sdk.Publish(k2, ctx, messages.SecretsGetMsg{Name: "persist-secret-matrix"})
+	pr2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "persist-secret-matrix"})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {
@@ -203,13 +202,13 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k2, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
 		Topic:   "ts.handler-matrix.ping",
 		Payload: json.RawMessage(`{}`),
 	})
 
 	ch := make(chan []byte, 1)
-	unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -221,17 +220,17 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 }
 
 // listSchedules queries the schedule list via bus command.
-func listSchedules(t *testing.T, k *brainkit.Kit) []messages.ScheduleInfo {
+func listSchedules(t *testing.T, k *brainkit.Kit) []sdk.ScheduleInfo {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.PublishScheduleList(k, ctx, messages.ScheduleListMsg{})
+	pr, err := sdk.PublishScheduleList(k, ctx, sdk.ScheduleListMsg{})
 	require.NoError(t, err)
 
-	ch := make(chan messages.ScheduleListResp, 1)
+	ch := make(chan sdk.ScheduleListResp, 1)
 	unsub, err := sdk.SubscribeScheduleListResp(k, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleListResp, _ messages.Message) { ch <- resp })
+		func(resp sdk.ScheduleListResp, _ sdk.Message) { ch <- resp })
 	require.NoError(t, err)
 	defer unsub()
 

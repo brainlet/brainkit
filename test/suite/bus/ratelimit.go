@@ -9,7 +9,6 @@ import (
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,7 +54,7 @@ func testBusRateLimitExceeds(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(rlEnv.Kit, ctx, "rate-test.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := rlEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := rlEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp

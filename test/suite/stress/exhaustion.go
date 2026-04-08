@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,7 +117,7 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 	for i := 0; i < 50; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: fmt.Sprintf("deploy-stress-bomb-%d.ts", i)})
+		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: fmt.Sprintf("deploy-stress-bomb-%d.ts", i)})
 		cancel()
 	}
 }
@@ -162,7 +161,7 @@ func testExhaustionLifecycleChurn(t *testing.T, env *suite.TestEnv) {
 			bus.on("ping-%d", function(msg) { msg.reply({i: %d}); });
 		`, i, i, i, i))
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
 		cancel()
 	}
 
@@ -268,11 +267,11 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	bigValue := strings.Repeat("s", 10*1024*1024)
-	pr, err := sdk.Publish(tk, ctx, messages.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
+	pr, err := sdk.Publish(tk, ctx, sdk.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

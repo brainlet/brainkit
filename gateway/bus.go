@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // subscribeBusCommands subscribes to gateway.http.route.* bus topics
@@ -15,14 +15,14 @@ func (gw *Gateway) subscribeBusCommands() {
 	ctx := context.Background()
 
 	// gateway.http.route.add
-	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.add", func(msg messages.Message) {
+	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.add", func(msg sdk.Message) {
 		if gw.rbacChecker != nil {
 			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.add"); err != nil {
 				gw.replyError(msg, "permission denied: "+err.Error())
 				return
 			}
 		}
-		var req messages.GatewayRouteAddMsg
+		var req sdk.GatewayRouteAddMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
 			return
@@ -33,20 +33,20 @@ func (gw *Gateway) subscribeBusCommands() {
 			Type: rt, Owner: req.Owner,
 		})
 		gw.logger.Info("route added via bus", slog.String("method", req.Method), slog.String("path", req.Path), slog.String("topic", req.Topic), slog.String("owner", req.Owner))
-		gw.replyJSON(msg, messages.GatewayRouteAddResp{Added: true})
+		gw.replyJSON(msg, sdk.GatewayRouteAddResp{Added: true})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
 
 	// gateway.http.route.remove
-	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.remove", func(msg messages.Message) {
+	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.remove", func(msg sdk.Message) {
 		if gw.rbacChecker != nil {
 			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.remove"); err != nil {
 				gw.replyError(msg, "permission denied: "+err.Error())
 				return
 			}
 		}
-		var req messages.GatewayRouteRemoveMsg
+		var req sdk.GatewayRouteRemoveMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
 			return
@@ -76,13 +76,13 @@ func (gw *Gateway) subscribeBusCommands() {
 			}
 		}
 		gw.logger.Info("routes removed via bus", slog.Int("removed", removed))
-		gw.replyJSON(msg, messages.GatewayRouteRemoveResp{Removed: removed})
+		gw.replyJSON(msg, sdk.GatewayRouteRemoveResp{Removed: removed})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
 
 	// gateway.http.route.list
-	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.list", func(msg messages.Message) {
+	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.list", func(msg sdk.Message) {
 		if gw.rbacChecker != nil {
 			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.list"); err != nil {
 				gw.replyError(msg, "permission denied: "+err.Error())
@@ -90,20 +90,20 @@ func (gw *Gateway) subscribeBusCommands() {
 			}
 		}
 		routes := gw.routes.list()
-		infos := make([]messages.GatewayRouteInfo, len(routes))
+		infos := make([]sdk.GatewayRouteInfo, len(routes))
 		for i, r := range routes {
-			infos[i] = messages.GatewayRouteInfo{
+			infos[i] = sdk.GatewayRouteInfo{
 				Method: r.Method, Path: r.Path, Topic: r.Topic,
 				Type: r.Type, Owner: r.Owner,
 			}
 		}
-		gw.replyJSON(msg, messages.GatewayRouteListResp{Routes: infos})
+		gw.replyJSON(msg, sdk.GatewayRouteListResp{Routes: infos})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
 
 	// gateway.http.status
-	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.status", func(msg messages.Message) {
+	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.status", func(msg sdk.Message) {
 		if gw.rbacChecker != nil {
 			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.status"); err != nil {
 				gw.replyError(msg, "permission denied: "+err.Error())
@@ -113,7 +113,7 @@ func (gw *Gateway) subscribeBusCommands() {
 		gw.routes.mu.RLock()
 		routeCount := len(gw.routes.routes)
 		gw.routes.mu.RUnlock()
-		gw.replyJSON(msg, messages.GatewayStatusResp{
+		gw.replyJSON(msg, sdk.GatewayStatusResp{
 			Listening:         gw.ln != nil,
 			Address:           gw.Addr(),
 			RouteCount:        routeCount,
@@ -124,7 +124,7 @@ func (gw *Gateway) subscribeBusCommands() {
 	}
 }
 
-func (gw *Gateway) replyJSON(msg messages.Message, resp any) {
+func (gw *Gateway) replyJSON(msg sdk.Message, resp any) {
 	replyTo := msg.Metadata["replyTo"]
 	correlationID := msg.Metadata["correlationId"]
 	if replyTo == "" {
@@ -138,6 +138,6 @@ func (gw *Gateway) replyJSON(msg messages.Message, resp any) {
 	}
 }
 
-func (gw *Gateway) replyError(msg messages.Message, errMsg string) {
+func (gw *Gateway) replyError(msg sdk.Message, errMsg string) {
 	gw.replyJSON(msg, map[string]string{"error": errMsg})
 }

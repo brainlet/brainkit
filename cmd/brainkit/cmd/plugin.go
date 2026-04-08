@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -15,8 +15,8 @@ func newPluginCmd() *cobra.Command {
 		Long: "Install a plugin binary. Name format: owner/name or just name (defaults to brainlet owner).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PackagesInstallMsg{Name: args[0], Version: pluginInstallVersion},
-				func(resp *messages.PackagesInstallResp) {
+			return connectAndPublish(cmd, sdk.PackagesInstallMsg{Name: args[0], Version: pluginInstallVersion},
+				func(resp *sdk.PackagesInstallResp) {
 					cmd.Printf("Installed %s v%s\n", resp.Name, resp.Version)
 					cmd.Printf("  binary: %s\n", resp.Path)
 				},
@@ -28,8 +28,8 @@ func newPluginCmd() *cobra.Command {
 	removeCmd := &cobra.Command{
 		Use: "remove <name>", Short: "Remove an installed plugin", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PackagesRemoveMsg{Name: args[0]},
-				func(resp *messages.PackagesRemoveResp) { cmd.Printf("Removed %s\n", args[0]) },
+			return connectAndPublish(cmd, sdk.PackagesRemoveMsg{Name: args[0]},
+				func(resp *sdk.PackagesRemoveResp) { cmd.Printf("Removed %s\n", args[0]) },
 			)
 		},
 	}
@@ -37,8 +37,8 @@ func newPluginCmd() *cobra.Command {
 	updateCmd := &cobra.Command{
 		Use: "update <name>", Short: "Update a plugin to the latest version", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PackagesUpdateMsg{Name: args[0]},
-				func(resp *messages.PackagesUpdateResp) {
+			return connectAndPublish(cmd, sdk.PackagesUpdateMsg{Name: args[0]},
+				func(resp *sdk.PackagesUpdateResp) {
 					if resp.Updated {
 						cmd.Printf("Updated %s: %s → %s\n", args[0], resp.OldVersion, resp.NewVersion)
 					} else {

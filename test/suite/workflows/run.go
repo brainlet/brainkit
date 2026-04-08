@@ -11,7 +11,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -55,7 +54,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // wfPublishAndWait publishes a workflow command and waits for the typed response.
 // Generic helper replicating publishAndWait from infra/workflow_bus_test.go.
-func wfPublishAndWait[Req messages.BrainkitMessage, Resp any](
+func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	t *testing.T, k *brainkit.Kit, msg Req, timeout time.Duration,
 ) Resp {
 	t.Helper()
@@ -65,7 +64,7 @@ func wfPublishAndWait[Req messages.BrainkitMessage, Resp any](
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var resp Resp
-	unsub, err := sdk.SubscribeTo[Resp](k, ctx, result.ReplyTo, func(r Resp, m messages.Message) {
+	unsub, err := sdk.SubscribeTo[Resp](k, ctx, result.ReplyTo, func(r Resp, m sdk.Message) {
 		resp = r
 		cancel()
 	})

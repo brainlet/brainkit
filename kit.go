@@ -7,7 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // Kit is a brainkit runtime.
@@ -80,7 +79,7 @@ func (k *Kit) PublishRaw(ctx context.Context, topic string, payload json.RawMess
 }
 
 // SubscribeRaw subscribes to a topic. Returns cancel function.
-func (k *Kit) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (k *Kit) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.runtime().SubscribeRaw(ctx, topic, handler)
 }
 
@@ -97,7 +96,7 @@ func (k *Kit) PublishRawTo(ctx context.Context, targetNamespace, topic string, p
 }
 
 // SubscribeRawTo subscribes to a topic in a specific Kit's namespace.
-func (k *Kit) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (func(), error) {
+func (k *Kit) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.kernel.SubscribeRawTo(ctx, targetNamespace, topic, handler)
 }
 

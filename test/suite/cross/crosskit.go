@@ -13,7 +13,6 @@ import (
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,7 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 			defer cancel()
 
 			// TS surface: deploy .ts that creates a tool
-			pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+			pr1, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 				Source: "cross-ts-tool-cross.ts",
 				Code: `
 					const myTool = createTool({
@@ -45,8 +44,8 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 				`,
 			})
 			require.NoError(t, err)
-			ch1 := make(chan messages.KitDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+			ch1 := make(chan sdk.KitDeployResp, 1)
+			us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
 			defer us1()
 			select {
 			case <-ch1:
@@ -55,16 +54,16 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 			}
 
 			// Go surface: call the TS-created tool via Publish
-			pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+			pr2, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 				Name:  "ts-greeter",
 				Input: map[string]any{"name": "Go"},
 			})
 			require.NoError(t, err)
-			ch2 := make(chan messages.ToolCallResp, 1)
-			us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+			ch2 := make(chan sdk.ToolCallResp, 1)
+			us2, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
 			require.NoError(t, err)
 			defer us2()
-			var resp messages.ToolCallResp
+			var resp sdk.ToolCallResp
 			select {
 			case resp = <-ch2:
 			case <-ctx.Done():
@@ -76,9 +75,9 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 			assert.Equal(t, "hello from TS, Go", result["greeting"])
 
 			// Cleanup
-			spr1, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-ts-tool-cross.ts"})
-			sch1 := make(chan messages.KitTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch1 <- r })
+			spr1, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "cross-ts-tool-cross.ts"})
+			sch1 := make(chan sdk.KitTeardownResp, 1)
+			sun1, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, spr1.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch1 <- r })
 			defer sun1()
 			select {
 			case <-sch1:
@@ -99,7 +98,7 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			// Go surface: "echo" tool is already registered by helpers
 
 			// TS surface: deploy .ts that calls the Go-registered "echo" tool
-			pr3, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+			pr3, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 				Source: "cross-go-call-cross.ts",
 				Code: `
 					const wrapper = createTool({
@@ -114,8 +113,8 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 				`,
 			})
 			require.NoError(t, err)
-			ch3 := make(chan messages.KitDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch3 <- r })
+			ch3 := make(chan sdk.KitDeployResp, 1)
+			us3, _ := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr3.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch3 <- r })
 			defer us3()
 			select {
 			case <-ch3:
@@ -124,16 +123,16 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			}
 
 			// Go surface: call the TS wrapper which internally calls the Go echo tool
-			pr4, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+			pr4, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 				Name:  "echo-wrapper",
 				Input: map[string]any{"msg": "from TS to Go"},
 			})
 			require.NoError(t, err)
-			ch4 := make(chan messages.ToolCallResp, 1)
-			us4, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr4.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch4 <- r })
+			ch4 := make(chan sdk.ToolCallResp, 1)
+			us4, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr4.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch4 <- r })
 			require.NoError(t, err)
 			defer us4()
-			var resp messages.ToolCallResp
+			var resp sdk.ToolCallResp
 			select {
 			case resp = <-ch4:
 			case <-ctx.Done():
@@ -146,9 +145,9 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["inner"].(map[string]any)
 			assert.Equal(t, "from TS to Go", inner["echoed"])
 
-			spr2, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "cross-go-call-cross.ts"})
-			sch2 := make(chan messages.KitTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch2 <- r })
+			spr2, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "cross-go-call-cross.ts"})
+			sch2 := make(chan sdk.KitTeardownResp, 1)
+			sun2, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, spr2.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch2 <- r })
 			defer sun2()
 			select {
 			case <-sch2:
@@ -219,16 +218,16 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 			toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer toolCancel()
 
-			pr1, err := sdk.Publish(kit, toolCtx, messages.ToolCallMsg{
+			pr1, err := sdk.Publish(kit, toolCtx, sdk.ToolCallMsg{
 				Name:  "echo",
 				Input: map[string]any{"message": "plugin->go test"},
 			})
 			require.NoError(t, err)
-			ch1 := make(chan messages.ToolCallResp, 1)
-			us1, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
+			ch1 := make(chan sdk.ToolCallResp, 1)
+			us1, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch1 <- r })
 			require.NoError(t, err)
 			defer us1()
-			var resp messages.ToolCallResp
+			var resp sdk.ToolCallResp
 			select {
 			case resp = <-ch1:
 			case <-ctx.Done():
@@ -301,13 +300,13 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr2, err := sdk.Publish(kit, listCtx, messages.ToolListMsg{})
+			pr2, err := sdk.Publish(kit, listCtx, sdk.ToolListMsg{})
 			require.NoError(t, err)
-			ch2 := make(chan messages.ToolListResp, 1)
-			us2, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch2 <- r })
+			ch2 := make(chan sdk.ToolListResp, 1)
+			us2, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch2 <- r })
 			require.NoError(t, err)
 			defer us2()
-			var resp messages.ToolListResp
+			var resp sdk.ToolListResp
 			select {
 			case resp = <-ch2:
 			case <-ctx.Done():
@@ -368,7 +367,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts that calls the plugin's "concat" tool
-			pr1, err := sdk.Publish(kit, ctx, messages.KitDeployMsg{
+			pr1, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
 				Source: "ts-calls-plugin-cross.ts",
 				Code: `
 					const pluginCaller = createTool({
@@ -383,8 +382,8 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				`,
 			})
 			require.NoError(t, err)
-			ch1 := make(chan messages.KitDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[messages.KitDeployResp](kit, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+			ch1 := make(chan sdk.KitDeployResp, 1)
+			us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](kit, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
 			defer us1()
 			select {
 			case <-ch1:
@@ -395,16 +394,16 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			callCtx, callCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer callCancel()
 
-			pr2, err := sdk.Publish(kit, callCtx, messages.ToolCallMsg{
+			pr2, err := sdk.Publish(kit, callCtx, sdk.ToolCallMsg{
 				Name:  "plugin-caller",
 				Input: map[string]any{"x": "foo", "y": "bar"},
 			})
 			require.NoError(t, err)
-			ch2 := make(chan messages.ToolCallResp, 1)
-			us2, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+			ch2 := make(chan sdk.ToolCallResp, 1)
+			us2, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
 			require.NoError(t, err)
 			defer us2()
-			var resp messages.ToolCallResp
+			var resp sdk.ToolCallResp
 			select {
 			case resp = <-ch2:
 			case <-ctx.Done():
@@ -416,9 +415,9 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["fromPlugin"].(map[string]any)
 			assert.Equal(t, "foobar", inner["result"])
 
-			spr1, _ := sdk.Publish(kit, ctx, messages.KitTeardownMsg{Source: "ts-calls-plugin-cross.ts"})
-			sch1 := make(chan messages.KitTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[messages.KitTeardownResp](kit, ctx, spr1.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch1 <- r })
+			spr1, _ := sdk.Publish(kit, ctx, sdk.KitTeardownMsg{Source: "ts-calls-plugin-cross.ts"})
+			sch1 := make(chan sdk.KitTeardownResp, 1)
+			sun1, _ := sdk.SubscribeTo[sdk.KitTeardownResp](kit, ctx, spr1.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch1 <- r })
 			defer sun1()
 			select {
 			case <-sch1:
@@ -470,7 +469,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts tool
-			pr3, err := sdk.Publish(kit, ctx, messages.KitDeployMsg{
+			pr3, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
 				Source: "ts-alongside-cross.ts",
 				Code: `
 					const tsTool = createTool({
@@ -482,8 +481,8 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				`,
 			})
 			require.NoError(t, err)
-			ch3 := make(chan messages.KitDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[messages.KitDeployResp](kit, ctx, pr3.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch3 <- r })
+			ch3 := make(chan sdk.KitDeployResp, 1)
+			us3, _ := sdk.SubscribeTo[sdk.KitDeployResp](kit, ctx, pr3.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch3 <- r })
 			defer us3()
 			select {
 			case <-ch3:
@@ -494,13 +493,13 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr4, err := sdk.Publish(kit, listCtx, messages.ToolListMsg{})
+			pr4, err := sdk.Publish(kit, listCtx, sdk.ToolListMsg{})
 			require.NoError(t, err)
-			ch4 := make(chan messages.ToolListResp, 1)
-			us4, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
+			ch4 := make(chan sdk.ToolListResp, 1)
+			us4, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr4.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch4 <- r })
 			require.NoError(t, err)
 			defer us4()
-			var resp messages.ToolListResp
+			var resp sdk.ToolListResp
 			select {
 			case resp = <-ch4:
 			case <-ctx.Done():
@@ -515,9 +514,9 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			assert.True(t, names["concat"], "plugin concat tool")
 			assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-			spr2, _ := sdk.Publish(kit, ctx, messages.KitTeardownMsg{Source: "ts-alongside-cross.ts"})
-			sch2 := make(chan messages.KitTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[messages.KitTeardownResp](kit, ctx, spr2.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { sch2 <- r })
+			spr2, _ := sdk.Publish(kit, ctx, sdk.KitTeardownMsg{Source: "ts-alongside-cross.ts"})
+			sch2 := make(chan sdk.KitTeardownResp, 1)
+			sun2, _ := sdk.SubscribeTo[sdk.KitTeardownResp](kit, ctx, spr2.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch2 <- r })
 			defer sun2()
 			select {
 			case <-sch2:

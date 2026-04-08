@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ func testDrainsBeforeClose(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "slow.ts",
 		Code: `bus.on("slow", async (msg) => {
 			await new Promise(r => setTimeout(r, 500));
@@ -26,14 +25,14 @@ func testDrainsBeforeClose(t *testing.T, _ *suite.TestEnv) {
 		});`,
 	})
 	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	unsub()
 	time.Sleep(100 * time.Millisecond)
 
 	replyCh := make(chan struct{}, 1)
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "slow.ts", "slow", map[string]bool{"x": true})
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replyCh <- struct{}{} })
+	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- struct{}{} })
 	defer replyUnsub()
 
 	select {
@@ -55,7 +54,7 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "stuck.ts",
 		Code: `bus.on("stuck", async (msg) => {
 			await new Promise(r => setTimeout(r, 10000));
@@ -63,7 +62,7 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 		});`,
 	})
 	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	unsub()
 	time.Sleep(100 * time.Millisecond)
@@ -95,12 +94,12 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "dropper.ts",
 		Code:   `bus.on("ping", (msg) => { msg.reply({ got: true }); });`,
 	})
 	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	unsub()
 	time.Sleep(100 * time.Millisecond)
@@ -109,7 +108,7 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "dropper.ts", "ping", map[string]bool{"x": true})
 	var replied atomic.Bool
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replied.Store(true) })
+	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replied.Store(true) })
 	defer replyUnsub()
 
 	time.Sleep(500 * time.Millisecond)

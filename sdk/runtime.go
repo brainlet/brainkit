@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // Runtime is the unified interface for interacting with a brainkit runtime.
@@ -22,7 +21,7 @@ type Runtime interface {
 	// to avoid race conditions where a publish lands before the subscriber is listening.
 	// Handler receives the full Message including payload and metadata (correlationID, callerID).
 	// Returns a cancel function to unsubscribe.
-	SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (cancel func(), err error)
+	SubscribeRaw(ctx context.Context, topic string, handler func(Message)) (cancel func(), err error)
 
 	// Close shuts down the runtime and releases all resources.
 	Close() error
@@ -35,5 +34,5 @@ type CrossNamespaceRuntime interface {
 	// PublishRawTo publishes to a specific Kit's namespace, bypassing the local namespace.
 	PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (correlationID string, err error)
 	// SubscribeRawTo subscribes to a topic in a specific Kit's namespace.
-	SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (cancel func(), err error)
+	SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(Message)) (cancel func(), err error)
 }

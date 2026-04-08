@@ -9,7 +9,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,12 +102,12 @@ func queryHealth(t *testing.T, kit *brainkit.Kit) brainkit.HealthStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.PublishKitHealth(kit, ctx, messages.KitHealthMsg{})
+	pr, err := sdk.PublishKitHealth(kit, ctx, sdk.KitHealthMsg{})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
 	unsub, err := sdk.SubscribeKitHealthResp(kit, ctx, pr.ReplyTo,
-		func(resp messages.KitHealthResp, _ messages.Message) {
+		func(resp sdk.KitHealthResp, _ sdk.Message) {
 			ch <- resp.Health
 		})
 	require.NoError(t, err)

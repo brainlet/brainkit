@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -165,14 +164,14 @@ func startNATSContainer(t *testing.T) string {
 }
 
 // publishAndWaitRaw publishes on a Kit and waits for raw payload.
-func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg messages.BrainkitMessage) []byte {
+func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg sdk.BrainkitMessage) []byte {
 	t.Helper()
 	pr, err := sdk.Publish(kit, ctx, msg)
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	ch := make(chan []byte, 1)
-	unsub, err := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -188,7 +187,7 @@ func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg
 }
 
 // publishAndWaitJSON publishes on a Kit and returns the raw JSON payload.
-func publishAndWaitJSON(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg messages.BrainkitMessage) json.RawMessage {
+func publishAndWaitJSON(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg sdk.BrainkitMessage) json.RawMessage {
 	t.Helper()
 	return json.RawMessage(publishAndWaitRaw(t, kit, ctx, msg))
 }

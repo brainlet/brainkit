@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,13 +16,13 @@ func testToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolListResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var resp messages.ToolListResp
+	var resp sdk.ToolListResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -41,13 +40,13 @@ func testToolsResolveEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "echo"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "echo"})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolResolveResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolResolveResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolResolveResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var resp messages.ToolResolveResp
+	var resp sdk.ToolResolveResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -62,10 +61,10 @@ func testToolsResolveNotFound(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "nonexistent"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "nonexistent"})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolResolveResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolResolveResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolResolveResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -79,16 +78,16 @@ func testToolsCallEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "hello world"},
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolCallResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -103,16 +102,16 @@ func testToolsCallAdd(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
 		Name:  "add",
 		Input: map[string]any{"a": 17, "b": 25},
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolCallResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -127,13 +126,13 @@ func testToolsCallNotFound(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
 		Name:  "nonexistent",
 		Input: map[string]any{},
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolCallResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolCallResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:

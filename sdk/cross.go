@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/ctxkeys"
 	"github.com/google/uuid"
 )
 
 // PublishTo sends a typed command to a specific Kit's namespace.
 // ReplyTo defaults to caller's namespace: <topic>.reply.<uuid>
-func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error) {
+func PublishTo[T BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error) {
 	xrt, ok := rt.(CrossNamespaceRuntime)
 	if !ok {
 		return PublishResult{}, ErrNotCrossNamespace
@@ -35,7 +34,7 @@ func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targ
 		return PublishResult{}, fmt.Errorf("marshal %T: %w", msg, err)
 	}
 
-	ctx = transport.WithPublishMeta(ctx, correlationID, replyTo)
+	ctx = ctxkeys.WithPublishMeta(ctx, correlationID, replyTo)
 	msgID, err := xrt.PublishRawTo(ctx, targetNamespace, topic, payload)
 	if err != nil {
 		return PublishResult{}, err

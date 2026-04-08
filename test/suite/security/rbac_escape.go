@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,7 +54,7 @@ func testRBACGatewayExfiltratesSecrets(t *testing.T, env *suite.TestEnv) {
 	k := secRBACKernel(t)
 	ctx := context.Background()
 
-	sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "API_KEY_SEC", Value: "sk-secret-12345"})
+	sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "API_KEY_SEC", Value: "sk-secret-12345"})
 	time.Sleep(100 * time.Millisecond)
 
 	err := secDeployWithRole(k, "gw-secret-steal-sec.ts", `
@@ -109,11 +108,11 @@ func testRBACObserverHijacksServiceHandler(t *testing.T, env *suite.TestEnv) {
 		output("subscribed");
 	`, "observer"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.legit-service-sec.api", Payload: json.RawMessage(`{"q":"test"}`),
 	})
 	ch := make(chan []byte, 2)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

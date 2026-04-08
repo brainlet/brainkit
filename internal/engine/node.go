@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/google/uuid"
 )
 
@@ -160,7 +159,7 @@ func (n *Node) PublishRaw(ctx context.Context, topic string, payload json.RawMes
 	return n.Kernel.PublishRaw(ctx, topic, payload)
 }
 
-func (n *Node) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (n *Node) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return n.Kernel.SubscribeRaw(ctx, topic, handler)
 }
 
@@ -170,7 +169,7 @@ func (n *Node) PublishRawTo(ctx context.Context, targetNamespace, topic string, 
 	return n.Kernel.PublishRawTo(ctx, targetNamespace, topic, payload)
 }
 
-func (n *Node) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (func(), error) {
+func (n *Node) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
 	return n.Kernel.SubscribeRawTo(ctx, targetNamespace, topic, handler)
 }
 
@@ -256,7 +255,7 @@ func (n *Node) StartPlugin(ctx context.Context, cfg PluginConfig) error {
 			break
 		}
 	}
-	n.Kernel.publish(ctx, "plugin.started", mustMarshalJSON(messages.PluginStartedEvent{
+	n.Kernel.publish(ctx, "plugin.started", mustMarshalJSON(sdk.PluginStartedEvent{
 		Name: cfg.Name, PID: pid,
 	}))
 	return nil
@@ -274,7 +273,7 @@ func (n *Node) StopPlugin(ctx context.Context, name string) error {
 	if n.Kernel.config.Store != nil {
 		n.Kernel.config.Store.DeleteRunningPlugin(name)
 	}
-	n.Kernel.publish(ctx, "plugin.stopped", mustMarshalJSON(messages.PluginStoppedEvent{
+	n.Kernel.publish(ctx, "plugin.stopped", mustMarshalJSON(sdk.PluginStoppedEvent{
 		Name: name, Reason: "stopped",
 	}))
 	return nil
@@ -349,7 +348,7 @@ func (n *Node) restoreRunningPlugins() {
 
 // --- Node-specific command handlers ---
 
-func (n *Node) processPluginManifest(ctx context.Context, manifest messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
+func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
 	// RBAC: validate manifest subscriptions against plugin's assigned role
 	if n.Kernel.rbac != nil {
 		role := n.Kernel.rbac.RoleForPlugin(manifest.Name)
@@ -402,8 +401,8 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 					waitCtx, cancel := context.WithCancel(callCtx)
 					defer cancel()
 
-					resultCh := make(chan messages.Message, 1)
-					stop, err := n.Kernel.remote.SubscribeRaw(waitCtx, resultTopic, func(msg messages.Message) {
+					resultCh := make(chan sdk.Message, 1)
+					stop, err := n.Kernel.remote.SubscribeRaw(waitCtx, resultTopic, func(msg sdk.Message) {
 						if msg.Metadata["correlationId"] == correlationID {
 							select {
 							case resultCh <- msg:
@@ -428,12 +427,12 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 						span.End(callCtx.Err())
 						return nil, callCtx.Err()
 					case msg := <-resultCh:
-						var result messages.ToolCallResp
+						var result sdk.ToolCallResp
 						if err := json.Unmarshal(msg.Payload, &result); err != nil {
 							span.End(err)
 							return nil, fmt.Errorf("brainkit: decode plugin tool result: %w", err)
 						}
-						if resultErr := messages.ResultErrorOf(result); resultErr != "" {
+						if resultErr := sdk.ResultErrorOf(result); resultErr != "" {
 							retErr := fmt.Errorf("%s", resultErr)
 							span.End(retErr)
 							return nil, retErr
@@ -446,21 +445,21 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest messages.Plug
 		})
 	}
 
-	_ = n.Kernel.publish(ctx, messages.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(messages.PluginRegisteredEvent{
+	_ = n.Kernel.publish(ctx, sdk.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(sdk.PluginRegisteredEvent{
 		Owner:   manifest.Owner,
 		Name:    manifest.Name,
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
 	}))
 
-	return &messages.PluginManifestResp{Registered: true}, nil
+	return &sdk.PluginManifestResp{Registered: true}, nil
 }
 
 func pluginToolTopic(owner, name, version, tool string) string {
 	return fmt.Sprintf("plugin.tool.%s/%s@%s/%s", owner, name, version, tool)
 }
 
-func (n *Node) getPluginState(ctx context.Context, req messages.PluginStateGetMsg) (*messages.PluginStateGetResp, error) {
+func (n *Node) getPluginState(ctx context.Context, req sdk.PluginStateGetMsg) (*sdk.PluginStateGetResp, error) {
 	pluginID := transport.CallerIDFromContext(ctx)
 	if pluginID == "" {
 		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
@@ -469,10 +468,10 @@ func (n *Node) getPluginState(ctx context.Context, req messages.PluginStateGetMs
 	if err != nil {
 		return nil, err
 	}
-	return &messages.PluginStateGetResp{Value: value}, nil
+	return &sdk.PluginStateGetResp{Value: value}, nil
 }
 
-func (n *Node) setPluginState(ctx context.Context, req messages.PluginStateSetMsg) (*messages.PluginStateSetResp, error) {
+func (n *Node) setPluginState(ctx context.Context, req sdk.PluginStateSetMsg) (*sdk.PluginStateSetResp, error) {
 	pluginID := transport.CallerIDFromContext(ctx)
 	if pluginID == "" {
 		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
@@ -480,7 +479,7 @@ func (n *Node) setPluginState(ctx context.Context, req messages.PluginStateSetMs
 	if err := n.pluginState.Set(ctx, pluginID, req.Key, req.Value); err != nil {
 		return nil, err
 	}
-	return &messages.PluginStateSetResp{OK: true}, nil
+	return &sdk.PluginStateSetResp{OK: true}, nil
 }
 
 func mustMarshalJSON(v any) json.RawMessage {

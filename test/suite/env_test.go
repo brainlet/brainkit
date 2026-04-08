@@ -7,7 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +23,8 @@ func TestEnv_Full_Smoke(t *testing.T) {
 func TestEnv_Full_ToolsRegistered(t *testing.T) {
 	env := Full(t)
 	// Verify echo and add tools via bus command
-	payload := testutil.PublishAndWait(t, env.Kit, messages.ToolListMsg{}, 5*time.Second)
-	var resp messages.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
+	var resp sdk.ToolListResp
 	require.NoError(t, json.Unmarshal(payload, &resp))
 	names := make(map[string]bool)
 	for _, tool := range resp.Tools {
@@ -56,8 +56,8 @@ func TestEnv_Minimal_Smoke(t *testing.T) {
 
 func TestEnv_Minimal_NoTools(t *testing.T) {
 	env := Minimal(t)
-	payload := testutil.PublishAndWait(t, env.Kit, messages.ToolListMsg{}, 5*time.Second)
-	var resp messages.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
+	var resp sdk.ToolListResp
 	require.NoError(t, json.Unmarshal(payload, &resp))
 	assert.Empty(t, resp.Tools, "minimal env should have no tools")
 }
@@ -73,7 +73,7 @@ func TestEnv_SendAndReceive(t *testing.T) {
 	require.NoError(t, err)
 
 	// Use SendAndReceive helper
-	payload, ok := env.SendAndReceive(t, messages.CustomMsg{
+	payload, ok := env.SendAndReceive(t, sdk.CustomMsg{
 		Topic:   "ts.echo-handler.test-echo",
 		Payload: []byte(`{"text":"hello"}`),
 	}, 5*time.Second)

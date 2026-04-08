@@ -14,7 +14,6 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,10 +43,10 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 	fakeTopic := "fake.plugin.tool.echo"
 	fakeResultTopic := fakeTopic + ".result"
 
-	_, err = kernel.SubscribeRaw(context.Background(), fakeTopic, func(msg messages.Message) {
+	_, err = kernel.SubscribeRaw(context.Background(), fakeTopic, func(msg sdk.Message) {
 		correlationID := msg.Metadata["correlationId"]
 		result := json.RawMessage(`{"echoed":"ok"}`)
-		resp, _ := json.Marshal(messages.ToolCallResp{Result: result})
+		resp, _ := json.Marshal(sdk.ToolCallResp{Result: result})
 
 		replyMsg := message.NewMessage(watermill.NewUUID(), resp)
 		replyMsg.Metadata.Set("correlationId", correlationID)
@@ -85,8 +84,8 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 				waitCtx, cancel := context.WithCancel(callCtx)
 				defer cancel()
 
-				resultCh := make(chan messages.Message, 1)
-				stop, subErr := kernel.SubscribeRaw(waitCtx, fakeResultTopic, func(msg messages.Message) {
+				resultCh := make(chan sdk.Message, 1)
+				stop, subErr := kernel.SubscribeRaw(waitCtx, fakeResultTopic, func(msg sdk.Message) {
 					if msg.Metadata["correlationId"] == correlationID {
 						resultCh <- msg
 						cancel()
@@ -106,7 +105,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 				case <-callCtx.Done():
 					return nil, callCtx.Err()
 				case msg := <-resultCh:
-					var resp messages.ToolCallResp
+					var resp sdk.ToolCallResp
 					json.Unmarshal(msg.Payload, &resp)
 					return resp.Result, nil
 				}
@@ -130,14 +129,14 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 
 		replyTo := fmt.Sprintf("tools.call.reply.%d", time.Now().UnixNano())
 		replyCh := make(chan json.RawMessage, 1)
-		unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+		unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 			replyCh <- msg.Payload
 		})
 		require.NoError(t, err)
 		defer unsub()
 
 		start := time.Now()
-		_, err = sdk.Publish(kernel, ctx, messages.ToolCallMsg{
+		_, err = sdk.Publish(kernel, ctx, sdk.ToolCallMsg{
 			Name:  "echo",
 			Input: "test input",
 		}, sdk.WithReplyTo(replyTo))
@@ -148,7 +147,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 			elapsed := time.Since(start)
 			t.Logf("bus response in %s: %s", elapsed.Round(time.Millisecond), string(payload))
 			require.Less(t, elapsed, 3*time.Second)
-			var resp messages.ToolCallResp
+			var resp sdk.ToolCallResp
 			require.NoError(t, json.Unmarshal(payload, &resp))
 			require.Empty(t, resp.Error)
 			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null")

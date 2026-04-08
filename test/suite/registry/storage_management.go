@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -19,14 +18,14 @@ func testStorageAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
 		Name:   "test-mem-stor",
 		Type:   "memory",
 		Config: json.RawMessage(`{}`),
 	})
-	respCh := make(chan messages.StorageAddResp, 1)
+	respCh := make(chan sdk.StorageAddResp, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.StorageAddResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.StorageAddResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -42,10 +41,10 @@ func testStorageAddViaBus(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kit, ctx, messages.RegistryListMsg{Category: "storage"})
-	listCh := make(chan messages.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.RegistryListResp, msg messages.Message) { listCh <- resp })
+	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "storage"})
+	listCh := make(chan sdk.RegistryListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
+		func(resp sdk.RegistryListResp, msg sdk.Message) { listCh <- resp })
 	defer unsub2()
 
 	select {
@@ -63,20 +62,20 @@ func testStorageRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
 		Name: "test-rm-stor", Type: "memory", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan messages.StorageAddResp, 1)
+	ch := make(chan sdk.StorageAddResp, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.StorageAddResp, msg messages.Message) { ch <- resp })
+		func(resp sdk.StorageAddResp, msg sdk.Message) { ch <- resp })
 	<-ch
 	unsub()
 
 	// Remove
-	pr2, _ := sdk.PublishStorageRemove(env.Kit, ctx, messages.StorageRemoveMsg{Name: "test-rm-stor"})
-	rmCh := make(chan messages.StorageRemoveResp, 1)
+	pr2, _ := sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "test-rm-stor"})
+	rmCh := make(chan sdk.StorageRemoveResp, 1)
 	unsub2, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.StorageRemoveResp, msg messages.Message) { rmCh <- resp })
+		func(resp sdk.StorageRemoveResp, msg sdk.Message) { rmCh <- resp })
 	defer unsub2()
 
 	select {
@@ -93,10 +92,10 @@ func testStorageRemoveNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageRemove(env.Kit, ctx, messages.StorageRemoveMsg{Name: "nonexistent-stor"})
-	rmCh := make(chan messages.StorageRemoveResp, 1)
+	pr, _ := sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "nonexistent-stor"})
+	rmCh := make(chan sdk.StorageRemoveResp, 1)
 	unsub, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.StorageRemoveResp, msg messages.Message) { rmCh <- resp })
+		func(resp sdk.StorageRemoveResp, msg sdk.Message) { rmCh <- resp })
 	defer unsub()
 
 	select {
@@ -120,14 +119,14 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	// Add SQLite storage at runtime via bus
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
 		Name:   "dynamic-sql",
 		Type:   "sqlite",
 		Config: json.RawMessage(`{"path":"` + tmpDir + `/dynamic.db"}`),
 	})
-	addCh := make(chan messages.StorageAddResp, 1)
+	addCh := make(chan sdk.StorageAddResp, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.StorageAddResp, msg messages.Message) { addCh <- resp })
+		func(resp sdk.StorageAddResp, msg sdk.Message) { addCh <- resp })
 	resp := <-addCh
 	unsub()
 	if resp.Error != "" {
@@ -153,13 +152,13 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	defer testutil.Teardown(t, env.Kit, "storage-test-dynamic.ts")
 
 	// Send message to deployed service
-	pr2, _ := sdk.Publish(env.Kit, ctx, messages.KitSendMsg{
+	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.KitSendMsg{
 		Topic:   "ts.storage-test-dynamic.storage-test",
 		Payload: json.RawMessage(`{}`),
 	})
-	sendCh := make(chan messages.KitSendResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.KitSendResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.KitSendResp, msg messages.Message) { sendCh <- resp })
+	sendCh := make(chan sdk.KitSendResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.KitSendResp](env.Kit, ctx, pr2.ReplyTo,
+		func(resp sdk.KitSendResp, msg sdk.Message) { sendCh <- resp })
 	defer unsub2()
 
 	select {
@@ -187,12 +186,12 @@ func testStorageAddMemoryThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add in-memory storage at runtime
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, messages.StorageAddMsg{
+	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
 		Name: "dynamic-mem", Type: "memory", Config: json.RawMessage(`{}`),
 	})
-	addCh := make(chan messages.StorageAddResp, 1)
+	addCh := make(chan sdk.StorageAddResp, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.StorageAddResp, msg messages.Message) { addCh <- resp })
+		func(resp sdk.StorageAddResp, msg sdk.Message) { addCh <- resp })
 	<-addCh
 	unsub()
 

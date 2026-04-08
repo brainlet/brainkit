@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,13 +16,13 @@ func testCorrelationIDFiltering(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
+	result, err := sdk.Publish(env.Kit, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.CorrelationID, "Publish must return a correlationID")
 	assert.NotEmpty(t, result.ReplyTo, "Publish must return a ReplyTo topic")
 
-	received := make(chan messages.ToolListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, result.ReplyTo, func(resp messages.ToolListResp, msg messages.Message) {
+	received := make(chan sdk.ToolListResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](env.Kit, ctx, result.ReplyTo, func(resp sdk.ToolListResp, msg sdk.Message) {
 		received <- resp
 	})
 	require.NoError(t, err)
@@ -43,20 +42,20 @@ func testMultipleInFlight(t *testing.T, env *suite.TestEnv) {
 
 	const n = 10
 	var wg sync.WaitGroup
-	results := make([]messages.ToolListResp, n)
+	results := make([]sdk.ToolListResp, n)
 	errors := make([]error, n)
 
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			pubResult, err := sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
+			pubResult, err := sdk.Publish(env.Kit, ctx, sdk.ToolListMsg{})
 			if err != nil {
 				errors[idx] = err
 				return
 			}
-			done := make(chan messages.ToolListResp, 1)
-			unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, pubResult.ReplyTo, func(r messages.ToolListResp, m messages.Message) {
+			done := make(chan sdk.ToolListResp, 1)
+			unsub, err := sdk.SubscribeTo[sdk.ToolListResp](env.Kit, ctx, pubResult.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) {
 				done <- r
 			})
 			if err != nil {
@@ -83,14 +82,14 @@ func testMultipleInFlight(t *testing.T, env *suite.TestEnv) {
 func testContextCancellation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _ = sdk.Publish(env.Kit, ctx, messages.ToolListMsg{})
+	_, _ = sdk.Publish(env.Kit, ctx, sdk.ToolListMsg{})
 }
 
 func testSubscribeCancellation(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	count := 0
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](env.Kit, ctx, "tools.list.reply.test", func(resp messages.ToolListResp, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](env.Kit, ctx, "tools.list.reply.test", func(resp sdk.ToolListResp, msg sdk.Message) {
 		count++
 	})
 	require.NoError(t, err)

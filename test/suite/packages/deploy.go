@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,11 +39,11 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 		});
 	`)
 
-	pub, err := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{Path: dir})
+	pub, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
 	require.NoError(t, err)
 
-	deployCh := make(chan messages.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.PackageDeployResp, _ messages.Message) { deployCh <- resp })
+	deployCh := make(chan sdk.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	defer cancel()
 
 	select {
@@ -60,7 +59,7 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "test-pkg", "greet", map[string]string{"name": "World"})
 	replyCh := make(chan map[string]any, 1)
-	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -87,15 +86,15 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("ping", (msg) => { msg.reply({pong: true}); });`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{Path: dir})
-	ch := make(chan messages.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp messages.PackageDeployResp, _ messages.Message) { ch <- resp })
+	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
+	ch := make(chan sdk.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { ch <- resp })
 	<-ch
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kit, ctx, messages.PackageListDeployedMsg{})
-	listCh := make(chan messages.PackageListDeployedResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.PackageListDeployedResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.PackageListDeployedResp, _ messages.Message) { listCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
+	listCh := make(chan sdk.PackageListDeployedResp, 1)
+	cancel2, _ := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.PackageListDeployedResp, _ sdk.Message) { listCh <- resp })
 
 	select {
 	case resp := <-listCh:
@@ -108,9 +107,9 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout listing packages")
 	}
 
-	pub3, _ := sdk.Publish(env.Kit, ctx, messages.PackageTeardownMsg{Name: "list-test"})
-	tearCh := make(chan messages.PackageTeardownResp, 1)
-	cancel3, _ := sdk.SubscribeTo[messages.PackageTeardownResp](env.Kit, ctx, pub3.ReplyTo, func(resp messages.PackageTeardownResp, _ messages.Message) { tearCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "list-test"})
+	tearCh := make(chan sdk.PackageTeardownResp, 1)
+	cancel3, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.PackageTeardownResp, _ sdk.Message) { tearCh <- resp })
 	select {
 	case resp := <-tearCh:
 		cancel3()
@@ -120,9 +119,9 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pub4, _ := sdk.Publish(env.Kit, ctx, messages.PackageListDeployedMsg{})
-	listCh2 := make(chan messages.PackageListDeployedResp, 1)
-	cancel4, _ := sdk.SubscribeTo[messages.PackageListDeployedResp](env.Kit, ctx, pub4.ReplyTo, func(resp messages.PackageListDeployedResp, _ messages.Message) { listCh2 <- resp })
+	pub4, _ := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
+	listCh2 := make(chan sdk.PackageListDeployedResp, 1)
+	cancel4, _ := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pub4.ReplyTo, func(resp sdk.PackageListDeployedResp, _ sdk.Message) { listCh2 <- resp })
 	defer cancel4()
 	select {
 	case resp := <-listCh2:
@@ -145,9 +144,9 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("x", (msg) => { msg.reply({}); });`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{Path: dir})
+	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
-	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg messages.Message) {
+	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		if e, ok := resp["error"].(string); ok {
@@ -164,15 +163,15 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	setPub, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"})
-	setCh := make(chan messages.SecretsSetResp, 1)
-	setCancel, _ := sdk.SubscribeTo[messages.SecretsSetResp](env.Kit, ctx, setPub.ReplyTo, func(resp messages.SecretsSetResp, _ messages.Message) { setCh <- resp })
+	setPub, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"})
+	setCh := make(chan sdk.SecretsSetResp, 1)
+	setCancel, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, setPub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	setCancel()
 
-	pub2, _ := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{Path: dir})
-	deployCh := make(chan messages.PackageDeployResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kit, ctx, pub2.ReplyTo, func(resp messages.PackageDeployResp, _ messages.Message) { deployCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
+	deployCh := make(chan sdk.PackageDeployResp, 1)
+	cancel2, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	defer cancel2()
 
 	select {
@@ -195,15 +194,15 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v1Code := `bus.on("check", (msg) => { msg.reply({ version: "v1" }); });`
 
-	pub, err := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{
+	pub, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v1Code},
 	})
 	require.NoError(t, err)
 
-	deployCh := make(chan messages.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.PackageDeployResp](env.Kit, ctx, pub.ReplyTo,
-		func(resp messages.PackageDeployResp, _ messages.Message) { deployCh <- resp })
+	deployCh := make(chan sdk.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo,
+		func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	select {
 	case resp := <-deployCh:
 		cancel()
@@ -221,15 +220,15 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v2Code := `bus.on("check", (msg) => { msg.reply({ version: "v2" }); });`
 
-	pub2, err := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{
+	pub2, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v2Code},
 	})
 	require.NoError(t, err)
 
 	// Listen for raw response to capture errors
-	v2ReplyCh := make(chan messages.Message, 1)
-	cancel2, _ := env.Kit.SubscribeRaw(ctx, pub2.ReplyTo, func(msg messages.Message) {
+	v2ReplyCh := make(chan sdk.Message, 1)
+	cancel2, _ := env.Kit.SubscribeRaw(ctx, pub2.ReplyTo, func(msg sdk.Message) {
 		select {
 		case v2ReplyCh <- msg:
 		default:
@@ -238,7 +237,7 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	select {
 	case msg := <-v2ReplyCh:
 		cancel2()
-		var resp messages.PackageDeployResp
+		var resp sdk.PackageDeployResp
 		json.Unmarshal(msg.Payload, &resp)
 		if resp.Error != "" {
 			t.Fatalf("v2 deploy error: %s", resp.Error)
@@ -270,9 +269,9 @@ func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
 		bus.on("greet", (msg) => { msg.reply({ from: "second" }); });
 	`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, messages.PackageDeployMsg{Path: dir})
+	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
-	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg messages.Message) {
+	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		if e, ok := resp["error"].(string); ok {
@@ -291,7 +290,7 @@ func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
 
 func sendToServiceAndWait(t *testing.T, k interface {
 	sdk.Runtime
-	SubscribeRaw(context.Context, string, func(messages.Message)) (func(), error)
+	SubscribeRaw(context.Context, string, func(sdk.Message)) (func(), error)
 }, service, topic string, payload any) map[string]any {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -301,7 +300,7 @@ func sendToServiceAndWait(t *testing.T, k interface {
 	require.NoError(t, err)
 
 	replyCh := make(chan map[string]any, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		select {

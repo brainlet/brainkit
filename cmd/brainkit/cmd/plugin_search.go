@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +13,8 @@ func addPluginSearchCmds(parent *cobra.Command) {
 	searchCmd := &cobra.Command{
 		Use: "search <query>", Short: "Search the plugin registry", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PackagesSearchMsg{Query: args[0]},
-				func(resp *messages.PackagesSearchResp) {
+			return connectAndPublish(cmd, sdk.PackagesSearchMsg{Query: args[0]},
+				func(resp *sdk.PackagesSearchResp) {
 					tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
 					fmt.Fprintln(tw, "NAME\tVERSION\tDESCRIPTION")
 					for _, p := range resp.Plugins {
@@ -33,8 +33,8 @@ func addPluginSearchCmds(parent *cobra.Command) {
 	infoCmd := &cobra.Command{
 		Use: "info <name>", Short: "Show detailed info about an installed plugin", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PackagesInfoMsg{Name: args[0]},
-				func(resp *messages.PackagesInfoResp) {
+			return connectAndPublish(cmd, sdk.PackagesInfoMsg{Name: args[0]},
+				func(resp *sdk.PackagesInfoResp) {
 					var manifest struct {
 						Name         string   `json:"name"`
 						Owner        string   `json:"owner"`

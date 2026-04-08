@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -96,7 +95,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 // --- helpers ---
 
 // sendAndReceive publishes a typed message and waits for the raw response.
-func sendAndReceive(t *testing.T, rt sdk.Runtime, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
+func sendAndReceive(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -108,7 +107,7 @@ func sendAndReceive(t *testing.T, rt sdk.Runtime, msg messages.BrainkitMessage, 
 	}
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	if err != nil {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -28,8 +28,8 @@ func newEvalCmd() *cobra.Command {
 			} else {
 				return fmt.Errorf("provide code as argument or use -f <file>")
 			}
-			return connectAndPublish(cmd, messages.KitEvalMsg{Code: code},
-				func(resp *messages.KitEvalResp) {
+			return connectAndPublish(cmd, sdk.KitEvalMsg{Code: code},
+				func(resp *sdk.KitEvalResp) {
 					cmd.Println(resp.Result)
 				},
 			)

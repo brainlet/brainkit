@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 type eventSpec struct {
@@ -28,7 +28,7 @@ func (r *knownEventRegistry) Validate(topic string, payload json.RawMessage) err
 	return spec.validate(payload)
 }
 
-func eventOf[T messages.BrainkitMessage]() eventSpec {
+func eventOf[T sdk.BrainkitMessage]() eventSpec {
 	var zero T
 	return eventSpec{
 		topic: zero.BusTopic(),
@@ -47,19 +47,19 @@ var (
 func eventCatalog() *knownEventRegistry {
 	eventCatalogOnce.Do(func() {
 		specs := []eventSpec{
-			eventOf[messages.KitDeployedEvent](),
-			eventOf[messages.KitTeardownedEvent](),
-			eventOf[messages.PluginRegisteredEvent](),
-			eventOf[messages.HandlerFailedEvent](),
-			eventOf[messages.HandlerExhaustedEvent](),
-			eventOf[messages.PluginStartedEvent](),
-			eventOf[messages.PluginStoppedEvent](),
-			eventOf[messages.SecretsAccessedEvent](),
-			eventOf[messages.SecretsStoredEvent](),
-			eventOf[messages.SecretsRotatedEvent](),
-			eventOf[messages.SecretsDeletedEvent](),
-			eventOf[messages.PermissionDeniedEvent](),
-			eventOf[messages.ReplyDeniedEvent](),
+			eventOf[sdk.KitDeployedEvent](),
+			eventOf[sdk.KitTeardownedEvent](),
+			eventOf[sdk.PluginRegisteredEvent](),
+			eventOf[sdk.HandlerFailedEvent](),
+			eventOf[sdk.HandlerExhaustedEvent](),
+			eventOf[sdk.PluginStartedEvent](),
+			eventOf[sdk.PluginStoppedEvent](),
+			eventOf[sdk.SecretsAccessedEvent](),
+			eventOf[sdk.SecretsStoredEvent](),
+			eventOf[sdk.SecretsRotatedEvent](),
+			eventOf[sdk.SecretsDeletedEvent](),
+			eventOf[sdk.PermissionDeniedEvent](),
+			eventOf[sdk.ReplyDeniedEvent](),
 		}
 		byTopic := make(map[string]eventSpec, len(specs))
 		for _, spec := range specs {

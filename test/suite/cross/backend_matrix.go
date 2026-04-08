@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,12 +33,12 @@ func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Kit A publishes to Kit B
-	pr, err := sdk.PublishTo[messages.CustomMsg](kitA, ctx, "xk-b-suite",
-		messages.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)})
+	pr, err := sdk.PublishTo[sdk.CustomMsg](kitA, ctx, "xk-b-suite",
+		sdk.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -66,12 +65,12 @@ func testCrossKitErrorPropagation(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Call nonexistent tool on Kit B from Kit A
-	pr, err := sdk.PublishTo[messages.ToolCallMsg](kitA, ctx, "xe-b-suite",
-		messages.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
+	pr, err := sdk.PublishTo[sdk.ToolCallMsg](kitA, ctx, "xe-b-suite",
+		sdk.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	require.NoError(t, err)

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,11 +17,11 @@ func testToolCallRoundtrip(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "roundtrip-suite"}})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "roundtrip-suite"}})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 

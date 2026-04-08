@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,22 +21,22 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	t.Run("tools.list", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.ToolListMsg{}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.ToolListMsg{}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
 
 	t.Run("tools.call/echo", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go-sdk"}}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go-sdk"}}, 5*time.Second)
 		require.True(t, ok)
 		assert.Contains(t, string(payload), "go-sdk")
 	})
 
 	t.Run("secrets.set+get", func(t *testing.T) {
-		pr, err := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
+		pr, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
 		require.NoError(t, err)
 		ch := make(chan []byte, 1)
-		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 		select {
 		case <-ch:
 		case <-time.After(3 * time.Second):
@@ -45,9 +44,9 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 		}
 		unsub()
 
-		pr2, _ := sdk.Publish(env.Kit, ctx, messages.SecretsGetMsg{Name: "go-surface-suite"})
+		pr2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "go-surface-suite"})
 		ch2 := make(chan []byte, 1)
-		unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+		unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 		defer unsub2()
 		select {
 		case p := <-ch2:
@@ -68,9 +67,9 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	t.Run("bus.publish+reply", func(t *testing.T) {
 		testutil.Deploy(t, env.Kit, "go-surface-svc-suite.ts", `bus.on("ping", function(msg) { msg.reply({pong:true}); });`)
 
-		pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
+		pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
 		ch := make(chan []byte, 1)
-		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 		defer unsub()
 		select {
 		case p := <-ch:
@@ -87,13 +86,13 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("metrics", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.MetricsGetMsg{}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.MetricsGetMsg{}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
 
 	t.Run("registry.list", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.RegistryListMsg{Category: "provider"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.RegistryListMsg{Category: "provider"}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
@@ -208,7 +207,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 // testSurfaceErrorConsistency — same error looks the same from every surface.
 func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	t.Run("NOT_FOUND/go", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "ghost-tool-consistency-suite"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "ghost-tool-consistency-suite"}, 5*time.Second)
 		require.True(t, ok)
 		assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload))
 	})
@@ -236,7 +235,7 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("VALIDATION_ERROR/go", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, messages.SecretsSetMsg{Name: "", Value: "v"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, sdk.SecretsSetMsg{Name: "", Value: "v"}, 5*time.Second)
 		require.True(t, ok)
 		assert.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(payload))
 	})

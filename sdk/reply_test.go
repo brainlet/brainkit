@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +20,7 @@ func (m *mockReplier) PublishRaw(ctx context.Context, topic string, payload json
 	return "msg-id", nil
 }
 
-func (m *mockReplier) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (m *mockReplier) SubscribeRaw(ctx context.Context, topic string, handler func(Message)) (func(), error) {
 	return func() {}, nil
 }
 
@@ -37,7 +36,7 @@ func (m *mockReplier) ReplyRaw(ctx context.Context, replyTo, correlationID strin
 
 func TestReply(t *testing.T) {
 	rt := &mockReplier{}
-	msg := messages.Message{
+	msg := Message{
 		Metadata: map[string]string{
 			"replyTo":       "test.reply.topic",
 			"correlationId": "corr-123",
@@ -54,7 +53,7 @@ func TestReply(t *testing.T) {
 
 func TestSendChunk(t *testing.T) {
 	rt := &mockReplier{}
-	msg := messages.Message{
+	msg := Message{
 		Metadata: map[string]string{
 			"replyTo":       "test.reply.topic",
 			"correlationId": "corr-456",
@@ -69,7 +68,7 @@ func TestSendChunk(t *testing.T) {
 
 func TestReply_MissingReplyTo(t *testing.T) {
 	rt := &mockReplier{}
-	msg := messages.Message{Metadata: map[string]string{}}
+	msg := Message{Metadata: map[string]string{}}
 
 	err := Reply(rt, context.Background(), msg, "data")
 	assert.ErrorContains(t, err, "no replyTo")
@@ -77,7 +76,7 @@ func TestReply_MissingReplyTo(t *testing.T) {
 
 func TestReply_NotReplier(t *testing.T) {
 	rt := &nonReplierRuntime{}
-	msg := messages.Message{
+	msg := Message{
 		Metadata: map[string]string{"replyTo": "test.topic"},
 	}
 
@@ -90,7 +89,7 @@ type nonReplierRuntime struct{}
 func (r *nonReplierRuntime) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
 	return "", nil
 }
-func (r *nonReplierRuntime) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (r *nonReplierRuntime) SubscribeRaw(ctx context.Context, topic string, handler func(Message)) (func(), error) {
 	return func() {}, nil
 }
 func (r *nonReplierRuntime) Close() error { return nil }

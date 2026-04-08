@@ -14,7 +14,6 @@ import (
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,13 +28,13 @@ func testPluginInProcessListTools(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	pr1, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
-	ch1 := make(chan messages.ToolListResp, 1)
-	us1, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, pr1.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch1 <- r })
+	ch1 := make(chan sdk.ToolListResp, 1)
+	us1, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pr1.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch1 <- r })
 	require.NoError(t, err)
 	defer us1()
-	var resp messages.ToolListResp
+	var resp sdk.ToolListResp
 	select {
 	case resp = <-ch1:
 	case <-ctx.Done():
@@ -55,16 +54,16 @@ func testPluginInProcessCallTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr2, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	pr2, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 		Name:  "add",
 		Input: map[string]any{"a": 100, "b": 200},
 	})
 	require.NoError(t, err)
-	ch2 := make(chan messages.ToolCallResp, 1)
-	us2, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+	ch2 := make(chan sdk.ToolCallResp, 1)
+	us2, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
 	require.NoError(t, err)
 	defer us2()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch2:
 	case <-ctx.Done():
@@ -93,16 +92,16 @@ func testPluginInProcessDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr5, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+	pr5, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 		Source: "plugin-created-cross.ts",
 		Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) }); kit.register("tool", "plugin-tool", t);`,
 	})
 	require.NoError(t, err)
-	ch5 := make(chan messages.KitDeployResp, 1)
-	us5, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr5.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch5 <- r })
+	ch5 := make(chan sdk.KitDeployResp, 1)
+	us5, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr5.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch5 <- r })
 	require.NoError(t, err)
 	defer us5()
-	var deployResp messages.KitDeployResp
+	var deployResp sdk.KitDeployResp
 	select {
 	case deployResp = <-ch5:
 	case <-ctx.Done():
@@ -110,10 +109,10 @@ func testPluginInProcessDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, deployResp.Deployed)
 
-	pr6, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "plugin-created-cross.ts"})
+	pr6, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "plugin-created-cross.ts"})
 	require.NoError(t, err)
-	ch6 := make(chan messages.KitTeardownResp, 1)
-	us6, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, pr6.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { ch6 <- r })
+	ch6 := make(chan sdk.KitTeardownResp, 1)
+	us6, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, pr6.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { ch6 <- r })
 	defer us6()
 	select {
 	case <-ch6:
@@ -127,12 +126,12 @@ func testPluginInProcessAsyncSubscribe(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pubResult, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	pubResult, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, pubResult.ReplyTo)
 
 	received := make(chan bool, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, pubResult.ReplyTo, func(resp messages.ToolListResp, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pubResult.ReplyTo, func(resp sdk.ToolListResp, msg sdk.Message) {
 		received <- true
 	})
 	require.NoError(t, err)
@@ -157,16 +156,16 @@ func testPluginSubprocessEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
+	pr1, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "hello from host"},
 	})
 	require.NoError(t, err)
-	ch1 := make(chan messages.ToolCallResp, 1)
-	us1, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch1 <- r })
+	ch1 := make(chan sdk.ToolCallResp, 1)
+	us1, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch1 <- r })
 	require.NoError(t, err)
 	defer us1()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch1:
 	case <-ctx.Done():
@@ -188,16 +187,16 @@ func testPluginSubprocessConcat(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr2, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
+	pr2, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
 		Name:  "concat",
 		Input: map[string]any{"a": "foo", "b": "bar"},
 	})
 	require.NoError(t, err)
-	ch2 := make(chan messages.ToolCallResp, 1)
-	us2, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+	ch2 := make(chan sdk.ToolCallResp, 1)
+	us2, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
 	require.NoError(t, err)
 	defer us2()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch2:
 	case <-ctx.Done():
@@ -218,16 +217,16 @@ func testPluginSubprocessHostToolStillWorks(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr3, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{
+	pr3, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
 		Name:  "host-add",
 		Input: map[string]any{"a": 10, "b": 20},
 	})
 	require.NoError(t, err)
-	ch3 := make(chan messages.ToolCallResp, 1)
-	us3, err := sdk.SubscribeTo[messages.ToolCallResp](kit, ctx, pr3.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch3 <- r })
+	ch3 := make(chan sdk.ToolCallResp, 1)
+	us3, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr3.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch3 <- r })
 	require.NoError(t, err)
 	defer us3()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch3:
 	case <-ctx.Done():
@@ -248,13 +247,13 @@ func testPluginSubprocessToolsListShowsBoth(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr4, err := sdk.Publish(kit, ctx, messages.ToolListMsg{})
+	pr4, err := sdk.Publish(kit, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
-	ch4 := make(chan messages.ToolListResp, 1)
-	us4, err := sdk.SubscribeTo[messages.ToolListResp](kit, ctx, pr4.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch4 <- r })
+	ch4 := make(chan sdk.ToolListResp, 1)
+	us4, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr4.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch4 <- r })
 	require.NoError(t, err)
 	defer us4()
-	var resp messages.ToolListResp
+	var resp sdk.ToolListResp
 	select {
 	case resp = <-ch4:
 	case <-ctx.Done():

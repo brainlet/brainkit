@@ -7,7 +7,6 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // AgentInfo describes a registered agent.
@@ -91,14 +90,14 @@ func (d *AgentsDomain) Unregister(_ context.Context, name string) error {
 }
 
 // List returns all registered agents matching an optional filter.
-func (d *AgentsDomain) List(_ context.Context, filter *agentFilter) (*messages.AgentListResp, error) {
+func (d *AgentsDomain) List(_ context.Context, filter *agentFilter) (*sdk.AgentListResp, error) {
 	d.mu.RLock()
-	var result []messages.AgentInfo
+	var result []sdk.AgentInfo
 	for _, info := range d.reg {
 		if filter != nil && !filter.matches(info) {
 			continue
 		}
-		result = append(result, messages.AgentInfo{
+		result = append(result, sdk.AgentInfo{
 			Name:         info.Name,
 			Capabilities: info.Capabilities,
 			Model:        info.Model,
@@ -108,24 +107,24 @@ func (d *AgentsDomain) List(_ context.Context, filter *agentFilter) (*messages.A
 	}
 	d.mu.RUnlock()
 	if result == nil {
-		result = []messages.AgentInfo{}
+		result = []sdk.AgentInfo{}
 	}
-	return &messages.AgentListResp{Agents: result}, nil
+	return &sdk.AgentListResp{Agents: result}, nil
 }
 
 // Discover finds agents matching criteria.
-func (d *AgentsDomain) Discover(_ context.Context, req messages.AgentDiscoverMsg) (*messages.AgentDiscoverResp, error) {
+func (d *AgentsDomain) Discover(_ context.Context, req sdk.AgentDiscoverMsg) (*sdk.AgentDiscoverResp, error) {
 	filter := &agentFilter{
 		Capability: req.Capability,
 		Model:      req.Model,
 		Status:     req.Status,
 	}
 	listResp, _ := d.List(context.Background(), filter)
-	return &messages.AgentDiscoverResp{Agents: listResp.Agents}, nil
+	return &sdk.AgentDiscoverResp{Agents: listResp.Agents}, nil
 }
 
 // GetStatus returns the status of a named agent.
-func (d *AgentsDomain) GetStatus(_ context.Context, req messages.AgentGetStatusMsg) (*messages.AgentGetStatusResp, error) {
+func (d *AgentsDomain) GetStatus(_ context.Context, req sdk.AgentGetStatusMsg) (*sdk.AgentGetStatusResp, error) {
 	if req.Name == "" {
 		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -135,11 +134,11 @@ func (d *AgentsDomain) GetStatus(_ context.Context, req messages.AgentGetStatusM
 	if !ok {
 		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
-	return &messages.AgentGetStatusResp{Name: info.Name, Status: info.Status}, nil
+	return &sdk.AgentGetStatusResp{Name: info.Name, Status: info.Status}, nil
 }
 
 // SetStatus updates the status of a named agent.
-func (d *AgentsDomain) SetStatus(_ context.Context, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
+func (d *AgentsDomain) SetStatus(_ context.Context, req sdk.AgentSetStatusMsg) (*sdk.AgentSetStatusResp, error) {
 	if req.Name == "" {
 		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -160,7 +159,7 @@ func (d *AgentsDomain) SetStatus(_ context.Context, req messages.AgentSetStatusM
 	if !ok {
 		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
-	return &messages.AgentSetStatusResp{OK: true}, nil
+	return &sdk.AgentSetStatusResp{OK: true}, nil
 }
 
 // UnregisterAllForKit removes all agents registered by a specific Kit instance.

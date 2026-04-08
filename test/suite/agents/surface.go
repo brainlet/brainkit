@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "surface-ai-gen-adv.ts",
 		Code: `
 			const result = await generateText({
@@ -38,8 +37,8 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -56,7 +55,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, parsed["text"], "4", "should contain the answer 4")
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
-	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-ai-gen-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-ai-gen-adv.ts"})
 }
 
 // testSurfaceAgentGenerate — deploy agent, call generate, verify response.
@@ -67,7 +66,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "surface-gen-agent-adv.ts",
 		Code: `
 			const myAgent = new Agent({
@@ -85,8 +84,8 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -103,10 +102,10 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
 	// Verify agent was registered
-	pr2, err := sdk.Publish(env.Kit, ctx, messages.AgentListMsg{})
+	pr2, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
 	require.NoError(t, err)
-	ch2 := make(chan messages.AgentListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.AgentListResp](env.Kit, ctx, pr2.ReplyTo, func(r messages.AgentListResp, m messages.Message) { ch2 <- r })
+	ch2 := make(chan sdk.AgentListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { ch2 <- r })
 	defer unsub2()
 	select {
 	case listResp := <-ch2:
@@ -121,7 +120,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout listing agents")
 	}
 
-	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-gen-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-gen-agent-adv.ts"})
 }
 
 // testSurfaceAgentWithTool — deploy agent with a tool, call generate, verify steps.
@@ -132,7 +131,7 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "surface-tool-agent-adv.ts",
 		Code: `
 			const addTool = createTool({
@@ -161,8 +160,8 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -178,7 +177,7 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 	assert.NotEmpty(t, parsed["text"], "agent should return non-empty text")
 	assert.True(t, parsed["hasSteps"].(bool), "should have at least one step")
 
-	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "surface-tool-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-tool-agent-adv.ts"})
 }
 
 // testSurfaceBusServiceAIProxy — deploy .ts as AI service via bus, Go sends message, .ts calls generateText, replies.
@@ -189,7 +188,7 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "ai-svc-agent-adv.ts",
 		Code: `
 			bus.on("generate", async (msg) => {
@@ -208,8 +207,8 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -224,8 +223,8 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 	pr2, err := sdk.SendToService(env.Kit, ctx, "ai-svc-agent-adv.ts", "generate", json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`))
 	require.NoError(t, err)
 
-	replyCh := make(chan messages.Message, 1)
-	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
+	replyCh := make(chan sdk.Message, 1)
+	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg sdk.Message) {
 		if msg.Metadata["done"] == "true" {
 			select {
 			case replyCh <- msg:
@@ -249,5 +248,5 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for AI service reply")
 	}
 
-	sdk.Publish(env.Kit, ctx, messages.KitTeardownMsg{Source: "ai-svc-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "ai-svc-agent-adv.ts"})
 }

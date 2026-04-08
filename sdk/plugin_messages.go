@@ -1,4 +1,4 @@
-package messages
+package sdk
 
 // ── Plugin Manifest ──
 

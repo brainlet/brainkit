@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	rt := env.Kit
 
 	// 1. Deploy .ts code that creates a new tool
-	pr1, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+	pr1, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 		Source: "pipeline-tool-adv.ts",
 		Code: `
 			const greeter = createTool({
@@ -32,8 +31,8 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	deployCh := make(chan messages.KitDeployResp, 1)
-	cancelDeploy, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, _ messages.Message) { deployCh <- r })
+	deployCh := make(chan sdk.KitDeployResp, 1)
+	cancelDeploy, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, _ sdk.Message) { deployCh <- r })
 	require.NoError(t, err)
 	defer cancelDeploy()
 	select {
@@ -44,10 +43,10 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// 2. Verify "greeter-tool-adv" appears in tools.list
-	pr2, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	pr2, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
-	listCh := make(chan messages.ToolListResp, 1)
-	cancelList, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, pr2.ReplyTo, func(r messages.ToolListResp, _ messages.Message) { listCh <- r })
+	listCh := make(chan sdk.ToolListResp, 1)
+	cancelList, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pr2.ReplyTo, func(r sdk.ToolListResp, _ sdk.Message) { listCh <- r })
 	require.NoError(t, err)
 	defer cancelList()
 	select {
@@ -64,13 +63,13 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// 3. Call the deployed tool
-	pr3, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	pr3, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 		Name:  "greeter-tool-adv",
 		Input: map[string]any{"name": "Brainkit"},
 	})
 	require.NoError(t, err)
-	callCh := make(chan messages.ToolCallResp, 1)
-	cancelCall, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr3.ReplyTo, func(r messages.ToolCallResp, _ messages.Message) { callCh <- r })
+	callCh := make(chan sdk.ToolCallResp, 1)
+	cancelCall, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr3.ReplyTo, func(r sdk.ToolCallResp, _ sdk.Message) { callCh <- r })
 	require.NoError(t, err)
 	defer cancelCall()
 	select {
@@ -83,10 +82,10 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// 4. Teardown
-	pr4, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "pipeline-tool-adv.ts"})
+	pr4, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "pipeline-tool-adv.ts"})
 	require.NoError(t, err)
-	tearCh := make(chan messages.KitTeardownResp, 1)
-	cancelTear, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, pr4.ReplyTo, func(r messages.KitTeardownResp, _ messages.Message) { tearCh <- r })
+	tearCh := make(chan sdk.KitTeardownResp, 1)
+	cancelTear, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, pr4.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) { tearCh <- r })
 	defer cancelTear()
 	select {
 	case <-tearCh:

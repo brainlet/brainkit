@@ -7,7 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func testDeployLifecycle(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Call v1
-	payload, ok := env.SendAndReceive(t, messages.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	assert.Contains(t, string(payload), "1")
 
@@ -30,7 +29,7 @@ func testDeployLifecycle(t *testing.T, env *suite.TestEnv) {
 	testutil.Teardown(t, env.Kit, "lifecycle-deploy-adv.ts")
 
 	// Tool should be gone
-	payload2, ok2 := env.SendAndReceive(t, messages.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
+	payload2, ok2 := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok2)
 	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload2))
 
@@ -41,7 +40,7 @@ func testDeployLifecycle(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Call v2
-	payload3, ok3 := env.SendAndReceive(t, messages.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
+	payload3, ok3 := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "lc-adv-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok3)
 	assert.Contains(t, string(payload3), "2")
 
@@ -63,7 +62,7 @@ func testE2EDeployWithErrorRecovery(t *testing.T, _ *suite.TestEnv) {
 	`)
 
 	// Verify tool works
-	payload, ok := freshEnv.SendAndReceive(t, messages.ToolCallMsg{Name: "recovered-deploy", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := freshEnv.SendAndReceive(t, sdk.ToolCallMsg{Name: "recovered-deploy", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	assert.Contains(t, string(payload), "ok")
 }
@@ -75,13 +74,13 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy v1
-	pr1, err := sdk.Publish(freshEnv.Kit, ctx, messages.KitDeployMsg{
+	pr1, err := sdk.Publish(freshEnv.Kit, ctx, sdk.KitDeployMsg{
 		Source: "lifecycle-e2e-deploy.ts",
 		Code:   `const v1 = createTool({ id: "version-check-e2e", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "version-check-e2e", v1);`,
 	})
 	require.NoError(t, err)
-	ch1 := make(chan messages.KitDeployResp, 1)
-	us1, _ := sdk.SubscribeTo[messages.KitDeployResp](freshEnv.Kit, ctx, pr1.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch1 <- r })
+	ch1 := make(chan sdk.KitDeployResp, 1)
+	us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](freshEnv.Kit, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
 	defer us1()
 	select {
 	case <-ch1:
@@ -90,13 +89,13 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List — should show lifecycle-e2e-deploy.ts
-	pr2, err := sdk.Publish(freshEnv.Kit, ctx, messages.KitListMsg{})
+	pr2, err := sdk.Publish(freshEnv.Kit, ctx, sdk.KitListMsg{})
 	require.NoError(t, err)
-	ch2 := make(chan messages.KitListResp, 1)
-	us2, err := sdk.SubscribeTo[messages.KitListResp](freshEnv.Kit, ctx, pr2.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch2 <- r })
+	ch2 := make(chan sdk.KitListResp, 1)
+	us2, err := sdk.SubscribeTo[sdk.KitListResp](freshEnv.Kit, ctx, pr2.ReplyTo, func(r sdk.KitListResp, m sdk.Message) { ch2 <- r })
 	require.NoError(t, err)
 	defer us2()
-	var listResp messages.KitListResp
+	var listResp sdk.KitListResp
 	select {
 	case listResp = <-ch2:
 	case <-ctx.Done():
@@ -109,13 +108,13 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	assert.True(t, sources["lifecycle-e2e-deploy.ts"])
 
 	// Redeploy with v2
-	pr3, err := sdk.Publish(freshEnv.Kit, ctx, messages.KitRedeployMsg{
+	pr3, err := sdk.Publish(freshEnv.Kit, ctx, sdk.KitRedeployMsg{
 		Source: "lifecycle-e2e-deploy.ts",
 		Code:   `const v2 = createTool({ id: "version-check-e2e-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "version-check-e2e-v2", v2);`,
 	})
 	require.NoError(t, err)
-	ch3 := make(chan messages.KitRedeployResp, 1)
-	us3, _ := sdk.SubscribeTo[messages.KitRedeployResp](freshEnv.Kit, ctx, pr3.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { ch3 <- r })
+	ch3 := make(chan sdk.KitRedeployResp, 1)
+	us3, _ := sdk.SubscribeTo[sdk.KitRedeployResp](freshEnv.Kit, ctx, pr3.ReplyTo, func(r sdk.KitRedeployResp, m sdk.Message) { ch3 <- r })
 	defer us3()
 	select {
 	case <-ch3:
@@ -124,10 +123,10 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Teardown
-	pr4, err := sdk.Publish(freshEnv.Kit, ctx, messages.KitTeardownMsg{Source: "lifecycle-e2e-deploy.ts"})
+	pr4, err := sdk.Publish(freshEnv.Kit, ctx, sdk.KitTeardownMsg{Source: "lifecycle-e2e-deploy.ts"})
 	require.NoError(t, err)
-	ch4 := make(chan messages.KitTeardownResp, 1)
-	us4, err := sdk.SubscribeTo[messages.KitTeardownResp](freshEnv.Kit, ctx, pr4.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { ch4 <- r })
+	ch4 := make(chan sdk.KitTeardownResp, 1)
+	us4, err := sdk.SubscribeTo[sdk.KitTeardownResp](freshEnv.Kit, ctx, pr4.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { ch4 <- r })
 	require.NoError(t, err)
 	defer us4()
 	select {
@@ -137,10 +136,10 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List — should not contain lifecycle-e2e-deploy.ts
-	pr5, err := sdk.Publish(freshEnv.Kit, ctx, messages.KitListMsg{})
+	pr5, err := sdk.Publish(freshEnv.Kit, ctx, sdk.KitListMsg{})
 	require.NoError(t, err)
-	ch5 := make(chan messages.KitListResp, 1)
-	us5, err := sdk.SubscribeTo[messages.KitListResp](freshEnv.Kit, ctx, pr5.ReplyTo, func(r messages.KitListResp, m messages.Message) { ch5 <- r })
+	ch5 := make(chan sdk.KitListResp, 1)
+	us5, err := sdk.SubscribeTo[sdk.KitListResp](freshEnv.Kit, ctx, pr5.ReplyTo, func(r sdk.KitListResp, m sdk.Message) { ch5 <- r })
 	require.NoError(t, err)
 	defer us5()
 	select {

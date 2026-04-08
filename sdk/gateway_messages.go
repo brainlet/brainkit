@@ -1,4 +1,4 @@
-package messages
+package sdk
 
 // ── Gateway Route Management ──
 

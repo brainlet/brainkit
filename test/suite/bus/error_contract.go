@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,11 +15,11 @@ import (
 func testBusErrorResponseCarriesCode(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "nonexistent-tool"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "nonexistent-tool"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
 		ch <- json.RawMessage(msg.Payload)
 	})
 	require.NoError(t, err)
@@ -45,7 +44,7 @@ func testBusErrorResponseCarriesCode(t *testing.T, env *suite.TestEnv) {
 }
 
 func testResultMetaIncludesCode(t *testing.T, _ *suite.TestEnv) {
-	meta := messages.ResultMeta{Error: "not found", Code: "NOT_FOUND", Details: map[string]any{"resource": "tool"}}
+	meta := sdk.ResultMeta{Error: "not found", Code: "NOT_FOUND", Details: map[string]any{"resource": "tool"}}
 	data, err := json.Marshal(meta)
 	require.NoError(t, err)
 

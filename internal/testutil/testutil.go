@@ -14,7 +14,6 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -242,13 +241,13 @@ func ConcurrentDo(t *testing.T, n int, fn func(i int)) {
 }
 
 // WaitForBusMessage subscribes to a topic, waits for one message, returns it.
-func WaitForBusMessage(t *testing.T, rt sdk.Runtime, topic string, timeout time.Duration) messages.Message {
+func WaitForBusMessage(t *testing.T, rt sdk.Runtime, topic string, timeout time.Duration) sdk.Message {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	ch := make(chan messages.Message, 1)
-	unsub, err := rt.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	ch := make(chan sdk.Message, 1)
+	unsub, err := rt.SubscribeRaw(ctx, topic, func(msg sdk.Message) {
 		select {
 		case ch <- msg:
 		default:
@@ -264,6 +263,6 @@ func WaitForBusMessage(t *testing.T, rt sdk.Runtime, topic string, timeout time.
 		return msg
 	case <-ctx.Done():
 		t.Fatalf("WaitForBusMessage: timeout waiting for message on %s", topic)
-		return messages.Message{}
+		return sdk.Message{}
 	}
 }

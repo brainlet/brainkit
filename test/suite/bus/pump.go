@@ -7,7 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,13 +16,13 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "latency-test.ts",
 		Code:   `bus.on("ping", (msg) => { msg.reply({ pong: true }); });`,
 	})
 	require.NoError(t, err)
 	deployCh := make(chan struct{}, 1)
-	unsub, err := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) {
+	unsub, err := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) {
 		deployCh <- struct{}{}
 	})
 	require.NoError(t, err)
@@ -42,7 +41,7 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 		require.NoError(t, err)
 
 		done := make(chan time.Duration, 1)
-		pongUnsub, err := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+		pongUnsub, err := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 			done <- time.Since(start)
 		})
 		require.NoError(t, err)

@@ -8,13 +8,13 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/cmd/brainkit/config"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
 // connectAndPublish connects to the running instance via HTTP, sends a typed
 // bus command, waits for the response, and calls format to print it.
-func connectAndPublish[Req messages.BrainkitMessage, Resp any](cmd *cobra.Command, req Req, format func(*Resp)) error {
+func connectAndPublish[Req sdk.BrainkitMessage, Resp any](cmd *cobra.Command, req Req, format func(*Resp)) error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return err
@@ -40,7 +40,7 @@ func connectAndPublish[Req messages.BrainkitMessage, Resp any](cmd *cobra.Comman
 }
 
 // httpBusRequest sends a typed bus command over HTTP and returns the typed response.
-func httpBusRequest[Req messages.BrainkitMessage, Resp any](client *brainkit.BusClient, req Req) (*Resp, error) {
+func httpBusRequest[Req sdk.BrainkitMessage, Resp any](client *brainkit.BusClient, req Req) (*Resp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -58,7 +58,7 @@ func httpBusRequest[Req messages.BrainkitMessage, Resp any](client *brainkit.Bus
 	if err := json.Unmarshal(respPayload, &resp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	if errMsg := messages.ResultErrorOf(resp); errMsg != "" {
+	if errMsg := sdk.ResultErrorOf(resp); errMsg != "" {
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 	return &resp, nil

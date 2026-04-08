@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/bench"
 )
 
@@ -29,7 +28,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+			sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
 			cancel()
 		}
 	})
@@ -43,7 +42,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+			sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
 			cancel()
 		}
 	})

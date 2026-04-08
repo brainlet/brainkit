@@ -14,7 +14,6 @@ import (
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,10 +48,10 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: source})
+			pr, err := sdk.Publish(tk, ctx, sdk.KitTeardownMsg{Source: source})
 			if err == nil {
 				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ messages.KitTeardownResp, _ messages.Message) {
+				unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, _ sdk.Message) {
 					ch <- struct{}{}
 				})
 				select {
@@ -169,12 +168,12 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, messages.KitTeardownMsg{Source: src})
+			pr, err := sdk.Publish(tk, ctx, sdk.KitTeardownMsg{Source: src})
 			if err != nil {
 				return
 			}
 			ch := make(chan bool, 1)
-			unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](tk, ctx, pr.ReplyTo, func(r messages.KitTeardownResp, _ messages.Message) {
+			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
 				ch <- r.Error == ""
 			})
 			select {
@@ -218,7 +217,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 			defer scancel()
 
 			// Schedule via bus
-			pr, err := sdk.Publish(tk, sctx, messages.ScheduleCreateMsg{
+			pr, err := sdk.Publish(tk, sctx, sdk.ScheduleCreateMsg{
 				Expression: "in 1h",
 				Topic:      "stress.race.topic",
 				Payload:    json.RawMessage(`{}`),
@@ -227,7 +226,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 				return
 			}
 			ch := make(chan string, 1)
-			unsub, _ := sdk.SubscribeTo[messages.ScheduleCreateResp](tk, sctx, pr.ReplyTo, func(r messages.ScheduleCreateResp, _ messages.Message) {
+			unsub, _ := sdk.SubscribeTo[sdk.ScheduleCreateResp](tk, sctx, pr.ReplyTo, func(r sdk.ScheduleCreateResp, _ sdk.Message) {
 				ch <- r.ID
 			})
 			var id string
@@ -241,7 +240,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 
 			if id != "" {
 				// Cancel the schedule via bus
-				sdk.Publish(tk, sctx, messages.ScheduleCancelMsg{ID: id})
+				sdk.Publish(tk, sctx, sdk.ScheduleCancelMsg{ID: id})
 			}
 		}()
 	}
@@ -250,10 +249,10 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 	// Verify all cancelled — list schedules via bus
 	lctx, lcancel := context.WithTimeout(ctx, 5*time.Second)
 	defer lcancel()
-	pr, err := sdk.Publish(tk, lctx, messages.ScheduleListMsg{})
+	pr, err := sdk.Publish(tk, lctx, sdk.ScheduleListMsg{})
 	if err == nil {
-		ch := make(chan []messages.ScheduleInfo, 1)
-		unsub, _ := sdk.SubscribeTo[messages.ScheduleListResp](tk, lctx, pr.ReplyTo, func(r messages.ScheduleListResp, _ messages.Message) {
+		ch := make(chan []sdk.ScheduleInfo, 1)
+		unsub, _ := sdk.SubscribeTo[sdk.ScheduleListResp](tk, lctx, pr.ReplyTo, func(r sdk.ScheduleListResp, _ sdk.Message) {
 			ch <- r.Schedules
 		})
 		select {
@@ -338,14 +337,14 @@ func testConcurrencyStorageAddRemoveRace(t *testing.T, env *suite.TestEnv) {
 			defer wg.Done()
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, sctx, messages.StorageAddMsg{
+			pr, err := sdk.Publish(tk, sctx, sdk.StorageAddMsg{
 				Name:   "stress-race-store",
 				Type:   "memory",
 				Config: json.RawMessage(`{}`),
 			})
 			if err == nil {
 				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[messages.StorageAddResp](tk, sctx, pr.ReplyTo, func(_ messages.StorageAddResp, _ messages.Message) {
+				unsub, _ := sdk.SubscribeTo[sdk.StorageAddResp](tk, sctx, pr.ReplyTo, func(_ sdk.StorageAddResp, _ sdk.Message) {
 					ch <- struct{}{}
 				})
 				select {
@@ -361,10 +360,10 @@ func testConcurrencyStorageAddRemoveRace(t *testing.T, env *suite.TestEnv) {
 			defer wg.Done()
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, sctx, messages.StorageRemoveMsg{Name: "stress-race-store"})
+			pr, err := sdk.Publish(tk, sctx, sdk.StorageRemoveMsg{Name: "stress-race-store"})
 			if err == nil {
 				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[messages.StorageRemoveResp](tk, sctx, pr.ReplyTo, func(_ messages.StorageRemoveResp, _ messages.Message) {
+				unsub, _ := sdk.SubscribeTo[sdk.StorageRemoveResp](tk, sctx, pr.ReplyTo, func(_ sdk.StorageRemoveResp, _ sdk.Message) {
 					ch <- struct{}{}
 				})
 				select {
@@ -405,7 +404,7 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 				testutil.DeployErr(tk, src, `output("churn-stress");`)
 				// Teardown via bus — fire and forget
 				sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				sdk.Publish(tk, sctx, messages.KitTeardownMsg{Source: src})
+				sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
 				cancel()
 				i++
 			}
@@ -415,10 +414,10 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 	// Query metrics via bus repeatedly
 	for i := 0; i < 50; i++ {
 		mctx, mcancel := context.WithTimeout(ctx, 2*time.Second)
-		pr, err := sdk.Publish(tk, mctx, messages.MetricsGetMsg{})
+		pr, err := sdk.Publish(tk, mctx, sdk.MetricsGetMsg{})
 		if err == nil {
-			ch := make(chan messages.MetricsGetResp, 1)
-			unsub, _ := sdk.SubscribeTo[messages.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r messages.MetricsGetResp, _ messages.Message) {
+			ch := make(chan sdk.MetricsGetResp, 1)
+			unsub, _ := sdk.SubscribeTo[sdk.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r sdk.MetricsGetResp, _ sdk.Message) {
 				ch <- r
 			})
 			select {
@@ -550,8 +549,8 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "rbac-stress-race.ts", Role: "admin"})
-			sdk.Publish(k, ctx, messages.RBACRevokeMsg{Source: "rbac-stress-race.ts"})
+			sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "rbac-stress-race.ts", Role: "admin"})
+			sdk.Publish(k, ctx, sdk.RBACRevokeMsg{Source: "rbac-stress-race.ts"})
 		}()
 		go func() {
 			defer wg.Done()

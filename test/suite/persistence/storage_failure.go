@@ -13,7 +13,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
@@ -198,8 +198,8 @@ func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kit, topic string, payloa
 	correlationID := fmt.Sprintf("test-%d", time.Now().UnixNano())
 	replyTo := topic + ".reply." + correlationID
 
-	replyCh := make(chan messages.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+	replyCh := make(chan sdk.Message, 1)
+	unsub, err := k.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 		select {
 		case replyCh <- msg:
 		default:

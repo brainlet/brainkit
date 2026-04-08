@@ -11,7 +11,7 @@ import (
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // registerApprovalBridges adds __go_brainkit_await_approval for bus-based HITL tool approval.
@@ -38,8 +38,8 @@ func (k *Kernel) registerApprovalBridges(qctx *quickjs.Context) {
 					replyTo := approvalTopic + ".reply." + correlationID
 
 					// Subscribe BEFORE publishing (avoid race)
-					replyCh := make(chan messages.Message, 1)
-					unsub, subErr := k.remote.SubscribeRaw(waitCtx, replyTo, func(msg messages.Message) {
+					replyCh := make(chan sdk.Message, 1)
+					unsub, subErr := k.remote.SubscribeRaw(waitCtx, replyTo, func(msg sdk.Message) {
 						select {
 						case replyCh <- msg:
 						default:

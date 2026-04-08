@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +42,7 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 
 	for i, k := range kits {
 		payload, ok := sendAndReceive(t, k,
-			messages.ToolCallMsg{Name: fmt.Sprintf("echo-stress-%d", i), Input: map[string]any{"message": fmt.Sprintf("kernel-%d", i)}},
+			sdk.ToolCallMsg{Name: fmt.Sprintf("echo-stress-%d", i), Input: map[string]any{"message": fmt.Sprintf("kernel-%d", i)}},
 			5*time.Second)
 		require.True(t, ok, "kit %d didn't respond", i)
 		assert.Contains(t, string(payload), fmt.Sprintf("kernel-%d", i))
@@ -61,7 +60,7 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 
 	for i := range n {
 		go func(val int) {
-			pubResult, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{
+			pubResult, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
 			})
@@ -69,8 +68,8 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 				errors <- err
 				return
 			}
-			done := make(chan messages.ToolCallResp, 1)
-			unsub, err := sdk.SubscribeTo[messages.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r messages.ToolCallResp, m messages.Message) {
+			done := make(chan sdk.ToolCallResp, 1)
+			unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) {
 				done <- r
 			})
 			if err != nil {

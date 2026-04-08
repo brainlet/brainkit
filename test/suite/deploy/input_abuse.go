@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,11 +130,11 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	assert.Error(t, err)
 
 	// The tool should have been cleaned up by teardown
-	pr, pubErr := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "partial-adv-tool"})
+	pr, pubErr := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "partial-adv-tool"})
 	require.NoError(t, pubErr)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -179,9 +178,9 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// tool-a should not exist
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.ToolResolveMsg{Name: "tool-a-adv"})
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "tool-a-adv"})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 	select {
 	case payload := <-ch:

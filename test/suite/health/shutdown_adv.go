@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,14 +37,14 @@ func testShutdownWithActiveSchedules(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	for i := 0; i < 10; i++ {
-		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 			Expression: "every 1h",
 			Topic:      "shutdown-sched-adv",
 			Payload:    json.RawMessage(`{}`),
 		})
-		ch := make(chan messages.ScheduleCreateResp, 1)
+		ch := make(chan sdk.ScheduleCreateResp, 1)
 		unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-			func(resp messages.ScheduleCreateResp, msg messages.Message) { ch <- resp })
+			func(resp sdk.ScheduleCreateResp, msg sdk.Message) { ch <- resp })
 		<-ch
 		unsub()
 	}

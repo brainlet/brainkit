@@ -10,7 +10,7 @@ import (
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +22,7 @@ type commandSpec struct {
 }
 
 
-func kernelCommand[Req messages.BrainkitMessage, Resp any](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
+func kernelCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
 	var req Req
 	return commandSpec{
 		topic: req.BusTopic(),
@@ -52,7 +52,7 @@ func kernelCommand[Req messages.BrainkitMessage, Resp any](handler func(context.
 	}
 }
 
-func nodeCommand[Req messages.BrainkitMessage, Resp any](handler func(context.Context, *Node, Req) (*Resp, error)) commandSpec {
+func nodeCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, *Node, Req) (*Resp, error)) commandSpec {
 	var req Req
 	return commandSpec{
 		topic: req.BusTopic(),
@@ -143,17 +143,17 @@ func commandCatalog() *commandRegistry {
 	commandCatalogOnce.Do(func() {
 		specs := []commandSpec{
 			// ── Tools ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ToolCallMsg) (*messages.ToolCallResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
 				return kernel.toolsDomain.Call(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ToolResolveMsg) (*messages.ToolResolveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolResolveMsg) (*sdk.ToolResolveResp, error) {
 				return kernel.toolsDomain.Resolve(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ToolListMsg) (*messages.ToolListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolListMsg) (*sdk.ToolListResp, error) {
 				return kernel.toolsDomain.List(ctx, req)
 			}),
 			// ── Agents (registry ops only) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentListMsg) (*messages.AgentListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentListMsg) (*sdk.AgentListResp, error) {
 				filter := (*agentFilter)(nil)
 				if req.Filter != nil {
 					filter = &agentFilter{
@@ -164,67 +164,67 @@ func commandCatalog() *commandRegistry {
 				}
 				return kernel.agentsDomain.List(ctx, filter)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentDiscoverMsg) (*messages.AgentDiscoverResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentDiscoverMsg) (*sdk.AgentDiscoverResp, error) {
 				return kernel.agentsDomain.Discover(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentGetStatusMsg) (*messages.AgentGetStatusResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentGetStatusMsg) (*sdk.AgentGetStatusResp, error) {
 				return kernel.agentsDomain.GetStatus(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.AgentSetStatusMsg) (*messages.AgentSetStatusResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentSetStatusMsg) (*sdk.AgentSetStatusResp, error) {
 				return kernel.agentsDomain.SetStatus(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
 				return kernel.lifecycle.Deploy(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitTeardownMsg) (*messages.KitTeardownResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitTeardownMsg) (*sdk.KitTeardownResp, error) {
 				return kernel.lifecycle.Teardown(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitRedeployMsg) (*messages.KitRedeployResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitRedeployMsg) (*sdk.KitRedeployResp, error) {
 				return kernel.lifecycle.Redeploy(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitListMsg) (*messages.KitListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitListMsg) (*sdk.KitListResp, error) {
 				return kernel.lifecycle.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitDeployFileMsg) (*messages.KitDeployResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitDeployFileMsg) (*sdk.KitDeployResp, error) {
 				resources, err := DeployFile(ctx, kernel, req.Path)
 				if err != nil {
 					return nil, err
 				}
-				return &messages.KitDeployResp{
+				return &sdk.KitDeployResp{
 					Deployed:  true,
 					Resources: resourceInfosToMessages(resources),
 				}, nil
 			}),
 			// ── EvalTS (raw TS evaluation in current runtime context) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitEvalTSMsg) (*messages.KitEvalTSResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalTSMsg) (*sdk.KitEvalTSResp, error) {
 				result, err := kernel.EvalTS(ctx, req.Source, req.Code)
 				if err != nil {
 					return nil, err
 				}
-				return &messages.KitEvalTSResp{Result: result}, nil
+				return &sdk.KitEvalTSResp{Result: result}, nil
 			}),
 			// ── SetDraining ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitSetDrainingMsg) (*messages.KitSetDrainingResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSetDrainingMsg) (*sdk.KitSetDrainingResp, error) {
 				kernel.SetDraining(req.Draining)
-				return &messages.KitSetDrainingResp{Draining: req.Draining}, nil
+				return &sdk.KitSetDrainingResp{Draining: req.Draining}, nil
 			}),
 			// ── Eval (deploy + read __module_result) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitEvalMsg) (*messages.KitEvalResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalMsg) (*sdk.KitEvalResp, error) {
 				source := "__cli_eval_" + uuid.NewString() + ".ts"
 				if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {
 					return nil, err
 				}
 				defer kernel.Teardown(ctx, source)
 				result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
-				return &messages.KitEvalResp{Result: result}, nil
+				return &sdk.KitEvalResp{Result: result}, nil
 			}),
 			// ── Send (Go-side request-reply — no JS thread involvement) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitSendMsg) (*messages.KitSendResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSendMsg) (*sdk.KitSendResp, error) {
 				correlationID := uuid.NewString()
 				replyTo := req.Topic + ".reply." + correlationID
 
-				replyCh := make(chan messages.Message, 1)
-				unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+				replyCh := make(chan sdk.Message, 1)
+				unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 					select {
 					case replyCh <- msg:
 					default:
@@ -242,30 +242,30 @@ func commandCatalog() *commandRegistry {
 
 				select {
 				case msg := <-replyCh:
-					return &messages.KitSendResp{Payload: msg.Payload}, nil
+					return &sdk.KitSendResp{Payload: msg.Payload}, nil
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				}
 			}),
 			// ── Health (bus) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.KitHealthMsg) (*messages.KitHealthResp, error) {
-				return &messages.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitHealthMsg) (*sdk.KitHealthResp, error) {
+				return &sdk.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil
 			}),
 			// ── MCP ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
 				return kernel.mcpDomain.ListTools(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
 				return kernel.mcpDomain.CallTool(ctx, req)
 			}),
 			// ── Registry ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryHasMsg) (*messages.RegistryHasResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryHasMsg) (*sdk.RegistryHasResp, error) {
 				return kernel.registryDomain.Has(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryListMsg) (*messages.RegistryListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryListMsg) (*sdk.RegistryListResp, error) {
 				return kernel.registryDomain.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryResolveMsg) (*sdk.RegistryResolveResp, error) {
 				return kernel.registryDomain.Resolve(ctx, req)
 			}),
 			// ── Workflows (handlers in handlers_workflows.go) ──
@@ -278,137 +278,137 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(handleWorkflowRuns),
 			kernelCommand(handleWorkflowRestart),
 			// ── Metrics ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.MetricsGetMsg) (*messages.MetricsGetResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.MetricsGetMsg) (*sdk.MetricsGetResp, error) {
 				return kernel.metricsDomain.Get(ctx, req)
 			}),
 			// ── Tracing ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceGetMsg) (*messages.TraceGetResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TraceGetMsg) (*sdk.TraceGetResp, error) {
 				return kernel.tracingDomain.Get(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TraceListMsg) (*messages.TraceListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TraceListMsg) (*sdk.TraceListResp, error) {
 				return kernel.tracingDomain.List(ctx, req)
 			}),
 			// ── RBAC Administration ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACAssignMsg) (*messages.RBACAssignResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACAssignMsg) (*sdk.RBACAssignResp, error) {
 				return kernel.rbacAdminDomain.Assign(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRevokeMsg) (*messages.RBACRevokeResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACRevokeMsg) (*sdk.RBACRevokeResp, error) {
 				return kernel.rbacAdminDomain.Revoke(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACListMsg) (*messages.RBACListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACListMsg) (*sdk.RBACListResp, error) {
 				return kernel.rbacAdminDomain.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.RBACRolesMsg) (*messages.RBACRolesResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACRolesMsg) (*sdk.RBACRolesResp, error) {
 				return kernel.rbacAdminDomain.Roles(ctx, req)
 			}),
 			// ── Secrets ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsSetMsg) (*sdk.SecretsSetResp, error) {
 				return kernel.secretsDomain.Set(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsGetMsg) (*messages.SecretsGetResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsGetMsg) (*sdk.SecretsGetResp, error) {
 				return kernel.secretsDomain.Get(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsDeleteMsg) (*messages.SecretsDeleteResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsDeleteMsg) (*sdk.SecretsDeleteResp, error) {
 				return kernel.secretsDomain.Delete(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsListMsg) (*messages.SecretsListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsListMsg) (*sdk.SecretsListResp, error) {
 				return kernel.secretsDomain.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.SecretsRotateMsg) (*messages.SecretsRotateResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsRotateMsg) (*sdk.SecretsRotateResp, error) {
 				return kernel.secretsDomain.Rotate(ctx, req)
 			}),
 			// ── Package Manager ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesSearchMsg) (*messages.PackagesSearchResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesSearchMsg) (*sdk.PackagesSearchResp, error) {
 				return kernel.packagesDomain.Search(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesInstallMsg) (*messages.PackagesInstallResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesInstallMsg) (*sdk.PackagesInstallResp, error) {
 				return kernel.packagesDomain.Install(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesRemoveMsg) (*messages.PackagesRemoveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesRemoveMsg) (*sdk.PackagesRemoveResp, error) {
 				return kernel.packagesDomain.Remove(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesUpdateMsg) (*messages.PackagesUpdateResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesUpdateMsg) (*sdk.PackagesUpdateResp, error) {
 				return kernel.packagesDomain.Update(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesListMsg) (*messages.PackagesListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesListMsg) (*sdk.PackagesListResp, error) {
 				return kernel.packagesDomain.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackagesInfoMsg) (*messages.PackagesInfoResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesInfoMsg) (*sdk.PackagesInfoResp, error) {
 				return kernel.packagesDomain.Info(ctx, req)
 			}),
 			// ── Package Deployment ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageDeployMsg) (*messages.PackageDeployResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployMsg) (*sdk.PackageDeployResp, error) {
 				return kernel.packageDeployDomain.Deploy(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageTeardownMsg) (*messages.PackageTeardownResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageTeardownMsg) (*sdk.PackageTeardownResp, error) {
 				return kernel.packageDeployDomain.Teardown(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageListDeployedMsg) (*messages.PackageListDeployedResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageListDeployedMsg) (*sdk.PackageListDeployedResp, error) {
 				return kernel.packageDeployDomain.List(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.PackageDeployInfoMsg) (*messages.PackageDeployInfoResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployInfoMsg) (*sdk.PackageDeployInfoResp, error) {
 				return kernel.packageDeployDomain.Info(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
 				return node.processPluginManifest(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStateGetMsg) (*messages.PluginStateGetResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStateGetMsg) (*sdk.PluginStateGetResp, error) {
 				return node.getPluginState(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStateSetMsg) (*messages.PluginStateSetResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStateSetMsg) (*sdk.PluginStateSetResp, error) {
 				return node.setPluginState(ctx, req)
 			}),
 			// ── Plugin Lifecycle ──
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStartMsg) (*messages.PluginStartResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStartMsg) (*sdk.PluginStartResp, error) {
 				if node.pluginLifecycle == nil {
 					node.pluginLifecycle = newPluginLifecycleDomain(node)
 				}
 				return node.pluginLifecycle.Start(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStopMsg) (*messages.PluginStopResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStopMsg) (*sdk.PluginStopResp, error) {
 				if node.pluginLifecycle == nil {
 					node.pluginLifecycle = newPluginLifecycleDomain(node)
 				}
 				return node.pluginLifecycle.Stop(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginRestartMsg) (*messages.PluginRestartResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginRestartMsg) (*sdk.PluginRestartResp, error) {
 				if node.pluginLifecycle == nil {
 					node.pluginLifecycle = newPluginLifecycleDomain(node)
 				}
 				return node.pluginLifecycle.Restart(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginListRunningMsg) (*messages.PluginListRunningResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginListRunningMsg) (*sdk.PluginListRunningResp, error) {
 				if node.pluginLifecycle == nil {
 					node.pluginLifecycle = newPluginLifecycleDomain(node)
 				}
 				return node.pluginLifecycle.List(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PluginStatusMsg) (*messages.PluginStatusResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStatusMsg) (*sdk.PluginStatusResp, error) {
 				if node.pluginLifecycle == nil {
 					node.pluginLifecycle = newPluginLifecycleDomain(node)
 				}
 				return node.pluginLifecycle.Status(ctx, req)
 			}),
 			// ── Testing ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.TestRunMsg) (*messages.TestRunResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TestRunMsg) (*sdk.TestRunResp, error) {
 				return kernel.testingDomain.Run(ctx, req)
 			}),
 			// ── Peer Discovery ──
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PeersListMsg) (*messages.PeersListResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PeersListMsg) (*sdk.PeersListResp, error) {
 				if node.discovery == nil {
-					return &messages.PeersListResp{Peers: []messages.PeerInfo{}}, nil
+					return &sdk.PeersListResp{Peers: []sdk.PeerInfo{}}, nil
 				}
 				peers, err := node.discovery.Browse()
 				if err != nil {
 					return nil, err
 				}
-				infos := make([]messages.PeerInfo, len(peers))
+				infos := make([]sdk.PeerInfo, len(peers))
 				for i, p := range peers {
-					infos[i] = messages.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
+					infos[i] = sdk.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
 				}
-				return &messages.PeersListResp{Peers: infos}, nil
+				return &sdk.PeersListResp{Peers: infos}, nil
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req messages.PeersResolveMsg) (*messages.PeersResolveResp, error) {
+			nodeCommand(func(ctx context.Context, node *Node, req sdk.PeersResolveMsg) (*sdk.PeersResolveResp, error) {
 				if node.discovery == nil {
 					return nil, &sdkerrors.NotConfiguredError{Feature: "discovery"}
 				}
@@ -416,10 +416,10 @@ func commandCatalog() *commandRegistry {
 				if err != nil {
 					return nil, err
 				}
-				return &messages.PeersResolveResp{Namespace: addr}, nil
+				return &sdk.PeersResolveResp{Namespace: addr}, nil
 			}),
 			// ── Provider Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ProviderAddMsg) (*messages.ProviderAddResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ProviderAddMsg) (*sdk.ProviderAddResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
@@ -430,17 +430,17 @@ func commandCatalog() *commandRegistry {
 				if err := kernel.RegisterAIProvider(req.Name, provreg.AIProviderType(req.Type), config); err != nil {
 					return nil, err
 				}
-				return &messages.ProviderAddResp{Added: true}, nil
+				return &sdk.ProviderAddResp{Added: true}, nil
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ProviderRemoveMsg) (*messages.ProviderRemoveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ProviderRemoveMsg) (*sdk.ProviderRemoveResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
 				kernel.UnregisterAIProvider(req.Name)
-				return &messages.ProviderRemoveResp{Removed: true}, nil
+				return &sdk.ProviderRemoveResp{Removed: true}, nil
 			}),
 			// ── Storage Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.StorageAddMsg) (*messages.StorageAddResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.StorageAddMsg) (*sdk.StorageAddResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
@@ -451,36 +451,36 @@ func commandCatalog() *commandRegistry {
 				if err := kernel.AddStorage(req.Name, cfg); err != nil {
 					return nil, err
 				}
-				return &messages.StorageAddResp{Added: true}, nil
+				return &sdk.StorageAddResp{Added: true}, nil
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.StorageRemoveMsg) (*messages.StorageRemoveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.StorageRemoveMsg) (*sdk.StorageRemoveResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
 				if err := kernel.RemoveStorage(req.Name); err != nil {
 					return nil, err
 				}
-				return &messages.StorageRemoveResp{Removed: true}, nil
+				return &sdk.StorageRemoveResp{Removed: true}, nil
 			}),
 			// ── Vector Store Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorAddMsg) (*messages.VectorAddResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.VectorAddMsg) (*sdk.VectorAddResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
 				if err := kernel.RegisterVectorStore(req.Name, provreg.VectorStoreType(req.Type), nil); err != nil {
 					return nil, err
 				}
-				return &messages.VectorAddResp{Added: true}, nil
+				return &sdk.VectorAddResp{Added: true}, nil
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.VectorRemoveMsg) (*messages.VectorRemoveResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.VectorRemoveMsg) (*sdk.VectorRemoveResp, error) {
 				if req.Name == "" {
 					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 				}
 				kernel.UnregisterVectorStore(req.Name)
-				return &messages.VectorRemoveResp{Removed: true}, nil
+				return &sdk.VectorRemoveResp{Removed: true}, nil
 			}),
 			// ── Scheduling ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleCreateMsg) (*messages.ScheduleCreateResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleCreateMsg) (*sdk.ScheduleCreateResp, error) {
 				id, err := kernel.Schedule(ctx, ScheduleConfig{
 					Expression: req.Expression,
 					Topic:      req.Topic,
@@ -489,22 +489,22 @@ func commandCatalog() *commandRegistry {
 				if err != nil {
 					return nil, err
 				}
-				return &messages.ScheduleCreateResp{ID: id}, nil
+				return &sdk.ScheduleCreateResp{ID: id}, nil
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleCancelMsg) (*messages.ScheduleCancelResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleCancelMsg) (*sdk.ScheduleCancelResp, error) {
 				if req.ID == "" {
 					return nil, &sdkerrors.ValidationError{Field: "id", Message: "is required"}
 				}
 				if err := kernel.Unschedule(ctx, req.ID); err != nil {
 					return nil, err
 				}
-				return &messages.ScheduleCancelResp{Cancelled: true}, nil
+				return &sdk.ScheduleCancelResp{Cancelled: true}, nil
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req messages.ScheduleListMsg) (*messages.ScheduleListResp, error) {
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleListMsg) (*sdk.ScheduleListResp, error) {
 				schedules := kernel.ListSchedules()
-				infos := make([]messages.ScheduleInfo, 0, len(schedules))
+				infos := make([]sdk.ScheduleInfo, 0, len(schedules))
 				for _, s := range schedules {
-					infos = append(infos, messages.ScheduleInfo{
+					infos = append(infos, sdk.ScheduleInfo{
 						ID:         s.ID,
 						Expression: s.Expression,
 						Topic:      s.Topic,
@@ -513,7 +513,7 @@ func commandCatalog() *commandRegistry {
 						Source:     s.Source,
 					})
 				}
-				return &messages.ScheduleListResp{Schedules: infos}, nil
+				return &sdk.ScheduleListResp{Schedules: infos}, nil
 			}),
 		}
 

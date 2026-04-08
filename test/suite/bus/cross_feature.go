@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,11 +73,11 @@ func testCrossHandlerCallsTool(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.handler-tool-adv.process", Payload: json.RawMessage(`{"data":"chain-test"}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -95,9 +94,9 @@ func testCrossHandlerReadsSecret(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret first
-	pr0, _ := sdk.Publish(env.Kit, ctx, messages.SecretsSetMsg{Name: "API_KEY_ADV", Value: "sk-test-123"})
+	pr0, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "API_KEY_ADV", Value: "sk-test-123"})
 	ch0 := make(chan []byte, 1)
-	unsub0, _ := env.Kit.SubscribeRaw(ctx, pr0.ReplyTo, func(m messages.Message) { ch0 <- m.Payload })
+	unsub0, _ := env.Kit.SubscribeRaw(ctx, pr0.ReplyTo, func(m sdk.Message) { ch0 <- m.Payload })
 	<-ch0
 	unsub0()
 
@@ -109,11 +108,11 @@ func testCrossHandlerReadsSecret(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.secret-handler-adv.check", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -138,11 +137,11 @@ func testCrossHandlerWritesFS(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.fs-handler-adv.save", Payload: json.RawMessage(`{"content":"from handler"}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -164,7 +163,7 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 	brainkit.RegisterTool(k, "process-and-emit-adv", tools.TypedTool[processIn]{
 		Description: "processes and emits event",
 		Execute: func(ctx context.Context, in processIn) (any, error) {
-			sdk.Emit(k, ctx, messages.CustomEvent{
+			sdk.Emit(k, ctx, sdk.CustomEvent{
 				Topic:   "events.processed-adv",
 				Payload: json.RawMessage(fmt.Sprintf(`{"processed":"%s"}`, in.Data)),
 			})
@@ -174,14 +173,14 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	unsub, _ := sdk.SubscribeTo[messages.CustomEvent](k, ctx, "events.processed-adv", func(e messages.CustomEvent, m messages.Message) {
+	unsub, _ := sdk.SubscribeTo[sdk.CustomEvent](k, ctx, "events.processed-adv", func(e sdk.CustomEvent, m sdk.Message) {
 		eventCount.Add(1)
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, messages.ToolCallMsg{Name: "process-and-emit-adv", Input: map[string]any{"data": "hello"}})
+	pr, _ := sdk.Publish(k, ctx, sdk.ToolCallMsg{Name: "process-and-emit-adv", Input: map[string]any{"data": "hello"}})
 	ch := make(chan []byte, 1)
-	unsub2, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub2, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub2()
 
 	select {
@@ -216,9 +215,9 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	})
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, messages.ToolCallMsg{Name: "traced-echo-adv", Input: map[string]any{"message": "traced"}})
+	pr, _ := sdk.Publish(k, ctx, sdk.ToolCallMsg{Name: "traced-echo-adv", Input: map[string]any{"message": "traced"}})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 	<-ch
 
@@ -323,11 +322,11 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k2, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
 		Topic: "ts.persist-handler-adv.ask", Payload: json.RawMessage(`{"q":"hello"}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

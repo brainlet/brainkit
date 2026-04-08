@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	_, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "echo-svc.ts",
 		Code: `
 			bus.on("ping", (msg) => {
@@ -32,7 +31,7 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	pr, err := sdk.SendToService(env.Kit, ctx, "echo-svc.ts", "ping", map[string]string{"hello": "world"})
 	require.NoError(t, err)
 
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo, func(payload json.RawMessage, msg messages.Message) {
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo, func(payload json.RawMessage, msg sdk.Message) {
 		relayCh <- payload
 	})
 	require.NoError(t, err)
@@ -54,12 +53,12 @@ func testSDKReplyGoToGo(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	_, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, "test.approval.request",
-		func(payload json.RawMessage, msg messages.Message) {
+		func(payload json.RawMessage, msg sdk.Message) {
 			sdk.Reply(env.Kit, ctx, msg, map[string]bool{"approved": true})
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.approval.request",
 		Payload: json.RawMessage(`{"action":"delete"}`),
 	})
@@ -67,7 +66,7 @@ func testSDKReplyGoToGo(t *testing.T, env *suite.TestEnv) {
 
 	replyCh := make(chan json.RawMessage, 1)
 	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
-		func(payload json.RawMessage, msg messages.Message) {
+		func(payload json.RawMessage, msg sdk.Message) {
 			replyCh <- payload
 		})
 	require.NoError(t, err)
@@ -88,7 +87,7 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	_, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, "test.stream.request",
-		func(payload json.RawMessage, msg messages.Message) {
+		func(payload json.RawMessage, msg sdk.Message) {
 			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 1})
 			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 2})
 			sdk.SendChunk(env.Kit, ctx, msg, map[string]int{"chunk": 3})
@@ -96,7 +95,7 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.stream.request",
 		Payload: json.RawMessage(`{}`),
 	})
@@ -104,7 +103,7 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 
 	var received []json.RawMessage
 	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
-		func(payload json.RawMessage, msg messages.Message) {
+		func(payload json.RawMessage, msg sdk.Message) {
 			received = append(received, payload)
 		})
 	require.NoError(t, err)
@@ -118,7 +117,7 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{
+	_, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
 		Source: "calc.ts",
 		Code: `
 			bus.on("add", (msg) => {
@@ -136,7 +135,7 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 
 	replyCh := make(chan json.RawMessage, 1)
 	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
-		func(payload json.RawMessage, msg messages.Message) {
+		func(payload json.RawMessage, msg sdk.Message) {
 			replyCh <- payload
 		})
 	require.NoError(t, err)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -14,8 +14,8 @@ func newHealthCmd() *cobra.Command {
 		Use:   "health",
 		Short: "Show instance health status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.KitHealthMsg{},
-				func(resp *messages.KitHealthResp) {
+			return connectAndPublish(cmd, sdk.KitHealthMsg{},
+				func(resp *sdk.KitHealthResp) {
 					var health struct {
 						Healthy bool   `json:"healthy"`
 						Status  string `json:"status"`

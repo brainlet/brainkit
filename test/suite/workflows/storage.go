@@ -9,7 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,9 +52,9 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "persist-test", wf);
 	`)
 
-	resp := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
+	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
-		messages.WorkflowStartMsg{Name: "persist-test", InputData: json.RawMessage(`{"x":1}`)},
+		sdk.WorkflowStartMsg{Name: "persist-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", resp.Status, "should suspend")
@@ -99,17 +99,17 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "status-test", wf);
 	`)
 
-	startResp := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
+	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
-		messages.WorkflowStartMsg{Name: "status-test", InputData: json.RawMessage(`{"x":5}`)},
+		sdk.WorkflowStartMsg{Name: "status-test", InputData: json.RawMessage(`{"x":5}`)},
 		10*time.Second,
 	)
 	require.Empty(t, startResp.Error)
 	require.Equal(t, "success", startResp.Status)
 
-	statusResp := wfPublishAndWait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](
+	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
-		messages.WorkflowStatusMsg{Name: "status-test", RunID: startResp.RunID},
+		sdk.WorkflowStatusMsg{Name: "status-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
 	require.Empty(t, statusResp.Error, "status of completed run should work: %s", statusResp.Error)
@@ -146,31 +146,31 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "runs-test", wf);
 	`)
 
-	r1 := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
+	r1 := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
-		messages.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":0}`)},
+		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":0}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "success", r1.Status)
 
-	r2 := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
+	r2 := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
-		messages.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":1}`)},
+		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", r2.Status)
 
-	allResp := wfPublishAndWait[messages.WorkflowRunsMsg, messages.WorkflowRunsResp](
+	allResp := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
 		t, k,
-		messages.WorkflowRunsMsg{Name: "runs-test"},
+		sdk.WorkflowRunsMsg{Name: "runs-test"},
 		5*time.Second,
 	)
 	require.Empty(t, allResp.Error, "list all runs: %s", allResp.Error)
 	assert.GreaterOrEqual(t, allResp.Total, 2, "should have at least 2 runs total")
 
-	suspResp := wfPublishAndWait[messages.WorkflowRunsMsg, messages.WorkflowRunsResp](
+	suspResp := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
 		t, k,
-		messages.WorkflowRunsMsg{Name: "runs-test", Status: "suspended"},
+		sdk.WorkflowRunsMsg{Name: "runs-test", Status: "suspended"},
 		5*time.Second,
 	)
 	require.Empty(t, suspResp.Error, "list suspended: %s", suspResp.Error)
@@ -203,9 +203,9 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "async-test", wf);
 	`)
 
-	asyncResp := wfPublishAndWait[messages.WorkflowStartAsyncMsg, messages.WorkflowStartAsyncResp](
+	asyncResp := wfPublishAndWait[sdk.WorkflowStartAsyncMsg, sdk.WorkflowStartAsyncResp](
 		t, k,
-		messages.WorkflowStartAsyncMsg{Name: "async-test", InputData: json.RawMessage(`{"n":7}`)},
+		sdk.WorkflowStartAsyncMsg{Name: "async-test", InputData: json.RawMessage(`{"n":7}`)},
 		5*time.Second,
 	)
 	require.Empty(t, asyncResp.Error, "startAsync: %s", asyncResp.Error)
@@ -216,7 +216,7 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 
 	completionTopic := "workflow.completed." + asyncResp.RunID
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := k.SubscribeRaw(ctx, completionTopic, func(msg messages.Message) {
+	unsub, err := k.SubscribeRaw(ctx, completionTopic, func(msg sdk.Message) {
 		select {
 		case ch <- msg.Payload:
 		default:
@@ -278,9 +278,9 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 
 	wfDeploy(t, k1, "crash-suspend.ts", suspendCode)
 
-	startResp := wfPublishAndWait[messages.WorkflowStartMsg, messages.WorkflowStartResp](
+	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k1,
-		messages.WorkflowStartMsg{Name: "crash-suspend", InputData: json.RawMessage(`{"x":1}`)},
+		sdk.WorkflowStartMsg{Name: "crash-suspend", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
@@ -299,17 +299,17 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	statusResp := wfPublishAndWait[messages.WorkflowStatusMsg, messages.WorkflowStatusResp](
+	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k2,
-		messages.WorkflowStatusMsg{Name: "crash-suspend", RunID: runID},
+		sdk.WorkflowStatusMsg{Name: "crash-suspend", RunID: runID},
 		10*time.Second,
 	)
 	require.Empty(t, statusResp.Error, "status on k2: %s", statusResp.Error)
 	assert.Equal(t, "suspended", statusResp.Status)
 
-	resumeResp := wfPublishAndWait[messages.WorkflowResumeMsg, messages.WorkflowResumeResp](
+	resumeResp := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, k2,
-		messages.WorkflowResumeMsg{
+		sdk.WorkflowResumeMsg{
 			Name: "crash-suspend", RunID: runID,
 			Step: "gate", ResumeData: json.RawMessage(`{"approved":true}`),
 		},

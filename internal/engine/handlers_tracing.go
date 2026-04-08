@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/tracing"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // TracingDomain handles trace.get and trace.list bus commands.
@@ -18,21 +18,21 @@ func newTracingDomain(store tracing.TraceStore) *TracingDomain {
 	return &TracingDomain{store: store}
 }
 
-func (d *TracingDomain) Get(_ context.Context, req messages.TraceGetMsg) (*messages.TraceGetResp, error) {
+func (d *TracingDomain) Get(_ context.Context, req sdk.TraceGetMsg) (*sdk.TraceGetResp, error) {
 	if d.store == nil {
-		return &messages.TraceGetResp{Spans: json.RawMessage("[]")}, nil
+		return &sdk.TraceGetResp{Spans: json.RawMessage("[]")}, nil
 	}
 	spans, err := d.store.GetTrace(req.TraceID)
 	if err != nil {
 		return nil, err
 	}
 	data, _ := json.Marshal(spans)
-	return &messages.TraceGetResp{Spans: data}, nil
+	return &sdk.TraceGetResp{Spans: data}, nil
 }
 
-func (d *TracingDomain) List(_ context.Context, req messages.TraceListMsg) (*messages.TraceListResp, error) {
+func (d *TracingDomain) List(_ context.Context, req sdk.TraceListMsg) (*sdk.TraceListResp, error) {
 	if d.store == nil {
-		return &messages.TraceListResp{Traces: json.RawMessage("[]")}, nil
+		return &sdk.TraceListResp{Traces: json.RawMessage("[]")}, nil
 	}
 	query := tracing.TraceQuery{Source: req.Source, Status: req.Status, Limit: req.Limit}
 	if req.MinDuration > 0 {
@@ -43,5 +43,5 @@ func (d *TracingDomain) List(_ context.Context, req messages.TraceListMsg) (*mes
 		return nil, err
 	}
 	data, _ := json.Marshal(traces)
-	return &messages.TraceListResp{Traces: data}, nil
+	return &sdk.TraceListResp{Traces: data}, nil
 }

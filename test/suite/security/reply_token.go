@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,11 +28,11 @@ func testTokenOwnMailboxGetsToken(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "service"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.token-check-sec.check", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -61,11 +60,11 @@ func testTokenLegitHandlerCanReply(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "service"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.legit-reply-sec.api", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -100,11 +99,11 @@ func testTokenObserverCannotReply(t *testing.T, env *suite.TestEnv) {
 		output("subscribed");
 	`, "observer"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.protected-svc-sec.api", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -135,13 +134,13 @@ func testTokenStreamingWithToken(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "service"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.stream-token-sec.stream", Payload: json.RawMessage(`{}`),
 	})
 
 	var chunks int64
 	done := make(chan bool, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		atomic.AddInt64(&chunks, 1)
 		if m.Metadata["done"] == "true" {
 			done <- true
@@ -179,11 +178,11 @@ func testTokenNoRBACNoTokens(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.no-rbac-svc-sec.api", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -201,7 +200,7 @@ func testTokenAuditEventEmitted(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	var auditEvents []string
-	auditUnsub, _ := k.SubscribeRaw(ctx, "bus.reply.denied", func(m messages.Message) {
+	auditUnsub, _ := k.SubscribeRaw(ctx, "bus.reply.denied", func(m sdk.Message) {
 		auditEvents = append(auditEvents, string(m.Payload))
 	})
 	defer auditUnsub()
@@ -216,7 +215,7 @@ func testTokenAuditEventEmitted(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "observer")
 
-	sdk.Publish(k, ctx, messages.CustomMsg{
+	sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.audit-svc-sec.api", Payload: json.RawMessage(`{}`),
 	})
 
@@ -248,11 +247,11 @@ func testTokenCrossDeploymentScoped(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "admin"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.svc-a-token-sec.api", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {

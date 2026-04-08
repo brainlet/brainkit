@@ -5,7 +5,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -14,8 +14,8 @@ func newListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List active deployments",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.KitListMsg{},
-				func(resp *messages.KitListResp) {
+			return connectAndPublish(cmd, sdk.KitListMsg{},
+				func(resp *sdk.KitListResp) {
 					tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
 					fmt.Fprintln(tw, "SOURCE\tCREATED\tRESOURCES")
 					for _, d := range resp.Deployments {

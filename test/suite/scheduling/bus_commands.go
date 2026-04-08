@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
 )
@@ -21,7 +20,7 @@ func testScheduleCreateViaBus(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	topic := "test.sched.create." + uuid.NewString()[:8]
-	pr, err := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, err := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "every 10m",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"test":true}`),
@@ -30,9 +29,9 @@ func testScheduleCreateViaBus(t *testing.T, _ *suite.TestEnv) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	respCh := make(chan messages.ScheduleCreateResp, 1)
+	respCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -53,14 +52,14 @@ func testScheduleCreateInvalidExpression(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "bad expression",
 		Topic:      "test.sched.invalid",
 	})
 
-	respCh := make(chan messages.ScheduleCreateResp, 1)
+	respCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -80,22 +79,22 @@ func testScheduleListViaBus(t *testing.T, _ *suite.TestEnv) {
 
 	// Create 2 schedules
 	for i := 0; i < 2; i++ {
-		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 			Expression: "every 1h",
 			Topic:      "test.sched.list." + uuid.NewString()[:8],
 		})
-		ch := make(chan messages.ScheduleCreateResp, 1)
+		ch := make(chan sdk.ScheduleCreateResp, 1)
 		unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-			func(resp messages.ScheduleCreateResp, msg messages.Message) { ch <- resp })
+			func(resp sdk.ScheduleCreateResp, msg sdk.Message) { ch <- resp })
 		<-ch
 		unsub()
 	}
 
 	// List
-	pr, _ := sdk.PublishScheduleList(env.Kit, ctx, messages.ScheduleListMsg{})
-	listCh := make(chan messages.ScheduleListResp, 1)
+	pr, _ := sdk.PublishScheduleList(env.Kit, ctx, sdk.ScheduleListMsg{})
+	listCh := make(chan sdk.ScheduleListResp, 1)
 	unsub, _ := sdk.SubscribeScheduleListResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleListResp, msg messages.Message) { listCh <- resp })
+		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
 	defer unsub()
 
 	select {
@@ -114,21 +113,21 @@ func testScheduleCancelViaBus(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Create
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "every 1h",
 		Topic:      "test.sched.cancel." + uuid.NewString()[:8],
 	})
-	createCh := make(chan messages.ScheduleCreateResp, 1)
+	createCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { createCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
 	createResp := <-createCh
 	unsub()
 
 	// Cancel
-	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, messages.ScheduleCancelMsg{ID: createResp.ID})
-	cancelCh := make(chan messages.ScheduleCancelResp, 1)
+	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
+	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
 	unsub2, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.ScheduleCancelResp, msg messages.Message) { cancelCh <- resp })
+		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
 	defer unsub2()
 
 	select {
@@ -146,13 +145,13 @@ func testScheduleCreateBlocksCommandTopic(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "every 1m",
 		Topic:      "tools.call", // command topic — should be blocked
 	})
-	respCh := make(chan messages.ScheduleCreateResp, 1)
+	respCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -179,7 +178,7 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 	received := make(chan struct{}, 10)
 
 	// Subscribe to the target topic FIRST
-	unsub, err := env.Kit.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, topic, func(msg sdk.Message) {
 		received <- struct{}{}
 	})
 	if err != nil {
@@ -188,14 +187,14 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 	defer unsub()
 
 	// Create fast schedule
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "every 300ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"tick":true}`),
 	})
-	createCh := make(chan messages.ScheduleCreateResp, 1)
+	createCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { createCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
 	createResp := <-createCh
 	unsubCreate()
 
@@ -216,7 +215,7 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Cancel it
-	sdk.PublishScheduleCancel(env.Kit, ctx, messages.ScheduleCancelMsg{ID: createResp.ID})
+	sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
 }
 
 func testScheduleCreateOneTimeFires(t *testing.T, _ *suite.TestEnv) {
@@ -227,19 +226,19 @@ func testScheduleCreateOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 	topic := "test.sched.once." + uuid.NewString()[:8]
 	received := make(chan json.RawMessage, 5)
 
-	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg sdk.Message) {
 		received <- msg.Payload
 	})
 	defer unsub()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "in 300ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"once":true}`),
 	})
-	createCh := make(chan messages.ScheduleCreateResp, 1)
+	createCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { createCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
 	<-createCh
 	unsubCreate()
 
@@ -270,20 +269,20 @@ func testScheduleCreateWithPayload(t *testing.T, _ *suite.TestEnv) {
 	topic := "test.sched.payload." + uuid.NewString()[:8]
 	received := make(chan json.RawMessage, 1)
 
-	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg sdk.Message) {
 		received <- msg.Payload
 	})
 	defer unsub()
 
 	expectedPayload := `{"key":"value","num":42}`
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "in 200ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(expectedPayload),
 	})
-	createCh := make(chan messages.ScheduleCreateResp, 1)
+	createCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { createCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
 	<-createCh
 	unsubCreate()
 
@@ -307,19 +306,19 @@ func testScheduleCancelStopsFiring(t *testing.T, _ *suite.TestEnv) {
 	topic := "test.sched.stop." + uuid.NewString()[:8]
 	received := make(chan struct{}, 20)
 
-	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, topic, func(msg sdk.Message) {
 		received <- struct{}{}
 	})
 	defer unsub()
 
 	// Create fast schedule
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, messages.ScheduleCreateMsg{
+	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
 		Expression: "every 200ms",
 		Topic:      topic,
 	})
-	createCh := make(chan messages.ScheduleCreateResp, 1)
+	createCh := make(chan sdk.ScheduleCreateResp, 1)
 	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ScheduleCreateResp, msg messages.Message) { createCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
 	createResp := <-createCh
 	unsubCreate()
 
@@ -333,10 +332,10 @@ func testScheduleCancelStopsFiring(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Cancel
-	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, messages.ScheduleCancelMsg{ID: createResp.ID})
-	cancelCh := make(chan messages.ScheduleCancelResp, 1)
+	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
+	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
 	unsubCancel, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.ScheduleCancelResp, msg messages.Message) { cancelCh <- resp })
+		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
 	<-cancelCh
 	unsubCancel()
 

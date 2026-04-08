@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,14 +37,14 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	// Call A
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.svc-a-adv.start",
 		Payload: json.RawMessage(`{"input":"hello"}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -72,7 +71,7 @@ func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.streamer-adv.stream",
 		Payload: json.RawMessage(`{}`),
 	})
@@ -80,7 +79,7 @@ func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
 
 	var chunks []json.RawMessage
 	done := make(chan bool, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		chunks = append(chunks, json.RawMessage(m.Payload))
 		var parsed struct {
 			Type string `json:"type"`
@@ -124,16 +123,16 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	readData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
 
 	// 3. Process with the "echo" tool
-	pr, err := sdk.Publish(freshEnv.Kit, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(freshEnv.Kit, ctx, sdk.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": readData},
 	})
 	require.NoError(t, err)
-	callCh := make(chan messages.ToolCallResp, 1)
-	cancelCall, err := sdk.SubscribeTo[messages.ToolCallResp](freshEnv.Kit, ctx, pr.ReplyTo, func(r messages.ToolCallResp, _ messages.Message) { callCh <- r })
+	callCh := make(chan sdk.ToolCallResp, 1)
+	cancelCall, err := sdk.SubscribeTo[sdk.ToolCallResp](freshEnv.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, _ sdk.Message) { callCh <- r })
 	require.NoError(t, err)
 	defer cancelCall()
-	var callResp messages.ToolCallResp
+	var callResp sdk.ToolCallResp
 	select {
 	case callResp = <-callCh:
 	case <-ctx.Done():

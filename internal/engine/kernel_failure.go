@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // --- Failure Handling (retry, dead letter, error events) ---
 
 // handleHandlerFailure is called when a bus handler throws a JS exception.
-func (k *Kernel) handleHandlerFailure(msg messages.Message, topic string, handlerErr error) {
+func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr error) {
 	policy := k.findRetryPolicy(topic)
 
 	retryCount := 0
@@ -70,7 +70,7 @@ func (k *Kernel) handleHandlerFailure(msg messages.Message, topic string, handle
 	})
 }
 
-func (k *Kernel) sendErrorResponse(msg messages.Message, err error) {
+func (k *Kernel) sendErrorResponse(msg sdk.Message, err error) {
 	replyTo := ""
 	correlationID := ""
 	if msg.Metadata != nil {
@@ -105,7 +105,7 @@ func (k *Kernel) findRetryPolicy(topic string) *RetryPolicy {
 	return nil
 }
 
-func (k *Kernel) deadLetter(msg messages.Message, topic string, err error, retries int, policy *RetryPolicy) {
+func (k *Kernel) deadLetter(msg sdk.Message, topic string, err error, retries int, policy *RetryPolicy) {
 	if policy.DeadLetterTopic == "" {
 		return
 	}
@@ -121,19 +121,19 @@ func (k *Kernel) deadLetter(msg messages.Message, topic string, err error, retri
 }
 
 func (k *Kernel) emitHandlerFailed(topic string, err error, retryCount int, willRetry bool) {
-	payload, _ := json.Marshal(messages.HandlerFailedEvent{
+	payload, _ := json.Marshal(sdk.HandlerFailedEvent{
 		Topic: topic, Source: k.callerID, Error: err.Error(),
 		RetryCount: retryCount, WillRetry: willRetry,
 	})
-	k.publish(context.Background(), messages.HandlerFailedEvent{}.BusTopic(), payload)
+	k.publish(context.Background(), sdk.HandlerFailedEvent{}.BusTopic(), payload)
 }
 
 func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int) {
-	payload, _ := json.Marshal(messages.HandlerExhaustedEvent{
+	payload, _ := json.Marshal(sdk.HandlerExhaustedEvent{
 		Topic: topic, Source: k.callerID, Error: err.Error(),
 		RetryCount: retryCount,
 	})
-	k.publish(context.Background(), messages.HandlerExhaustedEvent{}.BusTopic(), payload)
+	k.publish(context.Background(), sdk.HandlerExhaustedEvent{}.BusTopic(), payload)
 }
 
 func computeDelay(p *RetryPolicy, retryCount int) time.Duration {

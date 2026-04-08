@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,16 +30,16 @@ func testTimingPreemptiveReplySubscribe(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	var attackerGot atomic.Int64
-	unsub, _ := k.SubscribeRaw(ctx, "ts.timing-svc-sec.data.reply", func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, "ts.timing-svc-sec.data.reply", func(m sdk.Message) {
 		attackerGot.Add(1)
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.timing-svc-sec.data", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer legitUnsub()
 
 	select {
@@ -122,11 +121,11 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 	var responded atomic.Int64
 	for i := 0; i < 10; i++ {
 		go func() {
-			pr, _ := sdk.Publish(k2, ctx, messages.CustomMsg{
+			pr, _ := sdk.Publish(k2, ctx, sdk.CustomMsg{
 				Topic: "ts.slow-restore-sec.ping", Payload: json.RawMessage(`{}`),
 			})
 			ch := make(chan []byte, 1)
-			unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+			unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 			defer unsub()
 			select {
 			case <-ch:
@@ -243,7 +242,7 @@ func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	go func() {
-		secSendAndReceive(t, k, messages.ToolCallMsg{Name: "slow-sec", Input: map[string]any{}}, 5*time.Second)
+		secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "slow-sec", Input: map[string]any{}}, 5*time.Second)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -280,15 +279,15 @@ func testTimingRoleChangeWhileHandlerRunning(t *testing.T, env *suite.TestEnv) {
 		});
 	`, "admin"))
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.role-change-sec.slow-op", Payload: json.RawMessage(`{}`),
 	})
 
 	time.Sleep(200 * time.Millisecond)
-	sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "role-change-sec.ts", Role: "observer"})
+	sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "role-change-sec.ts", Role: "observer"})
 
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -305,7 +304,7 @@ func testTimingScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	var fired atomic.Int64
-	unsub, _ := k.SubscribeRaw(ctx, "race.sched.topic.sec", func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, "race.sched.topic.sec", func(m sdk.Message) {
 		fired.Add(1)
 	})
 	defer unsub()
@@ -343,7 +342,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, messages.StorageAddMsg{
+			sdk.Publish(k, ctx, sdk.StorageAddMsg{
 				Name: "race-storage-sec",
 				Type: "memory",
 			})
@@ -352,7 +351,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, messages.StorageRemoveMsg{
+			sdk.Publish(k, ctx, sdk.StorageRemoveMsg{
 				Name: "race-storage-sec",
 			})
 		}

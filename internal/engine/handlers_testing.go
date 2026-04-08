@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	braintest "github.com/brainlet/brainkit/internal/braintest"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // TestingDomain handles test.run bus commands.
@@ -36,7 +36,7 @@ func (r *kernelTestRuntime) Teardown(ctx context.Context, source string) error {
 	return err
 }
 
-func (d *TestingDomain) Run(ctx context.Context, req messages.TestRunMsg) (*messages.TestRunResp, error) {
+func (d *TestingDomain) Run(ctx context.Context, req sdk.TestRunMsg) (*sdk.TestRunResp, error) {
 	runner := braintest.NewTestRunner(&kernelTestRuntime{kernel: d.kit}, braintest.TestRunnerConfig{
 		TestDir: req.Dir,
 		Pattern: req.Pattern,
@@ -48,5 +48,5 @@ func (d *TestingDomain) Run(ctx context.Context, req messages.TestRunMsg) (*mess
 	}
 
 	data, _ := json.Marshal(result)
-	return &messages.TestRunResp{Results: data}, nil
+	return &sdk.TestRunResp{Results: data}, nil
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,11 +42,11 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Verify provider is registered via registry.list bus command
-	pr, err := sdk.Publish(k, ctx, messages.RegistryListMsg{Category: "provider"})
+	pr, err := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "provider"})
 	require.NoError(t, err)
-	listCh := make(chan messages.RegistryListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.RegistryListResp](k, ctx, pr.ReplyTo,
-		func(resp messages.RegistryListResp, _ messages.Message) { listCh <- resp })
+	listCh := make(chan sdk.RegistryListResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr.ReplyTo,
+		func(resp sdk.RegistryListResp, _ sdk.Message) { listCh <- resp })
 	defer unsub()
 
 	select {
@@ -58,10 +57,10 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Verify vector store via registry.list
-	pr2, _ := sdk.Publish(k, ctx, messages.RegistryListMsg{Category: "vectorStore"})
-	vecCh := make(chan messages.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](k, ctx, pr2.ReplyTo,
-		func(resp messages.RegistryListResp, _ messages.Message) { vecCh <- resp })
+	pr2, _ := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "vectorStore"})
+	vecCh := make(chan sdk.RegistryListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr2.ReplyTo,
+		func(resp sdk.RegistryListResp, _ sdk.Message) { vecCh <- resp })
 	defer unsub2()
 
 	select {
@@ -72,10 +71,10 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Verify storage via registry.list
-	pr3, _ := sdk.Publish(k, ctx, messages.RegistryListMsg{Category: "storage"})
-	storCh := make(chan messages.RegistryListResp, 1)
-	unsub3, _ := sdk.SubscribeTo[messages.RegistryListResp](k, ctx, pr3.ReplyTo,
-		func(resp messages.RegistryListResp, _ messages.Message) { storCh <- resp })
+	pr3, _ := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "storage"})
+	storCh := make(chan sdk.RegistryListResp, 1)
+	unsub3, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr3.ReplyTo,
+		func(resp sdk.RegistryListResp, _ sdk.Message) { storCh <- resp })
 	defer unsub3()
 
 	select {
@@ -99,20 +98,20 @@ func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add provider via bus
-	pr, _ := sdk.PublishProviderAdd(k, ctx, messages.ProviderAddMsg{
+	pr, _ := sdk.PublishProviderAdd(k, ctx, sdk.ProviderAddMsg{
 		Name: "anthropic", Type: "anthropic", Config: json.RawMessage(`{"APIKey":"sk-ant"}`),
 	})
-	addCh := make(chan messages.ProviderAddResp, 1)
+	addCh := make(chan sdk.ProviderAddResp, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(k, ctx, pr.ReplyTo,
-		func(resp messages.ProviderAddResp, _ messages.Message) { addCh <- resp })
+		func(resp sdk.ProviderAddResp, _ sdk.Message) { addCh <- resp })
 	<-addCh
 	unsub()
 
 	// Remove via bus
-	pr2, _ := sdk.PublishProviderRemove(k, ctx, messages.ProviderRemoveMsg{Name: "anthropic"})
-	rmCh := make(chan messages.ProviderRemoveResp, 1)
+	pr2, _ := sdk.PublishProviderRemove(k, ctx, sdk.ProviderRemoveMsg{Name: "anthropic"})
+	rmCh := make(chan sdk.ProviderRemoveResp, 1)
 	unsub2, _ := sdk.SubscribeProviderRemoveResp(k, ctx, pr2.ReplyTo,
-		func(resp messages.ProviderRemoveResp, _ messages.Message) { rmCh <- resp })
+		func(resp sdk.ProviderRemoveResp, _ sdk.Message) { rmCh <- resp })
 	defer unsub2()
 
 	select {
@@ -176,7 +175,7 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(k, ctx, sdk.KitDeployMsg{
 		Source: "registry-user.ts",
 		Code: `
 			const registryTool = createTool({
@@ -193,8 +192,8 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -202,12 +201,12 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(k, ctx, messages.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
+	pr2, err := sdk.Publish(k, ctx, sdk.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
 	require.NoError(t, err)
-	ch2 := make(chan messages.ToolCallResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.ToolCallResp](k, ctx, pr2.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch2 <- r })
+	ch2 := make(chan sdk.ToolCallResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.ToolCallResp](k, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
 	defer unsub2()
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch2:
 	case <-ctx.Done():

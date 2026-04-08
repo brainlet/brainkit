@@ -16,7 +16,7 @@ import (
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/tracing"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // registerBusBridges adds bus_send, bus_publish, bus_emit, bus_reply, subscribe, unsubscribe bridges.
@@ -194,7 +194,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			}
 
 			subID := uuid.NewString()
-			cancel, err := k.subscribe(topic, func(msg messages.Message) {
+			cancel, err := k.subscribe(topic, func(msg sdk.Message) {
 				// Reject if draining (graceful shutdown)
 				if !k.enterHandler() {
 					return

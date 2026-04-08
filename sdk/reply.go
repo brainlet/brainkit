@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // Replier is an optional interface for direct bus responses.
@@ -17,18 +16,18 @@ type Replier interface {
 
 // Reply sends a final response to a bus message.
 // Equivalent to JS msg.reply(data). Sets done=true in metadata.
-func Reply(rt Runtime, ctx context.Context, msg messages.Message, payload any) error {
+func Reply(rt Runtime, ctx context.Context, msg Message, payload any) error {
 	return replyInternal(rt, ctx, msg, payload, true)
 }
 
 // SendChunk sends an intermediate chunk to a bus message.
 // Equivalent to JS msg.send(data). Sets done=false in metadata.
 // Use for streaming patterns where multiple responses precede a final Reply.
-func SendChunk(rt Runtime, ctx context.Context, msg messages.Message, payload any) error {
+func SendChunk(rt Runtime, ctx context.Context, msg Message, payload any) error {
 	return replyInternal(rt, ctx, msg, payload, false)
 }
 
-func replyInternal(rt Runtime, ctx context.Context, msg messages.Message, payload any, done bool) error {
+func replyInternal(rt Runtime, ctx context.Context, msg Message, payload any, done bool) error {
 	replier, ok := rt.(Replier)
 	if !ok {
 		return ErrNotReplier

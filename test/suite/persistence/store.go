@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,13 +37,13 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, err := sdk.Publish(k1, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(k1, ctx, sdk.KitDeployMsg{
 		Source: "greeter-persist.ts",
 		Code:   `bus.on("greet", (msg) => { msg.reply({ hello: "world" }); });`,
 	})
 	require.NoError(t, err)
 	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k1, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k1, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	unsub()
 
@@ -52,7 +51,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(100 * time.Millisecond)
 	sendPR, _ := sdk.SendToService(k1, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
 	replyCh := make(chan bool, 1)
-	replyUnsub, _ := k1.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replyCh <- true })
+	replyUnsub, _ := k1.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
 	select {
 	case <-replyCh:
 	case <-time.After(5 * time.Second):
@@ -79,7 +78,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 	sendPR2, _ := sdk.SendToService(k2, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
 	replyCh2 := make(chan bool, 1)
-	replyUnsub2, _ := k2.SubscribeRaw(ctx, sendPR2.ReplyTo, func(msg messages.Message) { replyCh2 <- true })
+	replyUnsub2, _ := k2.SubscribeRaw(ctx, sendPR2.ReplyTo, func(msg sdk.Message) { replyCh2 <- true })
 	defer replyUnsub2()
 
 	select {
@@ -103,16 +102,16 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{Source: "temp-persist.ts", Code: `bus.on("x", (m) => m.reply({}));`})
+	pr, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{Source: "temp-persist.ts", Code: `bus.on("x", (m) => m.reply({}));`})
 	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { deployCh <- struct{}{} })
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	unsub()
 
 	// Teardown
-	tpr, _ := sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: "temp-persist.ts"})
+	tpr, _ := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: "temp-persist.ts"})
 	tdCh := make(chan struct{}, 1)
-	tunsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](k, ctx, tpr.ReplyTo, func(_ messages.KitTeardownResp, _ messages.Message) { tdCh <- struct{}{} })
+	tunsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, tpr.ReplyTo, func(_ sdk.KitTeardownResp, _ sdk.Message) { tdCh <- struct{}{} })
 	<-tdCh
 	tunsub()
 	k.Close()
@@ -144,12 +143,12 @@ func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 
 	ctx := context.Background()
 	for _, name := range []string{"first-persist.ts", "second-persist.ts", "third-persist.ts"} {
-		pr, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{
+		pr, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{
 			Source: name,
 			Code:   `bus.on("ping", (m) => m.reply({}));`,
 		})
 		ch := make(chan struct{}, 1)
-		unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { ch <- struct{}{} })
+		unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { ch <- struct{}{} })
 		<-ch
 		unsub()
 	}
@@ -183,12 +182,12 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Deploy a working service
-	pr1, _ := sdk.Publish(k, ctx, messages.KitDeployMsg{
+	pr1, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{
 		Source: "good-persist.ts",
 		Code:   `bus.on("ping", (msg) => { msg.reply({ ok: true }); });`,
 	})
 	ch1 := make(chan struct{}, 1)
-	u1, _ := sdk.SubscribeTo[messages.KitDeployResp](k, ctx, pr1.ReplyTo, func(_ messages.KitDeployResp, _ messages.Message) { ch1 <- struct{}{} })
+	u1, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr1.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { ch1 <- struct{}{} })
 	<-ch1
 	u1()
 
@@ -214,7 +213,7 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 	sendPR, _ := sdk.SendToService(k2, ctx, "good-persist.ts", "ping", map[string]bool{"x": true})
 	replyCh := make(chan bool, 1)
-	replyUnsub, _ := k2.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) { replyCh <- true })
+	replyUnsub, _ := k2.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
 	defer replyUnsub()
 
 	select {

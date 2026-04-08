@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -45,11 +45,11 @@ func deployFile(cmd *cobra.Command, path string) error {
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","entry":%q}`, name, filename)
-	return connectAndPublish(cmd, messages.PackageDeployMsg{
+	return connectAndPublish(cmd, sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{filename: string(code)},
 	},
-		func(resp *messages.PackageDeployResp) {
+		func(resp *sdk.PackageDeployResp) {
 			cmd.Printf("Deployed %s (%s)\n", resp.Name, resp.Source)
 		},
 	)
@@ -83,11 +83,11 @@ func deployDirectory(cmd *cobra.Command, path string) error {
 		}
 		return nil
 	})
-	return connectAndPublish(cmd, messages.PackageDeployMsg{
+	return connectAndPublish(cmd, sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifestData),
 		Files:    files,
 	},
-		func(resp *messages.PackageDeployResp) {
+		func(resp *sdk.PackageDeployResp) {
 			cmd.Printf("Deployed %s v%s (%s)\n", resp.Name, resp.Version, resp.Source)
 		},
 	)

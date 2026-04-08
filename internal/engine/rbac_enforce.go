@@ -7,7 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // checkBusPermission checks if the current deployment source can perform a bus action.
@@ -93,7 +93,7 @@ func (k *Kernel) setCurrentSource(source string) {
 
 // emitPermissionDenied publishes the bus.permission.denied event.
 func (k *Kernel) emitPermissionDenied(source, topic, action, roleName string) {
-	payload, _ := json.Marshal(messages.PermissionDeniedEvent{
+	payload, _ := json.Marshal(sdk.PermissionDeniedEvent{
 		Source: source, Topic: topic, Action: action,
 		Role: roleName, Reason: fmt.Sprintf("%s denied %s on %s", roleName, action, topic),
 	})

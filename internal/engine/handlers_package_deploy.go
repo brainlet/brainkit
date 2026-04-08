@@ -10,7 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/packages"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // kernelDeployer adapts Kernel to packages.Deployer interface.
@@ -48,7 +48,7 @@ func newPackageDeployDomain(k *Kernel) *PackageDeployDomain {
 	}
 }
 
-func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDeployMsg) (*messages.PackageDeployResp, error) {
+func (d *PackageDeployDomain) Deploy(ctx context.Context, req sdk.PackageDeployMsg) (*sdk.PackageDeployResp, error) {
 	// Inline deploy mode: write files to temp dir, then deploy from there
 	if req.Path == "" && len(req.Files) > 0 {
 		tmpDir, err := os.MkdirTemp("", "brainkit-pkg-*")
@@ -101,7 +101,7 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDe
 	d.deployed[pkg.Name] = pkg
 	d.mu.Unlock()
 
-	return &messages.PackageDeployResp{
+	return &sdk.PackageDeployResp{
 		Deployed: true,
 		Name:     pkg.Name,
 		Version:  pkg.Version,
@@ -109,7 +109,7 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req messages.PackageDe
 	}, nil
 }
 
-func (d *PackageDeployDomain) Teardown(ctx context.Context, req messages.PackageTeardownMsg) (*messages.PackageTeardownResp, error) {
+func (d *PackageDeployDomain) Teardown(ctx context.Context, req sdk.PackageTeardownMsg) (*sdk.PackageTeardownResp, error) {
 	d.mu.Lock()
 	pkg, ok := d.deployed[req.Name]
 	if !ok {
@@ -122,33 +122,33 @@ func (d *PackageDeployDomain) Teardown(ctx context.Context, req messages.Package
 	deployer := &kernelDeployer{kernel: d.kit}
 	packages.TeardownPackage(ctx, deployer, pkg)
 
-	return &messages.PackageTeardownResp{Removed: true}, nil
+	return &sdk.PackageTeardownResp{Removed: true}, nil
 }
 
-func (d *PackageDeployDomain) List(_ context.Context, _ messages.PackageListDeployedMsg) (*messages.PackageListDeployedResp, error) {
+func (d *PackageDeployDomain) List(_ context.Context, _ sdk.PackageListDeployedMsg) (*sdk.PackageListDeployedResp, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	pkgs := make([]messages.DeployedPackageInfo, 0, len(d.deployed))
+	pkgs := make([]sdk.DeployedPackageInfo, 0, len(d.deployed))
 	for _, pkg := range d.deployed {
-		pkgs = append(pkgs, messages.DeployedPackageInfo{
+		pkgs = append(pkgs, sdk.DeployedPackageInfo{
 			Name:    pkg.Name,
 			Version: pkg.Version,
 			Source:  pkg.Source,
 			Status:  "active",
 		})
 	}
-	return &messages.PackageListDeployedResp{Packages: pkgs}, nil
+	return &sdk.PackageListDeployedResp{Packages: pkgs}, nil
 }
 
-func (d *PackageDeployDomain) Info(_ context.Context, req messages.PackageDeployInfoMsg) (*messages.PackageDeployInfoResp, error) {
+func (d *PackageDeployDomain) Info(_ context.Context, req sdk.PackageDeployInfoMsg) (*sdk.PackageDeployInfoResp, error) {
 	d.mu.Lock()
 	pkg, ok := d.deployed[req.Name]
 	d.mu.Unlock()
 	if !ok {
 		return nil, &sdkerrors.NotFoundError{Resource: "package", Name: req.Name}
 	}
-	return &messages.PackageDeployInfoResp{
+	return &sdk.PackageDeployInfoResp{
 		Name:    pkg.Name,
 		Version: pkg.Version,
 		Source:  pkg.Source,

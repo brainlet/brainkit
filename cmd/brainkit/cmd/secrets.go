@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -30,8 +30,8 @@ func newSecretsCmd() *cobra.Command {
 			} else {
 				return fmt.Errorf("provide value as argument or use --stdin")
 			}
-			return connectAndPublish(cmd, messages.SecretsSetMsg{Name: name, Value: value},
-				func(resp *messages.SecretsSetResp) { cmd.Printf("Secret %s set (version %d)\n", name, resp.Version) },
+			return connectAndPublish(cmd, sdk.SecretsSetMsg{Name: name, Value: value},
+				func(resp *sdk.SecretsSetResp) { cmd.Printf("Secret %s set (version %d)\n", name, resp.Version) },
 			)
 		},
 	}
@@ -40,8 +40,8 @@ func newSecretsCmd() *cobra.Command {
 	getCmd := &cobra.Command{
 		Use: "get <name>", Short: "Get a secret value", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.SecretsGetMsg{Name: args[0]},
-				func(resp *messages.SecretsGetResp) { cmd.Println(resp.Value) },
+			return connectAndPublish(cmd, sdk.SecretsGetMsg{Name: args[0]},
+				func(resp *sdk.SecretsGetResp) { cmd.Println(resp.Value) },
 			)
 		},
 	}
@@ -49,8 +49,8 @@ func newSecretsCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use: "list", Short: "List all secrets (names only, not values)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.SecretsListMsg{},
-				func(resp *messages.SecretsListResp) {
+			return connectAndPublish(cmd, sdk.SecretsListMsg{},
+				func(resp *sdk.SecretsListResp) {
 					tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
 					fmt.Fprintln(tw, "NAME\tVERSION\tUPDATED")
 					for _, s := range resp.Secrets {
@@ -65,8 +65,8 @@ func newSecretsCmd() *cobra.Command {
 	deleteCmd := &cobra.Command{
 		Use: "delete <name>", Short: "Delete a secret", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.SecretsDeleteMsg{Name: args[0]},
-				func(resp *messages.SecretsDeleteResp) { cmd.Printf("Secret %s deleted\n", args[0]) },
+			return connectAndPublish(cmd, sdk.SecretsDeleteMsg{Name: args[0]},
+				func(resp *sdk.SecretsDeleteResp) { cmd.Printf("Secret %s deleted\n", args[0]) },
 			)
 		},
 	}

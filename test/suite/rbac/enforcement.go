@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +36,7 @@ func testRestrictedCannotPublishForbidden(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "restricted-rbac.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -73,7 +72,7 @@ func testRestrictedCannotRegisterTools(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "no-tools-rbac.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -104,7 +103,7 @@ func testOwnMailboxAlwaysAllowed(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "own-mailbox-rbac.ts", "ping", map[string]bool{"x": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -141,7 +140,7 @@ func testAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "admin-rbac.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -161,9 +160,9 @@ func testAssignRevokeViaBus(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Assign
-	pub, _ := sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "some-service.ts", Role: "restricted"})
-	assignCh := make(chan messages.RBACAssignResp, 1)
-	cancel, _ := sdk.SubscribeTo[messages.RBACAssignResp](k, ctx, pub.ReplyTo, func(resp messages.RBACAssignResp, _ messages.Message) {
+	pub, _ := sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "some-service.ts", Role: "restricted"})
+	assignCh := make(chan sdk.RBACAssignResp, 1)
+	cancel, _ := sdk.SubscribeTo[sdk.RBACAssignResp](k, ctx, pub.ReplyTo, func(resp sdk.RBACAssignResp, _ sdk.Message) {
 		assignCh <- resp
 	})
 	select {
@@ -176,9 +175,9 @@ func testAssignRevokeViaBus(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List
-	pub2, _ := sdk.Publish(k, ctx, messages.RBACListMsg{})
-	listCh := make(chan messages.RBACListResp, 1)
-	cancel2, _ := sdk.SubscribeTo[messages.RBACListResp](k, ctx, pub2.ReplyTo, func(resp messages.RBACListResp, _ messages.Message) {
+	pub2, _ := sdk.Publish(k, ctx, sdk.RBACListMsg{})
+	listCh := make(chan sdk.RBACListResp, 1)
+	cancel2, _ := sdk.SubscribeTo[sdk.RBACListResp](k, ctx, pub2.ReplyTo, func(resp sdk.RBACListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	select {
@@ -193,9 +192,9 @@ func testAssignRevokeViaBus(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Revoke
-	pub3, _ := sdk.Publish(k, ctx, messages.RBACRevokeMsg{Source: "some-service.ts"})
-	revokeCh := make(chan messages.RBACRevokeResp, 1)
-	cancel3, _ := sdk.SubscribeTo[messages.RBACRevokeResp](k, ctx, pub3.ReplyTo, func(resp messages.RBACRevokeResp, _ messages.Message) {
+	pub3, _ := sdk.Publish(k, ctx, sdk.RBACRevokeMsg{Source: "some-service.ts"})
+	revokeCh := make(chan sdk.RBACRevokeResp, 1)
+	cancel3, _ := sdk.SubscribeTo[sdk.RBACRevokeResp](k, ctx, pub3.ReplyTo, func(resp sdk.RBACRevokeResp, _ sdk.Message) {
 		revokeCh <- resp
 	})
 	select {
@@ -208,9 +207,9 @@ func testAssignRevokeViaBus(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Verify empty after revoke
-	pub4, _ := sdk.Publish(k, ctx, messages.RBACListMsg{})
-	listCh2 := make(chan messages.RBACListResp, 1)
-	cancel4, _ := sdk.SubscribeTo[messages.RBACListResp](k, ctx, pub4.ReplyTo, func(resp messages.RBACListResp, _ messages.Message) {
+	pub4, _ := sdk.Publish(k, ctx, sdk.RBACListMsg{})
+	listCh2 := make(chan sdk.RBACListResp, 1)
+	cancel4, _ := sdk.SubscribeTo[sdk.RBACListResp](k, ctx, pub4.ReplyTo, func(resp sdk.RBACListResp, _ sdk.Message) {
 		listCh2 <- resp
 	})
 	defer cancel4()
@@ -226,9 +225,9 @@ func testPermissionDeniedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 	k := newRestrictedKernel(t)
 	ctx := context.Background()
 
-	deniedCh := make(chan messages.PermissionDeniedEvent, 1)
-	cancelDenied, _ := sdk.SubscribeTo[messages.PermissionDeniedEvent](k, ctx, "bus.permission.denied",
-		func(evt messages.PermissionDeniedEvent, _ messages.Message) {
+	deniedCh := make(chan sdk.PermissionDeniedEvent, 1)
+	cancelDenied, _ := sdk.SubscribeTo[sdk.PermissionDeniedEvent](k, ctx, "bus.permission.denied",
+		func(evt sdk.PermissionDeniedEvent, _ sdk.Message) {
 			deniedCh <- evt
 		})
 	defer cancelDenied()
@@ -243,7 +242,7 @@ func testPermissionDeniedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "denied-evt-rbac.ts", "trigger", map[string]bool{"go": true})
 	replyCh := make(chan struct{}, 1)
-	replyCancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ messages.Message) { replyCh <- struct{}{} })
+	replyCancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ sdk.Message) { replyCh <- struct{}{} })
 	defer replyCancel()
 	<-replyCh
 
@@ -275,7 +274,7 @@ func testWithRoleOnDeploy(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "observer-svc-rbac.ts", "test", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -348,7 +347,7 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	replyCh := make(chan map[string]any, 1)
-	unsub, err := k2.SubscribeRaw(context.Background(), sendPR.ReplyTo, func(msg messages.Message) {
+	unsub, err := k2.SubscribeRaw(context.Background(), sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -382,7 +381,7 @@ func testSecretBridgeEnforcement(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "secret-reader-rbac.ts", "read", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -418,7 +417,7 @@ func testGatewayRouteEnforcement(t *testing.T, _ *suite.TestEnv) {
 
 	sendPR, _ := sdk.SendToService(k, ctx, "route-adder-rbac.ts", "try-route", map[string]bool{"go": true})
 	replyCh := make(chan map[string]any, 1)
-	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	cancel, _ := k.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
 		json.Unmarshal(msg.Payload, &resp)
 		replyCh <- resp
@@ -506,7 +505,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	// Admin should succeed
 	adminPR, _ := sdk.SendToService(k, ctx, "admin-svc-rbac.ts", "test", map[string]bool{"go": true})
 	adminReply := make(chan map[string]any, 1)
-	adminUnsub, _ := k.SubscribeRaw(ctx, adminPR.ReplyTo, func(msg messages.Message) {
+	adminUnsub, _ := k.SubscribeRaw(ctx, adminPR.ReplyTo, func(msg sdk.Message) {
 		var r map[string]any
 		json.Unmarshal(msg.Payload, &r)
 		adminReply <- r
@@ -522,7 +521,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	// Observer should fail
 	obsPR, _ := sdk.SendToService(k, ctx, "observer-svc-rbac.ts", "test", map[string]bool{"go": true})
 	obsReply := make(chan map[string]any, 1)
-	obsUnsub, _ := k.SubscribeRaw(ctx, obsPR.ReplyTo, func(msg messages.Message) {
+	obsUnsub, _ := k.SubscribeRaw(ctx, obsPR.ReplyTo, func(msg sdk.Message) {
 		var r map[string]any
 		json.Unmarshal(msg.Payload, &r)
 		obsReply <- r
@@ -595,11 +594,11 @@ func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "", Role: "admin"})
+	pr, err := sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "", Role: "admin"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- json.RawMessage(m.Payload) })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- json.RawMessage(m.Payload) })
 	defer unsub()
 
 	select {
@@ -625,11 +624,11 @@ func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
 	defer k.Close()
 
 	ctx := context.Background()
-	pr, err := sdk.Publish(k, ctx, messages.RBACAssignMsg{Source: "test.ts", Role: "nonexistent-role"})
+	pr, err := sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "test.ts", Role: "nonexistent-role"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 	select {
 	case payload := <-ch:

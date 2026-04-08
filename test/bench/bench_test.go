@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 func BenchmarkDeploy_1KB(b *testing.B) {
@@ -26,7 +25,7 @@ func BenchmarkDeploy_1KB(b *testing.B) {
 		testutil.DeployErr(k, source, code)
 		// Teardown via bus — fire and forget for bench
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+		sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
 		cancel()
 	}
 }
@@ -40,7 +39,7 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
 		testutil.DeployErr(k, source, code)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+		sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
 		cancel()
 	}
 }
@@ -75,7 +74,7 @@ func BenchmarkBusRoundtrip(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pr, _ := sdk.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
 		ch := make(chan struct{}, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ messages.Message) { ch <- struct{}{} })
+		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
 		<-ch
 		unsub()
 	}
@@ -87,12 +86,12 @@ func BenchmarkToolCall(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := sdk.Publish(k, ctx, messages.ToolCallMsg{
+		pr, _ := sdk.Publish(k, ctx, sdk.ToolCallMsg{
 			Name:  "echo",
 			Input: json.RawMessage(`{"message":"bench"}`),
 		})
 		ch := make(chan struct{}, 1)
-		unsub, _ := sdk.SubscribeTo[messages.ToolCallResp](k, ctx, pr.ReplyTo, func(_ messages.ToolCallResp, _ messages.Message) {
+		unsub, _ := sdk.SubscribeTo[sdk.ToolCallResp](k, ctx, pr.ReplyTo, func(_ sdk.ToolCallResp, _ sdk.Message) {
 			ch <- struct{}{}
 		})
 		<-ch
@@ -111,7 +110,7 @@ func BenchmarkPumpThroughput(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pr, _ := sdk.SendToService(k, ctx, "pump-bench.ts", "pump", map[string]bool{"x": true})
 		ch := make(chan struct{}, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ messages.Message) { ch <- struct{}{} })
+		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
 		<-ch
 		unsub()
 	}

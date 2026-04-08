@@ -5,7 +5,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/brainlet/brainkit/cmd/brainkit/config"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +23,10 @@ func addPluginListCmd(parent *cobra.Command) {
 			}
 			defer client.Close()
 
-			installed, installErr := httpBusRequest[messages.PackagesListMsg, messages.PackagesListResp](client, messages.PackagesListMsg{})
-			running, runErr := httpBusRequest[messages.PluginListRunningMsg, messages.PluginListRunningResp](client, messages.PluginListRunningMsg{})
+			installed, installErr := httpBusRequest[sdk.PackagesListMsg, sdk.PackagesListResp](client, sdk.PackagesListMsg{})
+			running, runErr := httpBusRequest[sdk.PluginListRunningMsg, sdk.PluginListRunningResp](client, sdk.PluginListRunningMsg{})
 
-			runningByName := map[string]messages.RunningPluginInfo{}
+			runningByName := map[string]sdk.RunningPluginInfo{}
 			if runErr == nil && running != nil {
 				for _, p := range running.Plugins {
 					runningByName[p.Name] = p

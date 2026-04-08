@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,9 +66,9 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret, then rotate it — no plugins running, so restart is a no-op
-	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, messages.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
+	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, sdk.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
 	ch1 := make(chan []byte, 1)
-	unsub1, _ := freshEnv.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m messages.Message) { ch1 <- m.Payload })
+	unsub1, _ := freshEnv.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
 	select {
 	case <-ch1:
 	case <-time.After(3 * time.Second):
@@ -78,9 +77,9 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	unsub1()
 
 	// Rotate
-	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, messages.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
+	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, sdk.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := freshEnv.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := freshEnv.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {
@@ -103,12 +102,12 @@ func testCascadeHandlerThrowNoReplyTo(t *testing.T, _ *suite.TestEnv) {
 
 	// Emit (no replyTo) — handler will throw but there's nowhere to send the error
 	failed := make(chan bool, 1)
-	unsub, _ := sdk.SubscribeTo[messages.HandlerFailedEvent](freshEnv.Kit, ctx, "bus.handler.failed", func(e messages.HandlerFailedEvent, m messages.Message) {
+	unsub, _ := sdk.SubscribeTo[sdk.HandlerFailedEvent](freshEnv.Kit, ctx, "bus.handler.failed", func(e sdk.HandlerFailedEvent, m sdk.Message) {
 		failed <- true
 	})
 	defer unsub()
 
-	sdk.Emit(freshEnv.Kit, ctx, messages.CustomEvent{Topic: "ts.no-reply-cascade.fire", Payload: json.RawMessage(`{}`)})
+	sdk.Emit(freshEnv.Kit, ctx, sdk.CustomEvent{Topic: "ts.no-reply-cascade.fire", Payload: json.RawMessage(`{}`)})
 
 	select {
 	case <-failed:
@@ -138,11 +137,11 @@ func testCascadeTeardownCleansSubscriptions(t *testing.T, _ *suite.TestEnv) {
 	testutil.Teardown(t, freshEnv.Kit, "sub-cleanup-cascade.ts")
 
 	// Publish again — should not get a response (handler is gone)
-	pr, err := sdk.Publish(freshEnv.Kit, ctx, messages.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
+	pr, err := sdk.Publish(freshEnv.Kit, ctx, sdk.CustomMsg{Topic: "ts.sub-cleanup-cascade.ping", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 
 	ch := make(chan bool, 1)
-	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- true })
+	unsub, _ := freshEnv.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- true })
 	defer unsub()
 
 	select {
@@ -249,7 +248,7 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 
 	// Subscribe to exhaustion events
 	exhausted := make(chan bool, 1)
-	unsub, _ := sdk.SubscribeTo[messages.HandlerExhaustedEvent](k, context.Background(), "bus.handler.exhausted", func(e messages.HandlerExhaustedEvent, m messages.Message) {
+	unsub, _ := sdk.SubscribeTo[sdk.HandlerExhaustedEvent](k, context.Background(), "bus.handler.exhausted", func(e sdk.HandlerExhaustedEvent, m sdk.Message) {
 		exhausted <- true
 	})
 	defer unsub()

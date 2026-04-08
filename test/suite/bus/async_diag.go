@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,10 +19,10 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.KitDeployMsg{Source: source, Code: code})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: source, Code: code})
 	require.NoError(t, err)
-	ch := make(chan messages.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -34,8 +33,8 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 
 	pr2, err := sdk.SendToService(env.Kit, ctx, source, "test", json.RawMessage(`{}`))
 	require.NoError(t, err)
-	replyCh := make(chan messages.Message, 1)
-	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg messages.Message) {
+	replyCh := make(chan sdk.Message, 1)
+	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg sdk.Message) {
 		if msg.Metadata["done"] == "true" {
 			replyCh <- msg
 		}

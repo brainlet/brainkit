@@ -11,7 +11,7 @@ import (
 
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )
 
@@ -24,7 +24,7 @@ func newLifecycleDomain(k *Kernel) *LifecycleDomain {
 	return &LifecycleDomain{kit: k}
 }
 
-func (d *LifecycleDomain) Deploy(ctx context.Context, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
+func (d *LifecycleDomain) Deploy(ctx context.Context, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
 	var opts []DeployOption
 	if req.Role != "" {
 		opts = append(opts, WithRole(req.Role))
@@ -36,60 +36,60 @@ func (d *LifecycleDomain) Deploy(ctx context.Context, req messages.KitDeployMsg)
 	if err != nil {
 		return nil, err
 	}
-	_ = d.publishLifecycleEvent(ctx, messages.KitDeployedEvent{
+	_ = d.publishLifecycleEvent(ctx, sdk.KitDeployedEvent{
 		Source:    req.Source,
 		Resources: resourceInfosToMessages(resources),
 	})
-	return &messages.KitDeployResp{
+	return &sdk.KitDeployResp{
 		Deployed:  true,
 		Resources: resourceInfosToMessages(resources),
 	}, nil
 }
 
-func (d *LifecycleDomain) Teardown(ctx context.Context, req messages.KitTeardownMsg) (*messages.KitTeardownResp, error) {
+func (d *LifecycleDomain) Teardown(ctx context.Context, req sdk.KitTeardownMsg) (*sdk.KitTeardownResp, error) {
 	removed, err := d.kit.Teardown(ctx, req.Source)
 	if err != nil {
 		return nil, err
 	}
-	_ = d.publishLifecycleEvent(ctx, messages.KitTeardownedEvent{
+	_ = d.publishLifecycleEvent(ctx, sdk.KitTeardownedEvent{
 		Source:  req.Source,
 		Removed: removed,
 	})
-	return &messages.KitTeardownResp{Removed: removed}, nil
+	return &sdk.KitTeardownResp{Removed: removed}, nil
 }
 
-func (d *LifecycleDomain) Redeploy(ctx context.Context, req messages.KitRedeployMsg) (*messages.KitRedeployResp, error) {
+func (d *LifecycleDomain) Redeploy(ctx context.Context, req sdk.KitRedeployMsg) (*sdk.KitRedeployResp, error) {
 	resources, err := d.kit.Deploy(ctx, req.Source, req.Code)
 	if err != nil {
 		return nil, err
 	}
-	_ = d.publishLifecycleEvent(ctx, messages.KitDeployedEvent{
+	_ = d.publishLifecycleEvent(ctx, sdk.KitDeployedEvent{
 		Source:    req.Source,
 		Resources: resourceInfosToMessages(resources),
 	})
-	return &messages.KitRedeployResp{
+	return &sdk.KitRedeployResp{
 		Deployed:  true,
 		Resources: resourceInfosToMessages(resources),
 	}, nil
 }
 
-func (d *LifecycleDomain) List(_ context.Context, _ messages.KitListMsg) (*messages.KitListResp, error) {
+func (d *LifecycleDomain) List(_ context.Context, _ sdk.KitListMsg) (*sdk.KitListResp, error) {
 	deployments := d.kit.ListDeployments()
-	out := make([]messages.DeploymentInfo, 0, len(deployments))
+	out := make([]sdk.DeploymentInfo, 0, len(deployments))
 	for _, deployment := range deployments {
-		out = append(out, messages.DeploymentInfo{
+		out = append(out, sdk.DeploymentInfo{
 			Source:    deployment.Source,
 			CreatedAt: deployment.CreatedAt.Format(time.RFC3339),
 			Resources: resourceInfosToMessages(deployment.Resources),
 		})
 	}
-	return &messages.KitListResp{Deployments: out}, nil
+	return &sdk.KitListResp{Deployments: out}, nil
 }
 
-func resourceInfosToMessages(resources []ResourceInfo) []messages.ResourceInfo {
-	out := make([]messages.ResourceInfo, 0, len(resources))
+func resourceInfosToMessages(resources []ResourceInfo) []sdk.ResourceInfo {
+	out := make([]sdk.ResourceInfo, 0, len(resources))
 	for _, resource := range resources {
-		out = append(out, messages.ResourceInfo{
+		out = append(out, sdk.ResourceInfo{
 			Type:      resource.Type,
 			ID:        resource.ID,
 			Name:      resource.Name,
@@ -100,7 +100,7 @@ func resourceInfosToMessages(resources []ResourceInfo) []messages.ResourceInfo {
 	return out
 }
 
-func (d *LifecycleDomain) publishLifecycleEvent(ctx context.Context, event messages.BrainkitMessage) error {
+func (d *LifecycleDomain) publishLifecycleEvent(ctx context.Context, event sdk.BrainkitMessage) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return err

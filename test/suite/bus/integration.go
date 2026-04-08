@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +35,7 @@ func testTwoServiceInteraction(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	replyCh := make(chan json.RawMessage, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg messages.Message) {
+	unsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		replyCh <- json.RawMessage(msg.Payload)
 	})
 	defer unsub()

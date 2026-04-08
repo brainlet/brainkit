@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -19,14 +18,14 @@ func testVectorAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, messages.VectorAddMsg{
+	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
 		Name:   "test-vec-add",
 		Type:   "sqlite",
 		Config: json.RawMessage(`{}`),
 	})
-	respCh := make(chan messages.VectorAddResp, 1)
+	respCh := make(chan sdk.VectorAddResp, 1)
 	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.VectorAddResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.VectorAddResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -42,10 +41,10 @@ func testVectorAddViaBus(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kit, ctx, messages.RegistryListMsg{Category: "vectorStore"})
-	listCh := make(chan messages.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.RegistryListResp, msg messages.Message) { listCh <- resp })
+	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "vectorStore"})
+	listCh := make(chan sdk.RegistryListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
+		func(resp sdk.RegistryListResp, msg sdk.Message) { listCh <- resp })
 	defer unsub2()
 
 	select {
@@ -63,20 +62,20 @@ func testVectorRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, messages.VectorAddMsg{
+	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
 		Name: "test-vec-rm", Type: "sqlite", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan messages.VectorAddResp, 1)
+	ch := make(chan sdk.VectorAddResp, 1)
 	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.VectorAddResp, msg messages.Message) { ch <- resp })
+		func(resp sdk.VectorAddResp, msg sdk.Message) { ch <- resp })
 	<-ch
 	unsub()
 
 	// Remove
-	pr2, _ := sdk.PublishVectorRemove(env.Kit, ctx, messages.VectorRemoveMsg{Name: "test-vec-rm"})
-	rmCh := make(chan messages.VectorRemoveResp, 1)
+	pr2, _ := sdk.PublishVectorRemove(env.Kit, ctx, sdk.VectorRemoveMsg{Name: "test-vec-rm"})
+	rmCh := make(chan sdk.VectorRemoveResp, 1)
 	unsub2, _ := sdk.SubscribeVectorRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.VectorRemoveResp, msg messages.Message) { rmCh <- resp })
+		func(resp sdk.VectorRemoveResp, msg sdk.Message) { rmCh <- resp })
 	defer unsub2()
 
 	select {
@@ -97,12 +96,12 @@ func testVectorAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add vector store via bus
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, messages.VectorAddMsg{
+	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
 		Name: "ts-vec-resolve", Type: "sqlite", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan messages.VectorAddResp, 1)
+	ch := make(chan sdk.VectorAddResp, 1)
 	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.VectorAddResp, msg messages.Message) { ch <- resp })
+		func(resp sdk.VectorAddResp, msg sdk.Message) { ch <- resp })
 	<-ch
 	unsub()
 

@@ -17,7 +17,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
@@ -308,7 +307,7 @@ func (e *TestEnv) EvalTS(code string) (string, error) {
 }
 
 // PublishAndWait publishes a typed message and waits for the reply payload.
-func (e *TestEnv) PublishAndWait(t *testing.T, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, error) {
+func (e *TestEnv) PublishAndWait(t *testing.T, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -319,7 +318,7 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg messages.BrainkitMessage, tim
 	}
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := e.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := e.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		select {
 		case ch <- json.RawMessage(m.Payload):
 		default:
@@ -339,7 +338,7 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg messages.BrainkitMessage, tim
 }
 
 // SendAndReceive publishes a typed message and waits for the raw response.
-func (e *TestEnv) SendAndReceive(t *testing.T, msg messages.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
+func (e *TestEnv) SendAndReceive(t *testing.T, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	payload, err := e.PublishAndWait(t, msg, timeout)
 	if err != nil {

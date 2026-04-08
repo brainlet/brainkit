@@ -10,7 +10,6 @@ import (
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,11 +48,11 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(kit, ctx, messages.ToolCallMsg{Name: "host-echo", Input: map[string]any{"message": "from-plugin-surface"}})
+	pr, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{Name: "host-echo", Input: map[string]any{"message": "from-plugin-surface"}})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -94,14 +93,14 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Simulate plugin calling the .ts via bus
-	pr, err := sdk.Publish(kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.plugin-target-cross.ask",
 		Payload: json.RawMessage(`{"q":"hello?"}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -146,11 +145,11 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(kit, ctx, messages.ToolListMsg{})
+	pr, err := sdk.Publish(kit, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -185,7 +184,7 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Call nonexistent tool
-	p := publishAndWaitJSON(t, kit, ctx, messages.ToolCallMsg{Name: "ghost-plugin-tool"})
+	p := publishAndWaitJSON(t, kit, ctx, sdk.ToolCallMsg{Name: "ghost-plugin-tool"})
 	code := suite.ResponseCode(p)
 	assert.Equal(t, "NOT_FOUND", code)
 }
@@ -214,11 +213,11 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set secret
-	p1 := publishAndWaitRaw(t, kit, ctx, messages.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
+	p1 := publishAndWaitRaw(t, kit, ctx, sdk.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
 	_ = p1
 
 	// Get secret
-	p2 := publishAndWaitRaw(t, kit, ctx, messages.SecretsGetMsg{Name: "plugin-key"})
+	p2 := publishAndWaitRaw(t, kit, ctx, sdk.SecretsGetMsg{Name: "plugin-key"})
 	assert.Contains(t, string(p2), "plugin-val")
 }
 
@@ -246,14 +245,14 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy via bus command
-	pr, err := sdk.Publish(kit, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
 		Source: "node-deploy-cross.ts",
 		Code:   `const t = createTool({id: "node-tool", description: "test", execute: async () => ({ok:true})}); kit.register("tool", "node-tool", t);`,
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -264,9 +263,9 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify tool is registered
-	pr2, _ := sdk.Publish(kit, ctx, messages.ToolResolveMsg{Name: "node-tool"})
+	pr2, _ := sdk.Publish(kit, ctx, sdk.ToolResolveMsg{Name: "node-tool"})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {

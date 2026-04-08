@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // RegistryDomain handles registry.has, registry.list, registry.resolve bus commands.
@@ -17,7 +17,7 @@ func newRegistryDomain(providers *provreg.ProviderRegistry) *RegistryDomain {
 	return &RegistryDomain{providers: providers}
 }
 
-func (d *RegistryDomain) Has(_ context.Context, req messages.RegistryHasMsg) (*messages.RegistryHasResp, error) {
+func (d *RegistryDomain) Has(_ context.Context, req sdk.RegistryHasMsg) (*sdk.RegistryHasResp, error) {
 	var found bool
 	switch req.Category {
 	case "provider":
@@ -27,10 +27,10 @@ func (d *RegistryDomain) Has(_ context.Context, req messages.RegistryHasMsg) (*m
 	case "storage":
 		found = d.providers.HasStorage(req.Name)
 	}
-	return &messages.RegistryHasResp{Found: found}, nil
+	return &sdk.RegistryHasResp{Found: found}, nil
 }
 
-func (d *RegistryDomain) List(_ context.Context, req messages.RegistryListMsg) (*messages.RegistryListResp, error) {
+func (d *RegistryDomain) List(_ context.Context, req sdk.RegistryListMsg) (*sdk.RegistryListResp, error) {
 	var result any
 	switch req.Category {
 	case "provider":
@@ -43,10 +43,10 @@ func (d *RegistryDomain) List(_ context.Context, req messages.RegistryListMsg) (
 		result = []any{}
 	}
 	b, _ := json.Marshal(result)
-	return &messages.RegistryListResp{Items: b}, nil
+	return &sdk.RegistryListResp{Items: b}, nil
 }
 
-func (d *RegistryDomain) Resolve(_ context.Context, req messages.RegistryResolveMsg) (*messages.RegistryResolveResp, error) {
+func (d *RegistryDomain) Resolve(_ context.Context, req sdk.RegistryResolveMsg) (*sdk.RegistryResolveResp, error) {
 	var configJSON []byte
 	switch req.Category {
 	case "provider":
@@ -62,5 +62,5 @@ func (d *RegistryDomain) Resolve(_ context.Context, req messages.RegistryResolve
 			configJSON, _ = json.Marshal(map[string]any{"type": string(reg.Type), "name": req.Name, "config": redactCredentials(reg.Config)})
 		}
 	}
-	return &messages.RegistryResolveResp{Config: configJSON}, nil
+	return &sdk.RegistryResolveResp{Config: configJSON}, nil
 }

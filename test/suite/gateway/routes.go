@@ -12,7 +12,6 @@ import (
 	bkgw "github.com/brainlet/brainkit/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
@@ -215,14 +214,14 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 	gw, addr := gwStart(t, env.Kit)
 
 	// Add route via bus command
-	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteAddMsg{
+	pr, err := sdk.Publish(env.Kit, context.Background(), sdk.GatewayRouteAddMsg{
 		Method: "POST", Path: "/api/dynamic", Topic: "ts.gw-bus.dynamic",
 		Type: "handle", Owner: "gw-bus.ts",
 	})
 	require.NoError(t, err)
 
-	done := make(chan messages.GatewayRouteAddResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteAddResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteAddResp, msg messages.Message) {
+	done := make(chan sdk.GatewayRouteAddResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.GatewayRouteAddResp](env.Kit, context.Background(), pr.ReplyTo, func(resp sdk.GatewayRouteAddResp, msg sdk.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -260,9 +259,9 @@ func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/c", "topic.c", bkgw.OwnedBy("other.ts"))
 	assert.Len(t, gw.ListRoutes(), 3)
 
-	pr, _ := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteRemoveMsg{Owner: "svc.ts"})
-	done := make(chan messages.GatewayRouteRemoveResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteRemoveResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteRemoveResp, msg messages.Message) {
+	pr, _ := sdk.Publish(env.Kit, context.Background(), sdk.GatewayRouteRemoveMsg{Owner: "svc.ts"})
+	done := make(chan sdk.GatewayRouteRemoveResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.GatewayRouteRemoveResp](env.Kit, context.Background(), pr.ReplyTo, func(resp sdk.GatewayRouteRemoveResp, msg sdk.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -455,11 +454,11 @@ func testBusRouteList(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/a", "topic.a")
 	gw.HandleWebhook("POST", "/b", "topic.b")
 
-	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayRouteListMsg{})
+	pr, err := sdk.Publish(env.Kit, context.Background(), sdk.GatewayRouteListMsg{})
 	require.NoError(t, err)
 
-	done := make(chan messages.GatewayRouteListResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayRouteListResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayRouteListResp, msg messages.Message) {
+	done := make(chan sdk.GatewayRouteListResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.GatewayRouteListResp](env.Kit, context.Background(), pr.ReplyTo, func(resp sdk.GatewayRouteListResp, msg sdk.Message) {
 		done <- resp
 	})
 	defer unsub()
@@ -480,11 +479,11 @@ func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/b", "topic.b")
 	gw.Handle("POST", "/c", "topic.c")
 
-	pr, err := sdk.Publish(env.Kit, context.Background(), messages.GatewayStatusMsg{})
+	pr, err := sdk.Publish(env.Kit, context.Background(), sdk.GatewayStatusMsg{})
 	require.NoError(t, err)
 
-	done := make(chan messages.GatewayStatusResp, 1)
-	unsub, _ := sdk.SubscribeTo[messages.GatewayStatusResp](env.Kit, context.Background(), pr.ReplyTo, func(resp messages.GatewayStatusResp, msg messages.Message) {
+	done := make(chan sdk.GatewayStatusResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.GatewayStatusResp](env.Kit, context.Background(), pr.ReplyTo, func(resp sdk.GatewayStatusResp, msg sdk.Message) {
 		done <- resp
 	})
 	defer unsub()

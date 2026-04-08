@@ -4,19 +4,7 @@ import (
 	"context"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-)
-
-type contextKey string
-
-const (
-	callerIDContextKey      contextKey = "brainkit.messaging.caller_id"
-	correlationIDContextKey contextKey = "brainkit.messaging.correlation_id"
-	replyToContextKey       contextKey = "brainkit.messaging.reply_to"
-	topicContextKey         contextKey = "brainkit.messaging.topic"
-	traceIDContextKey       contextKey = "brainkit.messaging.trace_id"
-	spanIDContextKey        contextKey = "brainkit.messaging.span_id"
-	parentSpanIDContextKey  contextKey = "brainkit.messaging.parent_span_id"
-	sampledContextKey       contextKey = "brainkit.messaging.sampled"
+	"github.com/brainlet/brainkit/internal/ctxkeys"
 )
 
 func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopic string) context.Context {
@@ -24,42 +12,32 @@ func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopi
 		ctx = context.Background()
 	}
 	if callerID := wmsg.Metadata.Get("callerId"); callerID != "" {
-		ctx = context.WithValue(ctx, callerIDContextKey, callerID)
+		ctx = context.WithValue(ctx, ctxkeys.CallerID, callerID)
 	}
 	if correlationID := wmsg.Metadata.Get("correlationId"); correlationID != "" {
-		ctx = context.WithValue(ctx, correlationIDContextKey, correlationID)
+		ctx = context.WithValue(ctx, ctxkeys.CorrelationID, correlationID)
 	}
 	if replyTo := wmsg.Metadata.Get("replyTo"); replyTo != "" {
-		ctx = context.WithValue(ctx, replyToContextKey, replyTo)
+		ctx = context.WithValue(ctx, ctxkeys.ReplyTo, replyTo)
 	}
 	if logicalTopic != "" {
-		ctx = context.WithValue(ctx, topicContextKey, logicalTopic)
+		ctx = context.WithValue(ctx, ctxkeys.Topic, logicalTopic)
 	}
-	// Trace propagation
 	if traceID := wmsg.Metadata.Get("traceId"); traceID != "" {
-		ctx = context.WithValue(ctx, traceIDContextKey, traceID)
+		ctx = context.WithValue(ctx, ctxkeys.TraceID, traceID)
 	}
 	if spanID := wmsg.Metadata.Get("parentSpanId"); spanID != "" {
-		ctx = context.WithValue(ctx, parentSpanIDContextKey, spanID)
+		ctx = context.WithValue(ctx, ctxkeys.ParentSpanID, spanID)
 	}
 	if sampled := wmsg.Metadata.Get("traceSampled"); sampled != "" {
-		ctx = context.WithValue(ctx, sampledContextKey, sampled)
+		ctx = context.WithValue(ctx, ctxkeys.Sampled, sampled)
 	}
 	return ctx
 }
 
 // WithPublishMeta stamps correlationID and replyTo into context for PublishRaw.
 func WithPublishMeta(ctx context.Context, correlationID, replyTo string) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if correlationID != "" {
-		ctx = context.WithValue(ctx, correlationIDContextKey, correlationID)
-	}
-	if replyTo != "" {
-		ctx = context.WithValue(ctx, replyToContextKey, replyTo)
-	}
-	return ctx
+	return ctxkeys.WithPublishMeta(ctx, correlationID, replyTo)
 }
 
 func ContextWithCorrelationID(ctx context.Context, correlationID string) context.Context {
@@ -69,96 +47,86 @@ func ContextWithCorrelationID(ctx context.Context, correlationID string) context
 	if correlationID == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, correlationIDContextKey, correlationID)
+	return context.WithValue(ctx, ctxkeys.CorrelationID, correlationID)
 }
 
-// CallerIDFromContext returns the inbound Watermill caller identity, if any.
 func CallerIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	callerID, _ := ctx.Value(callerIDContextKey).(string)
-	return callerID
+	v, _ := ctx.Value(ctxkeys.CallerID).(string)
+	return v
 }
 
-// CorrelationIDFromContext returns the inbound request correlation id, if any.
 func CorrelationIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	correlationID, _ := ctx.Value(correlationIDContextKey).(string)
-	return correlationID
+	v, _ := ctx.Value(ctxkeys.CorrelationID).(string)
+	return v
 }
 
-// ReplyToFromContext returns the reply-to topic from context, if any.
 func ReplyToFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	replyTo, _ := ctx.Value(replyToContextKey).(string)
-	return replyTo
+	v, _ := ctx.Value(ctxkeys.ReplyTo).(string)
+	return v
 }
 
-// TopicFromContext returns the logical topic currently being handled.
 func TopicFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	topic, _ := ctx.Value(topicContextKey).(string)
-	return topic
+	v, _ := ctx.Value(ctxkeys.Topic).(string)
+	return v
 }
 
-// WithTraceIDs stamps trace propagation IDs into context.
 func WithTraceIDs(ctx context.Context, traceID, spanID, parentSpanID string) context.Context {
 	if traceID != "" {
-		ctx = context.WithValue(ctx, traceIDContextKey, traceID)
+		ctx = context.WithValue(ctx, ctxkeys.TraceID, traceID)
 	}
 	if spanID != "" {
-		ctx = context.WithValue(ctx, spanIDContextKey, spanID)
+		ctx = context.WithValue(ctx, ctxkeys.SpanID, spanID)
 	}
 	if parentSpanID != "" {
-		ctx = context.WithValue(ctx, parentSpanIDContextKey, parentSpanID)
+		ctx = context.WithValue(ctx, ctxkeys.ParentSpanID, parentSpanID)
 	}
 	return ctx
 }
 
-// TraceIDFromContext returns the trace ID from context.
 func TraceIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	v, _ := ctx.Value(traceIDContextKey).(string)
+	v, _ := ctx.Value(ctxkeys.TraceID).(string)
 	return v
 }
 
-// SpanIDFromContext returns the span ID from context.
 func SpanIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	v, _ := ctx.Value(spanIDContextKey).(string)
+	v, _ := ctx.Value(ctxkeys.SpanID).(string)
 	return v
 }
 
-// ParentSpanIDFromContext returns the parent span ID from context.
 func ParentSpanIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	v, _ := ctx.Value(parentSpanIDContextKey).(string)
+	v, _ := ctx.Value(ctxkeys.ParentSpanID).(string)
 	return v
 }
 
-// SampledFromContext returns the trace sampling flag from context.
 func SampledFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	v, _ := ctx.Value(sampledContextKey).(string)
+	v, _ := ctx.Value(ctxkeys.Sampled).(string)
 	return v
 }
 
-// WithSampled sets the trace sampling flag in context.
 func WithSampled(ctx context.Context, sampled string) context.Context {
-	return context.WithValue(ctx, sampledContextKey, sampled)
+	return context.WithValue(ctx, ctxkeys.Sampled, sampled)
 }

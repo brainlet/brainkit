@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,11 +27,11 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 
 	busErrors := []struct {
 		name string
-		msg  messages.BrainkitMessage
+		msg  sdk.BrainkitMessage
 	}{
-		{"tool-not-found", messages.ToolCallMsg{Name: "secret-internal-tool-name"}},
-		{"agent-not-found", messages.AgentGetStatusMsg{Name: "internal-agent"}},
-		{"deploy-bad", messages.KitDeployMsg{Source: "x.ts", Code: "throw new Error('DB_PASSWORD=secret123');"}},
+		{"tool-not-found", sdk.ToolCallMsg{Name: "secret-internal-tool-name"}},
+		{"agent-not-found", sdk.AgentGetStatusMsg{Name: "internal-agent"}},
+		{"deploy-bad", sdk.KitDeployMsg{Source: "x.ts", Code: "throw new Error('DB_PASSWORD=secret123');"}},
 	}
 
 	for _, tc := range busErrors {
@@ -115,10 +114,10 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 		},
 	})
 
-	payload1, _ := secSendAndReceive(t, k, messages.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_A_SECRET"}}, 5*time.Second)
+	payload1, _ := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_A_SECRET"}}, 5*time.Second)
 	_ = payload1
 
-	payload2, ok := secSendAndReceive(t, k, messages.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_B"}}, 5*time.Second)
+	payload2, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_B"}}, 5*time.Second)
 	require.True(t, ok)
 
 	var resp struct{ Previous string `json:"previous"` }
@@ -146,11 +145,11 @@ func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.meta-leak-sec.inspect", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -174,9 +173,9 @@ func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "TIMING_KEY_SEC", Value: "secret-value"})
+	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "TIMING_KEY_SEC", Value: "secret-value"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 

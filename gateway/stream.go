@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
 
@@ -125,7 +125,7 @@ func newStreamSession(gw *Gateway, replyTo, correlationID string) (*streamSessio
 	// Subscribe to replyTo — bus subscriber goroutine pushes to eventCh.
 	// This subscription lives for the entire session lifetime (survives client disconnect).
 	// Uses a long-lived context — cancelled only when session is cleaned up.
-	unsub, err := gw.rt.SubscribeRaw(context.Background(), replyTo, func(msg messages.Message) {
+	unsub, err := gw.rt.SubscribeRaw(context.Background(), replyTo, func(msg sdk.Message) {
 		evt := parseStreamEvent(msg.Payload, msg.Metadata)
 		session.eventCh <- evt
 	})

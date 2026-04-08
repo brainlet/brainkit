@@ -9,15 +9,15 @@ import (
 
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
 
 type cmdTest struct {
 	topic    string
-	valid    messages.BrainkitMessage
-	empty    messages.BrainkitMessage
+	valid    sdk.BrainkitMessage
+	empty    sdk.BrainkitMessage
 	errCode  string
 	rbacOnly bool
 	nodeOnly bool
@@ -25,34 +25,34 @@ type cmdTest struct {
 
 func busCommandTable() []cmdTest {
 	return []cmdTest{
-		{"tools.call", messages.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, messages.ToolCallMsg{Name: ""}, "NOT_FOUND", false, false},
-		{"tools.list", messages.ToolListMsg{}, messages.ToolListMsg{}, "", false, false},
-		{"tools.resolve", messages.ToolResolveMsg{Name: "echo"}, messages.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false, false},
-		{"agents.list", messages.AgentListMsg{}, messages.AgentListMsg{}, "", false, false},
-		{"agents.get-status", messages.AgentGetStatusMsg{Name: "ghost"}, messages.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"agents.set-status", messages.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, messages.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false, false},
-		{"agents.discover", messages.AgentDiscoverMsg{}, messages.AgentDiscoverMsg{}, "", false, false},
-		{"kit.list", messages.KitListMsg{}, messages.KitListMsg{}, "", false, false},
-		{"kit.teardown", messages.KitTeardownMsg{Source: "ghost.ts"}, messages.KitTeardownMsg{Source: ""}, "", false, false},
-		{"secrets.set", messages.SecretsSetMsg{Name: "matrix-k", Value: "v"}, messages.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false, false},
-		{"secrets.get", messages.SecretsGetMsg{Name: "matrix-k"}, messages.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"secrets.delete", messages.SecretsDeleteMsg{Name: "ghost"}, messages.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"secrets.list", messages.SecretsListMsg{}, messages.SecretsListMsg{}, "", false, false},
-		{"secrets.rotate", messages.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, messages.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"registry.has", messages.RegistryHasMsg{Category: "provider", Name: "openai"}, messages.RegistryHasMsg{}, "", false, false},
-		{"registry.list", messages.RegistryListMsg{Category: "provider"}, messages.RegistryListMsg{}, "", false, false},
-		{"registry.resolve", messages.RegistryResolveMsg{Category: "provider", Name: "ghost"}, messages.RegistryResolveMsg{}, "", false, false},
-		{"metrics.get", messages.MetricsGetMsg{}, messages.MetricsGetMsg{}, "", false, false},
-		{"rbac.assign", messages.RBACAssignMsg{Source: "test.ts", Role: "admin"}, messages.RBACAssignMsg{Source: "", Role: "admin"}, "VALIDATION_ERROR", true, false},
-		{"rbac.revoke", messages.RBACRevokeMsg{Source: "test.ts"}, messages.RBACRevokeMsg{}, "", true, false},
-		{"rbac.list", messages.RBACListMsg{}, messages.RBACListMsg{}, "", true, false},
-		{"rbac.roles", messages.RBACRolesMsg{}, messages.RBACRolesMsg{}, "", true, false},
-		{"packages.search", messages.PackagesSearchMsg{Query: "test"}, messages.PackagesSearchMsg{}, "", false, false},
-		{"packages.list", messages.PackagesListMsg{}, messages.PackagesListMsg{}, "", false, false},
-		{"packages.info", messages.PackagesInfoMsg{Name: "ghost"}, messages.PackagesInfoMsg{Name: ""}, "", false, false},
-		{"package.list", messages.PackageListDeployedMsg{}, messages.PackageListDeployedMsg{}, "", false, false},
-		{"package.info", messages.PackageDeployInfoMsg{Name: "ghost"}, messages.PackageDeployInfoMsg{Name: ""}, "", false, false},
-		{"package.teardown", messages.PackageTeardownMsg{Name: "ghost"}, messages.PackageTeardownMsg{Name: ""}, "", false, false},
+		{"tools.call", sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, sdk.ToolCallMsg{Name: ""}, "NOT_FOUND", false, false},
+		{"tools.list", sdk.ToolListMsg{}, sdk.ToolListMsg{}, "", false, false},
+		{"tools.resolve", sdk.ToolResolveMsg{Name: "echo"}, sdk.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false, false},
+		{"agents.list", sdk.AgentListMsg{}, sdk.AgentListMsg{}, "", false, false},
+		{"agents.get-status", sdk.AgentGetStatusMsg{Name: "ghost"}, sdk.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false, false},
+		{"agents.set-status", sdk.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, sdk.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false, false},
+		{"agents.discover", sdk.AgentDiscoverMsg{}, sdk.AgentDiscoverMsg{}, "", false, false},
+		{"kit.list", sdk.KitListMsg{}, sdk.KitListMsg{}, "", false, false},
+		{"kit.teardown", sdk.KitTeardownMsg{Source: "ghost.ts"}, sdk.KitTeardownMsg{Source: ""}, "", false, false},
+		{"secrets.set", sdk.SecretsSetMsg{Name: "matrix-k", Value: "v"}, sdk.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false, false},
+		{"secrets.get", sdk.SecretsGetMsg{Name: "matrix-k"}, sdk.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false, false},
+		{"secrets.delete", sdk.SecretsDeleteMsg{Name: "ghost"}, sdk.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false, false},
+		{"secrets.list", sdk.SecretsListMsg{}, sdk.SecretsListMsg{}, "", false, false},
+		{"secrets.rotate", sdk.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, sdk.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false, false},
+		{"registry.has", sdk.RegistryHasMsg{Category: "provider", Name: "openai"}, sdk.RegistryHasMsg{}, "", false, false},
+		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false, false},
+		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false, false},
+		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false, false},
+		{"rbac.assign", sdk.RBACAssignMsg{Source: "test.ts", Role: "admin"}, sdk.RBACAssignMsg{Source: "", Role: "admin"}, "VALIDATION_ERROR", true, false},
+		{"rbac.revoke", sdk.RBACRevokeMsg{Source: "test.ts"}, sdk.RBACRevokeMsg{}, "", true, false},
+		{"rbac.list", sdk.RBACListMsg{}, sdk.RBACListMsg{}, "", true, false},
+		{"rbac.roles", sdk.RBACRolesMsg{}, sdk.RBACRolesMsg{}, "", true, false},
+		{"packages.search", sdk.PackagesSearchMsg{Query: "test"}, sdk.PackagesSearchMsg{}, "", false, false},
+		{"packages.list", sdk.PackagesListMsg{}, sdk.PackagesListMsg{}, "", false, false},
+		{"packages.info", sdk.PackagesInfoMsg{Name: "ghost"}, sdk.PackagesInfoMsg{Name: ""}, "", false, false},
+		{"package.list", sdk.PackageListDeployedMsg{}, sdk.PackageListDeployedMsg{}, "", false, false},
+		{"package.info", sdk.PackageDeployInfoMsg{Name: "ghost"}, sdk.PackageDeployInfoMsg{Name: ""}, "", false, false},
+		{"package.teardown", sdk.PackageTeardownMsg{Name: "ghost"}, sdk.PackageTeardownMsg{Name: ""}, "", false, false},
 	}
 }
 

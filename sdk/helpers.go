@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/internal/ctxkeys"
 	"github.com/google/uuid"
 )
 
@@ -32,7 +31,7 @@ func WithReplyTo(topic string) PublishOption {
 
 // Publish sends a typed command. Always generates a replyTo for response routing.
 // Default convention: <topic>.reply.<uuid>
-func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error) {
+func Publish[T BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error) {
 	cfg := publishConfig{}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -50,7 +49,7 @@ func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T,
 		return PublishResult{}, fmt.Errorf("marshal %T: %w", msg, err)
 	}
 
-	ctx = transport.WithPublishMeta(ctx, correlationID, replyTo)
+	ctx = ctxkeys.WithPublishMeta(ctx, correlationID, replyTo)
 	msgID, err := rt.PublishRaw(ctx, topic, payload)
 	if err != nil {
 		return PublishResult{}, err
@@ -65,7 +64,7 @@ func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T,
 }
 
 // Emit sends a fire-and-forget event. No replyTo, no response expected.
-func Emit[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error {
+func Emit[T BrainkitMessage](rt Runtime, ctx context.Context, msg T) error {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal %T: %w", msg, err)
@@ -75,8 +74,8 @@ func Emit[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) er
 }
 
 // SubscribeTo listens for typed messages on a specific topic.
-func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, messages.Message)) (func(), error) {
-	return rt.SubscribeRaw(ctx, topic, func(msg messages.Message) {
+func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, Message)) (func(), error) {
+	return rt.SubscribeRaw(ctx, topic, func(msg Message) {
 		var typed T
 		if err := json.Unmarshal(msg.Payload, &typed); err != nil {
 			return

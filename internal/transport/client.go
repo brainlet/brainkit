@@ -7,7 +7,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
 
@@ -101,7 +101,7 @@ func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespac
 }
 
 // SubscribeRawToNamespace subscribes to a topic in a specific namespace.
-func (c *RemoteClient) SubscribeRawToNamespace(ctx context.Context, targetNamespace, logicalTopic string, handler func(messages.Message)) (func(), error) {
+func (c *RemoteClient) SubscribeRawToNamespace(ctx context.Context, targetNamespace, logicalTopic string, handler func(sdk.Message)) (func(), error) {
 	subCtx, cancel := context.WithCancel(ctx)
 	ch, err := c.sub.Subscribe(subCtx, c.resolvedTopicForNamespace(targetNamespace, logicalTopic))
 	if err != nil {
@@ -118,7 +118,7 @@ func (c *RemoteClient) SubscribeRawToNamespace(ctx context.Context, targetNamesp
 				if !ok {
 					return
 				}
-				handler(messages.Message{
+				handler(sdk.Message{
 					Topic:    logicalTopic,
 					Payload:  append([]byte(nil), wmsg.Payload...),
 					CallerID: wmsg.Metadata.Get("callerId"),
@@ -212,19 +212,19 @@ func (c *RemoteClient) PublishRawWithMeta(ctx context.Context, logicalTopic stri
 	return wmsg.Metadata.Get("correlationId"), nil
 }
 
-func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID string) (messages.Message, error) {
+func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID string) (sdk.Message, error) {
 	resultCh, err := c.sub.Subscribe(ctx, c.resolvedTopic(logicalTopic))
 	if err != nil {
-		return messages.Message{}, fmt.Errorf("subscribe %s: %w", logicalTopic, err)
+		return sdk.Message{}, fmt.Errorf("subscribe %s: %w", logicalTopic, err)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return messages.Message{}, ctx.Err()
+			return sdk.Message{}, ctx.Err()
 		case wmsg, ok := <-resultCh:
 			if !ok {
-				return messages.Message{}, fmt.Errorf("subscription closed for %s", logicalTopic)
+				return sdk.Message{}, fmt.Errorf("subscription closed for %s", logicalTopic)
 			}
 
 			if correlationID != "" && wmsg.Metadata.Get("correlationId") != correlationID {
@@ -232,7 +232,7 @@ func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID
 				continue
 			}
 
-			msg := messages.Message{
+			msg := sdk.Message{
 				Topic:    logicalTopic,
 				Payload:  append([]byte(nil), wmsg.Payload...),
 				CallerID: wmsg.Metadata.Get("callerId"),
@@ -249,7 +249,7 @@ func (c *RemoteClient) AwaitRaw(ctx context.Context, logicalTopic, correlationID
 // This is guaranteed because sub.Subscribe() returns the channel synchronously; the consumer
 // goroutine is started afterward. Combined with GoChannel's Persistent mode, messages are
 // buffered even before the goroutine starts reading.
-func (c *RemoteClient) SubscribeRaw(ctx context.Context, logicalTopic string, handler func(messages.Message)) (func(), error) {
+func (c *RemoteClient) SubscribeRaw(ctx context.Context, logicalTopic string, handler func(sdk.Message)) (func(), error) {
 	subCtx, cancel := context.WithCancel(ctx)
 	ch, err := c.sub.Subscribe(subCtx, c.resolvedTopic(logicalTopic))
 	if err != nil {
@@ -266,7 +266,7 @@ func (c *RemoteClient) SubscribeRaw(ctx context.Context, logicalTopic string, ha
 				if !ok {
 					return
 				}
-				handler(messages.Message{
+				handler(sdk.Message{
 					Topic:    logicalTopic,
 					Payload:  append([]byte(nil), wmsg.Payload...),
 					CallerID: wmsg.Metadata.Get("callerId"),

@@ -17,7 +17,7 @@ import (
 	"github.com/brainlet/brainkit"
 	cliconfig "github.com/brainlet/brainkit/cmd/brainkit/config"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -127,8 +127,8 @@ func controlBusHandler(kit *brainkit.Kit) http.HandlerFunc {
 		correlationID := uuid.NewString()
 		replyTo := req.Topic + ".reply." + correlationID
 
-		replyCh := make(chan messages.Message, 1)
-		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+		replyCh := make(chan sdk.Message, 1)
+		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 			select {
 			case replyCh <- msg:
 			default:
@@ -189,8 +189,8 @@ func controlStreamHandler(kit *brainkit.Kit) http.HandlerFunc {
 		correlationID := uuid.NewString()
 		replyTo := req.Topic + ".reply." + correlationID
 
-		eventCh := make(chan messages.Message, 100)
-		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg messages.Message) {
+		eventCh := make(chan sdk.Message, 100)
+		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 			select {
 			case eventCh <- msg:
 			default:

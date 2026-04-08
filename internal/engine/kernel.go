@@ -33,7 +33,6 @@ import (
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"golang.org/x/time/rate"
 )
 
@@ -197,7 +196,7 @@ func (k *Kernel) validateReplyToken(correlationID, replyTo, source, token string
 
 // emitReplyDenied publishes the bus.reply.denied audit event.
 func (k *Kernel) emitReplyDenied(replyTo, correlationID, source, reason string) {
-	payload, _ := json.Marshal(messages.ReplyDeniedEvent{
+	payload, _ := json.Marshal(sdk.ReplyDeniedEvent{
 		Source: source, Topic: replyTo, CorrelationID: correlationID, Reason: reason,
 	})
 	k.remote.PublishRaw(context.Background(), "bus.reply.denied", payload)
@@ -644,7 +643,7 @@ func (k *Kernel) PublishRaw(ctx context.Context, topic string, payload json.RawM
 }
 
 // SubscribeRaw subscribes to a topic. Subscription is active before this returns.
-func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (func(), error) {
+func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.remote.SubscribeRaw(ctx, topic, handler)
 }
 
@@ -672,7 +671,7 @@ func (k *Kernel) PublishRawTo(ctx context.Context, targetNamespace, topic string
 }
 
 // SubscribeRawTo subscribes to a topic in a specific Kit's namespace.
-func (k *Kernel) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (func(), error) {
+func (k *Kernel) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
 	return k.remote.SubscribeRawToNamespace(ctx, targetNamespace, topic, handler)
 }
 
@@ -683,7 +682,7 @@ func (k *Kernel) publish(ctx context.Context, topic string, payload json.RawMess
 }
 
 // subscribe is an internal convenience for subscribing with full message.
-func (k *Kernel) subscribe(topic string, handler func(messages.Message)) (func(), error) {
+func (k *Kernel) subscribe(topic string, handler func(sdk.Message)) (func(), error) {
 	return k.remote.SubscribeRaw(context.Background(), topic, handler)
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 // SendToService publishes to a deployed .ts service's mailbox topic.
@@ -18,7 +17,7 @@ func SendToService(rt Runtime, ctx context.Context, service, topic string, paylo
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("sdk: marshal payload: %w", err)
 	}
-	return Publish(rt, ctx, messages.CustomMsg{Topic: resolved, Payload: data}, opts...)
+	return Publish(rt, ctx, CustomMsg{Topic: resolved, Payload: data}, opts...)
 }
 
 // ResolveServiceTopic converts a service name + local topic to the bus topic.

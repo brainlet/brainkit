@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,18 +28,18 @@ func testForgeryStealReplyTo(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.steal-reply-sec.api", Payload: json.RawMessage(`{"q":"legit"}`),
 	})
 
 	var attackerGot atomic.Int64
-	attackerUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	attackerUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		attackerGot.Add(1)
 	})
 	defer attackerUnsub()
 
 	legitimateCh := make(chan []byte, 1)
-	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		legitimateCh <- m.Payload
 	})
 	defer legitUnsub()
@@ -68,7 +67,7 @@ func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.slow-service-sec.slow", Payload: json.RawMessage(`{}`),
 	})
 
@@ -81,7 +80,7 @@ func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
 	}()
 
 	ch := make(chan []byte, 2)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- m.Payload
 	})
 	defer unsub()
@@ -118,16 +117,16 @@ func testForgeryCorrelationIdCollision(t *testing.T, env *suite.TestEnv) {
 	sharedReplyTo := "ts.collision-svc-sec.echo.reply.shared-id-12345"
 
 	chA := make(chan []byte, 2)
-	unsubA, _ := k.SubscribeRaw(ctx, sharedReplyTo, func(m messages.Message) {
+	unsubA, _ := k.SubscribeRaw(ctx, sharedReplyTo, func(m sdk.Message) {
 		chA <- m.Payload
 	})
 	defer unsubA()
 
-	sdk.Publish(k, ctx, messages.CustomMsg{
+	sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.collision-svc-sec.echo", Payload: json.RawMessage(`{"data":"from-A"}`),
 	}, sdk.WithReplyTo(sharedReplyTo))
 
-	sdk.Publish(k, ctx, messages.CustomMsg{
+	sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.collision-svc-sec.echo", Payload: json.RawMessage(`{"data":"from-B"}`),
 	}, sdk.WithReplyTo(sharedReplyTo))
 
@@ -166,11 +165,11 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.recursive-sec.loop", Payload: json.RawMessage(`{"depth":0}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -305,7 +304,7 @@ func testForgeryToolNameCollision(t *testing.T, env *suite.TestEnv) {
 		kit.register("tool", "shared-tool-sec", t);
 	`)
 
-	payload, ok := secSendAndReceive(t, k, messages.ToolCallMsg{Name: "shared-tool-sec", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "shared-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	t.Logf("Tool collision result: %s", string(payload))
 }

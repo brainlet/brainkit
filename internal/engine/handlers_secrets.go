@@ -7,7 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/sdkerrors"
 	"github.com/brainlet/brainkit/internal/secrets"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // SecretsDomain handles secrets.set/get/delete/list/rotate bus commands.
@@ -24,12 +24,12 @@ func newSecretsDomain(store secrets.SecretStore, bus BusPublisher, callerID stri
 }
 
 // emitSecretEvent publishes a secrets audit event.
-func (d *SecretsDomain) emitSecretEvent(ctx context.Context, event messages.BrainkitMessage) {
+func (d *SecretsDomain) emitSecretEvent(ctx context.Context, event sdk.BrainkitMessage) {
 	payload, _ := json.Marshal(event)
 	d.bus.PublishRaw(ctx, event.BusTopic(), payload)
 }
 
-func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*messages.SecretsSetResp, error) {
+func (d *SecretsDomain) Set(ctx context.Context, req sdk.SecretsSetMsg) (*sdk.SecretsSetResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -48,12 +48,12 @@ func (d *SecretsDomain) Set(ctx context.Context, req messages.SecretsSetMsg) (*m
 	}
 
 	// Audit event
-	d.emitSecretEvent(ctx, messages.SecretsStoredEvent{Name: req.Name, Version: version, Timestamp: time.Now().Format(time.RFC3339)})
+	d.emitSecretEvent(ctx, sdk.SecretsStoredEvent{Name: req.Name, Version: version, Timestamp: time.Now().Format(time.RFC3339)})
 
-	return &messages.SecretsSetResp{Stored: true, Version: version}, nil
+	return &sdk.SecretsSetResp{Stored: true, Version: version}, nil
 }
 
-func (d *SecretsDomain) Get(ctx context.Context, req messages.SecretsGetMsg) (*messages.SecretsGetResp, error) {
+func (d *SecretsDomain) Get(ctx context.Context, req sdk.SecretsGetMsg) (*sdk.SecretsGetResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -63,12 +63,12 @@ func (d *SecretsDomain) Get(ctx context.Context, req messages.SecretsGetMsg) (*m
 	}
 
 	// Audit event
-	d.emitSecretEvent(ctx, messages.SecretsAccessedEvent{Name: req.Name, Accessor: d.callerID, Timestamp: time.Now().Format(time.RFC3339)})
+	d.emitSecretEvent(ctx, sdk.SecretsAccessedEvent{Name: req.Name, Accessor: d.callerID, Timestamp: time.Now().Format(time.RFC3339)})
 
-	return &messages.SecretsGetResp{Value: val}, nil
+	return &sdk.SecretsGetResp{Value: val}, nil
 }
 
-func (d *SecretsDomain) Delete(ctx context.Context, req messages.SecretsDeleteMsg) (*messages.SecretsDeleteResp, error) {
+func (d *SecretsDomain) Delete(ctx context.Context, req sdk.SecretsDeleteMsg) (*sdk.SecretsDeleteResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -77,29 +77,29 @@ func (d *SecretsDomain) Delete(ctx context.Context, req messages.SecretsDeleteMs
 	}
 
 	// Audit event
-	d.emitSecretEvent(ctx, messages.SecretsDeletedEvent{Name: req.Name, Timestamp: time.Now().Format(time.RFC3339)})
+	d.emitSecretEvent(ctx, sdk.SecretsDeletedEvent{Name: req.Name, Timestamp: time.Now().Format(time.RFC3339)})
 
-	return &messages.SecretsDeleteResp{Deleted: true}, nil
+	return &sdk.SecretsDeleteResp{Deleted: true}, nil
 }
 
-func (d *SecretsDomain) List(ctx context.Context, _ messages.SecretsListMsg) (*messages.SecretsListResp, error) {
+func (d *SecretsDomain) List(ctx context.Context, _ sdk.SecretsListMsg) (*sdk.SecretsListResp, error) {
 	metas, err := d.store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	infos := make([]messages.SecretMetaInfo, 0, len(metas))
+	infos := make([]sdk.SecretMetaInfo, 0, len(metas))
 	for _, m := range metas {
-		infos = append(infos, messages.SecretMetaInfo{
+		infos = append(infos, sdk.SecretMetaInfo{
 			Name:      m.Name,
 			CreatedAt: m.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: m.UpdatedAt.Format(time.RFC3339),
 			Version:   m.Version,
 		})
 	}
-	return &messages.SecretsListResp{Secrets: infos}, nil
+	return &sdk.SecretsListResp{Secrets: infos}, nil
 }
 
-func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMsg) (*messages.SecretsRotateResp, error) {
+func (d *SecretsDomain) Rotate(ctx context.Context, req sdk.SecretsRotateMsg) (*sdk.SecretsRotateResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -137,12 +137,12 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req messages.SecretsRotateMs
 	}
 
 	// 4. Audit event
-	d.emitSecretEvent(ctx, messages.SecretsRotatedEvent{
+	d.emitSecretEvent(ctx, sdk.SecretsRotatedEvent{
 		Name: req.Name, Version: version, RestartedPlugins: restartedPlugins,
 		Timestamp: time.Now().Format(time.RFC3339),
 	})
 
-	return &messages.SecretsRotateResp{
+	return &sdk.SecretsRotateResp{
 		Rotated: true, Version: version, RestartedPlugins: restartedPlugins,
 	}, nil
 }
@@ -158,7 +158,7 @@ func pluginUsesSecret(p RunningPlugin, secretName string) bool {
 }
 
 // emitSecretEvent publishes a secrets audit event.
-func (k *Kernel) emitSecretEvent(ctx context.Context, event messages.BrainkitMessage) {
+func (k *Kernel) emitSecretEvent(ctx context.Context, event sdk.BrainkitMessage) {
 	payload, _ := json.Marshal(event)
 	k.publish(ctx, event.BusTopic(), payload)
 }

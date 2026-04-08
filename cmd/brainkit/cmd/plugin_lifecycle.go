@@ -3,7 +3,7 @@ package cmd
 import (
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +17,7 @@ func addPluginLifecycleCmds(parent *cobra.Command) {
 	startCmd := &cobra.Command{
 		Use: "start <name>", Short: "Start an installed plugin", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			msg := messages.PluginStartMsg{Name: args[0], Binary: pluginStartBinary, Role: pluginStartRole}
+			msg := sdk.PluginStartMsg{Name: args[0], Binary: pluginStartBinary, Role: pluginStartRole}
 			if len(pluginStartEnv) > 0 {
 				msg.Env = make(map[string]string)
 				for _, kv := range pluginStartEnv {
@@ -28,7 +28,7 @@ func addPluginLifecycleCmds(parent *cobra.Command) {
 				}
 			}
 			return connectAndPublish(cmd, msg,
-				func(resp *messages.PluginStartResp) { cmd.Printf("Started %s (pid %d)\n", resp.Name, resp.PID) },
+				func(resp *sdk.PluginStartResp) { cmd.Printf("Started %s (pid %d)\n", resp.Name, resp.PID) },
 			)
 		},
 	}
@@ -39,8 +39,8 @@ func addPluginLifecycleCmds(parent *cobra.Command) {
 	stopCmd := &cobra.Command{
 		Use: "stop <name>", Short: "Stop a running plugin", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, messages.PluginStopMsg{Name: args[0]},
-				func(resp *messages.PluginStopResp) { cmd.Printf("Stopped %s\n", args[0]) },
+			return connectAndPublish(cmd, sdk.PluginStopMsg{Name: args[0]},
+				func(resp *sdk.PluginStopResp) { cmd.Printf("Stopped %s\n", args[0]) },
 			)
 		},
 	}

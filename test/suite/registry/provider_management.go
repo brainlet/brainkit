@@ -9,7 +9,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -19,14 +18,14 @@ func testProviderAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, messages.ProviderAddMsg{
+	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
 		Name:   "test-openai-add",
 		Type:   "openai",
 		Config: json.RawMessage(`{"APIKey":"test-key-123"}`),
 	})
-	respCh := make(chan messages.ProviderAddResp, 1)
+	respCh := make(chan sdk.ProviderAddResp, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ProviderAddResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -42,10 +41,10 @@ func testProviderAddViaBus(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kit, ctx, messages.RegistryListMsg{Category: "provider"})
-	listCh := make(chan messages.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[messages.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.RegistryListResp, msg messages.Message) { listCh <- resp })
+	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "provider"})
+	listCh := make(chan sdk.RegistryListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
+		func(resp sdk.RegistryListResp, msg sdk.Message) { listCh <- resp })
 	defer unsub2()
 
 	select {
@@ -62,13 +61,13 @@ func testProviderAddInvalidName(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, messages.ProviderAddMsg{
+	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
 		Name: "", // invalid
 		Type: "openai",
 	})
-	respCh := make(chan messages.ProviderAddResp, 1)
+	respCh := make(chan sdk.ProviderAddResp, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ProviderAddResp, msg messages.Message) { respCh <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- resp })
 	defer unsub()
 
 	select {
@@ -86,20 +85,20 @@ func testProviderRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add first
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, messages.ProviderAddMsg{
+	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
 		Name: "test-remove-prov", Type: "openai", Config: json.RawMessage(`{"APIKey":"k"}`),
 	})
-	ch := make(chan messages.ProviderAddResp, 1)
+	ch := make(chan sdk.ProviderAddResp, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ProviderAddResp, msg messages.Message) { ch <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { ch <- resp })
 	<-ch
 	unsub()
 
 	// Remove
-	pr2, _ := sdk.PublishProviderRemove(env.Kit, ctx, messages.ProviderRemoveMsg{Name: "test-remove-prov"})
-	rmCh := make(chan messages.ProviderRemoveResp, 1)
+	pr2, _ := sdk.PublishProviderRemove(env.Kit, ctx, sdk.ProviderRemoveMsg{Name: "test-remove-prov"})
+	rmCh := make(chan sdk.ProviderRemoveResp, 1)
 	unsub2, _ := sdk.SubscribeProviderRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp messages.ProviderRemoveResp, msg messages.Message) { rmCh <- resp })
+		func(resp sdk.ProviderRemoveResp, msg sdk.Message) { rmCh <- resp })
 	defer unsub2()
 
 	select {
@@ -120,12 +119,12 @@ func testProviderAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add provider via bus
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, messages.ProviderAddMsg{
+	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
 		Name: "ts-resolve-test", Type: "openai", Config: json.RawMessage(`{"APIKey":"test-key"}`),
 	})
-	ch := make(chan messages.ProviderAddResp, 1)
+	ch := make(chan sdk.ProviderAddResp, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp messages.ProviderAddResp, msg messages.Message) { ch <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { ch <- resp })
 	<-ch
 	unsub()
 

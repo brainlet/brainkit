@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -168,13 +167,13 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 		// Teardown via bus — non-fatal error handling
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		pr, err := sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: "race-stress-target.ts"})
+		pr, err := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: "race-stress-target.ts"})
 		if err != nil {
 			errs <- err
 			return
 		}
 		ch := make(chan error, 1)
-		unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](k, ctx, pr.ReplyTo, func(r messages.KitTeardownResp, _ messages.Message) {
+		unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
 			if r.Error != "" {
 				ch <- fmt.Errorf("%s", r.Error)
 			} else {
@@ -226,14 +225,14 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			pr, err := sdk.Publish(k, ctx, messages.KitTeardownMsg{Source: source})
+			pr, err := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
 			if err != nil {
 				cancel()
 				t.Errorf("goroutine %d cycle %d: teardown publish failed: %v", i, cycle, err)
 				continue
 			}
 			ch := make(chan error, 1)
-			unsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](k, ctx, pr.ReplyTo, func(r messages.KitTeardownResp, _ messages.Message) {
+			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
 				if r.Error != "" {
 					ch <- fmt.Errorf("%s", r.Error)
 				} else {
@@ -308,7 +307,7 @@ func testDeployDuringDrain(t *testing.T, env *suite.TestEnv) {
 			replyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 			gotReply := make(chan bool, 1)
-			unsub, _ := k.SubscribeRaw(replyCtx, pr.ReplyTo, func(msg messages.Message) {
+			unsub, _ := k.SubscribeRaw(replyCtx, pr.ReplyTo, func(msg sdk.Message) {
 				gotReply <- true
 			})
 			if unsub != nil {

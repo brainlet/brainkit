@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -33,8 +33,8 @@ API: test(), describe(), expect(), deploy(), sendTo(), sleep().`,
 			if _, err := os.Stat(absDir); err != nil {
 				return fmt.Errorf("directory not found: %s", absDir)
 			}
-			msg := messages.TestRunMsg{Dir: absDir, Pattern: testPattern, SkipAI: testSkipAI}
-			return connectAndPublish(cmd, msg, func(resp *messages.TestRunResp) {
+			msg := sdk.TestRunMsg{Dir: absDir, Pattern: testPattern, SkipAI: testSkipAI}
+			return connectAndPublish(cmd, msg, func(resp *sdk.TestRunResp) {
 				var result runResult
 				if err := json.Unmarshal(resp.Results, &result); err != nil {
 					cmd.PrintErrln("failed to parse results:", err)

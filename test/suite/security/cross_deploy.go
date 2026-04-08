@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,11 +33,11 @@ func testXDeployTeardownAnother(t *testing.T, env *suite.TestEnv) {
 
 	attackerResult, _ := secEvalTSErr(k, "__atk_td.ts", `return String(globalThis.__module_result || "");`)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-svc-sec.ping", Payload: json.RawMessage(`{}`),
 	})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 
 	select {
@@ -74,13 +73,13 @@ func testXDeployReplyImpersonation(t *testing.T, env *suite.TestEnv) {
 		output("listening");
 	`)
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.slow-a-sec.ask", Payload: json.RawMessage(`{"q":"test"}`),
 	})
 
 	var responses []string
 	ch := make(chan []byte, 5)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- m.Payload
 	})
 	defer unsub()
@@ -121,7 +120,7 @@ func testXDeployUnregisterAlienTool(t *testing.T, env *suite.TestEnv) {
 
 	attackerResult, _ := secEvalTSErr(k, "__thief.ts", `return String(globalThis.__module_result || "");`)
 
-	payload, ok := secSendAndReceive(t, k, messages.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	if ok && !secResponseHasError(payload) {
 		assert.Contains(t, string(payload), "owner", "A's tool should still work")
 	} else {
@@ -156,7 +155,7 @@ func testXDeployStealOutput(t *testing.T, env *suite.TestEnv) {
 	assert.NotContains(t, result, "sk-12345", "attacker should not see victim's output")
 }
 
-// testXDeployMailboxEavesdrop — deployment B subscribes to A's mailbox and steals all messages.
+// testXDeployMailboxEavesdrop — deployment B subscribes to A's mailbox and steals all sdk.
 func testXDeployMailboxEavesdrop(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -169,16 +168,16 @@ func testXDeployMailboxEavesdrop(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	var intercepted []string
-	unsub, _ := k.SubscribeRaw(ctx, "ts.private-svc-sec.internal-api", func(m messages.Message) {
+	unsub, _ := k.SubscribeRaw(ctx, "ts.private-svc-sec.internal-api", func(m sdk.Message) {
 		intercepted = append(intercepted, string(m.Payload))
 	})
 	defer unsub()
 
-	pr, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.private-svc-sec.internal-api", Payload: json.RawMessage(`{"q":"legit"}`),
 	})
 	ch := make(chan []byte, 1)
-	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	legitUnsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer legitUnsub()
 
 	select {
@@ -213,9 +212,9 @@ func testXDeployAgentRegistrationRace(t *testing.T, env *suite.TestEnv) {
 	result, _ := secEvalTSErr(k, "__agent_race.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Agent double-registration: %s", result)
 
-	pr, _ := sdk.Publish(k, ctx, messages.AgentListMsg{})
+	pr, _ := sdk.Publish(k, ctx, sdk.AgentListMsg{})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
 	select {
 	case p := <-ch:
@@ -259,12 +258,12 @@ func testXDeployCreateToolMonkeyPatch(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	var stolen []string
-	stealUnsub, _ := k.SubscribeRaw(ctx, "stolen.tool.inputs.sec", func(m messages.Message) {
+	stealUnsub, _ := k.SubscribeRaw(ctx, "stolen.tool.inputs.sec", func(m sdk.Message) {
 		stolen = append(stolen, string(m.Payload))
 	})
 	defer stealUnsub()
 
-	secSendAndReceive(t, k, messages.ToolCallMsg{Name: "innocent-sec", Input: map[string]any{"x": 21}}, 5*time.Second)
+	secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "innocent-sec", Input: map[string]any{"x": 21}}, 5*time.Second)
 	time.Sleep(500 * time.Millisecond)
 
 	if len(stolen) > 0 {

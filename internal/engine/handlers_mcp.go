@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // MCPDomain handles mcp.listTools and mcp.callTool bus commands.
@@ -17,19 +17,19 @@ func newMCPDomain(mcp *mcppkg.MCPManager) *MCPDomain {
 	return &MCPDomain{mcp: mcp}
 }
 
-func (d *MCPDomain) ListTools(_ context.Context, req messages.McpListToolsMsg) (*messages.McpListToolsResp, error) {
+func (d *MCPDomain) ListTools(_ context.Context, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
 	if d.mcp == nil {
 		return nil, ErrMCPNotConfigured
 	}
 	tools := d.mcp.ListTools()
-	var infos []messages.McpToolInfo
+	var infos []sdk.McpToolInfo
 	for _, t := range tools {
-		infos = append(infos, messages.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
+		infos = append(infos, sdk.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
 	}
-	return &messages.McpListToolsResp{Tools: infos}, nil
+	return &sdk.McpListToolsResp{Tools: infos}, nil
 }
 
-func (d *MCPDomain) CallTool(ctx context.Context, req messages.McpCallToolMsg) (*messages.McpCallToolResp, error) {
+func (d *MCPDomain) CallTool(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
 	if d.mcp == nil {
 		return nil, ErrMCPNotConfigured
 	}
@@ -38,5 +38,5 @@ func (d *MCPDomain) CallTool(ctx context.Context, req messages.McpCallToolMsg) (
 	if err != nil {
 		return nil, err
 	}
-	return &messages.McpCallToolResp{Result: result}, nil
+	return &sdk.McpCallToolResp{Result: result}, nil
 }

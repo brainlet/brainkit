@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,17 +20,17 @@ func testTransportMatrixToolsCall(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 		Name:  "add",
 		Input: map[string]any{"a": 10, "b": 32},
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolCallResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.ToolCallResp
+	var resp sdk.ToolCallResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -49,14 +48,14 @@ func testTransportMatrixToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	pr, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolListResp](rt, ctx, pr.ReplyTo, func(r messages.ToolListResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolListResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pr.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.ToolListResp
+	var resp sdk.ToolListResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -72,14 +71,14 @@ func testTransportMatrixToolsResolve(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.ToolResolveMsg{Name: "echo"})
+	pr, err := sdk.Publish(rt, ctx, sdk.ToolResolveMsg{Name: "echo"})
 	require.NoError(t, err)
-	ch := make(chan messages.ToolResolveResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.ToolResolveResp](rt, ctx, pr.ReplyTo, func(r messages.ToolResolveResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.ToolResolveResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.ToolResolveResp](rt, ctx, pr.ReplyTo, func(r sdk.ToolResolveResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.ToolResolveResp
+	var resp sdk.ToolResolveResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -125,14 +124,14 @@ func testTransportMatrixAgentsListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.AgentListMsg{})
+	pr, err := sdk.Publish(rt, ctx, sdk.AgentListMsg{})
 	require.NoError(t, err)
-	ch := make(chan messages.AgentListResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.AgentListResp](rt, ctx, pr.ReplyTo, func(r messages.AgentListResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.AgentListResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.AgentListResp](rt, ctx, pr.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.AgentListResp
+	var resp sdk.AgentListResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -148,7 +147,7 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+	pr, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 		Source: "matrix-deploy-suite.ts",
 		Code: `
 			const matrixTool = createTool({
@@ -160,12 +159,12 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 		`,
 	})
 	require.NoError(t, err)
-	deployCh := make(chan messages.KitDeployResp, 1)
-	deployUnsub, err := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr.ReplyTo, func(r messages.KitDeployResp, m messages.Message) { deployCh <- r })
+	deployCh := make(chan sdk.KitDeployResp, 1)
+	deployUnsub, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- r })
 	require.NoError(t, err)
 	defer deployUnsub()
 
-	var deployResp messages.KitDeployResp
+	var deployResp sdk.KitDeployResp
 	select {
 	case deployResp = <-deployCh:
 	case <-ctx.Done():
@@ -174,16 +173,16 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, deployResp.Deployed)
 
 	// Verify tool is callable
-	callPR, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+	callPR, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
 		Name: "matrix-tool-suite", Input: map[string]any{},
 	})
 	require.NoError(t, err)
-	callCh := make(chan messages.ToolCallResp, 1)
-	callUnsub, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, callPR.ReplyTo, func(r messages.ToolCallResp, m messages.Message) { callCh <- r })
+	callCh := make(chan sdk.ToolCallResp, 1)
+	callUnsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, callPR.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { callCh <- r })
 	require.NoError(t, err)
 	defer callUnsub()
 
-	var callResp messages.ToolCallResp
+	var callResp sdk.ToolCallResp
 	select {
 	case callResp = <-callCh:
 	case <-ctx.Done():
@@ -194,10 +193,10 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, "works", result["backend"])
 
 	// Teardown
-	tdPR, err := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-deploy-suite.ts"})
+	tdPR, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "matrix-deploy-suite.ts"})
 	require.NoError(t, err)
-	tdCh := make(chan messages.KitTeardownResp, 1)
-	tdUnsub, err := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { tdCh <- r })
+	tdCh := make(chan sdk.KitTeardownResp, 1)
+	tdUnsub, err := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { tdCh <- r })
 	require.NoError(t, err)
 	defer tdUnsub()
 
@@ -215,20 +214,20 @@ func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	sdk.Publish(rt, ctx, messages.KitDeployMsg{
+	sdk.Publish(rt, ctx, sdk.KitDeployMsg{
 		Source: "matrix-redeploy-suite.ts", Code: `var v = 1;`,
 	})
 
-	pr, err := sdk.Publish(rt, ctx, messages.KitRedeployMsg{
+	pr, err := sdk.Publish(rt, ctx, sdk.KitRedeployMsg{
 		Source: "matrix-redeploy-suite.ts", Code: `var v = 2;`,
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.KitRedeployResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.KitRedeployResp](rt, ctx, pr.ReplyTo, func(r messages.KitRedeployResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.KitRedeployResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.KitRedeployResp](rt, ctx, pr.ReplyTo, func(r sdk.KitRedeployResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.KitRedeployResp
+	var resp sdk.KitRedeployResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -236,9 +235,9 @@ func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, resp.Deployed)
 
-	tdPR, _ := sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "matrix-redeploy-suite.ts"})
-	tdCh := make(chan messages.KitTeardownResp, 1)
-	tdUnsub, _ := sdk.SubscribeTo[messages.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r messages.KitTeardownResp, m messages.Message) { tdCh <- r })
+	tdPR, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "matrix-redeploy-suite.ts"})
+	tdCh := make(chan sdk.KitTeardownResp, 1)
+	tdUnsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { tdCh <- r })
 	defer tdUnsub()
 	select {
 	case <-tdCh:
@@ -254,16 +253,16 @@ func testTransportMatrixRegistryHasList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, messages.RegistryHasMsg{
+	pr, err := sdk.Publish(rt, ctx, sdk.RegistryHasMsg{
 		Category: "provider", Name: "nonexistent",
 	})
 	require.NoError(t, err)
-	ch := make(chan messages.RegistryHasResp, 1)
-	unsub, err := sdk.SubscribeTo[messages.RegistryHasResp](rt, ctx, pr.ReplyTo, func(r messages.RegistryHasResp, m messages.Message) { ch <- r })
+	ch := make(chan sdk.RegistryHasResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.RegistryHasResp](rt, ctx, pr.ReplyTo, func(r sdk.RegistryHasResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp messages.RegistryHasResp
+	var resp sdk.RegistryHasResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -271,14 +270,14 @@ func testTransportMatrixRegistryHasList(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.False(t, resp.Found)
 
-	listPR, err := sdk.Publish(rt, ctx, messages.RegistryListMsg{Category: "provider"})
+	listPR, err := sdk.Publish(rt, ctx, sdk.RegistryListMsg{Category: "provider"})
 	require.NoError(t, err)
-	listCh := make(chan messages.RegistryListResp, 1)
-	listUnsub, err := sdk.SubscribeTo[messages.RegistryListResp](rt, ctx, listPR.ReplyTo, func(r messages.RegistryListResp, m messages.Message) { listCh <- r })
+	listCh := make(chan sdk.RegistryListResp, 1)
+	listUnsub, err := sdk.SubscribeTo[sdk.RegistryListResp](rt, ctx, listPR.ReplyTo, func(r sdk.RegistryListResp, m sdk.Message) { listCh <- r })
 	require.NoError(t, err)
 	defer listUnsub()
 
-	var listResp messages.RegistryListResp
+	var listResp sdk.RegistryListResp
 	select {
 	case listResp = <-listCh:
 	case <-ctx.Done():
@@ -294,7 +293,7 @@ func testTransportMatrixAsyncCorrelation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	corrID, err := sdk.Publish(rt, ctx, messages.ToolListMsg{})
+	corrID, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, corrID)
 }

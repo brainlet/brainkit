@@ -7,7 +7,7 @@ import (
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/sdkerrors"
-	"github.com/brainlet/brainkit/sdk/messages"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // registerSecretBridges adds __go_brainkit_secret_get bridge.
@@ -40,7 +40,7 @@ func (k *Kernel) registerSecretBridges(qctx *quickjs.Context) {
 			if source == "" {
 				source = k.callerID
 			}
-			k.emitSecretEvent(context.Background(), messages.SecretsAccessedEvent{
+			k.emitSecretEvent(context.Background(), sdk.SecretsAccessedEvent{
 				Name:      name,
 				Accessor:  source,
 				Timestamp: time.Now().Format(time.RFC3339),

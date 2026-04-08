@@ -11,7 +11,6 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +23,7 @@ func testConcurrentPublish50(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	var received atomic.Int64
-	unsub, err := env.Kit.SubscribeRaw(ctx, "incoming.concurrent.suite", func(m messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "incoming.concurrent.suite", func(m sdk.Message) {
 		received.Add(1)
 	})
 	require.NoError(t, err)
@@ -66,14 +65,14 @@ func testLargePayload100KB(t *testing.T, _ *suite.TestEnv) {
 	}
 	payload, _ := json.Marshal(map[string]string{"data": string(big)})
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.big-msg-suite.big",
 		Payload: payload,
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -96,14 +95,14 @@ func testDottedTopicNames(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ask", function(msg) { msg.reply({dotted: true}); });
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.my.dotted.agent.suite.ask",
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -129,13 +128,13 @@ func testDeployHandlerCall(t *testing.T, _ *suite.TestEnv) {
 		});
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.backend-handler-suite.ask", Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -158,14 +157,14 @@ func testPublishReply(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({backend: "works"}); });
 	`)
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.CustomMsg{
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.backend-reply-suite.ping",
 		Payload: json.RawMessage(`{}`),
 	})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	require.NoError(t, err)
 	defer unsub()
 
@@ -184,11 +183,11 @@ func testErrorCodeOnBus(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, messages.ToolCallMsg{Name: "ghost-backend-tool-suite"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "ghost-backend-tool-suite"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
 	})
 	require.NoError(t, err)
@@ -210,7 +209,7 @@ func testTransportCompliancePublishSubscribe(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	received := make(chan []byte, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, "test.compliance.topic", func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "test.compliance.topic", func(msg sdk.Message) {
 		received <- msg.Payload
 	})
 	require.NoError(t, err)
@@ -233,7 +232,7 @@ func testTransportComplianceCorrelationID(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	received := make(chan string, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, "corr.topic.suite", func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "corr.topic.suite", func(msg sdk.Message) {
 		received <- msg.Metadata["correlationId"]
 	})
 	require.NoError(t, err)
@@ -256,7 +255,7 @@ func testTransportComplianceDottedTopics(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	received := make(chan bool, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, "ai.generate.suite", func(msg messages.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, "ai.generate.suite", func(msg sdk.Message) {
 		received <- true
 	})
 	require.NoError(t, err)

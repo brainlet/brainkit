@@ -12,7 +12,6 @@ import (
 	"github.com/brainlet/brainkit/internal/rbac"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,9 +41,9 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "DB_PASSWORD_SEC", Value: "super-secret-pw-123"})
+	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "DB_PASSWORD_SEC", Value: "super-secret-pw-123"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 
@@ -78,7 +77,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	var exfilDetected atomic.Int64
 	for _, topic := range []string{"incoming.exfil-sec", "events.exfil-sec"} {
 		topic := topic
-		u, _ := k.SubscribeRaw(ctx, topic, func(m messages.Message) {
+		u, _ := k.SubscribeRaw(ctx, topic, func(m sdk.Message) {
 			if len(m.Payload) > 0 {
 				var data struct{ Stolen string `json:"stolen"` }
 				json.Unmarshal(m.Payload, &data)
@@ -117,7 +116,7 @@ func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "API_TOKEN_SEC", Value: "tok-secret-999"})
+	sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "API_TOKEN_SEC", Value: "tok-secret-999"})
 	time.Sleep(100 * time.Millisecond)
 
 	require.NoError(t, secDeployWithRole(k, "observer-secret-sec.ts", `
@@ -184,9 +183,9 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	for _, name := range []string{"DB_PASSWORD_SEC", "API_KEY_SEC", "STRIPE_SECRET_SEC", "ADMIN_TOKEN_SEC"} {
-		pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: name, Value: "secret-" + name})
+		pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: name, Value: "secret-" + name})
 		ch := make(chan []byte, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 		<-ch
 		unsub()
 	}
@@ -212,21 +211,21 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "MONITORED_KEY_SEC", Value: "monitored-value"})
+	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "MONITORED_KEY_SEC", Value: "monitored-value"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 
 	var auditEvents []string
-	auditUnsub, _ := k.SubscribeRaw(ctx, "secrets.accessed", func(m messages.Message) {
+	auditUnsub, _ := k.SubscribeRaw(ctx, "secrets.accessed", func(m sdk.Message) {
 		auditEvents = append(auditEvents, string(m.Payload))
 	})
 	defer auditUnsub()
 
-	pr2, _ := sdk.Publish(k, ctx, messages.SecretsGetMsg{Name: "MONITORED_KEY_SEC"})
+	pr2, _ := sdk.Publish(k, ctx, sdk.SecretsGetMsg{Name: "MONITORED_KEY_SEC"})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	<-ch2
 	unsub2()
 
@@ -244,9 +243,9 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k, ctx, messages.SecretsSetMsg{Name: "SHARED_KEY_SEC", Value: "original-value"})
+	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "SHARED_KEY_SEC", Value: "original-value"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 
@@ -258,17 +257,17 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	pr2, _ := sdk.Publish(k, ctx, messages.SecretsRotateMsg{Name: "SHARED_KEY_SEC", NewValue: "rotated-by-attacker"})
+	pr2, _ := sdk.Publish(k, ctx, sdk.SecretsRotateMsg{Name: "SHARED_KEY_SEC", NewValue: "rotated-by-attacker"})
 	ch2 := make(chan []byte, 1)
-	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	<-ch2
 	unsub2()
 
-	pr3, _ := sdk.Publish(k, ctx, messages.CustomMsg{
+	pr3, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-secret-sec.check", Payload: json.RawMessage(`{}`),
 	})
 	ch3 := make(chan []byte, 1)
-	unsub3, _ := k.SubscribeRaw(ctx, pr3.ReplyTo, func(m messages.Message) { ch3 <- m.Payload })
+	unsub3, _ := k.SubscribeRaw(ctx, pr3.ReplyTo, func(m sdk.Message) { ch3 <- m.Payload })
 	defer unsub3()
 
 	select {
@@ -300,9 +299,9 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k1, ctx, messages.SecretsSetMsg{Name: "encrypted-sec", Value: "sensitive-data"})
+	pr, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "encrypted-sec", Value: "sensitive-data"})
 	ch := make(chan []byte, 1)
-	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m messages.Message) { ch <- m.Payload })
+	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
 	unsub()
 	k1.Close()
@@ -324,9 +323,9 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 			require.NoError(t, err)
 			defer k2.Close()
 
-			pr2, _ := sdk.Publish(k2, ctx, messages.SecretsGetMsg{Name: "encrypted-sec"})
+			pr2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "encrypted-sec"})
 			ch2 := make(chan []byte, 1)
-			unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m messages.Message) { ch2 <- m.Payload })
+			unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 			defer unsub2()
 
 			select {

@@ -9,7 +9,6 @@ import (
 
 	bkplugin "github.com/brainlet/brainkit/plugin"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/messages"
 )
 
 type EchoInput struct {
@@ -43,10 +42,10 @@ func main() {
 
 	bkplugin.Tool[ConcatInput, ConcatOutput](p, "concat", "concatenates two strings",
 		func(ctx context.Context, rt bkplugin.Client, in ConcatInput) (ConcatOutput, error) {
-			getResult, _ := sdk.Publish(rt, ctx, messages.PluginStateGetMsg{Key: "callCount"})
-			countCh := make(chan messages.PluginStateGetResp, 1)
-			unsub, _ := sdk.SubscribeTo[messages.PluginStateGetResp](rt, ctx, getResult.ReplyTo, func(r messages.PluginStateGetResp, m messages.Message) { countCh <- r })
-			var countResp messages.PluginStateGetResp
+			getResult, _ := sdk.Publish(rt, ctx, sdk.PluginStateGetMsg{Key: "callCount"})
+			countCh := make(chan sdk.PluginStateGetResp, 1)
+			unsub, _ := sdk.SubscribeTo[sdk.PluginStateGetResp](rt, ctx, getResult.ReplyTo, func(r sdk.PluginStateGetResp, m sdk.Message) { countCh <- r })
+			var countResp sdk.PluginStateGetResp
 			select {
 			case countResp = <-countCh:
 			case <-ctx.Done():
@@ -57,7 +56,7 @@ func main() {
 				fmt.Sscanf(countResp.Value, "%d", &count)
 			}
 			count++
-			sdk.Publish(rt, ctx, messages.PluginStateSetMsg{
+			sdk.Publish(rt, ctx, sdk.PluginStateSetMsg{
 				Key:   "callCount",
 				Value: fmt.Sprintf("%d", count),
 			})
@@ -66,12 +65,12 @@ func main() {
 
 	p.OnStart(func(rt bkplugin.Client) error {
 		log.Println("[testplugin] started successfully")
-		listResult, err := sdk.Publish(rt, context.Background(), messages.ToolListMsg{})
+		listResult, err := sdk.Publish(rt, context.Background(), sdk.ToolListMsg{})
 		if err != nil {
 			log.Printf("[testplugin] failed to publish tool list: %v", err)
 		} else {
-			toolsCh := make(chan messages.ToolListResp, 1)
-			unsub, _ := sdk.SubscribeTo[messages.ToolListResp](rt, context.Background(), listResult.ReplyTo, func(r messages.ToolListResp, m messages.Message) { toolsCh <- r })
+			toolsCh := make(chan sdk.ToolListResp, 1)
+			unsub, _ := sdk.SubscribeTo[sdk.ToolListResp](rt, context.Background(), listResult.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { toolsCh <- r })
 			select {
 			case resp := <-toolsCh:
 				log.Printf("[testplugin] host has %d tools", len(resp.Tools))
