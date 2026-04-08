@@ -13,16 +13,12 @@ import (
 	"testing"
 	"time"
 
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	tools "github.com/brainlet/brainkit/internal/tools"
-	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit"
-	provreg "github.com/brainlet/brainkit/internal/providers"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/messages"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
-	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -37,12 +33,12 @@ var skipCategories = map[string]bool{
 // It replaces the 2-level os.ReadDir + 3 switch-case classifiers with
 // filepath.WalkDir + path-based classification maps.
 type Runner struct {
-	root          string // absolute path to fixtures/ts/
-	kernelFactory func(t *testing.T, needs FixtureNeeds) *brainkit.Kernel
+	root       string // absolute path to fixtures/ts/
+	kitFactory func(t *testing.T, needs FixtureNeeds) *brainkit.Kit
 
 	// toolRegistrar allows callers to register custom Go tools per fixture.
 	// If nil, the default registerFixtureTools is used.
-	toolRegistrar func(t *testing.T, k *brainkit.Kernel, relPath string)
+	toolRegistrar func(t *testing.T, k *brainkit.Kit, relPath string)
 }
 
 // NewRunner creates a runner for the given fixtures root.
@@ -53,17 +49,17 @@ func NewRunner(root string) *Runner {
 	}
 }
 
-// WithKernelFactory sets a custom kernel factory for campaigns.
+// WithKitFactory sets a custom Kit factory for campaigns.
 // The factory receives the classified FixtureNeeds and must return a fully
-// configured Kernel. The runner will NOT call Close — use t.Cleanup in the factory.
-func (r *Runner) WithKernelFactory(f func(t *testing.T, needs FixtureNeeds) *brainkit.Kernel) *Runner {
-	r.kernelFactory = f
+// configured Kit. The runner will NOT call Close — use t.Cleanup in the factory.
+func (r *Runner) WithKitFactory(f func(t *testing.T, needs FixtureNeeds) *brainkit.Kit) *Runner {
+	r.kitFactory = f
 	return r
 }
 
 // WithToolRegistrar sets a custom tool registration function.
 // relPath is the fixture's relative path from ts/ (e.g. "tools/call-from-ts").
-func (r *Runner) WithToolRegistrar(f func(t *testing.T, k *brainkit.Kernel, relPath string)) *Runner {
+func (r *Runner) WithToolRegistrar(f func(t *testing.T, k *brainkit.Kit, relPath string)) *Runner {
 	r.toolRegistrar = f
 	return r
 }
@@ -201,7 +197,7 @@ func (r *Runner) discover(t *testing.T, patterns []string) []fixtureEntry {
 	return fixtures
 }
 
-// runFixture executes a single fixture: skip checks, kernel creation, deploy, eval, assert.
+// runFixture executes a single fixture: skip checks, Kit creation, deploy, eval, assert.
 func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman bool, startContainers func()) {
 	t.Helper()
 
@@ -229,12 +225,12 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	// 1. Read raw .ts source
 	tsSource := LoadTSFixtureRaw(t, fix.relPath)
 
-	// 2. Create kernel
-	var k *brainkit.Kernel
-	if r.kernelFactory != nil {
-		k = r.kernelFactory(t, needs)
+	// 2. Create Kit
+	var k *brainkit.Kit
+	if r.kitFactory != nil {
+		k = r.kitFactory(t, needs)
 	} else {
-		k = r.defaultKernel(t, needs)
+		k = r.defaultKit(t, needs)
 	}
 
 	// 3. Register fixture-specific tools
@@ -248,16 +244,8 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	r.injectInfraEnv(t, k, fix)
 
 	// 5. Deploy .ts
-	timeout := 15 * time.Second
-	if needs.AI {
-		timeout = 60 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
 	name := filepath.Base(fix.relPath)
-	_, err := k.Deploy(ctx, name+".ts", tsSource)
-	if err != nil {
+	if err := testutil.DeployErr(k, name+".ts", tsSource); err != nil {
 		if needs.AI && !hasAI {
 			t.Skipf("deploy needs AI key: %v", err)
 		}
@@ -265,9 +253,8 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	}
 
 	// 6. Read output
-	raw, err := k.EvalTS(ctx, "__read_output.ts",
+	raw := testutil.EvalTS(t, k, "__read_output.ts",
 		`return typeof globalThis.__module_result !== "undefined" ? globalThis.__module_result : ""`)
-	require.NoError(t, err, "read output")
 
 	if raw == "" {
 		t.Logf("%s: no output (deploy-only fixture)", fix.relPath)
@@ -290,22 +277,24 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 	AssertExpect(t, fix.relPath, actual, expect)
 }
 
-// defaultKernel creates a Kernel with the appropriate configuration for the fixture's needs.
-func (r *Runner) defaultKernel(t *testing.T, needs FixtureNeeds) *brainkit.Kernel {
+// defaultKit creates a Kit with the appropriate configuration for the fixture's needs.
+func (r *Runner) defaultKit(t *testing.T, needs FixtureNeeds) *brainkit.Kit {
 	t.Helper()
 
 	if needs.MCP {
-		return newKernelWithMCP(t)
+		return newKitWithMCP(t)
 	}
 
-	tk := testutil.NewTestKernelFull(t)
-	return tk.Kernel
+	tk := testutil.NewTestKitFull(t)
+	return tk.Kit
 }
 
 // injectInfraEnv sets environment variables that specific fixtures expect
 // (e.g. LIBSQL_URL for memory/agent libsql fixtures).
-func (r *Runner) injectInfraEnv(t *testing.T, k *brainkit.Kernel, fix fixtureEntry) {
+func (r *Runner) injectInfraEnv(t *testing.T, k *brainkit.Kit, fix fixtureEntry) {
 	t.Helper()
+
+	_ = k // Kit doesn't expose StorageURL; URL comes from container env vars.
 
 	parts := strings.SplitN(fix.relPath, "/", 2)
 	category := ""
@@ -317,10 +306,11 @@ func (r *Runner) injectInfraEnv(t *testing.T, k *brainkit.Kernel, fix fixtureEnt
 		name = filepath.Base(fix.relPath)
 	}
 
+	// For libsql fixtures the URL comes from the LIBSQL_VECTOR_URL env var
+	// set by the container startup, not from the Kit.
 	if (category == "memory" || category == "agent") && strings.Contains(name, "libsql") {
-		libsqlURL := k.StorageURL("default")
-		if libsqlURL != "" {
-			os.Setenv("LIBSQL_URL", libsqlURL)
+		if url := os.Getenv("LIBSQL_VECTOR_URL"); url != "" {
+			os.Setenv("LIBSQL_URL", url)
 		}
 	}
 	if fix.needs.LibSQLServer {
@@ -331,10 +321,10 @@ func (r *Runner) injectInfraEnv(t *testing.T, k *brainkit.Kernel, fix fixtureEnt
 	}
 }
 
-// ── Kernel factories ──────────────────────────────────────────────────────
+// ── Kit factories ─────────────────────────────────────────────────────────
 
-// newKernelWithMCP creates a Kernel with an in-process MCP server.
-func newKernelWithMCP(t *testing.T) *brainkit.Kernel {
+// newKitWithMCP creates a Kit with an in-process MCP server.
+func newKitWithMCP(t *testing.T) *brainkit.Kit {
 	t.Helper()
 
 	s := mcpserver.NewMCPServer("testmcp", "1.0.0")
@@ -367,31 +357,28 @@ func newKernelWithMCP(t *testing.T) *brainkit.Kernel {
 	testutil.LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	aiProviders := make(map[string]provreg.AIProviderRegistration)
+	var providers []brainkit.ProviderConfig
 	envVars := make(map[string]string)
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		aiProviders["openai"] = provreg.AIProviderRegistration{
-			Type:   provreg.AIProviderOpenAI,
-			Config: provreg.OpenAIProviderConfig{APIKey: key},
-		}
+		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
 
-	k, err := brainkit.NewKernel(brainkit.KernelConfig{
-		Namespace:   "test",
-		CallerID:    "test-mcp",
-		FSRoot:      tmpDir,
-		AIProviders: aiProviders,
-		EnvVars:     envVars,
+	k, err := brainkit.New(brainkit.Config{
+		Namespace: "test",
+		CallerID:  "test-mcp",
+		FSRoot:    tmpDir,
+		Providers: providers,
+		EnvVars:   envVars,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		MCPServers: map[string]mcppkg.ServerConfig{
+		MCPServers: map[string]brainkit.MCPServerConfig{
 			"test": {URL: mcpURL},
 		},
 	})
 	if err != nil {
-		t.Fatalf("NewKernel with MCP: %v", err)
+		t.Fatalf("New Kit with MCP: %v", err)
 	}
 	t.Cleanup(func() { k.Close() })
 
@@ -402,12 +389,12 @@ func newKernelWithMCP(t *testing.T) *brainkit.Kernel {
 
 // registerFixtureTools registers Go tools that specific fixtures expect.
 // relPath is the fixture's relative path from ts/ (e.g. "tools/call-from-ts").
-func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
+func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 	t.Helper()
 
 	switch relPath {
 	case "tools/call-from-ts":
-		tools.Register(k.Tools, "uppercase", tools.TypedTool[struct {
+		brainkit.RegisterTool(k, "uppercase", brainkit.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "converts text to uppercase",
@@ -418,7 +405,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
 			},
 		})
 	case "agent/with-registered-tool":
-		tools.Register(k.Tools, "multiply", tools.TypedTool[struct {
+		brainkit.RegisterTool(k, "multiply", brainkit.TypedTool[struct {
 			A float64 `json:"a"`
 			B float64 `json:"b"`
 		}]{
@@ -444,7 +431,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kernel, relPath string) {
 			t.Cleanup(func() { cancel() })
 		}
 	case "composition/full-agent-workflow-memory":
-		tools.Register(k.Tools, "reverse", tools.TypedTool[struct {
+		brainkit.RegisterTool(k, "reverse", brainkit.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "reverses a string",
