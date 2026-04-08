@@ -7,9 +7,9 @@ brainkit supports 5 storage backends and 3 vector backends for agent memory, con
 The simplest option — brainkit starts a Go HTTP server backed by a local SQLite file. No containers, no connection strings, no setup:
 
 ```go
-k, err := kit.NewKernel(kit.KernelConfig{
-    Storages: map[string]kit.StorageConfig{
-        "default": kit.SQLiteStorage("./data.db"),
+kit, err := brainkit.New(brainkit.Config{
+    Storages: map[string]brainkit.StorageConfig{
+        "default": brainkit.SQLiteStorage("./data.db"),
     },
 })
 ```
@@ -26,10 +26,10 @@ The bridge server (`internal/libsql/server.go`):
 ### Multiple storages
 
 ```go
-Storages: map[string]kit.StorageConfig{
-    "default": kit.SQLiteStorage("./data.db"),      // memory, workflows, traces
-    "vectors": kit.SQLiteStorage("./vectors.db"),    // vector embeddings
-    "scratch": kit.SQLiteStorage(":memory:"),        // ephemeral, lost on close
+Storages: map[string]brainkit.StorageConfig{
+    "default": brainkit.SQLiteStorage("./data.db"),      // memory, workflows, traces
+    "vectors": brainkit.SQLiteStorage("./vectors.db"),    // vector embeddings
+    "scratch": brainkit.SQLiteStorage(":memory:"),        // ephemeral, lost on close
 },
 ```
 
@@ -62,9 +62,9 @@ All tested with real infrastructure — no mocks. Auth matrix in `test/auth/auth
 ### Go-side provider registry
 
 ```go
-Storages: map[string]kit.StorageConfig{
-    "default": kit.InMemoryStorage(),
-    "pg":      kit.PostgresStorage("postgres://..."),
+Storages: map[string]brainkit.StorageConfig{
+    "default": brainkit.InMemoryStorage(),
+    "pg":      brainkit.PostgresStorage("postgres://..."),
 },
 ```
 
@@ -147,8 +147,8 @@ MongoDBStore uses the `node-mongodb-native` driver through jsbridge polyfills. S
 ### Go-side registration
 
 ```go
-Vectors: map[string]kit.VectorConfig{
-    "main": kit.PgVectorStore(pgConnStr),
+Vectors: map[string]brainkit.VectorConfig{
+    "main": brainkit.PgVectorStore(pgConnStr),
 },
 ```
 
@@ -188,12 +188,12 @@ InMemoryStore and UpstashStore support basic memory (threads + messages) but not
 
 ## Workflow Snapshot Persistence
 
-When a storage backend is configured (any entry in `KernelConfig.Storages`), brainkit automatically upgrades Mastra's internal storage from `InMemoryStore` to the configured backend during Kernel initialization. This means:
+When a storage backend is configured (any entry in `Config.Storages`), brainkit automatically upgrades Mastra's internal storage from `InMemoryStore` to the configured backend during Kit initialization. This means:
 
 - Workflow snapshots (step results, suspend state, execution paths) persist to the real database
-- `workflow.status` queries read from storage — works even after Kernel restart
-- On startup, `restartActiveWorkflows()` picks up any runs that were `running` or `waiting` when the previous Kernel died
-- Suspended workflows survive Kernel restarts — `workflow.resume` works on the new Kernel
+- `workflow.status` queries read from storage — works even after Kit restart
+- On startup, `restartActiveWorkflows()` picks up any runs that were `running` or `waiting` when the previous Kit died
+- Suspended workflows survive Kit restarts — `workflow.resume` works on the new Kit
 
 The storage upgrade calls `storage.init()` which creates Mastra's domain tables (`mastra_workflow_snapshot`, `mastra_threads`, `mastra_messages`, etc.).
 

@@ -1,21 +1,20 @@
 # Go SDK — API Reference
 
 > `import "github.com/brainlet/brainkit/sdk"`
-> `import "github.com/brainlet/brainkit/sdk/messages"`
 
 ## Interfaces
 
 ```go
 type Runtime interface {
     PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (correlationID string, err error)
-    SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (cancel func(), err error)
+    SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (cancel func(), err error)
     Close() error
 }
 
 type CrossNamespaceRuntime interface {
     Runtime
     PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (correlationID string, err error)
-    SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (cancel func(), err error)
+    SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (cancel func(), err error)
 }
 
 type Replier interface {
@@ -23,18 +22,18 @@ type Replier interface {
 }
 ```
 
-Kernel and Node implement all three. Plugin clients implement only Runtime.
+Kit implements all three. Plugin clients implement only Runtime.
 
 ## Core Functions
 
 ```go
-func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
-func Emit[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
-func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, messages.Message)) (func(), error)
-func Reply(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
-func SendChunk(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
+func Publish[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
+func Emit[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
+func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, sdk.Message)) (func(), error)
+func Reply(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
+func SendChunk(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
 func SendToService(rt Runtime, ctx context.Context, service, topic string, payload any, opts ...PublishOption) (PublishResult, error)
-func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
+func PublishTo[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
 ## Types
@@ -77,7 +76,7 @@ var ErrNotReplier error         // runtime doesn't implement Replier
 var ErrNotCrossNamespace error  // runtime doesn't support cross-Kit
 ```
 
-## Message Types — sdk/messages/
+## Message Types — sdk/
 
 ### BrainkitMessage interface
 
@@ -237,7 +236,7 @@ func WithDescription(desc string) PluginOption
 
 func Tool[In, Out any](p *Plugin, name, description string, handler func(ctx context.Context, client Client, in In) (Out, error))
 func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event E, client Client))
-func Event[E messages.BrainkitMessage](p *Plugin, description string)
+func Event[E sdk.BrainkitMessage](p *Plugin, description string)
 func Intercept(p *Plugin, name string, priority int, topicFilter string, handler func(ctx context.Context, msg InterceptMessage) (*InterceptMessage, error))
 
 func (p *Plugin) OnStart(fn func(Client) error)

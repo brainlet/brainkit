@@ -15,31 +15,28 @@ brainkit supports 6 Watermill transport backends. GoChannel (in-process) is the 
 
 ## Configuration
 
-Transports are configured on Node via `MessagingConfig`:
+Transports are configured via `Config.Transport` and related fields:
 
 ```go
-n, err := kit.NewNode(kit.NodeConfig{
-    Kernel: kit.KernelConfig{...},
-    Messaging: kit.MessagingConfig{
-        Transport:   "nats",
-        NATSURL:     "nats://localhost:4222",
-        NATSName:    "my-app",        // durable prefix for JetStream consumers
-    },
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: "nats",
+    NATSURL:   "nats://localhost:4222",
+    NATSName:  "my-app",        // durable prefix for JetStream consumers
 })
 ```
 
-Full config:
+Transport-related fields in `brainkit.Config`:
 
 ```go
-type MessagingConfig struct {
-    Transport   string // "memory", "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
-    NATSURL     string // "nats://localhost:4222"
-    NATSName    string // durable consumer prefix
-    AMQPURL     string // "amqp://guest:guest@localhost:5672/"
-    RedisURL    string // "redis://localhost:6379/0"
-    PostgresURL string // "postgres://user:pass@localhost:5432/brainkit?sslmode=disable"
-    SQLitePath  string // "/tmp/brainkit-bus.db" or ":memory:"
-}
+// Transport fields in brainkit.Config
+Transport   string // "memory", "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+NATSURL     string // "nats://localhost:4222"
+NATSName    string // durable consumer prefix
+AMQPURL     string // "amqp://guest:guest@localhost:5672/"
+RedisURL    string // "redis://localhost:6379/0"
+PostgresURL string // "postgres://user:pass@localhost:5432/brainkit?sslmode=disable"
+SQLitePath  string // "/tmp/brainkit-bus.db" or ":memory:"
 ```
 
 ## Topic Sanitizers
@@ -105,7 +102,7 @@ subscriber, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
 })
 ```
 
-`NewNode` waits up to 2 minutes for `router.Running()` to account for JetStream stream provisioning. If it times out, you get `TimeoutError{Operation: "router start (NATS JetStream provisioning)"}`.
+`brainkit.New` with Transport set waits up to 2 minutes for `router.Running()` to account for JetStream stream provisioning. If it times out, you get `TimeoutError{Operation: "router start (NATS JetStream provisioning)"}`.
 
 **NATS topic gotcha:** The original NATS JetStream hanging issue was caused by dots in stream names. The `TopicSanitizer` (dots → dashes) fixes this. If you ever bypass the sanitizer, streams with dots in their names will hang during auto-provisioning.
 

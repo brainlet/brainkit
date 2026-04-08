@@ -180,6 +180,6 @@ The 16.5MB bundle breaks down roughly as:
 
 ## The AS Compiler's Separate Bundle (Dormant)
 
-The AssemblyScript compiler (`internal/embed/compiler/`) has its own bundle and its own QuickJS runtime. It is **dormant** — not wired to the Kernel or exposed through any bus commands. It remains as a Go library for potential future use (sandboxed computation, user-submitted modules).
+The AssemblyScript compiler (`internal/embed/compiler/`) has its own bundle and its own QuickJS runtime. It is **dormant** — not wired to the Kit or exposed through any bus commands. It remains as a Go library for potential future use (sandboxed computation, user-submitted modules).
 
 The compiler bundle has a separate, simpler `build.mjs` with only `fs` and `crypto` stubs (no Mastra, no AI SDK).

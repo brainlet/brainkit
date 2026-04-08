@@ -1,6 +1,6 @@
 # Go SDK
 
-The SDK package (`sdk/`) is the public Go API for interacting with brainkit. It works with any `sdk.Runtime` — Kernel, Node, or plugin client.
+The SDK package (`sdk/`) is the public Go API for interacting with brainkit. It works with any `sdk.Runtime` — Kit or plugin client.
 
 ## The Async Pattern
 
@@ -8,12 +8,12 @@ brainkit is pure async pub/sub. Every operation follows the same pattern:
 
 ```go
 // 1. Publish — returns routing info
-pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "echo", Input: input})
+pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: input})
 
 // 2. Subscribe to the reply topic
-done := make(chan messages.ToolCallResp, 1)
-unsub, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr.ReplyTo,
-    func(resp messages.ToolCallResp, msg messages.Message) {
+done := make(chan sdk.ToolCallResp, 1)
+unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr.ReplyTo,
+    func(resp sdk.ToolCallResp, msg sdk.Message) {
         done <- resp
     })
 defer unsub()
@@ -34,7 +34,7 @@ There is no `AskSync`, no `PublishAwait`, no blocking helper. You always publish
 ### Publish — typed request with replyTo
 
 ```go
-func Publish[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
+func Publish[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
 Sends a typed message. Generates a correlationID and replyTo topic automatically.
@@ -51,13 +51,13 @@ type PublishResult struct {
 ### Emit — fire-and-forget
 
 ```go
-func Emit[T messages.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
+func Emit[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
 ```
 
 Sends a typed message with no replyTo. No response expected.
 
 ```go
-sdk.Emit(rt, ctx, messages.KitDeployedEvent{
+sdk.Emit(rt, ctx, sdk.KitDeployedEvent{
     Source:    "my-service.ts",
     Resources: resources,
 })
@@ -66,7 +66,7 @@ sdk.Emit(rt, ctx, messages.KitDeployedEvent{
 ### SubscribeTo — typed subscription
 
 ```go
-func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, messages.Message)) (func(), error)
+func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, sdk.Message)) (func(), error)
 ```
 
 Subscribes to a topic and deserializes messages into type T. Returns a cancel function. The subscription is active before SubscribeTo returns (contract: no race between publish and subscribe).
@@ -74,7 +74,7 @@ Subscribes to a topic and deserializes messages into type T. Returns a cancel fu
 ### Reply — respond to a message
 
 ```go
-func Reply(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
+func Reply(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
 ```
 
 Sends a final response to the message's replyTo topic. Sets `done=true` in metadata. Returns `ErrNoReplyTo` if the message has no replyTo (was emitted, not published). Returns `ErrNotReplier` if the runtime doesn't implement the Replier interface.
@@ -82,7 +82,7 @@ Sends a final response to the message's replyTo topic. Sets `done=true` in metad
 ### SendChunk — intermediate streaming response
 
 ```go
-func SendChunk(rt Runtime, ctx context.Context, msg messages.Message, payload any) error
+func SendChunk(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
 ```
 
 Same as Reply but sets `done=false`. Use for streaming patterns where multiple responses precede a final Reply.
@@ -90,7 +90,7 @@ Same as Reply but sets `done=false`. Use for streaming patterns where multiple r
 ```go
 // Pattern from test/bus/sdk_reply_test.go
 sdk.SubscribeTo[json.RawMessage](rt, ctx, "request.topic",
-    func(payload json.RawMessage, msg messages.Message) {
+    func(payload json.RawMessage, msg sdk.Message) {
         sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 1})
         sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 2})
         sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 3})
@@ -117,10 +117,10 @@ pr, err := sdk.SendToService(rt, ctx, "calc.ts", "add", map[string]int{"a": 17, 
 ### PublishTo — cross-Kit
 
 ```go
-func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
+func PublishTo[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
-Publishes to a specific Kit's namespace. Requires `CrossNamespaceRuntime` (Kernel or Node, not plugin client). See [cross-kit.md](../concepts/cross-kit.md).
+Publishes to a specific Kit's namespace. Requires `CrossNamespaceRuntime` (Kit, not plugin client). See [cross-kit.md](../concepts/cross-kit.md).
 
 ### WithReplyTo — override reply topic
 
@@ -134,7 +134,7 @@ pr, err := sdk.SendToService(rt, ctx, "streamer.ts", "stream",
 
 ## Typed Message Pairs
 
-Every command has a request type and a response type in `sdk/messages/`:
+Every command has a request type and a response type in `sdk/`:
 
 | Request | Response | Topic |
 |---------|----------|-------|
@@ -173,7 +173,7 @@ Every command has a request type and a response type in `sdk/messages/`:
 For topics not in the command catalog (user-defined services, custom events):
 
 ```go
-pr, err := sdk.Publish(rt, ctx, messages.CustomMsg{
+pr, err := sdk.Publish(rt, ctx, sdk.CustomMsg{
     Topic:   "my-custom-topic",
     Payload: json.RawMessage(`{"hello":"world"}`),
 })
@@ -186,9 +186,9 @@ pr, err := sdk.Publish(rt, ctx, messages.CustomMsg{
 Fire-and-forget events:
 
 ```go
-sdk.Emit(rt, ctx, messages.KitDeployedEvent{Source: "my-service.ts"})
-sdk.Emit(rt, ctx, messages.KitTeardownedEvent{Source: "my-service.ts", Removed: 3})
-sdk.Emit(rt, ctx, messages.PluginRegisteredEvent{Owner: "acme", Name: "cron", Version: "1.0.0", Tools: 5})
+sdk.Emit(rt, ctx, sdk.KitDeployedEvent{Source: "my-service.ts"})
+sdk.Emit(rt, ctx, sdk.KitTeardownedEvent{Source: "my-service.ts", Removed: 3})
+sdk.Emit(rt, ctx, sdk.PluginRegisteredEvent{Owner: "acme", Name: "cron", Version: "1.0.0", Tools: 5})
 ```
 
 ## Generated Typed Wrappers
@@ -197,10 +197,10 @@ sdk.Emit(rt, ctx, messages.PluginRegisteredEvent{Owner: "acme", Name: "cron", Ve
 
 ```go
 // These are thin aliases — no additional logic
-pr, err := sdk.PublishToolCall(rt, ctx, messages.ToolCallMsg{...})
+pr, err := sdk.PublishToolCall(rt, ctx, sdk.ToolCallMsg{...})
 unsub, err := sdk.SubscribeToolCallResp(rt, ctx, pr.ReplyTo, handler)
 
-pr, err := sdk.PublishKitDeploy(rt, ctx, messages.KitDeployMsg{...})
+pr, err := sdk.PublishKitDeploy(rt, ctx, sdk.KitDeployMsg{...})
 unsub, err := sdk.SubscribeKitDeployResp(rt, ctx, pr.ReplyTo, handler)
 ```
 
@@ -242,17 +242,17 @@ See [error-handling.md](../concepts/error-handling.md) for the full error type i
 ```go
 type Runtime interface {
     PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (correlationID string, err error)
-    SubscribeRaw(ctx context.Context, topic string, handler func(messages.Message)) (cancel func(), err error)
+    SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (cancel func(), err error)
     Close() error
 }
 ```
 
-Kernel, Node, and plugin clients all implement this. Code that takes `sdk.Runtime` works with any of them.
+Kit and plugin clients both implement this. Code that takes `sdk.Runtime` works with either.
 
 ## The Message Envelope
 
 ```go
-// sdk/messages/bus.go
+// sdk/bus.go
 type Message struct {
     Topic    string            `json:"topic"`
     Payload  []byte            `json:"payload"`

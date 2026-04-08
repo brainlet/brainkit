@@ -106,7 +106,7 @@ The bus lifecycle is entirely in Go: `context.WithTimeout` (reliable, not GC-dep
 ```go
 // Pattern from test/fixtures/ts_test.go — auto-approver
 cancel, err := sdk.SubscribeTo[json.RawMessage](rt, ctx, "approvals.pending",
-    func(payload json.RawMessage, msg messages.Message) {
+    func(payload json.RawMessage, msg sdk.Message) {
         // payload: {"runId":"...", "toolCallId":"...", "toolName":"delete-record", "args":{"id":"xyz-789"}}
 
         var request struct {
@@ -235,7 +235,7 @@ kit.register("workflow", "doc-review", wf);
 ### Resuming from Go
 
 ```go
-sdk.Publish(k, ctx, messages.WorkflowResumeMsg{
+sdk.Publish(k, ctx, sdk.WorkflowResumeMsg{
     Name:       "doc-review",
     RunID:      runId,
     Step:       "review",
@@ -263,4 +263,4 @@ bus.publish("workflow.resume", {
 | Resume data | `{approved: bool}` | Any shape (per `resumeSchema`) |
 | Bus lifecycle | Go bridge handles publish/subscribe/timeout | Workflow author controls notification |
 | Timeout | Built-in (Go context.WithTimeout) | No built-in timeout — stays suspended until resumed |
-| Persistence | In-memory only | Snapshot persisted to storage — survives Kernel restart |
+| Persistence | In-memory only | Snapshot persisted to storage — survives Kit restart |

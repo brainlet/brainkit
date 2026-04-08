@@ -81,8 +81,8 @@ Providers: openai, anthropic, google, mistral, groq, deepseek, xai, cerebras, pe
 ### Storage / Vector Resolution
 
 ```typescript
-function storage(name: string): StorageInstance;     // from KernelConfig.Storages
-function vectorStore(name: string): VectorStoreInstance; // from KernelConfig.Vectors
+function storage(name: string): StorageInstance;     // from Config.Storages
+function vectorStore(name: string): VectorStoreInstance; // from Config.Vectors
 ```
 
 ### Registry
@@ -135,7 +135,7 @@ const { bytesRead, buffer } = await fh.read(buf, 0, buf.length, 0);
 await fh.close();
 ```
 
-All paths resolve relative to `KernelConfig.FSRoot` with workspace escape protection.
+All paths resolve relative to `Config.FSRoot` with workspace escape protection.
 
 ### MCP
 

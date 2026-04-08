@@ -4,25 +4,25 @@ All communication in brainkit flows through a message bus built on Watermill. Go
 
 ## The Command Catalog
 
-The bus isn't a free-form pub/sub system. It has a typed command catalog — a fixed set of topics, each with a request type, a response type, and a Go handler. The catalog is defined once in `kit/catalog.go` and used by both Kernel (standalone) and Node (transport-connected).
+The bus isn't a free-form pub/sub system. It has a typed command catalog — a fixed set of topics, each with a request type, a response type, and a Go handler. The catalog is defined once in `kit/catalog.go` and used by both standalone and transport-connected Kit.
 
 ```go
 // kit/catalog.go — simplified
 specs := []commandSpec{
-    kernelCommand(func(ctx context.Context, k *Kernel, req messages.ToolCallMsg) (*messages.ToolCallResp, error) {
+    kitCommand(func(ctx context.Context, k *Kit, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
         return k.toolsDomain.Call(ctx, req)
     }),
-    kernelCommand(func(ctx context.Context, k *Kernel, req messages.KitDeployMsg) (*messages.KitDeployResp, error) {
+    kitCommand(func(ctx context.Context, k *Kit, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
         return k.lifecycle.Deploy(ctx, req)
     }),
-    nodeCommand(func(ctx context.Context, n *Node, req messages.PluginManifestMsg) (*messages.PluginManifestResp, error) {
-        return n.processPluginManifest(ctx, req)
+    transportCommand(func(ctx context.Context, k *Kit, req sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
+        return k.processPluginManifest(ctx, req)
     }),
     // ... 30+ commands total
 }
 ```
 
-Each command has a topic (from `BusTopic()` on the message type), a decoder, and a handler. `kernelCommand` commands run on any Kernel. `nodeCommand` commands only run on a Node (they need plugin infrastructure).
+Each command has a topic (from `BusTopic()` on the message type), a decoder, and a handler. `kitCommand` commands run on any Kit. `transportCommand` commands only run on a Kit with Transport set (they need plugin infrastructure).
 
 ### Current command topics
 
@@ -40,16 +40,16 @@ Each command has a topic (from `BusTopic()` on the message type), a decoder, and
 | `metrics.get` | | Catalog (inline) |
 | `trace.*` | get, list | Catalog (inline) |
 | `rbac.*` | assign, revoke, list, roles | Catalog (inline) |
-| `peers.*` | list, resolve (Node only) | Catalog (inline) |
+| `peers.*` | list, resolve (transport-connected Kit only) | Catalog (inline) |
 | `test.run` | | TestingDomain |
-| `plugin.*` | manifest, state.get, state.set, start, stop, restart, list, status (Node only) | PluginLifecycleDomain |
+| `plugin.*` | manifest, state.get, state.set, start, stop, restart, list, status (transport-connected Kit only) | PluginLifecycleDomain |
 | `gateway.http.*` | route.add, route.remove, route.list, status | Gateway (bus subscriber) |
 
 Topics NOT in the catalog are user-defined — `.ts` services use `bus.on("topic")` to create mailbox handlers, WASM shards register handlers via `bus_on`, and Go code can subscribe with `sdk.SubscribeTo`. These bypass the catalog entirely.
 
 ### How commands are routed
 
-When `sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "echo", Input: ...})` is called:
+When `sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: ...})` is called:
 
 1. `sdk.Publish` marshals the message, generates a correlationID and replyTo topic, stamps them in context
 2. `RemoteClient.PublishRaw` resolves the namespace+topic, applies the transport's topic sanitizer, publishes via Watermill
@@ -69,10 +69,10 @@ When JS code calls `__go_brainkit_request("tools.call", payload)`, it doesn't go
 // kit/local_invoker.go
 func (i *LocalInvoker) Invoke(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
     spec, ok := commandCatalog().Lookup(topic)
-    if !ok || spec.invokeKernel == nil {
+    if !ok || spec.invokeKit == nil {
         return nil, fmt.Errorf("unknown topic: %s", topic)
     }
-    return spec.invokeKernel(ctx, i.kernel, payload)
+    return spec.invokeKit(ctx, i.kit, payload)
 }
 ```
 
@@ -84,12 +84,12 @@ brainkit uses pure async pub/sub. There is no blocking `AskSync`, no `PublishAwa
 
 ```go
 // 1. Publish — returns routing info
-pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "echo", Input: input})
+pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: input})
 
 // 2. Subscribe to the replyTo topic
-done := make(chan messages.ToolCallResp, 1)
-unsub, err := sdk.SubscribeTo[messages.ToolCallResp](rt, ctx, pr.ReplyTo,
-    func(resp messages.ToolCallResp, msg messages.Message) {
+done := make(chan sdk.ToolCallResp, 1)
+unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr.ReplyTo,
+    func(resp sdk.ToolCallResp, msg sdk.Message) {
         done <- resp
     })
 defer unsub()
@@ -109,7 +109,7 @@ For convenience, the SDK provides typed wrappers like `sdk.PublishToolCall` and 
 
 ## Transport Backends
 
-Six Watermill backends are supported. The transport is configured on Node (or injected into Kernel):
+Six Watermill backends are supported. The transport is configured via `Config.Transport`:
 
 | Backend | Config Type | Topic Sanitizer | Container |
 |---------|------------|-----------------|-----------|
@@ -134,11 +134,11 @@ GoChannel and Redis accept any string — no sanitization needed.
 
 NATS uses JetStream with auto-provisioning. Each subscriber gets a durable consumer with a queue group. The `SubjectCalculator` maps topics to NATS subjects (replacing dots with dashes). The `DurablePrefix` is sanitized from the `NATSName` config.
 
-Auto-provisioning means the first subscriber to a topic creates a JetStream stream. This can be slow — up to 30 seconds per topic on cold start. `NewNode` waits up to 2 minutes for `router.Running()` to account for this.
+Auto-provisioning means the first subscriber to a topic creates a JetStream stream. This can be slow — up to 30 seconds per topic on cold start. Kit with Transport set waits up to 2 minutes for `router.Running()` to account for this.
 
 ## Namespace Routing
 
-Every Kernel has a namespace (default: `"user"`). All topics are prefixed with the namespace before hitting the transport:
+Every Kit has a namespace (default: `"user"`). All topics are prefixed with the namespace before hitting the transport:
 
 ```
 Logical topic: tools.call
@@ -221,5 +221,5 @@ bus.sendTo("other-service.ts", "topic", data);
 bus.unsubscribe(subId);
 ```
 
-Each of these calls a Go bridge function (`__go_brainkit_bus_publish`, `__go_brainkit_bus_emit`, etc.) which interacts with the Kernel's RemoteClient and transport.
+Each of these calls a Go bridge function (`__go_brainkit_bus_publish`, `__go_brainkit_bus_emit`, etc.) which interacts with the Kit's RemoteClient and transport.
 

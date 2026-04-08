@@ -19,15 +19,15 @@ Cross-Kit communication lets Kit A send a message to Kit B's namespace. Kit B's 
 type CrossNamespaceRuntime interface {
     Runtime
     PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (correlationID string, err error)
-    SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(messages.Message)) (cancel func(), err error)
+    SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (cancel func(), err error)
 }
 ```
 
-Kernel and Node implement this. Plugin clients do NOT — plugins talk to their host Kit only.
+Both standalone and transport-connected Kit implement this. Plugin clients do NOT — plugins talk to their host Kit only.
 
 ## How Namespace Routing Works
 
-Every Kit has a namespace (from `KernelConfig.Namespace`, default `"user"`). When a Kit publishes to topic `tools.call`, the RemoteClient prefixes it with the namespace:
+Every Kit has a namespace (from `Config.Namespace`, default `"user"`). When a Kit publishes to topic `tools.call`, the RemoteClient prefixes it with the namespace:
 
 ```
 Logical: tools.call
@@ -53,21 +53,21 @@ The SDK provides a typed generic function:
 
 ```go
 // sdk/cross.go
-func PublishTo[T messages.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
+func PublishTo[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
 ```
 
 Example — Kit A sends a tool call to Kit B:
 
 ```go
 // Kit A (namespace: "kit-a")
-pr, err := sdk.PublishTo(kitA, ctx, "kit-b", messages.ToolCallMsg{
+pr, err := sdk.PublishTo(kitA, ctx, "kit-b", sdk.ToolCallMsg{
     Name:  "echo",
     Input: map[string]string{"message": "hello from kit-a"},
 })
 
 // Subscribe to replyTo — comes back on kit-a's namespace
-unsub, err := sdk.SubscribeTo[messages.ToolCallResp](kitA, ctx, pr.ReplyTo,
-    func(resp messages.ToolCallResp, msg messages.Message) {
+unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](kitA, ctx, pr.ReplyTo,
+    func(resp sdk.ToolCallResp, msg sdk.Message) {
         fmt.Println("response:", string(resp.Result))
     })
 defer unsub()
@@ -79,7 +79,7 @@ To send a message to a .ts service deployed on another Kit, use `PublishTo` with
 
 ```go
 // Kit A sends to Kit B's "greeter.ts" service
-pr, err := sdk.PublishTo(kitA, ctx, "kit-b", messages.CustomMsg{
+pr, err := sdk.PublishTo(kitA, ctx, "kit-b", sdk.CustomMsg{
     Topic:   "ts.greeter.greet",
     Payload: json.RawMessage(`{"name":"world"}`),
 })
@@ -133,4 +133,4 @@ d.Register(discovery.Peer{Name: "kit-a", Address: "10.0.1.1:9001"})
 | WASM→Plugin | WASM calls plugin tool across Kits |
 | Chain (A→B→C) | Three-Kit chain — message flows through all three |
 
-All tests use `testutil.NewTestKernelPairFull` which creates two Kernels on the same NATS transport with different namespaces.
+All tests use `testutil.NewTestKernelPairFull` which creates two Kits on the same NATS transport with different namespaces.

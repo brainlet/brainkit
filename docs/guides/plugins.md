@@ -95,16 +95,12 @@ Environment variables injected by the host:
 ## Host Configuration
 
 ```go
-n, err := kit.NewNode(kit.NodeConfig{
-    Kernel: kit.KernelConfig{
-        Namespace:    "my-app",
-        FSRoot: "/tmp/my-app",
-    },
-    Messaging: kit.MessagingConfig{
-        Transport: "nats",
-        NATSURL:   "nats://localhost:4222",
-    },
-    Plugins: []kit.PluginConfig{
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    FSRoot:    "/tmp/my-app",
+    Transport: "nats",
+    NATSURL:   "nats://localhost:4222",
+    Plugins: []brainkit.PluginConfig{
         {
             Name:        "my-plugin",
             Binary:      "./my-plugin",          // path to compiled binary
@@ -140,7 +136,7 @@ Backoff is capped at 30 seconds. Each crash logs the exit code and signal:
 [plugin:my-plugin] restarted (pid=12345, restart #2)
 ```
 
-During intentional shutdown (`Node.Close`), the `stopping` flag prevents auto-restart. The host sends SIGTERM, waits `ShutdownTimeout`, then SIGKILL if needed.
+During intentional shutdown (`Kit.Close`), the `stopping` flag prevents auto-restart. The host sends SIGTERM, waits `ShutdownTimeout`, then SIGKILL if needed.
 
 ## Plugin State
 
@@ -149,14 +145,14 @@ Plugins can persist key-value state through the bus:
 ```go
 p.OnStart(func(client sdk.Client) error {
     // Get state
-    pr, _ := sdk.Publish(client, ctx, messages.PluginStateGetMsg{Key: "counter"})
-    sdk.SubscribeTo[messages.PluginStateGetResp](client, ctx, pr.ReplyTo,
-        func(resp messages.PluginStateGetResp, msg messages.Message) {
+    pr, _ := sdk.Publish(client, ctx, sdk.PluginStateGetMsg{Key: "counter"})
+    sdk.SubscribeTo[sdk.PluginStateGetResp](client, ctx, pr.ReplyTo,
+        func(resp sdk.PluginStateGetResp, msg sdk.Message) {
             fmt.Println("counter:", resp.Value)
         })
 
     // Set state
-    sdk.Publish(client, ctx, messages.PluginStateSetMsg{Key: "counter", Value: "42"})
+    sdk.Publish(client, ctx, sdk.PluginStateSetMsg{Key: "counter", Value: "42"})
     return nil
 })
 ```

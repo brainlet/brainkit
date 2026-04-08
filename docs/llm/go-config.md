@@ -1,14 +1,16 @@
 # Go Config — API Reference
 
 > `import "github.com/brainlet/brainkit"`
-> `import "github.com/brainlet/brainkit/registry"`
+> `import "github.com/brainlet/brainkit/sdk"`
 
-## KernelConfig
+## Config
 
 ```go
-type KernelConfig struct {
+type Config struct {
     Namespace        string                                    // default: "user"
+    ClusterID        string                                    // cluster identity for horizontal scaling
     CallerID         string                                    // default: Namespace
+    RuntimeID        string                                    // auto-generated per process
     AIProviders      map[string]registry.AIProviderRegistration // explicit provider configs (auto-detected from env if empty)
     EnvVars          map[string]string                         // injected into JS process.env
     Storages         map[string]StorageConfig                  // SQLite, Postgres, etc.
@@ -33,27 +35,7 @@ type KernelConfig struct {
     BusRateLimits    map[string]float64                        // role → requests/sec
     PluginRegistries []RegistryConfig                          // plugin registry sources
     PluginDir        string                                    // local plugin cache
-    Transport        *messaging.Transport                      // injected by Node, nil for standalone
-    DeferRouterStart bool                                      // set by Node
-}
-```
-
-## NodeConfig
-
-```go
-type NodeConfig struct {
-    Kernel    KernelConfig
-    Messaging MessagingConfig
-    NodeID    string              // auto-generated UUID if empty
-    Namespace string              // overrides Kernel.Namespace if set
-    Plugins   []PluginConfig
-}
-```
-
-## MessagingConfig
-
-```go
-type MessagingConfig struct {
+    // Transport fields (flattened from former MessagingConfig)
     Transport   string // "memory", "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
     NATSURL     string
     NATSName    string // durable consumer prefix
@@ -61,6 +43,8 @@ type MessagingConfig struct {
     RedisURL    string
     PostgresURL string
     SQLitePath  string
+    // Plugin configuration
+    Plugins     []PluginConfig
 }
 ```
 
@@ -173,7 +157,7 @@ func (im *InstanceManager) Pools() []string
 func (im *InstanceManager) EvaluateAndScale()
 
 type PoolConfig struct {
-    Base         NodeConfig
+    Base         brainkit.Config
     InitialCount int
     Min, Max     int
     Strategy     ScalingStrategy

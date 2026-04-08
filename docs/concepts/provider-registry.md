@@ -7,21 +7,21 @@ The provider registry maps named configurations to runtime instances. When .ts c
 | Category | Go Registration | JS Resolution | Instance Created |
 |----------|----------------|---------------|-----------------|
 | AI Provider | Auto-detected from `os.Getenv` | `model(name, id)` / `provider(name)` | AI SDK provider factory (createOpenAI, etc.) |
-| Storage | `KernelConfig.Storages` | `storage(name)` | Mastra store (InMemoryStore, PostgresStore, etc.) |
-| Vector Store | `KernelConfig.Vectors` | `vectorStore(name)` | Mastra vector (LibSQLVector, PgVector, etc.) |
+| Storage | `brainkit.Config.Storages` | `storage(name)` | Mastra store (InMemoryStore, PostgresStore, etc.) |
+| Vector Store | `brainkit.Config.Vectors` | `vectorStore(name)` | Mastra vector (LibSQLVector, PgVector, etc.) |
 
 ## Go-Side Registration
 
-Providers are registered at Kernel creation time via typed config structs:
+Providers are registered at Kit creation time via typed config structs:
 
 ```go
 // AI providers are auto-detected from os.Getenv (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY)
-k, err := kit.NewKernel(kit.KernelConfig{
-    Vectors: map[string]kit.VectorConfig{
-        "main": kit.PgVectorStore("postgres://..."),
+k, err := brainkit.New(brainkit.Config{
+    Vectors: map[string]brainkit.VectorConfig{
+        "main": brainkit.PgVectorStore("postgres://..."),
     },
-    Storages: map[string]kit.StorageConfig{
-        "default": kit.InMemoryStorage(),
+    Storages: map[string]brainkit.StorageConfig{
+        "default": brainkit.InMemoryStorage(),
     },
 })
 ```
@@ -102,7 +102,7 @@ Most of these are type definitions waiting for bundle integration. Currently bun
 
 When .ts code calls `model("openai", "gpt-4o-mini")`, the flow is:
 
-1. `kit_runtime.js` `resolveModel(providerName, modelId)` reads from `globalThis.__kit_providers` (injected during Kernel init)
+1. `kit_runtime.js` `resolveModel(providerName, modelId)` reads from `globalThis.__kit_providers` (injected during Kit init)
 2. Looks up the provider factory name: `openai` → `createOpenAI`
 3. Calls `embed.createOpenAI({ apiKey: pc.APIKey, baseURL: pc.BaseURL })(modelId)`
 4. Returns a real AI SDK `LanguageModel` instance
@@ -134,10 +134,10 @@ result := k.ProbeAIProvider("openai")
 
 AI provider probes make an HTTP GET to `/models` with the provider's API key. Vector store and storage probes instantiate the store in JS and call a simple operation (`listIndexes()` for vectors, `listThreads({})` for storage).
 
-Periodic probing runs automatically if `KernelConfig.Probe.PeriodicInterval` is set:
+Periodic probing runs automatically if `Config.Probe.PeriodicInterval` is set:
 
 ```go
-kit.NewKernel(kit.KernelConfig{
+brainkit.New(brainkit.Config{
     Probe: registry.ProbeConfig{
         PeriodicInterval: 5 * time.Minute,
         Timeout:          10 * time.Second,

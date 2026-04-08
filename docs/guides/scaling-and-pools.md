@@ -8,15 +8,11 @@
 im := kit.NewInstanceManager()
 
 err := im.SpawnPool("workers", kit.PoolConfig{
-    Base: kit.NodeConfig{
-        Kernel: kit.KernelConfig{
-            Namespace:    "workers",
-            FSRoot: "/tmp/workers",
-        },
-        Messaging: kit.MessagingConfig{
-            Transport: "nats",
-            NATSURL:   "nats://localhost:4222",
-        },
+    Base: brainkit.Config{
+        Namespace: "workers",
+        FSRoot:    "/tmp/workers",
+        Transport: "nats",
+        NATSURL:   "nats://localhost:4222",
     },
     InitialCount: 3,     // start with 3 instances
     Min:          1,      // never scale below 1
@@ -25,7 +21,7 @@ err := im.SpawnPool("workers", kit.PoolConfig{
 })
 ```
 
-Each instance is a full Node with its own Kernel (QuickJS runtime, tool registry). Instances in the same pool share a `ToolRegistry` — tools registered on one are visible on all.
+Each instance is a full Kit with its own QuickJS runtime and tool registry. Instances in the same pool share a `ToolRegistry` — tools registered on one are visible on all.
 
 ## Manual Scaling
 
@@ -43,7 +39,7 @@ err := im.Scale("workers", -100)
 // Pool now has 0 instances (not an error)
 ```
 
-Scaling down closes instances in LIFO order (last spawned, first closed). Each close shuts down the full Kernel lifecycle — QuickJS freed, transport closed, goroutines stopped.
+Scaling down closes instances in LIFO order (last spawned, first closed). Each close shuts down the full Kit lifecycle — QuickJS freed, transport closed, goroutines stopped.
 
 ## Pool Info
 
@@ -167,11 +163,10 @@ registry.Register(sharedTools, "process-order", registry.TypedTool[OrderInput]{
 })
 
 err := im.SpawnPool("workers", kit.PoolConfig{
-    Base: kit.NodeConfig{
-        Kernel: kit.KernelConfig{
-            SharedTools: sharedTools,
-            // ...
-        },
+    Base: brainkit.Config{
+        SharedTools: sharedTools,
+        Transport:   "nats",
+        NATSURL:     "nats://localhost:4222",
         // ...
     },
     InitialCount: 3,

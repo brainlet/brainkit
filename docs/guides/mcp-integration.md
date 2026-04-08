@@ -4,10 +4,10 @@ brainkit connects to MCP (Model Context Protocol) servers and registers their to
 
 ## Configuration
 
-MCP servers are configured on KernelConfig:
+MCP servers are configured on Config:
 
 ```go
-k, err := kit.NewKernel(kit.KernelConfig{
+kit, err := brainkit.New(brainkit.Config{
     MCPServers: map[string]mcp.ServerConfig{
         "filesystem": {
             Command: "npx",
@@ -29,7 +29,7 @@ Two transport types:
 
 ## What Happens at Init
 
-During `NewKernel`, for each MCP server config:
+During `brainkit.New`, for each MCP server config:
 
 1. Client connects (starts subprocess or opens HTTP connection)
 2. MCP Initialize handshake (protocol version, capabilities)
@@ -61,7 +61,7 @@ After init, MCP tools appear in `tools.list` alongside Go-registered and .ts-reg
 
 ```go
 // Via the standard tool call mechanism
-pr, _ := sdk.Publish(rt, ctx, messages.ToolCallMsg{
+pr, _ := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
     Name:  "read_file",  // short name resolution finds mcp/filesystem@1.0.0/read_file
     Input: map[string]any{"path": "/tmp/test.txt"},
 })
@@ -88,7 +88,7 @@ const fsTools = mcp.listTools("filesystem");
 ```
 
 ```go
-pr, _ := sdk.Publish(rt, ctx, messages.McpListToolsMsg{Server: "filesystem"})
+pr, _ := sdk.Publish(rt, ctx, sdk.McpListToolsMsg{Server: "filesystem"})
 ```
 
 ## Bus Topics
@@ -120,7 +120,7 @@ Compiled and launched by the test helper:
 
 ```go
 binary := testutil.BuildTestMCP(t)
-k, _ := kit.NewKernel(kit.KernelConfig{
+kit, _ := brainkit.New(brainkit.Config{
     MCPServers: map[string]mcp.ServerConfig{
         "test": {Command: binary},
     },
@@ -131,7 +131,7 @@ k, _ := kit.NewKernel(kit.KernelConfig{
 
 ```go
 // No MCP servers configured
-pr, _ := sdk.Publish(rt, ctx, messages.McpListToolsMsg{})
+pr, _ := sdk.Publish(rt, ctx, sdk.McpListToolsMsg{})
 // Response error: ErrMCPNotConfigured ("mcp: no MCP servers configured")
 
 // Server not connected
@@ -141,6 +141,6 @@ mcp.callTool("nonexistent", "tool", {})
 
 ## Limitations
 
-- MCP connections are established at Kernel init time. Runtime connect/disconnect requires Kernel restart.
+- MCP connections are established at Kit init time. Runtime connect/disconnect requires Kit restart.
 - Only the tool primitive is supported. MCP resources, prompts, and sampling are not yet integrated.
 - MCP server stdout (beyond the JSON-RPC protocol) is not captured.

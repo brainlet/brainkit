@@ -5,7 +5,7 @@ A .ts service is a TypeScript file deployed into a SES Compartment that subscrib
 ## The Service Pattern
 
 ```typescript
-// Deploy this via sdk.Publish(rt, ctx, messages.KitDeployMsg{Source: "my-service.ts", Code: ...})
+// Deploy this via sdk.Publish(rt, ctx, sdk.KitDeployMsg{Source: "my-service.ts", Code: ...})
 
 // bus.on subscribes to the deployment mailbox: ts.my-service.<topic>
 bus.on("greet", async (msg) => {
@@ -336,4 +336,4 @@ console.log("starting up");  // [my-service.ts] [log] starting up
 console.error("something broke"); // [my-service.ts] [error] something broke
 ```
 
-Routed through `KernelConfig.LogHandler` if set, otherwise printed via `log.Printf`.
+Routed through `Config.LogHandler` if set, otherwise printed via `log.Printf`.

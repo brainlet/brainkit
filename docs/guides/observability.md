@@ -41,14 +41,14 @@ kit, err := brainkit.New(brainkit.Config{
 | Source format | Origin |
 |---------------|--------|
 | `my-service.ts` | .ts Compartment console.log/warn/error |
-| `kernel` | Internal Kernel operations |
+| `kernel` | Internal Kit operations |
 
 ## Observability (Mastra Tracing)
 
 Mastra's `Observability` class provides trace collection with exporters:
 
 ```typescript
-// From kit_runtime.js — auto-configured during Kernel init
+// From kit_runtime.js — auto-configured during Kit init
 const obs = new Observability({
     configs: {
         default: {
@@ -65,8 +65,8 @@ const obs = new Observability({
 ### Configuration from Go
 
 ```go
-k, err := kit.NewKernel(kit.KernelConfig{
-    Observability: kit.ObservabilityConfig{
+kit, err := brainkit.New(brainkit.Config{
+    Observability: brainkit.ObservabilityConfig{
         Enabled:     &enabled,     // default: true
         Strategy:    "realtime",   // "realtime" or "batch"
         ServiceName: "my-service", // default: "brainkit"

@@ -93,7 +93,7 @@ All operations flow through the bus. Current handlers:
 | `package.*` | deploy, teardown, redeploy, list, info | Package deployment |
 | `plugin.*` | manifest, state.get/set, start, stop, restart, list, status | Plugin lifecycle |
 | `rbac.*` | assign, revoke, list, roles | RBAC administration |
-| `metrics.get` | | Kernel metrics |
+| `metrics.get` | | Kit metrics |
 | `trace.*` | get, list | Distributed tracing |
 | `test.run` | | Test framework |
 | `peers.*` | list, resolve | Peer discovery |

@@ -18,7 +18,7 @@ type NotFoundError struct {
 ```
 
 ```go
-pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "nonexistent"})
+pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "nonexistent"})
 // ...
 var notFound *sdk.NotFoundError
 if errors.As(err, &notFound) {
@@ -95,7 +95,7 @@ if errors.As(err, &timeout) {
 }
 ```
 
-Used in: plugin manifest registration (30s), plugin READY line (StartTimeout), Node router start (2 minutes for NATS JetStream auto-provisioning).
+Used in: plugin manifest registration (30s), plugin READY line (StartTimeout), transport-connected Kit router start (2 minutes for NATS JetStream auto-provisioning).
 
 ### WorkspaceEscapeError
 
@@ -115,7 +115,7 @@ if errors.As(err, &escape) {
 }
 ```
 
-Used in: all fs.* operations when the resolved path is outside `KernelConfig.FSRoot`.
+Used in: all fs.* operations when the resolved path is outside `Config.FSRoot`.
 
 ## Sentinel Errors
 
@@ -126,15 +126,15 @@ Nine sentinel errors for fixed conditions. Check with `errors.Is(err, sentinel)`
 | Sentinel | When | Where |
 |----------|------|-------|
 | `sdk.ErrNoReplyTo` | Message has no replyTo metadata | `sdk.Reply`, `sdk.SendChunk` — the message was fire-and-forget (emitted, not published) |
-| `sdk.ErrNotReplier` | Runtime doesn't implement Replier | `sdk.Reply`, `sdk.SendChunk` — the runtime can't send responses (shouldn't happen with Kernel/Node) |
+| `sdk.ErrNotReplier` | Runtime doesn't implement Replier | `sdk.Reply`, `sdk.SendChunk` — the runtime can't send responses (shouldn't happen with Kit) |
 | `sdk.ErrNotCrossNamespace` | Runtime doesn't support cross-Kit | `sdk.PublishTo` — plugin clients don't implement CrossNamespaceRuntime |
 
 ### Kit sentinels (kit/errors.go)
 
 | Sentinel | When | Where |
 |----------|------|-------|
-| `kit.ErrNoWorkspace` | FSRoot not configured | All fs.* operations — set `KernelConfig.FSRoot` |
-| `kit.ErrMCPNotConfigured` | No MCP servers registered | `mcp.listTools`, `mcp.callTool` — set `KernelConfig.MCPServers` |
+| `kit.ErrNoWorkspace` | FSRoot not configured | All fs.* operations — set `Config.FSRoot` |
+| `kit.ErrMCPNotConfigured` | No MCP servers registered | `mcp.listTools`, `mcp.callTool` — set `Config.MCPServers` |
 | `kit.ErrCommandTopic` | Event emitted on command topic | `bus.emit` called with a catalog command topic like "tools.call" — use `bus.publish` instead |
 
 ### Internal sentinels
@@ -150,7 +150,7 @@ Nine sentinel errors for fixed conditions. Check with `errors.Is(err, sentinel)`
 ### Handling tool calls
 
 ```go
-pr, err := sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: name, Input: input})
+pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: name, Input: input})
 if err != nil {
     var notFound *sdk.NotFoundError
     var valErr *sdk.ValidationError

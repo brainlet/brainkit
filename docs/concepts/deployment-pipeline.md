@@ -166,7 +166,7 @@ Tracked resource types:
 1. Iterates all resources registered by this source file in LIFO order
 2. For each resource, calls the cleanup function stored at registration time (unregister tools, unsubscribe bus handlers, etc.)
 3. Drops the Compartment reference (`delete globalThis.__kit_compartments[source]`)
-4. Removes the deployment entry from the Kernel's tracking map
+4. Removes the deployment entry from the Kit's tracking map
 
 Teardown is idempotent — tearing down a source that was never deployed returns 0.
 
@@ -176,10 +176,10 @@ Teardown is idempotent — tearing down a source that was never deployed returns
 
 ## The EvalTS Wrapper
 
-All .ts evaluation goes through `Kernel.EvalTS`, which wraps user code with source tracking:
+All .ts evaluation goes through `Kit.EvalTS`, which wraps user code with source tracking:
 
 ```go
-func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
+func (k *Kit) EvalTS(ctx context.Context, filename, code string) (string, error) {
     wrapped := fmt.Sprintf(`(async () => {
         return await globalThis.__kitRunWithSource(%q, async () => {
             const { bus, kit, model, provider, storage, vectorStore, registry, tools, fs, mcp, output } = globalThis.__kit;

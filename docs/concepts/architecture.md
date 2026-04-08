@@ -8,13 +8,13 @@ The traditional approach to AI agent platforms is a microservice mesh: separate 
 
 brainkit takes the opposite approach: everything runs in one OS process. The JS runtime (QuickJS) is embedded in Go via CGo. The message bus (Watermill) routes messages in-process by default, with optional external transports (NATS, Redis, AMQP, Postgres, SQLite) for multi-node deployments. TypeScript transpilation happens natively in Go via a vendored microsoft/typescript-go.
 
-This means a tool call from an AI agent doesn't leave the process. A `.ts` service publishing to the bus doesn't cross a network boundary. Everything is function calls and channels until you explicitly opt into distributed communication via a Node with an external transport.
+This means a tool call from an AI agent doesn't leave the process. A `.ts` service publishing to the bus doesn't cross a network boundary. Everything is function calls and channels until you explicitly opt into distributed communication via a Kit with Transport set.
 
-## Two Runtime Types
+## Two Runtime Modes
 
-### Kernel
+### Standalone Kit
 
-The Kernel is the local runtime. It owns all state:
+The standalone Kit is the local runtime. It owns all state:
 
 - One QuickJS runtime with SES lockdown, Mastra bundle, and 20+ Node.js polyfills
 - One tool registry shared across all surfaces (Go, TS, plugins)
@@ -35,7 +35,7 @@ defer kit.Close()
 
 ### Transport-Connected Kit
 
-When `Config.Transport` is set, Kit creates a transport-connected runtime with plugin support and cross-Kit networking. Internally this creates a Node (Kernel + external transport + plugin manager), but the public API is the same `*Kit`.
+When `Config.Transport` is set, Kit creates a transport-connected runtime with plugin support and cross-Kit networking. The public API is the same `*brainkit.Kit`.
 
 ```go
 kit, err := brainkit.New(brainkit.Config{
@@ -47,17 +47,17 @@ kit, err := brainkit.New(brainkit.Config{
         {Name: "my-plugin", Binary: "./my-plugin", AutoRestart: true},
     },
 })
-n.Start(ctx) // restores running plugins, launches configured plugins
-defer n.Close()
+kit.Start(ctx) // restores running plugins, launches configured plugins
+defer kit.Close()
 ```
 
-Both Kernel and Node implement `sdk.Runtime` (PublishRaw, SubscribeRaw, Close) and `sdk.CrossNamespaceRuntime` (PublishRawTo, SubscribeRawTo) and `sdk.Replier` (ReplyRaw). Any code that takes an `sdk.Runtime` works with either.
+Both standalone and transport-connected Kit implement `sdk.Runtime` (PublishRaw, SubscribeRaw, Close) and `sdk.CrossNamespaceRuntime` (PublishRawTo, SubscribeRawTo) and `sdk.Replier` (ReplyRaw). Any code that takes an `sdk.Runtime` works with either.
 
 ## Initialization Order
 
-NewKernel initializes subsystems in a strict order. Each step depends on the previous ones. The order matters — reordering causes failures that are hard to debug because the dependencies are implicit.
+`brainkit.New` initializes subsystems in a strict order. Each step depends on the previous ones. The order matters — reordering causes failures that are hard to debug because the dependencies are implicit.
 
-**Step 1 — QuickJS sandbox.** `agentembed.NewSandbox` creates a `jsbridge.Bridge` (QuickJS runtime with mutex-serialized eval), loads 24 polyfills in dependency order (Events before NodeStreams before Buffer before Net — because Socket extends Duplex which extends EventEmitter), then loads SES (polyfills → ses.umd.js → lockdown → Mastra bundle). After this step, `globalThis.__agent_embed` exists with Agent, createTool, createWorkflow, the AI SDK, and all Mastra exports. See [jsbridge-polyfills.md](jsbridge-polyfills.md) and [bundle-and-bytecode.md](bundle-and-bytecode.md).
+**Step 1 — QuickJS sandbox.** `agentembed.NewSandbox` creates a `jsbridge.Bridge` (QuickJS runtime with mutex-serialized eval), loads 24 polyfills in dependency order (Events before NodeStreams before Buffer before Net — because Socket extends Duplex which extends EventEmitter), then loads SES (polyfills -> ses.umd.js -> lockdown -> Mastra bundle). After this step, `globalThis.__agent_embed` exists with Agent, createTool, createWorkflow, the AI SDK, and all Mastra exports. See [jsbridge-polyfills.md](jsbridge-polyfills.md) and [bundle-and-bytecode.md](bundle-and-bytecode.md).
 
 **Step 2 — Domain handlers.** Creates ToolsDomain, AgentsDomain. These are thin wrappers that route typed messages to the underlying registries and JS runtime. They exist so the command catalog can dispatch to typed handlers.
 
@@ -84,13 +84,13 @@ These bridges MUST be registered before loadRuntime (step 5) because kit_runtime
 
 **Step 8 — MCP.** Connects to configured MCP servers (stdio or HTTP), fetches their tool lists, registers each MCP tool in the shared tool registry with a GoFuncExecutor that calls through the MCP client.
 
-**Step 9 — Transport + router.** Creates or uses injected Watermill transport. Creates a router with three middleware: DepthMiddleware (cycle detection at depth 16), CallerIDMiddleware (stamps caller identity), MetricsMiddleware (processing time tracking). For standalone Kernel, registers command bindings and starts the router immediately. For Node, defers to the caller.
+**Step 9 — Transport + router.** Creates or uses injected Watermill transport. Creates a router with three middleware: DepthMiddleware (cycle detection at depth 16), CallerIDMiddleware (stamps caller identity), MetricsMiddleware (processing time tracking). For standalone Kit, registers command bindings and starts the router immediately. For transport-connected Kit, defers to the caller.
 
 **Step 10 — Job pump + recovery.** `startJobPump()` starts a background goroutine (tracked via `bridge.Go` so it's cancelled on Close) that processes QuickJS scheduled callbacks every 100ms (with immediate wake on `pumpSignal`). After the pump starts, persisted .ts deployments are re-deployed (`redeployPersistedDeployments`), persisted schedules are restored, and `restartActiveWorkflows()` picks up any workflow runs that were active before the previous shutdown (status `running` or `waiting` in storage). This is Mastra's `restartAllActiveWorkflowRuns()` called on each registered workflow.
 
 ## Shutdown Order
 
-`Kernel.Close()` reverses initialization:
+`Kit.Close()` reverses initialization:
 
 1. Set `closed = true` (prevents new operations)
 2. Cancel all JS-side bus subscriptions (prevents new callbacks into QuickJS)
@@ -100,7 +100,7 @@ These bridges MUST be registered before loadRuntime (step 5) because kit_runtime
 6. Close KitStore
 7. Close the agent sandbox — this is where QuickJS is freed. `bridge.Close()` cancels all tracked goroutines (job pump, fetch calls, fs operations), waits for them to finish (`wg.Wait()`), nullifies global JS references to break closure chains, runs GC, then frees the QuickJS context and runtime.
 8. Close embedded storages (stop libsql HTTP servers, close SQLite files)
-9. Close transport — but only if Kernel owns it (`ownsTransport == true`). When Node injected the transport, Node is responsible for closing it.
+9. Close transport — but only if Kit owns it (`ownsTransport == true`). When a transport-connected Kit is configured, the transport lifecycle is managed accordingly.
 
 The order matters for safety: router stops before QuickJS is freed (no handler can touch JS after step 3), goroutines finish before context is freed (step 7 waits), transport closes last (nothing can publish after this).
 
@@ -134,8 +134,8 @@ Vendored from microsoft/typescript-go. Pure Go — no Node.js, no esbuild, no ex
 
 ## Memory Model
 
-Each Kernel has one QuickJS heap (~256MB address space reservation, ~50-80MB actual for the Mastra bundle). The job pump goroutine and each deployed .ts service's bus subscriptions run within the same QuickJS heap — there's no per-service isolation at the memory level. Isolation is at the Compartment level (frozen endowments, separate global objects) not at the memory level.
+Each Kit has one QuickJS heap (~256MB address space reservation, ~50-80MB actual for the Mastra bundle). The job pump goroutine and each deployed .ts service's bus subscriptions run within the same QuickJS heap — there's no per-service isolation at the memory level. Isolation is at the Compartment level (frozen endowments, separate global objects) not at the memory level.
 
 For multi-Kit deployments (via InstanceManager pools), each Kit instance gets its own QuickJS heap. A pool of 5 Kits uses ~1.5GB baseline. Tool registries can be shared across pool instances to avoid duplicate registrations.
 
-Note: wazero (WebAssembly runtime) is still a dependency — used by `jsbridge/webassembly.go` to provide `WebAssembly.instantiate()` for JS libraries that ship WASM modules (like xxhash-wasm). The AssemblyScript compiler in `internal/embed/compiler/` is dormant and not wired to the Kernel.
+Note: wazero (WebAssembly runtime) is still a dependency — used by `jsbridge/webassembly.go` to provide `WebAssembly.instantiate()` for JS libraries that ship WASM modules (like xxhash-wasm). The AssemblyScript compiler in `internal/embed/compiler/` is dormant and not wired to the Kit.

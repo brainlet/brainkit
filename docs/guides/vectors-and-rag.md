@@ -39,8 +39,8 @@ await vs.deleteIndex("knowledge");
 ### From Go registry
 
 ```go
-Vectors: map[string]kit.VectorConfig{
-    "main": kit.PgVectorStore(pgURL),
+Vectors: map[string]brainkit.VectorConfig{
+    "main": brainkit.PgVectorStore(pgURL),
 },
 ```
 

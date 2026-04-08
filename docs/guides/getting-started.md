@@ -1,8 +1,8 @@
 # Getting Started
 
-This guide walks through creating a Kernel, registering Go tools, deploying a .ts service, and calling it from Go. Every code example is real — taken from test helpers and test files.
+This guide walks through creating a Kit, registering Go tools, deploying a .ts service, and calling it from Go. Every code example is real — taken from test helpers and test files.
 
-## Minimal Kernel
+## Minimal Kit
 
 ```go
 package main
@@ -74,7 +74,7 @@ err := brainkit.RegisterTool(k,"add", registry.TypedTool[AddInput]{
 ```
 
 The tool is now available:
-- From Go: `sdk.Publish(rt, ctx, messages.ToolCallMsg{Name: "add", Input: map[string]any{"a": 10, "b": 32}})`
+- From Go: `sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "add", Input: map[string]any{"a": 10, "b": 32}})`
 - From .ts: `await tools.call("add", { a: 10, b: 32 })`
 
 ## Deploying .ts Code
@@ -85,7 +85,7 @@ Deploy TypeScript code into a SES Compartment:
 // Pattern from test/e2e/scenarios_test.go
 ctx := context.Background()
 
-pr, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
+pr, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
     Source: "greeter.ts",
     Code: `
         const greetTool = createTool({
@@ -100,9 +100,9 @@ pr, err := sdk.Publish(rt, ctx, messages.KitDeployMsg{
 })
 
 // Wait for deploy to complete
-deployCh := make(chan messages.KitDeployResp, 1)
-unsub, _ := sdk.SubscribeTo[messages.KitDeployResp](rt, ctx, pr.ReplyTo,
-    func(resp messages.KitDeployResp, msg messages.Message) { deployCh <- resp })
+deployCh := make(chan sdk.KitDeployResp, 1)
+unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr.ReplyTo,
+    func(resp sdk.KitDeployResp, msg sdk.Message) { deployCh <- resp })
 defer unsub()
 
 resp := <-deployCh
@@ -117,7 +117,7 @@ Deploy a .ts service with `bus.on`, then send it messages from Go:
 
 ```go
 // Deploy — pattern from test/bus/api_test.go
-sdk.Publish(rt, ctx, messages.KitDeployMsg{
+sdk.Publish(rt, ctx, sdk.KitDeployMsg{
     Source: "calc.ts",
     Code: `
         bus.on("add", (msg) => {
@@ -135,7 +135,7 @@ pr, err := sdk.SendToService(rt, ctx, "calc.ts", "add", map[string]int{"a": 17, 
 // Get the reply
 replyCh := make(chan json.RawMessage, 1)
 unsub, _ := sdk.SubscribeTo[json.RawMessage](rt, ctx, pr.ReplyTo,
-    func(payload json.RawMessage, msg messages.Message) { replyCh <- payload })
+    func(payload json.RawMessage, msg sdk.Message) { replyCh <- payload })
 defer unsub()
 
 reply := <-replyCh
@@ -148,7 +148,7 @@ reply := <-replyCh
 
 ```go
 // Deploy — pattern from test/bus/api_test.go
-sdk.Publish(rt, ctx, messages.KitDeployMsg{
+sdk.Publish(rt, ctx, sdk.KitDeployMsg{
     Source: "streamer.ts",
     Code: `
         bus.on("stream", (msg) => {
@@ -162,7 +162,7 @@ sdk.Publish(rt, ctx, messages.KitDeployMsg{
 // Send and collect chunks
 pr, _ := sdk.SendToService(rt, ctx, "streamer.ts", "stream", map[string]any{})
 
-unsub, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg messages.Message) {
+unsub, _ := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
     if msg.Metadata["done"] == "true" {
         fmt.Println("final:", string(msg.Payload))
     } else {
@@ -177,7 +177,7 @@ defer unsub()
 ## Teardown
 
 ```go
-sdk.Publish(rt, ctx, messages.KitTeardownMsg{Source: "calc.ts"})
+sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "calc.ts"})
 ```
 
 Teardown removes all resources created by the deployment — tools are deregistered, bus subscriptions cancelled, agent registrations removed, Compartment reference dropped.
@@ -196,13 +196,13 @@ kit, err := brainkit.New(brainkit.Config{
 if err != nil {
     log.Fatal(err)
 }
-defer n.Close()
+defer kit.Close()
 
-// Use n exactly like a Kernel — same sdk.Runtime interface
-sdk.Publish(n, ctx, messages.ToolCallMsg{Name: "echo", Input: "hello"})
+// Use kit exactly like a standalone Kit — same sdk.Runtime interface
+sdk.Publish(kit, ctx, sdk.ToolCallMsg{Name: "echo", Input: "hello"})
 ```
 
-The Node's Kernel uses NATS instead of GoChannel. All bus messages flow through NATS, enabling cross-Kit communication and plugin subprocesses.
+Kit with Transport set uses NATS instead of GoChannel. All bus messages flow through NATS, enabling cross-Kit communication and plugin subprocesses.
 
 ## Next Steps
 
