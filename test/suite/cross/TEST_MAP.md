@@ -3,7 +3,7 @@
 **Purpose:** Verifies cross-surface interactions (TS<->Go, plugin<->Go, TS<->plugin), Node commands, discovery, and cross-Kit pub/sub across transport backends
 **Tests:** 37 functions across 6 files
 **Entry point:** `cross_test.go` → `Run(t, env)`
-**Campaigns:** plugins (nats, postgres, redis), crosskit (nats, postgres, redis)
+**Campaigns:** plugins (nats, redis), crosskit (nats, redis)
 
 ## Files
 
@@ -32,7 +32,7 @@
 | testPluginSubprocessHostToolStillWorks | Builds subprocess plugin, calls host-side "host-add" tool, verifies sum=30 |
 | testPluginSubprocessToolsListShowsBoth | Builds subprocess plugin, lists tools, verifies echo, concat (plugin) and host-add (host) all appear |
 
-### node_commands.go — Node-level bus commands (requires Podman+NATS)
+### node_commands.go — Node-level bus commands (uses embedded NATS, no Podman needed)
 
 | Function | Purpose |
 |----------|---------|
@@ -43,9 +43,9 @@
 | testNodeCommandsPluginStateGetSet | Publishes PluginStateSetMsg then PluginStateGetMsg, verifies key-value roundtrip |
 | testNodeCommandsPackageListEmpty | Publishes PackageListDeployedMsg, verifies response contains "packages" |
 | testNodeCommandsDeployOnNode | Deploys .ts on a Node, sends a message, verifies reply, tears down |
-| testNodeCommandsNodeShutdownClean | Starts a Node, deploys a service, closes cleanly, asserts no error |
+| testNodeCommandsNodeShutdownClean | Starts a Node with embedded NATS, deploys a service, closes cleanly, asserts no error |
 
-### plugin_surface.go — Plugin surface operations (requires Podman+NATS)
+### plugin_surface.go — Plugin surface operations (uses embedded NATS, no Podman needed)
 
 | Function | Purpose |
 |----------|---------|
@@ -65,7 +65,7 @@
 | testDiscoveryRegister | Creates empty static provider, registers a peer, browses, asserts 1 peer |
 | testDiscoveryResolveNonexistent | Creates empty static provider, resolves unknown name, asserts error |
 | testDiscoveryClose | Creates static provider, closes, asserts no error |
-| testDiscoveryStaticPeersBus | Creates a Node with static peers config, publishes PeersListMsg, verifies peer-a and peer-b appear |
+| testDiscoveryStaticPeersBus | Creates a Node with embedded NATS + static peers config, publishes PeersListMsg via subscribe-first pattern, verifies peer-a and peer-b appear |
 
 ### backend_matrix.go — Cross-Kit publish/reply and error propagation
 
@@ -76,6 +76,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `plugins/{nats,postgres,redis}_test.go`, `crosskit/{nats,postgres,redis}_test.go`
+- **Campaigns:** `plugins/{nats,redis}_test.go`, `crosskit/{nats,redis}_test.go`
 - **Related domains:** bus (bus operations), deploy (deploy on nodes), tools (tool calls across surfaces)
 - **Fixtures:** testplugin binary (built by testutil.BuildTestPlugin)

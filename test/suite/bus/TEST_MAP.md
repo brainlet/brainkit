@@ -1,7 +1,7 @@
 # Bus Test Map
 
 **Purpose:** Verifies the entire bus subsystem: pub/sub, correlation, reply, streaming, failure/retry, rate limiting, error contracts, surface matrix, transport compliance, and cross-feature interactions
-**Tests:** 119 functions across 19 files
+**Tests:** 124 functions across 20 files
 **Entry point:** `bus_test.go` → `Run(t, env)`
 **Campaigns:** transport (all 5), fullstack (all 3)
 
@@ -233,6 +233,18 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+### audit.go — Centralized audit log bus commands
+
+| Function | Purpose |
+|----------|---------|
+| testAuditQueryAfterDeploy | Deploys .ts, queries audit.query with category=deploy, verifies deploy event appears |
+| testAuditStatsResponse | Queries audit.stats, asserts response has EventsByCategory map |
+| testAuditPruneWorks | Calls audit.prune with 1h threshold, asserts no error |
+| testAuditToolCallRecorded | Calls echo tool, queries audit for tools category, verifies tool call event |
+| testAuditMetricsGetIncludesBus | Generates traffic, queries metrics.get, verifies Bus per-topic breakdown present |
+
+## Cross-references
+
+- **Campaigns:** `transport/{embedded,nats,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
 - **Related domains:** deploy (deploy lifecycle), agents (agent discovery), fs (cross-feature FS), health (cross-feature health), secrets (cross-feature secrets), tools (tool call), registry (registry operations)
 - **Fixtures:** echo tool, add tool (registered by test helpers)
