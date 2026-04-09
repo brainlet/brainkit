@@ -19,6 +19,7 @@ import (
 // pluginManager manages plugin subprocesses for a Node.
 type pluginManager struct {
 	node         *Node
+	wsServer     *pluginWSServer
 	plugins      map[string]*pluginConn
 	mu           syncx.Mutex
 	startCounter int32
@@ -68,21 +69,24 @@ func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
 
-	// Pass transport config via environment
+	// Start WS server on first plugin (lazy init)
+	if pm.wsServer == nil {
+		ws, err := newPluginWSServer(pm.node)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("plugin ws server: %w", err)
+		}
+		pm.wsServer = ws
+	}
+
+	// Pass WS URL to plugin — no transport env vars needed
 	var env []string
 	for k, v := range cfg.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = append(env, fmt.Sprintf("BRAINKIT_TRANSPORT=%s", pm.node.config.Messaging.Transport))
+	env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_WS_URL=%s", pm.wsServer.URL()))
 	env = append(env, fmt.Sprintf("BRAINKIT_NAMESPACE=%s", pm.node.Kernel.Namespace()))
 	env = append(env, fmt.Sprintf("BRAINKIT_NODE_ID=%s", pm.node.nodeID))
-	// Pass ALL transport backend env vars — plugin connects to the same transport
-	env = append(env, fmt.Sprintf("BRAINKIT_NATS_URL=%s", pm.node.config.Messaging.NATSURL))
-	env = append(env, fmt.Sprintf("BRAINKIT_NATS_NAME=%s", pm.node.config.Messaging.NATSName))
-	env = append(env, fmt.Sprintf("BRAINKIT_AMQP_URL=%s", pm.node.config.Messaging.AMQPURL))
-	env = append(env, fmt.Sprintf("BRAINKIT_REDIS_URL=%s", pm.node.config.Messaging.RedisURL))
-	env = append(env, fmt.Sprintf("BRAINKIT_POSTGRES_URL=%s", pm.node.config.Messaging.PostgresURL))
-	env = append(env, fmt.Sprintf("BRAINKIT_SQLITE_PATH=%s", pm.node.config.Messaging.SQLitePath))
 	if len(cfg.Config) > 0 {
 		env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_CONFIG=%s", string(cfg.Config)))
 	}

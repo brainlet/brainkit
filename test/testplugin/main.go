@@ -6,7 +6,7 @@ import (
 	"context"
 	"log"
 
-	bkplugin "github.com/brainlet/brainkit/plugin"
+	bkplugin "github.com/brainlet/brainkit/sdk/plugin"
 	"github.com/brainlet/brainkit/sdk"
 )
 

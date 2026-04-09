@@ -3,10 +3,10 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"github.com/brainlet/brainkit/internal/syncx"
+	"sync"
 
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/schema"
 )
 
 // Plugin is the builder returned by New(). Authors register capabilities on it.
@@ -17,7 +17,7 @@ type Plugin struct {
 	version     string
 	description string
 
-	mu            syncx.Mutex
+	mu            sync.Mutex
 	tools         []toolRegistration
 	subscriptions []subscriptionRegistration
 	events        []eventRegistration
@@ -92,7 +92,7 @@ type interceptorRegistration struct {
 // Tool registers a typed tool handler. Schema is auto-generated from In.
 func Tool[In, Out any](p *Plugin, name, description string, handler func(ctx context.Context, client Client, in In) (Out, error)) {
 	var zero In
-	schema := string(tools.StructToJSONSchema(zero))
+	schema := string(schema.StructToJSONSchema(zero))
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -135,7 +135,7 @@ func On[E any](p *Plugin, topic string, handler func(ctx context.Context, event 
 // Event declares an event type this plugin will publish.
 func Event[E sdk.BrainkitMessage](p *Plugin, description string) {
 	var zero E
-	schema := string(tools.StructToJSONSchema(zero))
+	schema := string(schema.StructToJSONSchema(zero))
 	topic := zero.BusTopic()
 
 	p.mu.Lock()
