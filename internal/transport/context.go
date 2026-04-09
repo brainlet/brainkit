@@ -32,6 +32,9 @@ func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopi
 	if sampled := wmsg.Metadata.Get("traceSampled"); sampled != "" {
 		ctx = context.WithValue(ctx, ctxkeys.Sampled, sampled)
 	}
+	if runtimeID := wmsg.Metadata.Get("runtimeID"); runtimeID != "" {
+		ctx = context.WithValue(ctx, ctxkeys.RuntimeID, runtimeID)
+	}
 	return ctx
 }
 
@@ -129,4 +132,12 @@ func SampledFromContext(ctx context.Context) string {
 
 func WithSampled(ctx context.Context, sampled string) context.Context {
 	return context.WithValue(ctx, ctxkeys.Sampled, sampled)
+}
+
+func RuntimeIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v, _ := ctx.Value(ctxkeys.RuntimeID).(string)
+	return v
 }

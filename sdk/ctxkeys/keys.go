@@ -16,6 +16,7 @@ const (
 	SpanID        Key = "brainkit.messaging.span_id"
 	ParentSpanID  Key = "brainkit.messaging.parent_span_id"
 	Sampled       Key = "brainkit.messaging.sampled"
+	RuntimeID     Key = "brainkit.messaging.runtime_id"
 )
 
 // WithPublishMeta stamps correlationID and replyTo into context.

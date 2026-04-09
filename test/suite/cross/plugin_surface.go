@@ -18,19 +18,13 @@ import (
 // --- Plugin surface tests (from test/adversarial/plugin_surface_test.go) ---
 
 func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
-	env.RequirePodman(t)
-	tf := transportFieldsForBackend(t, "nats")
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-test-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
+		Namespace: "plugin-test-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: "embedded",
 	})
 	require.NoError(t, err)
 	defer kit.Close()

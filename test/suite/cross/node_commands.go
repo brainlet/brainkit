@@ -91,19 +91,13 @@ func testNodeCommandsDeployOnNode(t *testing.T, env *suite.TestEnv) {
 }
 
 func testNodeCommandsNodeShutdownClean(t *testing.T, env *suite.TestEnv) {
-	env.RequirePodman(t)
-	tf := transportFieldsForBackend(t, "nats")
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "shutdown-test-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
+		Namespace: "shutdown-test-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: "embedded",
 	})
 	require.NoError(t, err)
 

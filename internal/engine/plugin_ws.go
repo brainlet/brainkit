@@ -118,6 +118,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 			Version:     manifest.Version,
 			Description: toolDef.Description,
 			InputSchema: json.RawMessage(toolDef.InputSchema),
+			Local:       true, // plugin tools are local-only — not callable from remote Kit instances
 			Executor: &tools.GoFuncExecutor{
 				Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 					return pc.callTool(callCtx, toolDef.Name, input, callerID)

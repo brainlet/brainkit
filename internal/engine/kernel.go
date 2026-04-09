@@ -468,7 +468,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	// (TracingDomain eliminated — inlined into catalog)
 
 	// ToolsDomain needs tracer — constructed here after tracer init
-	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, cfg.CallerID)
+	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, cfg.CallerID, cfg.RuntimeID)
 
 	kernel.testingDomain = newTestingDomain(kernel)
 	kernel.lifecycle = newLifecycleDomain(kernel)

@@ -18,6 +18,11 @@ type RegisteredTool struct {
 	Package string `json:"package,omitempty"` // "cron", "postgres"
 	Version string `json:"version,omitempty"` // "1.0.0", "2.1.0-beta.1"
 
+	// Local marks tools that must only be called from the same runtime.
+	// Plugin tools are local — they execute in a subprocess attached to this Kit.
+	// Remote Kit instances cannot invoke local tools via cross-namespace calls.
+	Local bool `json:"local,omitempty"`
+
 	Executor ToolExecutor `json:"-"`
 }
 

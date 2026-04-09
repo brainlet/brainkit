@@ -50,6 +50,11 @@ func (c *RemoteClient) SetIdentity(clusterID, runtimeID string) {
 	c.runtimeID = runtimeID
 }
 
+// ResolvedTopic returns the wire-level topic for a logical topic (namespaced + sanitized).
+func (c *RemoteClient) ResolvedTopic(logicalTopic string) string {
+	return c.resolvedTopic(logicalTopic)
+}
+
 func (c *RemoteClient) resolvedTopic(logicalTopic string) string {
 	topic := NamespacedTopic(c.namespace, logicalTopic)
 	if c.topicSanitizer != nil {

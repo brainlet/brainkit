@@ -8,19 +8,22 @@ import (
 
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // ToolsDomain handles tool registry operations: call, resolve, register, list.
 type ToolsDomain struct {
-	tools    *tools.ToolRegistry
-	eval     JSEvaluator
-	tracer   *tracing.Tracer
-	callerID string
+	tools     *tools.ToolRegistry
+	eval      JSEvaluator
+	tracer    *tracing.Tracer
+	callerID  string
+	runtimeID string // local runtime ID — used to reject remote calls to local-only tools
 }
 
-func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID string) *ToolsDomain {
-	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, callerID: callerID}
+func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID, runtimeID string) *ToolsDomain {
+	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, callerID: callerID, runtimeID: runtimeID}
 }
 
 // Call executes a registered tool by name and returns the typed response.
@@ -28,6 +31,20 @@ func (d *ToolsDomain) Call(ctx context.Context, req sdk.ToolCallMsg) (*sdk.ToolC
 	tool, err := d.tools.Resolve(req.Name)
 	if err != nil {
 		return nil, err
+	}
+
+	// Reject remote calls to local-only tools (plugin tools).
+	// Local tools are bound to this Kit's subprocess — remote Kit instances must not invoke them.
+	if tool.Local && d.runtimeID != "" {
+		callerRuntimeID := transport.RuntimeIDFromContext(ctx)
+		if callerRuntimeID != "" && callerRuntimeID != d.runtimeID {
+			return nil, &sdkerrors.PermissionDeniedError{
+				Source: callerRuntimeID,
+				Action: "call",
+				Topic:  tool.Name,
+				Role:   "remote",
+			}
+		}
 	}
 
 	span := d.tracer.StartSpan("tools.call:"+tool.ShortName, ctx)
