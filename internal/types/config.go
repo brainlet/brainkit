@@ -63,6 +63,7 @@ type KernelConfig struct {
 	PluginRegistries   []RegistryConfig
 	PluginDir          string
 	AuditStore         audit.Store
+	AuditVerbose       bool // enable high-volume audit (bus command completions, metric snapshots)
 }
 
 // RegistryConfig configures a plugin registry source.

@@ -95,6 +95,11 @@ type Config struct {
 	// ErrorHandler receives non-fatal errors (persistence failures, plugin errors).
 	ErrorHandler func(error)
 
+	// AuditVerbose enables high-volume audit logging: every bus command completion
+	// and periodic metric snapshots. Useful with high-throughput audit stores (Postgres).
+	// Default: false (only lifecycle events, failures, security events, tool calls).
+	AuditVerbose bool
+
 	// MaxConcurrency limits concurrent bus handler invocations. 0 = unlimited.
 	MaxConcurrency int
 
@@ -140,6 +145,7 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		PluginDir:          c.PluginDir,
 		Logger:             c.Logger,
 		LogHandler:         c.LogHandler,
+		AuditVerbose:       c.AuditVerbose,
 	}
 
 	// Convert []ProviderConfig → map[string]AIProviderRegistration

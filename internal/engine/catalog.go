@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/types"
@@ -36,12 +37,15 @@ func kernelCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Conte
 			if err != nil {
 				return nil, err
 			}
+			cmdStart := time.Now()
 			out, err := handler(ctx, kernel, decoded)
+			cmdDuration := time.Since(cmdStart)
+			callerID := transport.CallerIDFromContext(ctx)
 			if err != nil {
+				kernel.audit.BusCommandCompleted(req.BusTopic(), callerID, cmdDuration)
 				return nil, err
 			}
-			// nil response = pass-through (e.g., plugin tool responds directly to caller).
-			// Return nil so the host command handler skips publishing.
+			kernel.audit.BusCommandCompleted(req.BusTopic(), callerID, cmdDuration)
 			if out == nil {
 				return nil, nil
 			}

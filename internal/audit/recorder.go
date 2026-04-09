@@ -5,17 +5,41 @@ import (
 	"time"
 )
 
+// Verbosity controls which events are recorded.
+type Verbosity int
+
+const (
+	// VerbosityNormal records lifecycle events, failures, security events, and tool calls.
+	VerbosityNormal Verbosity = iota
+	// VerbosityVerbose also records every bus command completion and periodic metric snapshots.
+	VerbosityVerbose
+)
+
 // Recorder provides typed convenience methods for recording audit events.
 // All methods are safe to call on a nil Recorder (no-op).
 type Recorder struct {
 	store     Store
 	runtimeID string
 	namespace string
+	verbosity Verbosity
+}
+
+// RecorderConfig configures the Recorder.
+type RecorderConfig struct {
+	Store     Store
+	RuntimeID string
+	Namespace string
+	Verbosity Verbosity
 }
 
 // NewRecorder creates a Recorder that writes to the given store.
 func NewRecorder(store Store, runtimeID, namespace string) *Recorder {
-	return &Recorder{store: store, runtimeID: runtimeID, namespace: namespace}
+	return &Recorder{store: store, runtimeID: runtimeID, namespace: namespace, verbosity: VerbosityNormal}
+}
+
+// NewRecorderWithConfig creates a Recorder with full configuration.
+func NewRecorderWithConfig(cfg RecorderConfig) *Recorder {
+	return &Recorder{store: cfg.Store, runtimeID: cfg.RuntimeID, namespace: cfg.Namespace, verbosity: cfg.Verbosity}
 }
 
 func (r *Recorder) record(category, typ, source string, data any, duration time.Duration, errMsg string) {
@@ -147,4 +171,32 @@ func (r *Recorder) HealthChanged(component, status string, healthy bool) {
 	r.record("health", "health.changed", component, map[string]any{
 		"status": status, "healthy": healthy,
 	}, 0, "")
+}
+
+// --- Verbose-only events (bus command completions, metric snapshots) ---
+// These only record when Verbosity >= VerbosityVerbose.
+
+// BusCommandCompleted records a bus command that completed successfully.
+// Only recorded in verbose mode — normal mode skips routine command completions.
+func (r *Recorder) BusCommandCompleted(topic, callerID string, duration time.Duration) {
+	if r == nil || r.verbosity < VerbosityVerbose {
+		return
+	}
+	r.record("bus", "bus.command.completed", topic, map[string]any{
+		"caller": callerID,
+	}, duration, "")
+}
+
+// MetricsSnapshot records a periodic metrics snapshot.
+// Only recorded in verbose mode.
+func (r *Recorder) MetricsSnapshot(data any) {
+	if r == nil || r.verbosity < VerbosityVerbose {
+		return
+	}
+	r.record("metrics", "metrics.snapshot", "kernel", data, 0, "")
+}
+
+// IsVerbose returns true if verbose audit recording is enabled.
+func (r *Recorder) IsVerbose() bool {
+	return r != nil && r.verbosity >= VerbosityVerbose
 }

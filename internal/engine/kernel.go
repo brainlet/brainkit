@@ -598,19 +598,45 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 
 	// Initialize audit event log — auto-create SQLite store alongside KitStore
+	verbosity := auditpkg.VerbosityNormal
+	if cfg.AuditVerbose {
+		verbosity = auditpkg.VerbosityVerbose
+	}
+	makeRecorder := func(store auditpkg.Store) *auditpkg.Recorder {
+		return auditpkg.NewRecorderWithConfig(auditpkg.RecorderConfig{
+			Store: store, RuntimeID: cfg.RuntimeID, Namespace: cfg.Namespace, Verbosity: verbosity,
+		})
+	}
 	if cfg.AuditStore != nil {
 		kernel.auditStore = cfg.AuditStore
-		kernel.audit = auditpkg.NewRecorder(cfg.AuditStore, cfg.RuntimeID, cfg.Namespace)
+		kernel.audit = makeRecorder(cfg.AuditStore)
 	} else if cfg.FSRoot != "" {
 		auditStore, auditErr := auditpkg.NewSQLiteStore(filepath.Join(cfg.FSRoot, "brainkit-audit.db"))
 		if auditErr == nil {
 			kernel.auditStore = auditStore
-			kernel.audit = auditpkg.NewRecorder(auditStore, cfg.RuntimeID, cfg.Namespace)
+			kernel.audit = makeRecorder(auditStore)
 			cleanups = append(cleanups, func() { auditStore.Close() })
 		}
 	}
 
 	kernel.startedAt = time.Now()
+
+	// Periodic metric snapshots — when verbose audit is enabled, snapshot metrics every 60s
+	if kernel.audit != nil && kernel.audit.IsVerbose() {
+		go func() {
+			ticker := time.NewTicker(60 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if kernel.draining.Load() {
+						return
+					}
+					kernel.audit.MetricsSnapshot(kernel.Metrics())
+				}
+			}
+		}()
+	}
 
 	// Success — Kernel.Close() now owns all resources.
 	// Nil out cleanups so fail() is harmless if called accidentally.
