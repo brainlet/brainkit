@@ -1,147 +1,150 @@
-# Scaling and Pools
+# Scaling
 
-`InstanceManager` manages pools of Kit instances with shared tool registries and configurable scaling strategies.
+brainkit scales horizontally by running multiple Kit replicas on the same transport. The transport's consumer group mechanism distributes messages across replicas. No load balancer needed — the bus handles it.
 
-## Creating a Pool
+## Identity Hierarchy
+
+Every brainkit deployment has four identity levels:
+
+```
+Cluster     (logical group — configured)
+  └── Runtime    (physical process — auto UUID)
+       └── Kit        (namespace — configured)
+            └── .ts        (deployment — a service)
+```
+
+| Level | k8s Analogy | How Set | Scope |
+|-------|-------------|---------|-------|
+| Cluster | Cluster | `Config.ClusterID` (default: `"default"`) | Runtimes that discover each other |
+| Runtime | Node | Auto UUID per process (`brainkit.RuntimeID()`) | All Kits in the same Go process |
+| Kit | Namespace | `Config.Namespace` (default: `"user"`) | Own deployments, schedules, tools |
+| .ts | Pod | `kit.deploy` bus command | A TypeScript service |
+
+Every published message carries `clusterID`, `runtimeID`, `namespace`, and `callerID` in its metadata. Receivers can tell where a message came from — same process, same cluster, or remote.
+
+## Consumer Groups = Namespace
+
+The transport's consumer group is derived from the Kit's namespace. All Kit instances with the **same namespace** on the same transport **compete** for messages (round-robin). Different namespaces are independent.
+
+```
+           NATS / Redis / AMQP
+          /        |          \
+     Kit "agents"  Kit "agents"  Kit "agents"    ← same namespace = competing
+     (machine 1)   (machine 2)   (machine 3)
+
+     Kit "gateway"                               ← different namespace = independent
+     (machine 1)
+```
+
+This happens automatically — no configuration beyond setting `Namespace` on each Kit.
+
+## Commands vs Events
+
+The bus distinguishes two message patterns:
+
+- **Commands** (competing): `kit.deploy`, `tools.call`, `providers.add`, etc. — ONE replica handles each. Uses the shared consumer group.
+- **Events** (fan-out): `kit.deployed`, `plugin.started`, `bus.handler.failed`, etc. — ALL replicas receive. Uses a unique consumer group per instance.
+
+Each transport creates two subscribers:
+- `Subscriber` — shared consumer group (namespace). For commands.
+- `FanOutSubscriber` — unique group per instance. For events.
+
+## Deployment Propagation
+
+When Kit-1 deploys `support-agent.ts`, Kit-2 and Kit-3 need it too.
+
+```
+Kit-1: receives kit.deploy command (competing → only Kit-1 handles)
+       ↓ deploys locally, persists to shared KitStore
+       ↓ emits kit.deployed event (fan-out → all replicas receive)
+
+Kit-2: receives kit.deployed event
+       ↓ checks RuntimeID — "not me"
+       ↓ loads deployment from shared KitStore
+       ↓ deploys locally
+
+Kit-3: same as Kit-2
+```
+
+Requires a shared KitStore (Postgres). In-memory or local SQLite stores don't support cross-instance propagation. Same pattern for teardown via `kit.teardown.done` event.
+
+## Schedule Deduplication
+
+A cron schedule should fire on exactly ONE replica. brainkit uses claim-based INSERT:
+
+```sql
+INSERT OR IGNORE INTO schedule_fires (schedule_id, fire_time, claimed_at)
+VALUES (?, ?, ?)
+```
+
+First replica to INSERT wins. Others get a conflict, skip. Fire time is truncated to 100ms — fine enough for sub-second schedules, coarse enough for replica dedup.
+
+Without a shared KitStore, every replica fires (acceptable for single-instance deployments).
+
+## Gateway Pattern
+
+Gateways (Telegram, Discord, Slack) don't need to scale. They're thin edge processes:
+
+```
+External Platform → Gateway → bus.publish → consumer group distributes
+                                            /        |        \
+                                       Kit-1      Kit-2      Kit-3
+                                    (process)  (process)  (process)
+```
+
+The gateway receives external events and publishes them as bus messages. The bus distributes processing across worker replicas. Gateway itself is stateless glue — a `net/http` handler doing `sdk.Publish`.
+
+For HA: two gateway instances behind a load balancer. NATS JetStream's `TrackMsgId` (already enabled) deduplicates if both receive the same webhook.
+
+## InstanceManager
+
+`InstanceManager` manages pools of Kit instances within a single Go process. Two modes:
+
+### Sharded Mode (default)
+
+Each instance gets a different namespace. Workload isolation — no message sharing.
 
 ```go
-im := kit.NewInstanceManager()
-
-err := im.SpawnPool("workers", kit.PoolConfig{
+im := brainkit.NewInstanceManager()
+im.SpawnPool("workers", brainkit.PoolConfig{
     Base: brainkit.Config{
         Namespace: "workers",
-        FSRoot:    "/tmp/workers",
         Transport: "nats",
         NATSURL:   "nats://localhost:4222",
     },
-    InitialCount: 3,     // start with 3 instances
-    Min:          1,      // never scale below 1
-    Max:          10,     // never scale above 10
-    Strategy:     kit.NewThresholdStrategy(100, 10), // scale up at 100 pending, down at 10
+    InitialCount: 3,
+    Mode: brainkit.PoolSharded, // workers-workers-0, workers-workers-1, workers-workers-2
 })
 ```
 
-Each instance is a full Kit with its own QuickJS runtime and tool registry. Instances in the same pool share a `ToolRegistry` — tools registered on one are visible on all.
+### Replicated Mode
 
-## Manual Scaling
+All instances share the same namespace. Consumer group distributes messages. Horizontal scaling.
 
 ```go
-// Scale up — add 2 instances
-err := im.Scale("workers", 2)
-// Pool now has 5 instances
-
-// Scale down — remove 3 instances
-err := im.Scale("workers", -3)
-// Pool now has 2 instances
-
-// Scale beyond count — clamped to 0
-err := im.Scale("workers", -100)
-// Pool now has 0 instances (not an error)
+im.SpawnPool("agents", brainkit.PoolConfig{
+    Base: brainkit.Config{
+        Namespace: "agents",
+        Transport: "nats",
+        NATSURL:   "nats://localhost:4222",
+    },
+    InitialCount: 3,
+    Mode: brainkit.PoolReplicated, // all namespace "agents", competing consumers
+})
 ```
 
-Scaling down closes instances in LIFO order (last spawned, first closed). Each close shuts down the full Kit lifecycle — QuickJS freed, transport closed, goroutines stopped.
-
-## Pool Info
+### Auto-Scaling
 
 ```go
-info, err := im.PoolInfo("workers")
-// info.Name:    "workers"
-// info.Current: 3
-// info.Min:     1
-// info.Max:     10
+im.SpawnPool("workers", brainkit.PoolConfig{
+    Base:         cfg,
+    InitialCount: 3,
+    Min:          1,
+    Max:          10,
+    Strategy:     brainkit.NewThresholdStrategy(100, 10), // up at 100 pending, down at 10
+})
 
-names := im.Pools()
-// ["workers"]
-```
-
-## Kill Pool
-
-```go
-err := im.KillPool("workers")
-```
-
-Closes all instances and removes the pool. After this, `PoolInfo("workers")` returns `NotFoundError{Resource: "pool", Name: "workers"}`.
-
-## Scaling Strategies
-
-### StaticStrategy
-
-Maintains a fixed instance count. If current differs from target, scales up or down.
-
-```go
-strategy := kit.NewStaticStrategy(5) // always 5 instances
-
-// Current=3 → scale-up by 2
-// Current=5 → no action
-// Current=7 → scale-down by 2
-```
-
-### ThresholdStrategy
-
-Scales based on pending message count. Steps up/down by 1 (configurable).
-
-```go
-strategy := kit.NewThresholdStrategy(100, 10)
-// Scale UP when pending > 100
-// Scale DOWN when pending < 10
-
-// Customize steps
-strategy := &kit.ThresholdStrategy{
-    ScaleUpThreshold:   100,
-    ScaleDownThreshold: 10,
-    ScaleUpStep:        3,   // add 3 instances at a time
-    ScaleDownStep:      1,   // remove 1 at a time
-}
-```
-
-Respects Min/Max bounds:
-- Won't scale above `PoolConfig.Max`
-- Won't scale below `PoolConfig.Min`
-- Delta is capped: if Max=5 and Current=4, step=3 → only 1 added
-
-### Custom Strategy
-
-Implement the `ScalingStrategy` interface:
-
-```go
-type ScalingStrategy interface {
-    Evaluate(metrics messaging.MetricsSnapshot, pool PoolInfo) ScalingDecision
-}
-
-type ScalingDecision struct {
-    Action string // "scale-up", "scale-down", "none"
-    Delta  int    // how many to add/remove
-    Reason string // human-readable reason (logged)
-}
-```
-
-```go
-type MyStrategy struct{}
-
-func (s *MyStrategy) Evaluate(metrics messaging.MetricsSnapshot, pool kit.PoolInfo) kit.ScalingDecision {
-    errorRate := float64(len(metrics.Errors)) / float64(max(len(metrics.Handled), 1))
-    if errorRate > 0.1 && pool.Current < pool.Max {
-        return kit.ScalingDecision{
-            Action: "scale-up",
-            Delta:  1,
-            Reason: fmt.Sprintf("error rate %.1f%% > 10%%", errorRate*100),
-        }
-    }
-    return kit.ScalingDecision{Action: "none"}
-}
-```
-
-## EvaluateAndScale
-
-Run the strategy evaluation loop manually:
-
-```go
-im.EvaluateAndScale()
-```
-
-This iterates all pools with a strategy, evaluates each one, and applies the decision. Call it periodically:
-
-```go
+// Run evaluation loop
 ticker := time.NewTicker(30 * time.Second)
 go func() {
     for range ticker.C {
@@ -150,46 +153,44 @@ go func() {
 }()
 ```
 
-## Shared Tool Registry
+### Strategies
 
-All instances in a pool share a `ToolRegistry`. Register tools on the shared registry before spawning the pool:
+**StaticStrategy** — maintains a fixed count:
+```go
+brainkit.NewStaticStrategy(5) // always 5 instances
+```
+
+**ThresholdStrategy** — scales on pending message count:
+```go
+brainkit.NewThresholdStrategy(100, 10) // up at 100, down at 10
+```
+
+**Custom** — implement the interface:
+```go
+type ScalingStrategy interface {
+    Evaluate(metrics transport.MetricsSnapshot, pool PoolInfo) ScalingDecision
+}
+```
+
+## Cross-Kit Communication
+
+Multiple Kits on the same transport communicate via `sdk.PublishTo`:
 
 ```go
-sharedTools := registry.New()
-
-registry.Register(sharedTools, "process-order", registry.TypedTool[OrderInput]{
-    Description: "processes an order",
-    Execute:     processOrder,
-})
-
-err := im.SpawnPool("workers", kit.PoolConfig{
-    Base: brainkit.Config{
-        SharedTools: sharedTools,
-        Transport:   "nats",
-        NATSURL:     "nats://localhost:4222",
-        // ...
-    },
-    InitialCount: 3,
+// Kit A sends a deploy command to Kit B's namespace
+sdk.PublishTo(kitA, ctx, "kit-b-namespace", sdk.KitDeployMsg{
+    Source: "task.ts",
+    Code:   tsCode,
 })
 ```
 
-The `process-order` tool is available on all 3 instances without re-registration. New instances added via `Scale(+1)` also get the shared registry.
-
-## Error Types
-
-```go
-// Pool already exists
-err := im.SpawnPool("workers", cfg)
-err := im.SpawnPool("workers", cfg) // AlreadyExistsError{Resource: "pool", Name: "workers"}
-
-// Pool not found
-err := im.Scale("nonexistent", 1)   // NotFoundError{Resource: "pool", Name: "nonexistent"}
-err := im.KillPool("nonexistent")   // NotFoundError{Resource: "pool", Name: "nonexistent"}
-_, err := im.PoolInfo("nonexistent") // NotFoundError{Resource: "pool", Name: "nonexistent"}
-```
+Works across machines if both connect to the same transport cluster (NATS, Redis, AMQP). The `runtimeID` in message metadata tells you whether a message is local or remote.
 
 ## Memory Considerations
 
-Each Kit instance has its own QuickJS heap (~256MB address space, ~50-80MB actual with Mastra bundle). A pool of 5 instances uses ~400MB actual memory.
+Each Kit instance has its own QuickJS heap (~50-80MB with Mastra bundle). A pool of 5 instances uses ~400MB.
 
-For memory-constrained environments, consider using `SharedTools` to avoid duplicate tool registrations, and keep `Max` bounded.
+For memory-constrained environments:
+- Use shared tool registries (`SharedTools` in PoolConfig)
+- Keep `Max` bounded
+- Use replicated mode (fewer instances, consumer groups share load)
