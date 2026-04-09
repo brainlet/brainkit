@@ -274,17 +274,17 @@ func (q *Queries) LoadSchedules(ctx context.Context) ([]Schedule, error) {
 }
 
 const pruneAuditEvents = `-- name: PruneAuditEvents :exec
-DELETE FROM audit_events WHERE timestamp < $1
+DELETE FROM audit_events WHERE created_at < $1
 `
 
-func (q *Queries) PruneAuditEvents(ctx context.Context, timestamp time.Time) error {
-	_, err := q.db.ExecContext(ctx, pruneAuditEvents, timestamp)
+func (q *Queries) PruneAuditEvents(ctx context.Context, createdAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, pruneAuditEvents, createdAt)
 	return err
 }
 
 const queryAuditEventsAll = `-- name: QueryAuditEventsAll :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events ORDER BY timestamp DESC LIMIT $1
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events ORDER BY created_at DESC LIMIT $1
 `
 
 func (q *Queries) QueryAuditEventsAll(ctx context.Context, limit int32) ([]AuditEvent, error) {
@@ -298,7 +298,7 @@ func (q *Queries) QueryAuditEventsAll(ctx context.Context, limit int32) ([]Audit
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timestamp,
+			&i.CreatedAt,
 			&i.Category,
 			&i.EventType,
 			&i.Source,
@@ -322,8 +322,8 @@ func (q *Queries) QueryAuditEventsAll(ctx context.Context, limit int32) ([]Audit
 }
 
 const queryAuditEventsByCategory = `-- name: QueryAuditEventsByCategory :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE category = $1 ORDER BY timestamp DESC LIMIT $2
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE category = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type QueryAuditEventsByCategoryParams struct {
@@ -342,7 +342,7 @@ func (q *Queries) QueryAuditEventsByCategory(ctx context.Context, arg QueryAudit
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timestamp,
+			&i.CreatedAt,
 			&i.Category,
 			&i.EventType,
 			&i.Source,
@@ -366,8 +366,8 @@ func (q *Queries) QueryAuditEventsByCategory(ctx context.Context, arg QueryAudit
 }
 
 const queryAuditEventsBySource = `-- name: QueryAuditEventsBySource :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE source = $1 ORDER BY timestamp DESC LIMIT $2
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE source = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type QueryAuditEventsBySourceParams struct {
@@ -386,7 +386,7 @@ func (q *Queries) QueryAuditEventsBySource(ctx context.Context, arg QueryAuditEv
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timestamp,
+			&i.CreatedAt,
 			&i.Category,
 			&i.EventType,
 			&i.Source,
@@ -410,8 +410,8 @@ func (q *Queries) QueryAuditEventsBySource(ctx context.Context, arg QueryAuditEv
 }
 
 const queryAuditEventsByType = `-- name: QueryAuditEventsByType :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE event_type = $1 ORDER BY timestamp DESC LIMIT $2
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE event_type = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type QueryAuditEventsByTypeParams struct {
@@ -430,7 +430,7 @@ func (q *Queries) QueryAuditEventsByType(ctx context.Context, arg QueryAuditEven
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timestamp,
+			&i.CreatedAt,
 			&i.Category,
 			&i.EventType,
 			&i.Source,
@@ -454,17 +454,17 @@ func (q *Queries) QueryAuditEventsByType(ctx context.Context, arg QueryAuditEven
 }
 
 const queryAuditEventsSince = `-- name: QueryAuditEventsSince :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE timestamp >= $1 ORDER BY timestamp DESC LIMIT $2
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE created_at >= $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type QueryAuditEventsSinceParams struct {
-	Timestamp time.Time
+	CreatedAt time.Time
 	Limit     int32
 }
 
 func (q *Queries) QueryAuditEventsSince(ctx context.Context, arg QueryAuditEventsSinceParams) ([]AuditEvent, error) {
-	rows, err := q.db.QueryContext(ctx, queryAuditEventsSince, arg.Timestamp, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, queryAuditEventsSince, arg.CreatedAt, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +474,7 @@ func (q *Queries) QueryAuditEventsSince(ctx context.Context, arg QueryAuditEvent
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timestamp,
+			&i.CreatedAt,
 			&i.Category,
 			&i.EventType,
 			&i.Source,
@@ -499,13 +499,13 @@ func (q *Queries) QueryAuditEventsSince(ctx context.Context, arg QueryAuditEvent
 
 const recordAuditEvent = `-- name: RecordAuditEvent :exec
 
-INSERT INTO audit_events (id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg)
+INSERT INTO audit_events (id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type RecordAuditEventParams struct {
 	ID        string
-	Timestamp time.Time
+	CreatedAt time.Time
 	Category  string
 	EventType string
 	Source    string
@@ -520,7 +520,7 @@ type RecordAuditEventParams struct {
 func (q *Queries) RecordAuditEvent(ctx context.Context, arg RecordAuditEventParams) error {
 	_, err := q.db.ExecContext(ctx, recordAuditEvent,
 		arg.ID,
-		arg.Timestamp,
+		arg.CreatedAt,
 		arg.Category,
 		arg.EventType,
 		arg.Source,

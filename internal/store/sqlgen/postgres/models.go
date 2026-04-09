@@ -10,7 +10,7 @@ import (
 
 type AuditEvent struct {
 	ID        string
-	Timestamp time.Time
+	CreatedAt time.Time
 	Category  string
 	EventType string
 	Source    string

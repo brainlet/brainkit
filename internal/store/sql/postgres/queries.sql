@@ -93,28 +93,28 @@ DELETE FROM running_plugins WHERE name = $1;
 -- ── Audit Events ──
 
 -- name: RecordAuditEvent :exec
-INSERT INTO audit_events (id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg)
+INSERT INTO audit_events (id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: QueryAuditEventsByCategory :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE category = $1 ORDER BY timestamp DESC LIMIT $2;
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE category = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: QueryAuditEventsByType :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE event_type = $1 ORDER BY timestamp DESC LIMIT $2;
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE event_type = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: QueryAuditEventsBySource :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE source = $1 ORDER BY timestamp DESC LIMIT $2;
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE source = $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: QueryAuditEventsAll :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events ORDER BY timestamp DESC LIMIT $1;
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events ORDER BY created_at DESC LIMIT $1;
 
 -- name: QueryAuditEventsSince :many
-SELECT id, timestamp, category, event_type, source, runtime_id, namespace, data, duration, error_msg
-FROM audit_events WHERE timestamp >= $1 ORDER BY timestamp DESC LIMIT $2;
+SELECT id, created_at, category, event_type, source, runtime_id, namespace, data, duration, error_msg
+FROM audit_events WHERE created_at >= $1 ORDER BY created_at DESC LIMIT $2;
 
 -- name: CountAuditEvents :one
 SELECT COUNT(*) FROM audit_events;
@@ -123,4 +123,4 @@ SELECT COUNT(*) FROM audit_events;
 SELECT category, COUNT(*) AS cnt FROM audit_events GROUP BY category;
 
 -- name: PruneAuditEvents :exec
-DELETE FROM audit_events WHERE timestamp < $1;
+DELETE FROM audit_events WHERE created_at < $1;

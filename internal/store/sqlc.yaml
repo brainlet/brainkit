@@ -1,15 +1,8 @@
 version: "2"
 sql:
-  - schema: "sql/sqlite/schema.sql"
-    queries:
-      - "sql/sqlite/queries_kit.sql"
-      - "sql/sqlite/queries_audit.sql"
-    engine: "sqlite"
-    gen:
-      go:
-        package: "sqlitegen"
-        out: "sqlgen/sqlite"
-        emit_empty_slices: true
+  # SQLite: sqlc's SQLite engine has a truncation bug with tables having 10+ columns.
+  # SQLite adapter uses database/sql directly with embedded schema for migrations.
+  # Only Postgres uses sqlc codegen.
 
   - schema: "sql/postgres/schema.sql"
     queries: "sql/postgres/queries.sql"

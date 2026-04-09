@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS schedule_fires (
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id         TEXT PRIMARY KEY,
-    timestamp  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     category   TEXT NOT NULL,
     event_type TEXT NOT NULL,
     source     TEXT NOT NULL DEFAULT '',
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
     error_msg  TEXT NOT NULL DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_events(category);
 CREATE INDEX IF NOT EXISTS idx_audit_type ON audit_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_source ON audit_events(source);
