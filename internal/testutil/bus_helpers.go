@@ -243,6 +243,38 @@ func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	}
 }
 
+// ── WaitForPlugin ───────────────────────────────────────────────────────────
+
+// WaitForPlugin waits for a plugin to register by subscribing to the plugin.registered event.
+// Replaces time.Sleep(3s) in e2e tests.
+func WaitForPlugin(t *testing.T, rt sdk.Runtime, pluginName string, timeout time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ch := make(chan struct{}, 1)
+	unsub, err := sdk.SubscribeTo[sdk.PluginRegisteredEvent](rt, ctx, "plugin.registered",
+		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+			if evt.Name == pluginName {
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
+		})
+	if err != nil {
+		t.Fatalf("WaitForPlugin: subscribe: %v", err)
+	}
+	defer unsub()
+
+	select {
+	case <-ch:
+		return
+	case <-ctx.Done():
+		t.Fatalf("WaitForPlugin(%s): timeout after %v", pluginName, timeout)
+	}
+}
+
 // ── PublishAndWait (raw) ────────────────────────────────────────────────────
 
 func PublishAndWait(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) json.RawMessage {
