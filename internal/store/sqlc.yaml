@@ -1,0 +1,22 @@
+version: "2"
+sql:
+  - schema: "sql/sqlite/schema.sql"
+    queries:
+      - "sql/sqlite/queries_kit.sql"
+      - "sql/sqlite/queries_audit.sql"
+    engine: "sqlite"
+    gen:
+      go:
+        package: "sqlitegen"
+        out: "sqlgen/sqlite"
+        emit_empty_slices: true
+
+  - schema: "sql/postgres/schema.sql"
+    queries: "sql/postgres/queries.sql"
+    engine: "postgresql"
+    gen:
+      go:
+        package: "pggen"
+        out: "sqlgen/postgres"
+        emit_empty_slices: true
+        sql_package: "database/sql"
