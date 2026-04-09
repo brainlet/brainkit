@@ -149,6 +149,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
 	}))
+	s.node.Kernel.audit.PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
 
 	// Subscribe to topics declared in manifest
 	for _, topic := range manifest.Subscriptions {

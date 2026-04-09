@@ -28,6 +28,7 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 
 	// Emit failure event
 	k.emitHandlerFailed(topic, handlerErr, retryCount, policy != nil && retryCount < policy.MaxRetries)
+	k.audit.BusHandlerFailed(topic, handlerErr)
 
 	// No retry policy — send error response immediately
 	if policy == nil || policy.MaxRetries == 0 {
@@ -42,6 +43,7 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 		k.deadLetter(msg, topic, handlerErr, retryCount, policy)
 		k.sendErrorResponse(msg, fmt.Errorf("handler failed after %d retries: %w", retryCount, handlerErr))
 		k.emitHandlerExhausted(topic, handlerErr, retryCount)
+		k.audit.BusHandlerExhausted(topic, retryCount)
 		return
 	}
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/transport"
@@ -83,6 +84,8 @@ type Kernel struct {
 	storages  map[string]*libsql.Server
 
 	secretStore   secrets.SecretStore
+	audit         *auditpkg.Recorder // centralized event log — nil-safe
+	auditStore    auditpkg.Store     // underlying store for query access
 	node          *Node   // optional back-reference, set by Node after creation
 	currentSource string  // active deployment source for RBAC — set by subscribe callback
 
@@ -271,10 +274,8 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		logger = slog.Default()
 	}
 
-	var sharedTools *toolreg.ToolRegistry
-	if cfg.SharedTools != nil {
-		sharedTools = cfg.SharedTools.(*toolreg.ToolRegistry)
-	} else {
+	sharedTools := cfg.SharedTools
+	if sharedTools == nil {
 		sharedTools = toolreg.New()
 	}
 
@@ -468,7 +469,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	// (TracingDomain eliminated — inlined into catalog)
 
 	// ToolsDomain needs tracer — constructed here after tracer init
-	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, cfg.CallerID, cfg.RuntimeID)
+	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, kernel.audit, cfg.CallerID, cfg.RuntimeID)
 
 	kernel.testingDomain = newTestingDomain(kernel)
 	kernel.lifecycle = newLifecycleDomain(kernel)
@@ -536,7 +537,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.remote.SetIdentity(cfg.ClusterID, cfg.RuntimeID)
 
 	// SecretsDomain — needs kernel.remote for bus event publishing
-	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, cfg.CallerID, nil, kernel.refreshProviderIfSecret)
+	kernel.secretsDomain = newSecretsDomain(kernel.secretStore, kernel.remote, kernel.audit, cfg.CallerID, nil, kernel.refreshProviderIfSecret)
 
 	wmLogger := watermill.NopLogger{}
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
@@ -592,6 +593,19 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	// Requires both deployment persistence (Store) and Mastra storage (Storages).
 	if cfg.Store != nil && len(cfg.Storages) > 0 {
 		kernel.restartActiveWorkflows()
+	}
+
+	// Initialize audit event log — auto-create SQLite store alongside KitStore
+	if cfg.AuditStore != nil {
+		kernel.auditStore = cfg.AuditStore
+		kernel.audit = auditpkg.NewRecorder(cfg.AuditStore, cfg.RuntimeID, cfg.Namespace)
+	} else if cfg.FSRoot != "" {
+		auditStore, auditErr := auditpkg.NewSQLiteStore(filepath.Join(cfg.FSRoot, "brainkit-audit.db"))
+		if auditErr == nil {
+			kernel.auditStore = auditStore
+			kernel.audit = auditpkg.NewRecorder(auditStore, cfg.RuntimeID, cfg.Namespace)
+			cleanups = append(cleanups, func() { auditStore.Close() })
+		}
 	}
 
 	kernel.startedAt = time.Now()

@@ -42,6 +42,7 @@ func (d *LifecycleDomain) Deploy(ctx context.Context, req sdk.KitDeployMsg) (*sd
 		RuntimeID: d.kit.config.RuntimeID,
 		Resources: resourceInfosToMessages(resources),
 	})
+	d.kit.audit.Deployed(req.Source, len(resources))
 	return &sdk.KitDeployResp{
 		Deployed:  true,
 		Resources: resourceInfosToMessages(resources),
@@ -58,6 +59,7 @@ func (d *LifecycleDomain) Teardown(ctx context.Context, req sdk.KitTeardownMsg) 
 		RuntimeID: d.kit.config.RuntimeID,
 		Removed:   removed,
 	})
+	d.kit.audit.Teardown(req.Source)
 	return &sdk.KitTeardownResp{Removed: removed}, nil
 }
 

@@ -250,6 +250,7 @@ func (n *Node) StartPlugin(ctx context.Context, cfg types.PluginConfig) error {
 	n.Kernel.publish(ctx, "plugin.started", mustMarshalJSON(sdk.PluginStartedEvent{
 		Name: cfg.Name, PID: pid,
 	}))
+	n.Kernel.audit.PluginStarted(cfg.Name, pid)
 	return nil
 }
 
@@ -268,6 +269,7 @@ func (n *Node) StopPlugin(ctx context.Context, name string) error {
 	n.Kernel.publish(ctx, "plugin.stopped", mustMarshalJSON(sdk.PluginStoppedEvent{
 		Name: name, Reason: "stopped",
 	}))
+	n.Kernel.audit.PluginStopped(name, "stopped")
 	return nil
 }
 
@@ -443,6 +445,7 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginMan
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
 	}))
+	n.Kernel.audit.PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
 
 	return &sdk.PluginManifestResp{Registered: true}, nil
 }

@@ -20,7 +20,7 @@ import (
 func newTestToolsDomain(runtimeID string) (*ToolsDomain, *tools.ToolRegistry) {
 	reg := tools.New()
 	tracer := tracing.NewTracer(nil, 1.0)
-	domain := newToolsDomain(reg, nil, tracer, "test-caller", runtimeID)
+	domain := newToolsDomain(reg, nil, tracer, nil, "test-caller", runtimeID)
 	return domain, reg
 }
 

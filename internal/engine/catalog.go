@@ -322,6 +322,16 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACRolesMsg) (*sdk.RBACRolesResp, error) {
 				return kernel.rbacAdminDomain.Roles(ctx, req)
 			}),
+			// ── Audit ──
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AuditQueryMsg) (*sdk.AuditQueryResp, error) {
+				return newAuditDomain(auditStoreFromKernel(kernel)).Query(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AuditStatsMsg) (*sdk.AuditStatsResp, error) {
+				return newAuditDomain(auditStoreFromKernel(kernel)).Stats(ctx, req)
+			}),
+			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AuditPruneMsg) (*sdk.AuditPruneResp, error) {
+				return newAuditDomain(auditStoreFromKernel(kernel)).Prune(ctx, req)
+			}),
 			// ── Secrets ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsSetMsg) (*sdk.SecretsSetResp, error) {
 				return kernel.secretsDomain.Set(ctx, req)

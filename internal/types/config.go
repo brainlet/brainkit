@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"time"
+
+	"github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/tools"
 )
 
 // KernelConfig configures the local runtime.
@@ -43,7 +46,7 @@ type KernelConfig struct {
 
 	// Infrastructure
 	MaxStackSize       int
-	SharedTools        any // *tools.ToolRegistry — uses any to avoid import cycle
+	SharedTools        *tools.ToolRegistry
 	MCPServers         map[string]MCPServerConfig
 	Observability      ObservabilityConfig
 	Store              KitStore
@@ -59,6 +62,7 @@ type KernelConfig struct {
 	ProviderKeyMapping map[string]string
 	PluginRegistries   []RegistryConfig
 	PluginDir          string
+	AuditStore         audit.Store
 }
 
 // RegistryConfig configures a plugin registry source.

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
@@ -18,12 +20,13 @@ type ToolsDomain struct {
 	tools     *tools.ToolRegistry
 	eval      JSEvaluator
 	tracer    *tracing.Tracer
+	audit     *auditpkg.Recorder
 	callerID  string
 	runtimeID string // local runtime ID — used to reject remote calls to local-only tools
 }
 
-func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, callerID, runtimeID string) *ToolsDomain {
-	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, callerID: callerID, runtimeID: runtimeID}
+func newToolsDomain(tools *tools.ToolRegistry, eval JSEvaluator, tracer *tracing.Tracer, audit *auditpkg.Recorder, callerID, runtimeID string) *ToolsDomain {
+	return &ToolsDomain{tools: tools, eval: eval, tracer: tracer, audit: audit, callerID: callerID, runtimeID: runtimeID}
 }
 
 // Call executes a registered tool by name and returns the typed response.
@@ -34,10 +37,10 @@ func (d *ToolsDomain) Call(ctx context.Context, req sdk.ToolCallMsg) (*sdk.ToolC
 	}
 
 	// Reject remote calls to local-only tools (plugin tools).
-	// Local tools are bound to this Kit's subprocess — remote Kit instances must not invoke them.
 	if tool.Local && d.runtimeID != "" {
 		callerRuntimeID := transport.RuntimeIDFromContext(ctx)
 		if callerRuntimeID != "" && callerRuntimeID != d.runtimeID {
+			d.audit.ToolCallDenied(tool.Name, callerRuntimeID, "local-only tool called from remote runtime")
 			return nil, &sdkerrors.PermissionDeniedError{
 				Source: callerRuntimeID,
 				Action: "call",
@@ -47,20 +50,24 @@ func (d *ToolsDomain) Call(ctx context.Context, req sdk.ToolCallMsg) (*sdk.ToolC
 		}
 	}
 
+	callStart := time.Now()
 	span := d.tracer.StartSpan("tools.call:"+tool.ShortName, ctx)
 	span.SetAttribute("tool", tool.Name)
 
 	inputJSON, _ := json.Marshal(req.Input)
 	result, err := tool.Executor.Call(ctx, d.callerID, inputJSON)
 	span.End(err)
+	callDuration := time.Since(callStart)
+
 	if err != nil {
+		d.audit.ToolCallFailed(tool.Name, d.callerID, callDuration, err)
 		return nil, err
 	}
 	// nil result + nil error = pass-through (plugin responds directly to caller).
-	// Return nil so the command handler skips publishing a response.
 	if result == nil {
 		return nil, nil
 	}
+	d.audit.ToolCallCompleted(tool.Name, d.callerID, callDuration)
 	return &sdk.ToolCallResp{Result: result}, nil
 }
 

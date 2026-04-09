@@ -99,4 +99,5 @@ func (k *Kernel) emitPermissionDenied(source, topic, action, roleName string) {
 	})
 	// Publish directly — don't RBAC check the audit event itself
 	k.remote.PublishRaw(context.Background(), "bus.permission.denied", payload)
+	k.audit.PermissionDenied(source, action, topic, roleName)
 }

@@ -5,23 +5,25 @@ import (
 	"encoding/json"
 	"time"
 
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // SecretsDomain handles secrets.set/get/delete/list/rotate bus commands.
 type SecretsDomain struct {
 	store           secrets.SecretStore
 	bus             BusPublisher
+	audit           *auditpkg.Recorder
 	callerID        string
 	pluginRestarter PluginRestarter    // nil on standalone Kernel
 	providerRefresh func(string, string) // refreshProviderIfSecret
 }
 
-func newSecretsDomain(store secrets.SecretStore, bus BusPublisher, callerID string, restarter PluginRestarter, providerRefresh func(string, string)) *SecretsDomain {
-	return &SecretsDomain{store: store, bus: bus, callerID: callerID, pluginRestarter: restarter, providerRefresh: providerRefresh}
+func newSecretsDomain(store secrets.SecretStore, bus BusPublisher, audit *auditpkg.Recorder, callerID string, restarter PluginRestarter, providerRefresh func(string, string)) *SecretsDomain {
+	return &SecretsDomain{store: store, bus: bus, audit: audit, callerID: callerID, pluginRestarter: restarter, providerRefresh: providerRefresh}
 }
 
 // emitSecretEvent publishes a secrets audit event.
@@ -50,6 +52,7 @@ func (d *SecretsDomain) Set(ctx context.Context, req sdk.SecretsSetMsg) (*sdk.Se
 
 	// Audit event
 	d.emitSecretEvent(ctx, sdk.SecretsStoredEvent{Name: req.Name, Version: version, Timestamp: time.Now().Format(time.RFC3339)})
+	d.audit.SecretSet(req.Name, d.callerID)
 
 	return &sdk.SecretsSetResp{Stored: true, Version: version}, nil
 }
@@ -79,6 +82,7 @@ func (d *SecretsDomain) Delete(ctx context.Context, req sdk.SecretsDeleteMsg) (*
 
 	// Audit event
 	d.emitSecretEvent(ctx, sdk.SecretsDeletedEvent{Name: req.Name, Timestamp: time.Now().Format(time.RFC3339)})
+	d.audit.SecretDeleted(req.Name, d.callerID)
 
 	return &sdk.SecretsDeleteResp{Deleted: true}, nil
 }
@@ -142,6 +146,7 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req sdk.SecretsRotateMsg) (*
 		Name: req.Name, Version: version, RestartedPlugins: restartedPlugins,
 		Timestamp: time.Now().Format(time.RFC3339),
 	})
+	d.audit.SecretRotated(req.Name, d.callerID)
 
 	return &sdk.SecretsRotateResp{
 		Rotated: true, Version: version, RestartedPlugins: restartedPlugins,
