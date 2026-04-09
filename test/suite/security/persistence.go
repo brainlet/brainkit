@@ -21,7 +21,7 @@ func testPersistSQLInjectionInSource(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 	})
@@ -47,7 +47,7 @@ func testPersistSQLInjectionInSource(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -81,7 +81,7 @@ func testPersistCodeMutatesStoreDuringRestore(t *testing.T, env *suite.TestEnv) 
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -115,7 +115,7 @@ func testPersistEvilPluginPaths(t *testing.T, env *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -134,14 +134,14 @@ func testPersistConcurrentStoreWrites(t *testing.T, env *suite.TestEnv) {
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "k1", CallerID: "k1", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
 	defer k1.Close()
 
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "k2", CallerID: "k2", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)

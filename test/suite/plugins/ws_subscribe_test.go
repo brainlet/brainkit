@@ -102,7 +102,7 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	// Start Kit with plugin
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-ws-sub",
-		Transport: "embedded",
+		Transport: brainkit.EmbeddedNATS(),
 		Plugins: []brainkit.PluginConfig{{
 			Name: "sub-test", Binary: binaryPath, AutoRestart: false,
 		}},

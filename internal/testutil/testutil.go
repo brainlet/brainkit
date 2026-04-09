@@ -156,7 +156,7 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 		Namespace: "test",
 		CallerID:  "test-node",
 		FSRoot:    tmpDir,
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Providers: providers,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),

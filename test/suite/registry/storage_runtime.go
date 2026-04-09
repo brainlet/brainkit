@@ -198,7 +198,7 @@ func testStorageRuntimeScalingPool(t *testing.T, _ *suite.TestEnv) {
 func testStorageRuntimeKernelMultipleStorages(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"mem":    brainkit.InMemoryStorage(),

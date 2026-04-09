@@ -186,9 +186,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				Namespace: "plugin-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: "nats",
-				NATSURL:   natsURL,
-				NATSName:  "brainkit-cross-plugin",
+				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin")),
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -268,9 +266,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				Namespace: "plugin-cross-list",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: "nats",
-				NATSURL:   natsURL,
-				NATSName:  "brainkit-cross-plugin-list",
+				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin-list")),
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -350,9 +346,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				Namespace: "ts-plugin-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: "nats",
-				NATSURL:   natsURL,
-				NATSName:  "brainkit-ts-plugin",
+				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin")),
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",
@@ -452,9 +446,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				Namespace: "ts-plugin-alongside-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: "nats",
-				NATSURL:   natsURL,
-				NATSName:  "brainkit-ts-plugin-alongside",
+				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin-alongside")),
 				Plugins: []brainkit.PluginConfig{
 					{
 						Name:         "testplugin",

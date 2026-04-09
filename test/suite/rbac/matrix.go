@@ -241,7 +241,7 @@ func testMatrixOwnMailbox(t *testing.T, _ *suite.TestEnv) {
 func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport:   "memory",
+		Transport: brainkit.Memory(),
 		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"observer": rbac.RoleObserver},
 		DefaultRole: "observer",
@@ -271,7 +271,7 @@ func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) 
 func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport:   "memory",
+		Transport: brainkit.Memory(),
 		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"service": rbac.RoleService},
 		DefaultRole: "service",
@@ -301,7 +301,7 @@ func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv)
 func testMatrixIntegrationGatewayDeniedEverything(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport:   "memory",
+		Transport: brainkit.Memory(),
 		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"gateway": rbac.RoleGateway},
 		DefaultRole: "gateway",

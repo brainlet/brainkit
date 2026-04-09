@@ -18,7 +18,7 @@ import (
 func registryEnv(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-registry",
 		FSRoot:    t.TempDir(),
@@ -88,7 +88,7 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 
 func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-registry-dynamic",
 		FSRoot:    t.TempDir(),
@@ -138,7 +138,7 @@ func testJSBridgeHas(t *testing.T, _ *suite.TestEnv) {
 
 func testJSBridgeList(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-registry-list",
 		FSRoot:    t.TempDir(),

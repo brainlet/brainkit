@@ -133,7 +133,7 @@ func testMatrixManySecrets(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "bulk.db"))
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "bulk-test-key-32-characters!!",
 	})
@@ -180,7 +180,7 @@ func testMatrixEncryptedPersistence(t *testing.T, _ *suite.TestEnv) {
 	// Phase 1: Set encrypted secret
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: masterKey,
 	})
@@ -197,7 +197,7 @@ func testMatrixEncryptedPersistence(t *testing.T, _ *suite.TestEnv) {
 	// Phase 2: Reopen with same key, retrieve
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: masterKey,
 	})
@@ -224,7 +224,7 @@ func testMatrixWrongKeyCannotDecrypt(t *testing.T, _ *suite.TestEnv) {
 	// Set with key A
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "correct-key-32-characters-long!",
 	})
@@ -241,7 +241,7 @@ func testMatrixWrongKeyCannotDecrypt(t *testing.T, _ *suite.TestEnv) {
 	// Reopen with WRONG key
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "wrong-key-32-characters-long-!",
 	})

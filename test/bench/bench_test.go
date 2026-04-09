@@ -123,7 +123,7 @@ func BenchmarkRestartRecovery(b *testing.B) {
 				b.StopTimer()
 				storePath := filepath.Join(b.TempDir(), "restart-bench.db")
 				store, _ := brainkit.NewSQLiteStore(storePath)
-				k, _ := brainkit.New(brainkit.Config{Transport: "memory", Store: store, Namespace: "bench", CallerID: "bench"})
+				k, _ := brainkit.New(brainkit.Config{Transport: brainkit.Memory(), Store: store, Namespace: "bench", CallerID: "bench"})
 				for j := 0; j < n; j++ {
 					testutil.DeployErr(k, fmt.Sprintf("svc-%d.ts", j),
 						`bus.on("x", (msg) => msg.reply({}));`)
@@ -132,7 +132,7 @@ func BenchmarkRestartRecovery(b *testing.B) {
 
 				b.StartTimer()
 				store2, _ := brainkit.NewSQLiteStore(storePath)
-				k2, _ := brainkit.New(brainkit.Config{Transport: "memory", Store: store2, Namespace: "bench", CallerID: "bench"})
+				k2, _ := brainkit.New(brainkit.Config{Transport: brainkit.Memory(), Store: store2, Namespace: "bench", CallerID: "bench"})
 				k2.Close()
 			}
 		})
@@ -144,7 +144,7 @@ func benchKit(b *testing.B) *brainkit.Kit {
 	b.Helper()
 	tmpDir := b.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,

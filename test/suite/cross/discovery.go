@@ -86,7 +86,7 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-disc-cross",
 		CallerID:  "test-node",
-		Transport: "embedded",
+		Transport: brainkit.EmbeddedNATS(),
 		Discovery: brainkit.DiscoveryConfig{
 			Type: "static",
 			StaticPeers: []brainkit.PeerConfig{

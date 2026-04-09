@@ -21,7 +21,7 @@ func testProbeAIProviderRealOpenAI(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probe",
 		FSRoot:    t.TempDir(),
@@ -51,7 +51,7 @@ func testProbeAIProviderRealOpenAI(t *testing.T, _ *suite.TestEnv) {
 // testProbeAIProviderBadKey verifies probe detects invalid credentials.
 func testProbeAIProviderBadKey(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probe-bad",
 		FSRoot:    t.TempDir(),
@@ -69,7 +69,7 @@ func testProbeAIProviderBadKey(t *testing.T, _ *suite.TestEnv) {
 // testProbeAIProviderNotRegistered verifies error for unknown provider.
 func testProbeAIProviderNotRegistered(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probe-notfound",
 		FSRoot:    t.TempDir(),
@@ -85,7 +85,7 @@ func testProbeAIProviderNotRegistered(t *testing.T, _ *suite.TestEnv) {
 // testProbeStorageInMemory verifies in-memory storage is always healthy.
 func testProbeStorageInMemory(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probe-storage",
 		FSRoot:    t.TempDir(),
@@ -119,7 +119,7 @@ func testProbeVectorStoreRealPgVector(t *testing.T, _ *suite.TestEnv) {
 	pgConnStr := testutil.StartPgVectorContainer(t)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probe-vector",
 		FSRoot:    t.TempDir(),
@@ -143,7 +143,7 @@ func testProbeAll(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-probeall",
 		FSRoot:    t.TempDir(),
@@ -168,7 +168,7 @@ func testProbePeriodicTicker(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-periodic",
 		FSRoot:    t.TempDir(),

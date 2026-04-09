@@ -97,7 +97,7 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1,
 	})
@@ -110,7 +110,7 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -227,7 +227,7 @@ func testTimingScheduleFiresBeforeHandlerReady(t *testing.T, env *suite.TestEnv)
 func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 func testTimingRoleChangeWhileHandlerRunning(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,

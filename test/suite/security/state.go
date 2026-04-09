@@ -29,7 +29,7 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		Roles: map[string]rbac.Role{"service": rbac.RoleService},
@@ -47,7 +47,7 @@ func testStateStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)

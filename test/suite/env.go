@@ -241,9 +241,9 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 
 	// Transport: default to memory (fast GoChannel) for suite tests.
 	// Campaigns override with WithTransport("nats"), WithTransport("embedded"), etc.
-	if cfg.Transport == "" {
-		kitCfg.Transport = "memory"
-	} else if cfg.Transport != "memory" {
+	if cfg.Transport == "" || cfg.Transport == "memory" {
+		kitCfg.Transport = brainkit.Memory()
+	} else {
 		tcfg := testutil.TransportConfigForBackend(t, cfg.Transport)
 
 		// "embedded" needs no container — skip probe
@@ -253,11 +253,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 			probe.Close()
 		}
 
-		kitCfg.Transport = tcfg.Type
-		kitCfg.NATSURL = tcfg.NATSURL
-		kitCfg.NATSName = tcfg.NATSName
-		kitCfg.AMQPURL = tcfg.AMQPURL
-		kitCfg.RedisURL = tcfg.RedisURL
+		kitCfg.Transport = testutil.BrainkitTransport(tcfg)
 	}
 
 	kit, err := brainkit.New(kitCfg)

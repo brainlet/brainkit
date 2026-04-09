@@ -30,7 +30,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store1,
@@ -68,7 +68,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -97,7 +97,7 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	store, _ := brainkit.NewSQLiteStore(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -122,7 +122,7 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	// Kernel 2: should have NO deployments
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, _ := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -139,7 +139,7 @@ func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 	store, _ := brainkit.NewSQLiteStore(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -178,7 +178,7 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	store, _ := brainkit.NewSQLiteStore(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
@@ -208,7 +208,7 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	// Kernel 2: should start even though broken-persist.ts fails to redeploy
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
@@ -240,7 +240,7 @@ func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
@@ -267,7 +267,7 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
@@ -297,7 +297,7 @@ func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store,
 	})
 	require.NoError(t, err)
@@ -334,7 +334,7 @@ func testRolePreservedAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		Store: store1, Roles: roles, DefaultRole: "restricted",
 	})
@@ -351,7 +351,7 @@ func testRolePreservedAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		Store: store2, Roles: roles, DefaultRole: "restricted",
 	})
@@ -379,7 +379,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
@@ -399,7 +399,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -418,7 +418,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
@@ -435,7 +435,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -456,7 +456,7 @@ func testDeployOrderPreservedExactly(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
@@ -493,7 +493,7 @@ func testCorruptDeploymentTable(t *testing.T, _ *suite.TestEnv) {
 	// Create valid store with a deployment
 	store, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 	})
@@ -528,7 +528,7 @@ func testCorruptDeploymentTable(t *testing.T, _ *suite.TestEnv) {
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	var errors []error
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error) {
@@ -578,7 +578,7 @@ func testCorruptScheduleTable(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})

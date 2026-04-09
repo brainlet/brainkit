@@ -22,7 +22,7 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 	for i := 0; i < 3; i++ {
 		tmpDir := t.TempDir()
 		k, err := brainkit.New(brainkit.Config{
-			Transport: "memory",
+			Transport: brainkit.Memory(),
 			Namespace: fmt.Sprintf("multi-stress-%d", i),
 			CallerID:  fmt.Sprintf("multi-stress-%d", i),
 			FSRoot:    tmpDir,

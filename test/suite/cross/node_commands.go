@@ -97,7 +97,7 @@ func testNodeCommandsNodeShutdownClean(t *testing.T, env *suite.TestEnv) {
 		Namespace: "shutdown-test-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: "embedded",
+		Transport: brainkit.EmbeddedNATS(),
 	})
 	require.NoError(t, err)
 

@@ -81,7 +81,7 @@ func newRestrictedKernel(t *testing.T) *brainkit.Kit {
 	store, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Store:     store,
 		Roles: map[string]rbac.Role{
 			"restricted": {
@@ -107,7 +107,7 @@ func newRBACKernel(t *testing.T, defaultRole string) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,

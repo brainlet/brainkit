@@ -258,11 +258,7 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:     envVars,
-		Transport: tcfg.Type,
-		NATSURL:   tcfg.NATSURL,
-		NATSName:  tcfg.NATSName,
-		AMQPURL:   tcfg.AMQPURL,
-		RedisURL:  tcfg.RedisURL,
+		Transport: BrainkitTransport(tcfg),
 	})
 	if err != nil {
 		t.Fatalf("brainkit.New(%s): %v", backend, err)
@@ -298,4 +294,26 @@ func BuildTestPlugin(t *testing.T) string {
 		t.Fatalf("build test plugin: %v", err)
 	}
 	return binary
+}
+
+// BrainkitTransport converts an internal transport.TransportConfig to a public brainkit.TransportConfig.
+func BrainkitTransport(tcfg transport.TransportConfig) brainkit.TransportConfig {
+	switch tcfg.Type {
+	case "memory":
+		return brainkit.Memory()
+	case "embedded":
+		return brainkit.EmbeddedNATS()
+	case "nats":
+		var opts []brainkit.TransportOption
+		if tcfg.NATSName != "" {
+			opts = append(opts, brainkit.WithNATSName(tcfg.NATSName))
+		}
+		return brainkit.NATS(tcfg.NATSURL, opts...)
+	case "amqp":
+		return brainkit.AMQP(tcfg.AMQPURL)
+	case "redis":
+		return brainkit.Redis(tcfg.RedisURL)
+	default:
+		return brainkit.EmbeddedNATS()
+	}
 }

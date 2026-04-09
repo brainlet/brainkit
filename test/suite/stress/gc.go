@@ -17,7 +17,7 @@ func testGCSingleKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "gc-stress-test",
 		CallerID:  "gc-stress-test",
 		FSRoot:    t.TempDir(),
@@ -38,7 +38,7 @@ func testGCMultipleKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 
 	for i := 0; i < 5; i++ {
 		k, err := brainkit.New(brainkit.Config{
-			Transport: "memory",
+			Transport: brainkit.Memory(),
 			Namespace: "gc-stress-multi",
 			CallerID:  "gc-stress-multi",
 			FSRoot:    t.TempDir(),
@@ -60,7 +60,7 @@ func testGCTenKernelCleanClose(t *testing.T, env *suite.TestEnv) {
 
 	for i := 0; i < 10; i++ {
 		k, err := brainkit.New(brainkit.Config{
-			Transport: "memory",
+			Transport: brainkit.Memory(),
 			Namespace: "gc-stress-ten",
 			CallerID:  "gc-stress-ten",
 			FSRoot:    t.TempDir(),
@@ -116,7 +116,7 @@ func testGCZeroLeakSESRuntime(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "gc-stress-leak-test",
 		CallerID:  "gc-stress-leak-test",
 		FSRoot:    t.TempDir(),

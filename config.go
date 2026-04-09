@@ -24,16 +24,10 @@ type Config struct {
 	// CallerID identifies this runtime instance in message metadata. Default: Namespace.
 	CallerID string
 
-	// Transport backend. Empty or "embedded" = in-process NATS (zero config, plugins work).
-	// "memory" = GoChannel (fast, no plugins — for tests).
-	// "nats" = external NATS (requires NATSURL). "amqp", "redis" for existing infra.
-	Transport string
-
-	// Transport connection details (used when Transport is set).
-	NATSURL  string
-	NATSName string
-	AMQPURL  string
-	RedisURL string
+	// Transport configures the bus backend. One per Kit.
+	// Zero value = EmbeddedNATS() (in-process NATS, zero config, plugins work).
+	// Use Memory() for tests, NATS(url) / AMQP(url) / Redis(url) for external infra.
+	Transport TransportConfig
 
 	// FSRoot is the filesystem sandbox for deployed .ts code.
 	FSRoot string
@@ -227,18 +221,18 @@ func (c Config) toNodeConfig(kernelCfg types.KernelConfig) types.NodeConfig {
 
 	// For embedded NATS, derive JetStream store from FSRoot.
 	natsStoreDir := ""
-	if c.Transport == "embedded" && c.FSRoot != "" {
+	if c.Transport.typ == "embedded" && c.FSRoot != "" {
 		natsStoreDir = filepath.Join(c.FSRoot, "nats-data")
 	}
 
 	nc := types.NodeConfig{
 		Kernel: kernelCfg,
 		Messaging: types.MessagingConfig{
-			Transport:    c.Transport,
-			NATSURL:      c.NATSURL,
-			NATSName:     c.NATSName,
-			AMQPURL:      c.AMQPURL,
-			RedisURL:     c.RedisURL,
+			Transport:    c.Transport.typ,
+			NATSURL:      c.Transport.natsURL,
+			NATSName:     c.Transport.natsName,
+			AMQPURL:      c.Transport.amqpURL,
+			RedisURL:     c.Transport.redisURL,
 			NATSStoreDir: natsStoreDir,
 		},
 		Discovery: types.DiscoveryConfig{

@@ -23,7 +23,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 
 	// Kit 1: deploy via StoreBackend config
 	k1, err := brainkit.New(brainkit.Config{
-		Transport:    "memory",
+		Transport: brainkit.Memory(),
 		Namespace:    "test",
 		CallerID:     "test",
 		FSRoot:       tmpDir,
@@ -39,7 +39,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 
 	// Kit 2: restart with same store — deployment should survive
 	k2, err := brainkit.New(brainkit.Config{
-		Transport:    "memory",
+		Transport: brainkit.Memory(),
 		Namespace:    "test",
 		CallerID:     "test",
 		FSRoot:       tmpDir,
@@ -65,7 +65,7 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport:    "memory",
+		Transport: brainkit.Memory(),
 		Namespace:    "test",
 		CallerID:     "test",
 		FSRoot:       tmpDir,
@@ -117,7 +117,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 
 	// Kit 1: deploy via StoreBackend=postgres
 	k1, err := brainkit.New(brainkit.Config{
-		Transport:    "memory",
+		Transport: brainkit.Memory(),
 		Namespace:    "test",
 		CallerID:     "test",
 		FSRoot:       t.TempDir(),
@@ -133,7 +133,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 
 	// Kit 2: restart with same Postgres — deployment should survive
 	k2, err := brainkit.New(brainkit.Config{
-		Transport:    "memory",
+		Transport: brainkit.Memory(),
 		Namespace:    "test",
 		CallerID:     "test",
 		FSRoot:       t.TempDir(),

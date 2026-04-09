@@ -47,14 +47,14 @@ type Kit struct {
 func New(cfg Config) (*Kit, error) {
 	kit := &Kit{}
 
-	// Empty transport defaults to embedded NATS — zero-config production mode.
-	if cfg.Transport == "" || cfg.Transport == "embedded" {
-		cfg.Transport = "embedded"
+	// Zero-value transport defaults to embedded NATS — zero-config production mode.
+	if cfg.Transport.typ == "" {
+		cfg.Transport = EmbeddedNATS()
 	}
 
 	kernelCfg := cfg.toKernelConfig()
 
-	if cfg.Transport == "memory" {
+	if cfg.Transport.typ == "memory" {
 		// Standalone Kernel — in-memory GoChannel, no plugins, fast for tests.
 		kernel, err := engine.NewKernel(kernelCfg)
 		if err != nil {

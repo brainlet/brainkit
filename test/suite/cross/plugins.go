@@ -336,9 +336,7 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 		Namespace: "plugin-e2e-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: "nats",
-		NATSURL:   natsURL,
-		NATSName:  "brainkit-test-cross",
+		Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-test-cross")),
 		Plugins: []brainkit.PluginConfig{
 			{
 				Name:         "testplugin",

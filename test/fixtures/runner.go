@@ -364,7 +364,7 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test-mcp",
 		FSRoot:    tmpDir,

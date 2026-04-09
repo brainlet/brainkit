@@ -18,24 +18,16 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// transportFieldsForBackend converts a testutil transport config into brainkit.Config transport fields.
+// transportFieldsForBackend converts a testutil transport config into a brainkit.TransportConfig.
 type transportFields struct {
-	Transport string
-	NATSURL   string
-	NATSName  string
-	AMQPURL   string
-	RedisURL  string
+	Transport brainkit.TransportConfig
 }
 
 func transportFieldsForBackend(t *testing.T, backend string) transportFields {
 	t.Helper()
 	tcfg := testutil.TransportConfigForBackend(t, backend)
 	return transportFields{
-		Transport: tcfg.Type,
-		NATSURL:   tcfg.NATSURL,
-		NATSName:  tcfg.NATSName,
-		AMQPURL:   tcfg.AMQPURL,
-		RedisURL:  tcfg.RedisURL,
+		Transport: testutil.BrainkitTransport(tcfg),
 	}
 }
 
@@ -112,10 +104,6 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 		CallerID:  "host",
 		FSRoot:    tmpDir,
 		Transport: tf.Transport,
-		NATSURL:   tf.NATSURL,
-		NATSName:  tf.NATSName,
-		AMQPURL:   tf.AMQPURL,
-		RedisURL:  tf.RedisURL,
 	})
 	if err != nil {
 		t.Fatalf("makeNode: %v", err)

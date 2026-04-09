@@ -157,7 +157,7 @@ func secRBACKernel(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,
@@ -190,7 +190,7 @@ func secReplyTokenKernel(t *testing.T) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"admin":    rbac.RoleAdmin,

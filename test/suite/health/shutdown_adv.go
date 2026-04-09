@@ -73,7 +73,7 @@ func testShutdownWithActiveSubscriptions(t *testing.T, _ *suite.TestEnv) {
 func testShutdownDrainTimeoutAdv(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func testShutdownDrainTimeoutAdv(t *testing.T, _ *suite.TestEnv) {
 func testShutdownConcurrentClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)

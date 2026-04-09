@@ -24,7 +24,7 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 		Namespace: "plugin-test-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: "embedded",
+		Transport: brainkit.EmbeddedNATS(),
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -66,10 +66,6 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 		CallerID:    "host",
 		FSRoot:      tmpDir,
 		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -111,10 +107,6 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 		CallerID:    "host",
 		FSRoot:      tmpDir,
 		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -158,10 +150,6 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 		CallerID:    "host",
 		FSRoot:      tmpDir,
 		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -185,10 +173,6 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 		CallerID:    "host",
 		FSRoot:      tmpDir,
 		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -215,10 +199,6 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 		CallerID:    "host",
 		FSRoot:      tmpDir,
 		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
 	})
 	require.NoError(t, err)
 	defer kit.Close()

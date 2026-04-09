@@ -373,7 +373,7 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
 		Store: store,
 	})
@@ -389,7 +389,7 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(tmpDir + "/stress-bomb.db")
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -410,7 +410,7 @@ func testEvalTSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "stress-inf", CallerID: "stress-inf", FSRoot: t.TempDir(),
 	})
 	require.NoError(t, err)

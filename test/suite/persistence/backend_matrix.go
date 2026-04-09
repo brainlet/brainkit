@@ -25,7 +25,7 @@ func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Phase 1: Deploy
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store,
 	})
@@ -39,7 +39,7 @@ func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store2,
 	})
@@ -66,7 +66,7 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "test-master-key-1234567890",
 	})
@@ -87,7 +87,7 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 2: Reopen — secret should be retrievable
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "test-master-key-1234567890",
 	})
@@ -118,7 +118,7 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	// Phase 2: Reopen
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -171,7 +171,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	// Reopen
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 1: Deploy with bus handler
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 2: Reopen — handler should be active again
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
-		Transport: "memory",
+		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)

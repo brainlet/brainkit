@@ -94,14 +94,10 @@ func loadEnvFile(path string) {
 // BuildConfig creates a brainkit.Config from CLI configuration.
 func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 	bc := brainkit.Config{
-		Namespace:  cfg.Namespace,
-		Transport:  cfg.Transport,
-		NATSURL:  cfg.NATSURL,
-		NATSName: cfg.NATSName,
-		AMQPURL:  cfg.AMQPURL,
-		RedisURL: cfg.RedisURL,
-		FSRoot:   cfg.FSRoot,
-		SecretKey:  cfg.SecretKey,
+		Namespace: cfg.Namespace,
+		Transport: buildTransport(cfg),
+		FSRoot:    cfg.FSRoot,
+		SecretKey: cfg.SecretKey,
 		LogHandler: func(e brainkit.LogEntry) {
 			fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", e.Source, e.Level, e.Message)
 		},
@@ -144,6 +140,28 @@ func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 	return bc, nil
 }
 
+
+// buildTransport converts CLI string config to typed TransportConfig.
+func buildTransport(cfg *CLIConfig) brainkit.TransportConfig {
+	switch cfg.Transport {
+	case "embedded", "":
+		return brainkit.EmbeddedNATS()
+	case "memory":
+		return brainkit.Memory()
+	case "nats":
+		var opts []brainkit.TransportOption
+		if cfg.NATSName != "" {
+			opts = append(opts, brainkit.WithNATSName(cfg.NATSName))
+		}
+		return brainkit.NATS(cfg.NATSURL, opts...)
+	case "amqp":
+		return brainkit.AMQP(cfg.AMQPURL)
+	case "redis":
+		return brainkit.Redis(cfg.RedisURL)
+	default:
+		return brainkit.EmbeddedNATS()
+	}
+}
 
 func mapStorage(e StorageEntry) brainkit.StorageConfig {
 	switch e.Type {
