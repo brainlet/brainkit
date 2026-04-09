@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	kitstore "github.com/brainlet/brainkit/internal/store"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 )
@@ -79,6 +80,16 @@ type Config struct {
 	// Nil + FSRoot set = auto-create SQLiteStore at <FSRoot>/brainkit-store.db.
 	// Nil + FSRoot empty = no persistence (ephemeral).
 	Store KitStore
+
+	// StoreBackend selects the persistence engine: "sqlite" (default) or "postgres".
+	// When set with StoreURL, the factory creates the store automatically.
+	// Overridden by explicit Store field.
+	StoreBackend string
+
+	// StoreURL is the connection string for the store backend.
+	// For postgres: "postgres://user:pass@host:5432/db?sslmode=disable"
+	// For sqlite: file path (defaults to <FSRoot>/brainkit-store.db)
+	StoreURL string
 
 	// Plugins to start automatically (requires Transport).
 	Plugins []PluginConfig
@@ -171,9 +182,22 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		cfg.TraceStore = tracing.NewMemoryTraceStore(10000)
 	}
 
-	// Store: explicit > auto from FSRoot > nil
+	// Store: explicit > StoreBackend factory > auto-create from FSRoot > nil
 	if c.Store != nil {
 		cfg.Store = c.Store
+	} else if c.StoreBackend != "" {
+		storeURL := c.StoreURL
+		if storeURL == "" && c.FSRoot != "" {
+			storeURL = filepath.Join(c.FSRoot, "brainkit-store.db")
+		}
+		if storeURL != "" {
+			s, err := kitstore.NewKitStore(kitstore.Config{
+				Backend: c.StoreBackend, SQLitePath: storeURL, PostgresURL: storeURL,
+			})
+			if err == nil {
+				cfg.Store = s
+			}
+		}
 	} else if c.FSRoot != "" {
 		store, err := types.NewSQLiteStore(filepath.Join(c.FSRoot, "brainkit-store.db"))
 		if err == nil {
