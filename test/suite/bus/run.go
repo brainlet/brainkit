@@ -177,5 +177,12 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("transport_matrix_kit_redeploy", func(t *testing.T) { testTransportMatrixKitRedeploy(t, env) })
 		t.Run("transport_matrix_registry_has_list", func(t *testing.T) { testTransportMatrixRegistryHasList(t, env) })
 		t.Run("transport_matrix_async_correlation", func(t *testing.T) { testTransportMatrixAsyncCorrelation(t, env) })
+
+		// audit.go — centralized audit log bus commands
+		t.Run("audit_query_after_deploy", func(t *testing.T) { testAuditQueryAfterDeploy(t, env) })
+		t.Run("audit_stats_response", func(t *testing.T) { testAuditStatsResponse(t, env) })
+		t.Run("audit_prune_works", func(t *testing.T) { testAuditPruneWorks(t, env) })
+		t.Run("audit_tool_call_recorded", func(t *testing.T) { testAuditToolCallRecorded(t, env) })
+		t.Run("audit_metrics_get_includes_bus", func(t *testing.T) { testAuditMetricsGetIncludesBus(t, env) })
 	})
 }
