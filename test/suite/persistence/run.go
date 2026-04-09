@@ -38,5 +38,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("multi_deploy_order_and_metadata", func(t *testing.T) { testMultiDeployOrderAndMetadata(t, env) })
 		t.Run("multiple_schedules_survive", func(t *testing.T) { testMultipleSchedulesSurvive(t, env) })
 		t.Run("deploy_with_bus_handler_survives_restart", func(t *testing.T) { testDeployWithBusHandlerSurvivesRestart(t, env) })
+
+		// store_backend.go — backend configuration via Config.StoreBackend
+		t.Run("store_backend_sqlite_via_config", func(t *testing.T) { testStoreBackendSQLiteViaConfig(t, env) })
+		t.Run("store_backend_sqlite_audit_via_config", func(t *testing.T) { testStoreBackendSQLiteAuditViaConfig(t, env) })
+		t.Run("store_backend_postgres_via_config", func(t *testing.T) { testStoreBackendPostgresViaConfig(t, env) })
 	})
 }
