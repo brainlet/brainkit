@@ -35,6 +35,13 @@ type pluginWSConn struct {
 	pending  map[string]chan pluginws.ToolResult // id → result channel
 	unsubs   []func()                            // bus subscription cancellers
 	mu       sync.Mutex
+
+	// Health tracking
+	healthy    bool
+	lastPong   time.Time
+	toolCalls  int64 // total tool calls handled
+	toolErrors int64 // total tool call errors
+	cancelPing context.CancelFunc
 }
 
 func newPluginWSServer(node *Node) (*pluginWSServer, error) {
@@ -156,6 +163,41 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		s.subscribeTopic(pc, topic)
 	}
 
+	// Start WS ping heartbeat to detect dead plugins
+	pc.healthy = true
+	pc.lastPong = time.Now()
+	pingCtx, cancelPing := context.WithCancel(ctx)
+	pc.cancelPing = cancelPing
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pingCtx.Done():
+				return
+			case <-ticker.C:
+				if err := conn.Ping(pingCtx); err != nil {
+					if pc.healthy {
+						pc.healthy = false
+						s.node.Kernel.audit.PluginHealthChanged(pc.name, "unhealthy")
+						slog.Warn("plugin ws: heartbeat failed",
+							slog.String("plugin", pc.name),
+							slog.String("error", err.Error()))
+					}
+				} else {
+					pc.mu.Lock()
+					pc.lastPong = time.Now()
+					pc.mu.Unlock()
+					if !pc.healthy {
+						pc.healthy = true
+						s.node.Kernel.audit.PluginHealthChanged(pc.name, "healthy")
+						slog.Info("plugin ws: heartbeat recovered", slog.String("plugin", pc.name))
+					}
+				}
+			}
+		}
+	}()
+
 	// Read messages from plugin
 	for {
 		var respMsg pluginws.Message
@@ -191,7 +233,10 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Cleanup on disconnect — cancel all bus subscriptions
+	// Cleanup on disconnect — cancel heartbeat + all bus subscriptions
+	if pc.cancelPing != nil {
+		pc.cancelPing()
+	}
 	pc.mu.Lock()
 	for _, unsub := range pc.unsubs {
 		unsub()
@@ -264,6 +309,12 @@ func (pc *pluginWSConn) callTool(ctx context.Context, tool string, input json.Ra
 
 	select {
 	case result := <-ch:
+		pc.mu.Lock()
+		pc.toolCalls++
+		if result.Error != "" {
+			pc.toolErrors++
+		}
+		pc.mu.Unlock()
 		if result.Error != "" {
 			return nil, fmt.Errorf("%s", result.Error)
 		}

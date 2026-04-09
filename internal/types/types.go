@@ -81,6 +81,20 @@ type KernelMetrics struct {
 	ActiveSchedules   int           `json:"activeSchedules"`
 	PumpCycles        int64         `json:"pumpCycles"`
 	Uptime            time.Duration `json:"uptime"`
+
+	// Plugin metrics (only populated when Node is present)
+	ActivePlugins int             `json:"activePlugins"`
+	Plugins       []PluginMetrics `json:"plugins,omitempty"`
+}
+
+// PluginMetrics describes a single plugin's runtime state.
+type PluginMetrics struct {
+	Name       string        `json:"name"`
+	Healthy    bool          `json:"healthy"`
+	ToolCalls  int64         `json:"toolCalls"`
+	ToolErrors int64         `json:"toolErrors"`
+	Uptime     time.Duration `json:"uptime"`
+	LastPong   time.Time     `json:"lastPong,omitempty"`
 }
 
 // MCPServerConfig defines an MCP server connection.
