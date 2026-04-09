@@ -165,6 +165,7 @@ func testTokenStreamingWithToken(t *testing.T, env *suite.TestEnv) {
 func testTokenNoRBACNoTokens(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)

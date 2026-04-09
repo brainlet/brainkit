@@ -2,6 +2,7 @@ package cross
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-disc-cross",
 		CallerID:  "test-node",
-		Transport: "memory",
+		Transport: "embedded",
 		Discovery: brainkit.DiscoveryConfig{
 			Type: "static",
 			StaticPeers: []brainkit.PeerConfig{
@@ -99,15 +100,16 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 
 	ctx := context.Background()
 
-	// peers.list via bus
-	pr, err := sdk.Publish(kit, ctx, sdk.PeersListMsg{})
-	require.NoError(t, err)
-
+	// peers.list via bus — subscribe BEFORE publish (GoChannel delivers synchronously)
+	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
 	listCh := make(chan sdk.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit, ctx, pr.ReplyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer unsub()
+
+	_, err = sdk.Publish(kit, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
 
 	select {
 	case resp := <-listCh:

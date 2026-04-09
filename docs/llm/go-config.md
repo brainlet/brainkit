@@ -36,13 +36,11 @@ type Config struct {
     PluginRegistries []RegistryConfig                          // plugin registry sources
     PluginDir        string                                    // local plugin cache
     // Transport fields (flattened from former MessagingConfig)
-    Transport   string // "memory", "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+    Transport   string // "memory", "embedded" (default), "nats", "amqp", "redis"
     NATSURL     string
     NATSName    string // durable consumer prefix
     AMQPURL     string
     RedisURL    string
-    PostgresURL string
-    SQLitePath  string
     // Plugin configuration
     Plugins     []PluginConfig
 }

@@ -241,7 +241,8 @@ func testMatrixOwnMailbox(t *testing.T, _ *suite.TestEnv) {
 func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Transport:   "memory",
+		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"observer": rbac.RoleObserver},
 		DefaultRole: "observer",
 		Storages:    map[string]brainkit.StorageConfig{"default": brainkit.InMemoryStorage()},
@@ -270,7 +271,8 @@ func testMatrixIntegrationObserverDeniedPublish(t *testing.T, _ *suite.TestEnv) 
 func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Transport:   "memory",
+		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"service": rbac.RoleService},
 		DefaultRole: "service",
 		Storages:    map[string]brainkit.StorageConfig{"default": brainkit.InMemoryStorage()},
@@ -299,7 +301,8 @@ func testMatrixIntegrationServiceAllowedToolCall(t *testing.T, _ *suite.TestEnv)
 func testMatrixIntegrationGatewayDeniedEverything(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Transport:   "memory",
+		Namespace:   "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"gateway": rbac.RoleGateway},
 		DefaultRole: "gateway",
 		Storages:    map[string]brainkit.StorageConfig{"default": brainkit.InMemoryStorage()},

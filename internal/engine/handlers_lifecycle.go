@@ -10,6 +10,7 @@ import (
 	"time"
 
 	js "github.com/brainlet/brainkit/internal/contract"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
@@ -25,12 +26,12 @@ func newLifecycleDomain(k *Kernel) *LifecycleDomain {
 }
 
 func (d *LifecycleDomain) Deploy(ctx context.Context, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
-	var opts []DeployOption
+	var opts []types.DeployOption
 	if req.Role != "" {
-		opts = append(opts, WithRole(req.Role))
+		opts = append(opts, types.WithRole(req.Role))
 	}
 	if req.PackageName != "" {
-		opts = append(opts, WithPackageName(req.PackageName))
+		opts = append(opts, types.WithPackageName(req.PackageName))
 	}
 	resources, err := d.kit.Deploy(ctx, req.Source, req.Code, opts...)
 	if err != nil {
@@ -88,7 +89,7 @@ func (d *LifecycleDomain) List(_ context.Context, _ sdk.KitListMsg) (*sdk.KitLis
 	return &sdk.KitListResp{Deployments: out}, nil
 }
 
-func resourceInfosToMessages(resources []ResourceInfo) []sdk.ResourceInfo {
+func resourceInfosToMessages(resources []types.ResourceInfo) []sdk.ResourceInfo {
 	out := make([]sdk.ResourceInfo, 0, len(resources))
 	for _, resource := range resources {
 		out = append(out, sdk.ResourceInfo{
@@ -113,14 +114,14 @@ func (d *LifecycleDomain) publishLifecycleEvent(ctx context.Context, event sdk.B
 type deploymentInfo struct {
 	Source    string         `json:"source"`
 	CreatedAt time.Time     `json:"createdAt"`
-	Resources []ResourceInfo `json:"resources,omitempty"`
+	Resources []types.ResourceInfo `json:"resources,omitempty"`
 	Order     int            `json:"order"`
 }
 
 // Deploy evaluates code in a new SES Compartment with isolated globals.
 // Resources created inside the compartment are tracked by source name.
 // Uses EvalTS internally — handles reentrant calls (IsEvalBusy) and Value.Free.
-func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...DeployOption) ([]ResourceInfo, error) {
+func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error) {
 	// Phase 1: Validate + teardown if already deployed (idempotent)
 	// Captures metadata from existing deployment for merge.
 	existing, err := k.validateAndPrepareDeploy(ctx, source)
@@ -133,7 +134,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 	span.SetSource(source)
 	defer func() { span.End(nil) }()
 
-	var cfg DeployConfig
+	var cfg types.DeployConfig
 	// Merge existing metadata first (previous role, packageName)
 	if existing != nil {
 		cfg.Role = existing.Role
@@ -176,7 +177,7 @@ func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...Deploy
 // validateAndPrepareDeploy checks source is non-empty. If already deployed, captures
 // persisted metadata (role, packageName) and tears down the existing deployment.
 // Returns the persisted metadata if available (nil if fresh deploy).
-func (k *Kernel) validateAndPrepareDeploy(ctx context.Context, source string) (*PersistedDeployment, error) {
+func (k *Kernel) validateAndPrepareDeploy(ctx context.Context, source string) (*types.PersistedDeployment, error) {
 	if strings.TrimSpace(source) == "" {
 		return nil, &sdkerrors.ValidationError{Field: "source", Message: "is required"}
 	}
@@ -188,7 +189,7 @@ func (k *Kernel) validateAndPrepareDeploy(ctx context.Context, source string) (*
 	}
 
 	// Capture persisted metadata before teardown
-	var existing *PersistedDeployment
+	var existing *types.PersistedDeployment
 	if k.config.Store != nil {
 		deps, _ := k.config.Store.LoadDeployments()
 		for _, d := range deps {
@@ -242,7 +243,7 @@ func (k *Kernel) evaluateInCompartment(ctx context.Context, source, code string)
 }
 
 // trackDeployment records the deployment and enumerates its resources.
-func (k *Kernel) trackDeployment(source string) []ResourceInfo {
+func (k *Kernel) trackDeployment(source string) []types.ResourceInfo {
 	resources, err := k.ResourcesFrom(source)
 	if err != nil {
 		k.logger.Warn("deploy: failed to enumerate resources", slog.String("source", source), slog.String("error", err.Error()))
@@ -267,7 +268,7 @@ func (k *Kernel) trackDeployment(source string) []ResourceInfo {
 
 // persistDeployment saves the deployment to KitStore for restart recovery.
 // Skips when restoring from persistence (cfg.Restoring) to avoid overwriting metadata.
-func (k *Kernel) persistDeployment(ctx context.Context, source, originalCode string, resources []ResourceInfo, cfg DeployConfig) {
+func (k *Kernel) persistDeployment(ctx context.Context, source, originalCode string, resources []types.ResourceInfo, cfg types.DeployConfig) {
 	if k.config.Store == nil || cfg.Restoring {
 		return
 	}
@@ -279,7 +280,7 @@ func (k *Kernel) persistDeployment(ctx context.Context, source, originalCode str
 	}
 	k.mu.Unlock()
 
-	if err := k.config.Store.SaveDeployment(PersistedDeployment{
+	if err := k.config.Store.SaveDeployment(types.PersistedDeployment{
 		Source:      source,
 		Code:        originalCode,
 		Order:       order,

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/google/uuid"
 	"github.com/brainlet/brainkit/sdk"
 )
@@ -35,8 +36,8 @@ func (k *Kernel) Ready(ctx context.Context) bool {
 }
 
 // Health returns a comprehensive health status with all checks.
-func (k *Kernel) Health(ctx context.Context) HealthStatus {
-	var checks []HealthCheck
+func (k *Kernel) Health(ctx context.Context) types.HealthStatus {
+	var checks []types.HealthCheck
 
 	checks = append(checks, k.checkRuntime(ctx))
 	checks = append(checks, k.checkTransport(ctx))
@@ -46,13 +47,13 @@ func (k *Kernel) Health(ctx context.Context) HealthStatus {
 	// Unprobed providers are not unhealthy — they just haven't been checked yet.
 	for _, p := range k.providers.ListAIProviders() {
 		if p.LastProbed.IsZero() {
-			checks = append(checks, HealthCheck{
+			checks = append(checks, types.HealthCheck{
 				Name:    "provider:" + p.Name,
 				Healthy: true, // assume healthy until probed
 				Details: "not yet probed",
 			})
 		} else {
-			checks = append(checks, HealthCheck{
+			checks = append(checks, types.HealthCheck{
 				Name:    "provider:" + p.Name,
 				Healthy: p.Healthy,
 				Latency: p.Latency,
@@ -73,12 +74,12 @@ func (k *Kernel) Health(ctx context.Context) HealthStatus {
 	}
 
 	// Informational
-	checks = append(checks, HealthCheck{
+	checks = append(checks, types.HealthCheck{
 		Name:    "deployments",
 		Healthy: true,
 		Details: map[string]int{"active": len(k.ListDeployments())},
 	})
-	checks = append(checks, HealthCheck{
+	checks = append(checks, types.HealthCheck{
 		Name:    "schedules",
 		Healthy: true,
 		Details: map[string]int{"active": len(k.ListSchedules())},
@@ -110,7 +111,7 @@ func (k *Kernel) Health(ctx context.Context) HealthStatus {
 		uptime = time.Since(k.startedAt)
 	}
 
-	return HealthStatus{
+	return types.HealthStatus{
 		Healthy: healthy,
 		Status:  status,
 		Uptime:  uptime,
@@ -118,7 +119,7 @@ func (k *Kernel) Health(ctx context.Context) HealthStatus {
 	}
 }
 
-func (k *Kernel) checkRuntime(ctx context.Context) HealthCheck {
+func (k *Kernel) checkRuntime(ctx context.Context) types.HealthCheck {
 	start := time.Now()
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -129,12 +130,12 @@ func (k *Kernel) checkRuntime(ctx context.Context) HealthCheck {
 		if err != nil {
 			errMsg = err.Error()
 		}
-		return HealthCheck{Name: "runtime", Healthy: false, Error: errMsg, Latency: time.Since(start)}
+		return types.HealthCheck{Name: "runtime", Healthy: false, Error: errMsg, Latency: time.Since(start)}
 	}
-	return HealthCheck{Name: "runtime", Healthy: true, Latency: time.Since(start)}
+	return types.HealthCheck{Name: "runtime", Healthy: true, Latency: time.Since(start)}
 }
 
-func (k *Kernel) checkTransport(ctx context.Context) HealthCheck {
+func (k *Kernel) checkTransport(ctx context.Context) types.HealthCheck {
 	start := time.Now()
 	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -149,7 +150,7 @@ func (k *Kernel) checkTransport(ctx context.Context) HealthCheck {
 		}
 	})
 	if err != nil {
-		return HealthCheck{Name: "transport", Healthy: false, Error: err.Error()}
+		return types.HealthCheck{Name: "transport", Healthy: false, Error: err.Error()}
 	}
 	defer unsub()
 
@@ -157,31 +158,31 @@ func (k *Kernel) checkTransport(ctx context.Context) HealthCheck {
 
 	select {
 	case <-received:
-		return HealthCheck{Name: "transport", Healthy: true, Latency: time.Since(start)}
+		return types.HealthCheck{Name: "transport", Healthy: true, Latency: time.Since(start)}
 	case <-checkCtx.Done():
-		return HealthCheck{Name: "transport", Healthy: false, Error: "probe timeout", Latency: time.Since(start)}
+		return types.HealthCheck{Name: "transport", Healthy: false, Error: "probe timeout", Latency: time.Since(start)}
 	}
 }
 
-func (k *Kernel) checkStorage(ctx context.Context, name string) HealthCheck {
+func (k *Kernel) checkStorage(ctx context.Context, name string) types.HealthCheck {
 	start := time.Now()
 	url := k.StorageURL(name)
 	if url == "" {
 		// InMemory or non-bridge storage — always healthy
-		return HealthCheck{Name: "storage:" + name, Healthy: true, Details: "in-memory"}
+		return types.HealthCheck{Name: "storage:" + name, Healthy: true, Details: "in-memory"}
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(url + "/health")
 	if err != nil {
-		return HealthCheck{Name: "storage:" + name, Healthy: false, Error: err.Error(), Latency: time.Since(start)}
+		return types.HealthCheck{Name: "storage:" + name, Healthy: false, Error: err.Error(), Latency: time.Since(start)}
 	}
 	resp.Body.Close()
 
-	return HealthCheck{Name: "storage:" + name, Healthy: resp.StatusCode == 200, Latency: time.Since(start)}
+	return types.HealthCheck{Name: "storage:" + name, Healthy: resp.StatusCode == 200, Latency: time.Since(start)}
 }
 
-func criticalCheckFailed(checks []HealthCheck) bool {
+func criticalCheckFailed(checks []types.HealthCheck) bool {
 	for _, c := range checks {
 		if !c.Healthy && (c.Name == "runtime" || c.Name == "transport") {
 			return true

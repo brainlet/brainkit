@@ -25,6 +25,7 @@ func NewEnv(b *testing.B) *BenchEnv {
 	tmpDir := b.TempDir()
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,

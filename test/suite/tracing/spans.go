@@ -29,6 +29,7 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 	kitStore, _ := brainkit.NewSQLiteStore(tmpDir + "/trace.db")
 	t.Cleanup(func() { kitStore.Close() })
 	k, err := brainkit.New(brainkit.Config{
+		Transport:  "memory",
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -218,6 +219,7 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport:       "memory",
 		Namespace:       "test",
 		CallerID:        "test",
 		FSRoot:          tmpDir,
@@ -252,6 +254,7 @@ func testTraceContextPropagates(t *testing.T, _ *suite.TestEnv) {
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport:  "memory",
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,

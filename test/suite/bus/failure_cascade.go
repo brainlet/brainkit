@@ -26,6 +26,7 @@ func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 
 	var errorCalled bool
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 		ErrorHandler: func(err error) {
@@ -161,6 +162,7 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 	store, _ := brainkit.NewSQLiteStore(tmpDir + "/store-cascade-concurrent.db")
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 		ErrorHandler: func(err error) {
@@ -218,6 +220,7 @@ func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
 func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -234,6 +237,7 @@ func testCascadeEvalTSDuringClose(t *testing.T, _ *suite.TestEnv) {
 func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},

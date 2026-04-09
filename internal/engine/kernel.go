@@ -22,6 +22,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/packages"
@@ -73,7 +74,7 @@ type Kernel struct {
 	host           *transport.Host
 	ownsTransport  bool // true if Kernel created the transport (false if injected by Node)
 
-	config    KernelConfig
+	config    types.KernelConfig
 	logger    *slog.Logger
 	namespace string
 	callerID  string
@@ -109,7 +110,7 @@ type Kernel struct {
 }
 
 type scheduleEntry struct {
-	PersistedSchedule
+	types.PersistedSchedule
 	timer *time.Timer
 }
 
@@ -207,7 +208,7 @@ func (k *Kernel) emitReplyDenied(replyTo, correlationID, source, reason string) 
 // autoDetectProviders scans os.Getenv and cfg.EnvVars for known API key patterns
 // and registers AI providers that aren't already explicitly configured.
 // Priority: explicit AIProviders > EnvVars > os.Getenv.
-func autoDetectProviders(cfg *KernelConfig) {
+func autoDetectProviders(cfg *types.KernelConfig) {
 	if cfg.AIProviders == nil {
 		cfg.AIProviders = make(map[string]provreg.AIProviderRegistration)
 	}
@@ -254,7 +255,7 @@ func autoDetectProviders(cfg *KernelConfig) {
 }
 
 // NewKernel creates a local runtime with no attached transport.
-func NewKernel(cfg KernelConfig) (*Kernel, error) {
+func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	if cfg.Namespace == "" {
 		cfg.Namespace = "user"
 	}
@@ -408,7 +409,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 	// Initialize package manager
 	registries := cfg.PluginRegistries
 	if len(registries) == 0 {
-		registries = []RegistryConfig{DefaultRegistry}
+		registries = []types.RegistryConfig{types.DefaultRegistry}
 	}
 	pluginDir := cfg.PluginDir
 	if pluginDir == "" && cfg.FSRoot != "" {
@@ -488,9 +489,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		kernel.mcpDomain = newMCPDomain(kernel.mcp)
 		for name, serverCfg := range cfg.MCPServers {
 			if err := kernel.mcp.Connect(context.Background(), name, serverCfg); err != nil {
-				InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
+				types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
 					Operation: "MCP.Connect:" + name, Cause: err,
-				}, ErrorContext{Operation: "ConnectMCP", Component: "mcp", Source: name})
+				}, types.ErrorContext{Operation: "ConnectMCP", Component: "mcp", Source: name})
 				continue
 			}
 			for _, tool := range kernel.mcp.ListToolsForServer(name) {
@@ -514,7 +515,7 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 		}
 	}
 	if kernel.mcpDomain == nil {
-		kernel.mcpDomain = newMCPDomain(nil) // nil-safe — returns ErrMCPNotConfigured
+		kernel.mcpDomain = newMCPDomain(nil) // nil-safe — returns types.ErrMCPNotConfigured
 	}
 
 	// Set up internal Watermill transport + router
@@ -607,9 +608,9 @@ func NewKernel(cfg KernelConfig) (*Kernel, error) {
 func (k *Kernel) redeployPersistedDeployments() {
 	deployments, err := k.config.Store.LoadDeployments()
 	if err != nil {
-		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "LoadDeployments", Cause: err,
-		}, ErrorContext{Operation: "LoadDeployments", Component: "kernel"})
+		}, types.ErrorContext{Operation: "LoadDeployments", Component: "kernel"})
 		return
 	}
 	if len(deployments) == 0 {
@@ -624,18 +625,18 @@ func (k *Kernel) redeployPersistedDeployments() {
 	k.deployOrder.Store(maxOrder)
 
 	for _, d := range deployments {
-		var opts []DeployOption
-		opts = append(opts, WithRestoring()) // don't re-persist what was just loaded
+		var opts []types.DeployOption
+		opts = append(opts, types.WithRestoring()) // don't re-persist what was just loaded
 		if d.Role != "" {
-			opts = append(opts, WithRole(d.Role))
+			opts = append(opts, types.WithRole(d.Role))
 		}
 		if d.PackageName != "" {
-			opts = append(opts, WithPackageName(d.PackageName))
+			opts = append(opts, types.WithPackageName(d.PackageName))
 		}
 		if _, err := k.Deploy(context.Background(), d.Source, d.Code, opts...); err != nil {
-			InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.DeployError{
+			types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.DeployError{
 				Source: d.Source, Phase: "redeploy", Cause: err,
-			}, ErrorContext{Operation: "RedeployPersisted", Component: "kernel", Source: d.Source})
+			}, types.ErrorContext{Operation: "RedeployPersisted", Component: "kernel", Source: d.Source})
 		}
 	}
 
@@ -660,7 +661,7 @@ func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(sd
 // The original operation still succeeds in memory — persistence is best-effort.
 func (k *Kernel) persistenceError(ctx context.Context, operation, source string, err error) {
 	typedErr := &sdkerrors.PersistenceError{Operation: operation, Source: source, Cause: err}
-	InvokeErrorHandler(k.config.ErrorHandler, typedErr, ErrorContext{
+	types.InvokeErrorHandler(k.config.ErrorHandler, typedErr, types.ErrorContext{
 		Operation: operation, Component: "persistence", Source: source,
 	})
 	payload, _ := json.Marshal(map[string]any{
@@ -749,10 +750,10 @@ func (k *Kernel) Close() error {
 
 // resolveSecretStore determines the secret store from config with clear precedence:
 // 1. Explicit SecretStore → use it
-// 2. SQLiteStore + SecretKey → encrypted KV store
-// 3. SQLiteStore + no SecretKey → unencrypted KV store (dev mode, logged warning)
-// 4. No SQLiteStore → environment variable fallback
-func resolveSecretStore(cfg KernelConfig, logger *slog.Logger) secrets.SecretStore {
+// 2. types.SQLiteStore + SecretKey → encrypted KV store
+// 3. types.SQLiteStore + no SecretKey → unencrypted KV store (dev mode, logged warning)
+// 4. No types.SQLiteStore → environment variable fallback
+func resolveSecretStore(cfg types.KernelConfig, logger *slog.Logger) secrets.SecretStore {
 	if cfg.SecretStore != nil {
 		return cfg.SecretStore
 	}
@@ -762,8 +763,8 @@ func resolveSecretStore(cfg KernelConfig, logger *slog.Logger) secrets.SecretSto
 		key = os.Getenv("BRAINKIT_SECRET_KEY")
 	}
 
-	// Need a *SQLiteStore to back the encrypted KV store
-	sqliteStore, hasSQLite := cfg.Store.(*SQLiteStore)
+	// Need a *types.SQLiteStore to back the encrypted KV store
+	sqliteStore, hasSQLite := cfg.Store.(*types.SQLiteStore)
 	if !hasSQLite || sqliteStore == nil {
 		return secrets.NewEnvStore()
 	}
@@ -774,9 +775,9 @@ func resolveSecretStore(cfg KernelConfig, logger *slog.Logger) secrets.SecretSto
 
 	store, err := secrets.NewEncryptedKVStore(sqliteStore.DB, key)
 	if err != nil {
-		InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "CreateEncryptedSecretStore", Cause: err,
-		}, ErrorContext{Operation: "CreateEncryptedSecretStore", Component: "kernel"})
+		}, types.ErrorContext{Operation: "CreateEncryptedSecretStore", Component: "kernel"})
 		return secrets.NewEnvStore()
 	}
 	return store
@@ -869,7 +870,7 @@ func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, err
 // AddStorage registers a new named storage at runtime.
 // For sqlite: starts a libsql bridge + registers in provider registry.
 // For others: registers in provider registry only.
-func (k *Kernel) AddStorage(name string, cfg StorageConfig) error {
+func (k *Kernel) AddStorage(name string, cfg types.StorageConfig) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if cfg.Type == "sqlite" {
@@ -913,7 +914,7 @@ func (k *Kernel) StorageURL(name string) string {
 }
 
 // ListResources returns all tracked resources, optionally filtered by type.
-func (k *Kernel) ListResources(resourceType ...string) ([]ResourceInfo, error) {
+func (k *Kernel) ListResources(resourceType ...string) ([]types.ResourceInfo, error) {
 	filter := ""
 	if len(resourceType) > 0 {
 		filter = resourceType[0]
@@ -923,7 +924,7 @@ func (k *Kernel) ListResources(resourceType ...string) ([]ResourceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	var resources []ResourceInfo
+	var resources []types.ResourceInfo
 	if err := json.Unmarshal([]byte(result), &resources); err != nil {
 		return nil, fmt.Errorf("list resources: %w", err)
 	}
@@ -931,13 +932,13 @@ func (k *Kernel) ListResources(resourceType ...string) ([]ResourceInfo, error) {
 }
 
 // ResourcesFrom returns all resources created by a specific .ts file.
-func (k *Kernel) ResourcesFrom(filename string) ([]ResourceInfo, error) {
+func (k *Kernel) ResourcesFrom(filename string) ([]types.ResourceInfo, error) {
 	code := fmt.Sprintf(`return JSON.stringify(globalThis.__kit_registry.listBySource(%q))`, filename)
 	result, err := k.EvalTS(context.Background(), "__resources_from.ts", code)
 	if err != nil {
 		return nil, err
 	}
-	var resources []ResourceInfo
+	var resources []types.ResourceInfo
 	if err := json.Unmarshal([]byte(result), &resources); err != nil {
 		return nil, fmt.Errorf("resources from: %w", err)
 	}
@@ -979,7 +980,7 @@ func (k *Kernel) RemoveResource(resourceType, id string) error {
 // initStorages starts sqlite bridges for all sqlite storage entries.
 // Must be called before loadRuntime — libsql servers need to be running.
 // Returns a path→URL map for sqlite bridge sharing with vectors.
-func (k *Kernel) initStorages(cfg KernelConfig) (map[string]string, error) {
+func (k *Kernel) initStorages(cfg types.KernelConfig) (map[string]string, error) {
 	bridgeURLs := make(map[string]string)
 	for name, scfg := range cfg.Storages {
 		if scfg.Type == "sqlite" {
@@ -995,7 +996,7 @@ func (k *Kernel) initStorages(cfg KernelConfig) (map[string]string, error) {
 }
 
 // registerStorages registers all storages in the provider registry.
-func (k *Kernel) registerStorages(cfg KernelConfig, bridgeURLs map[string]string) {
+func (k *Kernel) registerStorages(cfg types.KernelConfig, bridgeURLs map[string]string) {
 	for name, scfg := range cfg.Storages {
 		bridgeURL := ""
 		if scfg.Type == "sqlite" {
@@ -1008,7 +1009,7 @@ func (k *Kernel) registerStorages(cfg KernelConfig, bridgeURLs map[string]string
 
 // registerVectors registers all vector stores in the provider registry.
 // For sqlite vectors, reuses the bridge URL from a matching storage path.
-func (k *Kernel) registerVectors(cfg KernelConfig, bridgeURLs map[string]string) error {
+func (k *Kernel) registerVectors(cfg types.KernelConfig, bridgeURLs map[string]string) error {
 	for name, vcfg := range cfg.Vectors {
 		bridgeURL := ""
 		if vcfg.Type == "sqlite" {
@@ -1277,9 +1278,9 @@ func (k *Kernel) processScheduledJobs() {
 func (k *Kernel) upgradeMastraStorage() {
 	raw, err := k.callJS(context.Background(), "__brainkit.storage.upgrade", nil)
 	if err != nil {
-		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "UpgradeMastraStorage", Cause: err,
-		}, ErrorContext{Operation: "UpgradeMastraStorage", Component: "kernel"})
+		}, types.ErrorContext{Operation: "UpgradeMastraStorage", Component: "kernel"})
 		return
 	}
 	var parsed struct {
@@ -1298,9 +1299,9 @@ func (k *Kernel) upgradeMastraStorage() {
 func (k *Kernel) restartActiveWorkflows() {
 	raw, err := k.callJS(context.Background(), "__brainkit.storage.restartWorkflows", nil)
 	if err != nil {
-		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "RestartActiveWorkflows", Cause: err,
-		}, ErrorContext{Operation: "RestartActiveWorkflows", Component: "kernel"})
+		}, types.ErrorContext{Operation: "RestartActiveWorkflows", Component: "kernel"})
 		return
 	}
 	var parsed struct {
@@ -1312,9 +1313,9 @@ func (k *Kernel) restartActiveWorkflows() {
 	}
 	if json.Unmarshal(raw, &parsed) == nil {
 		for _, wfErr := range parsed.Errors {
-			InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+			types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 				Operation: "RestartWorkflow", Source: wfErr.Workflow, Cause: fmt.Errorf("%s", wfErr.Error),
-			}, ErrorContext{Operation: "RestartWorkflow", Component: "workflow", Source: wfErr.Workflow})
+			}, types.ErrorContext{Operation: "RestartWorkflow", Component: "workflow", Source: wfErr.Workflow})
 		}
 		if parsed.Restarted > 0 {
 			k.logger.Info("restarted active workflows", slog.Int("definitions", parsed.Restarted))
@@ -1391,7 +1392,7 @@ func (k *Kernel) subscribeToDeploymentPropagation() {
 				slog.String("error", err.Error()))
 			return
 		}
-		if _, err := k.Deploy(context.Background(), dep.Source, dep.Code, WithRestoring()); err != nil {
+		if _, err := k.Deploy(context.Background(), dep.Source, dep.Code, types.WithRestoring()); err != nil {
 			k.logger.Warn("propagation: deploy failed",
 				slog.String("source", evt.Source),
 				slog.String("error", err.Error()))

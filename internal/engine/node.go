@@ -10,6 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/discovery"
 	"github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
@@ -20,7 +21,7 @@ import (
 type Node struct {
 	Kernel *Kernel
 
-	config          NodeConfig
+	config          types.NodeConfig
 	nodeID          string
 	plugins         *pluginManager
 	pluginLifecycle *PluginLifecycleDomain
@@ -32,7 +33,7 @@ type Node struct {
 
 // NewNode creates a transport host around a local Kernel.
 // The external transport is injected into KernelConfig so Kernel uses it directly.
-func NewNode(cfg NodeConfig) (*Node, error) {
+func NewNode(cfg types.NodeConfig) (*Node, error) {
 	if cfg.NodeID == "" {
 		cfg.NodeID = uuid.NewString()
 	}
@@ -91,9 +92,9 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		case "multicast":
 			disc, discErr = discovery.NewMulticast(cfg.Discovery.ServiceName)
 			if discErr != nil {
-				InvokeErrorHandler(cfg.Kernel.ErrorHandler, &sdkerrors.TransportError{
+				types.InvokeErrorHandler(cfg.Kernel.ErrorHandler, &sdkerrors.TransportError{
 					Operation: "MulticastDiscovery", Cause: discErr,
-				}, ErrorContext{Operation: "MulticastDiscovery", Component: "node"})
+				}, types.ErrorContext{Operation: "MulticastDiscovery", Component: "node"})
 			}
 		}
 		if disc != nil {
@@ -217,7 +218,7 @@ func (n *Node) IsDraining() bool {
 // --- Dynamic plugin lifecycle ---
 
 // StartPlugin starts a plugin dynamically at runtime.
-func (n *Node) StartPlugin(ctx context.Context, cfg PluginConfig) error {
+func (n *Node) StartPlugin(ctx context.Context, cfg types.PluginConfig) error {
 	if n.config.Messaging.Transport == "" || n.config.Messaging.Transport == "memory" {
 		return &sdk.ValidationError{Field: "transport", Message: "plugins require non-memory transport"}
 	}
@@ -227,7 +228,7 @@ func (n *Node) StartPlugin(ctx context.Context, cfg PluginConfig) error {
 	}
 	// Persist running state
 	if n.Kernel.config.Store != nil {
-		record := RunningPluginRecord{
+		record := types.RunningPluginRecord{
 			Name:       cfg.Name,
 			BinaryPath: cfg.Binary,
 			Env:        cfg.Env,
@@ -284,7 +285,7 @@ func (n *Node) RestartPlugin(ctx context.Context, name string) error {
 }
 
 // ListRunningPlugins returns all running plugins.
-func (n *Node) ListRunningPlugins() []RunningPlugin {
+func (n *Node) ListRunningPlugins() []types.RunningPlugin {
 	return n.plugins.listPlugins()
 }
 
@@ -295,9 +296,9 @@ func (n *Node) restoreRunningPlugins() {
 	}
 	records, err := n.Kernel.config.Store.LoadRunningPlugins()
 	if err != nil {
-		InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "LoadRunningPlugins", Cause: err,
-		}, ErrorContext{Operation: "LoadRunningPlugins", Component: "node"})
+		}, types.ErrorContext{Operation: "LoadRunningPlugins", Component: "node"})
 		return
 	}
 	if len(records) == 0 {
@@ -305,7 +306,7 @@ func (n *Node) restoreRunningPlugins() {
 	}
 	restored := 0
 	for _, r := range records {
-		// Skip if already running (from NodeConfig.Plugins static config)
+		// Skip if already running (from types.NodeConfig.Plugins static config)
 		n.plugins.mu.Lock()
 		_, alreadyRunning := n.plugins.plugins[r.Name]
 		n.plugins.mu.Unlock()
@@ -313,7 +314,7 @@ func (n *Node) restoreRunningPlugins() {
 			continue
 		}
 
-		cfg := PluginConfig{
+		cfg := types.PluginConfig{
 			Name:   r.Name,
 			Binary: r.BinaryPath,
 			Env:    r.Env,
@@ -322,9 +323,9 @@ func (n *Node) restoreRunningPlugins() {
 		}
 		pluginDefaults(&cfg)
 		if err := n.plugins.startPlugin(cfg, 0); err != nil {
-			InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
+			types.InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.PersistenceError{
 				Operation: "RestorePlugin", Source: r.Name, Cause: err,
-			}, ErrorContext{Operation: "RestorePlugin", Component: "node", Source: r.Name})
+			}, types.ErrorContext{Operation: "RestorePlugin", Component: "node", Source: r.Name})
 			continue
 		}
 		if r.Role != "" && n.Kernel.rbac != nil {
@@ -455,15 +456,14 @@ func mustMarshalJSON(v any) json.RawMessage {
 	return payload
 }
 
-// messagingToTransportConfig converts MessagingConfig to transport.TransportConfig.
-func messagingToTransportConfig(cfg MessagingConfig) transport.TransportConfig {
+// messagingToTransportConfig converts types.MessagingConfig to transport.TransportConfig.
+func messagingToTransportConfig(cfg types.MessagingConfig) transport.TransportConfig {
 	return transport.TransportConfig{
-		Type:        cfg.Transport,
-		NATSURL:     cfg.NATSURL,
-		NATSName:    cfg.NATSName,
-		AMQPURL:     cfg.AMQPURL,
-		RedisURL:    cfg.RedisURL,
-		PostgresURL: cfg.PostgresURL,
-		SQLitePath:  cfg.SQLitePath,
+		Type:         cfg.Transport,
+		NATSURL:      cfg.NATSURL,
+		NATSName:     cfg.NATSName,
+		AMQPURL:      cfg.AMQPURL,
+		RedisURL:     cfg.RedisURL,
+		NATSStoreDir: cfg.NATSStoreDir,
 	}
 }

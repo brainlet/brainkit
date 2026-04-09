@@ -57,7 +57,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 					if err != nil {
 						b.Fatalf("open store: %v", err)
 					}
-					k2, err := brainkit.New(brainkit.Config{Store: store, Namespace: "bench", CallerID: "bench"})
+					k2, err := brainkit.New(brainkit.Config{Transport: "memory", Store: store, Namespace: "bench", CallerID: "bench"})
 					if err != nil {
 						b.Fatalf("new kit: %v", err)
 					}
@@ -74,7 +74,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 					if err != nil {
 						b.Fatalf("open store2: %v", err)
 					}
-					k3, err := brainkit.New(brainkit.Config{Store: store2, Namespace: "bench", CallerID: "bench"})
+					k3, err := brainkit.New(brainkit.Config{Transport: "memory", Store: store2, Namespace: "bench", CallerID: "bench"})
 					if err != nil {
 						b.Fatalf("new kit2: %v", err)
 					}

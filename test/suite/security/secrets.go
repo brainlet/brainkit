@@ -22,6 +22,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "exfil-test-key-32-characters!!",
 		Roles: map[string]rbac.Role{
@@ -104,6 +105,7 @@ func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "observer-test-key-32chars!!!!",
 		Roles: map[string]rbac.Role{
@@ -174,6 +176,7 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "enum-test-key-32-characters!!",
 	})
@@ -293,6 +296,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "correct-key-32-characters-long!",
 	})
@@ -317,6 +321,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 		t.Run("key="+wrongKey[:secMin(10, len(wrongKey))], func(t *testing.T) {
 			store2, _ := brainkit.NewSQLiteStore(storePath)
 			k2, err := brainkit.New(brainkit.Config{
+				Transport: "memory",
 				Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 				Store: store2, SecretKey: wrongKey,
 			})

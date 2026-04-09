@@ -204,8 +204,10 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 }
 
 // subscribeTopic creates a bus subscription and forwards events to the plugin over WS.
+// Uses fan-out subscriber so every plugin instance receives all events (not competing
+// with command handlers in the queue group).
 func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
-	unsub, err := s.node.Kernel.SubscribeRaw(context.Background(), topic, func(msg sdk.Message) {
+	unsub, err := s.node.Kernel.remote.SubscribeRawFanOut(context.Background(), topic, func(msg sdk.Message) {
 		evtData, _ := json.Marshal(pluginws.EventMsg{
 			Topic:    msg.Topic,
 			Payload:  msg.Payload,

@@ -20,26 +20,22 @@ import (
 
 // transportFieldsForBackend converts a testutil transport config into brainkit.Config transport fields.
 type transportFields struct {
-	Transport   string
-	NATSURL     string
-	NATSName    string
-	AMQPURL     string
-	RedisURL    string
-	PostgresURL string
-	SQLitePath  string
+	Transport string
+	NATSURL   string
+	NATSName  string
+	AMQPURL   string
+	RedisURL  string
 }
 
 func transportFieldsForBackend(t *testing.T, backend string) transportFields {
 	t.Helper()
 	tcfg := testutil.TransportConfigForBackend(t, backend)
 	return transportFields{
-		Transport:   tcfg.Type,
-		NATSURL:     tcfg.NATSURL,
-		NATSName:    tcfg.NATSName,
-		AMQPURL:     tcfg.AMQPURL,
-		RedisURL:    tcfg.RedisURL,
-		PostgresURL: tcfg.PostgresURL,
-		SQLitePath:  tcfg.SQLitePath,
+		Transport: tcfg.Type,
+		NATSURL:   tcfg.NATSURL,
+		NATSName:  tcfg.NATSName,
+		AMQPURL:   tcfg.AMQPURL,
+		RedisURL:  tcfg.RedisURL,
 	}
 }
 
@@ -112,16 +108,14 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   namespace,
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
-		NATSURL:     tf.NATSURL,
-		NATSName:    tf.NATSName,
-		AMQPURL:     tf.AMQPURL,
-		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
+		Namespace: namespace,
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		NATSURL:   tf.NATSURL,
+		NATSName:  tf.NATSName,
+		AMQPURL:   tf.AMQPURL,
+		RedisURL:  tf.RedisURL,
 	})
 	if err != nil {
 		t.Fatalf("makeNode: %v", err)

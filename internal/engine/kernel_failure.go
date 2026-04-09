@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -86,7 +87,7 @@ func (k *Kernel) sendErrorResponse(msg sdk.Message, err error) {
 	k.ReplyRaw(context.Background(), replyTo, correlationID, errResp, true)
 }
 
-func (k *Kernel) findRetryPolicy(topic string) *RetryPolicy {
+func (k *Kernel) findRetryPolicy(topic string) *types.RetryPolicy {
 	if len(k.config.RetryPolicies) == 0 {
 		return nil
 	}
@@ -105,7 +106,7 @@ func (k *Kernel) findRetryPolicy(topic string) *RetryPolicy {
 	return nil
 }
 
-func (k *Kernel) deadLetter(msg sdk.Message, topic string, err error, retries int, policy *RetryPolicy) {
+func (k *Kernel) deadLetter(msg sdk.Message, topic string, err error, retries int, policy *types.RetryPolicy) {
 	if policy.DeadLetterTopic == "" {
 		return
 	}
@@ -136,7 +137,7 @@ func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int) {
 	k.publish(context.Background(), sdk.HandlerExhaustedEvent{}.BusTopic(), payload)
 }
 
-func computeDelay(p *RetryPolicy, retryCount int) time.Duration {
+func computeDelay(p *types.RetryPolicy, retryCount int) time.Duration {
 	delay := p.InitialDelay
 	if delay == 0 {
 		delay = 1 * time.Second

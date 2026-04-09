@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/secrets"
+	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -148,7 +149,7 @@ func (d *SecretsDomain) Rotate(ctx context.Context, req sdk.SecretsRotateMsg) (*
 }
 
 // pluginUsesSecret checks if a running plugin's env references a secret by name.
-func pluginUsesSecret(p RunningPlugin, secretName string) bool {
+func pluginUsesSecret(p types.RunningPlugin, secretName string) bool {
 	for _, v := range p.Config.Env {
 		if v == "$secret:"+secretName {
 			return true

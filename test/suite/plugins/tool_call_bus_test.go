@@ -17,17 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPluginToolCallViaBusSQLite verifies that tools.call for a plugin-style
-// tool works on SQLite transport with the pass-through replyTo protocol.
+// TestPluginToolCallViaBusEmbedded verifies that tools.call for a plugin-style
+// tool works on Embedded transport with the pass-through replyTo protocol.
 // Uses internal/engine directly because it tests low-level plugin protocol
 // that requires direct transport and tool registry access.
-func TestPluginToolCallViaBusSQLite(t *testing.T) {
-	dir := t.TempDir()
-	transportDB := dir + "/transport.db"
-
+func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 	transport, err := xport.NewTransportSet(xport.TransportConfig{
-		Type:       "sql-sqlite",
-		SQLitePath: transportDB,
+		Type: "embedded",
 	})
 	require.NoError(t, err)
 	defer transport.Close()
@@ -152,7 +148,7 @@ func TestPluginToolCallViaBusSQLite(t *testing.T) {
 			require.Empty(t, resp.Error)
 			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null")
 		case <-ctx.Done():
-			t.Fatal("REGRESSION: tools.call via bus for plugin-style tool times out on SQLite transport")
+			t.Fatal("REGRESSION: tools.call via bus for plugin-style tool times out on Embedded transport")
 		}
 	})
 }

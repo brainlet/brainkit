@@ -33,9 +33,11 @@ type Kit struct {
 
 // New creates a brainkit runtime from config.
 //
-// If Config.Transport is empty, creates a standalone in-memory runtime.
-// If Config.Transport is set (e.g., "nats", "sql-sqlite"), creates a transport-connected
-// runtime with plugin support and cross-Kit networking.
+// If Config.Transport is empty or "embedded", starts an in-process NATS server
+// with JetStream — zero config, plugins work, real pub/sub.
+// If Config.Transport is "memory", creates a standalone in-memory runtime
+// (GoChannel transport, no plugins, fast for tests).
+// Other transports ("nats", "amqp", "redis") connect to external servers.
 //
 // Auto-behaviors:
 //   - Providers nil → auto-detect from os.Getenv (OPENAI_API_KEY → openai, etc.)
@@ -45,17 +47,22 @@ type Kit struct {
 func New(cfg Config) (*Kit, error) {
 	kit := &Kit{}
 
+	// Empty transport defaults to embedded NATS — zero-config production mode.
+	if cfg.Transport == "" || cfg.Transport == "embedded" {
+		cfg.Transport = "embedded"
+	}
+
 	kernelCfg := cfg.toKernelConfig()
 
-	if cfg.Transport == "" {
-		// Standalone Kernel — in-memory transport
+	if cfg.Transport == "memory" {
+		// Standalone Kernel — in-memory GoChannel, no plugins, fast for tests.
 		kernel, err := engine.NewKernel(kernelCfg)
 		if err != nil {
 			return nil, fmt.Errorf("brainkit: %w", err)
 		}
 		kit.kernel = kernel
 	} else {
-		// Transport-connected Node
+		// Transport-connected Node (embedded, nats, amqp, redis)
 		nodeCfg := cfg.toNodeConfig(kernelCfg)
 		node, err := engine.NewNode(nodeCfg)
 		if err != nil {

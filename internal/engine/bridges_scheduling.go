@@ -6,6 +6,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -22,7 +23,7 @@ func (k *Kernel) registerSchedulingBridges(qctx *quickjs.Context) {
 			payload := json.RawMessage(args[2].String())
 			source := args[3].String()
 
-			id, err := k.Schedule(context.Background(), ScheduleConfig{
+			id, err := k.Schedule(context.Background(), types.ScheduleConfig{
 				Expression: expression,
 				Topic:      topic,
 				Payload:    payload,

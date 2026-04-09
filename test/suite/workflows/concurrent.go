@@ -61,6 +61,7 @@ func testConcurrentStarts(t *testing.T, _ *suite.TestEnv) {
 func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test-stress", FSRoot: tmpDir,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
@@ -233,6 +234,7 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test-longrun", FSRoot: tmpDir,
 		Store: store,
 		Storages: map[string]brainkit.StorageConfig{

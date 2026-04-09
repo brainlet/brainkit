@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -19,7 +20,7 @@ type knownEventRegistry struct {
 
 func (r *knownEventRegistry) Validate(topic string, payload json.RawMessage) error {
 	if commandCatalog().HasCommand(topic) {
-		return fmt.Errorf("%w: %s", ErrCommandTopic, topic)
+		return fmt.Errorf("%w: %s", types.ErrCommandTopic, topic)
 	}
 	spec, ok := r.byTopic[topic]
 	if !ok {

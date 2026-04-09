@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
@@ -495,7 +496,7 @@ func commandCatalog() *commandRegistry {
 			}),
 			// ── Scheduling ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleCreateMsg) (*sdk.ScheduleCreateResp, error) {
-				id, err := kernel.Schedule(ctx, ScheduleConfig{
+				id, err := kernel.Schedule(ctx, types.ScheduleConfig{
 					Expression: req.Expression,
 					Topic:      req.Topic,
 					Payload:    req.Payload,

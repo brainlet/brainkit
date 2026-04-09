@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/google/uuid"
 
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -26,7 +27,7 @@ func parseScheduleExpression(expr string) (time.Duration, bool, error) {
 	return 0, false, fmt.Errorf("unsupported schedule expression: %q (use 'every <duration>' or 'in <duration>')", expr)
 }
 
-func (k *Kernel) addSchedule(ps PersistedSchedule) {
+func (k *Kernel) addSchedule(ps types.PersistedSchedule) {
 	delay := time.Until(ps.NextFire)
 	if delay < 0 {
 		delay = 0
@@ -89,7 +90,7 @@ func (k *Kernel) removeSchedule(id string) {
 }
 
 // Schedule creates a new scheduled bus message.
-func (k *Kernel) Schedule(ctx context.Context, cfg ScheduleConfig) (string, error) {
+func (k *Kernel) Schedule(ctx context.Context, cfg types.ScheduleConfig) (string, error) {
 	// Block scheduling to command topics — scheduled messages fire from Go
 	// with no RBAC context, so they'd bypass all permission checks.
 	if commandCatalog().HasCommand(cfg.Topic) {
@@ -104,7 +105,7 @@ func (k *Kernel) Schedule(ctx context.Context, cfg ScheduleConfig) (string, erro
 	if id == "" {
 		id = uuid.NewString()
 	}
-	ps := PersistedSchedule{
+	ps := types.PersistedSchedule{
 		ID:         id,
 		Expression: cfg.Expression,
 		Duration:   duration,
@@ -131,10 +132,10 @@ func (k *Kernel) Unschedule(ctx context.Context, id string) error {
 }
 
 // ListSchedules returns all active schedules.
-func (k *Kernel) ListSchedules() []PersistedSchedule {
+func (k *Kernel) ListSchedules() []types.PersistedSchedule {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	result := make([]PersistedSchedule, 0, len(k.schedules))
+	result := make([]types.PersistedSchedule, 0, len(k.schedules))
 	for _, entry := range k.schedules {
 		result = append(result, entry.PersistedSchedule)
 	}
@@ -144,9 +145,9 @@ func (k *Kernel) ListSchedules() []PersistedSchedule {
 func (k *Kernel) restoreSchedules() {
 	schedules, err := k.config.Store.LoadSchedules()
 	if err != nil {
-		InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "LoadSchedules", Cause: err,
-		}, ErrorContext{Operation: "LoadSchedules", Component: "kernel"})
+		}, types.ErrorContext{Operation: "LoadSchedules", Component: "kernel"})
 		return
 	}
 	now := time.Now()
@@ -155,9 +156,9 @@ func (k *Kernel) restoreSchedules() {
 		if s.OneTime {
 			if s.NextFire.Before(now) {
 				if err := k.publish(context.Background(), s.Topic, s.Payload); err != nil {
-					InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+					types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 						Operation: "RestoreSchedule.CatchUp", Source: s.ID, Cause: err,
-					}, ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
+					}, types.ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
 				}
 				k.config.Store.DeleteSchedule(s.ID)
 				continue
@@ -165,9 +166,9 @@ func (k *Kernel) restoreSchedules() {
 		} else {
 			if s.NextFire.Before(now) {
 				if err := k.publish(context.Background(), s.Topic, s.Payload); err != nil {
-					InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
+					types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 						Operation: "RestoreSchedule.CatchUp", Source: s.ID, Cause: err,
-					}, ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
+					}, types.ErrorContext{Operation: "RestoreSchedule", Component: "kernel", Source: s.ID})
 				}
 				s.NextFire = now.Add(s.Duration)
 				k.config.Store.SaveSchedule(s)

@@ -20,6 +20,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", Store: store1,
 	})
 	require.NoError(t, err)
@@ -30,6 +31,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -60,6 +62,7 @@ func testMissedRecurringCatchUp(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)
@@ -92,6 +95,7 @@ func testExpiredOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", Store: store2,
 	})
 	require.NoError(t, err)

@@ -1,14 +1,15 @@
 package engine
 
-import "time"
-
 import (
-	)
+	"time"
+
+	"github.com/brainlet/brainkit/internal/types"
+)
 
 
 // Metrics returns a point-in-time snapshot of internal Kernel state.
-func (k *Kernel) Metrics() KernelMetrics {
-	m := KernelMetrics{
+func (k *Kernel) Metrics() types.KernelMetrics {
+	m := types.KernelMetrics{
 		ActiveHandlers:    k.activeHandlers.Load(),
 		ActiveDeployments: len(k.ListDeployments()),
 		ActiveSchedules:   len(k.ListSchedules()),

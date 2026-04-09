@@ -68,7 +68,7 @@ func deserializeProviderConfig(typ string, raw json.RawMessage) (any, error) {
 }
 
 // deserializeStorageConfig converts JSON config + type string into a StorageConfig.
-func deserializeStorageConfig(typ string, raw json.RawMessage) (StorageConfig, error) {
+func deserializeStorageConfig(typ string, raw json.RawMessage) (types.StorageConfig, error) {
 	var base struct {
 		Path             string `json:"path"`
 		ConnectionString string `json:"connectionString"`
@@ -79,10 +79,10 @@ func deserializeStorageConfig(typ string, raw json.RawMessage) (StorageConfig, e
 	}
 	if len(raw) > 0 && string(raw) != "null" {
 		if err := json.Unmarshal(raw, &base); err != nil {
-			return StorageConfig{}, fmt.Errorf("invalid storage config: %w", err)
+			return types.StorageConfig{}, fmt.Errorf("invalid storage config: %w", err)
 		}
 	}
-	return StorageConfig{
+	return types.StorageConfig{
 		Type:             typ,
 		Path:             base.Path,
 		ConnectionString: base.ConnectionString,

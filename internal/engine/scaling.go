@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -23,11 +24,11 @@ const (
 
 // PoolConfig configures a Kit pool.
 type PoolConfig struct {
-	Base         NodeConfig
+	Base         types.NodeConfig
 	InitialCount int
 	Min          int
 	Max          int
-	Strategy     ScalingStrategy
+	Strategy     types.ScalingStrategy
 	Mode         PoolMode // default: PoolSharded
 }
 
@@ -152,13 +153,13 @@ func (im *InstanceManager) KillPool(name string) error {
 }
 
 // PoolInfo returns information about a pool.
-func (im *InstanceManager) PoolInfo(name string) (PoolInfo, error) {
+func (im *InstanceManager) PoolInfo(name string) (types.PoolInfo, error) {
 	im.mu.Lock()
 	p, ok := im.pools[name]
 	im.mu.Unlock()
 
 	if !ok {
-		return PoolInfo{}, &sdk.NotFoundError{Resource: "pool", Name: name}
+		return types.PoolInfo{}, &sdk.NotFoundError{Resource: "pool", Name: name}
 	}
 
 	p.mu.Lock()
@@ -169,7 +170,7 @@ func (im *InstanceManager) PoolInfo(name string) (PoolInfo, error) {
 		min = 1
 	}
 
-	return PoolInfo{
+	return types.PoolInfo{
 		Name:    name,
 		Current: len(p.instances),
 		Min:     min,
@@ -268,22 +269,22 @@ func NewStaticStrategy(target int) *StaticStrategy {
 	return &StaticStrategy{Target: target}
 }
 
-func (s *StaticStrategy) Evaluate(_ transport.MetricsSnapshot, pool PoolInfo) ScalingDecision {
+func (s *StaticStrategy) Evaluate(_ transport.MetricsSnapshot, pool types.PoolInfo) types.ScalingDecision {
 	if pool.Current < s.Target {
-		return ScalingDecision{
+		return types.ScalingDecision{
 			Action: "scale-up",
 			Delta:  s.Target - pool.Current,
 			Reason: "static: restore target count",
 		}
 	}
 	if pool.Current > s.Target {
-		return ScalingDecision{
+		return types.ScalingDecision{
 			Action: "scale-down",
 			Delta:  pool.Current - s.Target,
 			Reason: "static: reduce to target count",
 		}
 	}
-	return ScalingDecision{Action: "none"}
+	return types.ScalingDecision{Action: "none"}
 }
 
 // ThresholdStrategy scales based on pending message count.
@@ -303,21 +304,21 @@ func NewThresholdStrategy(scaleUp, scaleDown int) *ThresholdStrategy {
 	}
 }
 
-func (s *ThresholdStrategy) Evaluate(_ transport.MetricsSnapshot, pool PoolInfo) ScalingDecision {
+func (s *ThresholdStrategy) Evaluate(_ transport.MetricsSnapshot, pool types.PoolInfo) types.ScalingDecision {
 	pending := pool.Pending
 
 	if pending > s.ScaleUpThreshold {
 		if pool.Max > 0 && pool.Current >= pool.Max {
-			return ScalingDecision{Action: "none", Reason: "threshold: at max instances"}
+			return types.ScalingDecision{Action: "none", Reason: "threshold: at max instances"}
 		}
 		delta := s.ScaleUpStep
 		if pool.Max > 0 && pool.Current+delta > pool.Max {
 			delta = pool.Max - pool.Current
 		}
 		if delta <= 0 {
-			return ScalingDecision{Action: "none"}
+			return types.ScalingDecision{Action: "none"}
 		}
-		return ScalingDecision{
+		return types.ScalingDecision{
 			Action: "scale-up",
 			Delta:  delta,
 			Reason: fmt.Sprintf("threshold: pending=%d > threshold=%d", pending, s.ScaleUpThreshold),
@@ -330,14 +331,14 @@ func (s *ThresholdStrategy) Evaluate(_ transport.MetricsSnapshot, pool PoolInfo)
 			delta = pool.Current - pool.Min
 		}
 		if delta <= 0 {
-			return ScalingDecision{Action: "none"}
+			return types.ScalingDecision{Action: "none"}
 		}
-		return ScalingDecision{
+		return types.ScalingDecision{
 			Action: "scale-down",
 			Delta:  delta,
 			Reason: fmt.Sprintf("threshold: pending=%d < threshold=%d", pending, s.ScaleDownThreshold),
 		}
 	}
 
-	return ScalingDecision{Action: "none"}
+	return types.ScalingDecision{Action: "none"}
 }

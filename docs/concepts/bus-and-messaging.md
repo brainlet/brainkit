@@ -109,24 +109,21 @@ For convenience, the SDK provides typed wrappers like `sdk.PublishToolCall` and 
 
 ## Transport Backends
 
-Six Watermill backends are supported. The transport is configured via `Config.Transport`:
+Five transport backends are supported. The transport is configured via `Config.Transport`:
 
 | Backend | Config Type | Topic Sanitizer | Container |
 |---------|------------|-----------------|-----------|
 | GoChannel (memory) | `"memory"` | none | none |
-| SQLite | `"sql-sqlite"` | dots → underscores | none |
+| Embedded NATS | `"embedded"` / `""` | dots → dashes | none |
 | NATS JetStream | `"nats"` | dots → dashes, slashes → dashes | `nats:latest -js` |
 | AMQP (RabbitMQ) | `"amqp"` | slashes → dashes | `rabbitmq:management` |
 | Redis Streams | `"redis"` | none | `redis:latest` |
-| PostgreSQL | `"sql-postgres"` | dots → underscores | `postgres:16` |
 
 ### Topic sanitizers
 
 Each transport has characters that are special or invalid in topic names. The sanitizer transforms logical topics (like `tools.call.reply.abc-123`) into transport-safe names before publishing and subscribing.
 
 For NATS: dots are subject delimiters, so `tools.call` → `tools-call`. This is handled automatically by `RemoteClient` and `Host` — user code works with logical topic names.
-
-For SQL backends: topics become table names, so dots → underscores.
 
 GoChannel and Redis accept any string — no sanitization needed.
 

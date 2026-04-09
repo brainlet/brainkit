@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -27,7 +28,7 @@ type pluginManager struct {
 
 // pluginConn tracks one connected plugin subprocess.
 type pluginConn struct {
-	config    PluginConfig
+	config    types.PluginConfig
 	identity  string
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
@@ -50,12 +51,12 @@ func (pm *pluginManager) log() *slog.Logger {
 	return pm.node.Kernel.logger
 }
 
-func (pm *pluginManager) startAll(configs []PluginConfig) {
+func (pm *pluginManager) startAll(configs []types.PluginConfig) {
 	for i := range configs {
 		cfg := configs[i]
 		pluginDefaults(&cfg)
 		if err := pm.startPlugin(cfg, 0); err != nil {
-			InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", cfg.Name, err), ErrorContext{
+			types.InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", cfg.Name, err), types.ErrorContext{
 				Operation: "StartPlugin", Component: "plugin", Source: cfg.Name,
 			})
 		}
@@ -64,7 +65,7 @@ func (pm *pluginManager) startAll(configs []PluginConfig) {
 
 // startPlugin launches the plugin subprocess. restartCount tracks how many
 // times this plugin has been restarted (0 for initial start).
-func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
+func (pm *pluginManager) startPlugin(cfg types.PluginConfig, restartCount int) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
@@ -246,7 +247,7 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	pc.cancel()
 
 	if restartErr := pm.startPlugin(pc.config, nextRestart); restartErr != nil {
-		InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), ErrorContext{
+		types.InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), types.ErrorContext{
 			Operation: "RestartPlugin", Component: "plugin", Source: pc.config.Name,
 		})
 		close(pc.done)
@@ -300,16 +301,16 @@ func (pm *pluginManager) stopPlugin(name string, pc *pluginConn) {
 	pm.log().Info("plugin stopped", slog.String("plugin", name))
 }
 
-func (pm *pluginManager) listPlugins() []RunningPlugin {
+func (pm *pluginManager) listPlugins() []types.RunningPlugin {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	result := make([]RunningPlugin, 0, len(pm.plugins))
+	result := make([]types.RunningPlugin, 0, len(pm.plugins))
 	for name, pc := range pm.plugins {
 		pid := 0
 		if pc.cmd != nil && pc.cmd.Process != nil {
 			pid = pc.cmd.Process.Pid
 		}
-		result = append(result, RunningPlugin{
+		result = append(result, types.RunningPlugin{
 			Name:     name,
 			PID:      pid,
 			Uptime:   time.Since(pc.startedAt),
@@ -339,7 +340,7 @@ func (w *logWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func pluginDefaults(cfg *PluginConfig) {
+func pluginDefaults(cfg *types.PluginConfig) {
 	if cfg.MaxRestarts == 0 {
 		cfg.MaxRestarts = 5
 	}

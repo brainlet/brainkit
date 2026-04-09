@@ -6,15 +6,14 @@
 
 ## transport/
 
-All 5 backends run the same 14 suite domains. Each test creates an Infra with a single transport backend and calls every domain's `Run(t, env)`.
+All 4 backends run the same 14 suite domains. Each test creates an Infra with a single transport backend and calls every domain's `Run(t, env)`.
 
 | File | Test Function | Backend | Needs Podman | Suite Domains |
 |------|--------------|---------|--------------|---------------|
+| embedded_test.go | TestTransport_Embedded | embedded | no | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
 | nats_test.go | TestTransport_NATS | nats | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
 | amqp_test.go | TestTransport_AMQP | amqp | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
 | redis_test.go | TestTransport_Redis | redis | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
-| postgres_test.go | TestTransport_Postgres | sql-postgres | yes | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
-| sqlite_test.go | TestTransport_SQLite | sql-sqlite | no | bus, deploy, tools, agents, scheduling, health, secrets, registry, mcp, workflows, tracing, fs, persistence, gateway |
 
 ## storage/
 
@@ -60,7 +59,6 @@ Cross-kit campaigns test multi-node topology (2 nodes sharing a transport). Each
 | File | Test Function | Backend | Needs Podman | Nodes |
 |------|--------------|---------|--------------|-------|
 | nats_test.go | TestCrossKit_NATS | nats | yes | 2 |
-| postgres_test.go | TestCrossKit_Postgres | sql-postgres | yes | 2 |
 | redis_test.go | TestCrossKit_Redis | redis | yes | 2 |
 
 ## plugins/
@@ -70,7 +68,6 @@ Plugin campaigns test plugin lifecycle on multi-node setups. Each builds a test 
 | File | Test Function | Backend | Needs Podman | Nodes |
 |------|--------------|---------|--------------|-------|
 | nats_test.go | TestPlugins_NATS | nats | yes | 2 |
-| postgres_test.go | TestPlugins_Postgres | sql-postgres | yes | 2 |
 | redis_test.go | TestPlugins_Redis | redis | yes | 2 |
 
 ## fullstack/

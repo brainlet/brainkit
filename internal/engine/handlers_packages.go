@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/packages"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -93,13 +94,13 @@ func parsePluginName(fullName string) (owner, name string) {
 	return "brainlet", fullName // default owner
 }
 
-// kitStoreAdapter bridges KitStore (kit package) to packages.PluginStore interface.
+// kitStoreAdapter bridges types.KitStore (kit package) to packages.PluginStore interface.
 type kitStoreAdapter struct {
-	store KitStore
+	store types.KitStore
 }
 
 func (a *kitStoreAdapter) SaveInstalled(name, owner, version, binaryPath, manifest string, installedAt time.Time) error {
-	return a.store.SaveInstalledPlugin(InstalledPlugin{
+	return a.store.SaveInstalledPlugin(types.InstalledPlugin{
 		Name: name, Owner: owner, Version: version,
 		BinaryPath: binaryPath, Manifest: manifest, InstalledAt: installedAt,
 	})

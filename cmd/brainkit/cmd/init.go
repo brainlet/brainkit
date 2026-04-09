@@ -14,10 +14,10 @@ const initTemplate = `namespace: %s
 # AI provider keys (OPENAI_API_KEY, etc.) are auto-detected from env.
 env_file: .env
 
-# Bus transport — how CLI commands communicate with the running instance
-# sql-sqlite works locally with no external deps. Use nats/redis/amqp for distributed.
-transport: sql-sqlite
-sqlite_path: ./data/transport.db
+# Bus transport — how the runtime communicates internally.
+# "embedded" starts an in-process NATS server (zero deps, JetStream, real pub/sub).
+# Use "nats" for external NATS, "redis", or "amqp" for distributed deployments.
+transport: embedded
 
 # Mastra storage — workflow snapshots, memory, agent state
 storage:

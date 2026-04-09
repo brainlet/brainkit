@@ -33,14 +33,14 @@ func PodmanAvailable() bool {
 }
 
 // AllBackends returns backends available for testing.
-// GoChannel and SQLite always included. Others require Podman.
+// GoChannel and embedded NATS always included. Others require Podman.
 func AllBackends(t *testing.T) []string {
-	backends := []string{"memory", "sql-sqlite"}
+	backends := []string{"memory", "embedded"}
 	if PodmanAvailable() {
 		CleanupOrphanedContainers(t)
-		backends = append(backends, "nats", "amqp", "redis", "sql-postgres")
+		backends = append(backends, "nats", "amqp", "redis")
 	} else {
-		t.Log("Podman not available — skipping NATS, AMQP, Redis, Postgres backends")
+		t.Log("Podman not available — skipping NATS, AMQP, Redis backends")
 	}
 	return backends
 }
@@ -63,11 +63,8 @@ func TransportConfigForBackend(t *testing.T, backend string) transport.Transport
 	switch backend {
 	case "memory", "":
 		return transport.TransportConfig{Type: "memory"}
-	case "sql-sqlite":
-		return transport.TransportConfig{
-			Type:       "sql-sqlite",
-			SQLitePath: filepath.Join(t.TempDir(), "transport.db"),
-		}
+	case "embedded":
+		return transport.TransportConfig{Type: "embedded"}
 	case "nats":
 		url := StartContainer(t, "nats:latest", "4222/tcp", []string{"-js"},
 			wait.ForLog("Server is ready").WithStartupTimeout(30*time.Second))
@@ -80,15 +77,6 @@ func TransportConfigForBackend(t *testing.T, backend string) transport.Transport
 		url := StartContainer(t, "redis:latest", "6379/tcp", nil,
 			wait.ForLog("Ready to accept connections").WithStartupTimeout(30*time.Second))
 		return transport.TransportConfig{Type: "redis", RedisURL: fmt.Sprintf("redis://%s/0", url)}
-	case "sql-postgres":
-		url := StartContainer(t, "postgres:16", "5432/tcp", nil,
-			wait.ForLog("database system is ready to accept connections").WithStartupTimeout(60*time.Second),
-			"POSTGRES_USER=test", "POSTGRES_PASSWORD=test", "POSTGRES_DB=brainkit",
-		)
-		return transport.TransportConfig{
-			Type:        "sql-postgres",
-			PostgresURL: fmt.Sprintf("postgres://test:test@%s/brainkit?sslmode=disable", url),
-		}
 	default:
 		t.Fatalf("unknown backend: %s", backend)
 		return transport.TransportConfig{}
@@ -270,13 +258,11 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		EnvVars:     envVars,
-		Transport:   tcfg.Type,
-		NATSURL:     tcfg.NATSURL,
-		NATSName:    tcfg.NATSName,
-		AMQPURL:     tcfg.AMQPURL,
-		RedisURL:    tcfg.RedisURL,
-		PostgresURL: tcfg.PostgresURL,
-		SQLitePath:  tcfg.SQLitePath,
+		Transport: tcfg.Type,
+		NATSURL:   tcfg.NATSURL,
+		NATSName:  tcfg.NATSName,
+		AMQPURL:   tcfg.AMQPURL,
+		RedisURL:  tcfg.RedisURL,
 	})
 	if err != nil {
 		t.Fatalf("brainkit.New(%s): %v", backend, err)

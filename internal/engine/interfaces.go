@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -23,6 +24,6 @@ type JSEvaluator interface {
 // PluginRestarter abstracts plugin restart for secrets rotation.
 // Implemented by *Node. Nil on standalone Kernel.
 type PluginRestarter interface {
-	ListRunningPlugins() []RunningPlugin
+	ListRunningPlugins() []types.RunningPlugin
 	RestartPlugin(ctx context.Context, name string) error
 }

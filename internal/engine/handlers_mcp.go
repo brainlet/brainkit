@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -19,7 +20,7 @@ func newMCPDomain(mcp *mcppkg.MCPManager) *MCPDomain {
 
 func (d *MCPDomain) ListTools(_ context.Context, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
 	if d.mcp == nil {
-		return nil, ErrMCPNotConfigured
+		return nil, types.ErrMCPNotConfigured
 	}
 	tools := d.mcp.ListTools()
 	var infos []sdk.McpToolInfo
@@ -31,7 +32,7 @@ func (d *MCPDomain) ListTools(_ context.Context, req sdk.McpListToolsMsg) (*sdk.
 
 func (d *MCPDomain) CallTool(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
 	if d.mcp == nil {
-		return nil, ErrMCPNotConfigured
+		return nil, types.ErrMCPNotConfigured
 	}
 	argsJSON, _ := json.Marshal(req.Args)
 	result, err := d.mcp.CallTool(ctx, req.Server, req.Tool, argsJSON)

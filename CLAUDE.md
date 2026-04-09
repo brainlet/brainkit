@@ -122,11 +122,10 @@ Go interprets `_wasm.go`, `_js.go` as platform build constraints. Use `wasmmod.g
 | Backend | Type string | Topic sanitizer |
 |---------|------------|-----------------|
 | GoChannel | `"memory"` | none |
-| SQLite | `"sql-sqlite"` | dots→underscores |
+| Embedded NATS | `"embedded"` / `""` | dots→dashes |
 | NATS JetStream | `"nats"` | dots→dashes |
 | AMQP (RabbitMQ) | `"amqp"` | slashes→dashes |
 | Redis Streams | `"redis"` | none |
-| PostgreSQL | `"sql-postgres"` | dots→underscores |
 
 ## Environment
 - Go 1.26+, Node.js 22+ (for bundle builds only), Podman (for container-backed tests)

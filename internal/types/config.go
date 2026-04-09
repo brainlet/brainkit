@@ -111,13 +111,12 @@ type NodeConfig struct {
 
 // MessagingConfig configures the transport-backed runtime host.
 type MessagingConfig struct {
-	Transport   string
-	NATSURL     string
-	NATSName    string
-	AMQPURL     string
-	RedisURL    string
-	PostgresURL string
-	SQLitePath  string
+	Transport    string
+	NATSURL      string
+	NATSName     string
+	AMQPURL      string
+	RedisURL     string
+	NATSStoreDir string // JetStream store for embedded NATS. Empty = ephemeral.
 }
 
 // DiscoveryConfig configures the discovery mechanism.

@@ -20,10 +20,10 @@ import (
 	"github.com/brainlet/brainkit/test/suite/workflows"
 )
 
-// TestTransport_SQLite tests all domains on the SQL-SQLite transport backend.
-// No Podman needed — SQLite transport uses a local file.
-func TestTransport_SQLite(t *testing.T) {
-	infra := campaigns.NewInfra(t, campaigns.Transport("sql-sqlite"))
+// TestTransport_Embedded tests all domains on the embedded NATS transport.
+// No Podman needed — embedded NATS runs in-process.
+func TestTransport_Embedded(t *testing.T) {
+	infra := campaigns.NewInfra(t, campaigns.Transport("embedded"))
 	env := infra.Env(t)
 
 	bus.Run(t, env)

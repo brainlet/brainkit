@@ -31,8 +31,6 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -78,8 +76,6 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -125,8 +121,6 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -174,8 +168,6 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -203,8 +195,6 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -235,8 +225,6 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 	defer kit.Close()

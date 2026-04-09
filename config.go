@@ -23,17 +23,16 @@ type Config struct {
 	// CallerID identifies this runtime instance in message metadata. Default: Namespace.
 	CallerID string
 
-	// Transport backend. Empty = in-memory (standalone, no plugins).
-	// Supported: "nats", "amqp", "redis", "sql-sqlite", "sql-postgres".
+	// Transport backend. Empty or "embedded" = in-process NATS (zero config, plugins work).
+	// "memory" = GoChannel (fast, no plugins — for tests).
+	// "nats" = external NATS (requires NATSURL). "amqp", "redis" for existing infra.
 	Transport string
 
 	// Transport connection details (used when Transport is set).
-	NATSURL     string
-	NATSName    string
-	AMQPURL     string
-	RedisURL    string
-	PostgresURL string
-	SQLitePath  string
+	NATSURL  string
+	NATSName string
+	AMQPURL  string
+	RedisURL string
 
 	// FSRoot is the filesystem sandbox for deployed .ts code.
 	FSRoot string
@@ -196,16 +195,21 @@ func (c Config) toNodeConfig(kernelCfg types.KernelConfig) types.NodeConfig {
 	// DeferRouterStart is handled internally by engine.NewNode
 	kernelCfg.DeferRouterStart = true
 
+	// For embedded NATS, derive JetStream store from FSRoot.
+	natsStoreDir := ""
+	if c.Transport == "embedded" && c.FSRoot != "" {
+		natsStoreDir = filepath.Join(c.FSRoot, "nats-data")
+	}
+
 	nc := types.NodeConfig{
 		Kernel: kernelCfg,
 		Messaging: types.MessagingConfig{
-			Transport:   c.Transport,
-			NATSURL:     c.NATSURL,
-			NATSName:    c.NATSName,
-			AMQPURL:     c.AMQPURL,
-			RedisURL:    c.RedisURL,
-			PostgresURL: c.PostgresURL,
-			SQLitePath:  c.SQLitePath,
+			Transport:    c.Transport,
+			NATSURL:      c.NATSURL,
+			NATSName:     c.NATSName,
+			AMQPURL:      c.AMQPURL,
+			RedisURL:     c.RedisURL,
+			NATSStoreDir: natsStoreDir,
 		},
 		Discovery: types.DiscoveryConfig{
 			Type:        c.Discovery.Type,

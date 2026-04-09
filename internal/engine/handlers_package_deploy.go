@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"github.com/brainlet/brainkit/internal/syncx"
 
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/packages"
+	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -20,9 +21,9 @@ type kernelDeployer struct {
 }
 
 func (d *kernelDeployer) Deploy(ctx context.Context, source, code string) error {
-	var opts []DeployOption
+	var opts []types.DeployOption
 	if d.packageName != "" {
-		opts = append(opts, WithPackageName(d.packageName))
+		opts = append(opts, types.WithPackageName(d.packageName))
 	}
 	_, err := d.kernel.Deploy(ctx, source, code, opts...)
 	return err
@@ -213,7 +214,7 @@ func (c *kernelSecretChecker) HasSecret(name string) bool {
 
 // DeployFile deploys a single .ts file with import resolution via esbuild.
 // Bundles with esbuild, deploys as {name}.ts where name is derived from filename.
-func DeployFile(ctx context.Context, k *Kernel, filePath string) ([]ResourceInfo, error) {
+func DeployFile(ctx context.Context, k *Kernel, filePath string) ([]types.ResourceInfo, error) {
 	deployer := &kernelDeployer{kernel: k}
 	pkg, err := packages.DeployFile(ctx, deployer, filePath)
 	if err != nil {

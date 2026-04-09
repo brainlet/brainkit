@@ -122,6 +122,7 @@ func testAdminCanDoEverything(t *testing.T, _ *suite.TestEnv) {
 	storePath := t.TempDir() + "/rbac-admin.db"
 	store, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport:   "memory",
 		Store:       store,
 		Roles:       map[string]rbac.Role{},
 		DefaultRole: "admin",
@@ -298,7 +299,8 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
-		Store: store1,
+		Transport: "memory",
+		Store:     store1,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
 		},
@@ -316,7 +318,8 @@ func testRolePersistenceAcrossRestart(t *testing.T, _ *suite.TestEnv) {
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
-		Store: store2,
+		Transport: "memory",
+		Store:     store2,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
 		},
@@ -467,7 +470,8 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 	storePath := t.TempDir() + "/isolation.db"
 	store, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
-		Store: store,
+		Transport: "memory",
+		Store:     store,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
 		},
@@ -540,6 +544,7 @@ func testMultiDeploymentIsolation(t *testing.T, _ *suite.TestEnv) {
 func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{
 			"observer": rbac.RoleObserver,
@@ -585,6 +590,7 @@ func testRBACDeniedFromTS(t *testing.T, _ *suite.TestEnv) {
 func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
@@ -617,6 +623,7 @@ func testInputAbuseRBACEmptySource(t *testing.T, _ *suite.TestEnv) {
 func testInputAbuseRBACNonexistentRole(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})

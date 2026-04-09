@@ -75,7 +75,7 @@ func RequirePodman(t *testing.T) {
 
 // ── Option functions ────────────────────────────────────────────────────────
 
-// Transport sets the transport backend: "nats", "amqp", "redis", "sql-sqlite", "sql-postgres".
+// Transport sets the transport backend: "embedded", "nats", "amqp", "redis".
 func Transport(backend string) InfraOption {
 	return func(c *infraConfig) { c.transport = backend }
 }

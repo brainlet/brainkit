@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,32 +13,25 @@ import (
 	wmamqp "github.com/ThreeDotsLabs/watermill-amqp/v3/pkg/amqp"
 	wmnats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	wmredis "github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
-	wmsql "github.com/ThreeDotsLabs/watermill-sql/v4/pkg/sql"
-	wmsqlite "github.com/ThreeDotsLabs/watermill-sqlite/wmsqlitemodernc"
 
-	_ "github.com/lib/pq"          // Postgres driver
-	_ "modernc.org/sqlite"          // SQLite driver (already in go.mod)
 	"github.com/redis/go-redis/v9"
 )
 
 // TransportConfig configures the transport backend.
 type TransportConfig struct {
-	Type      string // "memory" (default), "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+	Type      string // "memory", "embedded" (default), "nats", "amqp", "redis"
 	Namespace string // consumer group name; default: "brainkit". Replicas with same namespace compete.
 
-	// NATS
-	NATSURL  string
-	NATSName string
+	// NATS (external or embedded)
+	NATSURL      string
+	NATSName     string
+	NATSStoreDir string // JetStream store directory for embedded NATS. Empty = ephemeral.
 
 	// AMQP (RabbitMQ)
 	AMQPURL string // e.g. "amqp://guest:guest@localhost:5672/"
 
 	// Redis Streams
 	RedisURL string // e.g. "redis://localhost:6379/0"
-
-	// SQL
-	PostgresURL string // e.g. "postgres://user:pass@localhost:5432/brainkit?sslmode=disable"
-	SQLitePath  string // e.g. "/tmp/brainkit-bus.db" or ":memory:"
 }
 
 // Transport bundles the concrete publisher/subscriber pair plus a shared closer.
@@ -52,6 +44,8 @@ type Transport struct {
 	// TopicSanitizer transforms logical topic names into transport-safe names.
 	// Applied automatically by RemoteClient and Host.
 	TopicSanitizer func(string) string
+
+	embeddedNATS *EmbeddedNATS // non-nil when transport is "embedded"
 }
 
 // SanitizeTopic applies the transport's topic sanitizer if set.
@@ -65,7 +59,7 @@ func (t *Transport) SanitizeTopic(topic string) string {
 // onceCloser wraps a Close function with sync.Once to prevent double-close panics.
 // Watermill's router.Close() fires handleClose goroutines that call subscriber.Close()
 // asynchronously (not tracked by any WaitGroup). When Transport.Close() also calls
-// subscriber.Close(), the double-close races on channel close in some backends (SQLite).
+// subscriber.Close(), the double-close can race on channel close in some backends.
 // sync.Once ensures exactly one close regardless of call count or concurrency.
 func onceCloser(fn func() error) func() error {
 	var once sync.Once
@@ -98,7 +92,7 @@ func NewTransportSet(cfg TransportConfig) (*Transport, error) {
 	logger := watermill.NopLogger{}
 
 	switch cfg.Type {
-	case "", "memory":
+	case "memory":
 		pubSub := gochannel.NewGoChannel(gochannel.Config{
 			Persistent: true,
 		}, logger)
@@ -109,6 +103,9 @@ func NewTransportSet(cfg TransportConfig) (*Transport, error) {
 			closeFns:         []func() error{pubSub.Close},
 		}, nil
 
+	case "", "embedded":
+		return newEmbeddedNATSTransport(cfg, logger)
+
 	case "nats":
 		return newNATSTransport(cfg, logger)
 
@@ -118,14 +115,8 @@ func NewTransportSet(cfg TransportConfig) (*Transport, error) {
 	case "redis":
 		return newRedisTransport(cfg, logger)
 
-	case "sql-postgres":
-		return newPostgresTransport(cfg, logger)
-
-	case "sql-sqlite":
-		return newSQLiteTransport(cfg, logger)
-
 	default:
-		return nil, fmt.Errorf("unknown transport type: %q (supported: memory, nats, amqp, redis, sql-postgres, sql-sqlite)", cfg.Type)
+		return nil, fmt.Errorf("unknown transport type: %q (supported: memory, embedded, nats, amqp, redis)", cfg.Type)
 	}
 }
 
@@ -342,107 +333,34 @@ func newRedisTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tr
 }
 
 // ---------------------------------------------------------------------------
-// PostgreSQL
+// Embedded NATS (in-process server + Watermill NATS adapter)
 // ---------------------------------------------------------------------------
 
-func newPostgresTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Transport, error) {
-	pgURL := cfg.PostgresURL
-	if pgURL == "" {
-		pgURL = "postgres://localhost:5432/brainkit?sslmode=disable"
-	}
-
-	db, err := sql.Open("postgres", pgURL)
-	if err != nil {
-		return nil, fmt.Errorf("postgres connect: %w", err)
-	}
-
-	dbWrapped := wmsql.BeginnerFromStdSQL(db)
-
-	publisher, err := wmsql.NewPublisher(dbWrapped, wmsql.PublisherConfig{
-		SchemaAdapter:        wmsql.DefaultPostgreSQLSchema{},
-		AutoInitializeSchema: true,
-	}, logger)
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("postgres publisher: %w", err)
-	}
-
-	subscriber, err := wmsql.NewSubscriber(dbWrapped, wmsql.SubscriberConfig{
-		SchemaAdapter:    wmsql.DefaultPostgreSQLSchema{},
-		OffsetsAdapter:   wmsql.DefaultPostgreSQLOffsetsAdapter{},
-		InitializeSchema: true,
-		PollInterval:     100 * time.Millisecond,
-	}, logger)
-	if err != nil {
-		_ = publisher.Close()
-		db.Close()
-		return nil, fmt.Errorf("postgres subscriber: %w", err)
-	}
-
-	return &Transport{
-		Publisher:        publisher,
-		Subscriber:       subscriber,
-		FanOutSubscriber: subscriber, // SQL: single-instance, no consumer group distinction
-		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
-		TopicSanitizer: func(topic string) string {
-			r := strings.NewReplacer(".", "_", "/", "_", "@", "_", " ", "_")
-			return r.Replace(topic)
-		},
-	}, nil
-}
-
-// ---------------------------------------------------------------------------
-// SQLite (using official watermill-sqlite/wmsqlitemodernc)
-// ---------------------------------------------------------------------------
-
-func newSQLiteTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Transport, error) {
-	dbPath := cfg.SQLitePath
-	if dbPath == "" {
-		dbPath = "file::memory:?cache=shared"
-	}
-	if dbPath != "file::memory:?cache=shared" && !strings.HasPrefix(dbPath, "file:") {
-		// modernc.org/sqlite supports _pragma DSN param — runs on EVERY new connection.
-		// journal_mode=WAL: concurrent readers + writer across processes.
-		// busy_timeout=10000: retry up to 10s on lock contention instead of SQLITE_BUSY.
-		// synchronous=NORMAL: safe with WAL, reduces fsync overhead.
-		dbPath = "file:" + dbPath + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)"
-	}
-
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("sqlite connect: %w", err)
-	}
-
-	publisher, err := wmsqlite.NewPublisher(db, wmsqlite.PublisherOptions{
-		InitializeSchema: true,
-		Logger:           logger,
+func newEmbeddedNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Transport, error) {
+	embedded, err := NewEmbeddedNATS(EmbeddedNATSConfig{
+		StoreDir: cfg.NATSStoreDir,
 	})
 	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("sqlite publisher: %w", err)
+		return nil, fmt.Errorf("embedded nats: %w", err)
 	}
 
-	subscriber, err := wmsqlite.NewSubscriber(db, wmsqlite.SubscriberOptions{
-		InitializeSchema: true,
-		Logger:           logger,
-		PollInterval:     100 * time.Millisecond,
-	})
+	// Reuse the standard NATS transport factory with the embedded server's URL
+	cfg.NATSURL = embedded.ClientURL()
+	cfg.Type = "nats"
+
+	transport, err := newNATSTransport(cfg, logger)
 	if err != nil {
-		_ = publisher.Close()
-		db.Close()
-		return nil, fmt.Errorf("sqlite subscriber: %w", err)
+		embedded.Shutdown()
+		return nil, err
 	}
 
-	return &Transport{
-		Publisher:        publisher,
-		Subscriber:       subscriber,
-		FanOutSubscriber: subscriber, // SQLite: single-instance, no consumer group distinction
-		closeFns:         []func() error{publisher.Close, onceCloser(subscriber.Close), db.Close},
-		TopicSanitizer: func(topic string) string {
-			r := strings.NewReplacer(".", "_", "/", "_", "@", "_", " ", "_")
-			return r.Replace(topic)
-		},
-	}, nil
+	transport.embeddedNATS = embedded
+	transport.closeFns = append(transport.closeFns, func() error {
+		embedded.Shutdown()
+		return nil
+	})
+
+	return transport, nil
 }
 
 // ---------------------------------------------------------------------------

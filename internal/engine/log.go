@@ -4,12 +4,13 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/types"
 )
 
-// LogEntry alias for use within engine.
+// types.LogEntry alias for use within engine.
 
 // defaultLogHandler logs .ts compartment entries via slog.
-func defaultLogHandler(e LogEntry) {
+func defaultLogHandler(e types.LogEntry) {
 	level := slog.LevelInfo
 	switch e.Level {
 	case "error":
@@ -30,7 +31,7 @@ func (k *Kernel) emitLog(source, level, message string) {
 	if handler == nil {
 		handler = defaultLogHandler
 	}
-	handler(LogEntry{
+	handler(types.LogEntry{
 		Source:  source,
 		Level:   level,
 		Message: message,

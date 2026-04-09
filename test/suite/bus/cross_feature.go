@@ -200,6 +200,7 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	traceStore := tracing.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		TraceStore: traceStore,
 	})
@@ -288,6 +289,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 1: Deploy handler, persist
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -309,6 +311,7 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	// Phase 2: Restart, call handler, verify it works
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)

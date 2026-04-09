@@ -34,6 +34,7 @@ func newKit(t *testing.T, envVars map[string]string) *brainkit.Kit {
 	t.Helper()
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test",
 		CallerID:  "auth-test",
 		FSRoot:    tmpDir,

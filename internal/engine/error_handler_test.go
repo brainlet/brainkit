@@ -6,15 +6,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestErrorHandler_DefaultDoesNotPanic(t *testing.T) {
-	InvokeErrorHandler(nil, &sdkerrors.PersistenceError{
+	types.InvokeErrorHandler(nil, &sdkerrors.PersistenceError{
 		Operation: "SaveDeployment", Source: "test.ts", Cause: fmt.Errorf("disk full"),
-	}, ErrorContext{
+	}, types.ErrorContext{
 		Operation: "SaveDeployment", Component: "kernel", Source: "test.ts",
 	})
 }
@@ -22,18 +23,18 @@ func TestErrorHandler_DefaultDoesNotPanic(t *testing.T) {
 func TestErrorHandler_CustomReceivesTypedErrors(t *testing.T) {
 	var mu sync.Mutex
 	var received []error
-	var contexts []ErrorContext
+	var contexts []types.ErrorContext
 
-	handler := func(err error, ctx ErrorContext) {
+	handler := func(err error, ctx types.ErrorContext) {
 		mu.Lock()
 		received = append(received, err)
 		contexts = append(contexts, ctx)
 		mu.Unlock()
 	}
 
-	InvokeErrorHandler(handler, &sdkerrors.PersistenceError{
+	types.InvokeErrorHandler(handler, &sdkerrors.PersistenceError{
 		Operation: "LoadDeployments", Source: "", Cause: fmt.Errorf("corrupt db"),
-	}, ErrorContext{
+	}, types.ErrorContext{
 		Operation: "LoadDeployments", Component: "kernel",
 	})
 
@@ -49,10 +50,10 @@ func TestErrorHandler_CustomReceivesTypedErrors(t *testing.T) {
 }
 
 func TestErrorHandler_ContextFields(t *testing.T) {
-	var ctx ErrorContext
-	handler := func(err error, c ErrorContext) { ctx = c }
+	var ctx types.ErrorContext
+	handler := func(err error, c types.ErrorContext) { ctx = c }
 
-	InvokeErrorHandler(handler, fmt.Errorf("test"), ErrorContext{
+	types.InvokeErrorHandler(handler, fmt.Errorf("test"), types.ErrorContext{
 		Operation: "RestorePlugin", Component: "node", Source: "telegram",
 	})
 

@@ -104,8 +104,6 @@ func testNodeCommandsNodeShutdownClean(t *testing.T, env *suite.TestEnv) {
 		NATSName:    tf.NATSName,
 		AMQPURL:     tf.AMQPURL,
 		RedisURL:    tf.RedisURL,
-		PostgresURL: tf.PostgresURL,
-		SQLitePath:  tf.SQLitePath,
 	})
 	require.NoError(t, err)
 

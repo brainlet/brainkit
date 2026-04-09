@@ -145,6 +145,7 @@ func testForgeryCorrelationIdCollision(t *testing.T, env *suite.TestEnv) {
 func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -360,6 +361,7 @@ func testForgeryCrossDeploymentResult(t *testing.T, env *suite.TestEnv) {
 func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)

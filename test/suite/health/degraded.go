@@ -66,6 +66,7 @@ func testHealthWithTracingStore(t *testing.T, _ *suite.TestEnv) {
 	traceStore := tracing.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport:  "memory",
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -131,6 +132,7 @@ func testUptimeIncreases(t *testing.T, _ *suite.TestEnv) {
 func testHealthAfterClose(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 	})
 	require.NoError(t, err)
@@ -147,6 +149,7 @@ func testPersistenceStoreHealth(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)

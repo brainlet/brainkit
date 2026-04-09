@@ -71,6 +71,7 @@ func testErrorContractBusValidationError(t *testing.T, env *suite.TestEnv) {
 func testErrorContractBusNotConfiguredRBAC(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
@@ -187,6 +188,7 @@ func testErrorContractJSBridgeValidationErrorMissingArgs(t *testing.T, _ *suite.
 func testErrorContractJSBridgeRateLimited(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Roles:       map[string]rbac.Role{"service": rbac.RoleService},
 		DefaultRole: "service",
@@ -214,6 +216,7 @@ func testErrorContractJSBridgeRateLimited(t *testing.T, _ *suite.TestEnv) {
 // testErrorContractJSBridgeNotConfiguredSecrets — JS bridge secrets.get returns empty for nonexistent keys.
 func testErrorContractJSBridgeNotConfiguredSecrets(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test",
 	})
 	require.NoError(t, err)
@@ -237,6 +240,7 @@ func testErrorContractErrorHandlerPersistenceError(t *testing.T, _ *suite.TestEn
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 		ErrorHandler: func(err error) {
@@ -288,6 +292,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store,
 		ErrorHandler: func(err error) {
@@ -313,6 +318,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 	// Create a new kernel — it will try to redeploy "corrupt-adv.ts" and fail
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error) {

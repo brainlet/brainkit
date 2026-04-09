@@ -274,6 +274,7 @@ func testConcurrencyCloseDuringHandlers(t *testing.T, env *suite.TestEnv) {
 
 	// Uses a fresh kit (not the shared env) because we close it.
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: t.TempDir(),
 	})
 	require.NoError(t, err)
@@ -448,6 +449,7 @@ func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 	store1, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "stress-kit1", CallerID: "stress-kit1", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -456,6 +458,7 @@ func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 	store2, err := brainkit.NewSQLiteStore(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "stress-kit2", CallerID: "stress-kit2", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
@@ -494,6 +497,7 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 
 	store1, _ := brainkit.NewSQLiteStore(storePath)
 	k1, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store1,
 	})
 	require.NoError(t, err)
@@ -505,6 +509,7 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k2, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store2,
 	})
 	require.NoError(t, err)
@@ -527,6 +532,7 @@ func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
 
 	// Uses a fresh kit with RBAC config.
 	k, err := brainkit.New(brainkit.Config{
+		Transport:   "memory",
 		Namespace:   "stress-test",
 		CallerID:    "stress-test",
 		FSRoot:      t.TempDir(),

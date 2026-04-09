@@ -68,6 +68,7 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 	// ── Create Kit with Postgres storage ──
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test-storage-fail",
 		CallerID:  "test",
 		FSRoot:    tmpDir,

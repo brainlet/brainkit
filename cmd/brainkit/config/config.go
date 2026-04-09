@@ -43,11 +43,9 @@ type CLIConfig struct {
 	Transport   string                    `mapstructure:"transport"`
 	NATSURL     string                    `mapstructure:"nats_url"`
 	NATSName    string                    `mapstructure:"nats_name"`
-	AMQPURL     string                    `mapstructure:"amqp_url"`
-	RedisURL    string                    `mapstructure:"redis_url"`
-	PostgresURL string                    `mapstructure:"postgres_url"`
-	SQLitePath  string                    `mapstructure:"sqlite_path"`
-	Storage     map[string]StorageEntry   `mapstructure:"storage"`
+	AMQPURL  string                    `mapstructure:"amqp_url"`
+	RedisURL string                    `mapstructure:"redis_url"`
+	Storage  map[string]StorageEntry   `mapstructure:"storage"`
 	Vectors     map[string]VectorEntry    `mapstructure:"vectors"`
 	FSRoot      string                    `mapstructure:"fs_root"`
 	SecretKey   string                    `mapstructure:"secret_key"`
@@ -98,13 +96,11 @@ func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 	bc := brainkit.Config{
 		Namespace:  cfg.Namespace,
 		Transport:  cfg.Transport,
-		NATSURL:    cfg.NATSURL,
-		NATSName:   cfg.NATSName,
-		AMQPURL:    cfg.AMQPURL,
-		RedisURL:   cfg.RedisURL,
-		PostgresURL: cfg.PostgresURL,
-		SQLitePath: cfg.SQLitePath,
-		FSRoot:     cfg.FSRoot,
+		NATSURL:  cfg.NATSURL,
+		NATSName: cfg.NATSName,
+		AMQPURL:  cfg.AMQPURL,
+		RedisURL: cfg.RedisURL,
+		FSRoot:   cfg.FSRoot,
 		SecretKey:  cfg.SecretKey,
 		LogHandler: func(e brainkit.LogEntry) {
 			fmt.Fprintf(os.Stderr, "[%s] [%s] %s\n", e.Source, e.Level, e.Message)

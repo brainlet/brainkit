@@ -42,6 +42,7 @@ func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error) {
@@ -93,6 +94,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -116,6 +118,7 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
 	})
 	require.NoError(t, err)
@@ -156,6 +159,7 @@ func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		ErrorHandler: func(err error) {
@@ -192,6 +196,7 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -222,6 +227,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 	})
@@ -259,6 +265,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) 
 
 	store2, _ := brainkit.NewSQLiteStore(storePath)
 	k, err := brainkit.New(brainkit.Config{
+		Transport: "memory",
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
 		Roles: map[string]rbac.Role{"service": rbac.RoleService},

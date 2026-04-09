@@ -1,17 +1,16 @@
 # Transport Backends
 
-brainkit supports 6 Watermill transport backends. GoChannel (in-process) is the default. External transports enable multi-Kit communication and plugin subprocesses.
+brainkit supports 5 Watermill transport backends. Embedded NATS is the default — zero-config, real pub/sub. External transports enable multi-Kit communication and plugin subprocesses.
 
-## The Six Backends
+## The Five Backends
 
 | Backend | Type String | Topic Sanitizer | Container | Use Case |
 |---------|------------|-----------------|-----------|----------|
-| GoChannel | `"memory"` | none | none | Default. Single-Kit, fastest. |
-| SQLite | `"sql-sqlite"` | dots → underscores | none | Persistent bus on disk, single-node. |
+| GoChannel | `"memory"` | none | none | Tests. Single-Kit, synchronous. |
+| Embedded NATS | `"embedded"` / `""` | dots → dashes | none | Default. Zero-config, plugins, real pub/sub. |
 | NATS JetStream | `"nats"` | dots → dashes | `nats:latest -js` | Multi-Kit, plugins, production. |
 | AMQP (RabbitMQ) | `"amqp"` | slashes → dashes | `rabbitmq:management` | Existing RabbitMQ infra. |
 | Redis Streams | `"redis"` | none | `redis:latest` | Existing Redis infra. |
-| PostgreSQL | `"sql-postgres"` | dots → underscores | `postgres:16` | Existing Postgres infra. |
 
 ## Configuration
 
@@ -30,13 +29,11 @@ Transport-related fields in `brainkit.Config`:
 
 ```go
 // Transport fields in brainkit.Config
-Transport   string // "memory", "nats", "amqp", "redis", "sql-postgres", "sql-sqlite"
+Transport   string // "memory", "embedded" (default), "nats", "amqp", "redis"
 NATSURL     string // "nats://localhost:4222"
 NATSName    string // durable consumer prefix
 AMQPURL     string // "amqp://guest:guest@localhost:5672/"
 RedisURL    string // "redis://localhost:6379/0"
-PostgresURL string // "postgres://user:pass@localhost:5432/brainkit?sslmode=disable"
-SQLitePath  string // "/tmp/brainkit-bus.db" or ":memory:"
 ```
 
 ## Topic Sanitizers
@@ -51,15 +48,6 @@ Dots are NATS subject delimiters. All dots, slashes, @, and spaces become dashes
 tools.call → tools-call
 ts.my-service.greet → ts-my-service-greet
 plugin.tool.acme/plugin@1.0.0/echo → plugin-tool-acme-plugin-1-0-0-echo
-```
-
-### SQL (Postgres + SQLite)
-
-Topics become table names. Dots, slashes, @, spaces become underscores:
-
-```
-tools.call → tools_call
-ts.my-service.greet → ts_my_service_greet
 ```
 
 ### AMQP
@@ -108,7 +96,7 @@ subscriber, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
 
 ## Transport Matrix Testing
 
-Every operation is tested on every backend. The test matrix in `test/transport/matrix_test.go` runs 12 operations × 6 backends = 72 subtests:
+Every operation is tested on every backend. The test matrix in `test/transport/matrix_test.go` runs operations across 5 backends (memory, embedded, nats, amqp, redis):
 
 | Operation | What it tests |
 |-----------|-------------|
@@ -123,11 +111,11 @@ Every operation is tested on every backend. The test matrix in `test/transport/m
 | `kit_redeploy` | Atomic teardown + deploy |
 | `registry_has_list` | Provider registry queries |
 
-Container-based backends (NATS, AMQP, Redis, Postgres) use testcontainers-go with Podman. The test helper `testutil.AllBackends(t)` returns only available backends — GoChannel and SQLite always, container backends only if Podman is running.
+Container-based backends (NATS, AMQP, Redis) use testcontainers-go with Podman. The test helper `testutil.AllBackends(t)` returns only available backends — GoChannel and Embedded NATS always, container backends only if Podman is running.
 
 ## Backend Readiness
 
-Some backends need time after container start before they can process messages (SQL table creation, AMQP queue binding). The test helper `WaitForBackendReady` probes with a pub/sub round-trip:
+Some backends need time after container start before they can process messages (AMQP queue binding, NATS JetStream provisioning). The test helper `WaitForBackendReady` probes with a pub/sub round-trip:
 
 ```go
 // internal/testutil/backend.go
@@ -143,12 +131,11 @@ func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
 
 | Scenario | Recommended |
 |----------|-------------|
-| Single Kit, development | `"memory"` (default) |
-| Single Kit, persistent bus | `"sql-sqlite"` |
+| Default | `"embedded"` (zero-config, real pub/sub) |
+| Tests | `"memory"` (synchronous, no I/O) |
 | Multi-Kit, plugins | `"nats"` |
 | Existing RabbitMQ | `"amqp"` |
 | Existing Redis | `"redis"` |
-| Existing Postgres | `"sql-postgres"` |
 | Production, new infra | `"nats"` (best JetStream durability + competing consumers) |
 
-NATS is the only backend tested with plugins and cross-Kit communication. The others work for single-Kit transport but haven't been validated for plugin subprocess flows.
+Embedded NATS and external NATS are the backends tested with plugins and cross-Kit communication. The others work for single-Kit transport but haven't been validated for plugin subprocess flows.

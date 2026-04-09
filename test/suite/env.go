@@ -239,20 +239,25 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		kitCfg.MCPServers = cfg.MCPServers
 	}
 
-	// Transport: if specified, start container, probe, pass URLs
-	if cfg.Transport != "" && cfg.Transport != "memory" {
+	// Transport: default to memory (fast GoChannel) for suite tests.
+	// Campaigns override with WithTransport("nats"), WithTransport("embedded"), etc.
+	if cfg.Transport == "" {
+		kitCfg.Transport = "memory"
+	} else if cfg.Transport != "memory" {
 		tcfg := testutil.TransportConfigForBackend(t, cfg.Transport)
-		probe := testutil.MustCreateTransport(t, tcfg)
-		testutil.WaitForBackendReady(t, probe)
-		probe.Close()
+
+		// "embedded" needs no container — skip probe
+		if cfg.Transport != "embedded" {
+			probe := testutil.MustCreateTransport(t, tcfg)
+			testutil.WaitForBackendReady(t, probe)
+			probe.Close()
+		}
 
 		kitCfg.Transport = tcfg.Type
 		kitCfg.NATSURL = tcfg.NATSURL
 		kitCfg.NATSName = tcfg.NATSName
 		kitCfg.AMQPURL = tcfg.AMQPURL
 		kitCfg.RedisURL = tcfg.RedisURL
-		kitCfg.PostgresURL = tcfg.PostgresURL
-		kitCfg.SQLitePath = tcfg.SQLitePath
 	}
 
 	kit, err := brainkit.New(kitCfg)

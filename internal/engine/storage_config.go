@@ -1,8 +1,11 @@
 package engine
 
-import provreg "github.com/brainlet/brainkit/internal/providers"
+import (
+	provreg "github.com/brainlet/brainkit/internal/providers"
+	"github.com/brainlet/brainkit/internal/types"
+)
 
-// storageRegistryType maps user-facing StorageConfig.Type to the internal
+// storageRegistryType maps user-facing types.StorageConfig.Type to the internal
 // registry type that kit_runtime.js resolveStorage expects.
 func storageRegistryType(userType string) provreg.StorageType {
 	switch userType {
@@ -21,8 +24,8 @@ func storageRegistryType(userType string) provreg.StorageType {
 	}
 }
 
-// storageToRegistration converts a StorageConfig to the internal registry format.
-func storageToRegistration(cfg StorageConfig, bridgeURL string) provreg.StorageRegistration {
+// storageToRegistration converts a types.StorageConfig to the internal registry format.
+func storageToRegistration(cfg types.StorageConfig, bridgeURL string) provreg.StorageRegistration {
 	regType := storageRegistryType(cfg.Type)
 	var config any
 	switch cfg.Type {
@@ -40,7 +43,7 @@ func storageToRegistration(cfg StorageConfig, bridgeURL string) provreg.StorageR
 	return provreg.StorageRegistration{Type: regType, Config: config}
 }
 
-// vectorRegistryType maps user-facing VectorConfig.Type to the internal type.
+// vectorRegistryType maps user-facing types.VectorConfig.Type to the internal type.
 func vectorRegistryType(userType string) provreg.VectorStoreType {
 	switch userType {
 	case "sqlite":
@@ -54,8 +57,8 @@ func vectorRegistryType(userType string) provreg.VectorStoreType {
 	}
 }
 
-// vectorToRegistration converts a VectorConfig to the internal registry format.
-func vectorToRegistration(cfg VectorConfig, bridgeURL string) provreg.VectorStoreRegistration {
+// vectorToRegistration converts a types.VectorConfig to the internal registry format.
+func vectorToRegistration(cfg types.VectorConfig, bridgeURL string) provreg.VectorStoreRegistration {
 	regType := vectorRegistryType(cfg.Type)
 	var config any
 	switch cfg.Type {

@@ -31,8 +31,7 @@ func setupWorkDir(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	config := `namespace: test-cli
-transport: sql-sqlite
-sqlite_path: ./data/transport.db
+transport: embedded
 storage:
   default:
     type: sqlite

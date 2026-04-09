@@ -143,6 +143,18 @@ func (p *Plugin) Run() error {
 		return fmt.Errorf("plugin: manifest rejected: %s", ack.Error)
 	}
 
+	// Register subscription handlers in the wsClient so dispatchEvent can find them.
+	// On[E]() stores handlers in p.subscriptions; the manifest tells the host which
+	// topics to subscribe to; but we also need the local handlers wired up.
+	for _, sub := range p.subscriptions {
+		handler := sub.handler
+		rt.subMu.Lock()
+		rt.eventSubs[sub.topic] = append(rt.eventSubs[sub.topic], func(msg sdk.Message) {
+			handler(ctx, msg.Payload, rt)
+		})
+		rt.subMu.Unlock()
+	}
+
 	// READY — host reads this from stdout
 	fmt.Fprintf(os.Stdout, "READY:%s/%s@%s\n", p.owner, p.name, p.version)
 

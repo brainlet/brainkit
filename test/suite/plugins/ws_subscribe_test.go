@@ -100,12 +100,9 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	require.NoError(t, build.Run(), "plugin must compile")
 
 	// Start Kit with plugin
-	transportDB := filepath.Join(dir, "transport.db")
-
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:  "test-ws-sub",
-		Transport:  "sql-sqlite",
-		SQLitePath: transportDB,
+		Namespace: "test-ws-sub",
+		Transport: "embedded",
 		Plugins: []brainkit.PluginConfig{{
 			Name: "sub-test", Binary: binaryPath, AutoRestart: false,
 		}},
@@ -135,14 +132,14 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 		t.Fatal("plugin did not register")
 	}
 
-	// Small delay to let subscription poll start
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the plugin's WS subscription to be registered on the embedded NATS server.
+	time.Sleep(1 * time.Second)
 
-	// Publish 3 events to "test.events" via sdk.Emit (goes through bus properly)
+	// Publish 3 events to "test.events"
 	for i := 0; i < 3; i++ {
 		payload, _ := json.Marshal(map[string]int{"seq": i})
 		kit.PublishRaw(ctx, "test.events", payload)
-		time.Sleep(200 * time.Millisecond) // let each event propagate
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	// Wait for events to reach plugin over WS
