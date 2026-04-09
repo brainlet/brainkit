@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/ctxkeys"
 	"github.com/brainlet/brainkit/sdk/pluginws"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -25,7 +26,16 @@ type wsClient struct {
 }
 
 func (c *wsClient) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
-	data, _ := json.Marshal(pluginws.PublishMsg{Topic: topic, Payload: payload})
+	// Extract metadata from context so the host stamps them on the bus message.
+	meta := make(map[string]string)
+	if v, ok := ctx.Value(ctxkeys.ReplyTo).(string); ok && v != "" {
+		meta["replyTo"] = v
+	}
+	if v, ok := ctx.Value(ctxkeys.CorrelationID).(string); ok && v != "" {
+		meta["correlationId"] = v
+	}
+
+	data, _ := json.Marshal(pluginws.PublishMsg{Topic: topic, Payload: payload, Metadata: meta})
 	msg := pluginws.Message{Type: pluginws.TypePublish, Data: data}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -164,6 +174,11 @@ func (p *Plugin) Run() error {
 		toolMap[t.name] = t.handler
 	}
 
+	// Concurrent tool dispatcher — handlers run in bounded goroutines so
+	// the read loop keeps processing WS events (needed for bus round-trips).
+	dispatcher := newToolDispatcher(10)
+	defer dispatcher.wait()
+
 	// Shutdown handler
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -198,8 +213,10 @@ func (p *Plugin) Run() error {
 				continue
 			}
 
-			result, toolErr := handler(ctx, rt, call.Input)
-			writeResult(ctx, conn, msg.ID, result, toolErr)
+			// Dispatch tool execution concurrently. The read loop must keep
+			// processing WS events — tools that make bus round-trips (publish
+			// + wait for event response) deadlock if the read loop is blocked.
+			dispatcher.dispatch(ctx, conn, msg.ID, rt, call, handler)
 
 		case pluginws.TypeEvent:
 			var evt pluginws.EventMsg

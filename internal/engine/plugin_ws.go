@@ -224,7 +224,20 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		case pluginws.TypePublish:
 			var pub pluginws.PublishMsg
 			json.Unmarshal(respMsg.Data, &pub)
-			s.node.Kernel.publish(ctx, pub.Topic, pub.Payload)
+			if len(pub.Metadata) > 0 {
+				if rt, ok := pub.Metadata["replyTo"]; ok && rt != "" {
+					resolved := s.node.Kernel.remote.ResolvedTopic(rt)
+					slog.Info("plugin ws: publish with replyTo",
+						slog.String("plugin", pc.name),
+						slog.String("topic", pub.Topic),
+						slog.String("replyTo_raw", rt),
+						slog.String("replyTo_resolved", resolved))
+					pub.Metadata["replyTo"] = resolved
+				}
+				s.node.Kernel.remote.PublishRawWithMeta(ctx, pub.Topic, pub.Payload, pub.Metadata)
+			} else {
+				s.node.Kernel.publish(ctx, pub.Topic, pub.Payload)
+			}
 
 		case pluginws.TypeSubscribe:
 			var sub pluginws.SubscribeMsg

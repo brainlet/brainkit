@@ -65,8 +65,9 @@ type ToolResult struct {
 
 // PublishMsg is sent by the plugin to publish a message to a bus topic.
 type PublishMsg struct {
-	Topic   string          `json:"topic"`
-	Payload json.RawMessage `json:"payload"`
+	Topic         string            `json:"topic"`
+	Payload       json.RawMessage   `json:"payload"`
+	Metadata      map[string]string `json:"metadata,omitempty"` // replyTo, correlationId, etc.
 }
 
 // SubscribeMsg is sent by the plugin to subscribe to a bus topic.
