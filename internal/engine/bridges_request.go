@@ -8,7 +8,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // registerRequestBridges adds __go_brainkit_request (sync) and __go_brainkit_request_async bridges.

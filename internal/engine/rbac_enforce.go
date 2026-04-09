@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
 )

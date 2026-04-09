@@ -3,7 +3,7 @@ package sdk
 import (
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // ── Sentinel errors ──────────────────────────────────────────────────────────

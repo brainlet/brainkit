@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"

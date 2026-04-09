@@ -22,7 +22,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/packages"
 	"github.com/brainlet/brainkit/internal/rbac"

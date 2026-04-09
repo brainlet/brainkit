@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/ctxkeys"
+	"github.com/brainlet/brainkit/sdk/ctxkeys"
 )
 
 func withInboundMetadata(ctx context.Context, wmsg *message.Message, logicalTopic string) context.Context {

@@ -6,7 +6,7 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 )
 

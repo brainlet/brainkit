@@ -10,7 +10,7 @@ import (
 	"time"
 
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/sdk"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )

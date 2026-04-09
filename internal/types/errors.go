@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // ErrMCPNotConfigured is returned when an MCP operation is attempted

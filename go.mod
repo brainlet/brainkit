@@ -9,6 +9,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-redisstream v1.4.5
 	github.com/ThreeDotsLabs/watermill-sql/v4 v4.1.2
 	github.com/ThreeDotsLabs/watermill-sqlite/wmsqlitemodernc v0.1.2
+	github.com/brainlet/brainkit/sdk v0.0.0-00010101000000-000000000000
 	github.com/brainlet/brainkit/vendor_typescript v0.0.0-00010101000000-000000000000
 	github.com/buke/quickjs-go v0.6.10
 	github.com/coder/websocket v1.8.14
@@ -141,3 +142,5 @@ require (
 replace github.com/buke/quickjs-go => ./vendor_quickjs
 
 replace github.com/brainlet/brainkit/vendor_typescript => ./vendor_typescript
+
+replace github.com/brainlet/brainkit/sdk => ./sdk

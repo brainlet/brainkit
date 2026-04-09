@@ -12,7 +12,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	xport "github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 )

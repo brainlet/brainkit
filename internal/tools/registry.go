@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/brainlet/brainkit/internal/syncx"
 
-	"github.com/brainlet/brainkit/internal/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // ToolRegistry manages all tools across the platform.
