@@ -82,7 +82,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("exploit_harden_bypass", func(t *testing.T) { testExploitHardenBypass(t, env) })
 		t.Run("exploit_deploy_ordering_attack", func(t *testing.T) { testExploitDeployOrderingAttack(t, env) })
 		t.Run("exploit_reentrant_source_tracking", func(t *testing.T) { testExploitReentrantSourceTracking(t, env) })
-		t.Run("exploit_plugin_state_key_collision", func(t *testing.T) { testExploitPluginStateKeyCollision(t, env) })
 		t.Run("exploit_libsql_cache_exhaustion", func(t *testing.T) { testExploitLibSQLCacheExhaustion(t, env) })
 		t.Run("exploit_registry_resolve_leak", func(t *testing.T) { testExploitRegistryResolveLeak(t, env) })
 		t.Run("exploit_provider_global_leak", func(t *testing.T) { testExploitProviderGlobalLeak(t, env) })

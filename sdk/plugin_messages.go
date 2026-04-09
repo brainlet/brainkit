@@ -42,29 +42,3 @@ type PluginManifestResp struct {
 }
 
 
-// ── Plugin State ──
-
-type PluginStateGetMsg struct {
-	Key string `json:"key"`
-}
-
-func (PluginStateGetMsg) BusTopic() string { return "plugin.state.get" }
-
-type PluginStateGetResp struct {
-	ResultMeta
-	Value string `json:"value"`
-}
-
-
-type PluginStateSetMsg struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-func (PluginStateSetMsg) BusTopic() string { return "plugin.state.set" }
-
-type PluginStateSetResp struct {
-	ResultMeta
-	OK bool `json:"ok"`
-}
-

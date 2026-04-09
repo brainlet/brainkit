@@ -52,20 +52,6 @@ func testNodeCommandsPluginStatusNonexistent(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, suite.ResponseHasError(p))
 }
 
-func testNodeCommandsPluginStateGetSet(t *testing.T, env *suite.TestEnv) {
-	kit := makeNode(t, env, "node-plugstate-cross")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Set state
-	p1 := publishAndWaitRaw(t, kit, ctx, sdk.PluginStateSetMsg{Key: "test-key", Value: "test-value"})
-	assert.Contains(t, string(p1), "ok")
-
-	// Get state
-	p2 := publishAndWaitRaw(t, kit, ctx, sdk.PluginStateGetMsg{Key: "test-key"})
-	assert.Contains(t, string(p2), "test-value")
-}
-
 func testNodeCommandsPackageListEmpty(t *testing.T, env *suite.TestEnv) {
 	kit := makeNode(t, env, "node-pkglist-cross")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

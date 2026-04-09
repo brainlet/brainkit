@@ -397,26 +397,6 @@ func SubscribePluginStartResp(rt Runtime, ctx context.Context, topic string, han
 	return SubscribeTo[PluginStartResp](rt, ctx, topic, handler)
 }
 
-// PublishPluginStateGet publishes a PluginStateGetMsg and returns routing info for the response.
-func PublishPluginStateGet(rt Runtime, ctx context.Context, msg PluginStateGetMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePluginStateGetResp subscribes to the response topic for a PluginStateGetMsg command.
-func SubscribePluginStateGetResp(rt Runtime, ctx context.Context, topic string, handler func(PluginStateGetResp, Message)) (func(), error) {
-	return SubscribeTo[PluginStateGetResp](rt, ctx, topic, handler)
-}
-
-// PublishPluginStateSet publishes a PluginStateSetMsg and returns routing info for the response.
-func PublishPluginStateSet(rt Runtime, ctx context.Context, msg PluginStateSetMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePluginStateSetResp subscribes to the response topic for a PluginStateSetMsg command.
-func SubscribePluginStateSetResp(rt Runtime, ctx context.Context, topic string, handler func(PluginStateSetResp, Message)) (func(), error) {
-	return SubscribeTo[PluginStateSetResp](rt, ctx, topic, handler)
-}
-
 // PublishPluginStatus publishes a PluginStatusMsg and returns routing info for the response.
 func PublishPluginStatus(rt Runtime, ctx context.Context, msg PluginStatusMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

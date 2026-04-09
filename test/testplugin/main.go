@@ -1,10 +1,9 @@
 // testplugin is a minimal brainkit plugin for e2e testing.
-// It registers an "echo" tool and a "concat" tool, and uses plugin state.
+// It registers an "echo" tool and a "concat" tool.
 package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	bkplugin "github.com/brainlet/brainkit/plugin"
@@ -42,24 +41,6 @@ func main() {
 
 	bkplugin.Tool[ConcatInput, ConcatOutput](p, "concat", "concatenates two strings",
 		func(ctx context.Context, rt bkplugin.Client, in ConcatInput) (ConcatOutput, error) {
-			getResult, _ := sdk.Publish(rt, ctx, sdk.PluginStateGetMsg{Key: "callCount"})
-			countCh := make(chan sdk.PluginStateGetResp, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.PluginStateGetResp](rt, ctx, getResult.ReplyTo, func(r sdk.PluginStateGetResp, m sdk.Message) { countCh <- r })
-			var countResp sdk.PluginStateGetResp
-			select {
-			case countResp = <-countCh:
-			case <-ctx.Done():
-			}
-			unsub()
-			count := 0
-			if countResp.Value != "" {
-				fmt.Sscanf(countResp.Value, "%d", &count)
-			}
-			count++
-			sdk.Publish(rt, ctx, sdk.PluginStateSetMsg{
-				Key:   "callCount",
-				Value: fmt.Sprintf("%d", count),
-			})
 			return ConcatOutput{Result: in.A + in.B}, nil
 		})
 

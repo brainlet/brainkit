@@ -372,12 +372,6 @@ func commandCatalog() *commandRegistry {
 			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
 				return node.processPluginManifest(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStateGetMsg) (*sdk.PluginStateGetResp, error) {
-				return node.getPluginState(ctx, req)
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStateSetMsg) (*sdk.PluginStateSetResp, error) {
-				return node.setPluginState(ctx, req)
-			}),
 			// ── Plugin Lifecycle ──
 			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStartMsg) (*sdk.PluginStartResp, error) {
 				if node.pluginLifecycle == nil {

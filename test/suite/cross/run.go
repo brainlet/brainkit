@@ -70,7 +70,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("node_commands/plugin_stop_nonexistent", func(t *testing.T) { testNodeCommandsPluginStopNonexistent(t, env) })
 		t.Run("node_commands/plugin_restart_nonexistent", func(t *testing.T) { testNodeCommandsPluginRestartNonexistent(t, env) })
 		t.Run("node_commands/plugin_status_nonexistent", func(t *testing.T) { testNodeCommandsPluginStatusNonexistent(t, env) })
-		t.Run("node_commands/plugin_state_get_set", func(t *testing.T) { testNodeCommandsPluginStateGetSet(t, env) })
 		t.Run("node_commands/package_list_empty", func(t *testing.T) { testNodeCommandsPackageListEmpty(t, env) })
 		t.Run("node_commands/deploy_on_node", func(t *testing.T) { testNodeCommandsDeployOnNode(t, env) })
 		t.Run("node_commands/node_shutdown_clean", func(t *testing.T) { testNodeCommandsNodeShutdownClean(t, env) })

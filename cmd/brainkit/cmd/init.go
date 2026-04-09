@@ -28,7 +28,7 @@ storage:
 # Workspace — filesystem root for deployed .ts code
 fs_root: ./workspace
 
-# Persistence — deployment/schedule/plugin state across restarts
+# Persistence — deployments, schedules, plugins across restarts
 store_path: ./data/store.db
 `
 

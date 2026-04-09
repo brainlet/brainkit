@@ -23,7 +23,6 @@ type Node struct {
 	config          NodeConfig
 	nodeID          string
 	plugins         *pluginManager
-	pluginState     PluginStateStore
 	pluginLifecycle *PluginLifecycleDomain
 	discovery       discovery.Provider // nil if not configured
 
@@ -69,17 +68,10 @@ func NewNode(cfg NodeConfig) (*Node, error) {
 		return nil, err
 	}
 
-	stateStore, err := newPluginStateStore(cfg)
-	if err != nil {
-		_ = kernel.Close()
-		return nil, err
-	}
-
 	node := &Node{
-		Kernel:      kernel,
-		config:      cfg,
-		nodeID:      cfg.NodeID,
-		pluginState: stateStore,
+		Kernel: kernel,
+		config: cfg,
+		nodeID: cfg.NodeID,
 	}
 
 	node.plugins = newPluginManager(node)
@@ -203,9 +195,6 @@ func (n *Node) Shutdown(ctx context.Context) error {
 	}
 	if n.discovery != nil {
 		collect(n.discovery.Close())
-	}
-	if n.pluginState != nil {
-		collect(n.pluginState.Close())
 	}
 	if n.Kernel != nil {
 		collect(n.Kernel.close())
@@ -459,29 +448,6 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginMan
 
 func pluginToolTopic(owner, name, version, tool string) string {
 	return fmt.Sprintf("plugin.tool.%s/%s@%s/%s", owner, name, version, tool)
-}
-
-func (n *Node) getPluginState(ctx context.Context, req sdk.PluginStateGetMsg) (*sdk.PluginStateGetResp, error) {
-	pluginID := transport.CallerIDFromContext(ctx)
-	if pluginID == "" {
-		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
-	}
-	value, err := n.pluginState.Get(ctx, pluginID, req.Key)
-	if err != nil {
-		return nil, err
-	}
-	return &sdk.PluginStateGetResp{Value: value}, nil
-}
-
-func (n *Node) setPluginState(ctx context.Context, req sdk.PluginStateSetMsg) (*sdk.PluginStateSetResp, error) {
-	pluginID := transport.CallerIDFromContext(ctx)
-	if pluginID == "" {
-		return nil, fmt.Errorf("brainkit: plugin request missing caller identity")
-	}
-	if err := n.pluginState.Set(ctx, pluginID, req.Key, req.Value); err != nil {
-		return nil, err
-	}
-	return &sdk.PluginStateSetResp{OK: true}, nil
 }
 
 func mustMarshalJSON(v any) json.RawMessage {
