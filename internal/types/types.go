@@ -85,6 +85,9 @@ type KernelMetrics struct {
 	// Plugin metrics (only populated when Node is present)
 	ActivePlugins int             `json:"activePlugins"`
 	Plugins       []PluginMetrics `json:"plugins,omitempty"`
+
+	// Bus metrics per topic
+	Bus *MetricsSnapshot `json:"bus,omitempty"`
 }
 
 // PluginMetrics describes a single plugin's runtime state.

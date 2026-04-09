@@ -104,6 +104,7 @@ type Kernel struct {
 
 	// Metrics
 	pumpCycles atomic.Int64
+	busMetrics *transport.Metrics // per-topic bus message counts
 
 	// Schedules
 	schedules map[string]*scheduleEntry
@@ -545,11 +546,12 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		return fail(fmt.Errorf("brainkit: router: %w", err))
 	}
 
-	metrics := transport.NewMetrics()
+	busMetrics := transport.NewMetrics()
+	kernel.busMetrics = busMetrics
 	router.AddMiddleware(
 		transport.DepthMiddleware,
 		transport.CallerIDMiddleware(cfg.CallerID),
-		transport.MetricsMiddleware(metrics),
+		transport.MetricsMiddleware(busMetrics),
 	)
 	if cfg.MaxConcurrency > 0 {
 		router.AddMiddleware(transport.MaxConcurrencyMiddleware(cfg.MaxConcurrency))
@@ -751,7 +753,9 @@ func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, pa
 // The context controls the drain timeout — when ctx expires, force-close proceeds.
 func (k *Kernel) Shutdown(ctx context.Context) error {
 	k.draining.Store(true)
+	k.audit.HealthChanged("kit", "draining", true)
 	k.waitForDrain(ctx)
+	k.audit.HealthChanged("kit", "shutdown", false)
 	return k.close()
 }
 

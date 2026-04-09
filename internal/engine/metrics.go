@@ -20,6 +20,12 @@ func (k *Kernel) Metrics() types.KernelMetrics {
 		m.Uptime = time.Since(k.startedAt)
 	}
 
+	// Bus per-topic metrics
+	if k.busMetrics != nil {
+		snap := k.busMetrics.Snapshot()
+		m.Bus = &snap
+	}
+
 	// Plugin metrics from Node's WS server
 	if k.node != nil && k.node.plugins != nil && k.node.plugins.wsServer != nil {
 		k.node.plugins.wsServer.mu.Lock()
