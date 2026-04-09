@@ -18,8 +18,10 @@ import (
 
 // wsClient implements sdk.Runtime over WebSocket.
 type wsClient struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn      *websocket.Conn
+	mu        sync.Mutex
+	eventSubs map[string][]func(sdk.Message) // topic → handlers
+	subMu     sync.RWMutex
 }
 
 func (c *wsClient) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
@@ -30,8 +32,39 @@ func (c *wsClient) PublishRaw(ctx context.Context, topic string, payload json.Ra
 	return "", wsjson.Write(ctx, c.conn, msg)
 }
 
-func (c *wsClient) SubscribeRaw(_ context.Context, _ string, _ func(sdk.Message)) (func(), error) {
-	return func() {}, nil
+// SubscribeRaw sends a subscribe request to the host via WS.
+// The host creates a bus subscription and forwards events back over WS.
+func (c *wsClient) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
+	// Register local handler
+	c.subMu.Lock()
+	c.eventSubs[topic] = append(c.eventSubs[topic], handler)
+	c.subMu.Unlock()
+
+	// Tell host to subscribe
+	data, _ := json.Marshal(pluginws.SubscribeMsg{Topic: topic})
+	c.mu.Lock()
+	wsjson.Write(ctx, c.conn, pluginws.Message{Type: pluginws.TypeSubscribe, Data: data})
+	c.mu.Unlock()
+
+	return func() {
+		// Note: no unsubscribe over WS yet — cleanup happens on disconnect
+	}, nil
+}
+
+// dispatchEvent routes an incoming event to registered handlers.
+func (c *wsClient) dispatchEvent(evt pluginws.EventMsg) {
+	c.subMu.RLock()
+	handlers := c.eventSubs[evt.Topic]
+	c.subMu.RUnlock()
+
+	msg := sdk.Message{
+		Topic:    evt.Topic,
+		Payload:  evt.Payload,
+		CallerID: evt.CallerID,
+	}
+	for _, h := range handlers {
+		h(msg)
+	}
 }
 
 func (c *wsClient) Close() error {
@@ -62,7 +95,7 @@ func (p *Plugin) Run() error {
 	}
 	conn.SetReadLimit(10 * 1024 * 1024)
 
-	rt := &wsClient{conn: conn}
+	rt := &wsClient{conn: conn, eventSubs: make(map[string][]func(sdk.Message))}
 
 	if p.onStartFn != nil {
 		if err := p.onStartFn(rt); err != nil {
@@ -84,6 +117,9 @@ func (p *Plugin) Run() error {
 			Description: t.description,
 			InputSchema: t.inputSchema,
 		})
+	}
+	for _, s := range p.subscriptions {
+		manifest.Subscriptions = append(manifest.Subscriptions, s.topic)
 	}
 	manifestData, _ := json.Marshal(manifest)
 	if err := wsjson.Write(ctx, conn, pluginws.Message{
@@ -152,6 +188,11 @@ func (p *Plugin) Run() error {
 
 			result, toolErr := handler(ctx, rt, call.Input)
 			writeResult(ctx, conn, msg.ID, result, toolErr)
+
+		case pluginws.TypeEvent:
+			var evt pluginws.EventMsg
+			json.Unmarshal(msg.Data, &evt)
+			rt.dispatchEvent(evt)
 
 		case pluginws.TypeShutdown:
 			return nil

@@ -17,21 +17,24 @@ const (
 	// Plugin → Host
 	TypeManifest   = "manifest"
 	TypeToolResult = "tool.result"
-	TypePublish    = "publish" // plugin publishes to bus topic
+	TypePublish    = "publish"   // plugin publishes to bus topic
+	TypeSubscribe  = "subscribe" // plugin subscribes to bus topic
 
 	// Host → Plugin
 	TypeManifestAck = "manifest.ack"
 	TypeToolCall    = "tool.call"
+	TypeEvent       = "event" // bus event forwarded to plugin
 	TypeShutdown    = "shutdown"
 )
 
 // Manifest is sent by the plugin after connecting.
 type Manifest struct {
-	Owner       string    `json:"owner"`
-	Name        string    `json:"name"`
-	Version     string    `json:"version"`
-	Description string    `json:"description,omitempty"`
-	Tools       []ToolDef `json:"tools"`
+	Owner         string    `json:"owner"`
+	Name          string    `json:"name"`
+	Version       string    `json:"version"`
+	Description   string    `json:"description,omitempty"`
+	Tools         []ToolDef `json:"tools"`
+	Subscriptions []string  `json:"subscriptions,omitempty"` // bus topics to subscribe to
 }
 
 // ToolDef describes a tool the plugin provides.
@@ -64,4 +67,17 @@ type ToolResult struct {
 type PublishMsg struct {
 	Topic   string          `json:"topic"`
 	Payload json.RawMessage `json:"payload"`
+}
+
+// SubscribeMsg is sent by the plugin to subscribe to a bus topic.
+// The host creates a bus subscription and forwards matching events over WS.
+type SubscribeMsg struct {
+	Topic string `json:"topic"`
+}
+
+// EventMsg is sent by the host when a subscribed bus topic receives a message.
+type EventMsg struct {
+	Topic    string          `json:"topic"`
+	Payload  json.RawMessage `json:"payload"`
+	CallerID string          `json:"callerID,omitempty"`
 }

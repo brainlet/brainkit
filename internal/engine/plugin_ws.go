@@ -33,6 +33,7 @@ type pluginWSConn struct {
 	name     string
 	manifest pluginws.Manifest
 	pending  map[string]chan pluginws.ToolResult // id → result channel
+	unsubs   []func()                            // bus subscription cancellers
 	mu       sync.Mutex
 }
 
@@ -148,7 +149,12 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		Tools:   len(manifest.Tools),
 	}))
 
-	// Read responses from plugin
+	// Subscribe to topics declared in manifest
+	for _, topic := range manifest.Subscriptions {
+		s.subscribeTopic(pc, topic)
+	}
+
+	// Read messages from plugin
 	for {
 		var respMsg pluginws.Message
 		if err := wsjson.Read(ctx, conn, &respMsg); err != nil {
@@ -175,15 +181,56 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 			var pub pluginws.PublishMsg
 			json.Unmarshal(respMsg.Data, &pub)
 			s.node.Kernel.publish(ctx, pub.Topic, pub.Payload)
+
+		case pluginws.TypeSubscribe:
+			var sub pluginws.SubscribeMsg
+			json.Unmarshal(respMsg.Data, &sub)
+			s.subscribeTopic(pc, sub.Topic)
 		}
 	}
 
-	// Cleanup on disconnect
+	// Cleanup on disconnect — cancel all bus subscriptions
+	pc.mu.Lock()
+	for _, unsub := range pc.unsubs {
+		unsub()
+	}
+	pc.mu.Unlock()
+
 	s.mu.Lock()
 	delete(s.conns, manifest.Name)
 	s.mu.Unlock()
 
 	slog.Info("plugin ws: disconnected", slog.String("plugin", manifest.Name))
+}
+
+// subscribeTopic creates a bus subscription and forwards events to the plugin over WS.
+func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
+	unsub, err := s.node.Kernel.SubscribeRaw(context.Background(), topic, func(msg sdk.Message) {
+		evtData, _ := json.Marshal(pluginws.EventMsg{
+			Topic:    msg.Topic,
+			Payload:  msg.Payload,
+			CallerID: msg.CallerID,
+		})
+		pc.mu.Lock()
+		defer pc.mu.Unlock()
+		wsjson.Write(context.Background(), pc.conn, pluginws.Message{
+			Type: pluginws.TypeEvent,
+			Data: evtData,
+		})
+	})
+	if err != nil {
+		slog.Warn("plugin ws: subscribe failed",
+			slog.String("plugin", pc.name),
+			slog.String("topic", topic),
+			slog.String("error", err.Error()))
+		return
+	}
+	pc.mu.Lock()
+	pc.unsubs = append(pc.unsubs, unsub)
+	pc.mu.Unlock()
+	slog.Info("plugin ws: subscribed",
+		slog.String("plugin", pc.name),
+		slog.String("topic", topic))
 }
 
 // callTool sends a tool call over WS and waits for the result.
