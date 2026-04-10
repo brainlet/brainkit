@@ -118,3 +118,13 @@ func (k *Kernel) UnregisterStorage(name string) { k.providers.UnregisterStorage(
 
 // ListStorages returns all registered Mastra storages.
 func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListStorages() }
+
+// currentDeploymentSource returns the deployment source currently executing on the JS thread.
+// Used for tracing span attribution and audit source tracking.
+func (k *Kernel) currentDeploymentSource() string {
+	return k.deploymentMgr.currentSource
+}
+
+func (k *Kernel) setCurrentSource(source string) {
+	k.deploymentMgr.setCurrentSource(source)
+}
