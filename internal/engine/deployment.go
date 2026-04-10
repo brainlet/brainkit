@@ -31,33 +31,54 @@ type DeploymentManager struct {
 	tracer       *tracing.Tracer
 	rbac         *rbac.Manager
 	store        types.KitStore
-	errorHandler func(error, types.ErrorContext)
-	logger       *slog.Logger
+	errorHandler    func(error, types.ErrorContext)
+	logger          *slog.Logger
+	resources       *ResourceRegistry
+	toolCleanup     func(id string) // called on tool unregister
+	agentCleanup    func(id string) // called on agent unregister
+	subCleanup      func(id string) // called on subscription cancel
+	scheduleCleanup func(id string) // called on schedule cancel
 
+	// currentSource is the .ts file currently being evaluated. Safe without mutex
+	// because all reads/writes happen inside serialized QuickJS eval contexts.
 	currentSource string
 }
 
 type DeploymentManagerConfig struct {
-	Bridge       *jsbridge.Bridge
-	Agents       *agentembed.Sandbox
-	Tracer       *tracing.Tracer
-	RBAC         *rbac.Manager
-	Store        types.KitStore
-	ErrorHandler func(error, types.ErrorContext)
-	Logger       *slog.Logger
+	Bridge          *jsbridge.Bridge
+	Agents          *agentembed.Sandbox
+	Tracer          *tracing.Tracer
+	RBAC            *rbac.Manager
+	Store           types.KitStore
+	ErrorHandler    func(error, types.ErrorContext)
+	Logger          *slog.Logger
+	ToolCleanup     func(id string)
+	AgentCleanup    func(id string)
+	SubCleanup      func(id string)
+	ScheduleCleanup func(id string)
 }
 
 func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
 	return &DeploymentManager{
-		deployments:  make(map[string]*deploymentInfo),
-		bridge:       cfg.Bridge,
-		agents:       cfg.Agents,
-		tracer:       cfg.Tracer,
-		rbac:         cfg.RBAC,
-		store:        cfg.Store,
-		errorHandler: cfg.ErrorHandler,
-		logger:       cfg.Logger,
+		deployments:     make(map[string]*deploymentInfo),
+		bridge:          cfg.Bridge,
+		agents:          cfg.Agents,
+		tracer:          cfg.Tracer,
+		rbac:            cfg.RBAC,
+		store:           cfg.Store,
+		errorHandler:    cfg.ErrorHandler,
+		logger:          cfg.Logger,
+		resources:       NewResourceRegistry(),
+		toolCleanup:     cfg.ToolCleanup,
+		agentCleanup:    cfg.AgentCleanup,
+		subCleanup:      cfg.SubCleanup,
+		scheduleCleanup: cfg.ScheduleCleanup,
 	}
+}
+
+// Resources returns the Go-native resource registry for direct registration by bridges.
+func (m *DeploymentManager) Resources() *ResourceRegistry {
+	return m.resources
 }
 
 func (m *DeploymentManager) nextDeployOrder() int {
@@ -315,59 +336,118 @@ func (m *DeploymentManager) ListResources(resourceType ...string) ([]types.Resou
 	if len(resourceType) > 0 {
 		filter = resourceType[0]
 	}
-	code := fmt.Sprintf(`return JSON.stringify(globalThis.__kit_registry.list(%q))`, filter)
-	result, err := m.EvalTS(context.Background(), "__list_resources.ts", code)
-	if err != nil {
-		return nil, err
-	}
-	var resources []types.ResourceInfo
-	if err := json.Unmarshal([]byte(result), &resources); err != nil {
-		return nil, fmt.Errorf("list resources: %w", err)
-	}
-	return resources, nil
+	entries := m.resources.List(filter)
+	return entriesToResourceInfos(entries), nil
 }
 
 func (m *DeploymentManager) ResourcesFrom(filename string) ([]types.ResourceInfo, error) {
-	code := fmt.Sprintf(`return JSON.stringify(globalThis.__kit_registry.listBySource(%q))`, filename)
-	result, err := m.EvalTS(context.Background(), "__resources_from.ts", code)
-	if err != nil {
-		return nil, err
-	}
-	var resources []types.ResourceInfo
-	if err := json.Unmarshal([]byte(result), &resources); err != nil {
-		return nil, fmt.Errorf("resources from: %w", err)
-	}
-	return resources, nil
+	entries := m.resources.ListBySource(filename)
+	return entriesToResourceInfos(entries), nil
 }
 
+// TeardownFile removes all resources for a source.
+// 1. Atomically removes entries from Go registry (returns them for cleanup dispatch)
+// 2. Runs type-specific Go cleanup (tool unregister, agent unregister, bus unsub, etc.)
+// 3. Sweeps stale JS refs + bus subscription handlers
 func (m *DeploymentManager) TeardownFile(filename string) (int, error) {
-	code := fmt.Sprintf(`
-		var resources = globalThis.__kit_registry.listBySource(%q);
-		var count = 0;
-		for (var i = resources.length - 1; i >= 0; i--) {
-			globalThis.__kit_registry.unregister(resources[i].type, resources[i].id);
-			count++;
-		}
-		return JSON.stringify(count);
-	`, filename)
-	result, err := m.EvalTS(context.Background(), "__teardown_file.ts", code)
-	if err != nil {
-		return 0, err
-	}
-	var count int
-	if err := json.Unmarshal([]byte(result), &count); err != nil {
+	removed := m.resources.RemoveBySource(filename)
+	if len(removed) == 0 {
 		return 0, nil
 	}
-	return count, nil
+
+	// Dispatch Go-side cleanup by type
+	m.dispatchCleanups(removed)
+
+	// Sweep stale JS-side state (__kit_refs entries + __bus_subs handlers).
+	// This is memory cleanup, not correctness — Go already cancelled the real subscriptions.
+	m.sweepJSRefs(removed)
+
+	return len(removed), nil
 }
 
 func (m *DeploymentManager) RemoveResource(resourceType, id string) error {
+	entry, ok := m.resources.Unregister(resourceType, id)
+	if !ok {
+		return nil
+	}
+	m.dispatchCleanups([]ResourceEntry{entry})
+	m.sweepJSRefs([]ResourceEntry{entry})
+	return nil
+}
+
+// dispatchCleanups runs Go-native cleanup for each removed resource.
+// No JS eval — all cleanup targets are Go subsystems.
+func (m *DeploymentManager) dispatchCleanups(entries []ResourceEntry) {
+	for _, entry := range entries {
+		switch entry.Type {
+		case "tool":
+			if m.toolCleanup != nil {
+				m.toolCleanup(entry.ID)
+			}
+		case "agent":
+			if m.agentCleanup != nil {
+				m.agentCleanup(entry.ID)
+			}
+		case "subscription":
+			if m.subCleanup != nil {
+				m.subCleanup(entry.ID)
+			}
+		case "schedule":
+			if m.scheduleCleanup != nil {
+				m.scheduleCleanup(entry.ID)
+			}
+		// workflow, memory, topic — no cleanup needed
+		}
+	}
+}
+
+// sweepJSRefs removes stale entries from JS-side __kit_refs and __bus_subs maps.
+// Single batch eval — one JS call regardless of entry count.
+func (m *DeploymentManager) sweepJSRefs(entries []ResourceEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	// Build list of keys to remove from JS
+	var keys []string
+	var subIDs []string
+	for _, e := range entries {
+		keys = append(keys, e.Key())
+		if e.Type == "subscription" {
+			subIDs = append(subIDs, e.ID)
+		}
+	}
+	keysJSON, _ := json.Marshal(keys)   // []string — cannot fail
+	subIDsJSON, _ := json.Marshal(subIDs) // []string — cannot fail
 	code := fmt.Sprintf(`
-		var entry = globalThis.__kit_registry.unregister(%q, %q);
-		return JSON.stringify(entry !== null);
-	`, resourceType, id)
-	_, err := m.EvalTS(context.Background(), "__remove_resource.ts", code)
-	return err
+		var keys = %s;
+		var subIDs = %s;
+		var refs = globalThis.__kit_refs;
+		var subs = globalThis.__bus_subs;
+		var reg = globalThis.__kit_registry;
+		if (refs) { for (var i = 0; i < keys.length; i++) delete refs[keys[i]]; }
+		if (subs) { for (var i = 0; i < subIDs.length; i++) delete subs[subIDs[i]]; }
+		if (reg && reg.cleanups) { for (var i = 0; i < keys.length; i++) delete reg.cleanups[keys[i]]; }
+		return "ok";
+	`, string(keysJSON), string(subIDsJSON))
+	sweepCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.EvalTS(sweepCtx, "__sweep_refs.ts", code); err != nil {
+		m.logger.Warn("sweepJSRefs: JS eval failed", slog.String("error", err.Error()))
+	}
+}
+
+func entriesToResourceInfos(entries []ResourceEntry) []types.ResourceInfo {
+	infos := make([]types.ResourceInfo, len(entries))
+	for i, e := range entries {
+		infos[i] = types.ResourceInfo{
+			Type:      e.Type,
+			ID:        e.ID,
+			Name:      e.Name,
+			Source:    e.Source,
+			CreatedAt: e.CreatedAt.UnixMilli(),
+		}
+	}
+	return infos
 }
 
 var esImportRe = regexp.MustCompile(`(?m)^import\s+(type\s+)?(\{[^}]*\}|[^\s]+)\s+from\s+"[^"]+";\s*\n?`)

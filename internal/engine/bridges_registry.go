@@ -2,12 +2,14 @@ package engine
 
 import (
 	"encoding/json"
+	"time"
 
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
 )
 
-// registerRegistryBridges adds __go_registry_resolve, __go_registry_has, __go_registry_list bridges.
+// registerRegistryBridges adds __go_registry_resolve, __go_registry_has, __go_registry_list,
+// and __go_resource_register bridges.
 func (k *Kernel) registerRegistryBridges(qctx *quickjs.Context) {
 	// __go_registry_resolve(category, name) → configJSON or ""
 	qctx.Globals().Set(js.JSBridgeRegistryResolve,
@@ -94,5 +96,21 @@ func (k *Kernel) registerRegistryBridges(qctx *quickjs.Context) {
 			}
 			b, _ := json.Marshal(result)
 			return qctx.NewString(string(b))
+		}))
+
+	// __go_resource_register(type, id, name, source) → registers in Go resource registry
+	qctx.Globals().Set(js.JSBridgeResourceRegister,
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 4 {
+				return qctx.NewUndefined()
+			}
+			k.deploymentMgr.Resources().Register(ResourceEntry{
+				Type:      args[0].String(),
+				ID:        args[1].String(),
+				Name:      args[2].String(),
+				Source:    args[3].String(),
+				CreatedAt: time.Now(),
+			})
+			return qctx.NewUndefined()
 		}))
 }

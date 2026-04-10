@@ -30,7 +30,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("pool_duplicate_and_not_found", func(t *testing.T) { testPoolDuplicateAndNotFound(t, env) })
 		t.Run("pool_shared_tools", func(t *testing.T) { testPoolSharedTools(t, env) })
 		t.Run("strategy_static", func(t *testing.T) { testStrategyStatic(t, env) })
-		t.Run("strategy_threshold", func(t *testing.T) { testStrategyThreshold(t, env) })
 		t.Run("pool_evaluate_and_scale", func(t *testing.T) { testPoolEvaluateAndScale(t, env) })
 		t.Run("pool_instances_process_messages", func(t *testing.T) { testPoolInstancesProcessMessages(t, env) })
 

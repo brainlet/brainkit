@@ -61,6 +61,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("e2e_deploy_with_error_recovery", func(t *testing.T) { testE2EDeployWithErrorRecovery(t, env) })
 		t.Run("e2e_deploy_list_redeploy_teardown", func(t *testing.T) { testE2EDeployListRedeployTeardown(t, env) })
 
+		// registry.go — Go-native resource registry tests
+		t.Run("registry_resource_tracking", func(t *testing.T) { testRegistryResourceTracking(t, env) })
+		t.Run("registry_source_isolation", func(t *testing.T) { testRegistrySourceIsolation(t, env) })
+		t.Run("registry_reregister_after_teardown", func(t *testing.T) { testRegistryReRegisterAfterTeardown(t, env) })
+		t.Run("registry_mixed_resource_types", func(t *testing.T) { testRegistryMixedResourceTypes(t, env) })
+		t.Run("registry_concurrent_deploy_teardown", func(t *testing.T) { testRegistryConcurrentDeployTeardown(t, env) })
+		t.Run("registry_deploy_returned_resources", func(t *testing.T) { testRegistryDeployReturnedResources(t, env) })
+
 		// surface.go — TS surface deploy tests
 		t.Run("ts_namespace_isolation", func(t *testing.T) { testTSNamespaceIsolation(t, env) })
 		t.Run("ts_module_imports", func(t *testing.T) { testTSModuleImports(t, env) })

@@ -67,6 +67,7 @@ func (d *LifecycleDomain) Redeploy(ctx context.Context, req sdk.KitRedeployMsg) 
 	}
 	_ = d.publishLifecycleEvent(ctx, sdk.KitDeployedEvent{
 		Source:    req.Source,
+		RuntimeID: d.runtimeID,
 		Resources: resourceInfosToMessages(resources),
 	})
 	return &sdk.KitRedeployResp{

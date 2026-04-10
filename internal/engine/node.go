@@ -106,27 +106,17 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 		}
 	}
 
-	// Register ALL command bindings (kernel + node-specific) on the Kernel's router
+	// Register ALL command bindings (kernel + node-specific) on the Kernel's router.
+	// Bindings must be registered before router.Run() — the router subscribes at start.
 	kernel.host.RegisterCommands(commandBindingsForNode(node))
-
-	// Start the router. For NATS with JetStream auto-provisioning, the router's
-	// Running() signal may take time (one JetStream stream per command handler).
-	go func() {
-		_ = kernel.router.Run(context.Background())
-	}()
-
-	select {
-	case <-kernel.router.Running():
-		// All handlers subscribed
-	case <-time.After(2 * time.Minute):
-		return nil, &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}
-	}
 
 	return node, nil
 }
 
-// Start launches plugins and restores running state.
-// The router is already running from NewNode.
+// Start starts the message router and launches plugins.
+// The caller's context controls the startup timeout — for NATS with JetStream
+// auto-provisioning, stream creation may take time. If ctx has no deadline,
+// a 2-minute safety timeout is applied.
 func (n *Node) Start(ctx context.Context) error {
 	n.mu.Lock()
 	if n.started {
@@ -135,6 +125,26 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 	n.started = true
 	n.mu.Unlock()
+
+	// Start the router in a background goroutine
+	go func() {
+		_ = n.Kernel.router.Run(context.Background())
+	}()
+
+	// Wait for the router to be ready (all handlers subscribed).
+	// Apply a default 2-minute timeout if the caller didn't set one.
+	waitCtx := ctx
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+	}
+	select {
+	case <-n.Kernel.router.Running():
+		// All handlers subscribed
+	case <-waitCtx.Done():
+		return &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}
+	}
 
 	// Restore dynamically-started plugins from previous session
 	n.restoreRunningPlugins()
@@ -365,6 +375,16 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginMan
 			Description: tool.Description,
 			InputSchema: json.RawMessage(tool.InputSchema),
 			Executor: &tools.GoFuncExecutor{
+				// Two execution paths:
+				//
+				// Path 1 (pass-through): When called via the bus command router, the context
+				// carries the caller's replyTo. The tool call is forwarded to the plugin with
+				// that replyTo — the plugin responds directly to the original caller. Returns
+				// (nil, nil) because the response bypasses this executor.
+				//
+				// Path 2 (direct Go call): No replyTo in context. Creates a temporary
+				// subscription on .result, sends the call, and waits for the plugin's response.
+				// Returns the actual (result, error).
 				Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 					topic := pluginToolTopic(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
 
@@ -372,9 +392,6 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginMan
 					span.SetAttribute("plugin", manifest.Name)
 					span.SetAttribute("topic", topic)
 
-					// Pass-through path: if the call came through the bus command router,
-					// the context carries the caller's already-resolved replyTo. Forward it
-					// to the plugin so it responds directly — no intermediate subscription.
 					callerReplyTo := transport.ReplyToFromContext(callCtx)
 					if callerReplyTo != "" {
 						_, err := n.Kernel.remote.PublishRawWithMeta(callCtx, topic, input, map[string]string{
@@ -455,7 +472,11 @@ func pluginToolTopic(owner, name, version, tool string) string {
 }
 
 func mustMarshalJSON(v any) json.RawMessage {
-	payload, _ := json.Marshal(v)
+	payload, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("mustMarshalJSON: marshal failed", slog.String("error", err.Error()), slog.String("type", fmt.Sprintf("%T", v)))
+		return nil
+	}
 	return payload
 }
 

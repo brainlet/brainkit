@@ -38,19 +38,17 @@ import (
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
 // It owns JS runtime state and an internal Watermill transport.
 type Kernel struct {
-	// Domain handlers (internal — accessed via command catalog, not directly)
-	// Category B: take interfaces, not *Kernel
-	toolsDomain    *ToolsDomain
-	agentsDomain   *AgentsDomain
-	packagesDomain *PackagesDomain
-	secretsDomain  *SecretsDomain
-	// Category B (continued): take interfaces, not *Kernel
-	mcpDomain       *MCPDomain
-	registryDomain  *RegistryDomain
-	rbacAdminDomain *RBACAdminDomain
-	tracingDomain   *TracingDomain
-	metricsDomain   *MetricsDomain
-	// Category C: stay on *Kernel (touch too many subsystems)
+	// Domain handlers — all take narrow interfaces, not *Kernel.
+	// MetricsDomain is the exception (cross-cutting, reads from multiple subsystems).
+	toolsDomain         *ToolsDomain
+	agentsDomain        *AgentsDomain
+	packagesDomain      *PackagesDomain
+	secretsDomain       *SecretsDomain
+	mcpDomain           *MCPDomain
+	registryDomain      *RegistryDomain
+	rbacAdminDomain     *RBACAdminDomain
+	tracingDomain       *TracingDomain
+	metricsDomain       *MetricsDomain
 	lifecycle           *LifecycleDomain
 	packageDeployDomain *PackageDeployDomain
 	testingDomain       *TestingDomain
@@ -375,6 +373,24 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		Store:        cfg.Store,
 		ErrorHandler: cfg.ErrorHandler,
 		Logger:       logger,
+		ToolCleanup: func(id string) {
+			kernel.toolsDomain.Unregister(context.Background(), id)
+		},
+		AgentCleanup: func(id string) {
+			kernel.agentsDomain.Unregister(context.Background(), id)
+		},
+		SubCleanup: func(id string) {
+			kernel.mu.Lock()
+			cancel := kernel.bridgeSubs[id]
+			delete(kernel.bridgeSubs, id)
+			kernel.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
+		},
+		ScheduleCleanup: func(id string) {
+			kernel.removeSchedule(id)
+		},
 	})
 
 	// Upgrade Mastra storage from InMemoryStore to configured backend.

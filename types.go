@@ -67,9 +67,6 @@ type InstanceManager = engine.InstanceManager
 // PoolConfig configures an instance pool.
 type PoolConfig = engine.PoolConfig
 
-// ThresholdStrategy scales based on pending message count.
-type ThresholdStrategy = engine.ThresholdStrategy
-
 // StaticStrategy maintains a fixed instance count.
 type StaticStrategy = engine.StaticStrategy
 
@@ -93,9 +90,8 @@ const (
 )
 
 var (
-	NewInstanceManager   = engine.NewInstanceManager
-	NewStaticStrategy    = engine.NewStaticStrategy
-	NewThresholdStrategy = engine.NewThresholdStrategy
+	NewInstanceManager = engine.NewInstanceManager
+	NewStaticStrategy  = engine.NewStaticStrategy
 )
 
 // ── Tools ────────────────────────────────────────────────────────────────────

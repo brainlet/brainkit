@@ -169,7 +169,6 @@ type ScalingStrategy interface {
 type ScalingDecision struct { Action string; Delta int; Reason string }
 
 func NewStaticStrategy(target int) *StaticStrategy
-func NewThresholdStrategy(scaleUp, scaleDown int) *ThresholdStrategy
 ```
 
 ## KitStore

@@ -141,7 +141,7 @@ im.SpawnPool("workers", brainkit.PoolConfig{
     InitialCount: 3,
     Min:          1,
     Max:          10,
-    Strategy:     brainkit.NewThresholdStrategy(100, 10), // up at 100 pending, down at 10
+    Strategy:     brainkit.NewStaticStrategy(3), // maintain 3 instances
 })
 
 // Run evaluation loop
@@ -158,11 +158,6 @@ go func() {
 **StaticStrategy** — maintains a fixed count:
 ```go
 brainkit.NewStaticStrategy(5) // always 5 instances
-```
-
-**ThresholdStrategy** — scales on pending message count:
-```go
-brainkit.NewThresholdStrategy(100, 10) // up at 100, down at 10
 ```
 
 **Custom** — implement the interface:

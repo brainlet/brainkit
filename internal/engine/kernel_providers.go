@@ -57,41 +57,11 @@ func autoDetectProviders(cfg *types.KernelConfig) {
 }
 
 // extractProviderCredentials extracts APIKey and BaseURL from a typed provider registration.
+// Uses the CredentialProvider interface — each config type implements ProviderCredentials().
 func extractProviderCredentials(reg provreg.AIProviderRegistration) struct{ APIKey, BaseURL string } {
-	switch cfg := reg.Config.(type) {
-	case provreg.OpenAIProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.AnthropicProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.GoogleProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.MistralProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.CohereProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.GroqProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.PerplexityProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.DeepSeekProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.FireworksProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.TogetherAIProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.XAIProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.AzureProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.HuggingFaceProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.CerebrasProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, cfg.BaseURL}
-	case provreg.VertexProviderConfig:
-		return struct{ APIKey, BaseURL string }{cfg.APIKey, ""}
-	case provreg.BedrockProviderConfig:
-		return struct{ APIKey, BaseURL string }{"", ""}
-	default:
-		return struct{ APIKey, BaseURL string }{}
+	if cp, ok := reg.Config.(types.CredentialProvider); ok {
+		apiKey, baseURL := cp.ProviderCredentials()
+		return struct{ APIKey, BaseURL string }{apiKey, baseURL}
 	}
+	return struct{ APIKey, BaseURL string }{}
 }

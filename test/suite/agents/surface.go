@@ -124,51 +124,50 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 }
 
 // testSurfaceAgentWithTool — deploy agent with a tool, call generate, verify steps.
-// Requires OPENAI_API_KEY.
+// Requires OPENAI_API_KEY. Retries up to 3 times for transient LLM API errors.
 func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 	env.RequireAI(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	const source = "surface-tool-agent-adv.ts"
+	code := `
+		const addTool = createTool({
+			id: "add-agent-adv",
+			description: "adds two numbers",
+			inputSchema: z.object({ a: z.number(), b: z.number() }),
+			execute: async ({ context: input }) => {
+				var a = (input && input.a) || 0;
+				var b = (input && input.b) || 0;
+				return { sum: a + b };
+			},
+		});
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "surface-tool-agent-adv.ts",
-		Code: `
-			const addTool = createTool({
-				id: "add-agent-adv",
-				description: "adds two numbers",
-				inputSchema: z.object({ a: z.number(), b: z.number() }),
-				execute: async ({ context: input }) => {
-					var a = (input && input.a) || 0;
-					var b = (input && input.b) || 0;
-					return { sum: a + b };
-				},
-			});
+		const myAgent = new Agent({
+			name: "math-agent-adv",
+			model: model("openai", "gpt-4o-mini"),
+			instructions: "You are a math assistant. Reply with just the number.",
+			tools: { add: addTool },
+		});
 
-			const myAgent = new Agent({
-				name: "math-agent-adv",
-				model: model("openai", "gpt-4o-mini"),
-				instructions: "You are a math assistant. Reply with just the number.",
-				tools: { add: addTool },
-			});
+		const result = await myAgent.generate("What is 17 + 25?");
+		output({
+			text: result.text,
+			hasSteps: result.steps && result.steps.length > 0,
+		});
+	`
 
-			const result = await myAgent.generate("What is 17 + 25?");
-			output({
-				text: result.text,
-				hasSteps: result.steps && result.steps.length > 0,
-			});
-		`,
-	})
-	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		require.True(t, resp.Deployed, "deploy should succeed: %s", resp.Error)
-	case <-ctx.Done():
-		t.Fatal("timeout deploying agent with tool")
+	var deployErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		deployErr = testutil.DeployErr(env.Kit, source, code)
+		if deployErr == nil {
+			break
+		}
+		// Teardown the failed attempt before retrying
+		testutil.Teardown(t, env.Kit, source)
+		if attempt < 2 {
+			t.Logf("deploy attempt %d failed (transient LLM error), retrying: %v", attempt+1, deployErr)
+		}
 	}
+	require.NoError(t, deployErr, "deploy should succeed after retries")
 
 	result := testutil.EvalTS(t, env.Kit, "__read_surface_tool_adv.ts", `return globalThis.__module_result || "null"`)
 
@@ -177,7 +176,7 @@ func testSurfaceAgentWithTool(t *testing.T, env *suite.TestEnv) {
 	assert.NotEmpty(t, parsed["text"], "agent should return non-empty text")
 	assert.True(t, parsed["hasSteps"].(bool), "should have at least one step")
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-tool-agent-adv.ts"})
+	testutil.Teardown(t, env.Kit, source)
 }
 
 // testSurfaceBusServiceAIProxy — deploy .ts as AI service via bus, Go sends message, .ts calls generateText, replies.

@@ -26,7 +26,6 @@
 | testPoolDuplicateAndNotFound | Verifies AlreadyExistsError on duplicate pool spawn, NotFoundError on scale/kill/info for nonexistent pool |
 | testPoolSharedTools | Creates pool with shared registry, registers a tool on the shared registry, spawns 2-instance pool, verifies tool resolvable |
 | testStrategyStatic | Tests StaticStrategy.Evaluate: below target returns scale-up, at target returns none, above target returns scale-down |
-| testStrategyThreshold | Tests ThresholdStrategy.Evaluate with various pending/current/min/max combinations, verifies correct scale-up/down/none decisions |
 | testPoolEvaluateAndScale | Spawns pool with StaticStrategy(3), calls EvaluateAndScale, verifies pool scaled from 1 to 3, second call keeps at 3 |
 | testPoolInstancesProcessMessages | Spawns pool with shared "stress-ping" tool, calls the tool via executor, verifies {pong: "ok"} response |
 

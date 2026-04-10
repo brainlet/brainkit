@@ -109,6 +109,11 @@ type ProbeResult struct {
 	Error        string        `json:"error,omitempty"`
 }
 
+// CredentialProvider extracts API credentials from a provider config.
+type CredentialProvider interface {
+	ProviderCredentials() (apiKey, baseURL string)
+}
+
 // ── AI Provider Config Structs ───────────────────────────────────────────────
 
 type OpenAIProviderConfig struct {
@@ -119,6 +124,8 @@ type OpenAIProviderConfig struct {
 	Headers      map[string]string
 }
 
+func (c OpenAIProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type AnthropicProviderConfig struct {
 	APIKey    string
 	AuthToken string
@@ -126,11 +133,15 @@ type AnthropicProviderConfig struct {
 	Headers   map[string]string
 }
 
+func (c AnthropicProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type GoogleProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c GoogleProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 type MistralProviderConfig struct {
 	APIKey  string
@@ -138,11 +149,15 @@ type MistralProviderConfig struct {
 	Headers map[string]string
 }
 
+func (c MistralProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type CohereProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c CohereProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 type GroqProviderConfig struct {
 	APIKey  string
@@ -150,11 +165,15 @@ type GroqProviderConfig struct {
 	Headers map[string]string
 }
 
+func (c GroqProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type PerplexityProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c PerplexityProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 type DeepSeekProviderConfig struct {
 	APIKey  string
@@ -162,11 +181,15 @@ type DeepSeekProviderConfig struct {
 	Headers map[string]string
 }
 
+func (c DeepSeekProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type FireworksProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c FireworksProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 type TogetherAIProviderConfig struct {
 	APIKey  string
@@ -174,11 +197,15 @@ type TogetherAIProviderConfig struct {
 	Headers map[string]string
 }
 
+func (c TogetherAIProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type XAIProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c XAIProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 type AzureProviderConfig struct {
 	APIKey       string
@@ -187,12 +214,16 @@ type AzureProviderConfig struct {
 	Headers      map[string]string
 }
 
+func (c AzureProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type BedrockProviderConfig struct {
 	Region    string
 	AccessKey string
 	SecretKey string
 	Headers   map[string]string
 }
+
+func (c BedrockProviderConfig) ProviderCredentials() (string, string) { return "", "" }
 
 type VertexProviderConfig struct {
 	Project  string
@@ -201,17 +232,23 @@ type VertexProviderConfig struct {
 	Headers  map[string]string
 }
 
+func (c VertexProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, "" }
+
 type HuggingFaceProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
 
+func (c HuggingFaceProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
+
 type CerebrasProviderConfig struct {
 	APIKey  string
 	BaseURL string
 	Headers map[string]string
 }
+
+func (c CerebrasProviderConfig) ProviderCredentials() (string, string) { return c.APIKey, c.BaseURL }
 
 // ── Vector Store Types ───────────────────────────────────────────────────────
 

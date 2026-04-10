@@ -26,5 +26,4 @@ type PoolInfo struct {
 	Current int
 	Min     int
 	Max     int // 0 = unlimited
-	Pending int
 }

@@ -200,43 +200,6 @@ func testStrategyStatic(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, 2, d.Delta)
 }
 
-// testStrategyThreshold verifies ThresholdStrategy respects min/max bounds.
-func testStrategyThreshold(t *testing.T, env *suite.TestEnv) {
-	s := brainkit.NewThresholdStrategy(10, 2)
-	metrics := transport.MetricsSnapshot{
-		Published: make(map[string]int),
-		Handled:   make(map[string]int),
-		Errors:    make(map[string]int),
-	}
-
-	d := s.Evaluate(metrics, brainkit.PoolInfo{Current: 2, Pending: 15, Min: 1, Max: 5})
-	assert.Equal(t, "scale-up", d.Action)
-	assert.Equal(t, 1, d.Delta)
-
-	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 5, Pending: 15, Min: 1, Max: 5})
-	assert.Equal(t, "none", d.Action)
-
-	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 1, Min: 1, Max: 5})
-	assert.Equal(t, "scale-down", d.Action)
-	assert.Equal(t, 1, d.Delta)
-
-	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 1, Pending: 0, Min: 1, Max: 5})
-	assert.Equal(t, "none", d.Action)
-
-	d = s.Evaluate(metrics, brainkit.PoolInfo{Current: 2, Pending: 5, Min: 1, Max: 5})
-	assert.Equal(t, "none", d.Action)
-
-	s2 := &brainkit.ThresholdStrategy{ScaleUpThreshold: 5, ScaleUpStep: 10, ScaleDownThreshold: 0, ScaleDownStep: 1}
-	d = s2.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 20, Min: 1, Max: 5})
-	assert.Equal(t, "scale-up", d.Action)
-	assert.Equal(t, 2, d.Delta)
-
-	s3 := &brainkit.ThresholdStrategy{ScaleUpThreshold: 100, ScaleDownThreshold: 5, ScaleUpStep: 1, ScaleDownStep: 10}
-	d = s3.Evaluate(metrics, brainkit.PoolInfo{Current: 3, Pending: 0, Min: 2, Max: 10})
-	assert.Equal(t, "scale-down", d.Action)
-	assert.Equal(t, 1, d.Delta)
-}
-
 // testPoolEvaluateAndScale verifies the automatic scaling loop applies strategy decisions.
 func testPoolEvaluateAndScale(t *testing.T, env *suite.TestEnv) {
 	if testing.Short() {

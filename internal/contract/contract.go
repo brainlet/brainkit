@@ -34,6 +34,9 @@ const (
 	JSBridgeRegistryHas     = "__go_registry_has"
 	JSBridgeRegistryList    = "__go_registry_list"
 
+	// Resource tracking bridge — Go-native resource registry
+	JSBridgeResourceRegister = "__go_resource_register"
+
 	// Approval bridge — HITL tool approval
 	JSBridgeAwaitApproval = "__go_brainkit_await_approval"
 

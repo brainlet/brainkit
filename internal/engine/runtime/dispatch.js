@@ -6,11 +6,12 @@
 (function() {
   "use strict";
 
+  var refs = globalThis.__kit_refs;
   var registry = globalThis.__kit_registry;
   if (!registry) return;
 
   function getWorkflow(name) {
-    var entry = registry.get("workflow", name);
+    var entry = refs["workflow:" + name];
     if (!entry || !entry.ref) throw new BrainkitError("workflow not found: " + name, "NOT_FOUND");
     return entry.ref;
   }
@@ -177,17 +178,18 @@
       },
 
       restartWorkflows: async function() {
-        var workflows = registry.list("workflow");
         var restarted = 0;
         var errors = [];
-        for (var i = 0; i < workflows.length; i++) {
-          var entry = registry.get("workflow", workflows[i].name);
+        for (var key in refs) {
+          if (key.indexOf("workflow:") !== 0) continue;
+          var wfName = key.substring(9);
+          var entry = refs[key];
           if (entry && entry.ref && typeof entry.ref.restartAllActiveWorkflowRuns === "function") {
             try {
               await entry.ref.restartAllActiveWorkflowRuns();
               restarted++;
             } catch(e) {
-              errors.push({ workflow: workflows[i].name, error: e.message || String(e) });
+              errors.push({ workflow: wfName, error: e.message || String(e) });
             }
           }
         }

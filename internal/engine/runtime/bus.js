@@ -17,49 +17,62 @@
     value: "", writable: true, enumerable: false, configurable: true
   });
 
+  // ─── JS Refs — object references that can't cross Go/JS boundary ──
+  // Keyed by "type:id". dispatch.js reads workflow/agent refs from here.
+  var _refs = {};
+  Object.defineProperty(globalThis, '__kit_refs', {
+    value: _refs, writable: false, enumerable: false, configurable: true
+  });
+
+  var goResourceRegister = globalThis.__go_resource_register;
+
   // ─── Resource Registry ────────────────────────────────────────
+  // Go owns metadata tracking (via __go_resource_register).
+  // JS keeps: object refs (_refs), cleanup callbacks (cleanups).
+  // Go TeardownFile runs Go-side cleanup and sweeps JS refs+cleanups.
+  // On re-register, old cleanups are NOT fired — Go already ran cleanup during teardown.
   var _resourceRegistry = {
-    entries: {},
     cleanups: {},
     register: function(type, id, name, ref, cleanupFn, source) {
       var key = type + ":" + id;
-      if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} }
-      this.entries[key] = {
-        type: type, id: id, name: name || id,
-        source: source || globalThis.__kit_currentSource || "unknown",
-        createdAt: Date.now(), ref: ref,
-      };
-      if (typeof cleanupFn === "function") this.cleanups[key] = cleanupFn;
+      var resolvedSource = source || globalThis.__kit_currentSource || "unknown";
+      // Track metadata in Go registry (source of truth for List/ListBySource/TeardownFile)
+      if (goResourceRegister) {
+        goResourceRegister(type, id, name || id, resolvedSource);
+      }
+      // Store JS object ref + source locally (Go can't hold JS heap objects)
+      _refs[key] = { ref: ref || null, source: resolvedSource, name: name || id };
+      // Replace cleanup — don't fire the old one (Go TeardownFile handles cleanup)
+      if (typeof cleanupFn === "function") {
+        this.cleanups[key] = cleanupFn;
+      } else {
+        delete this.cleanups[key];
+      }
     },
     unregister: function(type, id) {
       var key = type + ":" + id;
-      var entry = this.entries[key];
-      if (entry) {
-        if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} delete this.cleanups[key]; }
-        delete this.entries[key];
-        return entry;
-      }
-      return null;
+      if (this.cleanups[key]) { try { this.cleanups[key](); } catch(e) {} delete this.cleanups[key]; }
+      var entry = _refs[key];
+      delete _refs[key];
+      return entry ? { type: type, id: id, ref: entry.ref, source: entry.source } : null;
     },
     list: function(type) {
       var result = [];
-      for (var key in this.entries) {
-        var entry = this.entries[key];
-        if (!type || entry.type === type) {
-          result.push({ type: entry.type, id: entry.id, name: entry.name, source: entry.source, createdAt: entry.createdAt });
+      for (var key in _refs) {
+        var parts = key.split(":");
+        var t = parts[0];
+        var id = parts.slice(1).join(":");
+        if (!type || t === type) {
+          var entry = _refs[key];
+          result.push({ type: t, id: id, name: entry.name || id, source: entry.source || "" });
         }
       }
       return result;
     },
-    listBySource: function(source) {
-      var result = [];
-      for (var key in this.entries) {
-        var entry = this.entries[key];
-        if (entry.source === source) result.push({ type: entry.type, id: entry.id, name: entry.name, source: entry.source, createdAt: entry.createdAt });
-      }
-      return result;
+    get: function(type, id) {
+      var entry = _refs[type + ":" + id];
+      return entry ? { type: type, id: id, ref: entry.ref, source: entry.source, name: entry.name } : null;
     },
-    get: function(type, id) { return this.entries[type + ":" + id] || null; },
   };
   Object.defineProperty(globalThis, '__kit_registry', {
     value: _resourceRegistry, writable: false, enumerable: false, configurable: true
