@@ -82,6 +82,178 @@ func testDiscoveryClose(t *testing.T, _ *suite.TestEnv) {
 }
 
 // testDiscoveryStaticPeersBus — bus-level discovery (from test/infra/discovery_test.go)
+// testDiscoveryBusPeers — two Kits with different namespaces discover each other via bus.
+// Requires Podman (shared NATS for cross-namespace communication).
+func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
+	env.RequirePodman(t)
+
+	// Shared NATS container — both Kits must be on the SAME transport
+	natsURL := startNATSContainer(t)
+
+	kit1, err := brainkit.New(brainkit.Config{
+		Namespace: "disc-agents-cross",
+		CallerID:  "host",
+		Transport: brainkit.NATS(natsURL),
+		Discovery: brainkit.DiscoveryConfig{
+			Type:      "bus",
+			Heartbeat: 1 * time.Second,
+			TTL:       5 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	defer kit1.Close()
+
+	kit2, err := brainkit.New(brainkit.Config{
+		Namespace: "disc-workers-cross",
+		CallerID:  "host",
+		Transport: brainkit.NATS(natsURL),
+		Discovery: brainkit.DiscoveryConfig{
+			Type:      "bus",
+			Heartbeat: 1 * time.Second,
+			TTL:       5 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	defer kit2.Close()
+
+	// Wait for convergence (2 heartbeat cycles)
+	time.Sleep(3 * time.Second)
+
+	// peers.list from kit1 should see kit2
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
+	listCh := make(chan sdk.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit1, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+		listCh <- resp
+	})
+	defer unsub()
+	sdk.Publish(kit1, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+
+	select {
+	case resp := <-listCh:
+		found := false
+		for _, p := range resp.Peers {
+			if p.Namespace == "disc-workers-cross" {
+				found = true
+			}
+		}
+		assert.True(t, found, "kit1 should discover kit2's namespace")
+		assert.Contains(t, resp.Namespaces, "disc-workers-cross", "namespaces should include kit2")
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for peers.list")
+	}
+}
+
+// testDiscoveryBusLeave — Kit discovered, then closed, verify evicted.
+func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
+	env.RequirePodman(t)
+
+	natsURL := startNATSContainer(t)
+
+	kit1, err := brainkit.New(brainkit.Config{
+		Namespace: "disc-stay-cross",
+		CallerID:  "host",
+		Transport: brainkit.NATS(natsURL),
+		Discovery: brainkit.DiscoveryConfig{
+			Type:      "bus",
+			Heartbeat: 1 * time.Second,
+			TTL:       5 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	defer kit1.Close()
+
+	kit2, err := brainkit.New(brainkit.Config{
+		Namespace: "disc-leave-cross",
+		CallerID:  "host",
+		Transport: brainkit.NATS(natsURL),
+		Discovery: brainkit.DiscoveryConfig{
+			Type:      "bus",
+			Heartbeat: 1 * time.Second,
+			TTL:       5 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+
+	// Wait for mutual discovery
+	time.Sleep(3 * time.Second)
+
+	// Verify kit2 is discovered
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	resp1 := publishAndWaitJSON(t, kit1, ctx, sdk.PeersListMsg{})
+	assert.Contains(t, string(resp1), "disc-leave-cross", "kit2 should be discovered before leave")
+
+	// Graceful close — sends leave message
+	kit2.Close()
+	time.Sleep(1 * time.Second)
+
+	// Verify kit2 is removed immediately (leave message, not TTL)
+	resp2 := publishAndWaitJSON(t, kit1, ctx, sdk.PeersListMsg{})
+	assert.NotContains(t, string(resp2), "disc-leave-cross", "kit2 should be gone after graceful leave")
+}
+
+// testDiscoveryBusNamespaces — 3 Kits (2 "agents" replicas + 1 "gateway"), verify BrowseNamespaces dedup.
+func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
+	env.RequirePodman(t)
+
+	natsURL := startNATSContainer(t)
+
+	makeKit := func(ns string) *brainkit.Kit {
+		kit, err := brainkit.New(brainkit.Config{
+			Namespace: ns,
+			CallerID:  "host",
+			Transport: brainkit.NATS(natsURL),
+			Discovery: brainkit.DiscoveryConfig{
+				Type:      "bus",
+				Heartbeat: 1 * time.Second,
+				TTL:       5 * time.Second,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() { kit.Close() })
+		return kit
+	}
+
+	observer := makeKit("disc-observer-cross")
+	makeKit("disc-agents-ns-cross") // replica 1
+	makeKit("disc-agents-ns-cross") // replica 2 — same namespace
+	makeKit("disc-gateway-ns-cross")
+
+	// Wait for convergence
+	time.Sleep(4 * time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
+	listCh := make(chan sdk.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](observer, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+		listCh <- resp
+	})
+	defer unsub()
+	sdk.Publish(observer, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+
+	select {
+	case resp := <-listCh:
+		// 3 individual peers (not counting self)
+		assert.GreaterOrEqual(t, len(resp.Peers), 3, "should see 3 peer nodes")
+		// But only 2 unique namespaces (agents deduped)
+		assert.Len(t, resp.Namespaces, 2, "should see agents + gateway (deduplicated)")
+		nsMap := map[string]bool{}
+		for _, ns := range resp.Namespaces {
+			nsMap[ns] = true
+		}
+		assert.True(t, nsMap["disc-agents-ns-cross"], "should find agents namespace")
+		assert.True(t, nsMap["disc-gateway-ns-cross"], "should find gateway namespace")
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for peers.list")
+	}
+}
+
 func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-disc-cross",

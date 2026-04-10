@@ -1,7 +1,7 @@
 # Cross Test Map
 
 **Purpose:** Verifies cross-surface interactions (TS<->Go, plugin<->Go, TS<->plugin), Node commands, discovery, and cross-Kit pub/sub across transport backends
-**Tests:** 37 functions across 6 files
+**Tests:** 40 functions across 6 files
 **Entry point:** `cross_test.go` → `Run(t, env)`
 **Campaigns:** plugins (nats, redis), crosskit (nats, redis)
 
@@ -66,6 +66,9 @@
 | testDiscoveryResolveNonexistent | Creates empty static provider, resolves unknown name, asserts error |
 | testDiscoveryClose | Creates static provider, closes, asserts no error |
 | testDiscoveryStaticPeersBus | Creates a Node with embedded NATS + static peers config, publishes PeersListMsg via subscribe-first pattern, verifies peer-a and peer-b appear |
+| testDiscoveryBusPeers | Creates 2 Kits on shared NATS with bus discovery, waits for heartbeat convergence, verifies mutual discovery via peers.list + namespaces field (requires Podman) |
+| testDiscoveryBusLeave | Creates 2 Kits on shared NATS with bus discovery, verifies discovery, closes one Kit, verifies graceful leave removes peer immediately (requires Podman) |
+| testDiscoveryBusNamespaces | Creates 4 Kits (observer + 2 agents replicas + 1 gateway) on shared NATS, verifies BrowseNamespaces deduplicates agents to 2 unique namespaces (requires Podman) |
 
 ### backend_matrix.go — Cross-Kit publish/reply and error propagation
 
