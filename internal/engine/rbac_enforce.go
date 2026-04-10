@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // checkBusPermission checks if the current deployment source can perform a bus action.
@@ -79,16 +79,11 @@ func (k *Kernel) checkRegistrationPermission(source, resourceType string) error 
 // Returns "" if not in a deployment context (direct Go EvalTS or Go caller).
 // Go-side tracking avoids re-entrant ctx.Eval issues in bridge callbacks.
 func (k *Kernel) currentDeploymentSource() string {
-	return k.currentSource
+	return k.deploymentMgr.currentSource
 }
 
-// setCurrentSource sets the active deployment source for RBAC enforcement.
-// Only called from the JS thread (qctx.Schedule callbacks and Deploy), which is
-// single-threaded — no mutex needed. Using k.mu here caused GoChannel message
-// delivery reordering because __go_brainkit_bus_reply runs on the same goroutine
-// and GoChannel Publish interacts with k.mu (via subscriber callbacks).
 func (k *Kernel) setCurrentSource(source string) {
-	k.currentSource = source
+	k.deploymentMgr.currentSource = source
 }
 
 // emitPermissionDenied publishes the bus.permission.denied event.

@@ -27,3 +27,16 @@ type PluginRestarter interface {
 	ListRunningPlugins() []types.RunningPlugin
 	RestartPlugin(ctx context.Context, name string) error
 }
+
+// Deployer handles lifecycle of .ts/.js file deployments.
+// Implemented by *Kernel.
+type Deployer interface {
+	Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error)
+	Teardown(ctx context.Context, source string) (int, error)
+	ListDeployments() []deploymentInfo
+}
+
+// TSRunner evaluates JS/TS code in the QuickJS runtime via EvalTS.
+type TSRunner interface {
+	EvalTS(ctx context.Context, source, code string) (string, error)
+}
