@@ -71,6 +71,15 @@ func (c *RemoteClient) resolvedTopicForNamespace(targetNamespace, logicalTopic s
 	return topic
 }
 
+// globalTopic applies topic sanitization WITHOUT namespace prefixing.
+// Used for cluster-wide system topics like presence announcements.
+func (c *RemoteClient) globalTopic(topic string) string {
+	if c.topicSanitizer != nil {
+		return c.topicSanitizer(topic)
+	}
+	return topic
+}
+
 // stampIdentity writes all identity metadata onto a Watermill message.
 func (c *RemoteClient) stampIdentity(wmsg *message.Message) {
 	if c.callerID != "" {
@@ -339,6 +348,46 @@ func (c *RemoteClient) SubscribeRawFanOut(ctx context.Context, logicalTopic stri
 		}
 	}()
 
+	return cancel, nil
+}
+
+// PublishRawGlobal sends a message to a global (non-namespaced) topic.
+// Used for cluster-wide system messages (presence, etc.) where all namespaces
+// must see the message. Topic sanitization still applies (dots→dashes for NATS).
+func (c *RemoteClient) PublishRawGlobal(ctx context.Context, topic string, payload json.RawMessage) error {
+	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
+	wmsg.SetContext(ctx)
+	c.stampIdentity(wmsg)
+	return c.pub.Publish(c.globalTopic(topic), wmsg)
+}
+
+// SubscribeRawFanOutGlobal subscribes to a global (non-namespaced) topic
+// using the fan-out subscriber. Every instance receives every message.
+func (c *RemoteClient) SubscribeRawFanOutGlobal(ctx context.Context, topic string, handler func(payload json.RawMessage)) (func(), error) {
+	sub := c.fanOutSub
+	if sub == nil {
+		sub = c.sub // fallback to regular subscriber
+	}
+	subCtx, cancel := context.WithCancel(ctx)
+	ch, err := sub.Subscribe(subCtx, c.globalTopic(topic))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	go func() {
+		for {
+			select {
+			case <-subCtx.Done():
+				return
+			case wmsg, ok := <-ch:
+				if !ok {
+					return
+				}
+				handler(json.RawMessage(wmsg.Payload))
+				wmsg.Ack()
+			}
+		}
+	}()
 	return cancel, nil
 }
 
