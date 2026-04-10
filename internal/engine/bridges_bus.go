@@ -14,7 +14,6 @@ import (
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/sdk"
 )
@@ -34,11 +33,6 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 
 			if commandCatalog().HasCommand(topic) {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
-			}
-
-			// RBAC enforcement — parity with bus_emit (fixes RBAC bypass via direct bridge call)
-			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "emit"); err != nil {
-				return k.throwBrainkitError(qctx, err)
 			}
 
 			if err := eventCatalog().Validate(topic, payload); err != nil {
@@ -62,24 +56,6 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "is required"})
 			}
 			payload := json.RawMessage(args[1].String())
-
-			// RBAC enforcement
-			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "publish"); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
-
-			// Bus rate limiting — per-role token bucket
-			if len(k.busRateLimiters) > 0 {
-				source := k.currentDeploymentSource()
-				if source != "" && k.rbac != nil {
-					role := k.rbac.RoleForSource(source)
-					if limiter, ok := k.busRateLimiters[role.Name]; ok {
-						if !limiter.Allow() {
-							return k.throwBrainkitError(qctx, &sdkerrors.RateLimitedError{Role: role.Name, Limit: float64(limiter.Limit())})
-						}
-					}
-				}
-			}
 
 			// Tracing
 			span := k.tracer.StartSpan("bus.publish:"+topic, context.Background())
@@ -119,11 +95,6 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
 			}
 
-			// RBAC enforcement
-			if err := k.checkBusPermission(k.currentDeploymentSource(), topic, "emit"); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
-
 			if err := k.publish(context.Background(), topic, payload); err != nil {
 				return k.throwBrainkitError(qctx, err)
 			}
@@ -140,19 +111,8 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			payload := args[1].String()
 			correlationID := args[2].String()
 			done := args[3].ToBool()
-			replyToken := ""
-			if len(args) >= 5 {
-				replyToken = args[4].String()
-			}
-
 			if replyTo == "" {
 				return qctx.NewUndefined()
-			}
-
-			// Validate reply token when RBAC is active
-			if err := k.validateReplyToken(correlationID, replyTo, k.currentDeploymentSource(), replyToken); err != nil {
-				k.emitReplyDenied(replyTo, correlationID, k.currentDeploymentSource(), "invalid reply token")
-				return k.throwBrainkitError(qctx, err)
 			}
 
 			wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
@@ -185,13 +145,8 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			}
 			topic := args[0].String()
 
-			// Capture deployment source at subscribe time for RBAC during callbacks
+			// Capture deployment source at subscribe time for tracing during callbacks
 			subscriberSource := k.currentDeploymentSource()
-
-			// RBAC enforcement
-			if err := k.checkBusPermission(subscriberSource, topic, "subscribe"); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
 
 			subID := uuid.NewString()
 			cancel, err := k.subscribe(topic, func(msg sdk.Message) {
@@ -235,19 +190,6 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 					}
 					if v := msg.Metadata["traceId"]; v != "" {
 						msgObj["traceId"] = v
-					}
-				}
-
-				// Generate reply token — ONLY own-mailbox subscribers get tokens.
-				if msg.Metadata != nil && msg.Metadata["replyTo"] != "" &&
-					subscriberSource != "" && rbac.IsOwnMailbox(subscriberSource, topic) {
-					replyToken := k.generateReplyToken(
-						msg.Metadata["correlationId"],
-						msg.Metadata["replyTo"],
-						subscriberSource,
-					)
-					if replyToken != "" {
-						msgObj["replyToken"] = replyToken
 					}
 				}
 

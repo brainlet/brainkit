@@ -22,11 +22,6 @@ func (k *Kernel) registerRequestBridges(qctx *quickjs.Context, invoker *LocalInv
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
-			// RBAC enforcement on command
-			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
-
 			// Tracing
 			span := k.tracer.StartSpan("command:"+topic, context.Background())
 			resp, err := invoker.Invoke(context.Background(), topic, payload)
@@ -46,11 +41,6 @@ func (k *Kernel) registerRequestBridges(qctx *quickjs.Context, invoker *LocalInv
 			}
 			topic := args[0].String()
 			payload := json.RawMessage(args[1].String())
-
-			// RBAC enforcement on command
-			if err := k.checkCommandPermission(k.currentDeploymentSource(), topic); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
 
 			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 				k.bridge.Go(func(goCtx context.Context) {

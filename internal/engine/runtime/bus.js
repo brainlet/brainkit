@@ -85,23 +85,21 @@
 
   // ─── Message Wrapper ──────────────────────────────────────────
   function wrapMsg(rawMsg) {
-    var _replyToken = rawMsg.replyToken || "";
     var _seq = 0; // monotonic sequence number for stream events
     var msg = {
       payload: rawMsg.payload,
       replyTo: rawMsg.replyTo || "",
-      replyToken: _replyToken,
       correlationId: rawMsg.correlationId || "",
       topic: rawMsg.topic || "",
       callerId: rawMsg.callerId || "",
       reply: function(data) {
         if (msg.replyTo) {
-          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, true, _replyToken);
+          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, true);
         }
       },
       send: function(data) {
         if (msg.replyTo) {
-          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false, _replyToken);
+          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false);
         }
       },
       stream: {
@@ -109,42 +107,42 @@
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "text", seq: _seq++, data: chunk }),
-                msg.correlationId, false, _replyToken);
+                msg.correlationId, false);
             }
           },
           progress: function(value, message) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "progress", seq: _seq++, data: { value: value, message: message || "" } }),
-                msg.correlationId, false, _replyToken);
+                msg.correlationId, false);
             }
           },
           object: function(partial) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "object", seq: _seq++, data: partial }),
-                msg.correlationId, false, _replyToken);
+                msg.correlationId, false);
             }
           },
           event: function(name, data) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "event", seq: _seq++, event: name, data: data || null }),
-                msg.correlationId, false, _replyToken);
+                msg.correlationId, false);
             }
           },
           error: function(message) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "error", seq: _seq, total: _seq, data: { message: typeof message === "string" ? message : String(message) } }),
-                msg.correlationId, true, _replyToken);
+                msg.correlationId, true);
             }
           },
           end: function(finalData) {
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "end", seq: _seq, total: _seq, data: finalData || null }),
-                msg.correlationId, true, _replyToken);
+                msg.correlationId, true);
             }
           },
         },

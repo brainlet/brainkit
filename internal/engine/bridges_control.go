@@ -21,18 +21,6 @@ func (k *Kernel) registerControlBridges(qctx *quickjs.Context) {
 			action := args[0].String()
 			payload := json.RawMessage(args[1].String())
 
-			// RBAC enforcement on registration
-			source := k.currentDeploymentSource()
-			if action == "tools.register" || action == "tools.unregister" {
-				if err := k.checkRegistrationPermission(source, "tool"); err != nil {
-					return k.throwBrainkitError(qctx, err)
-				}
-			} else if action == "agents.register" || action == "agents.unregister" {
-				if err := k.checkRegistrationPermission(source, "agent"); err != nil {
-					return k.throwBrainkitError(qctx, err)
-				}
-			}
-
 			var resp json.RawMessage
 			var err error
 			switch action {

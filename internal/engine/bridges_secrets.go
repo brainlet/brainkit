@@ -20,11 +20,6 @@ func (k *Kernel) registerSecretBridges(qctx *quickjs.Context) {
 			}
 			name := args[0].String()
 
-			// RBAC enforcement — must have secrets.get permission
-			if err := k.checkCommandPermission(k.currentDeploymentSource(), "secrets.get"); err != nil {
-				return k.throwBrainkitError(qctx, err)
-			}
-
 			if k.secretStore == nil {
 				return k.throwBrainkitError(qctx, &sdkerrors.NotConfiguredError{Feature: "secrets"})
 			}
