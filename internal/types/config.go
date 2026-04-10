@@ -126,9 +126,10 @@ type MessagingConfig struct {
 
 // DiscoveryConfig configures the discovery mechanism.
 type DiscoveryConfig struct {
-	Type        string
-	ServiceName string
-	StaticPeers []PeerConfig
+	Type        string        // "static", "bus", or "" (disabled)
+	StaticPeers []PeerConfig  // for "static"
+	Heartbeat   time.Duration // for "bus", default 10s
+	TTL         time.Duration // for "bus", default 30s
 }
 
 // PeerConfig configures a known peer.

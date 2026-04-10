@@ -99,7 +99,8 @@ func (PeersListMsg) BusTopic() string { return "peers.list" }
 
 type PeersListResp struct {
 	ResultMeta
-	Peers []PeerInfo `json:"peers"`
+	Peers      []PeerInfo `json:"peers"`
+	Namespaces []string   `json:"namespaces,omitempty"`
 }
 
 type PeerInfo struct {

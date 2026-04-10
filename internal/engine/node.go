@@ -82,26 +82,16 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 		kernel.secretsDomain.pluginRestarter = node
 	}
 
-	// Wire discovery if configured
+	// Wire discovery if configured (Register is deferred to Start — bus provider publishes on register)
 	if cfg.Discovery.Type != "" {
-		var disc discovery.Provider
-		var discErr error
 		switch cfg.Discovery.Type {
 		case "static":
-			disc = discovery.NewStaticFromConfig(cfg.Discovery.StaticPeers)
-		case "multicast":
-			disc, discErr = discovery.NewMulticast(cfg.Discovery.ServiceName)
-			if discErr != nil {
-				types.InvokeErrorHandler(cfg.Kernel.ErrorHandler, &sdkerrors.TransportError{
-					Operation: "MulticastDiscovery", Cause: discErr,
-				}, types.ErrorContext{Operation: "MulticastDiscovery", Component: "node"})
-			}
-		}
-		if disc != nil {
-			node.discovery = disc
-			_ = disc.Register(discovery.Peer{
-				Name:      cfg.NodeID,
-				Namespace: kernelCfg.Namespace,
+			node.discovery = discovery.NewStaticFromConfig(cfg.Discovery.StaticPeers)
+		case "bus":
+			node.discovery = discovery.NewBus(discovery.BusConfig{
+				Transport: kernel.remote,
+				Heartbeat: cfg.Discovery.Heartbeat,
+				TTL:       cfg.Discovery.TTL,
 			})
 		}
 	}
@@ -144,6 +134,19 @@ func (n *Node) Start(ctx context.Context) error {
 		// All handlers subscribed
 	case <-waitCtx.Done():
 		return &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}
+	}
+
+	// Register with discovery after router is ready (bus provider publishes on register)
+	if n.discovery != nil {
+		if err := n.discovery.Register(discovery.Peer{
+			Name:      n.nodeID,
+			Namespace: n.Kernel.Namespace(),
+		}); err != nil {
+			// Non-fatal — discovery failure shouldn't block startup
+			types.InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.TransportError{
+				Operation: "DiscoveryRegister", Cause: err,
+			}, types.ErrorContext{Operation: "DiscoveryRegister", Component: "node"})
+		}
 	}
 
 	// Restore dynamically-started plugins from previous session

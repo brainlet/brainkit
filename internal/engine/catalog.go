@@ -435,7 +435,8 @@ func commandCatalog() *commandRegistry {
 				for i, p := range peers {
 					infos[i] = sdk.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
 				}
-				return &sdk.PeersListResp{Peers: infos}, nil
+				namespaces, _ := node.discovery.BrowseNamespaces()
+				return &sdk.PeersListResp{Peers: infos, Namespaces: namespaces}, nil
 			}),
 			nodeCommand(func(ctx context.Context, node *Node, req sdk.PeersResolveMsg) (*sdk.PeersResolveResp, error) {
 				if node.discovery == nil {

@@ -235,20 +235,12 @@ func (c Config) toNodeConfig(kernelCfg types.KernelConfig) types.NodeConfig {
 			RedisURL:     c.Transport.redisURL,
 			NATSStoreDir: natsStoreDir,
 		},
-		Discovery: types.DiscoveryConfig{
-			Type:        c.Discovery.Type,
-			ServiceName: c.Discovery.ServiceName,
-		},
+		Discovery: c.Discovery, // type alias — no conversion needed
 	}
 
 	// Convert plugins
 	if len(c.Plugins) > 0 {
 		nc.Plugins = c.Plugins
-	}
-
-	// Convert discovery static peers
-	if len(c.Discovery.StaticPeers) > 0 {
-		nc.Discovery.StaticPeers = c.Discovery.StaticPeers
 	}
 
 	return nc
