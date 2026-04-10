@@ -121,7 +121,6 @@ func TestRecorder_NilSafe(t *testing.T) {
 	var r *Recorder
 	r.PluginStarted("test", 123)
 	r.ToolCallCompleted("echo", "caller", time.Second)
-	r.PermissionDenied("src", "call", "topic", "role")
 }
 
 func TestRecorder_RecordsEvents(t *testing.T) {
@@ -135,14 +134,13 @@ func TestRecorder_RecordsEvents(t *testing.T) {
 	r.PluginStopped("kv", "stopped")
 	r.ToolCallCompleted("echo", "caller-1", 50*time.Millisecond)
 	r.ToolCallDenied("read-db", "attacker-runtime", "local-only")
-	r.PermissionDenied("evil.ts", "publish", "secrets.list", "observer")
 	r.SecretSet("api-key", "admin")
 	r.Deployed("greeter.ts", 3)
 	r.BusHandlerFailed("workflow.start", assert.AnError)
 
 	all, err := store.Query(Query{})
 	require.NoError(t, err)
-	assert.Len(t, all, 8)
+	assert.Len(t, all, 7)
 
 	// Verify runtimeID and namespace are stamped
 	for _, e := range all {
@@ -152,7 +150,7 @@ func TestRecorder_RecordsEvents(t *testing.T) {
 
 	// Verify categories
 	security, _ := store.Query(Query{Category: "security"})
-	assert.Len(t, security, 2) // tools.call.denied + bus.permission.denied
+	assert.Len(t, security, 1) // tools.call.denied
 
 	plugins, _ := store.Query(Query{Category: "plugin"})
 	assert.Len(t, plugins, 2)

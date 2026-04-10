@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
@@ -67,19 +66,9 @@ func testErrorContractBusValidationError(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
-// testErrorContractBusNotConfiguredRBAC — VALIDATION_ERROR for rbac.assign with empty source.
+// testErrorContractBusNotConfiguredRBAC — RBAC removed, test is a no-op.
 func testErrorContractBusNotConfiguredRBAC(t *testing.T, _ *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	code, _ := busErrorCodeAdv(t, k, sdk.RBACAssignMsg{Source: "", Role: "admin"})
-	assert.Equal(t, "VALIDATION_ERROR", code)
+	t.Skip("RBAC has been removed")
 }
 
 // testErrorContractBusIdempotentDeploy — duplicate deploy succeeds (idempotent).
@@ -125,8 +114,6 @@ func testErrorContractErrorsAsAllTypes(t *testing.T, _ *suite.TestEnv) {
 		{"Validation", &sdkerrors.ValidationError{Field: "name", Message: "required"}, "VALIDATION_ERROR"},
 		{"Timeout", &sdkerrors.TimeoutError{Operation: "test"}, "TIMEOUT"},
 		{"WorkspaceEscape", &sdkerrors.WorkspaceEscapeError{Path: "../etc"}, "WORKSPACE_ESCAPE"},
-		{"PermissionDenied", &sdkerrors.PermissionDeniedError{Source: "a.ts", Action: "publish", Topic: "t", Role: "r"}, "PERMISSION_DENIED"},
-		{"RateLimited", &sdkerrors.RateLimitedError{Role: "svc", Limit: 100}, "RATE_LIMITED"},
 		{"NotConfigured", &sdkerrors.NotConfiguredError{Feature: "rbac"}, "NOT_CONFIGURED"},
 		{"Transport", &sdkerrors.TransportError{Operation: "pub", Cause: fmt.Errorf("fail")}, "TRANSPORT_ERROR"},
 		{"Persistence", &sdkerrors.PersistenceError{Operation: "Save", Source: "x", Cause: fmt.Errorf("fail")}, "PERSISTENCE_ERROR"},
@@ -150,26 +137,9 @@ func testErrorContractErrorsAsAllTypes(t *testing.T, _ *suite.TestEnv) {
 	}
 }
 
-// testErrorContractJSBridgePermissionDenied — JS bridge returns PERMISSION_DENIED error code.
+// testErrorContractJSBridgePermissionDenied — RBAC removed, test is a no-op.
 func testErrorContractJSBridgePermissionDenied(t *testing.T, _ *suite.TestEnv) {
-	tk := suite.Full(t, suite.WithRBAC(map[string]rbac.Role{
-		"restricted": {
-			Name:     "restricted",
-			Bus:      rbac.BusPermissions{},
-			Commands: rbac.CommandPermissions{Allow: []string{"*"}},
-		},
-	}, "restricted"))
-
-	err := testutil.DeployWithOpts(tk.Kit, "perm-test-adv.ts", `
-		var caught = "none";
-		try { bus.publish("forbidden", {}); }
-		catch(e) { caught = e.code || "NO_CODE"; }
-		output(caught);
-	`, "restricted", "")
-	require.NoError(t, err)
-
-	result := testutil.EvalTS(t, tk.Kit, "__perm_result_adv.ts", `return String(globalThis.__module_result || "");`)
-	assert.Equal(t, "PERMISSION_DENIED", result)
+	t.Skip("RBAC has been removed")
 }
 
 // testErrorContractJSBridgeValidationErrorMissingArgs — JS bridge returns VALIDATION_ERROR for missing args.
@@ -184,33 +154,9 @@ func testErrorContractJSBridgeValidationErrorMissingArgs(t *testing.T, _ *suite.
 	assert.Equal(t, "VALIDATION_ERROR", result)
 }
 
-// testErrorContractJSBridgeRateLimited — JS bridge returns RATE_LIMITED error code.
+// testErrorContractJSBridgeRateLimited — RBAC rate limits removed, test is a no-op.
 func testErrorContractJSBridgeRateLimited(t *testing.T, _ *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Roles:       map[string]rbac.Role{"service": rbac.RoleService},
-		DefaultRole: "service",
-		BusRateLimits: map[string]float64{
-			"service": 1, // 1 req/s — very low
-		},
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	// Deploy a .ts that hammers bus.publish
-	testutil.Deploy(t, k, "rate-test-adv.ts", `
-		var codes = [];
-		for (var i = 0; i < 10; i++) {
-			try { bus.publish("incoming.test-adv", { i: i }); }
-			catch(e) { codes.push(e.code || "NO_CODE"); }
-		}
-		output(codes);
-	`)
-
-	result := testutil.EvalTS(t, k, "__rate_result_adv.ts", `return String(globalThis.__module_result || "[]");`)
-	assert.Contains(t, result, "RATE_LIMITED")
+	t.Skip("RBAC rate limits have been removed")
 }
 
 // testErrorContractJSBridgeNotConfiguredSecrets — JS bridge secrets.get returns empty for nonexistent keys.

@@ -313,19 +313,6 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TraceListMsg) (*sdk.TraceListResp, error) {
 				return kernel.tracingDomain.List(ctx, req)
 			}),
-			// ── RBAC Administration ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACAssignMsg) (*sdk.RBACAssignResp, error) {
-				return kernel.rbacAdminDomain.Assign(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACRevokeMsg) (*sdk.RBACRevokeResp, error) {
-				return kernel.rbacAdminDomain.Revoke(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACListMsg) (*sdk.RBACListResp, error) {
-				return kernel.rbacAdminDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RBACRolesMsg) (*sdk.RBACRolesResp, error) {
-				return kernel.rbacAdminDomain.Roles(ctx, req)
-			}),
 			// ── Audit ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AuditQueryMsg) (*sdk.AuditQueryResp, error) {
 				return newAuditDomain(auditStoreFromKernel(kernel)).Query(ctx, req)
@@ -569,9 +556,6 @@ func commandCatalog() *commandRegistry {
 // shouldSkipCommand returns true if the command topic targets an unconfigured domain.
 func shouldSkipCommand(topic string, kernel *Kernel) bool {
 	if strings.HasPrefix(topic, "mcp.") && kernel.mcp == nil {
-		return true
-	}
-	if strings.HasPrefix(topic, "rbac.") && kernel.rbac == nil {
 		return true
 	}
 	if strings.HasPrefix(topic, "trace.") && kernel.config.TraceStore == nil {

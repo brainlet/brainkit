@@ -98,10 +98,10 @@ func TestLocalToolCallFromRemoteRuntimeBlocked(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, called, "executor must NOT be invoked for remote calls to local tools")
 
-	// Verify it's specifically a PermissionDeniedError
-	var permErr *sdkerrors.PermissionDeniedError
-	require.ErrorAs(t, err, &permErr)
-	assert.Equal(t, "PERMISSION_DENIED", permErr.Code())
+	// Verify it's specifically a ValidationError (local-only tool called from remote)
+	var valErr *sdkerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
+	assert.Equal(t, "VALIDATION_ERROR", valErr.Code())
 }
 
 // TestNonLocalToolCallFromRemoteAllowed verifies that non-local tools (Go-registered,
@@ -153,8 +153,8 @@ func TestAttackRemotePluginToolViaDirectBus(t *testing.T) {
 	_, err := domain.Call(ctx, sdk.ToolCallMsg{Name: "query", Input: map[string]any{"sql": "DROP TABLE users"}})
 
 	require.Error(t, err, "attack must be blocked")
-	var permErr *sdkerrors.PermissionDeniedError
-	require.ErrorAs(t, err, &permErr)
+	var valErr *sdkerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
 }
 
 // TestAttackToolResolveStillWorks verifies that tools.resolve (metadata only)

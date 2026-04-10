@@ -7,7 +7,6 @@ import "encoding/json"
 type KitDeployMsg struct {
 	Source      string `json:"source"`
 	Code        string `json:"code"`
-	Role        string `json:"role,omitempty"`
 	PackageName string `json:"packageName,omitempty"`
 }
 

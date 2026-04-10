@@ -115,7 +115,6 @@ type DeployOption func(*DeployConfig)
 
 // DeployConfig holds deploy options.
 type DeployConfig struct {
-	Role        string
 	PackageName string
 	Restoring   bool
 }
@@ -123,11 +122,6 @@ type DeployConfig struct {
 // WithRestoring marks this Deploy as a restore from persistence.
 func WithRestoring() DeployOption {
 	return func(c *DeployConfig) { c.Restoring = true }
-}
-
-// WithRole assigns an RBAC role to the deployment.
-func WithRole(role string) DeployOption {
-	return func(c *DeployConfig) { c.Role = role }
 }
 
 // WithPackageName tags the deployment as part of a package.

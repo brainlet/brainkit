@@ -27,13 +27,6 @@ type CORSConfig struct {
 	AllowHeaders []string
 }
 
-// RBACChecker validates bus command permissions for .ts callers.
-// When set on Config, gateway bus command handlers check caller permissions.
-// Go-originated messages (no callerId metadata) bypass RBAC by design.
-type RBACChecker interface {
-	CheckCommand(source, command string) error
-}
-
 // StreamConfig configures SSE streaming behavior.
 type StreamConfig struct {
 	HeartbeatInterval time.Duration // Bridge heartbeat frequency. Default: 10s.
@@ -80,7 +73,6 @@ type Config struct {
 	NoHealth    bool
 	Logger      *slog.Logger     // optional — nil = slog.Default()
 	Tracer      Tracer           // optional — creates root spans for requests
-	RBACChecker RBACChecker      // optional — checks caller permissions on bus commands
 	RateLimit   *RateLimitConfig // optional — global rate limiter (429 when exceeded)
 	Stream      *StreamConfig    // optional — SSE streaming config. nil = use defaults.
 }
@@ -120,7 +112,6 @@ type Gateway struct {
 	ln           net.Listener
 	active       atomic.Int64
 	busUnsubs    []func()
-	rbacChecker  RBACChecker
 
 	// Stream session management
 	sessionsMu  syncx.RWMutex
@@ -146,7 +137,6 @@ func New(rt sdk.Runtime, cfg Config) *Gateway {
 		logger:       logger,
 		streamConfig: cfg.Stream.withDefaults(),
 		routes:       newRouteTable(),
-		rbacChecker:  cfg.RBACChecker,
 		sessions:     make(map[string]*streamSession),
 	}
 }

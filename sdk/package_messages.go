@@ -9,7 +9,6 @@ type PluginStartMsg struct {
 	Binary string            `json:"binary,omitempty"`
 	Env    map[string]string `json:"env,omitempty"`
 	Config json.RawMessage   `json:"config,omitempty"`
-	Role   string            `json:"role,omitempty"`
 }
 
 func (PluginStartMsg) BusTopic() string { return "plugin.start" }

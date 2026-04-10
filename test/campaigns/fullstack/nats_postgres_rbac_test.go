@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit/test/suite/gateway"
 	"github.com/brainlet/brainkit/test/suite/health"
 	"github.com/brainlet/brainkit/test/suite/persistence"
-	"github.com/brainlet/brainkit/test/suite/rbac"
 	"github.com/brainlet/brainkit/test/suite/registry"
 	"github.com/brainlet/brainkit/test/suite/secrets"
 	"github.com/brainlet/brainkit/test/suite/tools"
@@ -26,7 +25,6 @@ func TestFullStack_NATS_Postgres_RBAC(t *testing.T) {
 		campaigns.Transport("nats"),
 		campaigns.Storage("postgres"),
 		campaigns.Persistence(),
-		campaigns.RBAC(),
 		campaigns.Tracing(),
 	)
 	env := infra.Env(t)
@@ -42,5 +40,4 @@ func TestFullStack_NATS_Postgres_RBAC(t *testing.T) {
 	tracing.Run(t, env)
 	persistence.Run(t, env)
 	gateway.Run(t, env)
-	rbac.Run(t, env)
 }

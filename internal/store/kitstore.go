@@ -50,14 +50,14 @@ func (s *SQLiteKitStore) DB() *sql.DB  { return s.db }
 
 func (s *SQLiteKitStore) SaveDeployment(d types.PersistedDeployment) error {
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role) VALUES (?, ?, ?, ?, ?, ?)`,
-		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName, d.Role,
+		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name) VALUES (?, ?, ?, ?, ?)`,
+		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName,
 	)
 	return err
 }
 
 func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) {
-	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments ORDER BY deploy_order")
+	rows, err := s.db.Query("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments ORDER BY deploy_order")
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) 
 	for rows.Next() {
 		var d types.PersistedDeployment
 		var ts string
-		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName, &d.Role); err != nil {
+		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName); err != nil {
 			return nil, err
 		}
 		d.DeployedAt, _ = time.Parse(time.RFC3339, ts)
@@ -81,8 +81,8 @@ func (s *SQLiteKitStore) LoadDeployments() ([]types.PersistedDeployment, error) 
 func (s *SQLiteKitStore) LoadDeployment(source string) (types.PersistedDeployment, error) {
 	var d types.PersistedDeployment
 	var ts string
-	err := s.db.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments WHERE source = ?", source).
-		Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName, &d.Role)
+	err := s.db.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments WHERE source = ?", source).
+		Scan(&d.Source, &d.Code, &d.Order, &ts, &d.PackageName)
 	if err != nil {
 		return d, err
 	}
@@ -198,14 +198,14 @@ func (s *SQLiteKitStore) SaveRunningPlugin(p types.RunningPluginRecord) error {
 		configStr = string(p.Config)
 	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.Name, p.Owner, p.Version, p.BinaryPath, string(envJSON), configStr, p.StartOrder, p.StartedAt.Format(time.RFC3339), p.Role,
+		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.Name, p.Owner, p.Version, p.BinaryPath, string(envJSON), configStr, p.StartOrder, p.StartedAt.Format(time.RFC3339),
 	)
 	return err
 }
 
 func (s *SQLiteKitStore) LoadRunningPlugins() ([]types.RunningPluginRecord, error) {
-	rows, err := s.db.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at, role FROM running_plugins ORDER BY start_order")
+	rows, err := s.db.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at FROM running_plugins ORDER BY start_order")
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (s *SQLiteKitStore) LoadRunningPlugins() ([]types.RunningPluginRecord, erro
 	for rows.Next() {
 		var r types.RunningPluginRecord
 		var envStr, configStr, ts string
-		if err := rows.Scan(&r.Name, &r.Owner, &r.Version, &r.BinaryPath, &envStr, &configStr, &r.StartOrder, &ts, &r.Role); err != nil {
+		if err := rows.Scan(&r.Name, &r.Owner, &r.Version, &r.BinaryPath, &envStr, &configStr, &r.StartOrder, &ts); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(envStr), &r.Env)

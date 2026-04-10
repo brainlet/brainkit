@@ -1,15 +1,15 @@
 -- ── Deployments ──
 
 -- name: SaveDeployment :exec
-INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name)
+VALUES (?, ?, ?, ?, ?);
 
 -- name: LoadDeployments :many
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments ORDER BY deploy_order;
 
 -- name: LoadDeployment :one
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments WHERE source = ?;
 
 -- name: DeleteDeployment :exec

@@ -44,7 +44,7 @@ func (s *PostgresKitStore) Close() error { return s.db.Close() }
 func (s *PostgresKitStore) SaveDeployment(d types.PersistedDeployment) error {
 	return s.queries.SaveDeployment(ctx(), pggen.SaveDeploymentParams{
 		Source: d.Source, Code: d.Code, DeployOrder: int32(d.Order),
-		DeployedAt: d.DeployedAt, PackageName: d.PackageName, Role: d.Role,
+		DeployedAt: d.DeployedAt, PackageName: d.PackageName,
 	})
 }
 
@@ -57,7 +57,7 @@ func (s *PostgresKitStore) LoadDeployments() ([]types.PersistedDeployment, error
 	for i, r := range rows {
 		result[i] = types.PersistedDeployment{
 			Source: r.Source, Code: r.Code, Order: int(r.DeployOrder),
-			DeployedAt: r.DeployedAt, PackageName: r.PackageName, Role: r.Role,
+			DeployedAt: r.DeployedAt, PackageName: r.PackageName,
 		}
 	}
 	return result, nil
@@ -70,7 +70,7 @@ func (s *PostgresKitStore) LoadDeployment(source string) (types.PersistedDeploym
 	}
 	return types.PersistedDeployment{
 		Source: r.Source, Code: r.Code, Order: int(r.DeployOrder),
-		DeployedAt: r.DeployedAt, PackageName: r.PackageName, Role: r.Role,
+		DeployedAt: r.DeployedAt, PackageName: r.PackageName,
 	}, nil
 }
 
@@ -160,7 +160,7 @@ func (s *PostgresKitStore) SaveRunningPlugin(p types.RunningPluginRecord) error 
 	return s.queries.SaveRunningPlugin(ctx(), pggen.SaveRunningPluginParams{
 		Name: p.Name, Owner: p.Owner, Version: p.Version,
 		BinaryPath: p.BinaryPath, Env: string(envJSON), Config: configStr,
-		StartOrder: int32(p.StartOrder), StartedAt: p.StartedAt, Role: p.Role,
+		StartOrder: int32(p.StartOrder), StartedAt: p.StartedAt,
 	})
 }
 
@@ -176,7 +176,7 @@ func (s *PostgresKitStore) LoadRunningPlugins() ([]types.RunningPluginRecord, er
 		result[i] = types.RunningPluginRecord{
 			Name: r.Name, Owner: r.Owner, Version: r.Version,
 			BinaryPath: r.BinaryPath, Env: env, Config: json.RawMessage(r.Config),
-			StartOrder: int(r.StartOrder), StartedAt: r.StartedAt, Role: r.Role,
+			StartOrder: int(r.StartOrder), StartedAt: r.StartedAt,
 		}
 	}
 	return result, nil

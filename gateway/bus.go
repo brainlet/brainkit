@@ -16,12 +16,6 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.add
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.add", func(msg sdk.Message) {
-		if gw.rbacChecker != nil {
-			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.add"); err != nil {
-				gw.replyError(msg, "permission denied: "+err.Error())
-				return
-			}
-		}
 		var req sdk.GatewayRouteAddMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
@@ -40,12 +34,6 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.remove
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.remove", func(msg sdk.Message) {
-		if gw.rbacChecker != nil {
-			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.remove"); err != nil {
-				gw.replyError(msg, "permission denied: "+err.Error())
-				return
-			}
-		}
 		var req sdk.GatewayRouteRemoveMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
@@ -54,8 +42,7 @@ func (gw *Gateway) subscribeBusCommands() {
 		removed := 0
 		callerSource := msg.CallerID
 		// Ownership isolation: .ts deployments can only remove their own routes.
-		// Go callers (no .ts suffix) have full access — they own the infrastructure
-		// and the RBAC check above already authorizes the command.
+		// Go callers (no .ts suffix) have full access — they own the infrastructure.
 		isDeploymentCaller := strings.HasSuffix(callerSource, ".ts")
 		if req.Owner != "" {
 			if isDeploymentCaller && req.Owner != callerSource {
@@ -83,12 +70,6 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.list
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.list", func(msg sdk.Message) {
-		if gw.rbacChecker != nil {
-			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.route.list"); err != nil {
-				gw.replyError(msg, "permission denied: "+err.Error())
-				return
-			}
-		}
 		routes := gw.routes.list()
 		infos := make([]sdk.GatewayRouteInfo, len(routes))
 		for i, r := range routes {
@@ -104,12 +85,6 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.status
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.status", func(msg sdk.Message) {
-		if gw.rbacChecker != nil {
-			if err := gw.rbacChecker.CheckCommand(msg.CallerID, "gateway.http.status"); err != nil {
-				gw.replyError(msg, "permission denied: "+err.Error())
-				return
-			}
-		}
 		gw.routes.mu.RLock()
 		routeCount := len(gw.routes.routes)
 		gw.routes.mu.RUnlock()

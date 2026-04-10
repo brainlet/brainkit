@@ -1,21 +1,20 @@
 -- ── Deployments ──
 
 -- name: SaveDeployment :exec
-INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (source) DO UPDATE SET
     code = EXCLUDED.code,
     deploy_order = EXCLUDED.deploy_order,
     deployed_at = EXCLUDED.deployed_at,
-    package_name = EXCLUDED.package_name,
-    role = EXCLUDED.role;
+    package_name = EXCLUDED.package_name;
 
 -- name: LoadDeployments :many
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments ORDER BY deploy_order;
 
 -- name: LoadDeployment :one
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments WHERE source = $1;
 
 -- name: DeleteDeployment :exec

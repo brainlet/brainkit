@@ -24,9 +24,6 @@ func newLifecycleDomain(deployer Deployer, bus BusPublisher, audit *auditpkg.Rec
 
 func (d *LifecycleDomain) Deploy(ctx context.Context, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
 	var opts []types.DeployOption
-	if req.Role != "" {
-		opts = append(opts, types.WithRole(req.Role))
-	}
 	if req.PackageName != "" {
 		opts = append(opts, types.WithPackageName(req.PackageName))
 	}

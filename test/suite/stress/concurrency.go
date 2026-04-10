@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -524,47 +523,7 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err, "k2 should be alive")
 }
 
-// E04: RBAC assign + checkPermission simultaneously
+// E04: RBAC assign + checkPermission simultaneously — RBAC removed, test is a no-op.
 func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
-	if testing.Short() {
-		t.Skip("skipped in short mode")
-	}
-
-	// Uses a fresh kit with RBAC config.
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace:   "stress-test",
-		CallerID:    "stress-test",
-		FSRoot:      t.TempDir(),
-		Roles: map[string]brainkit.Role{
-			"admin":   rbac.RoleAdmin,
-			"service": rbac.RoleService,
-		},
-		DefaultRole: "service",
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	ctx := context.Background()
-	testutil.Deploy(t, k, "rbac-stress-race.ts", `
-		bus.on("ping", function(msg) { msg.reply({ ok: true }); });
-	`)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "rbac-stress-race.ts", Role: "admin"})
-			sdk.Publish(k, ctx, sdk.RBACRevokeMsg{Source: "rbac-stress-race.ts"})
-		}()
-		go func() {
-			defer wg.Done()
-			testutil.EvalTSErr(k, "__stress_rbac_race.ts", `
-				try { bus.publish("ts.rbac-stress-race.ping", {}); } catch(e) {}
-				return "ok";
-			`)
-		}()
-	}
-	wg.Wait()
+	t.Skip("RBAC has been removed")
 }

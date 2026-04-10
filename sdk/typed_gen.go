@@ -52,6 +52,36 @@ func SubscribeAgentSetStatusResp(rt Runtime, ctx context.Context, topic string, 
 	return SubscribeTo[AgentSetStatusResp](rt, ctx, topic, handler)
 }
 
+// PublishAuditPrune publishes a AuditPruneMsg and returns routing info for the response.
+func PublishAuditPrune(rt Runtime, ctx context.Context, msg AuditPruneMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeAuditPruneResp subscribes to the response topic for a AuditPruneMsg command.
+func SubscribeAuditPruneResp(rt Runtime, ctx context.Context, topic string, handler func(AuditPruneResp, Message)) (func(), error) {
+	return SubscribeTo[AuditPruneResp](rt, ctx, topic, handler)
+}
+
+// PublishAuditQuery publishes a AuditQueryMsg and returns routing info for the response.
+func PublishAuditQuery(rt Runtime, ctx context.Context, msg AuditQueryMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeAuditQueryResp subscribes to the response topic for a AuditQueryMsg command.
+func SubscribeAuditQueryResp(rt Runtime, ctx context.Context, topic string, handler func(AuditQueryResp, Message)) (func(), error) {
+	return SubscribeTo[AuditQueryResp](rt, ctx, topic, handler)
+}
+
+// PublishAuditStats publishes a AuditStatsMsg and returns routing info for the response.
+func PublishAuditStats(rt Runtime, ctx context.Context, msg AuditStatsMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeAuditStatsResp subscribes to the response topic for a AuditStatsMsg command.
+func SubscribeAuditStatsResp(rt Runtime, ctx context.Context, topic string, handler func(AuditStatsResp, Message)) (func(), error) {
+	return SubscribeTo[AuditStatsResp](rt, ctx, topic, handler)
+}
+
 // PublishClusterPeers publishes a ClusterPeersMsg and returns routing info for the response.
 func PublishClusterPeers(rt Runtime, ctx context.Context, msg ClusterPeersMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -437,46 +467,6 @@ func SubscribeProviderRemoveResp(rt Runtime, ctx context.Context, topic string, 
 	return SubscribeTo[ProviderRemoveResp](rt, ctx, topic, handler)
 }
 
-// PublishRBACAssign publishes a RBACAssignMsg and returns routing info for the response.
-func PublishRBACAssign(rt Runtime, ctx context.Context, msg RBACAssignMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeRBACAssignResp subscribes to the response topic for a RBACAssignMsg command.
-func SubscribeRBACAssignResp(rt Runtime, ctx context.Context, topic string, handler func(RBACAssignResp, Message)) (func(), error) {
-	return SubscribeTo[RBACAssignResp](rt, ctx, topic, handler)
-}
-
-// PublishRBACList publishes a RBACListMsg and returns routing info for the response.
-func PublishRBACList(rt Runtime, ctx context.Context, msg RBACListMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeRBACListResp subscribes to the response topic for a RBACListMsg command.
-func SubscribeRBACListResp(rt Runtime, ctx context.Context, topic string, handler func(RBACListResp, Message)) (func(), error) {
-	return SubscribeTo[RBACListResp](rt, ctx, topic, handler)
-}
-
-// PublishRBACRevoke publishes a RBACRevokeMsg and returns routing info for the response.
-func PublishRBACRevoke(rt Runtime, ctx context.Context, msg RBACRevokeMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeRBACRevokeResp subscribes to the response topic for a RBACRevokeMsg command.
-func SubscribeRBACRevokeResp(rt Runtime, ctx context.Context, topic string, handler func(RBACRevokeResp, Message)) (func(), error) {
-	return SubscribeTo[RBACRevokeResp](rt, ctx, topic, handler)
-}
-
-// PublishRBACRoles publishes a RBACRolesMsg and returns routing info for the response.
-func PublishRBACRoles(rt Runtime, ctx context.Context, msg RBACRolesMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeRBACRolesResp subscribes to the response topic for a RBACRolesMsg command.
-func SubscribeRBACRolesResp(rt Runtime, ctx context.Context, topic string, handler func(RBACRolesResp, Message)) (func(), error) {
-	return SubscribeTo[RBACRolesResp](rt, ctx, topic, handler)
-}
-
 // PublishRegistryHas publishes a RegistryHasMsg and returns routing info for the response.
 func PublishRegistryHas(rt Runtime, ctx context.Context, msg RegistryHasMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -807,16 +797,6 @@ func SubscribeKitTeardowned(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[KitTeardownedEvent](rt, ctx, topic, handler)
 }
 
-// EmitPermissionDenied fires a PermissionDeniedEvent event (no response expected).
-func EmitPermissionDenied(rt Runtime, ctx context.Context, msg PermissionDeniedEvent) error {
-	return Emit(rt, ctx, msg)
-}
-
-// SubscribePermissionDenied listens for PermissionDeniedEvent events.
-func SubscribePermissionDenied(rt Runtime, ctx context.Context, topic string, handler func(PermissionDeniedEvent, Message)) (func(), error) {
-	return SubscribeTo[PermissionDeniedEvent](rt, ctx, topic, handler)
-}
-
 // EmitPluginRegistered fires a PluginRegisteredEvent event (no response expected).
 func EmitPluginRegistered(rt Runtime, ctx context.Context, msg PluginRegisteredEvent) error {
 	return Emit(rt, ctx, msg)
@@ -845,16 +825,6 @@ func EmitPluginStopped(rt Runtime, ctx context.Context, msg PluginStoppedEvent) 
 // SubscribePluginStopped listens for PluginStoppedEvent events.
 func SubscribePluginStopped(rt Runtime, ctx context.Context, topic string, handler func(PluginStoppedEvent, Message)) (func(), error) {
 	return SubscribeTo[PluginStoppedEvent](rt, ctx, topic, handler)
-}
-
-// EmitReplyDenied fires a ReplyDeniedEvent event (no response expected).
-func EmitReplyDenied(rt Runtime, ctx context.Context, msg ReplyDeniedEvent) error {
-	return Emit(rt, ctx, msg)
-}
-
-// SubscribeReplyDenied listens for ReplyDeniedEvent events.
-func SubscribeReplyDenied(rt Runtime, ctx context.Context, topic string, handler func(ReplyDeniedEvent, Message)) (func(), error) {
-	return SubscribeTo[ReplyDeniedEvent](rt, ctx, topic, handler)
 }
 
 // EmitSecretsAccessed fires a SecretsAccessedEvent event (no response expected).

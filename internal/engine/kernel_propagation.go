@@ -35,9 +35,6 @@ func (k *Kernel) redeployPersistedDeployments() {
 	for _, d := range deployments {
 		var opts []types.DeployOption
 		opts = append(opts, types.WithRestoring()) // don't re-persist what was just loaded
-		if d.Role != "" {
-			opts = append(opts, types.WithRole(d.Role))
-		}
 		if d.PackageName != "" {
 			opts = append(opts, types.WithPackageName(d.PackageName))
 		}

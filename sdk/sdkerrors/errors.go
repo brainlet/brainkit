@@ -82,41 +82,9 @@ func (e *WorkspaceEscapeError) Error() string           { return fmt.Sprintf("pa
 func (e *WorkspaceEscapeError) Code() string            { return "WORKSPACE_ESCAPE" }
 func (e *WorkspaceEscapeError) Details() map[string]any { return map[string]any{"path": e.Path} }
 
-// ── New types ────────────────────────────────────────────────────────────────
-
-// PermissionDeniedError is returned when RBAC denies an operation.
-type PermissionDeniedError struct {
-	Source string // deployment source or plugin name
-	Action string // "publish", "subscribe", "emit", "command", "register"
-	Topic  string // topic or command that was denied
-	Role   string // role that denied it
-}
-
-func (e *PermissionDeniedError) Error() string {
-	return fmt.Sprintf("permission denied: %s cannot %s on %q (role: %s)", e.Source, e.Action, e.Topic, e.Role)
-}
-func (e *PermissionDeniedError) Code() string { return "PERMISSION_DENIED" }
-func (e *PermissionDeniedError) Details() map[string]any {
-	return map[string]any{"source": e.Source, "action": e.Action, "topic": e.Topic, "role": e.Role}
-}
-
-// RateLimitedError is returned when a rate limit is exceeded.
-type RateLimitedError struct {
-	Role  string
-	Limit float64
-}
-
-func (e *RateLimitedError) Error() string {
-	return fmt.Sprintf("rate limit exceeded for role %q (limit: %.0f req/s)", e.Role, e.Limit)
-}
-func (e *RateLimitedError) Code() string { return "RATE_LIMITED" }
-func (e *RateLimitedError) Details() map[string]any {
-	return map[string]any{"role": e.Role, "limit": e.Limit}
-}
-
 // NotConfiguredError is returned when a required feature is not configured.
 type NotConfiguredError struct {
-	Feature string // "rbac", "mcp", "discovery", "tracing", "secrets", "workspace"
+	Feature string // "mcp", "discovery", "tracing", "secrets", "workspace"
 }
 
 func (e *NotConfiguredError) Error() string           { return fmt.Sprintf("%s not configured", e.Feature) }
@@ -214,17 +182,3 @@ func (e *DecodeError) Unwrap() error           { return e.Cause }
 func (e *DecodeError) Code() string            { return "DECODE_ERROR" }
 func (e *DecodeError) Details() map[string]any { return map[string]any{"topic": e.Topic} }
 
-// ReplyDeniedError is returned when a reply is rejected due to invalid/missing token.
-type ReplyDeniedError struct {
-	Source        string
-	ReplyTo       string
-	CorrelationID string
-}
-
-func (e *ReplyDeniedError) Error() string {
-	return fmt.Sprintf("reply denied: %s cannot reply to %s (correlationId: %s)", e.Source, e.ReplyTo, e.CorrelationID)
-}
-func (e *ReplyDeniedError) Code() string { return "REPLY_DENIED" }
-func (e *ReplyDeniedError) Details() map[string]any {
-	return map[string]any{"source": e.Source, "replyTo": e.ReplyTo, "correlationId": e.CorrelationID}
-}

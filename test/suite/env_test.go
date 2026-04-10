@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/stretchr/testify/assert"
@@ -32,15 +31,6 @@ func TestEnv_Full_ToolsRegistered(t *testing.T) {
 	}
 	assert.True(t, names["echo"], "echo tool should be registered")
 	assert.True(t, names["add"], "add tool should be registered")
-}
-
-func TestEnv_Full_WithRBAC(t *testing.T) {
-	env := Full(t, WithRBAC(map[string]rbac.Role{
-		"admin":   rbac.RoleAdmin,
-		"service": rbac.RoleService,
-	}, "service"), WithPersistence())
-	require.NotNil(t, env.Kit)
-	assert.Equal(t, "sqlite", env.Config.Persistence)
 }
 
 func TestEnv_Full_WithTracing(t *testing.T) {

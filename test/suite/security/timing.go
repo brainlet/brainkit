@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -255,51 +254,7 @@ func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 
 // testTimingRoleChangeWhileHandlerRunning — RBAC role change while a handler is executing.
 func testTimingRoleChangeWhileHandlerRunning(t *testing.T, env *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Roles: map[string]rbac.Role{
-			"admin":    rbac.RoleAdmin,
-			"observer": rbac.RoleObserver,
-		},
-		DefaultRole: "admin",
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	ctx := context.Background()
-
-	require.NoError(t, secDeployWithRole(k, "role-change-sec.ts", `
-		bus.on("slow-op", async function(msg) {
-			var r1 = bus.publish("incoming.test-admin-sec", {phase: "before"});
-			await new Promise(r => setTimeout(r, 500));
-			try {
-				var r2 = bus.publish("incoming.test-after-sec", {phase: "after"});
-				msg.reply({both: true});
-			} catch(e) {
-				msg.reply({denied: true, error: e.code});
-			}
-		});
-	`, "admin"))
-
-	pr, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
-		Topic: "ts.role-change-sec.slow-op", Payload: json.RawMessage(`{}`),
-	})
-
-	time.Sleep(200 * time.Millisecond)
-	sdk.Publish(k, ctx, sdk.RBACAssignMsg{Source: "role-change-sec.ts", Role: "observer"})
-
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		t.Logf("Role-change-during-handler result: %s", string(p))
-	case <-time.After(3 * time.Second):
-		t.Log("timeout — handler may have deadlocked")
-	}
+	t.Skip("RBAC has been removed")
 }
 
 // testTimingScheduleUnscheduleRace — concurrent Schedule + Unschedule same ID.

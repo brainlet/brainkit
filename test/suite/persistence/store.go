@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
@@ -269,7 +268,6 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store,
-		Roles: map[string]rbac.Role{"admin": rbac.RoleAdmin},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -289,7 +287,6 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	deps, _ := store.LoadDeployments()
 	require.Len(t, deps, 1)
 	assert.Equal(t, "my-pkg", deps[0].PackageName, "packageName must survive redeploy")
-	assert.Equal(t, "admin", deps[0].Role, "role must survive redeploy")
 }
 
 func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
@@ -316,57 +313,7 @@ func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
 }
 
 func testRolePreservedAcrossRestart(t *testing.T, _ *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	storePath := filepath.Join(tmpDir, "role-restart.db")
-
-	roles := map[string]rbac.Role{
-		"admin": rbac.RoleAdmin,
-		"restricted": {
-			Name: "restricted",
-			Bus: rbac.BusPermissions{
-				Subscribe: rbac.TopicFilter{Allow: []string{"*.reply.*"}},
-			},
-			Commands: rbac.CommandPermissions{Allow: []string{"tools.list"}},
-		},
-	}
-
-	// Kernel 1: deploy with role
-	store1, err := brainkit.NewSQLiteStore(storePath)
-	require.NoError(t, err)
-	k1, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test",
-		Store: store1, Roles: roles, DefaultRole: "restricted",
-	})
-	require.NoError(t, err)
-
-	err = testutil.DeployWithOpts(k1, "admin-svc-persist.ts",
-		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
-		"admin", "",
-	)
-	require.NoError(t, err)
-	k1.Close()
-
-	// Kernel 2: same store — deployment should restore with role="admin"
-	store2, err := brainkit.NewSQLiteStore(storePath)
-	require.NoError(t, err)
-	k2, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test",
-		Store: store2, Roles: roles, DefaultRole: "restricted",
-	})
-	require.NoError(t, err)
-	defer k2.Close()
-
-	// Verify the deployment was restored
-	deployments := testutil.ListDeployments(t, k2)
-	require.Len(t, deployments, 1, "admin-svc-persist.ts should be restored")
-
-	// Verify the role was preserved by checking the stored deployment
-	deps, err := store2.LoadDeployments()
-	require.NoError(t, err)
-	require.Len(t, deps, 1)
-	assert.Equal(t, "admin", deps[0].Role, "role should be preserved across restart")
+	t.Skip("RBAC has been removed")
 }
 
 // ── Schedule persistence (from persistence_test.go) ─────────────────────

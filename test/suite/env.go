@@ -15,7 +15,6 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
@@ -36,8 +35,6 @@ type EnvConfig struct {
 	Storages       map[string]brainkit.StorageConfig
 	Vectors        map[string]brainkit.VectorConfig
 	Persistence    string // "none", "sqlite"
-	RBAC           map[string]rbac.Role
-	DefaultRole    string
 	FSRoot         bool
 	NodeCount      int // 0=kernel-only, 1=node, 2+=crosskit
 	Plugins        []brainkit.PluginConfig
@@ -54,13 +51,6 @@ type EnvConfig struct {
 
 // EnvOption modifies an EnvConfig before TestEnv creation.
 type EnvOption func(*EnvConfig)
-
-func WithRBAC(roles map[string]rbac.Role, defaultRole string) EnvOption {
-	return func(c *EnvConfig) {
-		c.RBAC = roles
-		c.DefaultRole = defaultRole
-	}
-}
 
 func WithPersistence() EnvOption {
 	return func(c *EnvConfig) { c.Persistence = "sqlite" }
@@ -201,7 +191,6 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		EnvVars:        envVars,
 		Storages:       cfg.Storages,
 		Vectors:        cfg.Vectors,
-		BusRateLimits:  cfg.BusRateLimits,
 		RetryPolicies:  cfg.RetryPolicies,
 		LogHandler:     cfg.LogHandler,
 		MaxConcurrency: cfg.MaxConcurrency,
@@ -221,12 +210,6 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	// Secret key
 	if cfg.SecretKey != "" {
 		kitCfg.SecretKey = cfg.SecretKey
-	}
-
-	// RBAC
-	if len(cfg.RBAC) > 0 {
-		kitCfg.Roles = cfg.RBAC
-		kitCfg.DefaultRole = cfg.DefaultRole
 	}
 
 	// Tracing
@@ -295,11 +278,6 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 // Deploy deploys .ts code via bus command and returns any error.
 func (e *TestEnv) Deploy(source, code string) error {
 	return testutil.DeployErr(e.Kit, source, code)
-}
-
-// DeployWithRole deploys with an RBAC role.
-func (e *TestEnv) DeployWithRole(source, code, role string) error {
-	return testutil.DeployWithOpts(e.Kit, source, code, role, "")
 }
 
 // EvalTS evaluates TypeScript code and returns the result string.

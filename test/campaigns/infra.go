@@ -13,7 +13,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,7 +26,6 @@ type infraConfig struct {
 	storages    map[string]string // backend name → placeholder (resolved at Env() time)
 	vectors     map[string]string // backend name → placeholder (resolved at Env() time)
 	persistence bool
-	rbac        bool
 	tracing     bool
 	ai          bool
 	mcp         bool
@@ -103,11 +101,6 @@ func Vector(backend string) InfraOption {
 // Persistence enables SQLite KitStore persistence.
 func Persistence() InfraOption {
 	return func(c *infraConfig) { c.persistence = true }
-}
-
-// RBAC enables RBAC with default test roles.
-func RBAC() InfraOption {
-	return func(c *infraConfig) { c.rbac = true }
 }
 
 // Tracing enables in-memory trace store.
@@ -232,9 +225,6 @@ func (inf *Infra) Env(t *testing.T, extra ...suite.EnvOption) *suite.TestEnv {
 	if inf.cfg.persistence {
 		opts = append(opts, suite.WithPersistence())
 	}
-	if inf.cfg.rbac {
-		opts = append(opts, suite.WithRBAC(defaultTestRoles(), "service"), suite.WithPersistence())
-	}
 	if inf.cfg.tracing {
 		opts = append(opts, suite.WithTracing())
 	}
@@ -272,16 +262,6 @@ func (inf *Infra) RunFixtures(t *testing.T, patterns ...string) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-// defaultTestRoles returns the standard RBAC role set used by campaign tests.
-func defaultTestRoles() map[string]rbac.Role {
-	return map[string]rbac.Role{
-		"admin":    rbac.RoleAdmin,
-		"service":  rbac.RoleService,
-		"gateway":  rbac.RoleGateway,
-		"observer": rbac.RoleObserver,
-	}
-}
 
 // fixturesRoot returns the absolute path to the fixtures/ directory.
 func fixturesRoot(t *testing.T) string {

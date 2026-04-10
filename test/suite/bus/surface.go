@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -43,10 +42,6 @@ func busCommandTable() []cmdTest {
 		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false, false},
 		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false, false},
 		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false, false},
-		{"rbac.assign", sdk.RBACAssignMsg{Source: "test.ts", Role: "admin"}, sdk.RBACAssignMsg{Source: "", Role: "admin"}, "VALIDATION_ERROR", true, false},
-		{"rbac.revoke", sdk.RBACRevokeMsg{Source: "test.ts"}, sdk.RBACRevokeMsg{}, "", true, false},
-		{"rbac.list", sdk.RBACListMsg{}, sdk.RBACListMsg{}, "", true, false},
-		{"rbac.roles", sdk.RBACRolesMsg{}, sdk.RBACRolesMsg{}, "", true, false},
 		{"packages.search", sdk.PackagesSearchMsg{Query: "test"}, sdk.PackagesSearchMsg{}, "", false, false},
 		{"packages.list", sdk.PackagesListMsg{}, sdk.PackagesListMsg{}, "", false, false},
 		{"packages.info", sdk.PackagesInfoMsg{Name: "ghost"}, sdk.PackagesInfoMsg{Name: ""}, "", false, false},
@@ -59,7 +54,6 @@ func busCommandTable() []cmdTest {
 // testBusMatrixValidInput — every command with valid input gets a response (no hang, no panic).
 func testBusMatrixValidInput(t *testing.T, _ *suite.TestEnv) {
 	tkEnv := suite.Full(t)
-	tkRBACEnv := suite.Full(t, suite.WithRBAC(map[string]rbac.Role{"admin": rbac.RoleAdmin}, "admin"), suite.WithPersistence())
 
 	for _, cmd := range busCommandTable() {
 		t.Run(cmd.topic, func(t *testing.T) {
@@ -67,12 +61,12 @@ func testBusMatrixValidInput(t *testing.T, _ *suite.TestEnv) {
 				t.Skip("node-only")
 				return
 			}
-			env := tkEnv
 			if cmd.rbacOnly {
-				env = tkRBACEnv
+				t.Skip("RBAC has been removed")
+				return
 			}
 
-			payload, ok := env.SendAndReceive(t, cmd.valid, 5*time.Second)
+			payload, ok := tkEnv.SendAndReceive(t, cmd.valid, 5*time.Second)
 			if !ok {
 				t.Fatalf("timeout — %s hung on valid input", cmd.topic)
 			}
@@ -84,7 +78,6 @@ func testBusMatrixValidInput(t *testing.T, _ *suite.TestEnv) {
 // testBusMatrixEmptyInput — every command with empty input returns clean error or empty success.
 func testBusMatrixEmptyInput(t *testing.T, _ *suite.TestEnv) {
 	tkEnv := suite.Full(t)
-	tkRBACEnv := suite.Full(t, suite.WithRBAC(map[string]rbac.Role{"admin": rbac.RoleAdmin}, "admin"), suite.WithPersistence())
 
 	for _, cmd := range busCommandTable() {
 		if cmd.errCode == "" {
@@ -95,12 +88,12 @@ func testBusMatrixEmptyInput(t *testing.T, _ *suite.TestEnv) {
 				t.Skip("node-only")
 				return
 			}
-			env := tkEnv
 			if cmd.rbacOnly {
-				env = tkRBACEnv
+				t.Skip("RBAC has been removed")
+				return
 			}
 
-			payload, ok := env.SendAndReceive(t, cmd.empty, 5*time.Second)
+			payload, ok := tkEnv.SendAndReceive(t, cmd.empty, 5*time.Second)
 			if !ok {
 				t.Fatalf("timeout — %s hung on empty input", cmd.topic)
 			}

@@ -248,7 +248,6 @@ func (n *Node) StartPlugin(ctx context.Context, cfg types.PluginConfig) error {
 			Config:     cfg.Config,
 			StartOrder: n.plugins.nextStartOrder(),
 			StartedAt:  time.Now(),
-			Role:       cfg.Role,
 		}
 		n.Kernel.config.Store.SaveRunningPlugin(record)
 	}
@@ -334,7 +333,6 @@ func (n *Node) restoreRunningPlugins() {
 			Binary: r.BinaryPath,
 			Env:    r.Env,
 			Config: r.Config,
-			Role:   r.Role,
 		}
 		pluginDefaults(&cfg)
 		if err := n.plugins.startPlugin(cfg, 0); err != nil {
@@ -342,9 +340,6 @@ func (n *Node) restoreRunningPlugins() {
 				Operation: "RestorePlugin", Source: r.Name, Cause: err,
 			}, types.ErrorContext{Operation: "RestorePlugin", Component: "node", Source: r.Name})
 			continue
-		}
-		if r.Role != "" && n.Kernel.rbac != nil {
-			n.Kernel.rbac.Assign(r.Name, r.Role)
 		}
 		restored++
 	}
@@ -356,16 +351,6 @@ func (n *Node) restoreRunningPlugins() {
 // --- Node-specific command handlers ---
 
 func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
-	// RBAC: validate manifest subscriptions against plugin's assigned role
-	if n.Kernel.rbac != nil {
-		role := n.Kernel.rbac.RoleForPlugin(manifest.Name)
-		for _, sub := range manifest.Subscriptions {
-			if !role.Bus.Subscribe.Allows(sub) {
-				return nil, fmt.Errorf("plugin %s: subscription to %q denied by role %s", manifest.Name, sub, role.Name)
-			}
-		}
-	}
-
 	for _, tool := range manifest.Tools {
 		tool := tool
 		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)

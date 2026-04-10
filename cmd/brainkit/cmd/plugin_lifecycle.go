@@ -11,13 +11,12 @@ func addPluginLifecycleCmds(parent *cobra.Command) {
 	var (
 		pluginStartBinary string
 		pluginStartEnv    []string
-		pluginStartRole   string
 	)
 
 	startCmd := &cobra.Command{
 		Use: "start <name>", Short: "Start an installed plugin", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			msg := sdk.PluginStartMsg{Name: args[0], Binary: pluginStartBinary, Role: pluginStartRole}
+			msg := sdk.PluginStartMsg{Name: args[0], Binary: pluginStartBinary}
 			if len(pluginStartEnv) > 0 {
 				msg.Env = make(map[string]string)
 				for _, kv := range pluginStartEnv {
@@ -34,7 +33,6 @@ func addPluginLifecycleCmds(parent *cobra.Command) {
 	}
 	startCmd.Flags().StringVar(&pluginStartBinary, "binary", "", "explicit binary path (overrides installed path)")
 	startCmd.Flags().StringArrayVar(&pluginStartEnv, "env", nil, "environment variables (KEY=VALUE, repeatable)")
-	startCmd.Flags().StringVar(&pluginStartRole, "role", "", "RBAC role assignment")
 
 	stopCmd := &cobra.Command{
 		Use: "stop <name>", Short: "Stop a running plugin", Args: cobra.ExactArgs(1),

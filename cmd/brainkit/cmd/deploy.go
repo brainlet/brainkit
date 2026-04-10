@@ -13,8 +13,6 @@ import (
 )
 
 func newDeployCmd() *cobra.Command {
-	var deployRole string
-
 	c := &cobra.Command{
 		Use:   "deploy <file-or-dir>",
 		Short: "Deploy a .ts file or package directory",
@@ -31,7 +29,6 @@ func newDeployCmd() *cobra.Command {
 			return deployFile(cmd, path)
 		},
 	}
-	c.Flags().StringVar(&deployRole, "role", "", "RBAC role for the deployment")
 	return c
 }
 

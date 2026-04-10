@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +21,7 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "ghost-role-sec.ts", Code: `output("hi");`,
-		Order: 1, Role: "nonexistent-role-xyz",
+		Order: 1,
 		DeployedAt: time.Now(),
 	})
 	store.Close()
@@ -32,7 +31,6 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2,
-		Roles: map[string]rbac.Role{"service": rbac.RoleService},
 	})
 	require.NoError(t, err)
 	defer k.Close()

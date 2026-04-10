@@ -111,18 +111,6 @@ func (r *Recorder) ToolCallDenied(toolName, callerRuntimeID, reason string) {
 
 // --- Security events ---
 
-func (r *Recorder) PermissionDenied(source, action, topic, role string) {
-	r.record("security", "bus.permission.denied", source, map[string]any{
-		"action": action, "topic": topic, "role": role,
-	}, 0, "permission denied")
-}
-
-func (r *Recorder) ReplyDenied(source, replyTo, correlationID, reason string) {
-	r.record("security", "bus.reply.denied", source, map[string]any{
-		"replyTo": replyTo, "correlationId": correlationID, "reason": reason,
-	}, 0, reason)
-}
-
 // --- Secret events ---
 
 func (r *Recorder) SecretSet(name, callerID string) {

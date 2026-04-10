@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -25,10 +24,6 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "exfil-test-key-32-characters!!",
-		Roles: map[string]rbac.Role{
-			"service": rbac.RoleService,
-		},
-		DefaultRole: "service",
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -108,10 +103,6 @@ func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "observer-test-key-32chars!!!!",
-		Roles: map[string]rbac.Role{
-			"observer": rbac.RoleObserver,
-		},
-		DefaultRole: "observer",
 	})
 	require.NoError(t, err)
 	defer k.Close()

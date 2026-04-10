@@ -17,8 +17,6 @@ func TestBrainkitError_Interface(t *testing.T) {
 		&sdkerrors.ValidationError{Field: "name", Message: "required"},
 		&sdkerrors.TimeoutError{Operation: "plugin READY"},
 		&sdkerrors.WorkspaceEscapeError{Path: "../etc/passwd"},
-		&sdkerrors.PermissionDeniedError{Source: "agent.ts", Action: "publish", Topic: "secrets.get", Role: "service"},
-		&sdkerrors.RateLimitedError{Role: "service", Limit: 100},
 		&sdkerrors.NotConfiguredError{Feature: "rbac"},
 		&sdkerrors.TransportError{Operation: "publish", Cause: fmt.Errorf("connection refused")},
 		&sdkerrors.PersistenceError{Operation: "SaveDeployment", Source: "agent.ts", Cause: fmt.Errorf("disk full")},
@@ -62,18 +60,6 @@ func TestBrainkitError_Unwrap(t *testing.T) {
 	assert.Equal(t, "publish", err.Details()["operation"])
 }
 
-func TestPermissionDeniedError_Details(t *testing.T) {
-	err := &sdkerrors.PermissionDeniedError{
-		Source: "agent.ts", Action: "publish", Topic: "secrets.get", Role: "service",
-	}
-	assert.Equal(t, "PERMISSION_DENIED", err.Code())
-	d := err.Details()
-	assert.Equal(t, "agent.ts", d["source"])
-	assert.Equal(t, "publish", d["action"])
-	assert.Equal(t, "secrets.get", d["topic"])
-	assert.Equal(t, "service", d["role"])
-}
-
 func TestDeployError_Details(t *testing.T) {
 	cause := fmt.Errorf("unexpected token")
 	err := &sdkerrors.DeployError{Source: "bot.ts", Phase: "transpile", Cause: cause}
@@ -100,13 +86,6 @@ func TestNotConfiguredError_Variants(t *testing.T) {
 		assert.Equal(t, f, err.Details()["feature"])
 		assert.Contains(t, err.Error(), f)
 	}
-}
-
-func TestRateLimitedError(t *testing.T) {
-	err := &sdkerrors.RateLimitedError{Role: "service", Limit: 100}
-	assert.Equal(t, "RATE_LIMITED", err.Code())
-	assert.Equal(t, "service", err.Details()["role"])
-	assert.Equal(t, float64(100), err.Details()["limit"])
 }
 
 func TestCycleDetectedError(t *testing.T) {

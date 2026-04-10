@@ -43,12 +43,6 @@ type WorkspaceEscapeError = sdkerrors.WorkspaceEscapeError
 // BrainkitError is the interface all brainkit errors implement.
 type BrainkitError = sdkerrors.BrainkitError
 
-// PermissionDeniedError is returned when RBAC denies an operation.
-type PermissionDeniedError = sdkerrors.PermissionDeniedError
-
-// RateLimitedError is returned when a rate limit is exceeded.
-type RateLimitedError = sdkerrors.RateLimitedError
-
 // NotConfiguredError is returned when a required feature is not configured.
 type NotConfiguredError = sdkerrors.NotConfiguredError
 
@@ -70,5 +64,3 @@ type CycleDetectedError = sdkerrors.CycleDetectedError
 // DecodeError is returned when a message payload can't be decoded.
 type DecodeError = sdkerrors.DecodeError
 
-// ReplyDeniedError is returned when a bus reply is rejected due to invalid/missing token.
-type ReplyDeniedError = sdkerrors.ReplyDeniedError

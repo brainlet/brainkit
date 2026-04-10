@@ -41,11 +41,9 @@ func (d *ToolsDomain) Call(ctx context.Context, req sdk.ToolCallMsg) (*sdk.ToolC
 		callerRuntimeID := transport.RuntimeIDFromContext(ctx)
 		if callerRuntimeID != "" && callerRuntimeID != d.runtimeID {
 			d.audit.ToolCallDenied(tool.Name, callerRuntimeID, "local-only tool called from remote runtime")
-			return nil, &sdkerrors.PermissionDeniedError{
-				Source: callerRuntimeID,
-				Action: "call",
-				Topic:  tool.Name,
-				Role:   "remote",
+			return nil, &sdkerrors.ValidationError{
+				Field:   "runtimeId",
+				Message: fmt.Sprintf("tool %q is local-only and cannot be called from remote runtime %s", tool.Name, callerRuntimeID),
 			}
 		}
 	}

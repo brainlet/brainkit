@@ -13,7 +13,6 @@ import (
 	js "github.com/brainlet/brainkit/internal/contract"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/jsbridge"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
@@ -29,7 +28,6 @@ type DeploymentManager struct {
 	bridge       *jsbridge.Bridge
 	agents       *agentembed.Sandbox
 	tracer       *tracing.Tracer
-	rbac         *rbac.Manager
 	store        types.KitStore
 	errorHandler    func(error, types.ErrorContext)
 	logger          *slog.Logger
@@ -48,7 +46,6 @@ type DeploymentManagerConfig struct {
 	Bridge          *jsbridge.Bridge
 	Agents          *agentembed.Sandbox
 	Tracer          *tracing.Tracer
-	RBAC            *rbac.Manager
 	Store           types.KitStore
 	ErrorHandler    func(error, types.ErrorContext)
 	Logger          *slog.Logger
@@ -64,7 +61,6 @@ func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
 		bridge:          cfg.Bridge,
 		agents:          cfg.Agents,
 		tracer:          cfg.Tracer,
-		rbac:            cfg.RBAC,
 		store:           cfg.Store,
 		errorHandler:    cfg.ErrorHandler,
 		logger:          cfg.Logger,
@@ -105,7 +101,6 @@ func (m *DeploymentManager) Deploy(ctx context.Context, source, code string, opt
 
 	var cfg types.DeployConfig
 	if existing != nil {
-		cfg.Role = existing.Role
 		cfg.PackageName = existing.PackageName
 	}
 	for _, opt := range opts {
@@ -115,10 +110,6 @@ func (m *DeploymentManager) Deploy(ctx context.Context, source, code string, opt
 
 	m.setCurrentSource(source)
 	defer m.setCurrentSource("")
-
-	if cfg.Role != "" && m.rbac != nil {
-		m.rbac.Assign(source, cfg.Role)
-	}
 
 	jsCode, err := m.transpileIfTS(source, code)
 	if err != nil {
@@ -285,7 +276,6 @@ func (m *DeploymentManager) persistDeployment(ctx context.Context, source, origi
 		Code:        originalCode,
 		Order:       order,
 		DeployedAt:  time.Now(),
-		Role:        cfg.Role,
 		PackageName: cfg.PackageName,
 	}); err != nil {
 		m.persistenceError(ctx, "SaveDeployment", source, err)

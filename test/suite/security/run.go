@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/testutil"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
@@ -159,13 +158,6 @@ func secRBACKernel(t *testing.T) *brainkit.Kit {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Roles: map[string]rbac.Role{
-			"admin":    rbac.RoleAdmin,
-			"service":  rbac.RoleService,
-			"gateway":  rbac.RoleGateway,
-			"observer": rbac.RoleObserver,
-		},
-		DefaultRole: "observer",
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.InMemoryStorage(),
 		},
@@ -192,12 +184,6 @@ func secReplyTokenKernel(t *testing.T) *brainkit.Kit {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Roles: map[string]rbac.Role{
-			"admin":    rbac.RoleAdmin,
-			"service":  rbac.RoleService,
-			"observer": rbac.RoleObserver,
-		},
-		DefaultRole: "service",
 	})
 	require.NoError(t, err)
 

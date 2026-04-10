@@ -41,12 +41,11 @@ func testKitStoreDeployments(t *testing.T, store types.KitStore) {
 	// Upsert
 	err = store.SaveDeployment(types.PersistedDeployment{
 		Source: "hello.ts", Code: "updated code", Order: 2,
-		DeployedAt: now, PackageName: "test", Role: "admin",
+		DeployedAt: now, PackageName: "test",
 	})
 	require.NoError(t, err)
 	dep, _ = store.LoadDeployment("hello.ts")
 	assert.Equal(t, "updated code", dep.Code)
-	assert.Equal(t, "admin", dep.Role)
 
 	// Delete
 	err = store.DeleteDeployment("hello.ts")

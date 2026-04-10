@@ -82,9 +82,9 @@ func DeployErr(rt sdk.Runtime, source, code string) error {
 	return DeployWithOpts(rt, source, code, "", "")
 }
 
-func DeployWithOpts(rt sdk.Runtime, source, code, role, packageName string) error {
+func DeployWithOpts(rt sdk.Runtime, source, code, _ /*role*/, packageName string) error {
 	payload, err := roundTrip(rt, sdk.KitDeployMsg{
-		Source: source, Code: code, Role: role, PackageName: packageName,
+		Source: source, Code: code, PackageName: packageName,
 	}, 15*time.Second)
 	if err != nil {
 		return err

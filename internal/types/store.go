@@ -50,7 +50,6 @@ type PersistedDeployment struct {
 	Code        string    `json:"code"`
 	Order       int       `json:"order"`
 	DeployedAt  time.Time `json:"deployedAt"`
-	Role        string    `json:"role,omitempty"`
 	PackageName string    `json:"packageName,omitempty"`
 }
 
@@ -169,15 +168,15 @@ func (s *SQLiteStore) Close() error {
 
 func (s *SQLiteStore) SaveDeployment(d PersistedDeployment) error {
 	_, err := s.DB.Exec(
-		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName, d.Role,
+		`INSERT OR REPLACE INTO deployments (source, code, deploy_order, deployed_at, package_name)
+		 VALUES (?, ?, ?, ?, ?)`,
+		d.Source, d.Code, d.Order, d.DeployedAt.Format(time.RFC3339), d.PackageName,
 	)
 	return err
 }
 
 func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
-	rows, err := s.DB.Query("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments ORDER BY deploy_order")
+	rows, err := s.DB.Query("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments ORDER BY deploy_order")
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +186,7 @@ func (s *SQLiteStore) LoadDeployments() ([]PersistedDeployment, error) {
 	for rows.Next() {
 		var d PersistedDeployment
 		var deployedAtStr string
-		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName, &d.Role); err != nil {
+		if err := rows.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName); err != nil {
 			return nil, err
 		}
 		d.DeployedAt, _ = time.Parse(time.RFC3339, deployedAtStr)
@@ -202,10 +201,10 @@ func (s *SQLiteStore) DeleteDeployment(source string) error {
 }
 
 func (s *SQLiteStore) LoadDeployment(source string) (PersistedDeployment, error) {
-	row := s.DB.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name, role FROM deployments WHERE source = ?", source)
+	row := s.DB.QueryRow("SELECT source, code, deploy_order, deployed_at, package_name FROM deployments WHERE source = ?", source)
 	var d PersistedDeployment
 	var deployedAtStr string
-	if err := row.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName, &d.Role); err != nil {
+	if err := row.Scan(&d.Source, &d.Code, &d.Order, &deployedAtStr, &d.PackageName); err != nil {
 		return d, err
 	}
 	d.DeployedAt, _ = time.Parse(time.RFC3339, deployedAtStr)
@@ -323,21 +322,17 @@ func (s *SQLiteStore) SaveRunningPlugin(p RunningPluginRecord) error {
 	if len(p.Config) > 0 {
 		configStr = string(p.Config)
 	}
-	role := p.Role
-	if role == "" {
-		role = "service"
-	}
 	_, err := s.DB.Exec(
-		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.Name, p.Owner, p.Version, p.BinaryPath, string(envJSON), configStr,
-		p.StartOrder, p.StartedAt.Format(time.RFC3339), role,
+		p.StartOrder, p.StartedAt.Format(time.RFC3339),
 	)
 	return err
 }
 
 func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
-	rows, err := s.DB.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at, role FROM running_plugins ORDER BY start_order")
+	rows, err := s.DB.Query("SELECT name, owner, version, binary_path, env, config, start_order, started_at FROM running_plugins ORDER BY start_order")
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +341,7 @@ func (s *SQLiteStore) LoadRunningPlugins() ([]RunningPluginRecord, error) {
 	for rows.Next() {
 		var p RunningPluginRecord
 		var envStr, configStr, startedAtStr string
-		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &envStr, &configStr, &p.StartOrder, &startedAtStr, &p.Role); err != nil {
+		if err := rows.Scan(&p.Name, &p.Owner, &p.Version, &p.BinaryPath, &envStr, &configStr, &p.StartOrder, &startedAtStr); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(envStr), &p.Env)

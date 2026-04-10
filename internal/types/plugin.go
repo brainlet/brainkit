@@ -16,7 +16,6 @@ type PluginConfig struct {
 	MaxRestarts     int               // max restarts before giving up (default: 5)
 	StartTimeout    time.Duration     // max time to wait for READY line (default: 10s)
 	ShutdownTimeout time.Duration     // max time to wait for graceful stop (default: 5s)
-	Role            string            // RBAC role (default: "service")
 }
 
 // RunningPlugin describes a running plugin process.
@@ -49,5 +48,4 @@ type RunningPluginRecord struct {
 	Config     json.RawMessage   `json:"config,omitempty"`
 	StartOrder int               `json:"startOrder"`
 	StartedAt  time.Time         `json:"startedAt"`
-	Role       string            `json:"role,omitempty"`
 }
