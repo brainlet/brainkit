@@ -59,6 +59,22 @@ func (d *Static) Browse() ([]Peer, error) {
 	return result, nil
 }
 
+func (d *Static) BrowseNamespaces() ([]string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	seen := make(map[string]bool)
+	for _, peer := range d.peers {
+		if peer.Namespace != "" {
+			seen[peer.Namespace] = true
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for ns := range seen {
+		result = append(result, ns)
+	}
+	return result, nil
+}
+
 func (d *Static) Register(self Peer) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
