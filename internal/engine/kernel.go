@@ -2,10 +2,6 @@ package engine
 
 import (
 	"context"
-	"crypto/hmac"
-	cryptorand "crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/brainlet/brainkit/internal/syncx"
@@ -24,15 +20,12 @@ import (
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/packages"
 	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/internal/rbac"
 	"github.com/brainlet/brainkit/internal/secrets"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
-	"golang.org/x/time/rate"
 )
 
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
@@ -46,7 +39,6 @@ type Kernel struct {
 	secretsDomain       *SecretsDomain
 	mcpDomain           *MCPDomain
 	registryDomain      *RegistryDomain
-	rbacAdminDomain     *RBACAdminDomain
 	tracingDomain       *TracingDomain
 	metricsDomain       *MetricsDomain
 	lifecycle           *LifecycleDomain
@@ -57,11 +49,8 @@ type Kernel struct {
 	packages        *packages.Manager
 	mcp             *mcppkg.MCPManager
 	providers       *provreg.ProviderRegistry
-	rbac            *rbac.Manager
-	tracer          *tracing.Tracer
-	busRateLimiters map[string]*rate.Limiter // role → limiter
-	replyHMACKey    []byte                   // 32-byte key for reply token HMAC; nil if RBAC not configured
-	streamTracker   *streamTracker           // heartbeat goroutine manager for active streams
+	tracer        *tracing.Tracer
+	streamTracker *streamTracker // heartbeat goroutine manager for active streams
 
 	// Internal Watermill transport — always present
 	transport     *transport.Transport
@@ -160,43 +149,6 @@ func (k *Kernel) nextDeployOrder() int {
 }
 
 // Scheduling is in kernel_scheduling.go
-
-// --- Reply Tokens ---
-
-// generateReplyToken creates an HMAC token for a specific reply context.
-// Returns "" if RBAC is not configured (no signing needed).
-func (k *Kernel) generateReplyToken(correlationID, replyTo, source string) string {
-	if k.replyHMACKey == nil {
-		return ""
-	}
-	mac := hmac.New(sha256.New, k.replyHMACKey)
-	mac.Write([]byte(correlationID + "\x00" + replyTo + "\x00" + source))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
-// validateReplyToken checks if a reply token is valid for the given context.
-// Returns nil if valid, error if invalid. Always valid if RBAC is not configured.
-func (k *Kernel) validateReplyToken(correlationID, replyTo, source, token string) error {
-	if k.replyHMACKey == nil {
-		return nil // no RBAC = no token enforcement
-	}
-	if token == "" {
-		return &sdkerrors.ReplyDeniedError{Source: source, ReplyTo: replyTo, CorrelationID: correlationID}
-	}
-	expected := k.generateReplyToken(correlationID, replyTo, source)
-	if !hmac.Equal([]byte(token), []byte(expected)) {
-		return &sdkerrors.ReplyDeniedError{Source: source, ReplyTo: replyTo, CorrelationID: correlationID}
-	}
-	return nil
-}
-
-// emitReplyDenied publishes the bus.reply.denied audit event.
-func (k *Kernel) emitReplyDenied(replyTo, correlationID, source, reason string) {
-	payload, _ := json.Marshal(sdk.ReplyDeniedEvent{
-		Source: source, Topic: replyTo, CorrelationID: correlationID, Reason: reason,
-	})
-	k.remote.PublishRaw(context.Background(), "bus.reply.denied", payload)
-}
 
 // Failure handling (retry, dead letter, error events) is in kernel_failure.go
 
@@ -336,28 +288,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	)
 	// SecretsDomain constructed later (needs kernel.remote for bus publishing)
 
-	// Initialize RBAC
-	if len(cfg.Roles) > 0 {
-		kernel.rbac = rbac.NewManager(cfg.Roles, cfg.DefaultRole)
-	}
-
-	// Generate reply token HMAC key when RBAC is active
-	if kernel.rbac != nil {
-		key := make([]byte, 32)
-		if _, err := cryptorand.Read(key); err != nil {
-			return fail(fmt.Errorf("brainkit: generate reply HMAC key: %w", err))
-		}
-		kernel.replyHMACKey = key
-	}
-
-	// Initialize bus rate limiters (per-role token buckets)
-	if len(cfg.BusRateLimits) > 0 {
-		kernel.busRateLimiters = make(map[string]*rate.Limiter, len(cfg.BusRateLimits))
-		for role, rps := range cfg.BusRateLimits {
-			kernel.busRateLimiters[role] = rate.NewLimiter(rate.Limit(rps), int(rps))
-		}
-	}
-
 	// Initialize tracer
 	sampleRate := cfg.TraceSampleRate
 	if sampleRate == 0 {
@@ -369,7 +299,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		Bridge:       kernel.bridge,
 		Agents:       kernel.agents,
 		Tracer:       kernel.tracer,
-		RBAC:         kernel.rbac,
 		Store:        cfg.Store,
 		ErrorHandler: cfg.ErrorHandler,
 		Logger:       logger,
@@ -408,7 +337,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.testingDomain = newTestingDomain(kernel, kernel)
 	kernel.registryDomain = newRegistryDomain(kernel.providers)
 	kernel.tracingDomain = newTracingDomain(cfg.TraceStore)
-	kernel.rbacAdminDomain = newRBACAdminDomain(kernel.rbac)
 	kernel.metricsDomain = newMetricsDomain(kernel)
 	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
 

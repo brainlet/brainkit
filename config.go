@@ -55,12 +55,6 @@ type Config struct {
 	// Most users leave this nil and set SecretKey instead.
 	SecretStore SecretStore
 
-	// Roles configures RBAC. Nil = no enforcement.
-	Roles map[string]Role
-
-	// DefaultRole is applied when a deployment has no explicit role. Default: "service".
-	DefaultRole string
-
 	// Tracing enables distributed tracing with an auto-created MemoryTraceStore.
 	Tracing bool
 
@@ -114,9 +108,6 @@ type Config struct {
 	// RetryPolicies maps topic glob patterns to retry configurations.
 	RetryPolicies map[string]RetryPolicy
 
-	// BusRateLimits maps RBAC role names to publish rate limits (req/s).
-	BusRateLimits map[string]float64
-
 	// Discovery configures cross-Kit peer discovery.
 	Discovery DiscoveryConfig
 
@@ -140,12 +131,10 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		EnvVars:            c.EnvVars,
 		SecretKey:          c.SecretKey,
 		SecretStore:        c.SecretStore,
-		DefaultRole:        c.DefaultRole,
 		TraceSampleRate:    c.TraceSampleRate,
 		MaxStackSize:       c.MaxStackSize,
 		MaxConcurrency:     c.MaxConcurrency,
 		RetryPolicies:      c.RetryPolicies,
-		BusRateLimits:      c.BusRateLimits,
 		PluginRegistries:   c.PluginRegistries,
 		PluginDir:          c.PluginDir,
 		Logger:             c.Logger,
@@ -162,11 +151,6 @@ func (c Config) toKernelConfig() types.KernelConfig {
 				Config: p.toConfig(),
 			}
 		}
-	}
-
-	// Convert Roles
-	if len(c.Roles) > 0 {
-		cfg.Roles = c.Roles
 	}
 
 	// TraceStore: explicit > Tracing flag > nil

@@ -36,10 +36,6 @@ type KernelConfig struct {
 	SecretStore SecretStore
 	SecretKey   string
 
-	// RBAC
-	Roles       map[string]Role
-	DefaultRole string
-
 	// Tracing
 	TraceStore      TraceStore
 	TraceSampleRate float64
@@ -58,7 +54,6 @@ type KernelConfig struct {
 	Transport          any // *transport.Transport — uses any to avoid import cycle
 	DeferRouterStart   bool
 	MaxConcurrency     int
-	BusRateLimits      map[string]float64
 	ProviderKeyMapping map[string]string
 	PluginRegistries   []RegistryConfig
 	PluginDir          string
