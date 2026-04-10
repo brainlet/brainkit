@@ -339,25 +339,6 @@ func commandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsRotateMsg) (*sdk.SecretsRotateResp, error) {
 				return kernel.secretsDomain.Rotate(ctx, req)
 			}),
-			// ── Package Manager ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesSearchMsg) (*sdk.PackagesSearchResp, error) {
-				return kernel.packagesDomain.Search(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesInstallMsg) (*sdk.PackagesInstallResp, error) {
-				return kernel.packagesDomain.Install(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesRemoveMsg) (*sdk.PackagesRemoveResp, error) {
-				return kernel.packagesDomain.Remove(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesUpdateMsg) (*sdk.PackagesUpdateResp, error) {
-				return kernel.packagesDomain.Update(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesListMsg) (*sdk.PackagesListResp, error) {
-				return kernel.packagesDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackagesInfoMsg) (*sdk.PackagesInfoResp, error) {
-				return kernel.packagesDomain.Info(ctx, req)
-			}),
 			// ── Package Deployment ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployMsg) (*sdk.PackageDeployResp, error) {
 				return kernel.packageDeployDomain.Deploy(ctx, req)

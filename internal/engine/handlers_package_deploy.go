@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/brainlet/brainkit/internal/packages"
+	"github.com/brainlet/brainkit/internal/deploy"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
@@ -15,7 +15,7 @@ import (
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
-// deployerAdapter adapts the engine.Deployer interface to packages.Deployer.
+// deployerAdapter adapts the engine.Deployer interface to deploy.Deployer.
 type deployerAdapter struct {
 	deployer    Deployer
 	packageName string
@@ -38,21 +38,19 @@ func (d *deployerAdapter) Teardown(ctx context.Context, source string) error {
 // PackageDeployDomain handles package.deploy/teardown/list/info bus commands.
 type PackageDeployDomain struct {
 	deployer             Deployer
-	packages             *packages.Manager
 	secretStore          secrets.SecretStore
-	pluginCheckerFactory func() packages.PluginChecker
+	pluginCheckerFactory func() deploy.PluginChecker
 
 	mu       syncx.Mutex
-	deployed map[string]*packages.Package
+	deployed map[string]*deploy.Package
 }
 
-func newPackageDeployDomain(deployer Deployer, pkgMgr *packages.Manager, secretStore secrets.SecretStore, pluginCheckerFactory func() packages.PluginChecker) *PackageDeployDomain {
+func newPackageDeployDomain(deployer Deployer, secretStore secrets.SecretStore, pluginCheckerFactory func() deploy.PluginChecker) *PackageDeployDomain {
 	return &PackageDeployDomain{
 		deployer:             deployer,
-		packages:             pkgMgr,
 		secretStore:          secretStore,
 		pluginCheckerFactory: pluginCheckerFactory,
-		deployed:             make(map[string]*packages.Package),
+		deployed:             make(map[string]*deploy.Package),
 	}
 }
 
@@ -90,12 +88,12 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req sdk.PackageDeployM
 
 	adapter := &deployerAdapter{deployer: d.deployer, packageName: pkgName}
 
-	var pluginChecker packages.PluginChecker
+	var pluginChecker deploy.PluginChecker
 	if d.pluginCheckerFactory != nil {
 		pluginChecker = d.pluginCheckerFactory()
 	}
 
-	pkg, err := packages.DeployPackage(ctx, adapter, req.Path, pluginChecker, d.newSecretChecker())
+	pkg, err := deploy.DeployPackage(ctx, adapter, req.Path, pluginChecker, d.newSecretChecker())
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +121,7 @@ func (d *PackageDeployDomain) Teardown(ctx context.Context, req sdk.PackageTeard
 	d.mu.Unlock()
 
 	adapter := &deployerAdapter{deployer: d.deployer}
-	packages.TeardownPackage(ctx, adapter, pkg)
+	deploy.TeardownPackage(ctx, adapter, pkg)
 
 	return &sdk.PackageTeardownResp{Removed: true}, nil
 }
@@ -158,7 +156,7 @@ func (d *PackageDeployDomain) Info(_ context.Context, req sdk.PackageDeployInfoM
 	}, nil
 }
 
-func (d *PackageDeployDomain) newSecretChecker() packages.SecretChecker {
+func (d *PackageDeployDomain) newSecretChecker() deploy.SecretChecker {
 	if d.secretStore == nil {
 		return nil
 	}
@@ -174,23 +172,9 @@ func (c *domainSecretChecker) HasSecret(name string) bool {
 	return err == nil && val != ""
 }
 
-// pluginCheckerImpl checks installed and running plugins.
+// pluginCheckerImpl checks running plugins.
 type pluginCheckerImpl struct {
-	packages *packages.Manager
-	node     *Node
-}
-
-func (c *pluginCheckerImpl) IsPluginInstalled(name string) bool {
-	installed, err := c.packages.ListInstalled()
-	if err != nil {
-		return false
-	}
-	for _, p := range installed {
-		if p.Name == name {
-			return true
-		}
-	}
-	return false
+	node *Node
 }
 
 func (c *pluginCheckerImpl) IsPluginRunning(name string) bool {
@@ -205,23 +189,10 @@ func (c *pluginCheckerImpl) IsPluginRunning(name string) bool {
 	return false
 }
 
-func (c *pluginCheckerImpl) InstalledVersion(name string) string {
-	installed, err := c.packages.ListInstalled()
-	if err != nil {
-		return ""
-	}
-	for _, p := range installed {
-		if p.Name == name {
-			return p.Version
-		}
-	}
-	return ""
-}
-
 // DeployFile deploys a single .ts file with import resolution via esbuild.
 func DeployFile(ctx context.Context, k *Kernel, filePath string) ([]types.ResourceInfo, error) {
 	deployer := &deployerAdapter{deployer: k}
-	pkg, err := packages.DeployFile(ctx, deployer, filePath)
+	pkg, err := deploy.DeployFile(ctx, deployer, filePath)
 	if err != nil {
 		return nil, err
 	}

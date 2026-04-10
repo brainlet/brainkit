@@ -42,9 +42,6 @@ func busCommandTable() []cmdTest {
 		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false, false},
 		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false, false},
 		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false, false},
-		{"packages.search", sdk.PackagesSearchMsg{Query: "test"}, sdk.PackagesSearchMsg{}, "", false, false},
-		{"packages.list", sdk.PackagesListMsg{}, sdk.PackagesListMsg{}, "", false, false},
-		{"packages.info", sdk.PackagesInfoMsg{Name: "ghost"}, sdk.PackagesInfoMsg{Name: ""}, "", false, false},
 		{"package.list", sdk.PackageListDeployedMsg{}, sdk.PackageListDeployedMsg{}, "", false, false},
 		{"package.info", sdk.PackageDeployInfoMsg{Name: "ghost"}, sdk.PackageDeployInfoMsg{Name: ""}, "", false, false},
 		{"package.teardown", sdk.PackageTeardownMsg{Name: "ghost"}, sdk.PackageTeardownMsg{Name: ""}, "", false, false},
@@ -123,7 +120,6 @@ func testBusMatrixGarbagePayload(t *testing.T, _ *suite.TestEnv) {
 		"secrets.set", "secrets.get", "secrets.delete", "secrets.list", "secrets.rotate",
 		"registry.has", "registry.list", "registry.resolve",
 		"metrics.get",
-		"packages.search", "packages.list", "packages.info",
 		"package.list", "package.info", "package.teardown",
 	}
 

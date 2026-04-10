@@ -110,12 +110,6 @@ type Config struct {
 
 	// Discovery configures cross-Kit peer discovery.
 	Discovery DiscoveryConfig
-
-	// PluginRegistries for packages.search/install. Default: official brainlet registry.
-	PluginRegistries []RegistryConfig
-
-	// PluginDir is the local cache for installed plugin binaries.
-	PluginDir string
 }
 
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
@@ -135,8 +129,6 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		MaxStackSize:       c.MaxStackSize,
 		MaxConcurrency:     c.MaxConcurrency,
 		RetryPolicies:      c.RetryPolicies,
-		PluginRegistries:   c.PluginRegistries,
-		PluginDir:          c.PluginDir,
 		Logger:             c.Logger,
 		LogHandler:         c.LogHandler,
 		AuditVerbose:       c.AuditVerbose,

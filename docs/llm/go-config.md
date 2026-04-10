@@ -33,8 +33,6 @@ type Config struct {
     ErrorHandler     func(error, ErrorContext)                 // nil = log.Printf
     MaxConcurrency   int                                       // concurrent bus handlers (0 = unlimited)
     BusRateLimits    map[string]float64                        // role → requests/sec
-    PluginRegistries []RegistryConfig                          // plugin registry sources
-    PluginDir        string                                    // local plugin cache
     // Transport fields (flattened from former MessagingConfig)
     Transport   string // "memory", "embedded" (default), "nats", "amqp", "redis"
     NATSURL     string

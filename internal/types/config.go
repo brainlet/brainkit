@@ -55,23 +55,8 @@ type KernelConfig struct {
 	DeferRouterStart   bool
 	MaxConcurrency     int
 	ProviderKeyMapping map[string]string
-	PluginRegistries   []RegistryConfig
-	PluginDir          string
 	AuditStore         audit.Store
 	AuditVerbose       bool // enable high-volume audit (bus command completions, metric snapshots)
-}
-
-// RegistryConfig configures a plugin registry source.
-type RegistryConfig struct {
-	Name      string
-	URL       string
-	AuthToken string
-}
-
-// DefaultRegistry is the official brainlet plugin registry.
-var DefaultRegistry = RegistryConfig{
-	Name: "official",
-	URL:  "https://raw.githubusercontent.com/brainlet/plugins-registry/main/v1",
 }
 
 // ObservabilityConfig configures the tracing/observability system.

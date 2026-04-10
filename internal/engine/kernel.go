@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -18,7 +16,7 @@ import (
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/libsql"
 	mcppkg "github.com/brainlet/brainkit/internal/mcp"
-	"github.com/brainlet/brainkit/internal/packages"
+	"github.com/brainlet/brainkit/internal/deploy"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/secrets"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
@@ -35,7 +33,6 @@ type Kernel struct {
 	// MetricsDomain is the exception (cross-cutting, reads from multiple subsystems).
 	toolsDomain         *ToolsDomain
 	agentsDomain        *AgentsDomain
-	packagesDomain      *PackagesDomain
 	secretsDomain       *SecretsDomain
 	mcpDomain           *MCPDomain
 	registryDomain      *RegistryDomain
@@ -46,7 +43,6 @@ type Kernel struct {
 	testingDomain       *TestingDomain
 
 	Tools           *toolreg.ToolRegistry
-	packages        *packages.Manager
 	mcp             *mcppkg.MCPManager
 	providers       *provreg.ProviderRegistry
 	tracer        *tracing.Tracer
@@ -248,42 +244,15 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		return fail(err)
 	}
 
-	// Initialize package manager
-	registries := cfg.PluginRegistries
-	if len(registries) == 0 {
-		registries = []types.RegistryConfig{types.DefaultRegistry}
-	}
-	pluginDir := cfg.PluginDir
-	if pluginDir == "" && cfg.FSRoot != "" {
-		pluginDir = filepath.Join(cfg.FSRoot, "plugins")
-	} else if pluginDir == "" {
-		pluginDir = filepath.Join(os.TempDir(), "brainkit-plugins")
-	}
-	var pkgStore packages.PluginStore
-	if cfg.Store != nil {
-		pkgStore = &kitStoreAdapter{store: cfg.Store}
-	}
-	regSources := make([]packages.RegistrySource, len(registries))
-	for i, r := range registries {
-		regSources[i] = packages.RegistrySource{Name: r.Name, URL: r.URL, AuthToken: r.AuthToken}
-	}
-	kernel.packages = packages.NewManager(
-		packages.NewRegistryClient(regSources),
-		pluginDir,
-		pkgStore,
-	)
-	kernel.packagesDomain = newPackagesDomain(kernel.packages)
-
 	// Initialize secret store
 	kernel.secretStore = resolveSecretStore(cfg, logger)
 
 	// pluginCheckerFactory closure captures kernel.node (set later by Node)
 	kernel.packageDeployDomain = newPackageDeployDomain(
 		kernel,
-		kernel.packages,
 		kernel.secretStore,
-		func() packages.PluginChecker {
-			return &pluginCheckerImpl{packages: kernel.packages, node: kernel.node}
+		func() deploy.PluginChecker {
+			return &pluginCheckerImpl{node: kernel.node}
 		},
 	)
 	// SecretsDomain constructed later (needs kernel.remote for bus publishing)

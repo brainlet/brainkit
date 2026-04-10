@@ -37,9 +37,6 @@ type DiscoveryConfig = types.DiscoveryConfig
 // PeerConfig configures a known peer for static discovery.
 type PeerConfig = types.PeerConfig
 
-// RegistryConfig configures a plugin registry source.
-type RegistryConfig = types.RegistryConfig
-
 // Package describes a deployment unit for DeployPackage.
 type Package struct {
 	Name    string            `json:"name"`
@@ -134,9 +131,6 @@ var (
 	ErrMCPNotConfigured = types.ErrMCPNotConfigured
 	ErrCommandTopic     = types.ErrCommandTopic
 )
-
-// DefaultRegistry is the official brainlet plugin registry.
-var DefaultRegistry = types.DefaultRegistry
 
 // ── Encoding helper ──────────────────────────────────────────────────────────
 

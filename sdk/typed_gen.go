@@ -307,66 +307,6 @@ func SubscribePackageTeardownResp(rt Runtime, ctx context.Context, topic string,
 	return SubscribeTo[PackageTeardownResp](rt, ctx, topic, handler)
 }
 
-// PublishPackagesInfo publishes a PackagesInfoMsg and returns routing info for the response.
-func PublishPackagesInfo(rt Runtime, ctx context.Context, msg PackagesInfoMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesInfoResp subscribes to the response topic for a PackagesInfoMsg command.
-func SubscribePackagesInfoResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesInfoResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesInfoResp](rt, ctx, topic, handler)
-}
-
-// PublishPackagesInstall publishes a PackagesInstallMsg and returns routing info for the response.
-func PublishPackagesInstall(rt Runtime, ctx context.Context, msg PackagesInstallMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesInstallResp subscribes to the response topic for a PackagesInstallMsg command.
-func SubscribePackagesInstallResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesInstallResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesInstallResp](rt, ctx, topic, handler)
-}
-
-// PublishPackagesList publishes a PackagesListMsg and returns routing info for the response.
-func PublishPackagesList(rt Runtime, ctx context.Context, msg PackagesListMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesListResp subscribes to the response topic for a PackagesListMsg command.
-func SubscribePackagesListResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesListResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesListResp](rt, ctx, topic, handler)
-}
-
-// PublishPackagesRemove publishes a PackagesRemoveMsg and returns routing info for the response.
-func PublishPackagesRemove(rt Runtime, ctx context.Context, msg PackagesRemoveMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesRemoveResp subscribes to the response topic for a PackagesRemoveMsg command.
-func SubscribePackagesRemoveResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesRemoveResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesRemoveResp](rt, ctx, topic, handler)
-}
-
-// PublishPackagesSearch publishes a PackagesSearchMsg and returns routing info for the response.
-func PublishPackagesSearch(rt Runtime, ctx context.Context, msg PackagesSearchMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesSearchResp subscribes to the response topic for a PackagesSearchMsg command.
-func SubscribePackagesSearchResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesSearchResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesSearchResp](rt, ctx, topic, handler)
-}
-
-// PublishPackagesUpdate publishes a PackagesUpdateMsg and returns routing info for the response.
-func PublishPackagesUpdate(rt Runtime, ctx context.Context, msg PackagesUpdateMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribePackagesUpdateResp subscribes to the response topic for a PackagesUpdateMsg command.
-func SubscribePackagesUpdateResp(rt Runtime, ctx context.Context, topic string, handler func(PackagesUpdateResp, Message)) (func(), error) {
-	return SubscribeTo[PackagesUpdateResp](rt, ctx, topic, handler)
-}
-
 // PublishPeersList publishes a PeersListMsg and returns routing info for the response.
 func PublishPeersList(rt Runtime, ctx context.Context, msg PeersListMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
