@@ -12,15 +12,6 @@ type Static struct {
 	peers map[string]Peer
 }
 
-// NewStatic creates a provider from a map of name→address (legacy).
-func NewStatic(peers map[string]string) *Static {
-	sd := &Static{peers: make(map[string]Peer)}
-	for name, addr := range peers {
-		sd.peers[name] = Peer{Name: name, Address: addr}
-	}
-	return sd
-}
-
 // NewStaticFromConfig creates a provider from PeerConfig entries.
 func NewStaticFromConfig(configs []PeerConfig) *Static {
 	sd := &Static{peers: make(map[string]Peer)}

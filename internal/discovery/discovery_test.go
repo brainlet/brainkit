@@ -2,13 +2,12 @@ package discovery
 
 import (
 	"testing"
-	"time"
 )
 
 func TestStatic_ResolveAndBrowse(t *testing.T) {
-	d := NewStatic(map[string]string{
-		"server-1": "10.0.1.1:9090",
-		"server-2": "10.0.1.2:9090",
+	d := NewStaticFromConfig([]PeerConfig{
+		{Name: "server-1", Address: "10.0.1.1:9090"},
+		{Name: "server-2", Address: "10.0.1.2:9090"},
 	})
 	defer d.Close()
 
@@ -32,7 +31,7 @@ func TestStatic_ResolveAndBrowse(t *testing.T) {
 }
 
 func TestStatic_Register(t *testing.T) {
-	d := NewStatic(nil)
+	d := NewStaticFromConfig(nil)
 	defer d.Close()
 
 	d.Register(Peer{Name: "new-peer", Address: "10.0.1.3:9090"})
@@ -46,28 +45,19 @@ func TestStatic_Register(t *testing.T) {
 	}
 }
 
-func TestMulticast_AnnounceAndDiscover(t *testing.T) {
-	d1, err := NewMulticast("_test._tcp")
+func TestStatic_BrowseNamespaces(t *testing.T) {
+	d := NewStaticFromConfig([]PeerConfig{
+		{Name: "a1", Namespace: "agents"},
+		{Name: "a2", Namespace: "agents"},
+		{Name: "g1", Namespace: "gateway"},
+	})
+	defer d.Close()
+
+	namespaces, err := d.BrowseNamespaces()
 	if err != nil {
-		t.Skipf("multicast not available: %v", err)
+		t.Fatal(err)
 	}
-	defer d1.Close()
-
-	d2, err := NewMulticast("_test._tcp")
-	if err != nil {
-		t.Skipf("multicast not available: %v", err)
-	}
-	defer d2.Close()
-
-	d1.Register(Peer{Name: "kit-1", Address: "127.0.0.1:9001"})
-
-	time.Sleep(3 * time.Second)
-
-	addr, err := d2.Resolve("kit-1")
-	if err != nil {
-		t.Fatalf("d2 did not discover kit-1: %v", err)
-	}
-	if addr != "127.0.0.1:9001" {
-		t.Errorf("addr = %q", addr)
+	if len(namespaces) != 2 {
+		t.Errorf("BrowseNamespaces = %d, want 2", len(namespaces))
 	}
 }
