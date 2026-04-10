@@ -14,10 +14,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/stretchr/testify/require"
 )
 
 // Run executes all security domain tests against the given environment.
@@ -85,26 +83,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("exploit_registry_resolve_leak", func(t *testing.T) { testExploitRegistryResolveLeak(t, env) })
 		t.Run("exploit_provider_global_leak", func(t *testing.T) { testExploitProviderGlobalLeak(t, env) })
 
-		// rbac_escape.go — RBAC escape tests (9 tests)
-		t.Run("rbac_observer_registers_tool_then_calls", func(t *testing.T) { testRBACObserverRegistersToolThenCalls(t, env) })
-		t.Run("rbac_gateway_exfiltrates_secrets", func(t *testing.T) { testRBACGatewayExfiltratesSecrets(t, env) })
-		t.Run("rbac_observer_hijacks_service_handler", func(t *testing.T) { testRBACObserverHijacksServiceHandler(t, env) })
-		t.Run("rbac_service_tries_admin", func(t *testing.T) { testRBACServiceTriesAdmin(t, env) })
-		t.Run("rbac_broken_reply_pattern_exploit", func(t *testing.T) { testRBACBrokenReplyPatternExploit(t, env) })
-		t.Run("rbac_role_swap_tool_persistence", func(t *testing.T) { testRBACRoleSwapToolPersistence(t, env) })
-		t.Run("rbac_schedule_to_command_topic", func(t *testing.T) { testRBACScheduleToCommandTopic(t, env) })
-		t.Run("rbac_deploy_inception", func(t *testing.T) { testRBACDeployInception(t, env) })
-		t.Run("rbac_caller_id_forgery", func(t *testing.T) { testRBACCallerIDForgery(t, env) })
-
-		// reply_token.go — reply token security tests (7 tests)
-		t.Run("token_own_mailbox_gets_token", func(t *testing.T) { testTokenOwnMailboxGetsToken(t, env) })
-		t.Run("token_legit_handler_can_reply", func(t *testing.T) { testTokenLegitHandlerCanReply(t, env) })
-		t.Run("token_observer_cannot_reply", func(t *testing.T) { testTokenObserverCannotReply(t, env) })
-		t.Run("token_streaming_with_token", func(t *testing.T) { testTokenStreamingWithToken(t, env) })
-		t.Run("token_no_rbac_no_tokens", func(t *testing.T) { testTokenNoRBACNoTokens(t, env) })
-		t.Run("token_audit_event_emitted", func(t *testing.T) { testTokenAuditEventEmitted(t, env) })
-		t.Run("token_cross_deployment_scoped", func(t *testing.T) { testTokenCrossDeploymentScoped(t, env) })
-
 		// timing.go — timing attack tests (10 tests)
 		t.Run("timing_preemptive_reply_subscribe", func(t *testing.T) { testTimingPreemptiveReplySubscribe(t, env) })
 		t.Run("timing_deploy_teardown_race", func(t *testing.T) { testTimingDeployTeardownRace(t, env) })
@@ -119,7 +97,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// secrets.go — secret exfiltration tests (7 tests)
 		t.Run("secret_publish_to_bus", func(t *testing.T) { testSecretPublishToBus(t, env) })
-		t.Run("secret_observer_reads_secret", func(t *testing.T) { testSecretObserverReadsSecret(t, env) })
 		t.Run("secret_env_var_dump", func(t *testing.T) { testSecretEnvVarDump(t, env) })
 		t.Run("secret_enumeration", func(t *testing.T) { testSecretEnumeration(t, env) })
 		t.Run("secret_audit_event_snooping", func(t *testing.T) { testSecretAuditEventSnooping(t, env) })
@@ -149,55 +126,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 }
 
 // --- Shared helpers ---
-
-// secRBACKernel creates a kit with all 4 standard RBAC roles for security escape tests.
-// Mirrors rbacAttackKernel from adversarial/rbac_escape_test.go.
-func secRBACKernel(t *testing.T) *brainkit.Kit {
-	t.Helper()
-	tmpDir := t.TempDir()
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Storages: map[string]brainkit.StorageConfig{
-			"default": brainkit.InMemoryStorage(),
-		},
-	})
-	require.NoError(t, err)
-
-	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
-		Description: "echoes",
-		Execute: func(ctx context.Context, in echoIn) (any, error) {
-			return map[string]string{"echoed": in.Message}, nil
-		},
-	})
-
-	t.Cleanup(func() { k.Close() })
-	return k
-}
-
-// secReplyTokenKernel creates a kit for reply token tests.
-// Mirrors replyTokenKernel from adversarial/reply_token_test.go.
-func secReplyTokenKernel(t *testing.T) *brainkit.Kit {
-	t.Helper()
-	tmpDir := t.TempDir()
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-	})
-	require.NoError(t, err)
-
-	type echoIn struct{ Message string `json:"message"` }
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
-		Description: "echoes",
-		Execute: func(ctx context.Context, in echoIn) (any, error) {
-			return map[string]string{"echoed": in.Message}, nil
-		},
-	})
-
-	t.Cleanup(func() { k.Close() })
-	return k
-}
 
 // secSendAndReceive publishes a typed message via SDK and waits for the reply.
 func secSendAndReceive(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {

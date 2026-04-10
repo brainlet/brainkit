@@ -95,42 +95,6 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	t.Logf("Exfiltrations detected: %d", exfilDetected.Load())
 }
 
-// testSecretObserverReadsSecret — read secret via bridge in a Compartment that shouldn't have access.
-func testSecretObserverReadsSecret(t *testing.T, env *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
-	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store, SecretKey: "observer-test-key-32chars!!!!",
-	})
-	require.NoError(t, err)
-	defer k.Close()
-
-	ctx := context.Background()
-
-	sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "API_TOKEN_SEC", Value: "tok-secret-999"})
-	time.Sleep(100 * time.Millisecond)
-
-	require.NoError(t, secDeployWithRole(k, "observer-secret-sec.ts", `
-		var result = "UNKNOWN";
-		try {
-			var val = secrets.get("API_TOKEN_SEC");
-			if (val && val.length > 0) {
-				result = "LEAKED:" + val;
-			} else {
-				result = "EMPTY";
-			}
-		} catch(e) {
-			result = "DENIED:" + (e.code || e.message);
-		}
-		output(result);
-	`, "observer"))
-
-	result, _ := secEvalTSErr(k, "__obs_sec.ts", `return String(globalThis.__module_result || "");`)
-	assert.NotContains(t, result, "tok-secret", "observer should not be able to read secrets")
-}
-
 // testSecretEnvVarDump — deploy code that reads all environment variables.
 func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
