@@ -121,9 +121,6 @@ func (r *commandRegistry) BindingsForNode(node *Node) []transport.RawCommandBind
 		if spec.invokeNode == nil && spec.invokeKernel == nil {
 			continue
 		}
-		if shouldSkipCommand(spec.topic, node.Kernel) {
-			continue
-		}
 		bindings = append(bindings, transport.RawCommandBinding{
 			Name:  spec.topic,
 			Topic: spec.topic,
@@ -518,14 +515,6 @@ func buildCommandCatalog() *commandRegistry {
 	}
 }
 
-// shouldSkipCommand returns true if the command topic targets an unconfigured domain.
-func shouldSkipCommand(topic string, kernel *Kernel) bool {
-	if strings.HasPrefix(topic, "trace.") && kernel.config.TraceStore == nil {
-		return true
-	}
-	return false
-}
-
 // commandBindingsForKernel generates router bindings for a standalone Kernel.
 // Kernel-only commands are bound; node-only and unconfigured-domain commands are skipped.
 func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
@@ -534,9 +523,6 @@ func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
 		spec := spec
 		if spec.invokeKernel == nil {
 			continue // node-only command
-		}
-		if shouldSkipCommand(spec.topic, kernel) {
-			continue // domain not configured
 		}
 		bindings = append(bindings, transport.RawCommandBinding{
 			Name:  spec.topic,

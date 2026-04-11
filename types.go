@@ -132,7 +132,6 @@ var (
 // ── Error types ──────────────────────────────────────────────────────────────
 
 var (
-	ErrMCPNotConfigured = types.ErrMCPNotConfigured
 	ErrCommandTopic     = types.ErrCommandTopic
 )
 
