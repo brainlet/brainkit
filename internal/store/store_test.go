@@ -20,7 +20,7 @@ func testKitStoreDeployments(t *testing.T, store types.KitStore) {
 	// Save
 	err := store.SaveDeployment(types.PersistedDeployment{
 		Source: "hello.ts", Code: "export default {}", Order: 1,
-		DeployedAt: now, PackageName: "test", Role: "service",
+		DeployedAt: now, PackageName: "test",
 	})
 	require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func testKitStorePlugins(t *testing.T, store types.KitStore) {
 	err = store.SaveRunningPlugin(types.RunningPluginRecord{
 		Name: "kv", BinaryPath: "/usr/bin/kv",
 		Env: map[string]string{"KEY": "val"}, Config: json.RawMessage(`{"port":8080}`),
-		StartOrder: 1, StartedAt: now, Role: "service",
+		StartOrder: 1, StartedAt: now,
 	})
 	require.NoError(t, err)
 

@@ -284,15 +284,15 @@ func TestAttackCrossKitPluginToolOnEmbeddedNATS(t *testing.T) {
 
 	select {
 	case resp := <-ch:
-		// Should get a PERMISSION_DENIED error response
+		// Should get a VALIDATION_ERROR response (runtimeId check rejects remote calls to local-only tools)
 		var result struct {
 			Error string `json:"error"`
 			Code  string `json:"code"`
 		}
 		json.Unmarshal(resp, &result)
-		assert.Equal(t, "PERMISSION_DENIED", result.Code, "remote call to local plugin tool must return PERMISSION_DENIED")
+		assert.Equal(t, "VALIDATION_ERROR", result.Code, "remote call to local plugin tool must return VALIDATION_ERROR")
 		t.Logf("Attack correctly blocked: %s", result.Error)
 	case <-ctx.Done():
-		t.Fatal("attack response not received — expected PERMISSION_DENIED error")
+		t.Fatal("attack response not received — expected VALIDATION_ERROR error")
 	}
 }
