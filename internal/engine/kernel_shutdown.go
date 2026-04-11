@@ -115,9 +115,6 @@ func (k *Kernel) close() error {
 	for i := len(k.modules) - 1; i >= 0; i-- {
 		collect(k.modules[i].Close())
 	}
-	if k.mcp != nil {
-		collect(k.mcp.Close())
-	}
 	if k.config.Store != nil {
 		collect(k.config.Store.Close())
 	}

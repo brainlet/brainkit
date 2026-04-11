@@ -43,7 +43,6 @@ type KernelConfig struct {
 	// Infrastructure
 	MaxStackSize       int
 	SharedTools        *tools.ToolRegistry
-	MCPServers         map[string]MCPServerConfig
 	Observability      ObservabilityConfig
 	Store              KitStore
 	Probe              ProbeConfig

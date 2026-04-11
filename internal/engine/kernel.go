@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"log/slog"
@@ -15,7 +14,6 @@ import (
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/libsql"
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
 	"github.com/brainlet/brainkit/internal/deploy"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/secrets"
@@ -23,7 +21,6 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
@@ -34,7 +31,6 @@ type Kernel struct {
 	toolsDomain         *ToolsDomain
 	agentsDomain        *AgentsDomain
 	secretsDomain       *SecretsDomain
-	mcpDomain           *MCPDomain
 	registryDomain      *RegistryDomain
 	tracingDomain       *TracingDomain
 	metricsDomain       *MetricsDomain
@@ -43,7 +39,6 @@ type Kernel struct {
 	testingDomain       *TestingDomain
 
 	Tools           *toolreg.ToolRegistry
-	mcp             *mcppkg.MCPManager
 	providers       *provreg.ProviderRegistry
 	tracer        *tracing.Tracer
 	streamTracker *streamTracker // heartbeat goroutine manager for active streams
@@ -335,40 +330,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 
 	// Initial probe — don't wait for first periodic tick
 	go kernel.ProbeAll()
-
-	if len(cfg.MCPServers) > 0 {
-		kernel.mcp = mcppkg.New()
-		kernel.mcpDomain = newMCPDomain(kernel.mcp)
-		for name, serverCfg := range cfg.MCPServers {
-			if err := kernel.mcp.Connect(context.Background(), name, serverCfg); err != nil {
-				types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.TransportError{
-					Operation: "MCP.Connect:" + name, Cause: err,
-				}, types.ErrorContext{Operation: "ConnectMCP", Component: "mcp", Source: name})
-				continue
-			}
-			for _, tool := range kernel.mcp.ListToolsForServer(name) {
-				toolCopy := tool
-				fullName := toolreg.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
-				_ = kernel.Tools.Register(toolreg.RegisteredTool{
-					Name:        fullName,
-					ShortName:   toolCopy.Name,
-					Owner:       "mcp",
-					Package:     toolCopy.ServerName,
-					Version:     "1.0.0",
-					Description: toolCopy.Description,
-					InputSchema: toolCopy.InputSchema,
-					Executor: &toolreg.GoFuncExecutor{
-						Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
-							return kernel.mcp.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
-						},
-					},
-				})
-			}
-		}
-	}
-	if kernel.mcpDomain == nil {
-		kernel.mcpDomain = newMCPDomain(nil) // nil-safe — returns types.ErrMCPNotConfigured
-	}
 
 	if err := kernel.initTransport(cfg); err != nil {
 		return fail(err)

@@ -269,13 +269,6 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitHealthMsg) (*sdk.KitHealthResp, error) {
 				return &sdk.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil
 			}),
-			// ── MCP ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
-				return kernel.mcpDomain.ListTools(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
-				return kernel.mcpDomain.CallTool(ctx, req)
-			}),
 			// ── Registry ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryHasMsg) (*sdk.RegistryHasResp, error) {
 				return kernel.registryDomain.Has(ctx, req)
@@ -527,9 +520,6 @@ func buildCommandCatalog() *commandRegistry {
 
 // shouldSkipCommand returns true if the command topic targets an unconfigured domain.
 func shouldSkipCommand(topic string, kernel *Kernel) bool {
-	if strings.HasPrefix(topic, "mcp.") && kernel.mcp == nil {
-		return true
-	}
 	if strings.HasPrefix(topic, "trace.") && kernel.config.TraceStore == nil {
 		return true
 	}

@@ -186,17 +186,28 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// Modules — pass through directly, engine.NewKernel asserts the interface
-	if len(c.Modules) > 0 {
-		cfg.Modules = make([]any, len(c.Modules))
-		for i, m := range c.Modules {
-			cfg.Modules[i] = m
+	// Auto-create MCP module from MCPServers config field (backward compat).
+	// Build a new slice — don't mutate c.Modules (value receiver, but slice backing array is shared).
+	modules := c.Modules
+	if len(c.MCPServers) > 0 {
+		hasMCP := false
+		for _, m := range modules {
+			if m.Name() == "mcp" {
+				hasMCP = true
+				break
+			}
+		}
+		if !hasMCP {
+			modules = append(modules, NewMCPModule(c.MCPServers))
 		}
 	}
 
-	// MCPServers
-	if len(c.MCPServers) > 0 {
-		cfg.MCPServers = c.MCPServers
+	// Modules — pass through directly, engine.NewKernel asserts the interface
+	if len(modules) > 0 {
+		cfg.Modules = make([]any, len(modules))
+		for i, m := range modules {
+			cfg.Modules[i] = m
+		}
 	}
 
 	return cfg
