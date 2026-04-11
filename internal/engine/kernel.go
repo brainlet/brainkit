@@ -91,6 +91,7 @@ type Kernel struct {
 	// Per-instance catalogs (built in NewKernel, before initTransport)
 	catalog *commandRegistry
 	events  *knownEventRegistry
+	modules []Module // initialized modules, closed in reverse order
 }
 
 type scheduleEntry struct {
@@ -316,6 +317,18 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	// Build per-instance catalogs
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
+
+	// Initialize modules — they push-register commands into the catalog
+	for _, raw := range cfg.Modules {
+		mod, ok := raw.(Module)
+		if !ok {
+			return fail(fmt.Errorf("brainkit: module %T does not implement engine.Module", raw))
+		}
+		if err := mod.Init(kernel); err != nil {
+			return fail(fmt.Errorf("brainkit: module %q init: %w", mod.Name(), err))
+		}
+		kernel.modules = append(kernel.modules, mod)
+	}
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()

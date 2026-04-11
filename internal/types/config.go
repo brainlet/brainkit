@@ -57,6 +57,7 @@ type KernelConfig struct {
 	ProviderKeyMapping map[string]string
 	AuditStore         audit.Store
 	AuditVerbose       bool // enable high-volume audit (bus command completions, metric snapshots)
+	Modules            []any // engine.Module — uses any to avoid import cycle
 }
 
 // ObservabilityConfig configures the tracing/observability system.

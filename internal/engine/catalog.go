@@ -564,3 +564,14 @@ func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
 func commandBindingsForNode(node *Node) []transport.RawCommandBinding {
 	return node.Kernel.catalog.BindingsForNode(node)
 }
+
+// RegisterCommand adds a command to the per-instance catalog.
+// Called by modules during Init to register their bus commands.
+// Panics on duplicate topic (same as core catalog construction).
+func (k *Kernel) RegisterCommand(spec commandSpec) {
+	if _, exists := k.catalog.byTopic[spec.topic]; exists {
+		panic(fmt.Sprintf("duplicate command topic registered: %s", spec.topic))
+	}
+	k.catalog.byTopic[spec.topic] = spec
+	k.catalog.ordered = append(k.catalog.ordered, spec)
+}

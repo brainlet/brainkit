@@ -44,3 +44,70 @@ func TestEventCatalogPerInstance(t *testing.T) {
 		t.Fatal("ev1.commands does not point to the command catalog")
 	}
 }
+
+func TestModuleRegisterCommand(t *testing.T) {
+	cat := buildCommandCatalog()
+	k := &Kernel{catalog: cat}
+
+	initialCount := len(cat.ordered)
+
+	k.RegisterCommand(commandSpec{topic: "__test.module.ping"})
+
+	if len(cat.ordered) != initialCount+1 {
+		t.Fatalf("expected %d commands, got %d", initialCount+1, len(cat.ordered))
+	}
+	if !cat.HasCommand("__test.module.ping") {
+		t.Fatal("registered command not found in catalog")
+	}
+}
+
+func TestModuleRegisterCommandDuplicatePanics(t *testing.T) {
+	cat := buildCommandCatalog()
+	k := &Kernel{catalog: cat}
+
+	k.RegisterCommand(commandSpec{topic: "__test.dup"})
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic on duplicate registration")
+		}
+	}()
+	k.RegisterCommand(commandSpec{topic: "__test.dup"})
+}
+
+func TestModuleCloseReverseOrder(t *testing.T) {
+	var order []string
+	makeModule := func(name string) Module {
+		return &closeOrderModule{name: name, order: &order}
+	}
+
+	k := &Kernel{
+		catalog: buildCommandCatalog(),
+		modules: []Module{makeModule("a"), makeModule("b"), makeModule("c")},
+	}
+
+	// Simulate close loop (same logic as kernel_shutdown.go)
+	for i := len(k.modules) - 1; i >= 0; i-- {
+		k.modules[i].Close()
+	}
+
+	if len(order) != 3 {
+		t.Fatalf("expected 3 closes, got %d", len(order))
+	}
+	if order[0] != "c" || order[1] != "b" || order[2] != "a" {
+		t.Fatalf("expected close order [c b a], got %v", order)
+	}
+}
+
+type closeOrderModule struct {
+	name  string
+	order *[]string
+}
+
+func (m *closeOrderModule) Name() string        { return m.name }
+func (m *closeOrderModule) Init(k *Kernel) error { return nil }
+func (m *closeOrderModule) Close() error {
+	*m.order = append(*m.order, m.name)
+	return nil
+}

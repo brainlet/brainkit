@@ -37,6 +37,10 @@ type DiscoveryConfig = types.DiscoveryConfig
 // PeerConfig configures a known peer for static discovery.
 type PeerConfig = types.PeerConfig
 
+// Module is an optional kernel subsystem that registers bus commands.
+// Modules receive the kernel at Init and use push registration.
+type Module = engine.Module
+
 // Package describes a deployment unit for DeployPackage.
 type Package struct {
 	Name    string            `json:"name"`

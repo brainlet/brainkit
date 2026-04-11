@@ -110,6 +110,10 @@ type Config struct {
 
 	// Discovery configures cross-Kit peer discovery.
 	Discovery DiscoveryConfig
+
+	// Modules are optional subsystems that extend the kernel with additional commands.
+	// See brainkit.NewMCPModule() for an example.
+	Modules []Module
 }
 
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
@@ -179,6 +183,14 @@ func (c Config) toKernelConfig() types.KernelConfig {
 	if c.ErrorHandler != nil {
 		cfg.ErrorHandler = func(err error, ctx types.ErrorContext) {
 			c.ErrorHandler(err)
+		}
+	}
+
+	// Modules — pass through directly, engine.NewKernel asserts the interface
+	if len(c.Modules) > 0 {
+		cfg.Modules = make([]any, len(c.Modules))
+		for i, m := range c.Modules {
+			cfg.Modules[i] = m
 		}
 	}
 
