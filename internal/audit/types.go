@@ -1,5 +1,5 @@
 // Package audit provides a centralized event log for operational events.
-// All subsystems (plugins, RBAC, secrets, deployments, bus, tools) record
+// All subsystems (plugins, secrets, deployments, bus, tools) record
 // events here. Events also fire on the bus for real-time subscribers, but
 // the audit log persists them for historical queries.
 package audit

@@ -109,45 +109,59 @@ func (q *Queries) DeleteSchedule(ctx context.Context, id string) error {
 }
 
 const loadDeployment = `-- name: LoadDeployment :one
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments WHERE source = $1
 `
 
-func (q *Queries) LoadDeployment(ctx context.Context, source string) (Deployment, error) {
+type LoadDeploymentRow struct {
+	Source      string
+	Code        string
+	DeployOrder int32
+	DeployedAt  time.Time
+	PackageName string
+}
+
+func (q *Queries) LoadDeployment(ctx context.Context, source string) (LoadDeploymentRow, error) {
 	row := q.db.QueryRowContext(ctx, loadDeployment, source)
-	var i Deployment
+	var i LoadDeploymentRow
 	err := row.Scan(
 		&i.Source,
 		&i.Code,
 		&i.DeployOrder,
 		&i.DeployedAt,
 		&i.PackageName,
-		&i.Role,
 	)
 	return i, err
 }
 
 const loadDeployments = `-- name: LoadDeployments :many
-SELECT source, code, deploy_order, deployed_at, package_name, role
+SELECT source, code, deploy_order, deployed_at, package_name
 FROM deployments ORDER BY deploy_order
 `
 
-func (q *Queries) LoadDeployments(ctx context.Context) ([]Deployment, error) {
+type LoadDeploymentsRow struct {
+	Source      string
+	Code        string
+	DeployOrder int32
+	DeployedAt  time.Time
+	PackageName string
+}
+
+func (q *Queries) LoadDeployments(ctx context.Context) ([]LoadDeploymentsRow, error) {
 	rows, err := q.db.QueryContext(ctx, loadDeployments)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Deployment{}
+	items := []LoadDeploymentsRow{}
 	for rows.Next() {
-		var i Deployment
+		var i LoadDeploymentsRow
 		if err := rows.Scan(
 			&i.Source,
 			&i.Code,
 			&i.DeployOrder,
 			&i.DeployedAt,
 			&i.PackageName,
-			&i.Role,
 		); err != nil {
 			return nil, err
 		}
@@ -198,19 +212,30 @@ func (q *Queries) LoadInstalledPlugins(ctx context.Context) ([]InstalledPlugin, 
 }
 
 const loadRunningPlugins = `-- name: LoadRunningPlugins :many
-SELECT name, owner, version, binary_path, env, config, start_order, started_at, role
+SELECT name, owner, version, binary_path, env, config, start_order, started_at
 FROM running_plugins ORDER BY start_order
 `
 
-func (q *Queries) LoadRunningPlugins(ctx context.Context) ([]RunningPlugin, error) {
+type LoadRunningPluginsRow struct {
+	Name       string
+	Owner      string
+	Version    string
+	BinaryPath string
+	Env        string
+	Config     string
+	StartOrder int32
+	StartedAt  time.Time
+}
+
+func (q *Queries) LoadRunningPlugins(ctx context.Context) ([]LoadRunningPluginsRow, error) {
 	rows, err := q.db.QueryContext(ctx, loadRunningPlugins)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RunningPlugin{}
+	items := []LoadRunningPluginsRow{}
 	for rows.Next() {
-		var i RunningPlugin
+		var i LoadRunningPluginsRow
 		if err := rows.Scan(
 			&i.Name,
 			&i.Owner,
@@ -220,7 +245,6 @@ func (q *Queries) LoadRunningPlugins(ctx context.Context) ([]RunningPlugin, erro
 			&i.Config,
 			&i.StartOrder,
 			&i.StartedAt,
-			&i.Role,
 		); err != nil {
 			return nil, err
 		}
@@ -535,14 +559,13 @@ func (q *Queries) RecordAuditEvent(ctx context.Context, arg RecordAuditEventPara
 
 const saveDeployment = `-- name: SaveDeployment :exec
 
-INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name, role)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO deployments (source, code, deploy_order, deployed_at, package_name)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (source) DO UPDATE SET
     code = EXCLUDED.code,
     deploy_order = EXCLUDED.deploy_order,
     deployed_at = EXCLUDED.deployed_at,
-    package_name = EXCLUDED.package_name,
-    role = EXCLUDED.role
+    package_name = EXCLUDED.package_name
 `
 
 type SaveDeploymentParams struct {
@@ -551,7 +574,6 @@ type SaveDeploymentParams struct {
 	DeployOrder int32
 	DeployedAt  time.Time
 	PackageName string
-	Role        string
 }
 
 // ── Deployments ──
@@ -562,7 +584,6 @@ func (q *Queries) SaveDeployment(ctx context.Context, arg SaveDeploymentParams) 
 		arg.DeployOrder,
 		arg.DeployedAt,
 		arg.PackageName,
-		arg.Role,
 	)
 	return err
 }
@@ -602,8 +623,8 @@ func (q *Queries) SaveInstalledPlugin(ctx context.Context, arg SaveInstalledPlug
 
 const saveRunningPlugin = `-- name: SaveRunningPlugin :exec
 
-INSERT INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (name) DO UPDATE SET
     owner = EXCLUDED.owner,
     version = EXCLUDED.version,
@@ -611,8 +632,7 @@ ON CONFLICT (name) DO UPDATE SET
     env = EXCLUDED.env,
     config = EXCLUDED.config,
     start_order = EXCLUDED.start_order,
-    started_at = EXCLUDED.started_at,
-    role = EXCLUDED.role
+    started_at = EXCLUDED.started_at
 `
 
 type SaveRunningPluginParams struct {
@@ -624,7 +644,6 @@ type SaveRunningPluginParams struct {
 	Config     string
 	StartOrder int32
 	StartedAt  time.Time
-	Role       string
 }
 
 // ── Running Plugins ──
@@ -638,7 +657,6 @@ func (q *Queries) SaveRunningPlugin(ctx context.Context, arg SaveRunningPluginPa
 		arg.Config,
 		arg.StartOrder,
 		arg.StartedAt,
-		arg.Role,
 	)
 	return err
 }

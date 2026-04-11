@@ -70,8 +70,8 @@ DELETE FROM installed_plugins WHERE name = $1;
 -- ── Running Plugins ──
 
 -- name: SaveRunningPlugin :exec
-INSERT INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (name) DO UPDATE SET
     owner = EXCLUDED.owner,
     version = EXCLUDED.version,
@@ -79,11 +79,10 @@ ON CONFLICT (name) DO UPDATE SET
     env = EXCLUDED.env,
     config = EXCLUDED.config,
     start_order = EXCLUDED.start_order,
-    started_at = EXCLUDED.started_at,
-    role = EXCLUDED.role;
+    started_at = EXCLUDED.started_at;
 
 -- name: LoadRunningPlugins :many
-SELECT name, owner, version, binary_path, env, config, start_order, started_at, role
+SELECT name, owner, version, binary_path, env, config, start_order, started_at
 FROM running_plugins ORDER BY start_order;
 
 -- name: DeleteRunningPlugin :exec

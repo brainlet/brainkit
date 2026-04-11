@@ -50,11 +50,11 @@ DELETE FROM installed_plugins WHERE name = ?;
 -- ── Running Plugins ──
 
 -- name: SaveRunningPlugin :exec
-INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at, role)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO running_plugins (name, owner, version, binary_path, env, config, start_order, started_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: LoadRunningPlugins :many
-SELECT name, owner, version, binary_path, env, config, start_order, started_at, role
+SELECT name, owner, version, binary_path, env, config, start_order, started_at
 FROM running_plugins ORDER BY start_order;
 
 -- name: DeleteRunningPlugin :exec

@@ -137,11 +137,6 @@ func testErrorContractErrorsAsAllTypes(t *testing.T, _ *suite.TestEnv) {
 	}
 }
 
-// testErrorContractJSBridgePermissionDenied — RBAC removed, test is a no-op.
-func testErrorContractJSBridgePermissionDenied(t *testing.T, _ *suite.TestEnv) {
-	t.Skip("RBAC has been removed")
-}
-
 // testErrorContractJSBridgeValidationErrorMissingArgs — JS bridge returns VALIDATION_ERROR for missing args.
 func testErrorContractJSBridgeValidationErrorMissingArgs(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
@@ -152,11 +147,6 @@ func testErrorContractJSBridgeValidationErrorMissingArgs(t *testing.T, _ *suite.
 		return caught;
 	`)
 	assert.Equal(t, "VALIDATION_ERROR", result)
-}
-
-// testErrorContractJSBridgeRateLimited — RBAC rate limits removed, test is a no-op.
-func testErrorContractJSBridgeRateLimited(t *testing.T, _ *suite.TestEnv) {
-	t.Skip("RBAC rate limits have been removed")
 }
 
 // testErrorContractJSBridgeNotConfiguredSecrets — JS bridge secrets.get returns empty for nonexistent keys.
