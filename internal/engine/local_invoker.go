@@ -15,7 +15,7 @@ func newLocalInvoker(kernel *Kernel) *LocalInvoker {
 }
 
 func (i *LocalInvoker) Invoke(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
-	spec, ok := commandCatalog().Lookup(topic)
+	spec, ok := i.kernel.catalog.Lookup(topic)
 	if !ok || spec.invokeKernel == nil {
 		return nil, fmt.Errorf("unknown topic: %s", topic)
 	}

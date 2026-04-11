@@ -87,6 +87,10 @@ type Kernel struct {
 
 	// Health
 	startedAt time.Time
+
+	// Per-instance catalogs (built in NewKernel, before initTransport)
+	catalog *commandRegistry
+	events  *knownEventRegistry
 }
 
 type scheduleEntry struct {
@@ -308,6 +312,10 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.tracingDomain = newTracingDomain(cfg.TraceStore)
 	kernel.metricsDomain = newMetricsDomain(kernel)
 	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
+
+	// Build per-instance catalogs
+	kernel.catalog = buildCommandCatalog()
+	kernel.events = buildEventCatalog(kernel.catalog)
 
 	// Start periodic probing if configured
 	kernel.startPeriodicProbing()

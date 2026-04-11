@@ -3,7 +3,6 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
@@ -15,11 +14,12 @@ type eventSpec struct {
 }
 
 type knownEventRegistry struct {
-	byTopic map[string]eventSpec
+	byTopic  map[string]eventSpec
+	commands *commandRegistry // for "is this a command topic?" check
 }
 
 func (r *knownEventRegistry) Validate(topic string, payload json.RawMessage) error {
-	if commandCatalog().HasCommand(topic) {
+	if r.commands.HasCommand(topic) {
 		return fmt.Errorf("%w: %s", types.ErrCommandTopic, topic)
 	}
 	spec, ok := r.byTopic[topic]
@@ -40,37 +40,29 @@ func eventOf[T sdk.BrainkitMessage]() eventSpec {
 	}
 }
 
-var (
-	eventCatalogOnce sync.Once
-	eventCatalogInst *knownEventRegistry
-)
-
-func eventCatalog() *knownEventRegistry {
-	eventCatalogOnce.Do(func() {
-		specs := []eventSpec{
-			eventOf[sdk.KitDeployedEvent](),
-			eventOf[sdk.KitTeardownedEvent](),
-			eventOf[sdk.PluginRegisteredEvent](),
-			eventOf[sdk.HandlerFailedEvent](),
-			eventOf[sdk.HandlerExhaustedEvent](),
-			eventOf[sdk.PluginStartedEvent](),
-			eventOf[sdk.PluginStoppedEvent](),
-			eventOf[sdk.SecretsAccessedEvent](),
-			eventOf[sdk.SecretsStoredEvent](),
-			eventOf[sdk.SecretsRotatedEvent](),
-			eventOf[sdk.SecretsDeletedEvent](),
+func buildEventCatalog(catalog *commandRegistry) *knownEventRegistry {
+	specs := []eventSpec{
+		eventOf[sdk.KitDeployedEvent](),
+		eventOf[sdk.KitTeardownedEvent](),
+		eventOf[sdk.PluginRegisteredEvent](),
+		eventOf[sdk.HandlerFailedEvent](),
+		eventOf[sdk.HandlerExhaustedEvent](),
+		eventOf[sdk.PluginStartedEvent](),
+		eventOf[sdk.PluginStoppedEvent](),
+		eventOf[sdk.SecretsAccessedEvent](),
+		eventOf[sdk.SecretsStoredEvent](),
+		eventOf[sdk.SecretsRotatedEvent](),
+		eventOf[sdk.SecretsDeletedEvent](),
+	}
+	byTopic := make(map[string]eventSpec, len(specs))
+	for _, spec := range specs {
+		if _, exists := byTopic[spec.topic]; exists {
+			panic(fmt.Sprintf("duplicate event topic registered: %s", spec.topic))
 		}
-		byTopic := make(map[string]eventSpec, len(specs))
-		for _, spec := range specs {
-			if _, exists := byTopic[spec.topic]; exists {
-				panic(fmt.Sprintf("duplicate event topic registered: %s", spec.topic))
-			}
-			if commandCatalog().HasCommand(spec.topic) {
-				panic(fmt.Sprintf("event topic collides with command topic: %s", spec.topic))
-			}
-			byTopic[spec.topic] = spec
+		if catalog.HasCommand(spec.topic) {
+			panic(fmt.Sprintf("event topic collides with command topic: %s", spec.topic))
 		}
-		eventCatalogInst = &knownEventRegistry{byTopic: byTopic}
-	})
-	return eventCatalogInst
+		byTopic[spec.topic] = spec
+	}
+	return &knownEventRegistry{byTopic: byTopic, commands: catalog}
 }

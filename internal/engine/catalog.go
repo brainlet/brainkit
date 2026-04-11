@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
@@ -139,14 +138,8 @@ func (r *commandRegistry) BindingsForNode(node *Node) []transport.RawCommandBind
 	return bindings
 }
 
-var (
-	commandCatalogOnce sync.Once
-	commandCatalogInst *commandRegistry
-)
-
-func commandCatalog() *commandRegistry {
-	commandCatalogOnce.Do(func() {
-		specs := []commandSpec{
+func buildCommandCatalog() *commandRegistry {
+	specs := []commandSpec{
 			// ── Tools ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
 				return kernel.toolsDomain.Call(ctx, req)
@@ -526,12 +519,10 @@ func commandCatalog() *commandRegistry {
 			byTopic[spec.topic] = spec
 		}
 
-		commandCatalogInst = &commandRegistry{
-			ordered: specs,
-			byTopic: byTopic,
-		}
-	})
-	return commandCatalogInst
+	return &commandRegistry{
+		ordered: specs,
+		byTopic: byTopic,
+	}
 }
 
 // shouldSkipCommand returns true if the command topic targets an unconfigured domain.
@@ -548,9 +539,8 @@ func shouldSkipCommand(topic string, kernel *Kernel) bool {
 // commandBindingsForKernel generates router bindings for a standalone Kernel.
 // Kernel-only commands are bound; node-only and unconfigured-domain commands are skipped.
 func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
-	catalog := commandCatalog()
-	bindings := make([]transport.RawCommandBinding, 0, len(catalog.ordered))
-	for _, spec := range catalog.ordered {
+	bindings := make([]transport.RawCommandBinding, 0, len(kernel.catalog.ordered))
+	for _, spec := range kernel.catalog.ordered {
 		spec := spec
 		if spec.invokeKernel == nil {
 			continue // node-only command
@@ -572,5 +562,5 @@ func commandBindingsForKernel(kernel *Kernel) []transport.RawCommandBinding {
 // commandBindingsForNode generates router bindings for a Node.
 // Includes both kernel commands (delegated to node.Kernel) and node-specific commands.
 func commandBindingsForNode(node *Node) []transport.RawCommandBinding {
-	return commandCatalog().BindingsForNode(node)
+	return node.Kernel.catalog.BindingsForNode(node)
 }

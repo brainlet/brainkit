@@ -92,7 +92,7 @@ func (k *Kernel) removeSchedule(id string) {
 // Schedule creates a new scheduled bus message.
 func (k *Kernel) Schedule(ctx context.Context, cfg types.ScheduleConfig) (string, error) {
 	// Block scheduling to command topics — commands require request/response routing.
-	if commandCatalog().HasCommand(cfg.Topic) {
+	if k.catalog.HasCommand(cfg.Topic) {
 		return "", &sdkerrors.ValidationError{Field: "topic", Message: cfg.Topic + " is a command topic; schedules cannot target commands"}
 	}
 

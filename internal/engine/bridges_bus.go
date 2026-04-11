@@ -31,11 +31,11 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			}
 			payload := json.RawMessage(args[1].String())
 
-			if commandCatalog().HasCommand(topic) {
+			if k.catalog.HasCommand(topic) {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
 			}
 
-			if err := eventCatalog().Validate(topic, payload); err != nil {
+			if err := k.events.Validate(topic, payload); err != nil {
 				return k.throwBrainkitError(qctx, err)
 			}
 			if err := k.publish(context.Background(), topic, payload); err != nil {
@@ -91,7 +91,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			payload := json.RawMessage(args[1].String())
 
 			// Block command topics — same check as bus_send (fixes bug #8)
-			if commandCatalog().HasCommand(topic) {
+			if k.catalog.HasCommand(topic) {
 				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: topic + " is a command topic; use bridgeRequest for commands"})
 			}
 
