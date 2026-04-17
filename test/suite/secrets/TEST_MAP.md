@@ -3,7 +3,7 @@
 **Purpose:** Verifies the encrypted secrets store: CRUD operations, rotation, JS bridge access, audit events, concurrent access, dev mode, persistence with encryption, and input abuse resilience.
 **Tests:** 22 functions across 5 files
 **Entry point:** `secrets_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite)
 
 ## Files
 
@@ -57,6 +57,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/nats_postgres_rbac_test.go
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go
 - **Related domains:** persistence (encrypted secret persistence), security (secret exfiltration tests)
 - **Fixtures:** secrets-related TS fixtures

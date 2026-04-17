@@ -3,7 +3,7 @@
 **Purpose:** Verifies that deployments, schedules, metadata, and secrets survive kernel restarts via SQLite store, including corrupt store recovery.
 **Tests:** 20 functions across 4 files
 **Entry point:** `persistence_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite)
 
 ## Files
 
@@ -45,6 +45,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/nats_postgres_rbac_test.go
-- **Related domains:** secrets (encrypted persistence), scheduling (schedule persistence), rbac (role persistence)
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go
+- **Related domains:** secrets (encrypted persistence), scheduling (schedule persistence)
 - **Fixtures:** persistence-related TS fixtures

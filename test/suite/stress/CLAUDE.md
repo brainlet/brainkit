@@ -6,6 +6,6 @@ Most tests check testing.Short() and skip in short mode. Tests that close kernel
 
 ## Adding a test
 
-1. Add function to the right .go file (gc.go for cleanup, scaling.go for pool, concurrent.go for parallel ops, concurrency.go for race conditions, concurrency_stress.go for heavy load, exhaustion.go for resource attacks, e2e_stress.go for E2E)
+1. Add function to the right .go file (gc.go for cleanup, concurrent.go for parallel ops, concurrency.go for race conditions, concurrency_stress.go for heavy load, exhaustion.go for resource attacks, e2e_stress.go for E2E)
 2. Register in run.go
 3. Update TEST_MAP.md

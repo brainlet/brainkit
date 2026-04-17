@@ -3,7 +3,7 @@
 **Purpose:** Verifies the Mastra workflow engine: sequential/parallel execution, suspend/resume, cancel, tool calls inside steps, bus events from steps, conditional branching, step state, storage persistence, crash recovery, concurrent starts, and long-running integration.
 **Tests:** 24 functions across 4 files
 **Entry point:** `workflows_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac, amqp_postgres_vector, redis_mongodb)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (amqp_postgres_vector, redis_mongodb)
 
 ## Files
 
@@ -53,6 +53,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{nats_postgres_rbac,amqp_postgres_vector,redis_mongodb}_test.go
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{amqp_postgres_vector,redis_mongodb}_test.go
 - **Related domains:** tools (tools.call inside workflows), persistence (workflow state persistence), bus (bus.emit from steps)
 - **Fixtures:** workflow TS fixtures

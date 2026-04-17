@@ -124,9 +124,9 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	testutil.Deploy(t, k1, "first-matrix.ts", `output("first");`)
-	err = testutil.DeployWithOpts(k1, "second-matrix.ts", `output("second");`, "admin", "")
+	err = testutil.DeployWithOpts(k1, "second-matrix.ts", `output("second");`, "")
 	require.NoError(t, err)
-	err = testutil.DeployWithOpts(k1, "third-matrix.ts", `output("third");`, "", "my-pkg")
+	err = testutil.DeployWithOpts(k1, "third-matrix.ts", `output("third");`, "my-pkg")
 	require.NoError(t, err)
 	k1.Close()
 

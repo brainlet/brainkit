@@ -264,7 +264,8 @@ func buildCommandCatalog() *commandRegistry {
 			}),
 			// ── Health (bus) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitHealthMsg) (*sdk.KitHealthResp, error) {
-				return &sdk.KitHealthResp{Health: kernel.HealthJSON(ctx)}, nil
+				data, _ := json.Marshal(kernel.Health(ctx))
+				return &sdk.KitHealthResp{Health: data}, nil
 			}),
 			// ── Registry ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryHasMsg) (*sdk.RegistryHasResp, error) {

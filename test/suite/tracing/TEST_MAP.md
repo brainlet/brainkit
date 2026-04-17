@@ -3,7 +3,7 @@
 **Purpose:** Verifies distributed tracing: span creation for commands, handlers, tool calls, and deploys; bus-based trace queries; sample rate control; trace context propagation; and no-op behavior without a trace store.
 **Tests:** 10 functions across 1 file
 **Entry point:** `tracing_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite)
 
 ## Files
 
@@ -24,6 +24,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/nats_postgres_rbac_test.go
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go
 - **Related domains:** tools (tool call tracing), deploy (deploy tracing)
 - **Fixtures:** none (tracing tests are Go-driven)

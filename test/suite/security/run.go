@@ -91,7 +91,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("timing_tool_call_during_deploy", func(t *testing.T) { testTimingToolCallDuringDeploy(t, env) })
 		t.Run("timing_schedule_fires_before_handler_ready", func(t *testing.T) { testTimingScheduleFiresBeforeHandlerReady(t, env) })
 		t.Run("timing_close_while_tool_call_in_progress", func(t *testing.T) { testTimingCloseWhileToolCallInProgress(t, env) })
-		t.Run("timing_role_change_while_handler_running", func(t *testing.T) { testTimingRoleChangeWhileHandlerRunning(t, env) })
 		t.Run("timing_schedule_unschedule_race", func(t *testing.T) { testTimingScheduleUnscheduleRace(t, env) })
 		t.Run("timing_storage_race_with_deploy", func(t *testing.T) { testTimingStorageRaceWithDeploy(t, env) })
 
@@ -166,11 +165,6 @@ func secDeploy(t *testing.T, k *brainkit.Kit, source, code string) {
 // secDeployErr deploys .ts code and returns any error.
 func secDeployErr(k *brainkit.Kit, source, code string) error {
 	return testutil.DeployErr(k, source, code)
-}
-
-// secDeployWithRole deploys .ts code with an RBAC role.
-func secDeployWithRole(k *brainkit.Kit, source, code, role string) error {
-	return testutil.DeployWithOpts(k, source, code, role, "")
 }
 
 // secEvalTS evaluates TS code and returns the result string.

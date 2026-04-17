@@ -135,11 +135,6 @@ func (k *Kit) Ready(ctx context.Context) bool {
 	return k.kernel.Ready(ctx)
 }
 
-// HealthJSON returns the full health status as JSON.
-func (k *Kit) HealthJSON(ctx context.Context) json.RawMessage {
-	return k.kernel.HealthJSON(ctx)
-}
-
 // IsDraining returns true during the drain phase.
 func (k *Kit) IsDraining() bool {
 	return k.kernel.IsDraining()

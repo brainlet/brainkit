@@ -90,6 +90,13 @@ type KernelMetrics struct {
 	Bus *MetricsSnapshot `json:"bus,omitempty"`
 }
 
+// MetricsSnapshot is a point-in-time copy of bus metrics data.
+type MetricsSnapshot struct {
+	Published map[string]int `json:"published"`
+	Handled   map[string]int `json:"handled"`
+	Errors    map[string]int `json:"errors"`
+}
+
 // PluginMetrics describes a single plugin's runtime state.
 type PluginMetrics struct {
 	Name       string        `json:"name"`

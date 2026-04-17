@@ -257,7 +257,6 @@ func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
 			"tools.call", "tools.list", "tools.resolve",
 			"secrets.set", "secrets.get", "secrets.delete",
 			"kit.deploy", "kit.teardown",
-			"rbac.assign", "rbac.revoke",
 			"wasm.compile", "wasm.run",
 		];
 

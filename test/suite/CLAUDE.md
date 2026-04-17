@@ -30,7 +30,7 @@ Deploy source names collide when shared kernel is used. Convention:
 ```
 <descriptive-name>-<domain-suffix>.ts
 ```
-Examples: `greeter-rbac.ts`, `thrower-sec.ts`, `slow-handler-stress.ts`
+Examples: `greeter-pers.ts`, `thrower-sec.ts`, `slow-handler-stress.ts`
 
 ### When to use env.Kernel (shared) vs suite.Full(t) (fresh)
 
@@ -42,13 +42,12 @@ Examples: `greeter-rbac.ts`, `thrower-sec.ts`, `slow-handler-stress.ts`
 - Asserting exact ListDeployments/ListSchedules counts
 - Subscribing to global events (bus.handler.failed, bus.permission.denied)
 - Closing/restarting kernel (persistence tests)
-- Needing specific RBAC/persistence/tracing configs
+- Needing specific tracing configs
 - Tests where another test's deploy could interfere
 
 ### TestEnv options
 ```go
 suite.Full(t)                                    // storage + vectors + AI + FS + tools
-suite.Full(t, suite.WithRBAC(roles, "service"))  // + RBAC
 suite.Full(t, suite.WithPersistence())           // + SQLite store
 suite.Full(t, suite.WithTracing())               // + trace store
 suite.Full(t, suite.WithSecretKey("key"))        // + encrypted secrets
@@ -73,4 +72,4 @@ suite.Minimal(t)                                 // bare kernel, nothing
 4. If transport-sensitive, add to all `test/campaigns/transport/*_test.go` files
 
 ## 20 domains
-agents, bus, cli, cross, deploy, fs, gateway, health, mcp, packages, persistence, rbac, registry, scheduling, secrets, security, stress, tools, tracing, workflows
+agents, bus, cli, cross, deploy, fs, gateway, health, mcp, packages, persistence, registry, scheduling, secrets, security, stress, tools, tracing, workflows

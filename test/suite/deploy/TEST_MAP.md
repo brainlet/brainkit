@@ -64,7 +64,6 @@
 | testStateCorruptionEmptyCode | Persists deployment with empty code, restarts, verifies kernel starts without panic |
 | testStateCorruptionZeroDurationSchedule | Persists schedule with 0s duration, restarts, verifies kernel stays alive |
 | testStateCorruptionPastScheduleFires | Persists schedule with NextFire in the past, restarts, subscribes to topic, expects it fires soon |
-| testStateCorruptionNonexistentRoleOnDeploy | Persists deployment with nonexistent RBAC role, restarts, verifies kernel starts |
 
 ### e2e.go — Deploy lifecycle E2E scenarios
 
@@ -90,6 +89,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector}_test.go`
 - **Related domains:** bus (deploy+bus.on flow), agents (agent registration), tools (tool registration), packages (multi-file deploy)
 - **Fixtures:** none

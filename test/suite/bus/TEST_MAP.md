@@ -54,7 +54,6 @@
 
 | Function | Purpose |
 |----------|---------|
-| testBusRateLimitExceeds | Creates kernel with RBAC + rate limit of 2/s, deploys .ts that publishes 5 times in a loop, verifies at least 1 succeeds and at least 1 is rate-limited |
 
 ### pump.go — Pump scheduling latency
 
@@ -150,11 +149,9 @@
 |----------|---------|
 | testErrorContractBusNotFound | Calls nonexistent tool, asserts code="NOT_FOUND" with details.name |
 | testErrorContractBusValidationError | Publishes SecretsSetMsg with empty name, asserts code="VALIDATION_ERROR" |
-| testErrorContractBusNotConfiguredRBAC | Publishes RBACAssignMsg with empty source on RBAC kernel, asserts code="VALIDATION_ERROR" |
 | testErrorContractBusAlreadyExists | Deploys then deploys again same source, asserts code="ALREADY_EXISTS" |
 | testErrorContractBusDeployErrorBadSyntax | Deploys invalid TS syntax, asserts code="DEPLOY_ERROR" with details.source |
 | testErrorContractErrorsAsAllTypes | Wraps every BrainkitError type twice, asserts errors.As finds it and Code() matches |
-| testErrorContractJSBridgePermissionDenied | Deploys .ts with restricted RBAC role, calls bus.publish, asserts JS catches PERMISSION_DENIED code |
 | testErrorContractJSBridgeValidationErrorMissingArgs | Calls __go_brainkit_bus_schedule with missing args from JS, asserts VALIDATION_ERROR code |
 | testErrorContractJSBridgeRateLimited | Creates kernel with 1 req/s rate limit, deploys .ts that publishes 10 times, asserts RATE_LIMITED code appears |
 | testErrorContractJSBridgeNotConfiguredSecrets | Calls secrets.get for nonexistent key on bare kernel, asserts empty string returned (not panic) |
@@ -245,6 +242,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{embedded,nats,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+- **Campaigns:** `transport/{embedded,nats,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector}_test.go`
 - **Related domains:** deploy (deploy lifecycle), agents (agent discovery), fs (cross-feature FS), health (cross-feature health), secrets (cross-feature secrets), tools (tool call), registry (registry operations)
 - **Fixtures:** echo tool, add tool (registered by test helpers)

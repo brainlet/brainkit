@@ -163,8 +163,6 @@ metrics := kernel.host.Metrics()
 // metrics.Errors: map[topic]count
 ```
 
-Scaling strategies consume these metrics for auto-scaling decisions.
-
 ## What's Not Yet Available
 
 | Feature | Status |

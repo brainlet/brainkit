@@ -136,6 +136,4 @@ Vendored from microsoft/typescript-go. Pure Go — no Node.js, no esbuild, no ex
 
 Each Kit has one QuickJS heap (~256MB address space reservation, ~50-80MB actual for the Mastra bundle). The job pump goroutine and each deployed .ts service's bus subscriptions run within the same QuickJS heap — there's no per-service isolation at the memory level. Isolation is at the Compartment level (frozen endowments, separate global objects) not at the memory level.
 
-For multi-Kit deployments (via InstanceManager pools), each Kit instance gets its own QuickJS heap. A pool of 5 Kits uses ~1.5GB baseline. Tool registries can be shared across pool instances to avoid duplicate registrations.
-
 Note: wazero (WebAssembly runtime) is still a dependency — used by `jsbridge/webassembly.go` to provide `WebAssembly.instantiate()` for JS libraries that ship WASM modules (like xxhash-wasm). The AssemblyScript compiler in `internal/embed/compiler/` is dormant and not wired to the Kit.

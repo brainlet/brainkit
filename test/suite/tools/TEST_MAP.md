@@ -3,7 +3,7 @@
 **Purpose:** Verifies tool listing, resolution, calling (echo, add), error handling for missing tools, input abuse, E2E pipeline (deploy tool from .ts, call, teardown), and transport-level roundtrip.
 **Tests:** 12 functions across 4 files
 **Entry point:** `tools_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac, amqp_postgres_vector, redis_mongodb)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (amqp_postgres_vector, redis_mongodb)
 
 ## Files
 
@@ -41,6 +41,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{nats_postgres_rbac,amqp_postgres_vector,redis_mongodb}_test.go
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{amqp_postgres_vector,redis_mongodb}_test.go
 - **Related domains:** registry (tool registration), workflows (tools.call inside steps), security (tool name collision)
 - **Fixtures:** tool-related TS fixtures

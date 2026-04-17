@@ -39,7 +39,6 @@ Each command has a topic (from `BusTopic()` on the message type), a decoder, and
 | `package.*` | deploy, teardown, redeploy, list, info | PackageDeployDomain |
 | `metrics.get` | | Catalog (inline) |
 | `trace.*` | get, list | Catalog (inline) |
-| `rbac.*` | assign, revoke, list, roles | Catalog (inline) |
 | `peers.*` | list, resolve (transport-connected Kit only) | Catalog (inline) |
 | `test.run` | | TestingDomain |
 | `plugin.*` | manifest, state.get, state.set, start, stop, restart, list, status (transport-connected Kit only) | PluginLifecycleDomain |

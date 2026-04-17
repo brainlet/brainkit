@@ -271,7 +271,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) 
 	require.NoError(t, err)
 	defer k.Close()
 
-	// Kit should start despite nonexistent role — RBAC.Assign would fail
-	// but the deployment itself should still work (role assignment is best-effort)
+	// Kit should start even when persisted metadata is unexpected —
+	// the deployment itself should still work.
 	assert.NotNil(t, k)
 }

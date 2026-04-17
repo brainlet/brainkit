@@ -18,33 +18,32 @@ type cmdTest struct {
 	valid    sdk.BrainkitMessage
 	empty    sdk.BrainkitMessage
 	errCode  string
-	rbacOnly bool
 	nodeOnly bool
 }
 
 func busCommandTable() []cmdTest {
 	return []cmdTest{
-		{"tools.call", sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, sdk.ToolCallMsg{Name: ""}, "NOT_FOUND", false, false},
-		{"tools.list", sdk.ToolListMsg{}, sdk.ToolListMsg{}, "", false, false},
-		{"tools.resolve", sdk.ToolResolveMsg{Name: "echo"}, sdk.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false, false},
-		{"agents.list", sdk.AgentListMsg{}, sdk.AgentListMsg{}, "", false, false},
-		{"agents.get-status", sdk.AgentGetStatusMsg{Name: "ghost"}, sdk.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"agents.set-status", sdk.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, sdk.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false, false},
-		{"agents.discover", sdk.AgentDiscoverMsg{}, sdk.AgentDiscoverMsg{}, "", false, false},
-		{"kit.list", sdk.KitListMsg{}, sdk.KitListMsg{}, "", false, false},
-		{"kit.teardown", sdk.KitTeardownMsg{Source: "ghost.ts"}, sdk.KitTeardownMsg{Source: ""}, "", false, false},
-		{"secrets.set", sdk.SecretsSetMsg{Name: "matrix-k", Value: "v"}, sdk.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false, false},
-		{"secrets.get", sdk.SecretsGetMsg{Name: "matrix-k"}, sdk.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"secrets.delete", sdk.SecretsDeleteMsg{Name: "ghost"}, sdk.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"secrets.list", sdk.SecretsListMsg{}, sdk.SecretsListMsg{}, "", false, false},
-		{"secrets.rotate", sdk.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, sdk.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false, false},
-		{"registry.has", sdk.RegistryHasMsg{Category: "provider", Name: "openai"}, sdk.RegistryHasMsg{}, "", false, false},
-		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false, false},
-		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false, false},
-		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false, false},
-		{"package.list", sdk.PackageListDeployedMsg{}, sdk.PackageListDeployedMsg{}, "", false, false},
-		{"package.info", sdk.PackageDeployInfoMsg{Name: "ghost"}, sdk.PackageDeployInfoMsg{Name: ""}, "", false, false},
-		{"package.teardown", sdk.PackageTeardownMsg{Name: "ghost"}, sdk.PackageTeardownMsg{Name: ""}, "", false, false},
+		{"tools.call", sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, sdk.ToolCallMsg{Name: ""}, "NOT_FOUND", false},
+		{"tools.list", sdk.ToolListMsg{}, sdk.ToolListMsg{}, "", false},
+		{"tools.resolve", sdk.ToolResolveMsg{Name: "echo"}, sdk.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false},
+		{"agents.list", sdk.AgentListMsg{}, sdk.AgentListMsg{}, "", false},
+		{"agents.get-status", sdk.AgentGetStatusMsg{Name: "ghost"}, sdk.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"agents.set-status", sdk.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, sdk.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false},
+		{"agents.discover", sdk.AgentDiscoverMsg{}, sdk.AgentDiscoverMsg{}, "", false},
+		{"kit.list", sdk.KitListMsg{}, sdk.KitListMsg{}, "", false},
+		{"kit.teardown", sdk.KitTeardownMsg{Source: "ghost.ts"}, sdk.KitTeardownMsg{Source: ""}, "", false},
+		{"secrets.set", sdk.SecretsSetMsg{Name: "matrix-k", Value: "v"}, sdk.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false},
+		{"secrets.get", sdk.SecretsGetMsg{Name: "matrix-k"}, sdk.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"secrets.delete", sdk.SecretsDeleteMsg{Name: "ghost"}, sdk.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"secrets.list", sdk.SecretsListMsg{}, sdk.SecretsListMsg{}, "", false},
+		{"secrets.rotate", sdk.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, sdk.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"registry.has", sdk.RegistryHasMsg{Category: "provider", Name: "openai"}, sdk.RegistryHasMsg{}, "", false},
+		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false},
+		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false},
+		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false},
+		{"package.list", sdk.PackageListDeployedMsg{}, sdk.PackageListDeployedMsg{}, "", false},
+		{"package.info", sdk.PackageDeployInfoMsg{Name: "ghost"}, sdk.PackageDeployInfoMsg{Name: ""}, "", false},
+		{"package.teardown", sdk.PackageTeardownMsg{Name: "ghost"}, sdk.PackageTeardownMsg{Name: ""}, "", false},
 	}
 }
 
@@ -56,10 +55,6 @@ func testBusMatrixValidInput(t *testing.T, _ *suite.TestEnv) {
 		t.Run(cmd.topic, func(t *testing.T) {
 			if cmd.nodeOnly {
 				t.Skip("node-only")
-				return
-			}
-			if cmd.rbacOnly {
-				t.Skip("RBAC has been removed")
 				return
 			}
 
@@ -83,10 +78,6 @@ func testBusMatrixEmptyInput(t *testing.T, _ *suite.TestEnv) {
 		t.Run(cmd.topic, func(t *testing.T) {
 			if cmd.nodeOnly {
 				t.Skip("node-only")
-				return
-			}
-			if cmd.rbacOnly {
-				t.Skip("RBAC has been removed")
 				return
 			}
 

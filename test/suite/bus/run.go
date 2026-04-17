@@ -44,9 +44,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("exhausted_event_emitted", func(t *testing.T) { testExhaustedEventEmitted(t, env) })
 		t.Run("retry_preserves_reply_to", func(t *testing.T) { testRetryPreservesReplyTo(t, env) })
 
-		// ratelimit.go
-		t.Run("bus_rate_limit_exceeds", func(t *testing.T) { testBusRateLimitExceeds(t, env) })
-
 		// pump.go
 		t.Run("pump_schedule_latency", func(t *testing.T) { testPumpScheduleLatency(t, env) })
 		t.Run("pump_responsive_after_idle", func(t *testing.T) { testPumpResponsiveAfterIdle(t, env) })
@@ -113,7 +110,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		// error_contract_adv.go — bus error contract adversarial (from adversarial/error_contract_test.go)
 		t.Run("error_contract_bus_not_found", func(t *testing.T) { testErrorContractBusNotFound(t, env) })
 		t.Run("error_contract_bus_validation_error", func(t *testing.T) { testErrorContractBusValidationError(t, env) })
-		t.Run("error_contract_bus_not_configured_rbac", func(t *testing.T) { testErrorContractBusNotConfiguredRBAC(t, env) })
 		t.Run("error_contract_bus_idempotent_deploy", func(t *testing.T) { testErrorContractBusIdempotentDeploy(t, env) })
 		t.Run("error_contract_bus_deploy_error_bad_syntax", func(t *testing.T) { testErrorContractBusDeployErrorBadSyntax(t, env) })
 		t.Run("error_contract_errors_as_all_types", func(t *testing.T) { testErrorContractErrorsAsAllTypes(t, env) })

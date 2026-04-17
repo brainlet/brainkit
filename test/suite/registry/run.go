@@ -24,7 +24,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("storage_runtime_sqlite_add", func(t *testing.T) { testStorageRuntimeSQLiteAdd(t, env) })
 		t.Run("storage_runtime_list_resources", func(t *testing.T) { testStorageRuntimeListResources(t, env) })
 		t.Run("storage_runtime_resources_from_source", func(t *testing.T) { testStorageRuntimeResourcesFromSource(t, env) })
-		t.Run("storage_runtime_scaling_pool", func(t *testing.T) { testStorageRuntimeScalingPool(t, env) })
 		t.Run("storage_runtime_kernel_multiple_storages", func(t *testing.T) { testStorageRuntimeKernelMultipleStorages(t, env) })
 
 		// input_abuse.go — registry input abuse (adversarial)

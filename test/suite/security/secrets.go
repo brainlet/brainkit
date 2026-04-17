@@ -43,7 +43,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	<-ch
 	unsub()
 
-	require.NoError(t, secDeployWithRole(k, "exfil-service-sec.ts", `
+	require.NoError(t, secDeployErr(k, "exfil-service-sec.ts", `
 		var password = secrets.get("DB_PASSWORD_SEC");
 		var results = {};
 
@@ -68,7 +68,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		} catch(e) { results.toolExfil = "BLOCKED:" + (e.code || ""); }
 
 		output(results);
-	`, "service"))
+	`))
 
 	var exfilDetected atomic.Int64
 	for _, topic := range []string{"incoming.exfil-sec", "events.exfil-sec"} {

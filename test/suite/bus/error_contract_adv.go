@@ -66,11 +66,6 @@ func testErrorContractBusValidationError(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
-// testErrorContractBusNotConfiguredRBAC — RBAC removed, test is a no-op.
-func testErrorContractBusNotConfiguredRBAC(t *testing.T, _ *suite.TestEnv) {
-	t.Skip("RBAC has been removed")
-}
-
 // testErrorContractBusIdempotentDeploy — duplicate deploy succeeds (idempotent).
 // Deploy tears down existing + redeploys. No ALREADY_EXISTS error.
 func testErrorContractBusIdempotentDeploy(t *testing.T, _ *suite.TestEnv) {
@@ -114,7 +109,7 @@ func testErrorContractErrorsAsAllTypes(t *testing.T, _ *suite.TestEnv) {
 		{"Validation", &sdkerrors.ValidationError{Field: "name", Message: "required"}, "VALIDATION_ERROR"},
 		{"Timeout", &sdkerrors.TimeoutError{Operation: "test"}, "TIMEOUT"},
 		{"WorkspaceEscape", &sdkerrors.WorkspaceEscapeError{Path: "../etc"}, "WORKSPACE_ESCAPE"},
-		{"NotConfigured", &sdkerrors.NotConfiguredError{Feature: "rbac"}, "NOT_CONFIGURED"},
+		{"NotConfigured", &sdkerrors.NotConfiguredError{Feature: "mcp"}, "NOT_CONFIGURED"},
 		{"Transport", &sdkerrors.TransportError{Operation: "pub", Cause: fmt.Errorf("fail")}, "TRANSPORT_ERROR"},
 		{"Persistence", &sdkerrors.PersistenceError{Operation: "Save", Source: "x", Cause: fmt.Errorf("fail")}, "PERSISTENCE_ERROR"},
 		{"Deploy", &sdkerrors.DeployError{Source: "x.ts", Phase: "eval", Cause: fmt.Errorf("fail")}, "DEPLOY_ERROR"},

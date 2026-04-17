@@ -39,11 +39,11 @@ Unregistered functions are dead code that never runs.
   - Asserting exact counts (ListDeployments, ListSchedules)
   - Subscribing to global events (bus.handler.failed, bus.permission.denied)
   - Closing/restarting the kernel
-  - Needing specific RBAC/persistence/tracing configs
+  - Needing specific tracing configs
 
 ### Deploy source name uniqueness
 Deploy source names must be unique across all tests sharing a kernel. Add a domain suffix:
-- `-rbac` for RBAC tests, `-sec` for security, `-stress` for stress, `-adv` for adversarial
+`-sec` for security, `-stress` for stress, `-adv` for adversarial
 - Two tests deploying `"greeter.ts"` on the same kernel = collision = flaky failure
 
 ### File organization

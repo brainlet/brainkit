@@ -8,7 +8,7 @@
 ```go
 type Config struct {
     Namespace        string                                    // default: "user"
-    ClusterID        string                                    // cluster identity for horizontal scaling
+    ClusterID        string                                    // cluster identity for discovery
     CallerID         string                                    // default: Namespace
     RuntimeID        string                                    // auto-generated per process
     AIProviders      map[string]registry.AIProviderRegistration // explicit provider configs (auto-detected from env if empty)
@@ -18,12 +18,10 @@ type Config struct {
     FSRoot           string                                    // sandboxed fs root
     SecretStore      secrets.SecretStore                       // pluggable secret backend
     SecretKey        string                                    // master key for EncryptedKVStore
-    Roles            map[string]rbac.Role                      // RBAC role definitions
-    DefaultRole      string                                    // default role for deployments
     TraceStore       tracing.TraceStore                        // nil = no tracing
     TraceSampleRate  float64                                   // 0.0-1.0, default 1.0
     MaxStackSize     int                                       // QuickJS stack size (bytes)
-    SharedTools      *toolreg.ToolRegistry                     // shared across pool instances
+    SharedTools      *toolreg.ToolRegistry                     // shared tool registry
     MCPServers       map[string]mcppkg.ServerConfig            // MCP server connections
     Observability    ObservabilityConfig
     Store            KitStore                                  // deployment/schedule persistence
@@ -138,35 +136,6 @@ type ServerConfig struct {
 // kit/errors.go
 var ErrMCPNotConfigured error  // no MCP servers registered
 var ErrCommandTopic error      // event emitted on command topic
-```
-
-## Scaling
-
-```go
-type InstanceManager struct{}
-func NewInstanceManager() *InstanceManager
-func (im *InstanceManager) SpawnPool(name string, cfg PoolConfig) error
-func (im *InstanceManager) Scale(name string, delta int) error
-func (im *InstanceManager) KillPool(name string) error
-func (im *InstanceManager) PoolInfo(name string) (PoolInfo, error)
-func (im *InstanceManager) Pools() []string
-func (im *InstanceManager) EvaluateAndScale()
-
-type PoolConfig struct {
-    Base         brainkit.Config
-    InitialCount int
-    Min, Max     int
-    Strategy     ScalingStrategy
-}
-
-type PoolInfo struct { Name string; Current, Min, Max, Pending int }
-
-type ScalingStrategy interface {
-    Evaluate(metrics messaging.MetricsSnapshot, pool PoolInfo) ScalingDecision
-}
-type ScalingDecision struct { Action string; Delta int; Reason string }
-
-func NewStaticStrategy(target int) *StaticStrategy
 ```
 
 ## KitStore

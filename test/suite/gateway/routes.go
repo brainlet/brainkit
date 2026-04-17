@@ -400,26 +400,6 @@ func testErrorResponse500(t *testing.T, _ *suite.TestEnv) {
 	assert.Equal(t, "something went wrong", result["error"])
 }
 
-func testHealthJSON(t *testing.T, _ *suite.TestEnv) {
-	env := suite.Full(t)
-	_, addr := gwStart(t, env.Kit)
-
-	resp, err := http.Get(addr + "/health")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-	body, _ := io.ReadAll(resp.Body)
-	var result map[string]any
-	require.NoError(t, json.Unmarshal(body, &result))
-	assert.Equal(t, true, result["healthy"])
-	assert.Equal(t, "running", result["status"])
-	checks, ok := result["checks"].([]any)
-	assert.True(t, ok)
-	assert.GreaterOrEqual(t, len(checks), 2)
-}
-
 func testRouteReplacement(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	gw := bkgw.New(env.Kit, bkgw.Config{Listen: "127.0.0.1:0"})

@@ -3,7 +3,7 @@
 **Purpose:** Verifies the provider registry (AI providers, vector stores, storages), JS bridge registry access, packages client search/fetch, runtime storage lifecycle, and input abuse resilience.
 **Tests:** 25 functions across 4 files
 **Entry point:** `registry_test.go` → `Run(t, env)`
-**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (nats_postgres_rbac, amqp_postgres_vector, redis_mongodb)
+**Campaigns:** transport (amqp, redis, postgres, nats, sqlite), fullstack (amqp_postgres_vector, redis_mongodb)
 
 ## Files
 
@@ -45,7 +45,6 @@
 | testStorageRuntimeSQLiteAdd | Adds SQLite storage at runtime, verifies it gets a non-empty bridge URL, removes it |
 | testStorageRuntimeListResources | Lists resources before and after deploying a .ts tool, verifies resource count increases and tool appears in filtered list |
 | testStorageRuntimeResourcesFromSource | Deploys .ts that registers a tool + agent, calls ResourcesFrom(source), verifies at least 2 resources |
-| testStorageRuntimeScalingPool | Creates an InstanceManager, verifies Pools/PoolInfo/Scale/KillPool all error correctly for nonexistent pools |
 | testStorageRuntimeKernelMultipleStorages | Creates kernel with mem + sqlite storages, verifies mem has no URL but sqlite does, both visible from JS registry.has |
 
 ### input_abuse.go — Registry input abuse
@@ -59,6 +58,6 @@
 
 ## Cross-references
 
-- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{nats_postgres_rbac,amqp_postgres_vector,redis_mongodb}_test.go
+- **Campaigns:** transport/{amqp,redis,postgres,nats,sqlite}_test.go, fullstack/{amqp_postgres_vector,redis_mongodb}_test.go
 - **Related domains:** tools (tool registration), deploy (resource tracking)
 - **Fixtures:** registry-related TS fixtures

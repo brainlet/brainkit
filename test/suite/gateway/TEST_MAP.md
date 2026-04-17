@@ -29,7 +29,6 @@
 | testSSEProgressAndEvents | Registers SSE route with progress events, verifies progress and end events arrive |
 | testSSEErrorTerminates | Registers SSE route to handler that errors, verifies stream terminates with error event |
 | testErrorResponse500 | Registers route to handler that returns error, verifies 500 with error body |
-| testHealthJSON | Checks /healthz with Accept: application/json, verifies JSON health response |
 | testRouteReplacement | Registers a route then replaces it with new handler, verifies new handler serves |
 | testBusRouteList | Adds routes, lists via bus command, verifies route entries |
 | testBusStatus | Queries gateway status via bus command, verifies running state |
@@ -91,6 +90,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector}_test.go`
 - **Related domains:** bus (bus.on handlers), deploy (deploying handlers), health (health endpoints)
 - **Fixtures:** none

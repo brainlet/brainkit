@@ -523,7 +523,3 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err, "k2 should be alive")
 }
 
-// E04: RBAC assign + checkPermission simultaneously — RBAC removed, test is a no-op.
-func testConcurrencyRBACAssignCheckRace(t *testing.T, env *suite.TestEnv) {
-	t.Skip("RBAC has been removed")
-}

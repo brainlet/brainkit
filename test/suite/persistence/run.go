@@ -16,7 +16,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("package_name_survives_restart", func(t *testing.T) { testPackageNameSurvivesRestart(t, env) })
 		t.Run("redeploy_preserves_metadata", func(t *testing.T) { testRedeployPreservesMetadata(t, env) })
 		t.Run("with_restoring_skips_persist", func(t *testing.T) { testWithRestoringSkipsPersist(t, env) })
-		t.Run("role_preserved_across_restart", func(t *testing.T) { testRolePreservedAcrossRestart(t, env) })
 		t.Run("schedule_catchup_on_restart", func(t *testing.T) { testScheduleCatchUpOnRestart(t, env) })
 		t.Run("recurring_schedule_restarts_correctly", func(t *testing.T) { testRecurringScheduleRestartsCorrectly(t, env) })
 		t.Run("deploy_order_preserved_exactly", func(t *testing.T) { testDeployOrderPreservedExactly(t, env) })

@@ -24,15 +24,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("gc_zero_leak_quickjs_memory", func(t *testing.T) { testGCZeroLeakQuickJSMemory(t, env) })
 		t.Run("gc_zero_leak_ses_runtime", func(t *testing.T) { testGCZeroLeakSESRuntime(t, env) })
 
-		// scaling.go -- Pool scaling and strategy tests
-		t.Run("pool_spawn_and_kill", func(t *testing.T) { testPoolSpawnAndKill(t, env) })
-		t.Run("pool_scale_up_down", func(t *testing.T) { testPoolScaleUpDown(t, env) })
-		t.Run("pool_duplicate_and_not_found", func(t *testing.T) { testPoolDuplicateAndNotFound(t, env) })
-		t.Run("pool_shared_tools", func(t *testing.T) { testPoolSharedTools(t, env) })
-		t.Run("strategy_static", func(t *testing.T) { testStrategyStatic(t, env) })
-		t.Run("pool_evaluate_and_scale", func(t *testing.T) { testPoolEvaluateAndScale(t, env) })
-		t.Run("pool_instances_process_messages", func(t *testing.T) { testPoolInstancesProcessMessages(t, env) })
-
 		// concurrent.go -- Concurrent operation tests
 		t.Run("parallel_deploy", func(t *testing.T) { testParallelDeploy(t, env) })
 		t.Run("parallel_publish", func(t *testing.T) { testParallelPublish(t, env) })
@@ -56,7 +47,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("concurrency_metrics_during_churn", func(t *testing.T) { testConcurrencyMetricsDuringChurn(t, env) })
 		t.Run("concurrency_shared_sqlite_store", func(t *testing.T) { testConcurrencySharedSQLiteStore(t, env) })
 		t.Run("concurrency_deploy_during_restore", func(t *testing.T) { testConcurrencyDeployDuringRestore(t, env) })
-		t.Run("concurrency_rbac_assign_check_race", func(t *testing.T) { testConcurrencyRBACAssignCheckRace(t, env) })
 
 		// concurrency_stress.go -- Concurrency stress tests
 		t.Run("100_deploys_simultaneously", func(t *testing.T) { test100DeploysSimultaneously(t, env) })

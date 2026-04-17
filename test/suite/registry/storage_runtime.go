@@ -176,24 +176,6 @@ func testStorageRuntimeResourcesFromSource(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, found, "should have tool from source")
 }
 
-// testStorageRuntimeScalingPool — basic pool lifecycle.
-func testStorageRuntimeScalingPool(t *testing.T, _ *suite.TestEnv) {
-	im := brainkit.NewInstanceManager()
-
-	// Pool operations should not panic even with no real instances
-	pools := im.Pools()
-	assert.Empty(t, pools)
-
-	_, err := im.PoolInfo("ghost-reg-adv")
-	assert.Error(t, err) // not found
-
-	err = im.Scale("ghost-reg-adv", 1)
-	assert.Error(t, err) // not found
-
-	err = im.KillPool("ghost-reg-adv")
-	assert.Error(t, err) // not found
-}
-
 // testStorageRuntimeKernelMultipleStorages — kit with multiple storage backends.
 func testStorageRuntimeKernelMultipleStorages(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()

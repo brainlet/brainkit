@@ -1,6 +1,6 @@
 # Security Test Map
 
-**Purpose:** Adversarial security probes: sandbox escape, data leakage, bus forgery, cross-deployment attacks, internal exploits, RBAC escape, reply token security, timing attacks, secret exfiltration, gateway injection, state corruption, persistence attacks, and LibSQL validation.
+**Purpose:** Adversarial security probes: sandbox escape, data leakage, bus forgery, cross-deployment attacks, internal exploits, reply token security, timing attacks, secret exfiltration, gateway injection, state corruption, persistence attacks, and LibSQL validation.
 **Tests:** 96 functions across 13 files
 **Entry point:** `security_test.go` → `Run(t, env)`
 **Campaigns:** none (runs only on memory transport)
@@ -71,7 +71,6 @@
 
 | Function | Purpose |
 |----------|---------|
-| testExploitCurrentSourcePoisoning | Observer .ts writes to __kit_currentSource to impersonate admin, then tries bus.publish, logs whether RBAC check uses the poisoned source |
 | testExploitReplyToRedirect | Handler modifies msg.replyTo before calling msg.reply, verifies whether response goes to attacker topic or legitimate replyTo |
 | testExploitSendToNamespaceConfusion | Tests bus.sendTo with crafted service names (../../admin.ts, empty, deep paths), logs resulting topic resolution |
 | testExploitScheduleFiresCommandTopic | Attempts to schedule message to "secrets.set" command topic, verifies error "command topic" is returned |
@@ -85,19 +84,9 @@
 | testExploitRegistryResolveLeak | Deploys .ts that calls registry.resolve("provider", "openai"), checks if API key appears in the result |
 | testExploitProviderGlobalLeak | Deploys .ts that probes __kit_providers on globalThis, checks if provider configs with API keys are visible |
 
-### rbac_escape.go — RBAC privilege escalation attacks (9 tests)
 
 | Function | Purpose |
 |----------|---------|
-| testRBACObserverRegistersToolThenCalls | Observer tries registering a tool (DENIED) then calling echo (should be DENIED for observer), verifies both operations blocked |
-| testRBACGatewayExfiltratesSecrets | Gateway role tries secrets.get, bus.publish to secrets.get, bus.emit to secrets.get, verifies secret value never visible |
-| testRBACObserverHijacksServiceHandler | Observer subscribes to service A's mailbox and tries msg.reply to impersonate, logs whether impersonation or legitimate reply wins the race |
-| testRBACServiceTriesAdmin | Service tries rbac.assign to promote itself to admin, rbac.list, rbac.revoke on another source, verifies all DENIED |
-| testRBACBrokenReplyPatternExploit | Service subscribes to *.reply.* pattern topics, verifies this is ALLOWED (fixed bug) |
-| testRBACRoleSwapToolPersistence | Deploys admin code that registers a tool, tears down, redeploys as observer, tries calling the tool, verifies DENIED (tool not persisted) |
-| testRBACScheduleToCommandTopic | Service deploys .ts that schedules messages to tools.call and secrets.set command topics, logs whether scheduling was blocked |
-| testRBACDeployInception | Observer tries bus.publish to kit.deploy to deploy additional code, verifies DENIED |
-| testRBACCallerIDForgery | Observer deploys .ts that tries bus.publish (should be denied regardless of forged callerID) |
 
 ### reply_token.go — Reply token security (7 tests)
 
@@ -107,7 +96,6 @@
 | testTokenLegitHandlerCanReply | Deploys service handler that calls msg.reply, verifies the reply arrives at the legitimate replyTo |
 | testTokenObserverCannotReply | Deploys service + observer, observer subscribes to service's mailbox and tries msg.reply, verifies only legitimate handler's reply arrives |
 | testTokenStreamingWithToken | Deploys service that sends stream chunks (text, progress, end), verifies all chunks arrive with valid token |
-| testTokenNoRBACNoTokens | Creates kernel without RBAC, deploys handler, verifies msg.reply works (no tokens needed without RBAC) |
 | testTokenAuditEventEmitted | Observer tries to reply on service's mailbox, subscribes to bus.reply.denied, verifies audit event with "invalid reply token" |
 | testTokenCrossDeploymentScoped | Service A and admin B both subscribe to A's mailbox, B tries to reply, verifies only A's reply arrives |
 
@@ -173,5 +161,4 @@
 ## Cross-references
 
 - **Campaigns:** none (memory-only domain)
-- **Related domains:** rbac (RBAC enforcement), secrets (secret access control), persistence (store attacks), gateway (HTTP security)
 - **Fixtures:** security-related TS fixtures

@@ -1,5 +1,5 @@
 // Package suite provides the TestEnv abstraction for brainkit test suites.
-// Each domain (bus, deploy, rbac, etc.) exports a Run(t, env) function.
+// Each domain (bus, deploy, etc.) exports a Run(t, env) function.
 // Standalone _test.go files create the right env for the memory fast path.
 // Campaigns call Run() with different envs for backend combinations.
 package suite

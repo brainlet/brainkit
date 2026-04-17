@@ -39,7 +39,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("sse_progress_and_events", func(t *testing.T) { testSSEProgressAndEvents(t, env) })
 		t.Run("sse_error_terminates", func(t *testing.T) { testSSEErrorTerminates(t, env) })
 		t.Run("error_response_500", func(t *testing.T) { testErrorResponse500(t, env) })
-		t.Run("health_json", func(t *testing.T) { testHealthJSON(t, env) })
 		t.Run("route_replacement", func(t *testing.T) { testRouteReplacement(t, env) })
 		t.Run("bus_route_list", func(t *testing.T) { testBusRouteList(t, env) })
 		t.Run("bus_status", func(t *testing.T) { testBusStatus(t, env) })

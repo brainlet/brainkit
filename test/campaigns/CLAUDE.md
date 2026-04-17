@@ -61,7 +61,7 @@ The Infra builder manages containers (lazy startup, shared across tests) and con
 - `auth/` — Auth method matrix (postgres SCRAM/MD5/trust, mongodb SCRAM, libsql, upstash).
 - `crosskit/` — Cross-kit on 3 transports. Uses `Nodes(2)`.
 - `plugins/` — Plugin tests on 3 transports.
-- `fullstack/` — Production combos (NATS+Postgres+RBAC, Redis+MongoDB, AMQP+Postgres+PgVector).
+- `fullstack/` — Production combos (Redis+MongoDB, AMQP+Postgres+PgVector).
 
 ## Infra options
 
@@ -70,7 +70,6 @@ campaigns.Transport("nats")         // start NATS container
 campaigns.Storage("postgres")       // start/reuse Postgres
 campaigns.Vector("pgvector")        // reuse Postgres for pgvector
 campaigns.Persistence()             // enable SQLite store
-campaigns.RBAC()                    // enable RBAC with default roles
 campaigns.Tracing()                 // enable trace store
 campaigns.AI()                      // load .env, configure AI providers
 campaigns.Nodes(2)                  // multi-node topology

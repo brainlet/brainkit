@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -191,10 +190,3 @@ func criticalCheckFailed(checks []types.HealthCheck) bool {
 	return false
 }
 
-// HealthJSON returns the full health status as JSON.
-// Used by the gateway to avoid concrete type dependency.
-func (k *Kernel) HealthJSON(ctx context.Context) json.RawMessage {
-	status := k.Health(ctx)
-	data, _ := json.Marshal(status)
-	return data
-}

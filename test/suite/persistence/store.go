@@ -246,7 +246,7 @@ func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	err = testutil.DeployWithOpts(k1, "svc-persist.ts",
 		`bus.on("ping", (msg) => msg.reply({ ok: true }));`,
-		"", "my-package",
+		"my-package",
 	)
 	require.NoError(t, err)
 	k1.Close()
@@ -274,7 +274,7 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 
 	err = testutil.DeployWithOpts(k, "svc-redeploy-persist.ts",
 		`bus.on("v1", (msg) => msg.reply({ v: 1 }));`,
-		"admin", "my-pkg",
+		"my-pkg",
 	)
 	require.NoError(t, err)
 
@@ -310,10 +310,6 @@ func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
 	// Bus deploy persists — store should have the deployment
 	deps, _ := store.LoadDeployments()
 	assert.Len(t, deps, 1, "bus deploy should persist")
-}
-
-func testRolePreservedAcrossRestart(t *testing.T, _ *suite.TestEnv) {
-	t.Skip("RBAC has been removed")
 }
 
 // ── Schedule persistence (from persistence_test.go) ─────────────────────

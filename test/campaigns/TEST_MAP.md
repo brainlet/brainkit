@@ -76,7 +76,6 @@ Fullstack campaigns test production-realistic backend combinations. Each runs mu
 
 | File | Test Function | Transport | Storage | Vector | Extras | Suite Domains |
 |------|--------------|-----------|---------|--------|--------|---------------|
-| nats_postgres_rbac_test.go | TestFullStack_NATS_Postgres_RBAC | nats | postgres | -- | persistence, RBAC, tracing | bus, deploy, tools, agents, health, secrets, registry, workflows, tracing, persistence, gateway, rbac |
 | redis_mongodb_test.go | TestFullStack_Redis_MongoDB | redis | mongodb | -- | persistence, tracing | bus, deploy, tools, agents, health, secrets, registry, workflows, tracing, persistence, gateway |
 | amqp_postgres_vector_test.go | TestFullStack_AMQP_Postgres_PgVector | amqp | postgres | pgvector | persistence, tracing | bus, deploy, tools, agents, health, secrets, registry, workflows, tracing, persistence, gateway |
 
@@ -86,4 +85,4 @@ Fullstack campaigns test production-realistic backend combinations. Each runs mu
 - Storage/vector campaigns call `fixtures.RunMatching()` to run TS fixture subsets
 - Auth campaigns use raw `EvalTS` with inline store code (no suite domains)
 - Crosskit and plugins campaigns call `cross.Run()` for multi-node verification
-- Fullstack campaigns combine transport + storage + optional vector/RBAC/persistence + suite domains
+- Fullstack campaigns combine transport + storage + optional vector/persistence + suite domains

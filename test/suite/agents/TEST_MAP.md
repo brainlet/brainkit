@@ -34,6 +34,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector}_test.go`
 - **Related domains:** deploy (agent registration), bus (agent discovery via kit.register)
 - **Fixtures:** AI fixtures (OPENAI_API_KEY dependent)

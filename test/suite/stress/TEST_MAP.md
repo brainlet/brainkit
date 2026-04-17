@@ -17,7 +17,6 @@
 | testGCZeroLeakQuickJSMemory | Creates raw QuickJS runtime, allocates JS objects, closes context + RunGC, logs allocation counts before/after to verify memory freed |
 | testGCZeroLeakSESRuntime | Creates full brainkit kernel (SES + Mastra bundle), exercises EvalTS, closes, verifies clean shutdown with no errors |
 
-### scaling.go — Pool scaling and strategy (8 tests)
 
 | Function | Purpose |
 |----------|---------|
@@ -25,8 +24,6 @@
 | testPoolScaleUpDown | Spawns pool with 1, scales +2 (total 3), scales -2 (total 1), scales -10 (total 0), verifies counts at each step |
 | testPoolDuplicateAndNotFound | Verifies AlreadyExistsError on duplicate pool spawn, NotFoundError on scale/kill/info for nonexistent pool |
 | testPoolSharedTools | Creates pool with shared registry, registers a tool on the shared registry, spawns 2-instance pool, verifies tool resolvable |
-| testStrategyStatic | Tests StaticStrategy.Evaluate: below target returns scale-up, at target returns none, above target returns scale-down |
-| testPoolEvaluateAndScale | Spawns pool with StaticStrategy(3), calls EvaluateAndScale, verifies pool scaled from 1 to 3, second call keeps at 3 |
 | testPoolInstancesProcessMessages | Spawns pool with shared "stress-ping" tool, calls the tool via executor, verifies {pong: "ok"} response |
 
 ### concurrent.go — Concurrent operation tests (9 tests)
@@ -58,7 +55,6 @@
 | testConcurrencyMetricsDuringChurn | Background deploy/teardown loop, foreground reads Metrics() 50 times, verifies PumpCycles >= 0 |
 | testConcurrencySharedSQLiteStore | Two kernels sharing same SQLite store, each deploys 5 services concurrently, verifies both alive |
 | testConcurrencyDeployDuringRestore | Persists 5 deployments, reopens kernel, immediately deploys 3 new services, verifies kernel alive |
-| testConcurrencyRBACAssignCheckRace | 50 goroutines alternate between rbac.assign/revoke and EvalTS bus.publish, verifies no panic |
 
 ### concurrency_stress.go — Heavy load stress tests (7 tests)
 
@@ -103,5 +99,5 @@
 ## Cross-references
 
 - **Campaigns:** none (memory-only domain)
-- **Related domains:** all domains (stress tests exercise tools, secrets, scheduling, deploy, RBAC, persistence)
+- **Related domains:** all domains (stress tests exercise tools, secrets, scheduling, deploy, persistence)
 - **Fixtures:** none (stress tests are Go-driven)

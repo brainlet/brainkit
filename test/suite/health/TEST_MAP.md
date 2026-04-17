@@ -75,6 +75,6 @@
 
 ## Cross-references
 
-- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector,nats_postgres_rbac}_test.go`
+- **Campaigns:** `transport/{sqlite,nats,postgres,redis,amqp}_test.go`, `fullstack/{redis_mongodb,amqp_postgres_vector}_test.go`
 - **Related domains:** bus (drain affects bus handlers), deploy (deployment count in health), gateway (health endpoints)
 - **Fixtures:** none

@@ -60,41 +60,6 @@ type HealthCheck = types.HealthCheck
 // KernelMetrics is a point-in-time snapshot.
 type KernelMetrics = types.KernelMetrics
 
-// ── Scaling ──────────────────────────────────────────────────────────────────
-
-// InstanceManager manages pools of runtime instances.
-type InstanceManager = engine.InstanceManager
-
-// PoolConfig configures an instance pool.
-type PoolConfig = engine.PoolConfig
-
-// StaticStrategy maintains a fixed instance count.
-type StaticStrategy = engine.StaticStrategy
-
-// ScalingDecision describes a scaling action.
-type ScalingDecision = types.ScalingDecision
-
-// ScalingStrategy evaluates metrics and pool state.
-type ScalingStrategy = types.ScalingStrategy
-
-// PoolInfo describes pool state.
-type PoolInfo = types.PoolInfo
-
-// PoolMode controls how pool instances relate to each other.
-type PoolMode = engine.PoolMode
-
-const (
-	// PoolSharded gives each instance a different namespace (workload isolation).
-	PoolSharded = engine.PoolSharded
-	// PoolReplicated gives all instances the same namespace (horizontal scaling).
-	PoolReplicated = engine.PoolReplicated
-)
-
-var (
-	NewInstanceManager = engine.NewInstanceManager
-	NewStaticStrategy  = engine.NewStaticStrategy
-)
-
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 // TypedTool defines a tool with a typed Go struct for input.

@@ -49,29 +49,8 @@ func registerHealthRoutes(mux *http.ServeMux, rt any) {
 		})
 	}
 
-	// /health — full health status. Uses HealthJSON interface to avoid
-	// concrete type dependency on kit.HealthStatus.
-	type healthJSONer interface {
-		HealthJSON(ctx context.Context) json.RawMessage
-	}
-
-	if hj, ok := rt.(healthJSONer); ok {
-		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-			defer cancel()
-			data := hj.HealthJSON(ctx)
-			w.Header().Set("Content-Type", "application/json")
-			var parsed struct{ Healthy bool }
-			json.Unmarshal(data, &parsed)
-			if parsed.Healthy {
-				w.WriteHeader(http.StatusOK)
-			} else {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			}
-			w.Write(data)
-		})
-	} else if _, ok := rt.(healther); ok {
-		// Fallback: alive + ready only (runtime without HealthJSON)
+	// /health — alive + ready aggregate.
+	if _, ok := rt.(healther); ok {
 		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()

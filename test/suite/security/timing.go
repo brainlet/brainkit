@@ -252,11 +252,6 @@ func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 	assert.NoError(t, err, "Close should succeed even with in-flight tool call")
 }
 
-// testTimingRoleChangeWhileHandlerRunning — RBAC role change while a handler is executing.
-func testTimingRoleChangeWhileHandlerRunning(t *testing.T, env *suite.TestEnv) {
-	t.Skip("RBAC has been removed")
-}
-
 // testTimingScheduleUnscheduleRace — concurrent Schedule + Unschedule same ID.
 func testTimingScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit

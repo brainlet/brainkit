@@ -17,7 +17,7 @@ func TestBrainkitError_Interface(t *testing.T) {
 		&sdkerrors.ValidationError{Field: "name", Message: "required"},
 		&sdkerrors.TimeoutError{Operation: "plugin READY"},
 		&sdkerrors.WorkspaceEscapeError{Path: "../etc/passwd"},
-		&sdkerrors.NotConfiguredError{Feature: "rbac"},
+		&sdkerrors.NotConfiguredError{Feature: "mcp"},
 		&sdkerrors.TransportError{Operation: "publish", Cause: fmt.Errorf("connection refused")},
 		&sdkerrors.PersistenceError{Operation: "SaveDeployment", Source: "agent.ts", Cause: fmt.Errorf("disk full")},
 		&sdkerrors.DeployError{Source: "agent.ts", Phase: "transpile", Cause: fmt.Errorf("syntax error")},
@@ -79,7 +79,7 @@ func TestPersistenceError_Details(t *testing.T) {
 }
 
 func TestNotConfiguredError_Variants(t *testing.T) {
-	features := []string{"rbac", "mcp", "discovery", "tracing", "secrets", "workspace"}
+	features := []string{"mcp", "discovery", "tracing", "secrets", "workspace"}
 	for _, f := range features {
 		err := &sdkerrors.NotConfiguredError{Feature: f}
 		assert.Equal(t, "NOT_CONFIGURED", err.Code())

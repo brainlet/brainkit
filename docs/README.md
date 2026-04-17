@@ -12,7 +12,6 @@ Brainkit is an embeddable Go runtime for AI agents. A Kit is a self-contained en
 - **Workflows**: Mastra workflow engine with bus commands for lifecycle (start, resume, cancel, restart). Snapshots persist to configured storage. Crash recovery via `restartAllActiveWorkflowRuns()` on startup.
 - **Agent Registry**: Bus topics for agent lifecycle (list, discover, status). Agents auto-unregister and clean up bus subscriptions on teardown.
 - **Networking**: Kit-to-Kit over gRPC. Discovery (Static + Multicast LAN). NATS as alternative transport. On `Kit.Close()`, the network stops before the bridge closes to prevent in-flight message errors.
-- **Scaling**: InstanceManager with pools. Worker group competing consumers. Static + Threshold strategies.
 
 ## Guides
 
@@ -92,7 +91,6 @@ All operations flow through the bus. Current handlers:
 | `packages.*` | search, install, remove, update, list, info | Package manager |
 | `package.*` | deploy, teardown, redeploy, list, info | Package deployment |
 | `plugin.*` | manifest, state.get/set, start, stop, restart, list, status | Plugin lifecycle |
-| `rbac.*` | assign, revoke, list, roles | RBAC administration |
 | `metrics.get` | | Kit metrics |
 | `trace.*` | get, list | Distributed tracing |
 | `test.run` | | Test framework |
