@@ -101,16 +101,20 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			return qctx.NewUndefined()
 		}))
 
-	// __go_brainkit_bus_reply(replyTo, payloadJSON, correlationId, done) → void
+	// __go_brainkit_bus_reply(replyTo, payloadJSON, correlationId, done, envelope?) → void
 	qctx.Globals().Set(js.JSBridgeBusReply,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 4 {
-				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.reply: expected 4 args"})
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.reply: expected 4+ args"})
 			}
 			replyTo := args[0].String()
 			payload := args[1].String()
 			correlationID := args[2].String()
 			done := args[3].ToBool()
+			envelope := false
+			if len(args) >= 5 {
+				envelope = args[4].ToBool()
+			}
 			if replyTo == "" {
 				return qctx.NewUndefined()
 			}
@@ -119,6 +123,9 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			wmsg.Metadata.Set("correlationId", correlationID)
 			if done {
 				wmsg.Metadata.Set("done", "true")
+			}
+			if envelope {
+				wmsg.Metadata.Set("envelope", "true")
 			}
 
 			// replyTo is already namespaced+sanitized by the publisher

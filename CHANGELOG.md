@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+### Session 03 — Error envelope Bundle A (JS bridges + gateway + audit + test suite)
+
+Second drop on Bundle A. Rewires the QuickJS bridge + gateway HTTP/WS
+layer + audit recorder to the wire envelope contract. Adds the
+dedicated `test/suite/envelope/` regression suite.
+
+Added:
+- `test/suite/envelope/` — round-trip suite: NOT_FOUND / VALIDATION_ERROR
+  typed-error decode, unknown code → `*sdkerrors.BusError` carrier,
+  wire-shape invariants (success has `ok:true` + `data`, error has
+  `ok:false` + `error.code`/`message`), envelope metadata flag
+  presence, and `brainkit.Call` typed-error surfacing across the full
+  bus round trip
+
+Changed:
+- `internal/engine/bridges_util.go:throwBrainkitError` — the thrown JS
+  Error now carries real `.code` and `.details` properties. Deleted
+  the `[CODE] msg {{json}}` message-string encoding.
+- `internal/engine/runtime/bridges.js:__kit_parseBridgeResponse` —
+  reads the wire envelope `{ok,data,error}` and throws a
+  `BrainkitError(message, code, details)` on `ok=false`; success
+  unwraps `data`. Retains a legacy-shape fallback so non-migrated
+  producers keep working.
+- `internal/engine/runtime/kit_runtime.js` — deleted `_codeRe`,
+  `_detailsRe`, `_parseError`; `rewrapErrors`/`rewrapErrorsAsync`
+  now rely exclusively on the JS error's `.code` property (set by
+  `throwBrainkitError`) to promote into the Compartment-visible
+  `BrainkitError` class
+- `internal/engine/bridges_bus.go` — `__go_brainkit_bus_reply` takes
+  an optional 5th `envelope` arg; when true, stamps
+  `metadata["envelope"]="true"` so the Caller unwraps
+- `internal/engine/runtime/bus.js` — wiring in place for envelope
+  replies (`msg.reply`/`msg.send`/`msg.stream.end`/`.error`); kept
+  **not yet enabled** in this drop so the many raw-decode tests
+  stay green. Flip lands with session 03 Bundle B/C.
+- `gateway/gateway.go` — `mapHTTPStatus` now consults the wire
+  envelope's `error.code` and maps via the full taxonomy table from
+  `designs/08-errors.md` (`httpCodes` map). `sanitizeErrorPayload`
+  handles both envelope and legacy shapes.
+- `gateway/websocket.go` — unwraps success envelopes before writing
+  to the WebSocket client so clients see clean JSON; error envelopes
+  forward through unchanged.
+- `internal/audit/recorder.go` — new `recordErr` helper merges
+  `BrainkitError.Code()` / `Details()` into event data as
+  `errorCode` / `errorDetails`; `ToolCallFailed`, `DeployFailed`,
+  and `BusHandlerFailed` switched to it so the audit log stays
+  machine-queryable.
+- `test/suite/env.go:ResponseData` — tightened envelope detection:
+  requires both `ok` AND (`data` or `error`) keys before unwrapping.
+  Without this, user replies like `msg.reply({ok:true,attempt:2})`
+  were being falsely unwrapped to `nil`.
+- `test/suite/bus/async_diag.go`, `test/suite/bus/failure.go` —
+  decode `.ts` replies via `suite.ResponseData` for robustness
+
+Pending (still remaining in session 03):
+- Enable `.ts` `msg.reply`/`msg.send`/`msg.stream.end`/`.error`
+  envelope wrap — requires updating ~dozen tests that raw-decode
+  `.ts` handler replies
+- Delete `ResultMeta` + helpers from `sdk/bus_messages.go` +
+  21 `sdk/*_messages.go` embeds (mechanical)
+- Eval command collapse (Bundle B)
+- `.ts` `bus.call` / `bus.stream` / `bus.callTo` (Bundle C)
+
 ### Session 03 — Error envelope Bundle A (partial)
 
 Ships the wire envelope infrastructure and migrates every affected bus

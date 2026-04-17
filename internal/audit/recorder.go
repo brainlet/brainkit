@@ -2,7 +2,10 @@ package audit
 
 import (
 	"encoding/json"
+	stdErrors "errors"
 	"time"
+
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // Verbosity controls which events are recorded.
@@ -63,6 +66,29 @@ func (r *Recorder) record(category, typ, source string, data any, duration time.
 	})
 }
 
+// recordErr records an audit event whose failure is a Go error. When err
+// implements BrainkitError, its Code and Details are merged into the event
+// Data under `errorCode` and `errorDetails` so the log remains
+// machine-queryable. Plain errors collapse to INTERNAL_ERROR.
+func (r *Recorder) recordErr(category, typ, source string, data map[string]any, duration time.Duration, err error) {
+	if r == nil || r.store == nil || err == nil {
+		return
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	var bk sdkerrors.BrainkitError
+	if stdErrors.As(err, &bk) {
+		data["errorCode"] = bk.Code()
+		if d := bk.Details(); len(d) > 0 {
+			data["errorDetails"] = d
+		}
+	} else {
+		data["errorCode"] = "INTERNAL_ERROR"
+	}
+	r.record(category, typ, source, data, duration, err.Error())
+}
+
 // --- Plugin events ---
 
 func (r *Recorder) PluginRegistered(name, owner, version string, toolCount int) {
@@ -98,9 +124,9 @@ func (r *Recorder) ToolCallCompleted(toolName, callerID string, duration time.Du
 }
 
 func (r *Recorder) ToolCallFailed(toolName, callerID string, duration time.Duration, err error) {
-	r.record("tools", "tools.call.failed", toolName, map[string]any{
+	r.recordErr("tools", "tools.call.failed", toolName, map[string]any{
 		"caller": callerID,
-	}, duration, err.Error())
+	}, duration, err)
 }
 
 func (r *Recorder) ToolCallDenied(toolName, callerRuntimeID, reason string) {
@@ -138,13 +164,13 @@ func (r *Recorder) Teardown(source string) {
 }
 
 func (r *Recorder) DeployFailed(source string, err error) {
-	r.record("deploy", "kit.deploy.failed", source, nil, 0, err.Error())
+	r.recordErr("deploy", "kit.deploy.failed", source, nil, 0, err)
 }
 
 // --- Bus events ---
 
 func (r *Recorder) BusHandlerFailed(topic string, err error) {
-	r.record("bus", "bus.handler.failed", topic, nil, 0, err.Error())
+	r.recordErr("bus", "bus.handler.failed", topic, nil, 0, err)
 }
 
 func (r *Recorder) BusHandlerExhausted(topic string, attempts int) {

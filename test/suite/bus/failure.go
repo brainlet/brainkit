@@ -286,7 +286,7 @@ func testRetryPreservesReplyTo(t *testing.T, _ *suite.TestEnv) {
 	replyCh := make(chan map[string]any, 1)
 	replyUnsub, _ := rpEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
+		json.Unmarshal(suite.ResponseData(msg.Payload), &resp)
 		replyCh <- resp
 	})
 	defer replyUnsub()

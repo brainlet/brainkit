@@ -94,6 +94,11 @@
       callerId: rawMsg.callerId || "",
       reply: function(data) {
         if (msg.replyTo) {
+          // Raw reply: kept non-enveloped during the migration so existing
+          // .ts consumers that still unmarshal inner JSON directly keep
+          // working. Envelope wrapping for .ts replies lands alongside
+          // the rest of the `.ts bus.call` / `bus.stream` work (session
+          // 03 Bundle C) once all raw-decoding tests are migrated.
           __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, true);
         }
       },
@@ -132,6 +137,9 @@
             }
           },
           error: function(message) {
+            // Keep the legacy typed-stream-error shape here — the SSE
+            // gateway depends on it. Envelope wrapping for streams will
+            // land alongside the gateway stream rewrite.
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "error", seq: _seq, total: _seq, data: { message: typeof message === "string" ? message : String(message) } }),
@@ -139,6 +147,8 @@
             }
           },
           end: function(finalData) {
+            // Keep the legacy typed-stream-end shape — same reason as
+            // stream.error above.
             if (msg.replyTo) {
               __go_brainkit_bus_reply(msg.replyTo,
                 JSON.stringify({ type: "end", seq: _seq, total: _seq, data: finalData || null }),

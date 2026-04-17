@@ -107,33 +107,18 @@
       get callerId() { return globalThis.__brainkit_sandbox_callerID || ""; },
     };
 
-    // Parse "[CODE] message {{details_json}}" format from error messages.
-    // This format is set by throwBrainkitError in bridges.go to survive
-    // QuickJS error wrapping and SES Compartment boundaries.
-    var _codeRe = /^\[([A-Z_]+)\]\s/;
-    var _detailsRe = /\s\{\{(.+)\}\}$/;
-    function _parseError(e) {
-      var msg = e && e.message ? e.message : String(e);
-      var codeMatch = _codeRe.exec(msg);
-      if (!codeMatch) return null;
-      var code = codeMatch[1];
-      var cleanMsg = msg.replace(_codeRe, "");
-      var details = {};
-      var detailsMatch = _detailsRe.exec(cleanMsg);
-      if (detailsMatch) {
-        try { details = JSON.parse(detailsMatch[1]); } catch(x) {}
-        cleanMsg = cleanMsg.replace(_detailsRe, "");
-      }
-      return { message: cleanMsg, code: code, details: details };
-    }
-
+    // Wrap bridge-thrown errors as BrainkitError instances inside the
+    // Compartment. throwBrainkitError in bridges_util.go sets real
+    // `.code`/`.details` properties on the JS error; we just promote them
+    // to the Compartment-visible BrainkitError class so `instanceof`
+    // checks work in user code.
     function rewrapErrors(fn) {
       return function() {
         try { return fn.apply(this, arguments); }
         catch(e) {
-          var parsed = _parseError(e);
-          if (parsed) throw new _BKE(parsed.message, parsed.code, parsed.details);
-          if (e && e.code) throw new _BKE(e.message, e.code, e.details || {});
+          if (e && e.code && !(e instanceof _BKE)) {
+            throw new _BKE(e.message, e.code, e.details || {});
+          }
           throw e;
         }
       };
@@ -142,9 +127,9 @@
       return async function() {
         try { return await fn.apply(this, arguments); }
         catch(e) {
-          var parsed = _parseError(e);
-          if (parsed) throw new _BKE(parsed.message, parsed.code, parsed.details);
-          if (e && e.code) throw new _BKE(e.message, e.code, e.details || {});
+          if (e && e.code && !(e instanceof _BKE)) {
+            throw new _BKE(e.message, e.code, e.details || {});
+          }
           throw e;
         }
       };

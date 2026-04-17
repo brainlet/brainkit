@@ -381,6 +381,39 @@ func requestID(r *http.Request) string {
 	return uuid.NewString()
 }
 
+// httpCodes maps brainkit error codes to HTTP status codes per
+// designs/08-errors.md. Codes absent from this table fall through to
+// 500 Internal Server Error.
+var httpCodes = map[string]int{
+	"VALIDATION_ERROR":     http.StatusBadRequest,
+	"DECODE_ERROR":         http.StatusBadRequest,
+	"WORKSPACE_ESCAPE":     http.StatusBadRequest,
+	"NOT_FOUND":            http.StatusNotFound,
+	"ALREADY_EXISTS":       http.StatusConflict,
+	"NOT_CONFIGURED":       http.StatusNotImplemented,
+	"PERMISSION_DENIED":    http.StatusForbidden,
+	"APPROVAL_REQUIRED":    http.StatusForbidden,
+	"APPROVAL_TIMEOUT":     http.StatusRequestTimeout,
+	"RATE_LIMITED":         http.StatusTooManyRequests,
+	"TRANSPORT_ERROR":      http.StatusBadGateway,
+	"PERSISTENCE_ERROR":    http.StatusInternalServerError,
+	"DEPLOY_ERROR":         http.StatusInternalServerError,
+	"BRIDGE_ERROR":         http.StatusInternalServerError,
+	"DECODE_PAYLOAD_ERROR": http.StatusInternalServerError,
+	"INTERNAL_ERROR":       http.StatusInternalServerError,
+	"TIMEOUT":              http.StatusGatewayTimeout,
+	"CANCELLED":            499,
+	"CYCLE_DETECTED":       http.StatusInternalServerError,
+	"DRAINING":             http.StatusServiceUnavailable,
+}
+
+func errorCodeToHTTP(code string) int {
+	if s, ok := httpCodes[code]; ok {
+		return s
+	}
+	return http.StatusInternalServerError
+}
+
 func mapHTTPStatus(resp []byte, err error) int {
 	if err != nil {
 		return http.StatusBadGateway
@@ -388,36 +421,37 @@ func mapHTTPStatus(resp []byte, err error) int {
 	if len(resp) == 0 {
 		return http.StatusNoContent
 	}
+	// Envelope path: {ok:false, error:{code,message,details}} → taxonomy.
+	if wire, derr := sdk.DecodeEnvelope(resp); derr == nil {
+		if !wire.Ok && wire.Error != nil {
+			return errorCodeToHTTP(wire.Error.Code)
+		}
+		if wire.Ok {
+			return http.StatusOK
+		}
+	}
+	// Legacy shape fallback — kept for handlers that haven't migrated.
 	var parsed struct {
 		Error string `json:"error"`
 		Code  string `json:"code"`
 	}
 	if json.Unmarshal(resp, &parsed) == nil && parsed.Error != "" {
-		switch parsed.Code {
-		case "VALIDATION_ERROR", "DECODE_ERROR":
-			return http.StatusBadRequest
-		case "PERMISSION_DENIED":
-			return http.StatusForbidden
-		case "NOT_FOUND":
-			return http.StatusNotFound
-		case "ALREADY_EXISTS":
-			return http.StatusConflict
-		case "RATE_LIMITED":
-			return http.StatusTooManyRequests
-		case "NOT_CONFIGURED":
-			return http.StatusNotImplemented
-		case "TIMEOUT":
-			return http.StatusGatewayTimeout
-		default:
-			return http.StatusInternalServerError
-		}
+		return errorCodeToHTTP(parsed.Code)
 	}
 	return http.StatusOK
 }
 
 // sanitizeErrorPayload redacts sensitive information from error JSON payloads
-// before sending to HTTP clients. Delegates to transport.SanitizeErrorMessage.
+// before sending to HTTP clients. Handles both envelope and legacy shapes.
 func sanitizeErrorPayload(payload []byte) []byte {
+	if wire, err := sdk.DecodeEnvelope(payload); err == nil && !wire.Ok && wire.Error != nil {
+		wire.Error.Message = transport.SanitizeErrorMessage(wire.Error.Message)
+		out, err := sdk.EncodeEnvelope(wire)
+		if err != nil {
+			return payload
+		}
+		return out
+	}
 	var parsed map[string]any
 	if json.Unmarshal(payload, &parsed) != nil {
 		return payload // not JSON — return as-is

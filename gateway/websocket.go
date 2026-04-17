@@ -66,7 +66,16 @@ func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, match
 		select {
 		case msg := <-replyCh:
 			unsub()
-			conn.Write(ctx, websocket.MessageText, msg.Payload)
+			out := msg.Payload
+			// Unwrap success envelope so WS clients see clean JSON; on
+			// error envelope, forward the raw envelope so clients can
+			// inspect code/message.
+			if msg.Metadata["envelope"] == "true" {
+				if env, err := sdk.DecodeEnvelope(out); err == nil && env.Ok {
+					out = env.Data
+				}
+			}
+			conn.Write(ctx, websocket.MessageText, out)
 		case <-ctx.Done():
 			unsub()
 			return

@@ -25,10 +25,10 @@ func (k *Kernel) registerLoggingBridge(qctx *quickjs.Context) {
 		}))
 }
 
-// throwBrainkitError constructs a JS error and throws it.
-// Encodes code and details INTO the error message string as "[CODE] message {{details_json}}".
-// The rewrapErrors wrappers in kit_runtime.js parse this back out when the error
-// crosses the SES Compartment boundary (where custom properties like .code are stripped).
+// throwBrainkitError constructs a JS error with real `.code` and `.details`
+// properties and throws it. Wire envelope is built by the caller; this is
+// the in-process JS bridge path where the error crosses the Compartment
+// boundary via direct value, not JSON.
 func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.Value {
 	var bkErr sdkerrors.BrainkitError
 	code := "INTERNAL_ERROR"
@@ -44,23 +44,15 @@ func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.V
 		}
 	}
 
-	// Encode code + details in message: "[PERMISSION_DENIED] message {{json}}"
-	// rewrapErrors in kit_runtime.js parses this format back into BrainkitError.
-	encodedMsg := "[" + code + "] " + msg
-	if detailsJSON != "{}" {
-		encodedMsg += " {{" + detailsJSON + "}}"
-	}
-
 	script := fmt.Sprintf(`(function() {
 		var e = new Error(%q);
 		e.code = %q;
 		try { e.details = JSON.parse(%q); } catch(x) {}
 		return e;
-	})()`, encodedMsg, code, detailsJSON)
+	})()`, msg, code, detailsJSON)
 
 	errVal := qctx.Eval(script)
 	if errVal.IsException() {
-		// Fallback if JS construction fails
 		return qctx.ThrowError(err)
 	}
 	return qctx.Throw(errVal)

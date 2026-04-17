@@ -57,7 +57,14 @@
 
   globalThis.__kit_parseBridgeResponse = function(raw) {
     var result = JSON.parse(raw);
-    if (result && result.error) {
+    // Wire envelope: {ok, data, error:{code,message,details}}
+    if (result && typeof result.ok === "boolean") {
+      if (result.ok) return result.data;
+      var e = result.error || {};
+      throw new BrainkitError(e.message || "unknown error", e.code || "INTERNAL_ERROR", e.details || {});
+    }
+    // Legacy shape fallback — tolerated during migration.
+    if (result && result.error && typeof result.error === "string") {
       throw new BrainkitError(result.error, result.code || "INTERNAL_ERROR", result.details || {});
     }
     return result;

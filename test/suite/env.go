@@ -381,9 +381,21 @@ func ResponseErrorDetails(payload json.RawMessage) map[string]any {
 }
 
 // ResponseData returns the raw success-data payload. If the payload is a
-// wire envelope with ok=true, returns env.Data; otherwise returns the
-// payload untouched so tests that still read legacy shapes keep working.
+// wire envelope (has top-level `ok` AND `data`), returns env.Data;
+// otherwise returns the payload untouched. The `data` presence check is
+// necessary because user replies often legitimately contain an `ok`
+// field (e.g. `msg.reply({ok:true, attempt:2})`) without being envelopes.
 func ResponseData(payload json.RawMessage) json.RawMessage {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return payload
+	}
+	_, hasOk := probe["ok"]
+	_, hasData := probe["data"]
+	_, hasError := probe["error"]
+	if !hasOk || (!hasData && !hasError) {
+		return payload
+	}
 	if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Ok {
 		return env.Data
 	}

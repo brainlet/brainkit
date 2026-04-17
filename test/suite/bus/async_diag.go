@@ -44,7 +44,7 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	select {
 	case msg := <-replyCh:
 		var result map[string]any
-		json.Unmarshal(msg.Payload, &result)
+		json.Unmarshal(suite.ResponseData(msg.Payload), &result)
 		return result
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for reply")
