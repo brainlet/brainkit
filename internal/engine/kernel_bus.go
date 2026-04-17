@@ -67,6 +67,14 @@ func (k *Kernel) subscribe(topic string, handler func(sdk.Message)) (func(), err
 // callJS invokes a named function in the JS runtime with JSON-serialized arguments.
 // The function must be registered on globalThis (e.g., __brainkit.workflow.start).
 // Returns the JSON result. Used by bus command handlers to avoid inline JS construction.
+// CallJS invokes a named JS function and decodes its JSON result. Exported
+// so modules can dispatch into the runtime without reaching inside
+// internal/engine. The function must be registered on globalThis
+// (e.g., __brainkit.workflow.start).
+func (k *Kernel) CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
+	return k.callJS(ctx, fn, args)
+}
+
 func (k *Kernel) callJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
 	argsJSON, err := json.Marshal(args)
 	if err != nil {

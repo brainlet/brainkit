@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Session 05 Checkpoint 3 — modules/workflow
+
+Third module extracted. Wraps the 8 Mastra-style workflow bus commands
+(start / startAsync / status / resume / cancel / list / runs / restart) as a
+Kit-scoped Module.
+
+Added:
+- `modules/workflow/module.go` — `*Module` satisfies `brainkit.Module`;
+  `New()` constructs it. `Status()` reports `brainkit.ModuleStatusBeta`.
+- `modules/workflow/handlers.go` — 8 handlers re-routed through
+  `(*Kit).CallJS`.
+- `(*Kit).CallJS(ctx, fn, args)` + `(*Kernel).CallJS(ctx, fn, args)` —
+  exported so modules can dispatch to named JS functions registered on
+  `globalThis` without reaching into internal engine APIs.
+
+Changed:
+- `test/suite/env.go` always includes `workflow.New()` in every TestEnv's
+  Config.Modules — the shared `env.Kit` can exercise workflow bus
+  commands.
+- Workflow tests that construct their own Kit (`storage.go`,
+  `concurrent.go`) explicitly add `workflow.New()` to `Config.Modules`.
+
+Removed:
+- `internal/engine/handlers_workflows.go` (8 handlers + `jsonOrNull`
+  helper — moved to `modules/workflow/handlers.go`).
+- Workflow catalog entries in `internal/engine/catalog.go`.
+
+Known follow-up: `test/suite/plugins/metrics_plugin_test.go` still fails
+(pre-existing, from Bundle B) because the audit store is nil without
+explicit wiring. The audit module in a later checkpoint owns that path.
+
 ### Session 05 Checkpoint 2 — modules/gateway
 
 Second module extracted into `modules/`. Gateway now satisfies

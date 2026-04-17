@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,7 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -251,6 +253,7 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })

@@ -2,6 +2,7 @@ package brainkit
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/sdk"
@@ -67,4 +68,11 @@ func (k *Kit) RegisterRawTool(t RegisteredTool) error {
 // (no-op if one isn't configured).
 func (k *Kit) ReportError(err error, ctx ErrorContext) {
 	k.kernel.ReportError(err, ctx)
+}
+
+// CallJS invokes a named JS function on the Kit's runtime and decodes its
+// JSON result. Modules use this to dispatch into runtime-side helpers
+// registered on globalThis (e.g. __brainkit.workflow.start).
+func (k *Kit) CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
+	return k.kernel.CallJS(ctx, fn, args)
 }

@@ -314,15 +314,7 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryResolveMsg) (*sdk.RegistryResolveResp, error) {
 				return kernel.registryDomain.Resolve(ctx, req)
 			}),
-			// ── Workflows (handlers in handlers_workflows.go) ──
-			kernelCommand(handleWorkflowStart),
-			kernelCommand(handleWorkflowStartAsync),
-			kernelCommand(handleWorkflowStatus),
-			kernelCommand(handleWorkflowResume),
-			kernelCommand(handleWorkflowCancel),
-			kernelCommand(handleWorkflowList),
-			kernelCommand(handleWorkflowRuns),
-			kernelCommand(handleWorkflowRestart),
+			// ── Workflows (moved to modules/workflow) ──
 			// ── Metrics ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.MetricsGetMsg) (*sdk.MetricsGetResp, error) {
 				return kernel.metricsDomain.Get(ctx, req)

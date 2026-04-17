@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -30,6 +31,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -82,6 +84,7 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -127,6 +130,7 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -191,6 +195,7 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -282,6 +287,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(mastraDBPath),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 
@@ -305,6 +311,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(mastraDBPath),
 		},
+		Modules: []brainkit.Module{workflow.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()

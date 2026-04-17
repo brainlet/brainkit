@@ -1,4 +1,4 @@
-package engine
+package workflow
 
 import (
 	"context"
@@ -7,11 +7,10 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// ── Workflow Bus Command Handlers ──
-// All delegate to runtime/dispatch.js via Kernel.callJS.
+// All handlers delegate to runtime/dispatch.js via Kit.CallJS.
 
-func handleWorkflowStart(ctx context.Context, kernel *Kernel, req sdk.WorkflowStartMsg) (*sdk.WorkflowStartResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.start", map[string]any{
+func (m *Module) handleStart(ctx context.Context, req sdk.WorkflowStartMsg) (*sdk.WorkflowStartResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.start", map[string]any{
 		"name":      req.Name,
 		"inputData": jsonOrNull(req.InputData),
 	})
@@ -25,8 +24,8 @@ func handleWorkflowStart(ctx context.Context, kernel *Kernel, req sdk.WorkflowSt
 	return &resp, nil
 }
 
-func handleWorkflowStartAsync(ctx context.Context, kernel *Kernel, req sdk.WorkflowStartAsyncMsg) (*sdk.WorkflowStartAsyncResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.startAsync", map[string]any{
+func (m *Module) handleStartAsync(ctx context.Context, req sdk.WorkflowStartAsyncMsg) (*sdk.WorkflowStartAsyncResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.startAsync", map[string]any{
 		"name":      req.Name,
 		"inputData": jsonOrNull(req.InputData),
 	})
@@ -40,8 +39,8 @@ func handleWorkflowStartAsync(ctx context.Context, kernel *Kernel, req sdk.Workf
 	return &resp, nil
 }
 
-func handleWorkflowStatus(ctx context.Context, kernel *Kernel, req sdk.WorkflowStatusMsg) (*sdk.WorkflowStatusResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.status", req)
+func (m *Module) handleStatus(ctx context.Context, req sdk.WorkflowStatusMsg) (*sdk.WorkflowStatusResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.status", req)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +51,8 @@ func handleWorkflowStatus(ctx context.Context, kernel *Kernel, req sdk.WorkflowS
 	return &resp, nil
 }
 
-func handleWorkflowResume(ctx context.Context, kernel *Kernel, req sdk.WorkflowResumeMsg) (*sdk.WorkflowResumeResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.resume", map[string]any{
+func (m *Module) handleResume(ctx context.Context, req sdk.WorkflowResumeMsg) (*sdk.WorkflowResumeResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.resume", map[string]any{
 		"name":       req.Name,
 		"runId":      req.RunID,
 		"step":       req.Step,
@@ -69,8 +68,8 @@ func handleWorkflowResume(ctx context.Context, kernel *Kernel, req sdk.WorkflowR
 	return &resp, nil
 }
 
-func handleWorkflowCancel(ctx context.Context, kernel *Kernel, req sdk.WorkflowCancelMsg) (*sdk.WorkflowCancelResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.cancel", req)
+func (m *Module) handleCancel(ctx context.Context, req sdk.WorkflowCancelMsg) (*sdk.WorkflowCancelResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.cancel", req)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +80,8 @@ func handleWorkflowCancel(ctx context.Context, kernel *Kernel, req sdk.WorkflowC
 	return &resp, nil
 }
 
-func handleWorkflowList(ctx context.Context, kernel *Kernel, _ sdk.WorkflowListMsg) (*sdk.WorkflowListResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.list", nil)
+func (m *Module) handleList(ctx context.Context, _ sdk.WorkflowListMsg) (*sdk.WorkflowListResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.list", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +92,8 @@ func handleWorkflowList(ctx context.Context, kernel *Kernel, _ sdk.WorkflowListM
 	return &resp, nil
 }
 
-func handleWorkflowRuns(ctx context.Context, kernel *Kernel, req sdk.WorkflowRunsMsg) (*sdk.WorkflowRunsResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.runs", req)
+func (m *Module) handleRuns(ctx context.Context, req sdk.WorkflowRunsMsg) (*sdk.WorkflowRunsResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.runs", req)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +104,8 @@ func handleWorkflowRuns(ctx context.Context, kernel *Kernel, req sdk.WorkflowRun
 	return &resp, nil
 }
 
-func handleWorkflowRestart(ctx context.Context, kernel *Kernel, req sdk.WorkflowRestartMsg) (*sdk.WorkflowRestartResp, error) {
-	raw, err := kernel.callJS(ctx, "__brainkit.workflow.restart", req)
+func (m *Module) handleRestart(ctx context.Context, req sdk.WorkflowRestartMsg) (*sdk.WorkflowRestartResp, error) {
+	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.restart", req)
 	if err != nil {
 		return nil, err
 	}

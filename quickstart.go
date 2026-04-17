@@ -29,6 +29,8 @@ func QuickStart(namespace, fsRoot string) (*Kit, error) {
 		FSRoot:    fsRoot,
 		Transport: EmbeddedNATS(),
 		Store:     store,
-		// TODO(session-05): attach tracing + audit modules here.
+		// TODO(session-05): attach tracing + audit + workflow modules here
+		// via a dedicated preset package (importing modules/* from brainkit
+		// root would create a cycle — modules import brainkit.Kit).
 	})
 }

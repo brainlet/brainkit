@@ -19,6 +19,7 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	"github.com/brainlet/brainkit/modules/workflow"
 )
 
 // TestEnv is the shared test environment for all suite domains.
@@ -221,6 +222,10 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	if len(cfg.MCPServers) > 0 {
 		kitCfg.Modules = append(kitCfg.Modules, mcppkg.New(cfg.MCPServers))
 	}
+
+	// Workflow commands come from modules/workflow — always include so the
+	// workflow suite's bus commands are available.
+	kitCfg.Modules = append(kitCfg.Modules, workflow.New())
 
 	// Transport: default to memory (fast GoChannel) for suite tests.
 	// Campaigns override with WithTransport("nats"), WithTransport("embedded"), etc.
