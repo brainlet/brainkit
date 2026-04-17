@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Session 05 Checkpoint 1 — modules/mcp
+
+First module extracted from `internal/engine` into a standalone package under
+`modules/`, exercising the public Module / Command surface built in the
+prereq commit.
+
+Added:
+- `modules/mcp/` package:
+  - `client.go` (moved from `internal/mcp/client.go`, `package mcp`,
+    `New` renamed to `NewManager` to avoid collision with the module's `New`).
+  - `module.go`: `*Module` satisfies `brainkit.Module`. `New(map[string]ServerConfig)` constructs it.
+    `Init(*Kit)` connects every server, registers discovered tools via
+    `(*Kit).RegisterRawTool`, and wires the `mcp.listTools` / `mcp.callTool`
+    bus commands via `(*Kit).RegisterCommand(brainkit.Command(...))`.
+  - `Status()` reports `brainkit.ModuleStatusStable`.
+- Public Kit surface needed for modules:
+  - `(*Kit).RegisterRawTool(RegisteredTool) error` — registers a pre-built tool.
+  - `(*Kit).ReportError(err, ErrorContext)` — forwards through the Kit's
+    ErrorHandler.
+  - `brainkit.RegisteredTool` / `brainkit.GoFuncExecutor` / `brainkit.ErrorContext`
+    type aliases.
+- Transport-finalization lifecycle:
+  - `engine.Kernel.StartRouter(ctx)` + `engine.Node.StartRouter(ctx)` —
+    installs host bindings and starts the Watermill router. `brainkit.New`
+    now sets `DeferRouterStart` on both paths and invokes `StartRouter`
+    only after brainkit.Modules have Init'd, so late-registered commands
+    reach the router.
+
+Removed:
+- `internal/mcp/` (moved to `modules/mcp/`).
+- `internal/engine/module_mcp.go`, `handlers_mcp.go`, `module_mcp_test.go`.
+- `mcp.go` in the root + the `mcpModuleAdapter` shim from the prereq commit.
+- `brainkit.NewMCPModule` — callers migrate to `modules/mcp.New`.
+
+Changed:
+- `cmd/brainkit/config`, `test/suite/env.go`, `test/fixtures/runner.go`,
+  `test/suite/mcp/mcp_test.go` import `modules/mcp` and build
+  `mcppkg.New(...)` instead of `brainkit.NewMCPModule(...)`.
+
 ### Session 05 prereq — public Module / Command surface
 
 Preparatory commit for the module-extraction batch (session 05). Establishes

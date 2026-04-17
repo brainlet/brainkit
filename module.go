@@ -55,3 +55,16 @@ func Command[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Re
 func (k *Kit) RegisterCommand(spec CommandSpec) {
 	k.kernel.RegisterCommand(spec)
 }
+
+// RegisterRawTool registers a pre-built RegisteredTool with the Kit's tool
+// registry. Modules use this to surface tools whose executor isn't a typed
+// Go function (e.g. MCP tools that proxy to an external server).
+func (k *Kit) RegisterRawTool(t RegisteredTool) error {
+	return k.kernel.Tools.Register(t)
+}
+
+// ReportError forwards a non-fatal error through the Kit's ErrorHandler
+// (no-op if one isn't configured).
+func (k *Kit) ReportError(err error, ctx ErrorContext) {
+	k.kernel.ReportError(err, ctx)
+}

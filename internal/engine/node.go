@@ -96,11 +96,16 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 		}
 	}
 
-	// Register ALL command bindings (kernel + node-specific) on the Kernel's router.
-	// Bindings must be registered before router.Run() — the router subscribes at start.
-	kernel.host.RegisterCommands(commandBindingsForNode(node))
-
 	return node, nil
+}
+
+// StartRouter registers all command bindings (kernel + node-specific) on the
+// host and starts the Watermill router. brainkit.New calls this after all
+// brainkit.Modules have registered their commands so the router starts with
+// the complete binding set.
+func (n *Node) StartRouter(ctx context.Context) error {
+	n.Kernel.host.RegisterCommands(commandBindingsForNode(n))
+	return n.Start(ctx)
 }
 
 // Start starts the message router and launches plugins.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -374,7 +375,7 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
 		Modules: []brainkit.Module{
-			brainkit.NewMCPModule(map[string]brainkit.MCPServerConfig{
+			mcppkg.New(map[string]mcppkg.ServerConfig{
 				"test": {URL: mcpURL},
 			}),
 		},

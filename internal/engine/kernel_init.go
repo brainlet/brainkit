@@ -133,8 +133,11 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 	}
 	k.caller = c
 
+	k.router = router
 	if !cfg.DeferRouterStart {
-		// Standalone Kernel: register kernel-only bindings and start router now
+		// Legacy standalone path — register + start immediately. brainkit.New
+		// sets DeferRouterStart=true so the router starts via Kernel.StartRouter
+		// after Kit-scoped modules have registered their commands.
 		k.host.RegisterCommands(commandBindingsForKernel(k))
 		go func() {
 			_ = router.Run(context.Background())
@@ -142,6 +145,26 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 		<-router.Running()
 	}
 
+	return nil
+}
+
+// StartRouter finalizes kernel-only command bindings and starts the Watermill
+// router. Safe to call once after NewKernel(DeferRouterStart=true); no-op if
+// the router has already been started.
+func (k *Kernel) StartRouter(ctx context.Context) error {
+	if k.router == nil {
+		return fmt.Errorf("brainkit: router not initialized")
+	}
+	select {
+	case <-k.router.Running():
+		return nil
+	default:
+	}
+	k.host.RegisterCommands(commandBindingsForKernel(k))
+	go func() {
+		_ = k.router.Run(ctx)
+	}()
+	<-k.router.Running()
 	return nil
 }
 

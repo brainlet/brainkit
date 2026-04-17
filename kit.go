@@ -56,6 +56,9 @@ func New(cfg Config) (*Kit, error) {
 
 	if cfg.Transport.typ == "memory" {
 		// Standalone Kernel — in-memory GoChannel, no plugins, fast for tests.
+		// Defer router start so brainkit.Module.Init can register commands
+		// before the transport finalizes bindings.
+		kernelCfg.DeferRouterStart = true
 		kernel, err := engine.NewKernel(kernelCfg)
 		if err != nil {
 			return nil, fmt.Errorf("brainkit: %w", err)
@@ -68,16 +71,14 @@ func New(cfg Config) (*Kit, error) {
 		if err != nil {
 			return nil, fmt.Errorf("brainkit: %w", err)
 		}
-		if err := node.Start(context.Background()); err != nil {
-			node.Close()
-			return nil, fmt.Errorf("brainkit: start: %w", err)
-		}
 		kit.node = node
 		kit.kernel = node.Kernel
 	}
 
-	// Initialize Kit-scoped modules (Init(*Kit)) after the kernel is built.
-	// Legacy engine.Module instances were already initialized inside engine.NewKernel.
+	// Initialize Kit-scoped modules (Init(*Kit)) after the kernel is built
+	// but before the transport router starts — modules that register bus
+	// commands must be able to add them to the catalog before bindings are
+	// installed on the host.
 	for _, m := range cfg.Modules {
 		pkgMod, ok := m.(Module)
 		if !ok {
@@ -88,6 +89,21 @@ func New(cfg Config) (*Kit, error) {
 			return nil, fmt.Errorf("brainkit: module %q init: %w", pkgMod.Name(), err)
 		}
 		kit.modules = append(kit.modules, pkgMod)
+	}
+
+	// Finalize transport bindings + start the router.
+	if kit.node != nil {
+		// Node path: command bindings were registered in engine.NewNode.
+		// Router starts here.
+		if err := kit.node.StartRouter(context.Background()); err != nil {
+			kit.Close()
+			return nil, fmt.Errorf("brainkit: start router: %w", err)
+		}
+	} else {
+		if err := kit.kernel.StartRouter(context.Background()); err != nil {
+			kit.Close()
+			return nil, fmt.Errorf("brainkit: start router: %w", err)
+		}
 	}
 
 	return kit, nil

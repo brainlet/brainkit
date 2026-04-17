@@ -31,8 +31,8 @@ type MCPManager struct {
 	tools   map[string][]ToolInfo
 }
 
-// New creates a new MCPManager.
-func New() *MCPManager {
+// NewManager creates a new MCPManager.
+func NewManager() *MCPManager {
 	return &MCPManager{
 		clients: make(map[string]*client.Client),
 		tools:   make(map[string][]ToolInfo),

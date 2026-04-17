@@ -3,7 +3,7 @@ package mcp
 import (
 	"testing"
 
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 )

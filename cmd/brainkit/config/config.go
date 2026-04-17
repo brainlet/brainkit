@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit"
+	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	"github.com/spf13/viper"
 )
 
@@ -118,7 +119,7 @@ func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 	}
 
 	if len(cfg.MCPServers) > 0 {
-		servers := make(map[string]brainkit.MCPServerConfig, len(cfg.MCPServers))
+		servers := make(map[string]mcppkg.ServerConfig, len(cfg.MCPServers))
 		for name, entry := range cfg.MCPServers {
 			servers[name] = brainkit.MCPServerConfig{
 				Command: entry.Command,
@@ -127,7 +128,7 @@ func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 				URL:     entry.URL,
 			}
 		}
-		bc.Modules = append(bc.Modules, brainkit.NewMCPModule(servers))
+		bc.Modules = append(bc.Modules, mcppkg.New(servers))
 	}
 
 	if cfg.StorePath != "" {

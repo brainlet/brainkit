@@ -18,7 +18,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
-	mcppkg "github.com/brainlet/brainkit/internal/mcp"
+	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 )
 
 // TestEnv is the shared test environment for all suite domains.
@@ -217,9 +217,9 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		kitCfg.TraceStore = tracing.NewMemoryTraceStore(1000)
 	}
 
-	// MCP servers — now injected as a Module (no auto-wiring from Config).
+	// MCP servers — injected as a Module from modules/mcp.
 	if len(cfg.MCPServers) > 0 {
-		kitCfg.Modules = append(kitCfg.Modules, brainkit.NewMCPModule(cfg.MCPServers))
+		kitCfg.Modules = append(kitCfg.Modules, mcppkg.New(cfg.MCPServers))
 	}
 
 	// Transport: default to memory (fast GoChannel) for suite tests.

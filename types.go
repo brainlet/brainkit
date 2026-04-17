@@ -8,6 +8,17 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 )
 
+// RegisteredTool is a pre-built tool registration. Modules register tools
+// via (*Kit).RegisterRawTool.
+type RegisteredTool = tools.RegisteredTool
+
+// GoFuncExecutor wraps a Go function as a tool executor.
+type GoFuncExecutor = tools.GoFuncExecutor
+
+// ErrorContext provides operation / component / source fields for
+// non-fatal errors forwarded via (*Kit).ReportError.
+type ErrorContext = types.ErrorContext
+
 // ── Common types ─────────────────────────────────────────────────────────────
 
 // LogEntry is a tagged log entry from a .ts Compartment or the runtime.

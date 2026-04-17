@@ -82,6 +82,12 @@ func RegisterTool[T any](k *Kernel, name string, tool toolreg.TypedTool[T]) erro
 	return toolreg.Register(k.Tools, name, tool)
 }
 
+// ReportError forwards a non-fatal error through the Kernel's configured
+// ErrorHandler (no-op if none is configured). Used by modules.
+func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
+	types.InvokeErrorHandler(k.config.ErrorHandler, err, ctx)
+}
+
 // --- Provider Registry delegation ---
 
 // RegisterAIProvider registers a typed AI provider at runtime.
