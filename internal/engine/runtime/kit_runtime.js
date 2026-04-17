@@ -92,6 +92,8 @@
       },
       unsubscribe: _kitObj.bus.unsubscribe,
       sendTo: _kitObj.bus.sendTo,
+      call: _kitObj.bus.call,
+      callTo: _kitObj.bus.callTo,
       schedule: ws(function(expression, topic, data) {
         return _kitObj.bus.schedule(expression, ns + "." + topic, data);
       }),
@@ -146,6 +148,8 @@
         on: scopedBus.on,
         unsubscribe: scopedBus.unsubscribe,
         sendTo: rewrapErrors(scopedBus.sendTo),
+        call: rewrapErrorsAsync(scopedBus.call),
+        callTo: rewrapErrorsAsync(scopedBus.callTo),
         schedule: rewrapErrors(scopedBus.schedule),
         unschedule: scopedBus.unschedule,
       },

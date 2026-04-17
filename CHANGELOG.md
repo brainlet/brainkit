@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+### Session 03 — Bundle C: `.ts` bus.call / bus.callTo + JS BrainkitError lift
+
+Closes session 03. Adds request-reply from `.ts` handlers and lifts
+JS-thrown `BrainkitError` instances into their typed Go counterparts
+on the error path.
+
+Added:
+- `internal/engine/runtime/bus.js` — `bus.call(topic, data, {timeoutMs})`
+  and `bus.callTo(namespace, topic, data, {timeoutMs})`. `timeoutMs`
+  is REQUIRED (mirrors Go's deadline rule). Returns a Promise that
+  resolves with the unwrapped reply data or rejects with a
+  `BrainkitError` built from the wire envelope's `ok:false` branch.
+- `internal/engine/bridges_bus.go` — new `__go_brainkit_bus_call`
+  bridge backs the JS calls. Publishes via the Kit's shared-inbox
+  Caller; envelope unwrap happens in the Go Caller; the resulting
+  raw-data bytes or Go typed error are delivered back to JS as a
+  resolved/rejected Promise.
+- `internal/contract/contract.go:JSBridgeBusCall` constant
+- `internal/engine/runtime/kit.d.ts` — typed `call<T>` / `callTo<T>`
+  declarations with timeoutMs required
+- `bus.js:subscribe` — user handler wrapper captures thrown
+  `BrainkitError` into `globalThis.__pending_handler_err` (sync OR
+  async rejection) so Go-side dispatch can surface the typed code
+- `internal/engine/bridges_util.go:enrichHandlerErr` — reads the
+  pending slot, synthesizes an envelope, decodes via
+  `sdk.FromEnvelope`, and returns the matching typed Go error. Called
+  from `bridges_bus.go` on both sync and async handler exceptions.
+- `test/suite/bus/ts_call.go` — 6 tests: .ts→.ts happy path,
+  timeoutMs-required rejection, remote BrainkitError propagation,
+  timeout-elapsed CALL_TIMEOUT surfacing, Go→.ts round-trip, and
+  Go→.ts-throw typed-error surface through envelope unwrap
+
+Changed:
+- `kit_runtime.js` — `scopedBus` exposes `call`/`callTo`; wrapped
+  under `rewrapErrorsAsync` so Compartment code throws the local
+  `BrainkitError` class on ok=false
+
+Verification:
+- `go build ./...` clean
+- `go test ./test/suite/bus` — 6 new tests green
+- Full `go test ./test/suite/... -short` green except three
+  pre-existing flakes (GoChannel stream interleave, Podman cross,
+  plugin timing)
+
+Session 03 is complete. All three bundles — error envelope, eval
+command collapse, `.ts` bus.call — shipped. `msg.stream.end` /
+`msg.stream.error` envelope wrap is deferred to the gateway SSE
+rewrite; it is explicitly out of Bundle C scope per the design.
+
 ### Session 03 — Bundle B: eval command collapse
 
 Collapses three bus eval commands into one. `kit.eval` now dispatches

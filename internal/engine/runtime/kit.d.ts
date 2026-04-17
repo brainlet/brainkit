@@ -25,6 +25,18 @@ declare module "kit" {
     sendTo(service: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
     /** Send to a deployed WASM shard's handler topic. */
     sendToShard(shard: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
+    /**
+     * Send a request-reply command and await the terminal envelope.
+     * Throws BrainkitError on the remote handler's ok=false reply;
+     * throws a TIMEOUT BrainkitError if timeoutMs elapses first.
+     * timeoutMs is REQUIRED — mirrors Go's deadline rule.
+     *
+     * @example
+     *   const reply = await bus.call("ts.my-svc.chat", { text: "hi" }, { timeoutMs: 5000 });
+     */
+    call<T = any>(topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
+    /** Cross-kit variant of call(): routes the request to a different namespace. */
+    callTo<T = any>(namespace: string, topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
   };
 
   export interface BusMessage {

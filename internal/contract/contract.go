@@ -22,6 +22,7 @@ const (
 	JSBridgeBusPublish   = "__go_brainkit_bus_publish"
 	JSBridgeBusEmit      = "__go_brainkit_bus_emit"
 	JSBridgeBusReply     = "__go_brainkit_bus_reply"
+	JSBridgeBusCall      = "__go_brainkit_bus_call"
 	JSBridgeSubscribe    = "__go_brainkit_subscribe"
 	JSBridgeUnsubscribe  = "__go_brainkit_unsubscribe"
 

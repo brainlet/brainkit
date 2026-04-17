@@ -7,7 +7,13 @@ import (
 
 	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
+)
+
+var (
+	sdkEnvelopeErr  = sdk.EnvelopeErr
+	sdkFromEnvelope = sdk.FromEnvelope
 )
 
 // registerLoggingBridge adds __go_console_log_tagged for per-Compartment tagged logging.
@@ -56,6 +62,49 @@ func (k *Kernel) throwBrainkitError(qctx *quickjs.Context, err error) *quickjs.V
 		return qctx.ThrowError(err)
 	}
 	return qctx.Throw(errVal)
+}
+
+// enrichHandlerErr promotes a JS-handler-thrown BrainkitError captured via
+// globalThis.__pending_handler_err into a typed Go error through the wire
+// envelope path. If no pending err is set, returns the fallback error
+// unchanged. Reading clears the pending slot so it doesn't leak into the
+// next handler invocation.
+func (k *Kernel) enrichHandlerErr(qctx *quickjs.Context, fallback error) error {
+	probe := qctx.Eval(`(function(){
+		var e = globalThis.__pending_handler_err;
+		globalThis.__pending_handler_err = null;
+		return e ? JSON.stringify(e) : "";
+	})()`)
+	if probe.IsException() {
+		return fallback
+	}
+	raw := probe.String()
+	probe.Free()
+	if raw == "" {
+		return fallback
+	}
+	var captured struct {
+		Code    string         `json:"code"`
+		Message string         `json:"message"`
+		Details map[string]any `json:"details"`
+	}
+	if err := json.Unmarshal([]byte(raw), &captured); err != nil || captured.Code == "" {
+		return fallback
+	}
+	// Build a synthetic envelope and decode through the canonical path so
+	// Go-side callers see the right typed error class.
+	return sdkFromEnvelopeFallback(captured.Code, captured.Message, captured.Details, fallback)
+}
+
+// sdkFromEnvelopeFallback runs sdk.FromEnvelope with the given fields and
+// returns the result; if sdk.FromEnvelope returns nil (shouldn't for a
+// non-nil code), returns the fallback.
+func sdkFromEnvelopeFallback(code, message string, details map[string]any, fallback error) error {
+	env := sdkEnvelopeErr(code, message, details)
+	if out := sdkFromEnvelope(env); out != nil {
+		return out
+	}
+	return fallback
 }
 
 // redactCredentials strips sensitive fields (API keys, tokens, passwords, secrets)

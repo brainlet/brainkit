@@ -174,7 +174,23 @@
     subscribe: function(topic, handler) {
       var subId = __go_brainkit_subscribe(topic);
       globalThis.__bus_subs[subId] = function(rawMsg) {
-        return handler(wrapMsg(rawMsg));
+        // Wrap user handler so BrainkitError throws (sync OR async) leak
+        // their .code/.details into globalThis.__pending_handler_err so the
+        // Go dispatcher can surface them as a typed envelope error.
+        function _capture(e) {
+          if (e && e.code) {
+            globalThis.__pending_handler_err = {
+              code: e.code, message: e.message || "", details: e.details || null,
+            };
+          }
+        }
+        try {
+          var r = handler(wrapMsg(rawMsg));
+          if (r && typeof r.then === "function") {
+            return r.catch(function(e) { _capture(e); throw e; });
+          }
+          return r;
+        } catch (e) { _capture(e); throw e; }
       };
       _resourceRegistry.register("subscription", subId, subId, null, function() {
         __go_brainkit_unsubscribe(subId);
@@ -196,6 +212,34 @@
     sendTo: function(service, localTopic, data) {
       var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
       return globalThis.__kit_bus.publish("ts." + name + "." + localTopic, data);
+    },
+    // call(topic, data, { timeoutMs }) → Promise<responseData>
+    // Publishes a request-reply command; waits for the envelope terminal;
+    // throws BrainkitError on ok=false or the configured timeout.
+    // timeoutMs is REQUIRED (mirrors Go's deadline rule).
+    call: function(topic, data, opts) {
+      opts = opts || {};
+      if (!opts.timeoutMs || typeof opts.timeoutMs !== "number") {
+        return Promise.reject(new BrainkitError("bus.call: timeoutMs is required", "VALIDATION_ERROR", { field: "timeoutMs" }));
+      }
+      return __go_brainkit_bus_call(topic, JSON.stringify(data === undefined ? null : data), "", opts.timeoutMs).then(function(raw) {
+        if (raw === "" || raw === "null") return null;
+        return JSON.parse(raw);
+      });
+    },
+    // callTo(namespace, topic, data, { timeoutMs }) → same as call, cross-kit.
+    callTo: function(namespace, topic, data, opts) {
+      opts = opts || {};
+      if (!opts.timeoutMs || typeof opts.timeoutMs !== "number") {
+        return Promise.reject(new BrainkitError("bus.callTo: timeoutMs is required", "VALIDATION_ERROR", { field: "timeoutMs" }));
+      }
+      if (!namespace || typeof namespace !== "string") {
+        return Promise.reject(new BrainkitError("bus.callTo: namespace is required", "VALIDATION_ERROR", { field: "namespace" }));
+      }
+      return __go_brainkit_bus_call(topic, JSON.stringify(data === undefined ? null : data), namespace, opts.timeoutMs).then(function(raw) {
+        if (raw === "" || raw === "null") return null;
+        return JSON.parse(raw);
+      });
     },
     schedule: function(expression, topic, data) {
       var id = __go_brainkit_bus_schedule(expression, topic, JSON.stringify(data || null), globalThis.__kit_currentSource || "go");

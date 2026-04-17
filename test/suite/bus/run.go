@@ -22,6 +22,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("call_concurrent_demux", func(t *testing.T) { testCallConcurrentDemux(t, env) })
 		t.Run("call_raw_payload", func(t *testing.T) { testCallRawPayload(t, env) })
 
+		// ts_call.go — .ts bus.call / bus.callTo wire envelope
+		t.Run("ts_bus_call_happy_path", func(t *testing.T) { testTSBusCallHappyPath(t, env) })
+		t.Run("ts_bus_call_requires_timeout", func(t *testing.T) { testTSBusCallRequiresTimeout(t, env) })
+		t.Run("ts_bus_call_propagates_brainkit_error", func(t *testing.T) { testTSBusCallPropagatesBrainkitError(t, env) })
+		t.Run("ts_bus_call_times_out", func(t *testing.T) { testTSBusCallTimesOut(t, env) })
+		t.Run("go_bus_call_to_ts", func(t *testing.T) { testGoBusCallToTS(t, env) })
+		t.Run("go_bus_call_ts_handler_throws_typed_error", func(t *testing.T) { testGoBusCallTSHandlerThrowsTypedError(t, env) })
+
 		// call_cancel_failfast.go — Bundle C: cancel signal + exhausted metadata + metrics
 		t.Run("call_emits_cancel_on_ctx_cancel", func(t *testing.T) { testCallEmitsCancelOnCtxCancel(t, env) })
 		t.Run("call_no_cancel_signal_suppresses", func(t *testing.T) { testCallNoCancelSignalSuppresses(t, env) })

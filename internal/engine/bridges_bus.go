@@ -3,20 +3,27 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	quickjs "github.com/buke/quickjs-go"
 	"github.com/google/uuid"
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
+
+func callerCfg(targetNamespace string) caller.Config {
+	return caller.Config{TargetNamespace: targetNamespace}
+}
 
 // registerBusBridges adds bus_send, bus_publish, bus_emit, bus_reply, subscribe, unsubscribe bridges.
 func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
@@ -145,6 +152,82 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 			return qctx.NewUndefined()
 		}))
 
+	// __go_brainkit_bus_call(topic, payloadJSON, targetNamespace, timeoutMs) → Promise<envelope JSON>
+	// Uses the shared-inbox Caller to publish + await a terminal reply.
+	// Envelope unwrap happens in JS land (__kit_bus.call throws BrainkitError on ok=false).
+	qctx.Globals().Set(js.JSBridgeBusCall,
+		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
+			if len(args) < 4 {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.call: expected 4 args (topic, payload, targetNamespace, timeoutMs)"})
+			}
+			topic := args[0].String()
+			if topic == "" {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "topic", Message: "is required"})
+			}
+			payload := json.RawMessage(args[1].String())
+			targetNS := args[2].String()
+			timeoutMs := args[3].ToInt32()
+			if timeoutMs <= 0 {
+				return k.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "timeoutMs", Message: "bus.call: timeoutMs is required (> 0)"})
+			}
+
+			c := k.caller
+			if c == nil {
+				return k.throwBrainkitError(qctx, &sdkerrors.BridgeError{Function: "bus.call", Cause: fmt.Errorf("caller not initialized")})
+			}
+
+			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
+				k.bridge.Go(func(goCtx context.Context) {
+					callCtx, cancel := context.WithTimeout(goCtx, time.Duration(timeoutMs)*time.Millisecond)
+					defer cancel()
+					span := k.tracer.StartSpan("bus.call:"+topic, callCtx)
+					cfg := callerCfg(targetNS)
+					replyPayload, err := c.Call(callCtx, topic, payload, cfg)
+					span.End(err)
+					if err != nil {
+						if goCtx.Err() != nil {
+							return
+						}
+						// Extract typed code for the JS BrainkitError thrown to user
+						var bkErr sdkerrors.BrainkitError
+						errCode := "INTERNAL_ERROR"
+						errDetailsJSON := "{}"
+						if errors.As(err, &bkErr) {
+							errCode = bkErr.Code()
+							if d := bkErr.Details(); d != nil {
+								if b, e := json.Marshal(d); e == nil {
+									errDetailsJSON = string(b)
+								}
+							}
+						}
+						errMsg := err.Error()
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							script := fmt.Sprintf(`(typeof BrainkitError === "function") ? new BrainkitError(%q, %q, JSON.parse(%q)) : new Error(%q)`,
+								errMsg, errCode, errDetailsJSON, errMsg)
+							errVal := qctx.Eval(script)
+							if errVal.IsException() {
+								errVal = qctx.NewError(fmt.Errorf("%s", errMsg))
+							}
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+					// Success: the Caller already unwrapped the envelope and
+					// returned raw data bytes. JS side receives the data
+					// directly. For callers that want the raw envelope,
+					// wrap it back up.
+					raw := string(replyPayload)
+					if raw == "" {
+						raw = "null"
+					}
+					qctx.Schedule(func(qctx *quickjs.Context) {
+						resolve(qctx.NewString(raw))
+					})
+				})
+			})
+		}))
+
 	qctx.Globals().Set(js.JSBridgeSubscribe,
 		qctx.NewFunction(func(qctx *quickjs.Context, this *quickjs.Value, args []*quickjs.Value) *quickjs.Value {
 			if len(args) < 1 {
@@ -218,6 +301,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 					if val.IsException() {
 						handlerErr := qctx.Exception()
 						val.Free()
+						handlerErr = k.enrichHandlerErr(qctx, handlerErr)
 						k.handleHandlerFailure(msg, topic, handlerErr)
 						return
 					}
@@ -230,6 +314,7 @@ func (k *Kernel) registerBusBridges(qctx *quickjs.Context) {
 						if awaited.IsException() || qctx.HasException() {
 							handlerErr := qctx.Exception()
 							awaited.Free()
+							handlerErr = k.enrichHandlerErr(qctx, handlerErr)
 							k.handleHandlerFailure(msg, topic, handlerErr)
 							return
 						}
