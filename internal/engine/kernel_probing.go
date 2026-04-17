@@ -101,24 +101,3 @@ func (k *Kernel) ProbeAll() {
 	}
 }
 
-// startPeriodicProbing starts a background goroutine that probes all registered
-// resources at the configured interval. Stops when the Kernel is closed.
-func (k *Kernel) startPeriodicProbing() {
-	interval := k.config.Probe.PeriodicInterval
-	if interval <= 0 {
-		return
-	}
-	ticker := time.NewTicker(interval)
-	go func() {
-		for range ticker.C {
-			k.mu.Lock()
-			closed := k.closed
-			k.mu.Unlock()
-			if closed {
-				ticker.Stop()
-				return
-			}
-			k.ProbeAll()
-		}
-	}()
-}

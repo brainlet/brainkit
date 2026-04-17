@@ -76,3 +76,9 @@ func (k *Kit) ReportError(err error, ctx ErrorContext) {
 func (k *Kit) CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
 	return k.kernel.CallJS(ctx, fn, args)
 }
+
+// ProbeAll probes every registered AI provider, vector store, and storage
+// backend. Modules use this to trigger periodic or on-demand probing.
+func (k *Kit) ProbeAll() {
+	k.kernel.ProbeAll()
+}
