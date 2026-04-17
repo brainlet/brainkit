@@ -168,7 +168,7 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 			Storage string `json:"storage"`
 			Error   string `json:"error"`
 		}
-		json.Unmarshal(resp.Payload, &result)
+		json.Unmarshal(suite.ResponseData(resp.Payload), &result)
 		if !result.OK {
 			t.Fatalf("storage test failed: %s", result.Error)
 		}

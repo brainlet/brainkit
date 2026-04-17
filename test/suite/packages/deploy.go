@@ -61,7 +61,7 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 	replyCh := make(chan map[string]any, 1)
 	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
+		json.Unmarshal(suite.ResponseDataFromMsg(msg), &resp)
 		replyCh <- resp
 	})
 	defer replyCancel()
@@ -298,7 +298,7 @@ func sendToServiceAndWait(t *testing.T, k interface {
 	replyCh := make(chan map[string]any, 1)
 	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
 		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
+		json.Unmarshal(suite.ResponseDataFromMsg(msg), &resp)
 		select {
 		case replyCh <- resp:
 		default:

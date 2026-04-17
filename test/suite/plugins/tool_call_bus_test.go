@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
 
@@ -126,7 +127,7 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 		replyTo := fmt.Sprintf("tools.call.reply.%d", time.Now().UnixNano())
 		replyCh := make(chan json.RawMessage, 1)
 		unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			replyCh <- msg.Payload
+			replyCh <- suite.ResponseDataFromMsg(msg)
 		})
 		require.NoError(t, err)
 		defer unsub()

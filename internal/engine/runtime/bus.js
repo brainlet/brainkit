@@ -94,16 +94,18 @@
       callerId: rawMsg.callerId || "",
       reply: function(data) {
         if (msg.replyTo) {
-          // Raw reply: kept non-enveloped during the migration so existing
-          // .ts consumers that still unmarshal inner JSON directly keep
-          // working. Envelope wrapping for .ts replies lands alongside
-          // the rest of the `.ts bus.call` / `bus.stream` work (session
-          // 03 Bundle C) once all raw-decoding tests are migrated.
-          __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, true);
+          // Terminal reply: wrap in wire envelope {ok:true, data} + set
+          // envelope=true metadata so the Caller + SubscribeTo unwrap
+          // cleanly. msg.send stays raw because its chunk/partial-reply
+          // semantics overlap with msg.stream.* and we don't want to
+          // claim envelope contract for both shapes.
+          var env = JSON.stringify({ ok: true, data: data === undefined ? null : data });
+          __go_brainkit_bus_reply(msg.replyTo, env, msg.correlationId, true, true);
         }
       },
       send: function(data) {
         if (msg.replyTo) {
+          // Intentionally raw — see reply() note above.
           __go_brainkit_bus_reply(msg.replyTo, JSON.stringify(data), msg.correlationId, false);
         }
       },

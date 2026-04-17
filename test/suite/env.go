@@ -380,11 +380,12 @@ func ResponseErrorDetails(payload json.RawMessage) map[string]any {
 	return resp.Details
 }
 
-// ResponseData returns the raw success-data payload. If the payload is a
-// wire envelope (has top-level `ok` AND `data`), returns env.Data;
-// otherwise returns the payload untouched. The `data` presence check is
-// necessary because user replies often legitimately contain an `ok`
-// field (e.g. `msg.reply({ok:true, attempt:2})`) without being envelopes.
+// ResponseData returns the raw success-data payload. When the payload is
+// a wire envelope by shape (top-level `ok` AND (`data` or `error`)) and
+// that envelope is `ok:true`, returns env.Data; otherwise returns the
+// payload untouched. Prefer ResponseDataFromMsg — the metadata-based
+// check never confuses real user data that happens to contain `ok`/`data`
+// with a wire envelope.
 func ResponseData(payload json.RawMessage) json.RawMessage {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &probe); err != nil {
@@ -400,6 +401,20 @@ func ResponseData(payload json.RawMessage) json.RawMessage {
 		return env.Data
 	}
 	return payload
+}
+
+// ResponseDataFromMsg is the preferred envelope unwrap helper for tests:
+// it reads msg.Metadata["envelope"] to decide whether to unwrap, so real
+// user replies that happen to carry `ok`/`data` keys are never falsely
+// unwrapped.
+func ResponseDataFromMsg(m sdk.Message) json.RawMessage {
+	if m.Metadata["envelope"] != "true" {
+		return m.Payload
+	}
+	if env, err := sdk.DecodeEnvelope(m.Payload); err == nil && env.Ok {
+		return env.Data
+	}
+	return m.Payload
 }
 
 // RequireAI skips the test if OPENAI_API_KEY is not set.

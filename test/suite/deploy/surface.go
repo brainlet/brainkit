@@ -78,7 +78,7 @@ func testTSNamespaceIsolation(t *testing.T, env *suite.TestEnv) {
 	select {
 	case msg := <-replyCh:
 		var result map[string]string
-		json.Unmarshal(msg.Payload, &result)
+		json.Unmarshal(suite.ResponseDataFromMsg(msg), &result)
 		assert.Equal(t, "service-a", result["from"], "should get reply from service A, not B")
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for namespace isolation reply")
@@ -365,7 +365,7 @@ func testTSDeployWithBusService(t *testing.T, env *suite.TestEnv) {
 	select {
 	case msg := <-replyCh:
 		var result map[string]string
-		json.Unmarshal(msg.Payload, &result)
+		json.Unmarshal(suite.ResponseDataFromMsg(msg), &result)
 		assert.Equal(t, "hello Go from ts service", result["greeting"])
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for service reply")
@@ -421,7 +421,7 @@ func testTSDeployWithStreaming(t *testing.T, env *suite.TestEnv) {
 	case final := <-finalCh:
 		assert.Equal(t, "true", final.Metadata["done"])
 		var finalPayload map[string]any
-		json.Unmarshal(final.Payload, &finalPayload)
+		json.Unmarshal(suite.ResponseDataFromMsg(final), &finalPayload)
 		assert.Equal(t, true, finalPayload["done"])
 		assert.Equal(t, float64(3), finalPayload["count"])
 	case <-ctx.Done():

@@ -237,7 +237,7 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 	select {
 	case msg := <-replyCh:
 		var result map[string]any
-		json.Unmarshal(msg.Payload, &result)
+		json.Unmarshal(suite.ResponseDataFromMsg(msg), &result)
 		if errMsg, hasErr := result["error"]; hasErr {
 			t.Fatalf("AI service returned error: %v", errMsg)
 		}

@@ -16,10 +16,10 @@ func publishAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runt
 	t.Helper()
 	pr, err := sdk.Publish(rt, ctx, req)
 	require.NoError(t, err)
-	ch := make(chan []byte, 1)
+	ch := make(chan json.RawMessage, 1)
 	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
 		select {
-		case ch <- msg.Payload:
+		case ch <- suite.ResponseDataFromMsg(msg):
 		default:
 		}
 	})
@@ -27,9 +27,6 @@ func publishAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runt
 	defer unsub()
 	select {
 	case payload := <-ch:
-		if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Ok {
-			payload = env.Data
-		}
 		var resp Resp
 		require.NoError(t, json.Unmarshal(payload, &resp))
 		return resp
@@ -95,7 +92,7 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	})
 
 	var payload struct{ Pong string `json:"pong"` }
-	require.NoError(t, json.Unmarshal(sendResp.Payload, &payload))
+	require.NoError(t, json.Unmarshal(suite.ResponseData(sendResp.Payload), &payload))
 	assert.Equal(t, "hello", payload.Pong)
 }
 
@@ -120,6 +117,6 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	})
 
 	var payload struct{ Sum int `json:"sum"` }
-	require.NoError(t, json.Unmarshal(sendResp.Payload, &payload))
+	require.NoError(t, json.Unmarshal(suite.ResponseData(sendResp.Payload), &payload))
 	assert.Equal(t, 7, payload.Sum)
 }
