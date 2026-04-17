@@ -8,7 +8,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/discovery"
+	"github.com/brainlet/brainkit/modules/discovery"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
