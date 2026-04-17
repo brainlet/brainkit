@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/brainlet/brainkit/internal/engine"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -89,3 +90,15 @@ func (k *Kit) ProbeAll() {
 func (k *Kit) SetTraceStore(store TraceStore) {
 	k.kernel.SetTraceStore(store)
 }
+
+// Namespace returns the Kit's bus namespace (message topic scoping).
+func (k *Kit) Namespace() string { return k.kernel.Namespace() }
+
+// CallerID returns the Kit's identity stamped onto outbound bus messages.
+func (k *Kit) CallerID() string { return k.kernel.CallerID() }
+
+// PresenceTransport exposes cluster-wide publish/subscribe on non-namespaced
+// topics. Modules such as discovery use this for presence announcements.
+// The concrete type is transport.Presence — a narrow, purpose-built interface
+// that modules can import without pulling the full transport surface.
+func (k *Kit) PresenceTransport() transport.Presence { return k.kernel.Remote() }

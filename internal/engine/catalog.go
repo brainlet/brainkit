@@ -397,32 +397,6 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TestRunMsg) (*sdk.TestRunResp, error) {
 				return kernel.testingDomain.Run(ctx, req)
 			}),
-			// ── Peer Discovery ──
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PeersListMsg) (*sdk.PeersListResp, error) {
-				if node.discovery == nil {
-					return &sdk.PeersListResp{Peers: []sdk.PeerInfo{}}, nil
-				}
-				peers, err := node.discovery.Browse()
-				if err != nil {
-					return nil, err
-				}
-				infos := make([]sdk.PeerInfo, len(peers))
-				for i, p := range peers {
-					infos[i] = sdk.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
-				}
-				namespaces, _ := node.discovery.BrowseNamespaces()
-				return &sdk.PeersListResp{Peers: infos, Namespaces: namespaces}, nil
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PeersResolveMsg) (*sdk.PeersResolveResp, error) {
-				if node.discovery == nil {
-					return nil, &sdkerrors.NotConfiguredError{Feature: "discovery"}
-				}
-				addr, err := node.discovery.Resolve(req.Name)
-				if err != nil {
-					return nil, err
-				}
-				return &sdk.PeersResolveResp{Namespace: addr}, nil
-			}),
 			// ── Provider Management ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ProviderAddMsg) (*sdk.ProviderAddResp, error) {
 				if req.Name == "" {

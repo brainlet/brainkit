@@ -42,12 +42,6 @@ type ScheduleConfig = types.ScheduleConfig
 // MCPServerConfig configures an MCP tool server connection.
 type MCPServerConfig = types.MCPServerConfig
 
-// DiscoveryConfig configures cross-Kit peer discovery.
-type DiscoveryConfig = types.DiscoveryConfig
-
-// PeerConfig configures a known peer for static discovery.
-type PeerConfig = types.PeerConfig
-
 // (Module is now defined in module.go — keep the engine package imported
 // for other aliases below.)
 

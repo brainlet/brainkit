@@ -88,9 +88,6 @@ type Config struct {
 	// RetryPolicies maps topic glob patterns to retry configurations.
 	RetryPolicies map[string]RetryPolicy
 
-	// Discovery configures cross-Kit peer discovery.
-	Discovery DiscoveryConfig
-
 	// Modules are optional subsystems that extend the kernel with additional commands.
 	// See brainkit.NewMCPModule() for an example.
 	Modules []Module
@@ -185,7 +182,6 @@ func (c Config) toNodeConfig(kernelCfg types.KernelConfig) types.NodeConfig {
 			RedisURL:     c.Transport.redisURL,
 			NATSStoreDir: natsStoreDir,
 		},
-		Discovery: c.Discovery, // type alias — no conversion needed
 	}
 
 	// Convert plugins

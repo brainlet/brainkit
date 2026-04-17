@@ -8,7 +8,6 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
-	"github.com/brainlet/brainkit/modules/discovery"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -25,7 +24,6 @@ type Node struct {
 	nodeID          string
 	plugins         *pluginManager
 	pluginLifecycle *PluginLifecycleDomain
-	discovery       discovery.Provider // nil if not configured
 
 	mu      syncx.Mutex
 	started bool
@@ -82,20 +80,6 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 		kernel.secretsDomain.pluginRestarter = node
 	}
 
-	// Wire discovery if configured (Register is deferred to Start — bus provider publishes on register)
-	if cfg.Discovery.Type != "" {
-		switch cfg.Discovery.Type {
-		case "static":
-			node.discovery = discovery.NewStaticFromConfig(cfg.Discovery.StaticPeers)
-		case "bus":
-			node.discovery = discovery.NewBus(discovery.BusConfig{
-				Transport: kernel.remote,
-				Heartbeat: cfg.Discovery.Heartbeat,
-				TTL:       cfg.Discovery.TTL,
-			})
-		}
-	}
-
 	return node, nil
 }
 
@@ -139,19 +123,6 @@ func (n *Node) Start(ctx context.Context) error {
 		// All handlers subscribed
 	case <-waitCtx.Done():
 		return &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}
-	}
-
-	// Register with discovery after router is ready (bus provider publishes on register)
-	if n.discovery != nil {
-		if err := n.discovery.Register(discovery.Peer{
-			Name:      n.nodeID,
-			Namespace: n.Kernel.Namespace(),
-		}); err != nil {
-			// Non-fatal — discovery failure shouldn't block startup
-			types.InvokeErrorHandler(n.Kernel.config.ErrorHandler, &sdkerrors.TransportError{
-				Operation: "DiscoveryRegister", Cause: err,
-			}, types.ErrorContext{Operation: "DiscoveryRegister", Component: "node"})
-		}
 	}
 
 	// Restore dynamically-started plugins from previous session
@@ -211,9 +182,6 @@ func (n *Node) Shutdown(ctx context.Context) error {
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
-	}
-	if n.discovery != nil {
-		collect(n.discovery.Close())
 	}
 	if n.Kernel != nil {
 		collect(n.Kernel.close())

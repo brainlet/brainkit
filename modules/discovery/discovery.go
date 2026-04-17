@@ -1,9 +1,6 @@
 package discovery
 
-import (
-	"context"
-	"encoding/json"
-)
+import "time"
 
 // Provider resolves peer addresses for Kit-to-Kit networking.
 type Provider interface {
@@ -22,9 +19,28 @@ type Peer struct {
 	Meta      map[string]string `json:"meta,omitempty"`
 }
 
-// PresenceTransport is what the bus discovery provider needs from the transport layer.
-// Defined here (consumer package), implemented by *transport.RemoteClient.
-type PresenceTransport interface {
-	PublishRawGlobal(ctx context.Context, topic string, payload json.RawMessage) error
-	SubscribeRawFanOutGlobal(ctx context.Context, topic string, handler func(payload json.RawMessage)) (func(), error)
+// PeerConfig configures a known peer for static discovery.
+type PeerConfig struct {
+	Name      string
+	Namespace string
+	Address   string
+	Meta      map[string]string
+}
+
+// ModuleConfig configures the discovery brainkit.Module. Pass to NewModule.
+// Type:
+//   - "static": peers are fixed at boot, taken from StaticPeers.
+//   - "bus":    peers are learned from presence announcements on the transport.
+//   - "":       disabled (NewModule returns a no-op Module).
+type ModuleConfig struct {
+	Type        string
+	StaticPeers []PeerConfig
+
+	// Bus-mode tunables.
+	Heartbeat time.Duration // default 10s
+	TTL       time.Duration // default 30s
+
+	// Name overrides the self-peer name. Empty = a per-instance UUID, so
+	// replicas with the same CallerID remain distinguishable on the bus.
+	Name string
 }

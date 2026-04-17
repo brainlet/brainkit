@@ -91,7 +91,6 @@ type NodeConfig struct {
 	NodeID    string
 	Namespace string
 	Plugins   []PluginConfig
-	Discovery DiscoveryConfig
 }
 
 // MessagingConfig configures the transport-backed runtime host.
@@ -104,18 +103,3 @@ type MessagingConfig struct {
 	NATSStoreDir string // JetStream store for embedded NATS. Empty = ephemeral.
 }
 
-// DiscoveryConfig configures the discovery mechanism.
-type DiscoveryConfig struct {
-	Type        string        // "static", "bus", or "" (disabled)
-	StaticPeers []PeerConfig  // for "static"
-	Heartbeat   time.Duration // for "bus", default 10s
-	TTL         time.Duration // for "bus", default 30s
-}
-
-// PeerConfig configures a known peer.
-type PeerConfig struct {
-	Name      string
-	Namespace string
-	Address   string
-	Meta      map[string]string
-}

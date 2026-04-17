@@ -94,10 +94,12 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-agents-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Discovery: brainkit.DiscoveryConfig{
-			Type:      "bus",
-			Heartbeat: 1 * time.Second,
-			TTL:       5 * time.Second,
+		Modules: []brainkit.Module{
+			discovery.NewModule(discovery.ModuleConfig{
+				Type:      "bus",
+				Heartbeat: 1 * time.Second,
+				TTL:       5 * time.Second,
+			}),
 		},
 	})
 	require.NoError(t, err)
@@ -107,10 +109,12 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-workers-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Discovery: brainkit.DiscoveryConfig{
-			Type:      "bus",
-			Heartbeat: 1 * time.Second,
-			TTL:       5 * time.Second,
+		Modules: []brainkit.Module{
+			discovery.NewModule(discovery.ModuleConfig{
+				Type:      "bus",
+				Heartbeat: 1 * time.Second,
+				TTL:       5 * time.Second,
+			}),
 		},
 	})
 	require.NoError(t, err)
@@ -156,10 +160,12 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-stay-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Discovery: brainkit.DiscoveryConfig{
-			Type:      "bus",
-			Heartbeat: 1 * time.Second,
-			TTL:       5 * time.Second,
+		Modules: []brainkit.Module{
+			discovery.NewModule(discovery.ModuleConfig{
+				Type:      "bus",
+				Heartbeat: 1 * time.Second,
+				TTL:       5 * time.Second,
+			}),
 		},
 	})
 	require.NoError(t, err)
@@ -169,10 +175,12 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-leave-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Discovery: brainkit.DiscoveryConfig{
-			Type:      "bus",
-			Heartbeat: 1 * time.Second,
-			TTL:       5 * time.Second,
+		Modules: []brainkit.Module{
+			discovery.NewModule(discovery.ModuleConfig{
+				Type:      "bus",
+				Heartbeat: 1 * time.Second,
+				TTL:       5 * time.Second,
+			}),
 		},
 	})
 	require.NoError(t, err)
@@ -207,10 +215,12 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 			Namespace: ns,
 			CallerID:  "host",
 			Transport: brainkit.NATS(natsURL),
-			Discovery: brainkit.DiscoveryConfig{
-				Type:      "bus",
-				Heartbeat: 1 * time.Second,
-				TTL:       5 * time.Second,
+			Modules: []brainkit.Module{
+				discovery.NewModule(discovery.ModuleConfig{
+					Type:      "bus",
+					Heartbeat: 1 * time.Second,
+					TTL:       5 * time.Second,
+				}),
 			},
 		})
 		require.NoError(t, err)
@@ -259,12 +269,14 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test-disc-cross",
 		CallerID:  "test-node",
 		Transport: brainkit.EmbeddedNATS(),
-		Discovery: brainkit.DiscoveryConfig{
-			Type: "static",
-			StaticPeers: []brainkit.PeerConfig{
-				{Name: "peer-a", Namespace: "ns-a", Address: "localhost:4222"},
-				{Name: "peer-b", Namespace: "ns-b", Address: "localhost:4223"},
-			},
+		Modules: []brainkit.Module{
+			discovery.NewModule(discovery.ModuleConfig{
+				Type: "static",
+				StaticPeers: []discovery.PeerConfig{
+					{Name: "peer-a", Namespace: "ns-a", Address: "localhost:4222"},
+					{Name: "peer-b", Namespace: "ns-b", Address: "localhost:4223"},
+				},
+			}),
 		},
 	})
 	require.NoError(t, err)

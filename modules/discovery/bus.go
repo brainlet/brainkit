@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/syncx"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -13,7 +14,7 @@ const presenceTopic = "_brainkit.presence"
 
 // BusConfig configures the bus discovery provider.
 type BusConfig struct {
-	Transport PresenceTransport
+	Transport transport.Presence
 	Heartbeat time.Duration // default 10s
 	TTL       time.Duration // default 30s
 }
@@ -25,7 +26,7 @@ type Bus struct {
 	self  *Peer
 	peers map[string]peerEntry
 
-	transport PresenceTransport
+	transport transport.Presence
 	unsub     func()
 	cancel    context.CancelFunc
 

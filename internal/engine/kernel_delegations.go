@@ -8,6 +8,7 @@ import (
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"log/slog"
 )
@@ -19,6 +20,11 @@ func (k *Kernel) Namespace() string { return k.namespace }
 
 // CallerID returns the runtime identity.
 func (k *Kernel) CallerID() string { return k.callerID }
+
+// Remote returns the transport-level client. Used by (*Kit).PresenceTransport
+// to expose cluster-wide publish/subscribe to brainkit.Modules (e.g. discovery)
+// without leaking the full transport surface.
+func (k *Kernel) Remote() *transport.RemoteClient { return k.remote }
 
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }

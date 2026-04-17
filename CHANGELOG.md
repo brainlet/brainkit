@@ -2,6 +2,83 @@
 
 ## Unreleased
 
+### Session 05 Checkpoint 6 — modules/discovery (full extraction)
+
+Last kernel module extracted. Peer discovery — static + bus — is now a
+stand-alone `brainkit.Module` with its own bus commands, removing the
+last `engine.Node` coupling to a module-specific field.
+
+Added:
+- `internal/transport/presence.go` — `transport.Presence` interface
+  (`PublishRawGlobal`, `SubscribeRawFanOutGlobal`). Lives next to the
+  implementation so the Kit surface and discovery module can both
+  import it without a cycle via `brainkit` or `internal/engine`.
+  `*transport.RemoteClient` satisfies it by structural match.
+- `(*Kit).PresenceTransport() transport.Presence` — narrow, purpose-
+  built accessor for modules that need cluster-wide pub/sub.
+- `(*Kit).Namespace() string`, `(*Kit).CallerID() string` — delegate to
+  Kernel; modules use these for self-identification at Init time.
+- `(*Kernel).Remote() *transport.RemoteClient` — backing accessor for
+  `Kit.PresenceTransport`.
+- `modules/discovery/module.go` — `*Module` satisfies
+  `brainkit.Module`. `NewModule(ModuleConfig{Type, StaticPeers,
+  Heartbeat, TTL, Name})` builds the provider (`static` / `bus` /
+  disabled). `Init(*Kit)` wires the provider, registers the self-peer
+  using `Kit.CallerID()` / `Kit.Namespace()`, and installs
+  `peers.list` / `peers.resolve` via `brainkit.Command`. `Close`
+  tears the provider down.
+- `modules/discovery.ModuleConfig` + `modules/discovery.PeerConfig` —
+  module-local types replacing the former `types.DiscoveryConfig` /
+  `types.PeerConfig`.
+
+Removed:
+- `brainkit.Config.Discovery`, `brainkit.DiscoveryConfig`,
+  `brainkit.PeerConfig` — gone from the root package. Use
+  `Modules: []brainkit.Module{discovery.NewModule(...)}` instead.
+- `types.NodeConfig.Discovery`, `types.DiscoveryConfig`,
+  `types.PeerConfig` — no internal equivalents remain.
+- `engine.Node.discovery` field + `NewNode`'s wiring switch + `Start`'s
+  provider registration + `Shutdown`'s `discovery.Close`.
+- `peers.list` / `peers.resolve` `nodeCommand` entries in
+  `internal/engine/catalog.go` — the module now owns them.
+- `modules/discovery/aliases.go` (aliases to deleted `types` structs)
+  and the module-local `PresenceTransport` interface duplicated in
+  `discovery.go`.
+
+Migration:
+
+Before:
+```go
+brainkit.New(brainkit.Config{
+    Transport: brainkit.NATS(url),
+    Discovery: brainkit.DiscoveryConfig{
+        Type: "bus", Heartbeat: time.Second, TTL: 5 * time.Second,
+    },
+})
+```
+
+After:
+```go
+import "github.com/brainlet/brainkit/modules/discovery"
+
+brainkit.New(brainkit.Config{
+    Transport: brainkit.NATS(url),
+    Modules: []brainkit.Module{
+        discovery.NewModule(discovery.ModuleConfig{
+            Type: "bus", Heartbeat: time.Second, TTL: 5 * time.Second,
+        }),
+    },
+})
+```
+
+For `"static"` mode, `StaticPeers` takes `[]discovery.PeerConfig`
+(module-local type — previously `brainkit.PeerConfig`).
+
+The self-peer name defaults to a per-instance UUID (matching the old
+`Node.nodeID` behavior) so replicas sharing a `CallerID` stay distinct
+on the bus. Override via `discovery.ModuleConfig.Name` when a stable
+identifier is required.
+
 ### Session 05 Checkpoint 5 — modules/tracing
 
 Fifth module extracted. Durable trace storage + `trace.get` / `trace.list`
