@@ -9,10 +9,14 @@ import (
 
 // Metrics returns a point-in-time snapshot of internal Kernel state.
 func (k *Kernel) Metrics() types.KernelMetrics {
+	scheduleCount := 0
+	if h := k.scheduleHandler; h != nil {
+		scheduleCount = len(h.List())
+	}
 	m := types.KernelMetrics{
 		ActiveHandlers:    k.activeHandlers.Load(),
 		ActiveDeployments: len(k.ListDeployments()),
-		ActiveSchedules:   len(k.ListSchedules()),
+		ActiveSchedules:   scheduleCount,
 		PumpCycles:        k.pumpCycles.Load(),
 	}
 

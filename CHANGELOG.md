@@ -2,6 +2,93 @@
 
 ## Unreleased
 
+### Session 06 Bundle A — modules/schedules
+
+Scheduling is now a stand-alone `brainkit.Module`. Persisted cron-like
+schedules, the QuickJS bus.schedule / bus.unschedule bridges, and the
+schedule.* bus commands all move out of the kernel. The kernel retains
+the QuickJS job pump (generic Promise/microtask driver — required for
+all .ts code, not just user schedules).
+
+Added:
+- `internal/types/scheduling.go` — `types.ScheduleHandler` (three-method
+  interface: Schedule / Unschedule / List) dispatched to by the kernel's
+  bus.schedule bridge and the schedule.* bus commands.
+- `brainkit.ScheduleHandler` alias over `types.ScheduleHandler` so the
+  public Kit.SetScheduleHandler signature has a nameable godoc type.
+- `(*Kit).SetScheduleHandler(h)`, `(*Kit).HasCommand(topic)`,
+  `(*Kit).Logger()` — module-facing hooks for attaching a scheduler,
+  rejecting schedule-to-command-topic attempts, and emitting diagnostics.
+- `modules/schedules/` package:
+  - `scheduler.go` — Scheduler owns the live schedule set, timers, and
+    fire/restore logic. Uses the Kit's ErrorHandler for persistence
+    failures (same surface as the pre-module path).
+  - `module.go` — `NewModule(Config{Store})` satisfies `brainkit.Module`.
+    Init wires the Scheduler into the Kit, registers schedule.create /
+    cancel / list bus commands, and restores persisted schedules.
+    Close stops timers and detaches the handler.
+  - `handlers.go` — thin bus handlers delegating to the Scheduler.
+  - `types.go` — narrow `Store` interface (SaveSchedule / LoadSchedules
+    / DeleteSchedule / ClaimScheduleFire). `brainkit.KitStore` satisfies
+    it structurally.
+
+Changed:
+- `internal/engine/bridges_scheduling.go` — bus.schedule /
+  bus.unschedule bridges now dispatch through `Kernel.scheduleHandler`.
+  Without a handler (module absent), they throw NOT_CONFIGURED so .ts
+  code that calls `bus.schedule(...)` errors cleanly instead of silently
+  no-oping.
+- `internal/engine/kernel.go` — removed `schedules map` field and
+  `scheduleEntry` type; added `scheduleHandler types.ScheduleHandler`.
+  `ScheduleCleanup` hook into DeploymentManager now routes through
+  the attached handler (tested via testTeardownCancelsSchedules).
+- `internal/engine/kernel_init.go` / `kernel_shutdown.go` — no more
+  kernel-owned schedule restore or timer teardown; the module owns both.
+- `internal/engine/kernel_scheduling.go` — reduced to the QuickJS job
+  pump (`startJobPump` + `processScheduledJobs`). Not schedule-specific
+  — drives Promise microtasks always.
+- `internal/engine/catalog.go` — schedule.create / cancel / list
+  nodeCommand entries gone; the module registers them.
+- `internal/engine/health.go` / `metrics.go` — schedule count reads
+  through the attached handler (0 when module absent).
+- `test/suite/env.go` — always appends `schedulesmod.NewModule(Config)`
+  to Config.Modules; passes the KitStore as Store when persistence is
+  enabled so existing test assertions (restart survives, multi-replica
+  dedup) keep working unchanged.
+- `test/suite/persistence/schedule.go`, `store.go`, `backend_matrix.go`
+  — tests that construct Kit directly (not via env.go) now include
+  `schedulesmod.NewModule({Store: store})` explicitly.
+
+Added test: `test/suite/scheduling/no_module.go` —
+`testNoModuleThrowsNotConfigured` builds a Kit without the schedules
+module and asserts that a .ts `bus.schedule(...)` call lands as a
+not-configured error on the reply envelope.
+
+Migration:
+
+Before:
+```go
+brainkit.New(brainkit.Config{ Store: kitStore })
+// bus.schedule worked automatically
+```
+
+After:
+```go
+import schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+
+brainkit.New(brainkit.Config{
+    Store: kitStore,
+    Modules: []brainkit.Module{
+        schedulesmod.NewModule(schedulesmod.Config{Store: kitStore}),
+    },
+})
+```
+
+`KitStore` implements `schedulesmod.Store` structurally, so the two
+Store references share the same value. Without the module, `.ts`
+`bus.schedule(...)` calls raise NOT_CONFIGURED and the `schedule.*`
+bus commands are absent.
+
 ### Session 05 Checkpoint 6 — modules/discovery (full extraction)
 
 Last kernel module extracted. Peer discovery — static + bus — is now a

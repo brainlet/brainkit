@@ -180,10 +180,8 @@ func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 		k.subscribeToDeploymentPropagation()
 	}
 
-	// Restore persisted schedules
-	if cfg.Store != nil {
-		k.restoreSchedules()
-	}
+	// Schedule restoration is the schedules module's responsibility; it runs
+	// on its own Init via the attached Store.
 
 	// Restart workflows that were active before the previous Kernel shutdown.
 	// Requires both deployment persistence (Store) and Mastra storage (Storages).

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
@@ -457,42 +456,6 @@ func buildCommandCatalog() *commandRegistry {
 				}
 				kernel.UnregisterVectorStore(req.Name)
 				return &sdk.VectorRemoveResp{Removed: true}, nil
-			}),
-			// ── Scheduling ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleCreateMsg) (*sdk.ScheduleCreateResp, error) {
-				id, err := kernel.Schedule(ctx, types.ScheduleConfig{
-					Expression: req.Expression,
-					Topic:      req.Topic,
-					Payload:    req.Payload,
-				})
-				if err != nil {
-					return nil, err
-				}
-				return &sdk.ScheduleCreateResp{ID: id}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleCancelMsg) (*sdk.ScheduleCancelResp, error) {
-				if req.ID == "" {
-					return nil, &sdkerrors.ValidationError{Field: "id", Message: "is required"}
-				}
-				if err := kernel.Unschedule(ctx, req.ID); err != nil {
-					return nil, err
-				}
-				return &sdk.ScheduleCancelResp{Cancelled: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ScheduleListMsg) (*sdk.ScheduleListResp, error) {
-				schedules := kernel.ListSchedules()
-				infos := make([]sdk.ScheduleInfo, 0, len(schedules))
-				for _, s := range schedules {
-					infos = append(infos, sdk.ScheduleInfo{
-						ID:         s.ID,
-						Expression: s.Expression,
-						Topic:      s.Topic,
-						NextFire:   s.NextFire.Format("2006-01-02T15:04:05Z07:00"),
-						OneTime:    s.OneTime,
-						Source:     s.Source,
-					})
-				}
-				return &sdk.ScheduleListResp{Schedules: infos}, nil
 			}),
 		}
 

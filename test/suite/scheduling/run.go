@@ -33,5 +33,8 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("bus/one_time_fires", func(t *testing.T) { testScheduleCreateOneTimeFires(t, env) })
 		t.Run("bus/fires_with_payload", func(t *testing.T) { testScheduleCreateWithPayload(t, env) })
 		t.Run("bus/cancel_stops_firing", func(t *testing.T) { testScheduleCancelStopsFiring(t, env) })
+
+		// Module-absent path
+		t.Run("no_module_throws_not_configured", func(t *testing.T) { testNoModuleThrowsNotConfigured(t, env) })
 	})
 }

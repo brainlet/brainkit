@@ -26,6 +26,17 @@ func (k *Kernel) CallerID() string { return k.callerID }
 // without leaking the full transport surface.
 func (k *Kernel) Remote() *transport.RemoteClient { return k.remote }
 
+// SetScheduleHandler attaches the scheduler. The schedules module calls this
+// during its Init; bridges_scheduling.go and the schedule.* bus commands
+// dispatch through this handler. Passing nil (e.g. on module Close) detaches
+// it and future bridge calls throw NOT_CONFIGURED.
+func (k *Kernel) SetScheduleHandler(h types.ScheduleHandler) { k.scheduleHandler = h }
+
+// HasCommand reports whether the given topic is a registered bus command
+// (and therefore reserved for request/response routing). Schedules reject
+// command topics — scheduling a command would bypass reply plumbing.
+func (k *Kernel) HasCommand(topic string) bool { return k.catalog.HasCommand(topic) }
+
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }
 

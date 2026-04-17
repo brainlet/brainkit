@@ -3,9 +3,11 @@ package brainkit
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/transport"
+	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -102,3 +104,18 @@ func (k *Kit) CallerID() string { return k.kernel.CallerID() }
 // The concrete type is transport.Presence — a narrow, purpose-built interface
 // that modules can import without pulling the full transport surface.
 func (k *Kit) PresenceTransport() transport.Presence { return k.kernel.Remote() }
+
+// Logger returns the Kit's structured logger (slog.Default() by default).
+// Modules use this to emit runtime diagnostics (e.g. "restored N schedules").
+func (k *Kit) Logger() *slog.Logger { return k.kernel.Logger() }
+
+// SetScheduleHandler installs the scheduler. Owned by the schedules module:
+// during its Init, the module calls this to route the QuickJS
+// bus.schedule / bus.unschedule bridges and the schedule.* bus commands
+// into its own Scheduler. Nil detaches the handler (module Close).
+func (k *Kit) SetScheduleHandler(h types.ScheduleHandler) { k.kernel.SetScheduleHandler(h) }
+
+// HasCommand reports whether a topic is a registered bus command (reserved
+// for request/response routing). Modules that accept topic arguments
+// (e.g. schedules) use this to reject command topics.
+func (k *Kit) HasCommand(topic string) bool { return k.kernel.HasCommand(topic) }

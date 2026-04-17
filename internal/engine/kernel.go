@@ -79,8 +79,10 @@ type Kernel struct {
 	pumpCycles atomic.Int64
 	busMetrics *transport.Metrics // per-topic bus message counts
 
-	// Schedules
-	schedules map[string]*scheduleEntry
+	// Scheduling handler — set by modules/schedules.Module at Init time.
+	// The QuickJS bridges (bus.schedule / bus.unschedule) and the schedule.*
+	// bus commands dispatch through this. Nil when the module isn't active.
+	scheduleHandler types.ScheduleHandler
 
 	// Health
 	startedAt time.Time
@@ -89,11 +91,6 @@ type Kernel struct {
 	catalog *commandRegistry
 	events  *knownEventRegistry
 	modules []Module // initialized modules, closed in reverse order
-}
-
-type scheduleEntry struct {
-	types.PersistedSchedule
-	timer *time.Timer
 }
 
 // enterHandler marks a bus handler as active.
@@ -184,7 +181,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		callerID:   cfg.CallerID,
 		storages:   make(map[string]*libsql.Server),
 		bridgeSubs: make(map[string]func()),
-		schedules:  make(map[string]*scheduleEntry),
 	}
 	providers := make(map[string]agentembed.ProviderConfig)
 	for name, reg := range cfg.AIProviders {
@@ -293,7 +289,9 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 			}
 		},
 		ScheduleCleanup: func(id string) {
-			kernel.removeSchedule(id)
+			if h := kernel.scheduleHandler; h != nil {
+				_ = h.Unschedule(context.Background(), id)
+			}
 		},
 	})
 

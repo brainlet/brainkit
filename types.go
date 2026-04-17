@@ -19,6 +19,12 @@ type GoFuncExecutor = tools.GoFuncExecutor
 // non-fatal errors forwarded via (*Kit).ReportError.
 type ErrorContext = types.ErrorContext
 
+// ScheduleHandler is the surface (*Kit).SetScheduleHandler expects.
+// The schedules module implements it; external users rarely need to
+// name it directly since modules/schedules.NewModule returns a value
+// that already satisfies it.
+type ScheduleHandler = types.ScheduleHandler
+
 // ── Common types ─────────────────────────────────────────────────────────────
 
 // LogEntry is a tagged log entry from a .ts Compartment or the runtime.

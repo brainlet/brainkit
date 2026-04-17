@@ -83,14 +83,6 @@ func (k *Kernel) close() error {
 		cancel()
 	}
 
-	// Stop all schedule timers
-	k.mu.Lock()
-	for _, entry := range k.schedules {
-		entry.timer.Stop()
-	}
-	k.schedules = nil
-	k.mu.Unlock()
-
 	// Stop all stream heartbeat goroutines
 	if k.streamTracker != nil {
 		k.streamTracker.CloseAll()

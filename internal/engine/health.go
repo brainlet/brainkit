@@ -78,10 +78,14 @@ func (k *Kernel) Health(ctx context.Context) types.HealthStatus {
 		Healthy: true,
 		Details: map[string]int{"active": len(k.ListDeployments())},
 	})
+	scheduleCount := 0
+	if h := k.scheduleHandler; h != nil {
+		scheduleCount = len(h.List())
+	}
 	checks = append(checks, types.HealthCheck{
 		Name:    "schedules",
 		Healthy: true,
-		Details: map[string]int{"active": len(k.ListSchedules())},
+		Details: map[string]int{"active": scheduleCount},
 	})
 
 	// Aggregate

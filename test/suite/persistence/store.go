@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
+	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -297,6 +298,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
+		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -317,6 +319,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
+		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -336,6 +339,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
+		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store1})},
 	})
 	require.NoError(t, err)
 
@@ -353,6 +357,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
+		Modules: []brainkit.Module{schedulesmod.NewModule(schedulesmod.Config{Store: store2})},
 	})
 	require.NoError(t, err)
 	defer k2.Close()

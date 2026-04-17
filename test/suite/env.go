@@ -19,6 +19,7 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/workflow"
 )
@@ -230,6 +231,16 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	// Workflow commands come from modules/workflow — always include so the
 	// workflow suite's bus commands are available.
 	kitCfg.Modules = append(kitCfg.Modules, workflow.New())
+
+	// Scheduling commands come from modules/schedules — always include. Pass
+	// the Store when persistence is enabled so schedules survive restart and
+	// ClaimScheduleFire dedups across replicas. KitStore satisfies
+	// schedules.Store structurally.
+	var schedStore schedulesmod.Store
+	if s, ok := kitCfg.Store.(schedulesmod.Store); ok {
+		schedStore = s
+	}
+	kitCfg.Modules = append(kitCfg.Modules, schedulesmod.NewModule(schedulesmod.Config{Store: schedStore}))
 
 	// Transport: default to memory (fast GoChannel) for suite tests.
 	// Campaigns override with WithTransport("nats"), WithTransport("embedded"), etc.
