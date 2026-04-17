@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Session 04 — Bundle B: Config cleanup + QuickStart
+
+Closes session 04. Trims the public `Config` struct to its essential
+fields and stops auto-wiring disk persistence / periodic probes /
+implicit modules from `brainkit.New`. The batteries-included path
+moves to `brainkit.QuickStart`.
+
+Added:
+- `brainkit/quickstart.go` — `QuickStart(namespace, fsRoot) (*Kit, error)`
+  wires embedded NATS + SQLite `kit.db` + side-effect setup under
+  `fsRoot`. Tracing + audit modules attach in session 05.
+- `brainkit.NewPostgresStore(dsn)` — exposes the Postgres-backed
+  KitStore factory (was reachable only via the removed
+  `StoreBackend`/`StoreURL` Config fields).
+
+Changed:
+- Default `Config.Transport` is now `Memory()` (GoChannel, no disk
+  side-effects, no plugins) — was `EmbeddedNATS()`. Opt in to
+  embedded NATS explicitly with `Transport: brainkit.EmbeddedNATS()`
+  or use `brainkit.QuickStart`.
+- `cmd/brainkit/config` + `test/suite/env.WithMCP` + the fixtures
+  runner inject MCP servers as an explicit `brainkit.NewMCPModule`
+  entry in `Config.Modules` (no implicit MCP wiring from Config).
+
+Removed:
+- `Config.Tracing` / `Config.TraceStore` / `Config.TraceSampleRate`
+  — tracing module (session 05) owns the real store. Tracer defaults
+  to a nil-store no-op.
+- `Config.AuditVerbose` — audit module (session 05) owns verbosity.
+- `Config.StoreBackend` / `Config.StoreURL` — use explicit
+  `brainkit.NewSQLiteStore(path)` / `brainkit.NewPostgresStore(dsn)`
+  and pass to `Config.Store`.
+- `Config.MCPServers` — construct `brainkit.NewMCPModule(...)` and
+  pass via `Config.Modules`.
+- FSRoot-triggered auto-create of the deployment SQLite store and
+  audit SQLite store in `kernel_init`. FSRoot is now strictly the
+  filesystem-polyfill sandbox root.
+- `kernel.startPeriodicProbing()` call + the verbose-audit metrics
+  snapshot goroutine — probes + tracing modules own these.
+
+`brainkit.New(brainkit.Config{})` no longer writes to disk or opens
+external transports. It's a minimal in-memory kernel.
+
+Tests updated:
+- `test/suite/persistence/store_backend.go` uses explicit
+  `brainkit.NewSQLiteStore` / `brainkit.NewPostgresStore` instead of
+  the removed `StoreBackend` / `StoreURL` fields.
+- `testStoreBackendSQLiteAuditViaConfig` is skipped pending the
+  session 05 audit module.
+- `testMultiDeployOrderAndMetadata` expects the runtime source of
+  a packageName-specified deploy to be `packageName+ext(entry)`
+  (matches the bundling path).
+
 ### Session 04 — Bundle A: Package as the only deployment unit
 
 Removes the legacy `kit.deploy` / `kit.teardown` / `kit.list` /

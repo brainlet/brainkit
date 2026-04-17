@@ -126,6 +126,8 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	testutil.Deploy(t, k1, "first-matrix.ts", `output("first");`)
 	err = testutil.DeployWithOpts(k1, "second-matrix.ts", `output("second");`, "")
 	require.NoError(t, err)
+	// packageName is the package identity; runtime source derives from it
+	// (name + ext). Passing "my-pkg" deploys as "my-pkg.ts".
 	err = testutil.DeployWithOpts(k1, "third-matrix.ts", `output("third");`, "my-pkg")
 	require.NoError(t, err)
 	k1.Close()
@@ -146,7 +148,7 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	}
 	assert.Contains(t, sources, "first-matrix.ts")
 	assert.Contains(t, sources, "second-matrix.ts")
-	assert.Contains(t, sources, "third-matrix.ts")
+	assert.Contains(t, sources, "my-pkg.ts") // packageName drives the runtime source
 }
 
 // testMultipleSchedulesSurvive — multiple schedules survive restart.

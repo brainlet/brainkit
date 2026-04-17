@@ -118,15 +118,16 @@ func BuildConfig(cfg *CLIConfig) (brainkit.Config, error) {
 	}
 
 	if len(cfg.MCPServers) > 0 {
-		bc.MCPServers = make(map[string]brainkit.MCPServerConfig)
+		servers := make(map[string]brainkit.MCPServerConfig, len(cfg.MCPServers))
 		for name, entry := range cfg.MCPServers {
-			bc.MCPServers[name] = brainkit.MCPServerConfig{
+			servers[name] = brainkit.MCPServerConfig{
 				Command: entry.Command,
 				Args:    entry.Args,
 				Env:     entry.Env,
 				URL:     entry.URL,
 			}
 		}
+		bc.Modules = append(bc.Modules, brainkit.NewMCPModule(servers))
 	}
 
 	if cfg.StorePath != "" {

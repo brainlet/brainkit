@@ -373,8 +373,10 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		MCPServers: map[string]brainkit.MCPServerConfig{
-			"test": {URL: mcpURL},
+		Modules: []brainkit.Module{
+			brainkit.NewMCPModule(map[string]brainkit.MCPServerConfig{
+				"test": {URL: mcpURL},
+			}),
 		},
 	})
 	if err != nil {

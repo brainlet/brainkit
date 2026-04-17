@@ -217,9 +217,9 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		kitCfg.TraceStore = tracing.NewMemoryTraceStore(1000)
 	}
 
-	// MCP servers
+	// MCP servers — now injected as a Module (no auto-wiring from Config).
 	if len(cfg.MCPServers) > 0 {
-		kitCfg.MCPServers = cfg.MCPServers
+		kitCfg.Modules = append(kitCfg.Modules, brainkit.NewMCPModule(cfg.MCPServers))
 	}
 
 	// Transport: default to memory (fast GoChannel) for suite tests.

@@ -332,10 +332,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		kernel.modules = append(kernel.modules, mod)
 	}
 
-	// Start periodic probing if configured
-	kernel.startPeriodicProbing()
-
-	// Initial probe — don't wait for first periodic tick
+	// Initial probe — probes module (session 05) owns periodic probing.
 	go kernel.ProbeAll()
 
 	if err := kernel.initTransport(cfg); err != nil {
@@ -357,23 +354,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.packageDeployDomain.attachLifecycle(kernel.remote, kernel.audit, cfg.RuntimeID)
 
 	kernel.startedAt = time.Now()
-
-	// Periodic metric snapshots — when verbose audit is enabled, snapshot metrics every 60s
-	if kernel.audit != nil && kernel.audit.IsVerbose() {
-		go func() {
-			ticker := time.NewTicker(60 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					if kernel.draining.Load() {
-						return
-					}
-					kernel.audit.MetricsSnapshot(kernel.Metrics())
-				}
-			}
-		}()
-	}
 
 	// Success — Kernel.Close() now owns all resources.
 	// Nil out cleanups so fail() is harmless if called accidentally.

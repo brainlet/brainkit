@@ -33,23 +33,22 @@ type Kit struct {
 
 // New creates a brainkit runtime from config.
 //
-// If Config.Transport is empty or "embedded", starts an in-process NATS server
-// with JetStream — zero config, plugins work, real pub/sub.
-// If Config.Transport is "memory", creates a standalone in-memory runtime
-// (GoChannel transport, no plugins, fast for tests).
-// Other transports ("nats", "amqp", "redis") connect to external servers.
+// Default Transport is Memory() — in-process GoChannel, side-effect-free on
+// disk, no plugins, fast for tests and library-embedded use. Use
+// brainkit.QuickStart() for the batteries-included path (embedded NATS +
+// SQLite stores), or set Transport to EmbeddedNATS() / NATS(url) / AMQP(url) /
+// Redis(url) explicitly.
 //
 // Auto-behaviors:
 //   - Providers nil → auto-detect from os.Getenv (OPENAI_API_KEY → openai, etc.)
-//   - Store nil + FSRoot set → auto-create SQLiteStore
 //   - SecretKey set → auto-create EncryptedKVStore
-//   - Tracing true → auto-create MemoryTraceStore
 func New(cfg Config) (*Kit, error) {
 	kit := &Kit{}
 
-	// Zero-value transport defaults to embedded NATS — zero-config production mode.
+	// Zero-value transport defaults to Memory — no disk side-effects, no
+	// background goroutines beyond the QuickJS runtime itself.
 	if cfg.Transport.typ == "" {
-		cfg.Transport = EmbeddedNATS()
+		cfg.Transport = Memory()
 	}
 
 	kernelCfg := cfg.toKernelConfig()

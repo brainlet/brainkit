@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -171,29 +170,19 @@ func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 }
 
 func (k *Kernel) initAudit(cfg types.KernelConfig) func() {
-	// Initialize audit event log — auto-create SQLite store alongside KitStore
+	// Audit requires an explicit AuditStore. No auto-creation from FSRoot —
+	// the audit module (session 05) owns that wiring. When no store is
+	// provided, k.audit stays nil; the recorder helpers no-op on nil.
+	if cfg.AuditStore == nil {
+		return nil
+	}
 	verbosity := auditpkg.VerbosityNormal
 	if cfg.AuditVerbose {
 		verbosity = auditpkg.VerbosityVerbose
 	}
-	makeRecorder := func(store auditpkg.Store) *auditpkg.Recorder {
-		return auditpkg.NewRecorderWithConfig(auditpkg.RecorderConfig{
-			Store: store, RuntimeID: cfg.RuntimeID, Namespace: cfg.Namespace, Verbosity: verbosity,
-		})
-	}
-	if cfg.AuditStore != nil {
-		k.auditStore = cfg.AuditStore
-		k.audit = makeRecorder(cfg.AuditStore)
-		return nil
-	}
-	if cfg.FSRoot != "" {
-		auditStore, auditErr := auditpkg.NewSQLiteStore(filepath.Join(cfg.FSRoot, "brainkit-audit.db"))
-		if auditErr == nil {
-			k.auditStore = auditStore
-			k.audit = makeRecorder(auditStore)
-			return func() { auditStore.Close() }
-		}
-	}
-
+	k.auditStore = cfg.AuditStore
+	k.audit = auditpkg.NewRecorderWithConfig(auditpkg.RecorderConfig{
+		Store: cfg.AuditStore, RuntimeID: cfg.RuntimeID, Namespace: cfg.Namespace, Verbosity: verbosity,
+	})
 	return nil
 }

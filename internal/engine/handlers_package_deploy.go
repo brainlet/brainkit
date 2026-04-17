@@ -199,7 +199,10 @@ func (d *PackageDeployDomain) deployInline(ctx context.Context, req sdk.PackageD
 		}
 	}
 
-	source := manifest.Entry
+	// Runtime source is derived from the package name to align with the
+	// bundling path (`internal/deploy.DeployPackage`) and the service mailbox
+	// convention `ts.<name>.*`.
+	source := manifest.Name + filepath.Ext(manifest.Entry)
 	var opts []types.DeployOption
 	if manifest.Name != "" {
 		opts = append(opts, types.WithPackageName(manifest.Name))

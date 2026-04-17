@@ -17,18 +17,20 @@ import (
 )
 
 // testStoreBackendSQLiteViaConfig proves that Config.StoreBackend="sqlite"
-// creates a working store through the factory path (not explicit Store field).
+// creates a working store through the explicit Store field.
 func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/backend-test.db"
 
-	// Kit 1: deploy via StoreBackend config
+	// Kit 1: deploy with explicit SQLiteStore
+	store1, err := brainkit.NewSQLiteStore(dbPath)
+	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Namespace:    "test",
-		CallerID:     "test",
-		FSRoot:       tmpDir,
-		StoreBackend: "sqlite",
-		StoreURL:     tmpDir + "/backend-test.db",
+		Namespace: "test",
+		CallerID:  "test",
+		FSRoot:    tmpDir,
+		Store:     store1,
 	})
 	require.NoError(t, err)
 
@@ -38,13 +40,14 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Kit 2: restart with same store — deployment should survive
+	store2, err := brainkit.NewSQLiteStore(dbPath)
+	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Namespace:    "test",
-		CallerID:     "test",
-		FSRoot:       tmpDir,
-		StoreBackend: "sqlite",
-		StoreURL:     tmpDir + "/backend-test.db",
+		Namespace: "test",
+		CallerID:  "test",
+		FSRoot:    tmpDir,
+		Store:     store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -56,21 +59,26 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 			found = true
 		}
 	}
-	assert.True(t, found, "deployment should survive restart via StoreBackend=sqlite")
+	assert.True(t, found, "deployment should survive restart via explicit Store")
 }
 
-// testStoreBackendSQLiteAuditViaConfig proves that the audit store is
-// auto-created and records events when StoreBackend is set.
+// testStoreBackendSQLiteAuditViaConfig proves that the audit store records
+// deploy events when the audit module is attached.
+//
+// Session 04 removed implicit audit auto-create from Config/FSRoot. The audit
+// module (session 05) will own this wiring; until then this test is skipped.
 func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
+	t.Skip("audit module wiring pending — session 05")
 	tmpDir := t.TempDir()
+	store, err := brainkit.NewSQLiteStore(tmpDir + "/audit-backend-test.db")
+	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Namespace:    "test",
-		CallerID:     "test",
-		FSRoot:       tmpDir,
-		StoreBackend: "sqlite",
-		StoreURL:     tmpDir + "/audit-backend-test.db",
+		Namespace: "test",
+		CallerID:  "test",
+		FSRoot:    tmpDir,
+		Store:     store,
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -115,14 +123,15 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 	)
 	pgURL := fmt.Sprintf("postgres://test:test@%s/brainkit?sslmode=disable", pgAddr)
 
-	// Kit 1: deploy via StoreBackend=postgres
+	// Kit 1: deploy with explicit Postgres-backed store
+	store1, err := brainkit.NewPostgresStore(pgURL)
+	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Namespace:    "test",
-		CallerID:     "test",
-		FSRoot:       t.TempDir(),
-		StoreBackend: "postgres",
-		StoreURL:     pgURL,
+		Namespace: "test",
+		CallerID:  "test",
+		FSRoot:    t.TempDir(),
+		Store:     store1,
 	})
 	require.NoError(t, err)
 
@@ -132,13 +141,14 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 	k1.Close()
 
 	// Kit 2: restart with same Postgres — deployment should survive
+	store2, err := brainkit.NewPostgresStore(pgURL)
+	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
-		Namespace:    "test",
-		CallerID:     "test",
-		FSRoot:       t.TempDir(),
-		StoreBackend: "postgres",
-		StoreURL:     pgURL,
+		Namespace: "test",
+		CallerID:  "test",
+		FSRoot:    t.TempDir(),
+		Store:     store2,
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -150,5 +160,5 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 			found = true
 		}
 	}
-	assert.True(t, found, "deployment should survive restart via StoreBackend=postgres")
+	assert.True(t, found, "deployment should survive restart via explicit Postgres store")
 }

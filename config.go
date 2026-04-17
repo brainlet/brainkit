@@ -4,8 +4,6 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	kitstore "github.com/brainlet/brainkit/internal/store"
-	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 )
 
@@ -69,21 +67,8 @@ type Config struct {
 	// Nil + FSRoot empty = no persistence (ephemeral).
 	Store KitStore
 
-	// StoreBackend selects the persistence engine: "sqlite" (default) or "postgres".
-	// When set with StoreURL, the factory creates the store automatically.
-	// Overridden by explicit Store field.
-	StoreBackend string
-
-	// StoreURL is the connection string for the store backend.
-	// For postgres: "postgres://user:pass@host:5432/db?sslmode=disable"
-	// For sqlite: file path (defaults to <FSRoot>/brainkit-store.db)
-	StoreURL string
-
 	// Plugins to start automatically (requires Transport).
 	Plugins []PluginConfig
-
-	// MCPServers configures external MCP tool providers.
-	MCPServers map[string]MCPServerConfig
 
 	// Logger for structured logging. Nil = slog.Default().
 	Logger *slog.Logger
@@ -93,11 +78,6 @@ type Config struct {
 
 	// ErrorHandler receives non-fatal errors (persistence failures, plugin errors).
 	ErrorHandler func(error)
-
-	// AuditVerbose enables high-volume audit logging: every bus command completion
-	// and periodic metric snapshots. Useful with high-throughput audit stores (Postgres).
-	// Default: false (only lifecycle events, failures, security events, tool calls).
-	AuditVerbose bool
 
 	// MaxConcurrency limits concurrent bus handler invocations. 0 = unlimited.
 	MaxConcurrency int
@@ -119,23 +99,21 @@ type Config struct {
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
 func (c Config) toKernelConfig() types.KernelConfig {
 	cfg := types.KernelConfig{
-		ClusterID:          c.ClusterID,
-		RuntimeID:          runtimeID,
-		Namespace:          c.Namespace,
-		CallerID:           c.CallerID,
-		FSRoot:             c.FSRoot,
-		Storages:           c.Storages,
-		Vectors:            c.Vectors,
-		EnvVars:            c.EnvVars,
-		SecretKey:          c.SecretKey,
-		SecretStore:        c.SecretStore,
-		TraceSampleRate:    c.TraceSampleRate,
-		MaxStackSize:       c.MaxStackSize,
-		MaxConcurrency:     c.MaxConcurrency,
-		RetryPolicies:      c.RetryPolicies,
-		Logger:             c.Logger,
-		LogHandler:         c.LogHandler,
-		AuditVerbose:       c.AuditVerbose,
+		ClusterID:      c.ClusterID,
+		RuntimeID:      runtimeID,
+		Namespace:      c.Namespace,
+		CallerID:       c.CallerID,
+		FSRoot:         c.FSRoot,
+		Storages:       c.Storages,
+		Vectors:        c.Vectors,
+		EnvVars:        c.EnvVars,
+		SecretKey:      c.SecretKey,
+		SecretStore:    c.SecretStore,
+		MaxStackSize:   c.MaxStackSize,
+		MaxConcurrency: c.MaxConcurrency,
+		RetryPolicies:  c.RetryPolicies,
+		Logger:         c.Logger,
+		LogHandler:     c.LogHandler,
 	}
 
 	// Convert []ProviderConfig → map[string]AIProviderRegistration
@@ -149,34 +127,16 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// TraceStore: explicit > Tracing flag > nil
+	// TraceStore: only if explicitly set. Tracing module (session 05) owns
+	// the real store; Tracer defaults to a nil store = no-op.
 	if c.TraceStore != nil {
 		cfg.TraceStore = c.TraceStore
-	} else if c.Tracing {
-		cfg.TraceStore = tracing.NewMemoryTraceStore(10000)
 	}
 
-	// Store: explicit > StoreBackend factory > auto-create from FSRoot > nil
+	// Store: explicit > nil. No auto-create from FSRoot — use brainkit.QuickStart
+	// or pass an explicit Store for persistence.
 	if c.Store != nil {
 		cfg.Store = c.Store
-	} else if c.StoreBackend != "" {
-		storeURL := c.StoreURL
-		if storeURL == "" && c.FSRoot != "" {
-			storeURL = filepath.Join(c.FSRoot, "brainkit-store.db")
-		}
-		if storeURL != "" {
-			s, err := kitstore.NewKitStore(kitstore.Config{
-				Backend: c.StoreBackend, SQLitePath: storeURL, PostgresURL: storeURL,
-			})
-			if err == nil {
-				cfg.Store = s
-			}
-		}
-	} else if c.FSRoot != "" {
-		store, err := types.NewSQLiteStore(filepath.Join(c.FSRoot, "brainkit-store.db"))
-		if err == nil {
-			cfg.Store = store
-		}
 	}
 
 	// ErrorHandler adaptation (Config takes func(error), engine takes func(error, ErrorContext))
@@ -186,26 +146,10 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// Auto-create MCP module from MCPServers config field (backward compat).
-	// Build a new slice — don't mutate c.Modules (value receiver, but slice backing array is shared).
-	modules := c.Modules
-	if len(c.MCPServers) > 0 {
-		hasMCP := false
-		for _, m := range modules {
-			if m.Name() == "mcp" {
-				hasMCP = true
-				break
-			}
-		}
-		if !hasMCP {
-			modules = append(modules, NewMCPModule(c.MCPServers))
-		}
-	}
-
 	// Modules — pass through directly, engine.NewKernel asserts the interface
-	if len(modules) > 0 {
-		cfg.Modules = make([]any, len(modules))
-		for i, m := range modules {
+	if len(c.Modules) > 0 {
+		cfg.Modules = make([]any, len(c.Modules))
+		for i, m := range c.Modules {
 			cfg.Modules[i] = m
 		}
 	}
