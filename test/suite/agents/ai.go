@@ -42,11 +42,13 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	mch := make(chan sdk.Message, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r; mch <- m })
 	defer unsub()
 	select {
 	case resp := <-ch:
-		require.True(t, resp.Deployed, "deploy should succeed: %s", resp.Error)
+		m := <-mch
+		require.True(t, resp.Deployed, "deploy should succeed: %s", suite.ResponseErrorMessage(m.Payload))
 	case <-ctx.Done():
 		t.Fatal("timeout deploying AI agent")
 	}

@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Session 03 — Error envelope Bundle A (closes) — ResultMeta deletion sweep
+
+Closes Bundle A. Deletes the legacy `ResultMeta` embed + helpers from
+the SDK and migrates every reader to the wire-envelope-based error
+detection path.
+
+Deleted:
+- `sdk.ResultMeta` struct + `SetError` / `SetErrorWithCode` /
+  `ResultError` / `ResultErrorOf` helpers (from `sdk/bus_messages.go`)
+- `ResultMeta` embed from 20 response-type files covering 44 embed
+  sites: agent, gateway, kit, mcp, package (x2), plugin, provider,
+  registry, schedule, secret, storage, testing, tool, tracing,
+  vector, workflow messages
+- `test/suite/bus/error_contract.go:testResultMetaIncludesCode` +
+  its run.go registration
+
+Changed:
+- `sdk/helpers.go:SubscribeTo[T]` — the migration-era flattening of
+  error envelopes into `{error,code,details}` shape is gone. Error
+  envelopes now invoke the handler with a zero-T; callers inspect
+  the failure via the `msg sdk.Message` 2nd callback arg (e.g.
+  `suite.ResponseErrorMessage(msg.Payload)` or
+  `sdk.DecodeEnvelope(msg.Payload)`).
+- `cmd/brainkit/cmd/helpers.go:httpBusRequest` — `ResultErrorOf`
+  call replaced with `sdk.DecodeEnvelope` + `sdk.FromEnvelope` so
+  CLI surfaces typed errors from the bus envelope
+- `internal/engine/node.go` plugin tool-call result path — same
+  envelope-based error detection
+- 20 test files migrated from `resp.Error` reads to
+  `suite.ResponseErrorMessage(msg.Payload)`: agents (ai, surface),
+  bus (publish), deploy (surface), registry (provider, storage,
+  vector), tools (registry), scheduling (bus_commands), stress
+  (concurrent, concurrency), workflows (commands, concurrent,
+  developer, storage, run helper), plugins (tool_call_bus,
+  metrics_plugin, ws_subscribe)
+- `test/suite/workflows/run.go:wfPublishAndWait` — helper now
+  returns `(Resp, sdk.Message)` so tests can inspect the envelope
+
+Verification:
+- `go build ./...` clean
+- Full `go test ./test/suite/... -short` green except pre-existing
+  `cross/node_commands/plugin_list` (Podman infra)
+
+Bundle A is done. Bundles B (eval command collapse) and C (`.ts`
+`bus.call` / `bus.stream` / `bus.callTo`) remain.
+
 ### Session 03 — Error envelope Bundle A (JS bridges + gateway + audit + test suite)
 
 Second drop on Bundle A. Rewires the QuickJS bridge + gateway HTTP/WS

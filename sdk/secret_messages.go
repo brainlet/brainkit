@@ -10,7 +10,6 @@ type SecretsSetMsg struct {
 func (SecretsSetMsg) BusTopic() string { return "secrets.set" }
 
 type SecretsSetResp struct {
-	ResultMeta
 	Stored  bool `json:"stored"`
 	Version int  `json:"version"`
 }
@@ -22,7 +21,6 @@ type SecretsGetMsg struct {
 func (SecretsGetMsg) BusTopic() string { return "secrets.get" }
 
 type SecretsGetResp struct {
-	ResultMeta
 	Value string `json:"value"`
 }
 
@@ -33,7 +31,6 @@ type SecretsDeleteMsg struct {
 func (SecretsDeleteMsg) BusTopic() string { return "secrets.delete" }
 
 type SecretsDeleteResp struct {
-	ResultMeta
 	Deleted bool `json:"deleted"`
 }
 
@@ -42,7 +39,6 @@ type SecretsListMsg struct{}
 func (SecretsListMsg) BusTopic() string { return "secrets.list" }
 
 type SecretsListResp struct {
-	ResultMeta
 	Secrets []SecretMetaInfo `json:"secrets"`
 }
 
@@ -62,7 +58,6 @@ type SecretsRotateMsg struct {
 func (SecretsRotateMsg) BusTopic() string { return "secrets.rotate" }
 
 type SecretsRotateResp struct {
-	ResultMeta
 	Rotated          bool     `json:"rotated"`
 	Version          int      `json:"version"`
 	RestartedPlugins []string `json:"restartedPlugins,omitempty"`

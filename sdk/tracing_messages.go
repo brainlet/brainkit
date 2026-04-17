@@ -11,7 +11,6 @@ type TraceGetMsg struct {
 func (TraceGetMsg) BusTopic() string { return "trace.get" }
 
 type TraceGetResp struct {
-	ResultMeta
 	Spans json.RawMessage `json:"spans"` // []Span as JSON
 }
 
@@ -25,6 +24,5 @@ type TraceListMsg struct {
 func (TraceListMsg) BusTopic() string { return "trace.list" }
 
 type TraceListResp struct {
-	ResultMeta
 	Traces json.RawMessage `json:"traces"` // []TraceSummary as JSON
 }

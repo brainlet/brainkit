@@ -13,7 +13,6 @@ type VectorAddMsg struct {
 func (VectorAddMsg) BusTopic() string { return "vectors.add" }
 
 type VectorAddResp struct {
-	ResultMeta
 	Added bool `json:"added"`
 }
 
@@ -24,6 +23,5 @@ type VectorRemoveMsg struct {
 func (VectorRemoveMsg) BusTopic() string { return "vectors.remove" }
 
 type VectorRemoveResp struct {
-	ResultMeta
 	Removed bool `json:"removed"`
 }

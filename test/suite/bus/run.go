@@ -77,7 +77,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// error_contract.go
 		t.Run("bus_error_response_carries_code", func(t *testing.T) { testBusErrorResponseCarriesCode(t, env) })
-		t.Run("result_meta_includes_code", func(t *testing.T) { testResultMetaIncludesCode(t, env) })
 
 		// test_framework.go — JS built-in test framework
 		t.Run("framework_passing_tests", func(t *testing.T) { testFrameworkPassingTests(t, env) })

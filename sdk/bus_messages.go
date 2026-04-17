@@ -12,36 +12,6 @@ type BrainkitMessage interface {
 	BusTopic() string
 }
 
-// ResultMeta carries the common typed failure shape for transport-visible
-// command results.
-type ResultMeta struct {
-	Error   string         `json:"error,omitempty"`
-	Code    string         `json:"code,omitempty"`
-	Details map[string]any `json:"details,omitempty"`
-}
-
-func (m *ResultMeta) SetError(err string) {
-	m.Error = err
-}
-
-func (m *ResultMeta) SetErrorWithCode(err, code string, details map[string]any) {
-	m.Error = err
-	m.Code = code
-	m.Details = details
-}
-
-func (m ResultMeta) ResultError() string {
-	return m.Error
-}
-
-func ResultErrorOf(v any) string {
-	carrier, ok := v.(interface{ ResultError() string })
-	if !ok {
-		return ""
-	}
-	return carrier.ResultError()
-}
-
 // Message is the internal platform envelope used by transport-backed publish
 // and subscribe helpers for advanced raw access.
 type Message struct {

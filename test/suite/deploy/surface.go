@@ -249,7 +249,8 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	pr2, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "surface-calc-deploy", Input: map[string]any{"a": 10, "b": 32}})
 	require.NoError(t, err)
 	ch2 := make(chan sdk.ToolCallResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
+	mch2 := make(chan sdk.Message, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r; mch2 <- m })
 	defer unsub2()
 	var resp sdk.ToolCallResp
 	select {
@@ -257,7 +258,8 @@ func testTSDeployWithTool(t *testing.T, env *suite.TestEnv) {
 	case <-ctx.Done():
 		t.Fatal("timeout calling tool")
 	}
-	require.Empty(t, resp.Error)
+	m2 := <-mch2
+	require.Empty(t, suite.ResponseErrorMessage(m2.Payload))
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(resp.Result, &result))

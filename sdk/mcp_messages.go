@@ -21,13 +21,11 @@ func (McpCallToolMsg) BusTopic() string { return "mcp.callTool" }
 // ── Responses ──
 
 type McpListToolsResp struct {
-	ResultMeta
 	Tools []McpToolInfo `json:"tools"`
 }
 
 
 type McpCallToolResp struct {
-	ResultMeta
 	Result json.RawMessage `json:"result"`
 }
 

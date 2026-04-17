@@ -225,14 +225,14 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 
-	deployCh := make(chan sdk.KitDeployResp, 1)
+	deployCh := make(chan sdk.Message, 1)
 	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) {
-		deployCh <- r
+		deployCh <- m
 	})
 	defer deployUnsub()
 	select {
-	case dr := <-deployCh:
-		require.Empty(t, dr.Error, "deploy should succeed")
+	case dm := <-deployCh:
+		require.Empty(t, suite.ResponseErrorMessage(dm.Payload), "deploy should succeed")
 	case <-ctx.Done():
 		t.Fatal("timeout deploying")
 	}
@@ -269,12 +269,12 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 	`
 	deployResult, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: "streamer.ts", Code: tsCode})
 	require.NoError(t, err)
-	deployCh := make(chan sdk.KitDeployResp, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- r })
+	deployCh := make(chan sdk.Message, 1)
+	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- m })
 	defer deployUnsub()
 	select {
-	case dr := <-deployCh:
-		require.Empty(t, dr.Error)
+	case dm := <-deployCh:
+		require.Empty(t, suite.ResponseErrorMessage(dm.Payload))
 	case <-ctx.Done():
 		t.Fatal("timeout deploying")
 	}
@@ -321,12 +321,12 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 	`
 	deployResult, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: "bot.ts", Code: tsCode})
 	require.NoError(t, err)
-	deployCh := make(chan sdk.KitDeployResp, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- r })
+	deployCh := make(chan sdk.Message, 1)
+	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- m })
 	defer deployUnsub()
 	select {
-	case dr := <-deployCh:
-		require.Empty(t, dr.Error)
+	case dm := <-deployCh:
+		require.Empty(t, suite.ResponseErrorMessage(dm.Payload))
 	case <-ctx.Done():
 		t.Fatal("timeout deploying")
 	}

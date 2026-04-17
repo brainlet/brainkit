@@ -12,6 +12,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,9 +148,9 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 
 	// Call the "status" tool to check what the plugin received
 	replyTo := "tools.call.reply.ws-sub-test"
-	replyCh := make(chan json.RawMessage, 1)
+	replyCh := make(chan sdk.Message, 1)
 	unsubReply, _ := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		replyCh <- m.Payload
+		replyCh <- m
 	})
 	defer unsubReply()
 
@@ -159,10 +160,11 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	}, sdk.WithReplyTo(replyTo))
 
 	select {
-	case payload := <-replyCh:
+	case msg := <-replyCh:
+		require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
+		data := suite.ResponseDataFromMsg(msg)
 		var resp sdk.ToolCallResp
-		require.NoError(t, json.Unmarshal(payload, &resp))
-		require.Empty(t, resp.Error)
+		require.NoError(t, json.Unmarshal(data, &resp))
 
 		var status struct {
 			Count    int               `json:"count"`

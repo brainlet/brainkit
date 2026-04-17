@@ -13,7 +13,6 @@ type StorageAddMsg struct {
 func (StorageAddMsg) BusTopic() string { return "storages.add" }
 
 type StorageAddResp struct {
-	ResultMeta
 	Added bool `json:"added"`
 }
 
@@ -24,6 +23,5 @@ type StorageRemoveMsg struct {
 func (StorageRemoveMsg) BusTopic() string { return "storages.remove" }
 
 type StorageRemoveResp struct {
-	ResultMeta
 	Removed bool `json:"removed"`
 }

@@ -32,23 +32,19 @@ func (AgentSetStatusMsg) BusTopic() string { return "agents.set-status" }
 // ── Responses ──
 
 type AgentGetStatusResp struct {
-	ResultMeta
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
 type AgentSetStatusResp struct {
-	ResultMeta
 	OK bool `json:"ok"`
 }
 
 type AgentListResp struct {
-	ResultMeta
 	Agents []AgentInfo `json:"agents"`
 }
 
 type AgentDiscoverResp struct {
-	ResultMeta
 	Agents []AgentInfo `json:"agents"`
 }
 

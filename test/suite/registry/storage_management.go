@@ -23,17 +23,21 @@ func testStorageAddViaBus(t *testing.T, env *suite.TestEnv) {
 		Type:   "memory",
 		Config: json.RawMessage(`{}`),
 	})
-	respCh := make(chan sdk.StorageAddResp, 1)
+	type storageAddResult struct {
+		resp sdk.StorageAddResp
+		msg  sdk.Message
+	}
+	respCh := make(chan storageAddResult, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageAddResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.StorageAddResp, msg sdk.Message) { respCh <- storageAddResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error != "" {
-			t.Fatalf("error: %s", resp.Error)
+	case r := <-respCh:
+		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
+			t.Fatalf("error: %s", errMsg)
 		}
-		if !resp.Added {
+		if !r.resp.Added {
 			t.Fatal("expected Added=true")
 		}
 	case <-ctx.Done():
@@ -124,13 +128,13 @@ func testStorageAddSQLiteThenDeployUses(t *testing.T, _ *suite.TestEnv) {
 		Type:   "sqlite",
 		Config: json.RawMessage(`{"path":"` + tmpDir + `/dynamic.db"}`),
 	})
-	addCh := make(chan sdk.StorageAddResp, 1)
+	addCh := make(chan sdk.Message, 1)
 	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageAddResp, msg sdk.Message) { addCh <- resp })
-	resp := <-addCh
+		func(resp sdk.StorageAddResp, msg sdk.Message) { addCh <- msg })
+	addMsg := <-addCh
 	unsub()
-	if resp.Error != "" {
-		t.Fatalf("add storage: %s", resp.Error)
+	if errMsg := suite.ResponseErrorMessage(addMsg.Payload); errMsg != "" {
+		t.Fatalf("add storage: %s", errMsg)
 	}
 
 	// Deploy .ts that uses this storage, creates a table, inserts+reads data

@@ -37,7 +37,6 @@ type PluginToolDef struct {
 }
 
 type PluginManifestResp struct {
-	ResultMeta
 	Registered bool `json:"registered"`
 }
 

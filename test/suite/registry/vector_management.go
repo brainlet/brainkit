@@ -23,17 +23,21 @@ func testVectorAddViaBus(t *testing.T, env *suite.TestEnv) {
 		Type:   "sqlite",
 		Config: json.RawMessage(`{}`),
 	})
-	respCh := make(chan sdk.VectorAddResp, 1)
+	type vectorAddResult struct {
+		resp sdk.VectorAddResp
+		msg  sdk.Message
+	}
+	respCh := make(chan vectorAddResult, 1)
 	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.VectorAddResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.VectorAddResp, msg sdk.Message) { respCh <- vectorAddResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error != "" {
-			t.Fatalf("error: %s", resp.Error)
+	case r := <-respCh:
+		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
+			t.Fatalf("error: %s", errMsg)
 		}
-		if !resp.Added {
+		if !r.resp.Added {
 			t.Fatal("expected Added=true")
 		}
 	case <-ctx.Done():

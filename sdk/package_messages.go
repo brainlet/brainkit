@@ -14,7 +14,6 @@ type PluginStartMsg struct {
 func (PluginStartMsg) BusTopic() string { return "plugin.start" }
 
 type PluginStartResp struct {
-	ResultMeta
 	Started bool   `json:"started"`
 	Name    string `json:"name"`
 	PID     int    `json:"pid"`
@@ -27,7 +26,6 @@ type PluginStopMsg struct {
 func (PluginStopMsg) BusTopic() string { return "plugin.stop" }
 
 type PluginStopResp struct {
-	ResultMeta
 	Stopped bool `json:"stopped"`
 }
 
@@ -38,7 +36,6 @@ type PluginRestartMsg struct {
 func (PluginRestartMsg) BusTopic() string { return "plugin.restart" }
 
 type PluginRestartResp struct {
-	ResultMeta
 	Restarted bool `json:"restarted"`
 	PID       int  `json:"pid"`
 }
@@ -48,7 +45,6 @@ type PluginListRunningMsg struct{}
 func (PluginListRunningMsg) BusTopic() string { return "plugin.list" }
 
 type PluginListRunningResp struct {
-	ResultMeta
 	Plugins []RunningPluginInfo `json:"plugins"`
 }
 
@@ -67,7 +63,6 @@ type PluginStatusMsg struct {
 func (PluginStatusMsg) BusTopic() string { return "plugin.status" }
 
 type PluginStatusResp struct {
-	ResultMeta
 	Name     string   `json:"name"`
 	PID      int      `json:"pid"`
 	Status   string   `json:"status"`

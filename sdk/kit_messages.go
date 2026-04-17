@@ -38,27 +38,23 @@ func (KitDeployFileMsg) BusTopic() string { return "kit.deploy.file" }
 // ── Responses ──
 
 type KitDeployResp struct {
-	ResultMeta
 	Deployed  bool           `json:"deployed"`
 	Resources []ResourceInfo `json:"resources,omitempty"`
 }
 
 
 type KitTeardownResp struct {
-	ResultMeta
 	Removed int `json:"removed"`
 }
 
 
 type KitRedeployResp struct {
-	ResultMeta
 	Deployed  bool           `json:"deployed"`
 	Resources []ResourceInfo `json:"resources,omitempty"`
 }
 
 
 type KitListResp struct {
-	ResultMeta
 	Deployments []DeploymentInfo `json:"deployments"`
 }
 
@@ -86,7 +82,6 @@ type MetricsGetMsg struct{}
 func (MetricsGetMsg) BusTopic() string { return "metrics.get" }
 
 type MetricsGetResp struct {
-	ResultMeta
 	Metrics json.RawMessage `json:"metrics"`
 }
 
@@ -97,7 +92,6 @@ type PeersListMsg struct{}
 func (PeersListMsg) BusTopic() string { return "peers.list" }
 
 type PeersListResp struct {
-	ResultMeta
 	Peers      []PeerInfo `json:"peers"`
 	Namespaces []string   `json:"namespaces,omitempty"`
 }
@@ -116,7 +110,6 @@ type PeersResolveMsg struct {
 func (PeersResolveMsg) BusTopic() string { return "peers.resolve" }
 
 type PeersResolveResp struct {
-	ResultMeta
 	Namespace string `json:"namespace"`
 	Address   string `json:"address"`
 }
@@ -130,7 +123,6 @@ type KitEvalMsg struct {
 func (KitEvalMsg) BusTopic() string { return "kit.eval" }
 
 type KitEvalResp struct {
-	ResultMeta
 	Result string `json:"result"`
 }
 
@@ -144,7 +136,6 @@ type KitEvalTSMsg struct {
 func (KitEvalTSMsg) BusTopic() string { return "kit.eval-ts" }
 
 type KitEvalTSResp struct {
-	ResultMeta
 	Result string `json:"result"`
 }
 
@@ -157,7 +148,6 @@ type KitSetDrainingMsg struct {
 func (KitSetDrainingMsg) BusTopic() string { return "kit.set-draining" }
 
 type KitSetDrainingResp struct {
-	ResultMeta
 	Draining bool `json:"draining"`
 }
 
@@ -168,7 +158,6 @@ type ClusterPeersMsg struct{}
 func (ClusterPeersMsg) BusTopic() string { return "cluster.peers" }
 
 type ClusterPeersResp struct {
-	ResultMeta
 	Peers []ClusterPeerInfo `json:"peers"`
 }
 
@@ -190,7 +179,6 @@ type KitEvalModuleMsg struct {
 func (KitEvalModuleMsg) BusTopic() string { return "kit.eval-module" }
 
 type KitEvalModuleResp struct {
-	ResultMeta
 	Result string `json:"result"`
 }
 
@@ -204,7 +192,6 @@ type KitSendMsg struct {
 func (KitSendMsg) BusTopic() string { return "kit.send" }
 
 type KitSendResp struct {
-	ResultMeta
 	Payload json.RawMessage `json:"payload"`
 }
 
@@ -215,6 +202,5 @@ type KitHealthMsg struct{}
 func (KitHealthMsg) BusTopic() string { return "kit.health" }
 
 type KitHealthResp struct {
-	ResultMeta
 	Health json.RawMessage `json:"health"`
 }

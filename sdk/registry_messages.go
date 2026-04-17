@@ -27,19 +27,16 @@ func (RegistryResolveMsg) BusTopic() string { return "registry.resolve" }
 // ── Responses ──
 
 type RegistryHasResp struct {
-	ResultMeta
 	Found bool `json:"found"`
 }
 
 
 type RegistryListResp struct {
-	ResultMeta
 	Items json.RawMessage `json:"items"`
 }
 
 
 type RegistryResolveResp struct {
-	ResultMeta
 	Config json.RawMessage `json:"config"`
 }
 

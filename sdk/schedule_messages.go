@@ -13,7 +13,6 @@ type ScheduleCreateMsg struct {
 func (ScheduleCreateMsg) BusTopic() string { return "schedules.create" }
 
 type ScheduleCreateResp struct {
-	ResultMeta
 	ID string `json:"id"`
 }
 
@@ -24,7 +23,6 @@ type ScheduleCancelMsg struct {
 func (ScheduleCancelMsg) BusTopic() string { return "schedules.cancel" }
 
 type ScheduleCancelResp struct {
-	ResultMeta
 	Cancelled bool `json:"cancelled"`
 }
 
@@ -33,7 +31,6 @@ type ScheduleListMsg struct{}
 func (ScheduleListMsg) BusTopic() string { return "schedules.list" }
 
 type ScheduleListResp struct {
-	ResultMeta
 	Schedules []ScheduleInfo `json:"schedules"`
 }
 

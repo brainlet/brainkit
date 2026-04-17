@@ -12,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,9 +128,9 @@ func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolNa
 	t.Helper()
 
 	replyTo := "tools.call.reply.metrics-" + toolName
-	ch := make(chan json.RawMessage, 1)
+	ch := make(chan sdk.Message, 1)
 	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		ch <- json.RawMessage(m.Payload)
+		ch <- m
 	})
 	require.NoError(t, err)
 	defer unsub()
@@ -140,12 +141,13 @@ func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolNa
 	}, sdk.WithReplyTo(replyTo))
 
 	select {
-	case payload := <-ch:
-		var resp sdk.ToolCallResp
-		require.NoError(t, json.Unmarshal(payload, &resp))
-		if resp.Error != "" {
-			t.Fatalf("tool %s error: %s", toolName, resp.Error)
+	case msg := <-ch:
+		if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
+			t.Fatalf("tool %s error: %s", toolName, errMsg)
 		}
+		data := suite.ResponseDataFromMsg(msg)
+		var resp sdk.ToolCallResp
+		require.NoError(t, json.Unmarshal(data, &resp))
 		return resp.Result
 	case <-ctx.Done():
 		t.Fatalf("timeout calling %s", toolName)

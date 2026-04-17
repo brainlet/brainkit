@@ -12,7 +12,6 @@ type WorkflowStartMsg struct {
 func (WorkflowStartMsg) BusTopic() string { return "workflow.start" }
 
 type WorkflowStartResp struct {
-	ResultMeta
 	RunID  string          `json:"runId"`
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
@@ -26,7 +25,6 @@ type WorkflowStartAsyncMsg struct {
 func (WorkflowStartAsyncMsg) BusTopic() string { return "workflow.startAsync" }
 
 type WorkflowStartAsyncResp struct {
-	ResultMeta
 	RunID string `json:"runId"`
 }
 
@@ -38,7 +36,6 @@ type WorkflowStatusMsg struct {
 func (WorkflowStatusMsg) BusTopic() string { return "workflow.status" }
 
 type WorkflowStatusResp struct {
-	ResultMeta
 	RunID  string          `json:"runId"`
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
@@ -54,7 +51,6 @@ type WorkflowResumeMsg struct {
 func (WorkflowResumeMsg) BusTopic() string { return "workflow.resume" }
 
 type WorkflowResumeResp struct {
-	ResultMeta
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
 }
@@ -67,7 +63,6 @@ type WorkflowCancelMsg struct {
 func (WorkflowCancelMsg) BusTopic() string { return "workflow.cancel" }
 
 type WorkflowCancelResp struct {
-	ResultMeta
 	Cancelled bool `json:"cancelled"`
 }
 
@@ -76,7 +71,6 @@ type WorkflowListMsg struct{}
 func (WorkflowListMsg) BusTopic() string { return "workflow.list" }
 
 type WorkflowListResp struct {
-	ResultMeta
 	Workflows []WorkflowInfo `json:"workflows"`
 }
 
@@ -97,7 +91,6 @@ type WorkflowRunsMsg struct {
 func (WorkflowRunsMsg) BusTopic() string { return "workflow.runs" }
 
 type WorkflowRunsResp struct {
-	ResultMeta
 	Runs  json.RawMessage `json:"runs"`
 	Total int             `json:"total"`
 }
@@ -110,7 +103,6 @@ type WorkflowRestartMsg struct {
 func (WorkflowRestartMsg) BusTopic() string { return "workflow.restart" }
 
 type WorkflowRestartResp struct {
-	ResultMeta
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
 }

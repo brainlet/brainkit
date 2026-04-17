@@ -426,15 +426,23 @@ func (n *Node) processPluginManifest(ctx context.Context, manifest sdk.PluginMan
 						span.End(callCtx.Err())
 						return nil, callCtx.Err()
 					case msg := <-resultCh:
+						payload := msg.Payload
+						if msg.Metadata["envelope"] == "true" {
+							if wire, err := sdk.DecodeEnvelope(payload); err == nil {
+								if !wire.Ok && wire.Error != nil {
+									retErr := sdk.FromEnvelope(wire)
+									span.End(retErr)
+									return nil, retErr
+								}
+								if wire.Ok {
+									payload = wire.Data
+								}
+							}
+						}
 						var result sdk.ToolCallResp
-						if err := json.Unmarshal(msg.Payload, &result); err != nil {
+						if err := json.Unmarshal(payload, &result); err != nil {
 							span.End(err)
 							return nil, fmt.Errorf("brainkit: decode plugin tool result: %w", err)
-						}
-						if resultErr := sdk.ResultErrorOf(result); resultErr != "" {
-							retErr := fmt.Errorf("%s", resultErr)
-							span.End(retErr)
-							return nil, retErr
 						}
 						span.End(nil)
 						return result.Result, nil

@@ -54,12 +54,20 @@ func httpBusRequest[Req sdk.BrainkitMessage, Resp any](client *brainkit.BusClien
 		return nil, err
 	}
 
+	// Unwrap wire envelope. Error envelopes surface here; success unwraps
+	// into the typed response.
+	if wire, err := sdk.DecodeEnvelope(respPayload); err == nil {
+		if !wire.Ok && wire.Error != nil {
+			return nil, sdk.FromEnvelope(wire)
+		}
+		if wire.Ok {
+			respPayload = wire.Data
+		}
+	}
+
 	var resp Resp
 	if err := json.Unmarshal(respPayload, &resp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	if errMsg := sdk.ResultErrorOf(resp); errMsg != "" {
-		return nil, fmt.Errorf("%s", errMsg)
 	}
 	return &resp, nil
 }

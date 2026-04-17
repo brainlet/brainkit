@@ -172,8 +172,8 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 				return
 			}
 			ch := make(chan bool, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
-				ch <- r.Error == ""
+			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+				ch <- suite.ResponseErrorMessage(msg.Payload) == ""
 			})
 			select {
 			case ok := <-ch:

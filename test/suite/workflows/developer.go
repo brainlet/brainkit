@@ -46,15 +46,16 @@ func testToolCallInsideStep(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "tool-in-step", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "tool-in-step", InputData: json.RawMessage(`{"query":"hello world"}`)},
 		15*time.Second,
 	)
-	require.Empty(t, resp.Error, "tool-in-step error: %s", resp.Error)
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.Empty(t, errMsg, "tool-in-step error: %s", errMsg)
 	require.Equal(t, "success", resp.Status)
 
-	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "tool-in-step", RunID: resp.RunID},
 		5*time.Second,
@@ -97,12 +98,12 @@ func testBusEmitFromStep(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer unsub()
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "bus-emit-wf", InputData: json.RawMessage(`{"orderId":"ORD-123"}`)},
 		10*time.Second,
 	)
-	require.Empty(t, resp.Error)
+	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 	require.Equal(t, "success", resp.Status)
 
 	select {
@@ -155,15 +156,16 @@ func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Test premium path (amount >= 100)
-	premResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	premResp, premMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "branch-wf", InputData: json.RawMessage(`{"amount":250}`)},
 		10*time.Second,
 	)
-	require.Empty(t, premResp.Error, "premium branch: %s", premResp.Error)
+	premErr := suite.ResponseErrorMessage(premMsg.Payload)
+	require.Empty(t, premErr, "premium branch: %s", premErr)
 	require.Equal(t, "success", premResp.Status)
 
-	premStatus := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	premStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "branch-wf", RunID: premResp.RunID},
 		5*time.Second,
@@ -171,15 +173,16 @@ func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, string(premStatus.Steps), "premium-250", "should take premium branch")
 
 	// Test standard path (amount < 100)
-	stdResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	stdResp, stdMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "branch-wf", InputData: json.RawMessage(`{"amount":50}`)},
 		10*time.Second,
 	)
-	require.Empty(t, stdResp.Error, "standard branch: %s", stdResp.Error)
+	stdErr := suite.ResponseErrorMessage(stdMsg.Payload)
+	require.Empty(t, stdErr, "standard branch: %s", stdErr)
 	require.Equal(t, "success", stdResp.Status)
 
-	stdStatus := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	stdStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "branch-wf", RunID: stdResp.RunID},
 		5*time.Second,
@@ -232,15 +235,16 @@ func testStepState(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "state-wf", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "state-wf", InputData: json.RawMessage(`{"name":"test-user"}`)},
 		10*time.Second,
 	)
-	require.Empty(t, resp.Error, "state workflow: %s", resp.Error)
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.Empty(t, errMsg, "state workflow: %s", errMsg)
 	require.Equal(t, "success", resp.Status)
 
-	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "state-wf", RunID: resp.RunID},
 		5*time.Second,
@@ -282,7 +286,7 @@ func testSuspendWithContextData(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "doc-review", wf);
 	`)
 
-	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{
 			Name:      "doc-review",
@@ -292,7 +296,7 @@ func testSuspendWithContextData(t *testing.T, env *suite.TestEnv) {
 	)
 	require.Equal(t, "suspended", startResp.Status)
 
-	suspStatus := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	suspStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "doc-review", RunID: startResp.RunID},
 		5*time.Second,
@@ -301,7 +305,7 @@ func testSuspendWithContextData(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, string(suspStatus.Steps), "Document needs review", "suspend payload should be in storage")
 	assert.Contains(t, string(suspStatus.Steps), "DOC-456", "documentId should be in suspend payload")
 
-	resumeResp := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, k,
 		sdk.WorkflowResumeMsg{
 			Name:       "doc-review",
@@ -311,10 +315,11 @@ func testSuspendWithContextData(t *testing.T, env *suite.TestEnv) {
 		},
 		10*time.Second,
 	)
-	require.Empty(t, resumeResp.Error, "resume doc-review: %s", resumeResp.Error)
+	resumeErr := suite.ResponseErrorMessage(resumeMsg.Payload)
+	require.Empty(t, resumeErr, "resume doc-review: %s", resumeErr)
 	require.Equal(t, "success", resumeResp.Status)
 
-	finalStatus := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	finalStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "doc-review", RunID: startResp.RunID},
 		5*time.Second,

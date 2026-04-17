@@ -29,17 +29,21 @@ func testScheduleCreateViaBus(t *testing.T, _ *suite.TestEnv) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	respCh := make(chan sdk.ScheduleCreateResp, 1)
+	type createResult struct {
+		resp sdk.ScheduleCreateResp
+		msg  sdk.Message
+	}
+	respCh := make(chan createResult, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error != "" {
-			t.Fatalf("error: %s", resp.Error)
+	case r := <-respCh:
+		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
+			t.Fatalf("error: %s", errMsg)
 		}
-		if resp.ID == "" {
+		if r.resp.ID == "" {
 			t.Fatal("expected non-empty schedule ID")
 		}
 	case <-ctx.Done():
@@ -57,14 +61,18 @@ func testScheduleCreateInvalidExpression(t *testing.T, _ *suite.TestEnv) {
 		Topic:      "test.sched.invalid",
 	})
 
-	respCh := make(chan sdk.ScheduleCreateResp, 1)
+	type createResult struct {
+		resp sdk.ScheduleCreateResp
+		msg  sdk.Message
+	}
+	respCh := make(chan createResult, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error == "" {
+	case r := <-respCh:
+		if suite.ResponseErrorMessage(r.msg.Payload) == "" {
 			t.Fatal("expected error for bad expression")
 		}
 	case <-ctx.Done():
@@ -149,18 +157,23 @@ func testScheduleCreateBlocksCommandTopic(t *testing.T, _ *suite.TestEnv) {
 		Expression: "every 1m",
 		Topic:      "tools.call", // command topic — should be blocked
 	})
-	respCh := make(chan sdk.ScheduleCreateResp, 1)
+	type createResult struct {
+		resp sdk.ScheduleCreateResp
+		msg  sdk.Message
+	}
+	respCh := make(chan createResult, 1)
 	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error == "" {
+	case r := <-respCh:
+		errMsg := suite.ResponseErrorMessage(r.msg.Payload)
+		if errMsg == "" {
 			t.Fatal("expected error for command topic")
 		}
-		if !strings.Contains(resp.Error, "command topic") {
-			t.Fatalf("expected 'command topic' in error, got: %s", resp.Error)
+		if !strings.Contains(errMsg, "command topic") {
+			t.Fatalf("expected 'command topic' in error, got: %s", errMsg)
 		}
 	case <-ctx.Done():
 		t.Fatal("timeout")
@@ -192,14 +205,19 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"tick":true}`),
 	})
-	createCh := make(chan sdk.ScheduleCreateResp, 1)
+	type createResult struct {
+		resp sdk.ScheduleCreateResp
+		msg  sdk.Message
+	}
+	createCh := make(chan createResult, 1)
 	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
-	createResp := <-createCh
+		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- createResult{resp, msg} })
+	cr := <-createCh
+	createResp := cr.resp
 	unsubCreate()
 
-	if createResp.Error != "" {
-		t.Fatalf("create error: %s", createResp.Error)
+	if errMsg := suite.ResponseErrorMessage(cr.msg.Payload); errMsg != "" {
+		t.Fatalf("create error: %s", errMsg)
 	}
 
 	// Wait for at least 2 fires

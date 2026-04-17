@@ -54,9 +54,11 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // wfPublishAndWait publishes a workflow command and waits for the typed response.
 // Generic helper replicating publishAndWait from infra/workflow_bus_test.go.
+// Returns both the typed response and the raw sdk.Message so callers can
+// extract envelope-shaped error messages via suite.ResponseErrorMessage.
 func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	t *testing.T, k *brainkit.Kit, msg Req, timeout time.Duration,
-) Resp {
+) (Resp, sdk.Message) {
 	t.Helper()
 	result, err := sdk.Publish(k, context.Background(), msg)
 	require.NoError(t, err)
@@ -64,14 +66,16 @@ func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var resp Resp
+	var respMsg sdk.Message
 	unsub, err := sdk.SubscribeTo[Resp](k, ctx, result.ReplyTo, func(r Resp, m sdk.Message) {
 		resp = r
+		respMsg = m
 		cancel()
 	})
 	require.NoError(t, err)
 	defer unsub()
 	<-ctx.Done()
-	return resp
+	return resp, respMsg
 }
 
 // wfDeploy deploys a .ts file that registers a workflow.

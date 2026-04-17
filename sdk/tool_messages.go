@@ -29,7 +29,6 @@ func (ToolResolveMsg) BusTopic() string { return "tools.resolve" }
 // ── Responses ──
 
 type ToolListResp struct {
-	ResultMeta
 	Tools []ToolInfo `json:"tools"`
 }
 
@@ -42,7 +41,6 @@ type ToolInfo struct {
 }
 
 type ToolResolveResp struct {
-	ResultMeta
 	Name        string `json:"name"`
 	ShortName   string `json:"shortName"`
 	Description string `json:"description"`
@@ -53,7 +51,6 @@ type ToolResolveResp struct {
 // ToolRegisterResp removed — see note above.
 
 type ToolCallResp struct {
-	ResultMeta
 	Result json.RawMessage `json:"result"`
 }
 

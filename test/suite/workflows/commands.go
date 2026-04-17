@@ -37,12 +37,13 @@ func testStartSequential(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "seq-test", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "seq-test", InputData: json.RawMessage(`{"text":"hello"}`)},
 		10*time.Second,
 	)
-	require.Empty(t, resp.Error, "should not error: %s", resp.Error)
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.Empty(t, errMsg, "should not error: %s", errMsg)
 	require.NotEmpty(t, resp.RunID)
 	assert.Contains(t, resp.Status, "success")
 }
@@ -68,12 +69,12 @@ func testStartParallel(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "par-test", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "par-test", InputData: json.RawMessage(`{"x":5}`)},
 		10*time.Second,
 	)
-	require.Empty(t, resp.Error)
+	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 	assert.Contains(t, resp.Status, "success")
 }
 
@@ -92,10 +93,10 @@ func testList(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "list-test", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowListMsg, sdk.WorkflowListResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowListMsg, sdk.WorkflowListResp](
 		t, k, sdk.WorkflowListMsg{}, 5*time.Second,
 	)
-	require.Empty(t, resp.Error)
+	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 	found := false
 	for _, wf := range resp.Workflows {
 		if wf.Name == "list-test" {
@@ -129,7 +130,7 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "approval-flow", wf);
 	`)
 
-	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "approval-flow", InputData: json.RawMessage(`{"item":"widget"}`)},
 		10*time.Second,
@@ -137,7 +138,7 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 	require.Equal(t, "suspended", startResp.Status)
 	require.NotEmpty(t, startResp.RunID)
 
-	resumeResp := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, k,
 		sdk.WorkflowResumeMsg{
 			Name: "approval-flow", RunID: startResp.RunID,
@@ -145,7 +146,8 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 		},
 		10*time.Second,
 	)
-	require.Empty(t, resumeResp.Error, "resume should not error: %s", resumeResp.Error)
+	resumeErr := suite.ResponseErrorMessage(resumeMsg.Payload)
+	require.Empty(t, resumeErr, "resume should not error: %s", resumeErr)
 }
 
 func testCancel(t *testing.T, env *suite.TestEnv) {
@@ -169,27 +171,28 @@ func testCancel(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "cancel-test", wf);
 	`)
 
-	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "cancel-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
 
-	cancelResp := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	cancelResp, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
 		t, k,
 		sdk.WorkflowCancelMsg{Name: "cancel-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
-	require.Empty(t, cancelResp.Error)
+	require.Empty(t, suite.ResponseErrorMessage(cancelMsg.Payload))
 	require.True(t, cancelResp.Cancelled)
 
-	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "cancel-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
-	require.Empty(t, statusResp.Error, "status after cancel should succeed: %s", statusResp.Error)
+	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
+	require.Empty(t, statusErr, "status after cancel should succeed: %s", statusErr)
 	assert.Equal(t, "canceled", statusResp.Status)
 }
 
@@ -213,53 +216,58 @@ func testWithToolCall(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "tool-wf", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "tool-wf", InputData: json.RawMessage(`{"msg":"from-workflow"}`)},
 		10*time.Second,
 	)
-	require.Empty(t, resp.Error, "tool workflow should not error: %s", resp.Error)
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.Empty(t, errMsg, "tool workflow should not error: %s", errMsg)
 	assert.Contains(t, resp.Status, "success")
 }
 
 func testNotFound(t *testing.T, env *suite.TestEnv) {
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	_, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, env.Kit,
 		sdk.WorkflowStartMsg{Name: "ghost-workflow"},
 		5*time.Second,
 	)
-	require.NotEmpty(t, resp.Error)
-	assert.Contains(t, resp.Error, "not found")
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.NotEmpty(t, errMsg)
+	assert.Contains(t, errMsg, "not found")
 }
 
 func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	resp := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	_, msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, env.Kit,
 		sdk.WorkflowResumeMsg{Name: "any", RunID: "fake-run-id", ResumeData: json.RawMessage(`{}`)},
 		5*time.Second,
 	)
-	require.NotEmpty(t, resp.Error)
-	assert.Contains(t, resp.Error, "not found")
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.NotEmpty(t, errMsg)
+	assert.Contains(t, errMsg, "not found")
 }
 
 func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	resp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	_, msg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, env.Kit,
 		sdk.WorkflowStatusMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
-	require.NotEmpty(t, resp.Error)
-	assert.Contains(t, resp.Error, "not found")
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.NotEmpty(t, errMsg)
+	assert.Contains(t, errMsg, "not found")
 }
 
 func testCancelNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	resp := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	_, msg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
 		t, env.Kit,
 		sdk.WorkflowCancelMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
-	require.NotEmpty(t, resp.Error)
-	assert.Contains(t, resp.Error, "not found")
+	errMsg := suite.ResponseErrorMessage(msg.Payload)
+	require.NotEmpty(t, errMsg)
+	assert.Contains(t, errMsg, "not found")
 }
 
 func testStepWithError(t *testing.T, env *suite.TestEnv) {
@@ -279,7 +287,7 @@ func testStepWithError(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "error-test", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "error-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,

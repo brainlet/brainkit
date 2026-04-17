@@ -23,17 +23,21 @@ func testProviderAddViaBus(t *testing.T, env *suite.TestEnv) {
 		Type:   "openai",
 		Config: json.RawMessage(`{"APIKey":"test-key-123"}`),
 	})
-	respCh := make(chan sdk.ProviderAddResp, 1)
+	type providerAddResult struct {
+		resp sdk.ProviderAddResp
+		msg  sdk.Message
+	}
+	respCh := make(chan providerAddResult, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- providerAddResult{resp, msg} })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error != "" {
-			t.Fatalf("error: %s", resp.Error)
+	case r := <-respCh:
+		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
+			t.Fatalf("error: %s", errMsg)
 		}
-		if !resp.Added {
+		if !r.resp.Added {
 			t.Fatal("expected Added=true")
 		}
 	case <-ctx.Done():
@@ -65,14 +69,14 @@ func testProviderAddInvalidName(t *testing.T, env *suite.TestEnv) {
 		Name: "", // invalid
 		Type: "openai",
 	})
-	respCh := make(chan sdk.ProviderAddResp, 1)
+	respCh := make(chan sdk.Message, 1)
 	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- resp })
+		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- msg })
 	defer unsub()
 
 	select {
-	case resp := <-respCh:
-		if resp.Error == "" {
+	case msg := <-respCh:
+		if !suite.ResponseHasError(msg.Payload) {
 			t.Fatal("expected validation error for empty name")
 		}
 	case <-ctx.Done():

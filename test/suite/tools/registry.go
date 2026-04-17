@@ -63,12 +63,12 @@ func testToolsResolveNotFound(t *testing.T, env *suite.TestEnv) {
 
 	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "nonexistent"})
 	require.NoError(t, err)
-	ch := make(chan sdk.ToolResolveResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolResolveResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.Message, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.ToolResolveResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolResolveResp, m sdk.Message) { ch <- m })
 	defer unsub()
 	select {
-	case resp := <-ch:
-		assert.NotEmpty(t, resp.Error, "should have error in response")
+	case m := <-ch:
+		assert.True(t, suite.ResponseHasError(m.Payload), "should have error in response")
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
@@ -131,12 +131,12 @@ func testToolsCallNotFound(t *testing.T, env *suite.TestEnv) {
 		Input: map[string]any{},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.ToolCallResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.Message, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- m })
 	defer unsub()
 	select {
-	case resp := <-ch:
-		assert.NotEmpty(t, resp.Error, "should have error in response")
+	case m := <-ch:
+		assert.True(t, suite.ResponseHasError(m.Payload), "should have error in response")
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}

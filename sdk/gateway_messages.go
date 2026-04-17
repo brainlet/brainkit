@@ -13,7 +13,6 @@ type GatewayRouteAddMsg struct {
 func (GatewayRouteAddMsg) BusTopic() string { return "gateway.http.route.add" }
 
 type GatewayRouteAddResp struct {
-	ResultMeta
 	Added bool `json:"added"`
 }
 
@@ -26,7 +25,6 @@ type GatewayRouteRemoveMsg struct {
 func (GatewayRouteRemoveMsg) BusTopic() string { return "gateway.http.route.remove" }
 
 type GatewayRouteRemoveResp struct {
-	ResultMeta
 	Removed int `json:"removed"`
 }
 
@@ -35,7 +33,6 @@ type GatewayRouteListMsg struct{}
 func (GatewayRouteListMsg) BusTopic() string { return "gateway.http.route.list" }
 
 type GatewayRouteListResp struct {
-	ResultMeta
 	Routes []GatewayRouteInfo `json:"routes"`
 }
 
@@ -52,7 +49,6 @@ type GatewayStatusMsg struct{}
 func (GatewayStatusMsg) BusTopic() string { return "gateway.http.status" }
 
 type GatewayStatusResp struct {
-	ResultMeta
 	Listening         bool   `json:"listening"`
 	Address           string `json:"address"`
 	RouteCount        int    `json:"routeCount"`

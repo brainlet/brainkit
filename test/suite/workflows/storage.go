@@ -53,7 +53,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "persist-test", wf);
 	`)
 
-	resp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "persist-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
@@ -101,20 +101,21 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "status-test", wf);
 	`)
 
-	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "status-test", InputData: json.RawMessage(`{"x":5}`)},
 		10*time.Second,
 	)
-	require.Empty(t, startResp.Error)
+	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
 	require.Equal(t, "success", startResp.Status)
 
-	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,
 		sdk.WorkflowStatusMsg{Name: "status-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
-	require.Empty(t, statusResp.Error, "status of completed run should work: %s", statusResp.Error)
+	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
+	require.Empty(t, statusErr, "status of completed run should work: %s", statusErr)
 	assert.Equal(t, "success", statusResp.Status)
 }
 
@@ -149,34 +150,36 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "runs-test", wf);
 	`)
 
-	r1 := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r1, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":0}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "success", r1.Status)
 
-	r2 := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r2, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k,
 		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", r2.Status)
 
-	allResp := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
 		t, k,
 		sdk.WorkflowRunsMsg{Name: "runs-test"},
 		5*time.Second,
 	)
-	require.Empty(t, allResp.Error, "list all runs: %s", allResp.Error)
+	allErr := suite.ResponseErrorMessage(allMsg.Payload)
+	require.Empty(t, allErr, "list all runs: %s", allErr)
 	assert.GreaterOrEqual(t, allResp.Total, 2, "should have at least 2 runs total")
 
-	suspResp := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	suspResp, suspMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
 		t, k,
 		sdk.WorkflowRunsMsg{Name: "runs-test", Status: "suspended"},
 		5*time.Second,
 	)
-	require.Empty(t, suspResp.Error, "list suspended: %s", suspResp.Error)
+	suspErr := suite.ResponseErrorMessage(suspMsg.Payload)
+	require.Empty(t, suspErr, "list suspended: %s", suspErr)
 	assert.Equal(t, 1, suspResp.Total, "should have exactly 1 suspended run")
 }
 
@@ -207,12 +210,13 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "async-test", wf);
 	`)
 
-	asyncResp := wfPublishAndWait[sdk.WorkflowStartAsyncMsg, sdk.WorkflowStartAsyncResp](
+	asyncResp, asyncMsg := wfPublishAndWait[sdk.WorkflowStartAsyncMsg, sdk.WorkflowStartAsyncResp](
 		t, k,
 		sdk.WorkflowStartAsyncMsg{Name: "async-test", InputData: json.RawMessage(`{"n":7}`)},
 		5*time.Second,
 	)
-	require.Empty(t, asyncResp.Error, "startAsync: %s", asyncResp.Error)
+	asyncErr := suite.ResponseErrorMessage(asyncMsg.Payload)
+	require.Empty(t, asyncErr, "startAsync: %s", asyncErr)
 	require.NotEmpty(t, asyncResp.RunID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -283,7 +287,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 
 	wfDeploy(t, k1, "crash-suspend.ts", suspendCode)
 
-	startResp := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k1,
 		sdk.WorkflowStartMsg{Name: "crash-suspend", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
@@ -305,15 +309,16 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	statusResp := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k2,
 		sdk.WorkflowStatusMsg{Name: "crash-suspend", RunID: runID},
 		10*time.Second,
 	)
-	require.Empty(t, statusResp.Error, "status on k2: %s", statusResp.Error)
+	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
+	require.Empty(t, statusErr, "status on k2: %s", statusErr)
 	assert.Equal(t, "suspended", statusResp.Status)
 
-	resumeResp := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, k2,
 		sdk.WorkflowResumeMsg{
 			Name: "crash-suspend", RunID: runID,
@@ -321,6 +326,7 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 		},
 		10*time.Second,
 	)
-	require.Empty(t, resumeResp.Error, "resume on k2: %s", resumeResp.Error)
+	resumeErr := suite.ResponseErrorMessage(resumeMsg.Payload)
+	require.Empty(t, resumeErr, "resume on k2: %s", resumeErr)
 	assert.Equal(t, "success", resumeResp.Status)
 }

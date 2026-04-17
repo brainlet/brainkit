@@ -173,9 +173,9 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 			return
 		}
 		ch := make(chan error, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
-			if r.Error != "" {
-				ch <- fmt.Errorf("%s", r.Error)
+		unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+			if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
+				ch <- fmt.Errorf("%s", errMsg)
 			} else {
 				ch <- nil
 			}
@@ -232,9 +232,9 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 				continue
 			}
 			ch := make(chan error, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) {
-				if r.Error != "" {
-					ch <- fmt.Errorf("%s", r.Error)
+			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+				if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
+					ch <- fmt.Errorf("%s", errMsg)
 				} else {
 					ch <- nil
 				}

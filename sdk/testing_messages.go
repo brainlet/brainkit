@@ -13,6 +13,5 @@ type TestRunMsg struct {
 func (TestRunMsg) BusTopic() string { return "test.run" }
 
 type TestRunResp struct {
-	ResultMeta
 	Results json.RawMessage `json:"results"`
 }

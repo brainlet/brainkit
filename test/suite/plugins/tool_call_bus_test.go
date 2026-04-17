@@ -125,9 +125,9 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 		defer cancel()
 
 		replyTo := fmt.Sprintf("tools.call.reply.%d", time.Now().UnixNano())
-		replyCh := make(chan json.RawMessage, 1)
+		replyCh := make(chan sdk.Message, 1)
 		unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			replyCh <- suite.ResponseDataFromMsg(msg)
+			replyCh <- msg
 		})
 		require.NoError(t, err)
 		defer unsub()
@@ -140,13 +140,14 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 		require.NoError(t, err)
 
 		select {
-		case payload := <-replyCh:
+		case msg := <-replyCh:
 			elapsed := time.Since(start)
-			t.Logf("bus response in %s: %s", elapsed.Round(time.Millisecond), string(payload))
+			data := suite.ResponseDataFromMsg(msg)
+			t.Logf("bus response in %s: %s", elapsed.Round(time.Millisecond), string(data))
 			require.Less(t, elapsed, 3*time.Second)
+			require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 			var resp sdk.ToolCallResp
-			require.NoError(t, json.Unmarshal(payload, &resp))
-			require.Empty(t, resp.Error)
+			require.NoError(t, json.Unmarshal(data, &resp))
 			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null")
 		case <-ctx.Done():
 			t.Fatal("REGRESSION: tools.call via bus for plugin-style tool times out on Embedded transport")

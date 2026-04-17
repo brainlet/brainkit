@@ -38,13 +38,3 @@ func testBusErrorResponseCarriesCode(t *testing.T, env *suite.TestEnv) {
 	}
 }
 
-func testResultMetaIncludesCode(t *testing.T, _ *suite.TestEnv) {
-	meta := sdk.ResultMeta{Error: "not found", Code: "NOT_FOUND", Details: map[string]any{"resource": "tool"}}
-	data, err := json.Marshal(meta)
-	require.NoError(t, err)
-
-	var decoded map[string]any
-	require.NoError(t, json.Unmarshal(data, &decoded))
-	assert.Equal(t, "NOT_FOUND", decoded["code"])
-	assert.Equal(t, "not found", decoded["error"])
-}

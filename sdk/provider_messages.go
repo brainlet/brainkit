@@ -13,7 +13,6 @@ type ProviderAddMsg struct {
 func (ProviderAddMsg) BusTopic() string { return "providers.add" }
 
 type ProviderAddResp struct {
-	ResultMeta
 	Added bool `json:"added"`
 }
 
@@ -24,6 +23,5 @@ type ProviderRemoveMsg struct {
 func (ProviderRemoveMsg) BusTopic() string { return "providers.remove" }
 
 type ProviderRemoveResp struct {
-	ResultMeta
 	Removed bool `json:"removed"`
 }
