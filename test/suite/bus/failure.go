@@ -29,10 +29,8 @@ func testSyncThrowErrorResponse(t *testing.T, env *suite.TestEnv) {
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "thrower.ts", "fail", map[string]bool{"x": true})
 	errCh := make(chan string, 1)
 	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok {
-			errCh <- e
+		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
+			errCh <- m
 		}
 	})
 	defer replyUnsub()
@@ -62,10 +60,8 @@ func testAsyncRejectionErrorResponse(t *testing.T, env *suite.TestEnv) {
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "async-fail.ts", "fail", map[string]bool{"x": true})
 	errCh := make(chan string, 1)
 	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok {
-			errCh <- e
+		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
+			errCh <- m
 		}
 	})
 	defer replyUnsub()
@@ -195,10 +191,8 @@ func testRetryExhaustedDeadLetter(t *testing.T, _ *suite.TestEnv) {
 	errCh := make(chan string, 1)
 	sendPR, _ := sdk.SendToService(dlEnv.Kit, ctx, "dl-test.ts", "fail", map[string]bool{"x": true})
 	replyUnsub, _ := dlEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok {
-			errCh <- e
+		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
+			errCh <- m
 		}
 	})
 	defer replyUnsub()

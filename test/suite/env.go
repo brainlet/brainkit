@@ -328,22 +328,66 @@ func (e *TestEnv) SendAndReceive(t *testing.T, msg sdk.BrainkitMessage, timeout 
 }
 
 // ResponseCode extracts the error code from a bus response payload.
+// Accepts both the wire envelope ({ok:false, error:{code,...}}) and any
+// legacy shapes that carry a top-level `code` field.
 func ResponseCode(payload json.RawMessage) string {
+	if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Error != nil {
+		return env.Error.Code
+	}
 	var resp struct {
-		Code  string `json:"code"`
-		Error string `json:"error"`
+		Code string `json:"code"`
 	}
 	json.Unmarshal(payload, &resp)
 	return resp.Code
 }
 
-// ResponseHasError checks if a bus response contains an error field.
+// ResponseHasError reports whether a bus response represents an error.
 func ResponseHasError(payload json.RawMessage) bool {
+	if env, err := sdk.DecodeEnvelope(payload); err == nil {
+		if !env.Ok && env.Error != nil {
+			return true
+		}
+	}
 	var resp struct {
 		Error string `json:"error"`
 	}
 	json.Unmarshal(payload, &resp)
 	return resp.Error != ""
+}
+
+// ResponseErrorMessage returns the human-readable message from either envelope
+// or legacy shape.
+func ResponseErrorMessage(payload json.RawMessage) string {
+	if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Error != nil {
+		return env.Error.Message
+	}
+	var resp struct {
+		Error string `json:"error"`
+	}
+	json.Unmarshal(payload, &resp)
+	return resp.Error
+}
+
+// ResponseErrorDetails returns the details map from an error envelope.
+func ResponseErrorDetails(payload json.RawMessage) map[string]any {
+	if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Error != nil {
+		return env.Error.Details
+	}
+	var resp struct {
+		Details map[string]any `json:"details"`
+	}
+	json.Unmarshal(payload, &resp)
+	return resp.Details
+}
+
+// ResponseData returns the raw success-data payload. If the payload is a
+// wire envelope with ok=true, returns env.Data; otherwise returns the
+// payload untouched so tests that still read legacy shapes keep working.
+func ResponseData(payload json.RawMessage) json.RawMessage {
+	if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Ok {
+		return env.Data
+	}
+	return payload
 }
 
 // RequireAI skips the test if OPENAI_API_KEY is not set.

@@ -7,48 +7,40 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/google/uuid"
 )
 
-// ── Core pattern: subscribe FIRST, then publish ─────────────────────────────
-// GoChannel transport delivers synchronously during Publish. If we publish
-// before subscribing, the response arrives before the subscription is set up.
-// Fix: generate replyTo, subscribe to it, THEN publish with that replyTo.
+// callerHolder is implemented by *brainkit.Kit. Used so roundTrip keeps its
+// sdk.Runtime signature without importing brainkit here.
+type callerHolder interface {
+	Caller() *caller.Caller
+}
 
-// roundTrip subscribes to a replyTo topic, publishes a command, and waits for
-// the raw response payload. This is the safe pattern for GoChannel transport.
+// roundTrip sends msg via the Kit's shared-inbox Caller and returns the raw
+// reply payload. Requires rt to expose Caller() (every *brainkit.Kit does).
 func roundTrip(rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, error) {
+	holder, ok := rt.(callerHolder)
+	if !ok {
+		return nil, fmt.Errorf("testutil.roundTrip: runtime does not expose a Caller")
+	}
+	c := holder.Caller()
+	if c == nil {
+		return nil, fmt.Errorf("testutil.roundTrip: caller not initialized")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Generate replyTo and subscribe BEFORE publishing
-	correlationID := uuid.NewString()
-	replyTo := msg.BusTopic() + ".reply." + correlationID
-
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := rt.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		select {
-		case ch <- json.RawMessage(m.Payload):
-		default:
-		}
-	})
+	payload, err := json.Marshal(msg)
 	if err != nil {
-		return nil, fmt.Errorf("subscribe %s: %w", replyTo, err)
+		return nil, fmt.Errorf("marshal %T: %w", msg, err)
 	}
-	defer unsub()
-
-	// Now publish with the pre-subscribed replyTo
-	if _, err := sdk.Publish(rt, ctx, msg, sdk.WithReplyTo(replyTo)); err != nil {
-		return nil, fmt.Errorf("publish %s: %w", msg.BusTopic(), err)
+	reply, err := c.Call(ctx, msg.BusTopic(), payload, caller.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", msg.BusTopic(), err)
 	}
-
-	select {
-	case payload := <-ch:
-		return payload, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("%s: %w", msg.BusTopic(), ctx.Err())
-	}
+	return reply, nil
 }
 
 // decodeResp unmarshals a response and checks for error field.

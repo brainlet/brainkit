@@ -108,6 +108,12 @@ func (k *Kernel) close() error {
 		collect(k.router.Close())
 	}
 
+	// Close the Caller — unsubscribes inbox, finalizes pending with
+	// ErrCallerClosed.
+	if k.caller != nil {
+		collect(k.caller.Close())
+	}
+
 	if k.agentsDomain != nil && k.agents != nil {
 		k.agentsDomain.UnregisterAllForKit(k.agents.ID())
 	}

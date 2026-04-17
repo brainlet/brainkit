@@ -2,11 +2,18 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/internal/bus/caller"
 )
+
+// callerHolder is implemented by *brainkit.Kit so the gateway can acquire
+// the shared-inbox Caller without importing the brainkit package (import
+// cycle avoidance).
+type callerHolder interface {
+	Caller() *caller.Caller
+}
 
 func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched *route, pathParams map[string]string) {
 	payload, err := buildPayload(r, matched, pathParams)
@@ -15,51 +22,49 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 		return
 	}
 
-	reqID := requestID(r)
-	replyTo := matched.Topic + ".reply." + reqID
+	holder, ok := gw.rt.(callerHolder)
+	if !ok {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	c := holder.Caller()
+	if c == nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), gw.config.Timeout)
 	defer cancel()
 
-	replyCh := make(chan sdk.Message, 1)
-	unsub, err := gw.rt.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-		select {
-		case replyCh <- msg:
-		default:
-		}
-	})
+	reply, err := c.Call(ctx, matched.Topic, payload, caller.Config{})
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	defer unsub()
-
-	pubCtx := transport.WithPublishMeta(ctx, reqID, replyTo)
-	if _, err := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); err != nil {
+		var tErr *caller.CallTimeoutError
+		if errors.As(err, &tErr) {
+			if r.Context().Err() != nil {
+				return
+			}
+			http.Error(w, `{"error":"gateway timeout"}`, http.StatusGatewayTimeout)
+			return
+		}
+		var cErr *caller.CallCancelledError
+		if errors.As(err, &cErr) {
+			return
+		}
 		http.Error(w, "publish failed", http.StatusBadGateway)
 		return
 	}
 
-	select {
-	case msg := <-replyCh:
-		status := http.StatusOK
-		if matched.Config.statusMapper != nil {
-			status = matched.Config.statusMapper(msg.Payload, nil)
-		} else {
-			status = mapHTTPStatus(msg.Payload, nil)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		// Sanitize error responses before sending to HTTP clients
-		if status >= 400 {
-			w.Write(sanitizeErrorPayload(msg.Payload))
-		} else {
-			w.Write(msg.Payload)
-		}
-	case <-ctx.Done():
-		if r.Context().Err() != nil {
-			return
-		}
-		http.Error(w, `{"error":"gateway timeout"}`, http.StatusGatewayTimeout)
+	status := http.StatusOK
+	if matched.Config.statusMapper != nil {
+		status = matched.Config.statusMapper(reply, nil)
+	} else {
+		status = mapHTTPStatus(reply, nil)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if status >= 400 {
+		w.Write(sanitizeErrorPayload(reply))
+	} else {
+		w.Write(reply)
 	}
 }

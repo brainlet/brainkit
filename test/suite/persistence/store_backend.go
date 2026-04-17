@@ -96,7 +96,7 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	select {
 	case resp := <-ch:
 		var result sdk.AuditQueryResp
-		json.Unmarshal(resp, &result)
+		json.Unmarshal(suite.ResponseData(resp), &result)
 		assert.GreaterOrEqual(t, len(result.Events), 1, "audit should have deploy events")
 		t.Logf("audit events: %d", len(result.Events))
 	case <-ctx.Done():

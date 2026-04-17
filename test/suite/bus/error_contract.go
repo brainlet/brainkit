@@ -27,16 +27,11 @@ func testBusErrorResponseCarriesCode(t *testing.T, env *suite.TestEnv) {
 
 	select {
 	case payload := <-ch:
-		var resp struct {
-			Error   string         `json:"error"`
-			Code    string         `json:"code"`
-			Details map[string]any `json:"details"`
-		}
-		require.NoError(t, json.Unmarshal(payload, &resp))
-		assert.NotEmpty(t, resp.Error)
-		assert.Equal(t, "NOT_FOUND", resp.Code)
-		if resp.Details != nil {
-			assert.Equal(t, "nonexistent-tool", resp.Details["name"])
+		assert.True(t, suite.ResponseHasError(payload))
+		assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload))
+		assert.NotEmpty(t, suite.ResponseErrorMessage(payload))
+		if d := suite.ResponseErrorDetails(payload); d != nil {
+			assert.Equal(t, "nonexistent-tool", d["name"])
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for error response")

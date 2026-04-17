@@ -102,7 +102,7 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	select {
 	case p := <-ch2:
 		var resp struct{ Value string `json:"value"` }
-		json.Unmarshal(p, &resp)
+		json.Unmarshal(suite.ResponseData(p), &resp)
 		assert.Equal(t, "secret-value-123", resp.Value, "secret should survive restart")
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout getting secret after restart")

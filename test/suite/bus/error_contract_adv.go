@@ -38,13 +38,7 @@ func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage) (st
 
 	select {
 	case payload := <-ch:
-		var resp struct {
-			Error   string         `json:"error"`
-			Code    string         `json:"code"`
-			Details map[string]any `json:"details"`
-		}
-		require.NoError(t, json.Unmarshal(payload, &resp))
-		return resp.Code, resp.Details
+		return suite.ResponseCode(payload), suite.ResponseErrorDetails(payload)
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for bus response")
 		return "", nil

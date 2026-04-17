@@ -121,7 +121,7 @@ func testXDeployUnregisterAlienTool(t *testing.T, env *suite.TestEnv) {
 	attackerResult, _ := secEvalTSErr(k, "__thief.ts", `return String(globalThis.__module_result || "");`)
 
 	payload, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
-	if ok && !secResponseHasError(payload) {
+	if ok && !suite.ResponseHasError(payload) {
 		assert.Contains(t, string(payload), "owner", "A's tool should still work")
 	} else {
 		t.Logf("FINDING: attacker unregistered A's tool. Attacker result: %s", attackerResult)

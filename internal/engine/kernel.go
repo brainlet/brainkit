@@ -11,6 +11,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/libsql"
@@ -49,6 +50,9 @@ type Kernel struct {
 	remote        *transport.RemoteClient
 	host          *transport.Host
 	ownsTransport bool // true if Kernel created the transport (false if injected by Node)
+
+	// Shared-inbox reply router. Created after transport init.
+	caller *caller.Caller
 
 	config    types.KernelConfig
 	logger    *slog.Logger
@@ -113,6 +117,10 @@ func (k *Kernel) exitHandler() {
 func (k *Kernel) IsDraining() bool {
 	return k.draining.Load()
 }
+
+// Caller returns the Kernel's shared-inbox reply router. Nil until
+// transport init completes.
+func (k *Kernel) Caller() *caller.Caller { return k.caller }
 
 // SetDraining sets the draining state. Used for testing.
 func (k *Kernel) SetDraining(v bool) {

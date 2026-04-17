@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -58,9 +57,7 @@ func testGetStatusNotFound(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	ch := make(chan string, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		var r struct{ Error string `json:"error"` }
-		json.Unmarshal(msg.Payload, &r)
-		ch <- r.Error
+		ch <- suite.ResponseErrorMessage(msg.Payload)
 	})
 	defer unsub()
 	select {
@@ -79,9 +76,7 @@ func testSetStatusNotFound(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	ch := make(chan string, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		var r struct{ Error string `json:"error"` }
-		json.Unmarshal(msg.Payload, &r)
-		ch <- r.Error
+		ch <- suite.ResponseErrorMessage(msg.Payload)
 	})
 	defer unsub()
 	select {
@@ -100,9 +95,7 @@ func testSetStatusInvalid(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	ch := make(chan string, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		var r struct{ Error string `json:"error"` }
-		json.Unmarshal(msg.Payload, &r)
-		ch <- r.Error
+		ch <- suite.ResponseErrorMessage(msg.Payload)
 	})
 	defer unsub()
 	select {

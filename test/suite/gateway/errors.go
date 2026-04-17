@@ -218,12 +218,7 @@ func testErrGatewayStatusMapping(t *testing.T, env *suite.TestEnv) {
 			})
 			// Verify the JSON carries the code correctly.
 			// The gateway tests cover the HTTP layer; this validates the code field round-trips.
-			var parsed struct {
-				Error string `json:"error"`
-				Code  string `json:"code"`
-			}
-			require.NoError(t, json.Unmarshal(payload, &parsed))
-			assert.Equal(t, tc.code, parsed.Code)
+			assert.Equal(t, tc.code, suite.ResponseCode(payload))
 		})
 	}
 }

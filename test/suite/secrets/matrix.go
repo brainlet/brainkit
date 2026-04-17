@@ -257,7 +257,6 @@ func testMatrixWrongKeyCannotDecrypt(t *testing.T, _ *suite.TestEnv) {
 	case p := <-getCh:
 		var resp struct {
 			Value string `json:"value"`
-			Error string `json:"error"`
 		}
 		json.Unmarshal(p, &resp)
 		// Should either return empty/error or garbage (wrong key = bad decrypt)

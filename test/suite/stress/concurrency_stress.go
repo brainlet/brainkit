@@ -203,7 +203,7 @@ func testToolCallsUnderLoad(t *testing.T, env *suite.TestEnv) {
 				Name:  "echo",
 				Input: map[string]any{"message": fmt.Sprintf("stress-%d", n)},
 			}, 10*time.Second)
-			if ok && !responseHasError(payload) {
+			if ok && !suite.ResponseHasError(payload) {
 				succeeded.Add(1)
 			}
 		}(i)

@@ -239,16 +239,15 @@ func secSchedule(t *testing.T, k *brainkit.Kit, cfg brainkit.ScheduleConfig) (st
 	}
 	ch := make(chan result, 1)
 	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
+		if errMsg := suite.ResponseErrorMessage(m.Payload); errMsg != "" {
+			ch <- result{err: errors.New(errMsg)}
+			return
+		}
 		var resp struct {
-			ID    string `json:"id"`
-			Error string `json:"error"`
+			ID string `json:"id"`
 		}
-		json.Unmarshal(m.Payload, &resp)
-		if resp.Error != "" {
-			ch <- result{err: errors.New(resp.Error)}
-		} else {
-			ch <- result{id: resp.ID}
-		}
+		json.Unmarshal(suite.ResponseData(m.Payload), &resp)
+		ch <- result{id: resp.ID}
 	})
 	if err != nil {
 		return "", err
@@ -269,15 +268,6 @@ func secUnschedule(t *testing.T, k *brainkit.Kit, id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	sdk.Publish(k, ctx, sdk.ScheduleCancelMsg{ID: id})
-}
-
-// secResponseHasError checks if a bus response contains an error field.
-func secResponseHasError(payload json.RawMessage) bool {
-	var resp struct {
-		Error string `json:"error"`
-	}
-	json.Unmarshal(payload, &resp)
-	return resp.Error != ""
 }
 
 // secContainsSubstring checks if s contains sub.

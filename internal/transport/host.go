@@ -3,12 +3,15 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // RawCommandBinding binds a logical command topic to a raw JSON handler.
@@ -80,24 +83,34 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 					return nil
 				}
 
-				// Build response payload — on error, wrap in structured error response
-				var responsePayload []byte
-				if err != nil {
-					if IsDecodeFailure(err) {
-						return err
-					}
-					responsePayload = SerializeBrainkitError(err)
-				} else if payload != nil {
-					responsePayload = payload
-				} else {
-					return nil
+				// All command replies go out as wire envelopes. Success
+				// path wraps the handler's raw JSON as ok=true data;
+				// error path serializes the BrainkitError into ok=false.
+				if err != nil && IsDecodeFailure(err) {
+					return err
 				}
+				var envelope sdk.Envelope
+				if err != nil {
+					envelope = sdkErrorToEnvelope(err)
+				} else {
+					envelope = sdk.Envelope{Ok: true, Data: json.RawMessage(payload)}
+					if len(envelope.Data) == 0 {
+						envelope.Data = json.RawMessage("null")
+					}
+				}
+				responsePayload, _ := sdk.EncodeEnvelope(envelope)
 
 				result := message.NewMessage(watermill.NewUUID(), responsePayload)
 				correlationID := wmsg.Metadata.Get("correlationId")
 				if correlationID != "" {
 					result.Metadata.Set("correlationId", correlationID)
 				}
+				// Command replies are always terminal — mark done=true so
+				// the shared-inbox Caller finalizes immediately instead of
+				// treating the payload as a stream chunk. envelope=true
+				// signals the Caller to unwrap payload via sdk.FromEnvelope.
+				result.Metadata.Set("done", "true")
+				result.Metadata.Set("envelope", "true")
 
 				// replyTo is already namespaced+sanitized by the publisher
 				return h.pub.Publish(replyTo, result)
@@ -106,28 +119,24 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 	}
 }
 
-// SerializeBrainkitError converts an error to a JSON response with code and details.
-// If the error implements BrainkitError (Code() + Details()), those are included.
-// Otherwise, falls back to INTERNAL_ERROR with the error message.
-// Error messages are sanitized to remove absolute paths and credential patterns.
+// SerializeBrainkitError converts an error to a wire envelope. Typed
+// brainkit errors keep their Code/Details; plain errors collapse to
+// INTERNAL_ERROR. Error messages are sanitized to strip absolute paths
+// and credential patterns before leaving the process.
 func SerializeBrainkitError(err error) []byte {
-	type brainkitError interface {
-		Code() string
-		Details() map[string]any
-	}
-	if bk, ok := err.(brainkitError); ok {
-		payload, _ := json.Marshal(map[string]any{
-			"error":   SanitizeErrorMessage(err.Error()),
-			"code":    bk.Code(),
-			"details": bk.Details(),
-		})
-		return payload
-	}
-	payload, _ := json.Marshal(map[string]any{
-		"error": SanitizeErrorMessage(err.Error()),
-		"code":  "INTERNAL_ERROR",
-	})
+	envelope := sdkErrorToEnvelope(err)
+	payload, _ := sdk.EncodeEnvelope(envelope)
 	return payload
+}
+
+// sdkErrorToEnvelope builds the ok=false envelope for err.
+func sdkErrorToEnvelope(err error) sdk.Envelope {
+	msg := SanitizeErrorMessage(err.Error())
+	var bk sdkerrors.BrainkitError
+	if errors.As(err, &bk) {
+		return sdk.EnvelopeErr(bk.Code(), msg, bk.Details())
+	}
+	return sdk.EnvelopeErr("INTERNAL_ERROR", msg, nil)
 }
 
 // absolutePathRe matches absolute filesystem paths (/foo/bar/baz or C:\foo\bar).

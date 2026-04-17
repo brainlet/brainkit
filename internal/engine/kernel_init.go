@@ -9,6 +9,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	js "github.com/brainlet/brainkit/internal/contract"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/transport"
@@ -114,6 +115,24 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 
 	k.router = router
 	k.host = transport.NewHostWithTransport(cfg.Namespace, router, k.transport)
+
+	// Construct the shared-inbox reply router. Uses k (Kernel implements
+	// sdk.Runtime) — its SubscribeRaw resolves the inbox topic into the
+	// current namespace, so replies land here even for cross-namespace calls.
+	runtimeID := cfg.RuntimeID
+	if runtimeID == "" {
+		runtimeID = watermill.NewUUID()
+	}
+	c, err := caller.NewCaller(k, runtimeID, k.logger)
+	if err != nil {
+		if createdTransport {
+			_ = k.transport.Close()
+			k.transport = nil
+			k.ownsTransport = false
+		}
+		return fmt.Errorf("brainkit: caller: %w", err)
+	}
+	k.caller = c
 
 	if !cfg.DeferRouterStart {
 		// Standalone Kernel: register kernel-only bindings and start router now

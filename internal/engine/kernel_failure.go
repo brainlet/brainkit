@@ -42,7 +42,11 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 		k.logger.Error("handler exhausted", slog.String("topic", topic), slog.Int("retries", retryCount), slog.String("error", handlerErr.Error()))
 		k.deadLetter(msg, topic, handlerErr, retryCount, policy)
 		k.sendErrorResponse(msg, fmt.Errorf("handler failed after %d retries: %w", retryCount, handlerErr))
-		k.emitHandlerExhausted(topic, handlerErr, retryCount)
+		correlationID := ""
+		if msg.Metadata != nil {
+			correlationID = msg.Metadata["correlationId"]
+		}
+		k.emitHandlerExhausted(topic, handlerErr, retryCount, correlationID)
 		k.audit.BusHandlerExhausted(topic, retryCount)
 		return
 	}
@@ -83,10 +87,8 @@ func (k *Kernel) sendErrorResponse(msg sdk.Message, err error) {
 	if replyTo == "" {
 		return
 	}
-	errResp, _ := json.Marshal(map[string]any{
-		"error": err.Error(),
-	})
-	k.ReplyRaw(context.Background(), replyTo, correlationID, errResp, true)
+	payload, _ := sdk.EncodeEnvelope(sdk.ToEnvelope(nil, err))
+	k.replyEnvelope(replyTo, correlationID, payload)
 }
 
 func (k *Kernel) findRetryPolicy(topic string) *types.RetryPolicy {
@@ -131,12 +133,16 @@ func (k *Kernel) emitHandlerFailed(topic string, err error, retryCount int, will
 	k.publish(context.Background(), sdk.HandlerFailedEvent{}.BusTopic(), payload)
 }
 
-func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int) {
+func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int, correlationID string) {
 	payload, _ := json.Marshal(sdk.HandlerExhaustedEvent{
 		Topic: topic, Source: k.callerID, Error: err.Error(),
 		RetryCount: retryCount,
 	})
-	k.publish(context.Background(), sdk.HandlerExhaustedEvent{}.BusTopic(), payload)
+	meta := map[string]string{}
+	if correlationID != "" {
+		meta["correlationId"] = correlationID
+	}
+	k.remote.PublishRawWithMeta(context.Background(), sdk.HandlerExhaustedEvent{}.BusTopic(), payload, meta)
 }
 
 func computeDelay(p *types.RetryPolicy, retryCount int) time.Duration {

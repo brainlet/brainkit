@@ -13,6 +13,28 @@ import (
 // Run executes all bus domain tests against the given environment.
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("bus", func(t *testing.T) {
+		// call.go — brainkit.Call shared-inbox request/response
+		t.Run("call_happy_path", func(t *testing.T) { testCallHappyPath(t, env) })
+		t.Run("call_requires_deadline", func(t *testing.T) { testCallRequiresDeadline(t, env) })
+		t.Run("call_with_call_timeout", func(t *testing.T) { testCallWithCallTimeout(t, env) })
+		t.Run("call_timeout_error", func(t *testing.T) { testCallTimeoutError(t, env) })
+		t.Run("call_cancelled_error", func(t *testing.T) { testCallCancelledError(t, env) })
+		t.Run("call_concurrent_demux", func(t *testing.T) { testCallConcurrentDemux(t, env) })
+		t.Run("call_raw_payload", func(t *testing.T) { testCallRawPayload(t, env) })
+
+		// call_cancel_failfast.go — Bundle C: cancel signal + exhausted metadata + metrics
+		t.Run("call_emits_cancel_on_ctx_cancel", func(t *testing.T) { testCallEmitsCancelOnCtxCancel(t, env) })
+		t.Run("call_no_cancel_signal_suppresses", func(t *testing.T) { testCallNoCancelSignalSuppresses(t, env) })
+		t.Run("exhausted_event_carries_correlation_id", func(t *testing.T) { testExhaustedEventCarriesCorrelationId(t, env) })
+		t.Run("caller_metrics_snapshot", func(t *testing.T) { testCallerMetricsSnapshot(t, env) })
+
+		// call_stream.go — brainkit.CallStream + backpressure policies
+		t.Run("call_stream_all_delivered", func(t *testing.T) { testCallStreamAllDelivered(t, env) })
+		t.Run("call_stream_requires_callback", func(t *testing.T) { testCallStreamRequiresCallback(t, env) })
+		t.Run("call_stream_buffer_error_policy", func(t *testing.T) { testCallStreamBufferErrorPolicy(t, env) })
+		t.Run("call_stream_drop_newest", func(t *testing.T) { testCallStreamDropNewest(t, env) })
+		t.Run("call_stream_handler_error_aborts", func(t *testing.T) { testCallStreamHandlerErrorAborts(t, env) })
+
 		// publish.go — JS bridge + deploy + bus.on flow
 		t.Run("js_publish_returns_reply_to", func(t *testing.T) { testJSPublishReturnsReplyTo(t, env) })
 		t.Run("js_emit_fire_and_forget", func(t *testing.T) { testJSEmitFireAndForget(t, env) })

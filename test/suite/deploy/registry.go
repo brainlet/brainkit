@@ -104,7 +104,7 @@ func testRegistryReRegisterAfterTeardown(t *testing.T, _ *suite.TestEnv) {
 	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	var result1 map[string]any
-	json.Unmarshal([]byte(payload), &result1)
+	json.Unmarshal([]byte(suite.ResponseData(payload)), &result1)
 	resultData1, _ := json.Marshal(result1["result"])
 	assert.Contains(t, string(resultData1), "1")
 
@@ -126,7 +126,7 @@ func testRegistryReRegisterAfterTeardown(t *testing.T, _ *suite.TestEnv) {
 	payload3, ok3 := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok3)
 	var result3 map[string]any
-	json.Unmarshal([]byte(payload3), &result3)
+	json.Unmarshal([]byte(suite.ResponseData(payload3)), &result3)
 	resultData3, _ := json.Marshal(result3["result"])
 	assert.Contains(t, string(resultData3), "2", "should return v2 after re-registration")
 

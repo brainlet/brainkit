@@ -102,3 +102,16 @@ func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, pa
 	// replyTo is already namespaced+sanitized — publish directly to transport
 	return k.transport.Publisher.Publish(replyTo, wmsg)
 }
+
+// replyEnvelope publishes a terminal envelope reply. Stamps envelope=true
+// metadata so the Caller decodes the payload via sdk.FromEnvelope.
+func (k *Kernel) replyEnvelope(replyTo, correlationID string, payload []byte) error {
+	if replyTo == "" {
+		return nil
+	}
+	wmsg := message.NewMessage(watermill.NewUUID(), payload)
+	wmsg.Metadata.Set("correlationId", correlationID)
+	wmsg.Metadata.Set("done", "true")
+	wmsg.Metadata.Set("envelope", "true")
+	return k.transport.Publisher.Publish(replyTo, wmsg)
+}

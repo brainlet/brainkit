@@ -82,6 +82,6 @@ func testE2ESecretsRotateAndVerify(t *testing.T, _ *suite.TestEnv) {
 
 	p3 := <-ch3
 	var resp struct{ Value string `json:"value"` }
-	json.Unmarshal(p3, &resp)
+	json.Unmarshal(suite.ResponseData(p3), &resp)
 	assert.Equal(t, "v2", resp.Value)
 }

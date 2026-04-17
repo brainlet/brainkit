@@ -182,3 +182,18 @@ func (e *DecodeError) Unwrap() error           { return e.Cause }
 func (e *DecodeError) Code() string            { return "DECODE_ERROR" }
 func (e *DecodeError) Details() map[string]any { return map[string]any{"topic": e.Topic} }
 
+// BusError is the generic carrier for error envelopes whose Code does not
+// map to a known typed error. Lets callers still inspect Code/Message/Details
+// via errors.As without losing information.
+type BusError struct {
+	Code_   string         `json:"code"`
+	Message string         `json:"message"`
+	Details_ map[string]any `json:"details,omitempty"`
+}
+
+// Code/Details renamed with trailing underscore to avoid colliding with the
+// interface method names. Accessors below satisfy BrainkitError.
+func (e *BusError) Error() string           { return fmt.Sprintf("%s: %s", e.Code_, e.Message) }
+func (e *BusError) Code() string            { return e.Code_ }
+func (e *BusError) Details() map[string]any { return e.Details_ }
+

@@ -292,7 +292,6 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 			case p := <-ch2:
 				var resp struct {
 					Value string `json:"value"`
-					Error string `json:"error"`
 				}
 				json.Unmarshal(p, &resp)
 				assert.NotEqual(t, "sensitive-data", resp.Value, "wrong key should not decrypt secret")

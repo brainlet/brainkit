@@ -27,6 +27,9 @@ func publishAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runt
 	defer unsub()
 	select {
 	case payload := <-ch:
+		if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Ok {
+			payload = env.Data
+		}
 		var resp Resp
 		require.NoError(t, json.Unmarshal(payload, &resp))
 		return resp

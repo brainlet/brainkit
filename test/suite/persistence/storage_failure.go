@@ -181,7 +181,7 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 
 type storageResp struct {
 	OK    bool   `json:"ok"`
-	Error string `json:"error"`
+	Error string `json:"-"`
 	Count int    `json:"count"`
 }
 
@@ -221,6 +221,7 @@ func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kit, topic string, payloa
 	case msg := <-replyCh:
 		var resp storageResp
 		json.Unmarshal(msg.Payload, &resp)
+		resp.Error = suite.ResponseErrorMessage(msg.Payload)
 		return resp
 	case <-ctx.Done():
 		return storageResp{Error: "timeout after " + timeout.String()}

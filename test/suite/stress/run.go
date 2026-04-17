@@ -113,11 +113,3 @@ func sendAndReceive(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeo
 	}
 }
 
-// responseHasError checks if a bus response contains an error field.
-func responseHasError(payload json.RawMessage) bool {
-	var resp struct {
-		Error string `json:"error"`
-	}
-	json.Unmarshal(payload, &resp)
-	return resp.Error != ""
-}

@@ -147,10 +147,8 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
 	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok {
-			errCh <- e
+		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
+			errCh <- m
 		}
 	})
 	defer cancel()
@@ -237,11 +235,11 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 	select {
 	case msg := <-v2ReplyCh:
 		cancel2()
-		var resp sdk.PackageDeployResp
-		json.Unmarshal(msg.Payload, &resp)
-		if resp.Error != "" {
-			t.Fatalf("v2 deploy error: %s", resp.Error)
+		if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
+			t.Fatalf("v2 deploy error: %s", errMsg)
 		}
+		var resp sdk.PackageDeployResp
+		json.Unmarshal(suite.ResponseData(msg.Payload), &resp)
 		require.True(t, resp.Deployed)
 	case <-time.After(10 * time.Second):
 		cancel2()
@@ -272,10 +270,8 @@ func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
 	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
 	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		if e, ok := resp["error"].(string); ok {
-			errCh <- e
+		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
+			errCh <- m
 		}
 	})
 	defer cancel()
