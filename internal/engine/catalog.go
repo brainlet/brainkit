@@ -22,6 +22,47 @@ type commandSpec struct {
 	invokeNode   func(context.Context, *Node, json.RawMessage) (json.RawMessage, error)
 }
 
+// CommandSpec is the opaque registration handle produced by MakeCommand.
+// Modules build one via brainkit.Command and register it through Kit.RegisterCommand.
+type CommandSpec = commandSpec
+
+// MakeCommand builds a CommandSpec from a handler that only sees context + Req.
+// Used by the public brainkit.Command generic wrapper — handlers capture any Kit
+// / Module state they need through closures, so they don't need a *Kernel arg.
+func MakeCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Req) (*Resp, error)) CommandSpec {
+	var zero Req
+	topic := zero.BusTopic()
+	invoke := func(ctx context.Context, kernel *Kernel, payload json.RawMessage) (json.RawMessage, error) {
+		decoded, err := decodeCommand[Req](payload, topic)
+		if err != nil {
+			return nil, err
+		}
+		cmdStart := time.Now()
+		out, err := handler(ctx, decoded)
+		cmdDuration := time.Since(cmdStart)
+		callerID := transport.CallerIDFromContext(ctx)
+		kernel.audit.BusCommandCompleted(topic, callerID, cmdDuration)
+		if err != nil {
+			return nil, err
+		}
+		if out == nil {
+			return nil, nil
+		}
+		return json.Marshal(out)
+	}
+	return commandSpec{
+		topic: topic,
+		validate: func(payload json.RawMessage) error {
+			_, err := decodeCommand[Req](payload, topic)
+			return err
+		},
+		invokeKernel: invoke,
+		invokeNode: func(ctx context.Context, node *Node, payload json.RawMessage) (json.RawMessage, error) {
+			return invoke(ctx, node.Kernel, payload)
+		},
+	}
+}
+
 
 func kernelCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
 	var req Req

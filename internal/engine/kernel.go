@@ -320,11 +320,13 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
 
-	// Initialize modules — they push-register commands into the catalog
+	// Initialize legacy kernel-scoped modules. New-style modules (satisfying
+	// brainkit.Module, with Init(*Kit)) are initialized from brainkit.New
+	// after the Kit is fully constructed — they're skipped here.
 	for _, raw := range cfg.Modules {
 		mod, ok := raw.(Module)
 		if !ok {
-			return fail(fmt.Errorf("brainkit: module %T does not implement engine.Module", raw))
+			continue
 		}
 		if err := mod.Init(kernel); err != nil {
 			return fail(fmt.Errorf("brainkit: module %q init: %w", mod.Name(), err))

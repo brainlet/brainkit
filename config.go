@@ -146,11 +146,18 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// Modules — pass through directly, engine.NewKernel asserts the interface
+	// Modules — pass through. Modules that wrap a legacy engine-scoped
+	// module expose it via unwrapEngineModule; engine's loop picks up the
+	// engine.Module value directly. Pure brainkit.Module instances flow
+	// through unchanged and are initialized from brainkit.New.
 	if len(c.Modules) > 0 {
 		cfg.Modules = make([]any, len(c.Modules))
 		for i, m := range c.Modules {
-			cfg.Modules[i] = m
+			if u, ok := m.(interface{ unwrapEngineModule() any }); ok {
+				cfg.Modules[i] = u.unwrapEngineModule()
+			} else {
+				cfg.Modules[i] = m
+			}
 		}
 	}
 

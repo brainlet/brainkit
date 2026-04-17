@@ -27,8 +27,9 @@ func RuntimeID() string { return runtimeID }
 // Create with New(). Use sdk.Publish(kit, ctx, msg) to send commands.
 // Use sdk.SubscribeTo[Resp](kit, ctx, replyTo, handler) to receive responses.
 type Kit struct {
-	kernel *engine.Kernel
-	node   *engine.Node
+	kernel  *engine.Kernel
+	node    *engine.Node
+	modules []Module // Kit-scoped modules initialized from cfg.Modules
 }
 
 // New creates a brainkit runtime from config.
@@ -75,6 +76,20 @@ func New(cfg Config) (*Kit, error) {
 		kit.kernel = node.Kernel
 	}
 
+	// Initialize Kit-scoped modules (Init(*Kit)) after the kernel is built.
+	// Legacy engine.Module instances were already initialized inside engine.NewKernel.
+	for _, m := range cfg.Modules {
+		pkgMod, ok := m.(Module)
+		if !ok {
+			continue
+		}
+		if err := pkgMod.Init(kit); err != nil {
+			kit.Close()
+			return nil, fmt.Errorf("brainkit: module %q init: %w", pkgMod.Name(), err)
+		}
+		kit.modules = append(kit.modules, pkgMod)
+	}
+
 	return kit, nil
 }
 
@@ -100,6 +115,9 @@ func (k *Kit) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.M
 
 // Close shuts down with a short drain timeout (5s).
 func (k *Kit) Close() error {
+	for i := len(k.modules) - 1; i >= 0; i-- {
+		_ = k.modules[i].Close()
+	}
 	return k.runtime().Close()
 }
 

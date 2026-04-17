@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Session 05 prereq — public Module / Command surface
+
+Preparatory commit for the module-extraction batch (session 05). Establishes
+the public contract modules outside `internal/` need to satisfy, without
+moving any existing module.
+
+Added:
+- `brainkit.Module` interface — `Name() / Init(k *Kit) error / Close() error`.
+  Modules outside `internal/engine` (i.e. the forthcoming `modules/*` tree)
+  satisfy this. `ModuleStatus` + `StatusReporter` for CLI listing.
+- `brainkit.Command[Req, Resp](handler)` + `brainkit.CommandSpec` (alias over
+  the opaque engine spec). Handler takes only `(context.Context, Req)` —
+  modules capture Kit / Module state via closure.
+- `(*Kit).RegisterCommand(spec)` — forwards to the kernel's per-instance
+  catalog. Intended for `Module.Init`.
+- `engine.MakeCommand` / exported `engine.CommandSpec` — the internal
+  building blocks behind `brainkit.Command`.
+
+Changed:
+- `brainkit.New` now runs a second module init pass after the kernel is
+  constructed: for every `cfg.Modules` entry satisfying `brainkit.Module`,
+  it calls `Init(kit)` and tracks it for `Close()`.
+- `engine.NewKernel`'s module loop skips (not errors on) non-`engine.Module`
+  entries — the kit-scoped path handles them.
+- `brainkit.NewMCPModule` wraps the existing `engine.MCPModule` in a small
+  adapter that satisfies `brainkit.Module` (no-op Init/Close passthrough) +
+  exposes an `unwrapEngineModule()` escape hatch so the real engine-scoped
+  module keeps flowing through `engine.NewKernel`'s legacy init path.
+  Adapter is deleted when `modules/mcp` lands.
+
+Unchanged:
+- Legacy `engine.Module` (`Init(*Kernel)`) stays internal. No existing
+  module is migrated in this commit.
+
 ### Session 04 — Bundle B: Config cleanup + QuickStart
 
 Closes session 04. Trims the public `Config` struct to its essential

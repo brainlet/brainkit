@@ -37,9 +37,8 @@ type DiscoveryConfig = types.DiscoveryConfig
 // PeerConfig configures a known peer for static discovery.
 type PeerConfig = types.PeerConfig
 
-// Module is an optional kernel subsystem that registers bus commands.
-// Modules receive the kernel at Init and use push registration.
-type Module = engine.Module
+// (Module is now defined in module.go — keep the engine package imported
+// for other aliases below.)
 
 // Package describes a deployment unit. Build via PackageInline / PackageFromFile / PackageFromDir.
 type Package struct {
