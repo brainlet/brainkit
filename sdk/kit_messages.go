@@ -115,27 +115,27 @@ type PeersResolveResp struct {
 }
 
 // ── Eval ──
-
+//
+// KitEvalMsg is the single unified eval command. Mode selects the
+// evaluation strategy; when empty, it is inferred from Source's file
+// extension (".ts" → "ts", else "script").
+//
+// Mode values:
+//   - "script"  — deploy Code as a temp .ts, read globalThis.__module_result
+//     (Source optional; default behaviour when only Code is provided)
+//   - "ts"      — evaluate TS source directly in the current runtime
+//     context via kernel.EvalTS(Source, Code); no deploy
+//   - "module"  — evaluate as an ES module via kernel.EvalModule — supports
+//     import statements
 type KitEvalMsg struct {
-	Code string `json:"code"`
+	Source string `json:"source,omitempty"`
+	Code   string `json:"code"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 func (KitEvalMsg) BusTopic() string { return "kit.eval" }
 
 type KitEvalResp struct {
-	Result string `json:"result"`
-}
-
-// ── EvalTS (raw TS evaluation in current runtime context) ──
-
-type KitEvalTSMsg struct {
-	Source string `json:"source"`
-	Code   string `json:"code"`
-}
-
-func (KitEvalTSMsg) BusTopic() string { return "kit.eval-ts" }
-
-type KitEvalTSResp struct {
 	Result string `json:"result"`
 }
 
@@ -167,19 +167,6 @@ type ClusterPeerInfo struct {
 	Namespace string `json:"namespace"`
 	CallerID  string `json:"callerId"`
 	StartedAt string `json:"startedAt"`
-}
-
-// ── EvalModule (ES module evaluation with import support) ──
-
-type KitEvalModuleMsg struct {
-	Source string `json:"source"`
-	Code   string `json:"code"`
-}
-
-func (KitEvalModuleMsg) BusTopic() string { return "kit.eval-module" }
-
-type KitEvalModuleResp struct {
-	Result string `json:"result"`
 }
 
 // ── Send (request-reply from Go) ──

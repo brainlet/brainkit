@@ -190,36 +190,54 @@ func buildCommandCatalog() *commandRegistry {
 					Resources: resourceInfosToMessages(resources),
 				}, nil
 			}),
-			// ── EvalTS (raw TS evaluation in current runtime context) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalTSMsg) (*sdk.KitEvalTSResp, error) {
-				result, err := kernel.EvalTS(ctx, req.Source, req.Code)
-				if err != nil {
-					return nil, err
-				}
-				return &sdk.KitEvalTSResp{Result: result}, nil
-			}),
-			// ── EvalModule (ES module evaluation with import support) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalModuleMsg) (*sdk.KitEvalModuleResp, error) {
-				result, err := kernel.EvalModule(ctx, req.Source, req.Code)
-				if err != nil {
-					return nil, err
-				}
-				return &sdk.KitEvalModuleResp{Result: result}, nil
-			}),
 			// ── SetDraining ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSetDrainingMsg) (*sdk.KitSetDrainingResp, error) {
 				kernel.SetDraining(req.Draining)
 				return &sdk.KitSetDrainingResp{Draining: req.Draining}, nil
 			}),
-			// ── Eval (deploy + read __module_result) ──
+			// ── Eval (unified; dispatch on Mode: script | ts | module) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalMsg) (*sdk.KitEvalResp, error) {
-				source := "__cli_eval_" + uuid.NewString() + ".ts"
-				if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {
-					return nil, err
+				mode := req.Mode
+				if mode == "" {
+					// Infer from source extension; empty source means script.
+					if strings.HasSuffix(req.Source, ".ts") {
+						mode = "ts"
+					} else {
+						mode = "script"
+					}
 				}
-				defer kernel.Teardown(ctx, source)
-				result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
-				return &sdk.KitEvalResp{Result: result}, nil
+				switch mode {
+				case "ts":
+					source := req.Source
+					if source == "" {
+						source = "__eval_ts.ts"
+					}
+					result, err := kernel.EvalTS(ctx, source, req.Code)
+					if err != nil {
+						return nil, err
+					}
+					return &sdk.KitEvalResp{Result: result}, nil
+				case "module":
+					source := req.Source
+					if source == "" {
+						source = "__eval_module.ts"
+					}
+					result, err := kernel.EvalModule(ctx, source, req.Code)
+					if err != nil {
+						return nil, err
+					}
+					return &sdk.KitEvalResp{Result: result}, nil
+				case "script":
+					source := "__cli_eval_" + uuid.NewString() + ".ts"
+					if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {
+						return nil, err
+					}
+					defer kernel.Teardown(ctx, source)
+					result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
+					return &sdk.KitEvalResp{Result: result}, nil
+				default:
+					return nil, &sdkerrors.ValidationError{Field: "mode", Message: "unknown eval mode: " + mode + " (want script|ts|module)"}
+				}
 			}),
 			// ── Send (Go-side request-reply — no JS thread involvement) ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSendMsg) (*sdk.KitSendResp, error) {

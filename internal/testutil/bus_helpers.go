@@ -110,11 +110,11 @@ func EvalTS(t *testing.T, rt sdk.Runtime, source, code string) string {
 }
 
 func EvalTSErr(rt sdk.Runtime, source, code string) (string, error) {
-	payload, err := roundTrip(rt, sdk.KitEvalTSMsg{Source: source, Code: code}, 15*time.Second)
+	payload, err := roundTrip(rt, sdk.KitEvalMsg{Source: source, Code: code, Mode: "ts"}, 15*time.Second)
 	if err != nil {
 		return "", err
 	}
-	resp, err := decodeResp[sdk.KitEvalTSResp](payload)
+	resp, err := decodeResp[sdk.KitEvalResp](payload)
 	if err != nil {
 		return "", err
 	}
@@ -226,11 +226,11 @@ func Alive(t *testing.T, rt sdk.Runtime) bool {
 // Different from Deploy which uses EvalTS (no import support).
 func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.KitEvalModuleMsg{Source: source, Code: code}, 15*time.Second)
+	payload, err := roundTrip(rt, sdk.KitEvalMsg{Source: source, Code: code, Mode: "module"}, 15*time.Second)
 	if err != nil {
 		t.Fatalf("EvalModule(%s): %v", source, err)
 	}
-	if _, err := decodeResp[sdk.KitEvalModuleResp](payload); err != nil {
+	if _, err := decodeResp[sdk.KitEvalResp](payload); err != nil {
 		t.Fatalf("EvalModule(%s): %v", source, err)
 	}
 }

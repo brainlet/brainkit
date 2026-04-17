@@ -157,26 +157,6 @@ func SubscribeKitEvalResp(rt Runtime, ctx context.Context, topic string, handler
 	return SubscribeTo[KitEvalResp](rt, ctx, topic, handler)
 }
 
-// PublishKitEvalModule publishes a KitEvalModuleMsg and returns routing info for the response.
-func PublishKitEvalModule(rt Runtime, ctx context.Context, msg KitEvalModuleMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitEvalModuleResp subscribes to the response topic for a KitEvalModuleMsg command.
-func SubscribeKitEvalModuleResp(rt Runtime, ctx context.Context, topic string, handler func(KitEvalModuleResp, Message)) (func(), error) {
-	return SubscribeTo[KitEvalModuleResp](rt, ctx, topic, handler)
-}
-
-// PublishKitEvalTS publishes a KitEvalTSMsg and returns routing info for the response.
-func PublishKitEvalTS(rt Runtime, ctx context.Context, msg KitEvalTSMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitEvalTSResp subscribes to the response topic for a KitEvalTSMsg command.
-func SubscribeKitEvalTSResp(rt Runtime, ctx context.Context, topic string, handler func(KitEvalTSResp, Message)) (func(), error) {
-	return SubscribeTo[KitEvalTSResp](rt, ctx, topic, handler)
-}
-
 // PublishKitHealth publishes a KitHealthMsg and returns routing info for the response.
 func PublishKitHealth(rt Runtime, ctx context.Context, msg KitHealthMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)

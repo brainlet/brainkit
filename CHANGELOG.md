@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+### Session 03 — Bundle B: eval command collapse
+
+Collapses three bus eval commands into one. `kit.eval` now dispatches
+on `Mode` instead of having separate topics.
+
+Deleted:
+- `sdk.KitEvalTSMsg` / `KitEvalTSResp` / topic `kit.eval-ts`
+- `sdk.KitEvalModuleMsg` / `KitEvalModuleResp` / topic `kit.eval-module`
+- `sdk.PublishKitEvalTS` / `SubscribeKitEvalTSResp` / `PublishKitEvalModule`
+  / `SubscribeKitEvalModuleResp` from `sdk/typed_gen.go`
+
+Changed:
+- `sdk.KitEvalMsg` gains `Source` + `Mode` fields. Mode ∈
+  `{"script", "ts", "module"}`; when empty, inferred from Source's file
+  extension (`.ts` → `ts`, else `script`)
+- `internal/engine/catalog.go` — a single `kit.eval` kernelCommand
+  binding dispatches on Mode:
+  - `ts` → `kernel.EvalTS(Source, Code)` (raw TS in current context)
+  - `module` → `kernel.EvalModule(Source, Code)` (ES module w/ imports)
+  - `script` → deploy as temp `.ts`, read `globalThis.__module_result`
+  - unknown mode → `*sdkerrors.ValidationError`
+- `internal/testutil/bus_helpers.go` — `EvalTSErr` / `EvalModule`
+  helpers build `KitEvalMsg{Mode:"ts"}` / `KitEvalMsg{Mode:"module"}`
+  (public helper signatures unchanged)
+- `cmd/brainkit/cmd/eval.go` — new `--mode` and `--source` flags; help
+  documents the three modes
+
+Verification:
+- `go build ./...` clean
+- `grep -rn "kit\.eval-ts\|kit\.eval-module\|KitEvalTS\|KitEvalModule"`
+  returns no matches outside vendor
+- Full `go test ./test/suite/... -short` green except pre-existing
+  `cross/node_commands/plugin_list` (Podman) and a plugin timing flake
+  (`TestPluginToolCallViaBusEmbedded/via_bus_command`, ~30% repro,
+  pre-existing; unrelated to this bundle)
+
 ### Session 03 — Error envelope Bundle A (closes) — ResultMeta deletion sweep
 
 Closes Bundle A. Deletes the legacy `ResultMeta` embed + helpers from
