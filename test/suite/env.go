@@ -19,6 +19,7 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	tracingmod "github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/workflow"
 )
 
@@ -213,9 +214,12 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		kitCfg.SecretKey = cfg.SecretKey
 	}
 
-	// Tracing
+	// Tracing — attach the memory store via the tracing module so
+	// trace.get / trace.list bus commands are wired too.
 	if cfg.Tracing {
-		kitCfg.TraceStore = tracing.NewMemoryTraceStore(1000)
+		store := tracing.NewMemoryTraceStore(1000)
+		kitCfg.TraceStore = store
+		kitCfg.Modules = append(kitCfg.Modules, tracingmod.New(tracingmod.Config{Store: store}))
 	}
 
 	// MCP servers — injected as a Module from modules/mcp.

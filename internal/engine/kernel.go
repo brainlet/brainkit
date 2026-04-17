@@ -33,7 +33,6 @@ type Kernel struct {
 	agentsDomain        *AgentsDomain
 	secretsDomain       *SecretsDomain
 	registryDomain      *RegistryDomain
-	tracingDomain       *TracingDomain
 	metricsDomain       *MetricsDomain
 	packageDeployDomain *PackageDeployDomain
 	testingDomain       *TestingDomain
@@ -312,7 +311,6 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 
 	kernel.testingDomain = newTestingDomain(kernel, kernel)
 	kernel.registryDomain = newRegistryDomain(kernel.providers)
-	kernel.tracingDomain = newTracingDomain(cfg.TraceStore)
 	kernel.metricsDomain = newMetricsDomain(kernel)
 	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
 

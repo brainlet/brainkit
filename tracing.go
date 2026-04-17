@@ -1,8 +1,6 @@
 package brainkit
 
 import (
-	"database/sql"
-
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 )
@@ -14,11 +12,7 @@ type TraceStore = types.TraceStore
 type Span = types.Span
 
 // NewMemoryTraceStore creates a ring-buffer trace store. Lost on restart.
+// For durable storage, use modules/tracing.NewSQLiteTraceStore.
 func NewMemoryTraceStore(maxSpans int) TraceStore {
 	return tracing.NewMemoryTraceStore(maxSpans)
-}
-
-// NewSQLiteTraceStore creates a persistent SQLite-backed trace store.
-func NewSQLiteTraceStore(db *sql.DB) (TraceStore, error) {
-	return tracing.NewSQLiteTraceStore(db)
 }

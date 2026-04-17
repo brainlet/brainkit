@@ -5,6 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	coretracing "github.com/brainlet/brainkit/internal/tracing"
+)
+
+// Re-export core types so sqlite_store.go can use short names.
+type (
+	Span         = coretracing.Span
+	TraceQuery   = coretracing.TraceQuery
+	TraceSummary = coretracing.TraceSummary
+	TraceStore   = coretracing.TraceStore
 )
 
 const sqliteTraceSchema = `

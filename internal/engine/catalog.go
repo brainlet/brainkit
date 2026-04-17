@@ -319,13 +319,7 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.MetricsGetMsg) (*sdk.MetricsGetResp, error) {
 				return kernel.metricsDomain.Get(ctx, req)
 			}),
-			// ── Tracing ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TraceGetMsg) (*sdk.TraceGetResp, error) {
-				return kernel.tracingDomain.Get(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TraceListMsg) (*sdk.TraceListResp, error) {
-				return kernel.tracingDomain.List(ctx, req)
-			}),
+			// ── Tracing (moved to modules/tracing) ──
 			// ── Audit ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AuditQueryMsg) (*sdk.AuditQueryResp, error) {
 				return newAuditDomain(auditStoreFromKernel(kernel)).Query(ctx, req)

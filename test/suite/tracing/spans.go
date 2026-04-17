@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
+	tracingmod "github.com/brainlet/brainkit/modules/tracing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +36,9 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 		FSRoot:     tmpDir,
 		Store:      kitStore,
 		TraceStore: store,
+		Modules: []brainkit.Module{
+			tracingmod.New(tracingmod.Config{Store: store}),
+		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })

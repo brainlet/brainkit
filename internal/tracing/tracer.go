@@ -48,6 +48,18 @@ func NewTracer(store TraceStore, sampleRate float64) *Tracer {
 	return &Tracer{store: store, sampleRate: sampleRate}
 }
 
+// SetStore swaps the tracer's underlying store. Intended for module-driven
+// late wiring (e.g. the tracing module attaches a SQLite store at Init time);
+// single-shot at boot — not safe to call during active span recording.
+func (t *Tracer) SetStore(store TraceStore) {
+	t.store = store
+}
+
+// Store returns the tracer's current store (may be nil).
+func (t *Tracer) Store() TraceStore {
+	return t.store
+}
+
 // StartSpan begins a new span. Returns a SpanHandle for ending it.
 // Respects sampleRate: if < 1.0, only a fraction of NEW traces are sampled.
 // Child spans (with existing traceID in context) are always sampled if the parent was.

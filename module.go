@@ -82,3 +82,10 @@ func (k *Kit) CallJS(ctx context.Context, fn string, args any) (json.RawMessage,
 func (k *Kit) ProbeAll() {
 	k.kernel.ProbeAll()
 }
+
+// SetTraceStore attaches a durable trace store to the Kit's tracer. The
+// tracing module uses this during Init to promote the default in-memory
+// ring buffer to persistent storage.
+func (k *Kit) SetTraceStore(store TraceStore) {
+	k.kernel.SetTraceStore(store)
+}

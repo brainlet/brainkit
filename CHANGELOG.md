@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+### Session 05 Checkpoint 5 — modules/tracing
+
+Fifth module extracted. Durable trace storage + `trace.get` / `trace.list`
+bus commands move out of core. The in-memory Tracer and ring-buffer store
+stay in `internal/tracing` so span creation is always available (no-op
+when no store is attached).
+
+Added:
+- `modules/tracing/` package:
+  - `sqlite_store.go` — moved from `internal/tracing/sqlite_store.go` via
+    `git mv`. Re-exports core `Span` / `TraceQuery` / `TraceSummary` /
+    `TraceStore` types so existing method signatures stay intact.
+  - `module.go` — `*Module` satisfies `brainkit.Module` with
+    `Config{Store}`. `Init(*Kit)` calls `(*Kit).SetTraceStore(store)`
+    and registers `trace.get` / `trace.list`. `Close` shuts the store.
+- `(*Tracer).SetStore(store)` / `(*Tracer).Store()` — used by modules to
+  swap the tracer's durable backend at Init.
+- `(*Kit).SetTraceStore(store)` + `(*Kernel).SetTraceStore(store)` —
+  public entry points for the swap.
+
+Removed:
+- `internal/engine/handlers_tracing.go` (+ `TracingDomain` +
+  `newTracingDomain` + `kernel.tracingDomain` field +
+  `newTracingDomain(cfg.TraceStore)` wire + `trace.get` / `trace.list`
+  catalog entries — all replaced by the module's registrations).
+- Root `brainkit.NewSQLiteTraceStore` — use
+  `modules/tracing.NewSQLiteTraceStore` instead. `brainkit.NewMemoryTraceStore`
+  stays for test ergonomics.
+
+Changed:
+- `test/suite/env.go`: when `cfg.Tracing` is set, it now constructs a
+  `MemoryTraceStore` AND appends `tracingmod.New({Store: store})` to
+  Config.Modules so `trace.get` / `trace.list` are wired.
+- `test/suite/tracing/spans.go`: `tracingEnv` helper explicitly includes
+  the tracing module for its fresh Kit.
+
+### Session 05 Checkpoint 4 — modules/probes
+
+Fourth module extracted. Wraps the periodic probe loop as a Kit-scoped
+Module with opt-in activation.
+
+Added:
+- `modules/probes/module.go` — `Config{Interval, ProbeOnRegister}`. Init
+  optionally runs an initial probe sweep and, if `Interval > 0`, starts a
+  ticker goroutine that calls `kit.ProbeAll()` periodically. Close stops
+  the loop. `Status()` reports `ModuleStatusBeta`.
+- `(*Kit).ProbeAll()` — exported so modules and on-demand callers can
+  trigger a full sweep.
+
+Removed:
+- `internal/engine/kernel_probing.go` — `startPeriodicProbing()`. The
+  kernel.go call site was removed in Bundle B; this deletes the
+  now-unused method. Per-resource probes stay in core.
+
 ### Session 05 Checkpoint 3 — modules/workflow
 
 Third module extracted. Wraps the 8 Mastra-style workflow bus commands

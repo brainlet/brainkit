@@ -88,6 +88,12 @@ func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
 	types.InvokeErrorHandler(k.config.ErrorHandler, err, ctx)
 }
 
+// SetTraceStore attaches a trace store to the Kernel's tracer. Used by
+// modules (e.g. tracing) to install durable storage at Init time.
+func (k *Kernel) SetTraceStore(store types.TraceStore) {
+	k.tracer.SetStore(store)
+}
+
 // --- Provider Registry delegation ---
 
 // RegisterAIProvider registers a typed AI provider at runtime.
