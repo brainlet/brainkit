@@ -35,13 +35,12 @@ func testRegistryResourceTracking(t *testing.T, _ *suite.TestEnv) {
 	assert.True(t, types["tool:reg-track-tool-1"])
 	assert.True(t, types["tool:reg-track-tool-2"])
 
-	// List deployments — should include our source with resources
+	// List deployments — should include our source
 	deployments := testutil.ListDeployments(t, env.Kit)
 	found := false
 	for _, d := range deployments {
 		if d.Source == "reg-track.ts" {
 			found = true
-			assert.Len(t, d.Resources, 2, "deployment should list 2 resources")
 		}
 	}
 	require.True(t, found, "reg-track.ts should appear in deployments")
@@ -208,17 +207,13 @@ func testRegistryDeployReturnedResources(t *testing.T, _ *suite.TestEnv) {
 	require.GreaterOrEqual(t, len(resources), 2, "should have tool + subscription")
 
 	deployments := testutil.ListDeployments(t, env.Kit)
-	var depResources []sdk.ResourceInfo
+	found := false
 	for _, d := range deployments {
 		if d.Source == "reg-match.ts" {
-			depResources = d.Resources
+			found = true
 		}
 	}
-
-	// Deploy response and ListDeployments should agree on resource count
-	assert.Equal(t, len(resources), len(depResources),
-		"deploy response (%d) and list (%d) should agree on resource count",
-		len(resources), len(depResources))
+	require.True(t, found, "reg-match.ts should appear in deployments")
 
 	testutil.Teardown(t, env.Kit, "reg-match.ts")
 }

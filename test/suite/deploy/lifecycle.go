@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -16,42 +17,43 @@ func testListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitListMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitListResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.KitListResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitListResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageListDeployedResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageListDeployedResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var resp sdk.KitListResp
+	var resp sdk.PackageListDeployedResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
-	assert.NotNil(t, resp.Deployments)
+	assert.NotNil(t, resp.Packages)
 }
 
 func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "kit-test-1.ts",
-		Code: `
+	m1, _ := json.Marshal(map[string]string{"name": "kit-test-1", "entry": "kit-test-1.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: m1,
+		Files: map[string]string{"kit-test-1.ts": `
 			const t = createTool({
 				id: "kit-deployed-tool",
 				description: "tool from deploy test",
 				execute: async () => ({ ok: true })
 			});
 			kit.register("tool", "kit-deployed-tool", t);
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
-	var deployResp sdk.KitDeployResp
+	var deployResp sdk.PackageDeployResp
 	select {
 	case deployResp = <-ch:
 	case <-ctx.Done():
@@ -60,19 +62,19 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, deployResp.Deployed)
 
 	// List should show it
-	pr2, err := sdk.Publish(env.Kit, ctx, sdk.KitListMsg{})
+	pr2, err := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
 	require.NoError(t, err)
-	ch2 := make(chan sdk.KitListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.KitListResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.KitListResp, m sdk.Message) { ch2 <- r })
+	ch2 := make(chan sdk.PackageListDeployedResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.PackageListDeployedResp, m sdk.Message) { ch2 <- r })
 	defer unsub2()
-	var listResp sdk.KitListResp
+	var listResp sdk.PackageListDeployedResp
 	select {
 	case listResp = <-ch2:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
 	found := false
-	for _, d := range listResp.Deployments {
+	for _, d := range listResp.Packages {
 		if d.Source == "kit-test-1.ts" {
 			found = true
 		}
@@ -80,31 +82,32 @@ func testDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, found)
 
 	// Teardown
-	pr3, err := sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "kit-test-1.ts"})
+	pr3, err := sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "kit-test-1"})
 	require.NoError(t, err)
-	ch3 := make(chan sdk.KitTeardownResp, 1)
-	unsub3, _ := sdk.SubscribeTo[sdk.KitTeardownResp](env.Kit, ctx, pr3.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { ch3 <- r })
+	ch3 := make(chan sdk.PackageTeardownResp, 1)
+	unsub3, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](env.Kit, ctx, pr3.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { ch3 <- r })
 	defer unsub3()
-	var tearResp sdk.KitTeardownResp
+	var tearResp sdk.PackageTeardownResp
 	select {
 	case tearResp = <-ch3:
 	case <-ctx.Done():
 		t.Fatal("timeout")
 	}
-	assert.GreaterOrEqual(t, tearResp.Removed, 0)
+	assert.True(t, tearResp.Removed)
 }
 
 func testRedeploy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "kit-redeploy.ts",
-		Code:   `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "redeploy-v1", t);`,
+	mr, _ := json.Marshal(map[string]string{"name": "kit-redeploy", "entry": "kit-redeploy.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: mr,
+		Files:    map[string]string{"kit-redeploy.ts": `const t = createTool({ id: "redeploy-v1", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "redeploy-v1", t);`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -112,15 +115,16 @@ func testRedeploy(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(env.Kit, ctx, sdk.KitRedeployMsg{
-		Source: "kit-redeploy.ts",
-		Code:   `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "redeploy-v2", t);`,
+	mr2, _ := json.Marshal(map[string]string{"name": "kit-redeploy", "entry": "kit-redeploy.ts"})
+	pr2, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: mr2,
+		Files:    map[string]string{"kit-redeploy.ts": `const t = createTool({ id: "redeploy-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "redeploy-v2", t);`},
 	})
 	require.NoError(t, err)
-	ch2 := make(chan sdk.KitRedeployResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.KitRedeployResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.KitRedeployResp, m sdk.Message) { ch2 <- r })
+	ch2 := make(chan sdk.PackageDeployResp, 1)
+	unsub2, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch2 <- r })
 	defer unsub2()
-	var redeployResp sdk.KitRedeployResp
+	var redeployResp sdk.PackageDeployResp
 	select {
 	case redeployResp = <-ch2:
 	case <-ctx.Done():
@@ -128,16 +132,17 @@ func testRedeploy(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, redeployResp.Deployed)
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "kit-redeploy.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "kit-redeploy"})
 }
 
 func testDeployInvalidCode(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "bad-code.ts",
-		Code:   `throw new Error("intentional failure");`,
+	mb, _ := json.Marshal(map[string]string{"name": "bad-code", "entry": "bad-code.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: mb,
+		Files:    map[string]string{"bad-code.ts": `throw new Error("intentional failure");`},
 	})
 	require.NoError(t, err)
 	ch := make(chan string, 1)

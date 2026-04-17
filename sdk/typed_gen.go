@@ -132,21 +132,6 @@ func SubscribeGatewayStatusResp(rt Runtime, ctx context.Context, topic string, h
 	return SubscribeTo[GatewayStatusResp](rt, ctx, topic, handler)
 }
 
-// PublishKitDeploy publishes a KitDeployMsg and returns routing info for the response.
-func PublishKitDeploy(rt Runtime, ctx context.Context, msg KitDeployMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitDeployResp subscribes to the response topic for a KitDeployMsg command.
-func SubscribeKitDeployResp(rt Runtime, ctx context.Context, topic string, handler func(KitDeployResp, Message)) (func(), error) {
-	return SubscribeTo[KitDeployResp](rt, ctx, topic, handler)
-}
-
-// PublishKitDeployFile publishes a KitDeployFileMsg and returns routing info for the response.
-func PublishKitDeployFile(rt Runtime, ctx context.Context, msg KitDeployFileMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
 // PublishKitEval publishes a KitEvalMsg and returns routing info for the response.
 func PublishKitEval(rt Runtime, ctx context.Context, msg KitEvalMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -167,26 +152,6 @@ func SubscribeKitHealthResp(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[KitHealthResp](rt, ctx, topic, handler)
 }
 
-// PublishKitList publishes a KitListMsg and returns routing info for the response.
-func PublishKitList(rt Runtime, ctx context.Context, msg KitListMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitListResp subscribes to the response topic for a KitListMsg command.
-func SubscribeKitListResp(rt Runtime, ctx context.Context, topic string, handler func(KitListResp, Message)) (func(), error) {
-	return SubscribeTo[KitListResp](rt, ctx, topic, handler)
-}
-
-// PublishKitRedeploy publishes a KitRedeployMsg and returns routing info for the response.
-func PublishKitRedeploy(rt Runtime, ctx context.Context, msg KitRedeployMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitRedeployResp subscribes to the response topic for a KitRedeployMsg command.
-func SubscribeKitRedeployResp(rt Runtime, ctx context.Context, topic string, handler func(KitRedeployResp, Message)) (func(), error) {
-	return SubscribeTo[KitRedeployResp](rt, ctx, topic, handler)
-}
-
 // PublishKitSend publishes a KitSendMsg and returns routing info for the response.
 func PublishKitSend(rt Runtime, ctx context.Context, msg KitSendMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
@@ -205,16 +170,6 @@ func PublishKitSetDraining(rt Runtime, ctx context.Context, msg KitSetDrainingMs
 // SubscribeKitSetDrainingResp subscribes to the response topic for a KitSetDrainingMsg command.
 func SubscribeKitSetDrainingResp(rt Runtime, ctx context.Context, topic string, handler func(KitSetDrainingResp, Message)) (func(), error) {
 	return SubscribeTo[KitSetDrainingResp](rt, ctx, topic, handler)
-}
-
-// PublishKitTeardown publishes a KitTeardownMsg and returns routing info for the response.
-func PublishKitTeardown(rt Runtime, ctx context.Context, msg KitTeardownMsg, opts ...PublishOption) (PublishResult, error) {
-	return Publish(rt, ctx, msg, opts...)
-}
-
-// SubscribeKitTeardownResp subscribes to the response topic for a KitTeardownMsg command.
-func SubscribeKitTeardownResp(rt Runtime, ctx context.Context, topic string, handler func(KitTeardownResp, Message)) (func(), error) {
-	return SubscribeTo[KitTeardownResp](rt, ctx, topic, handler)
 }
 
 // PublishMcpCallTool publishes a McpCallToolMsg and returns routing info for the response.

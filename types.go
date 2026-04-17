@@ -41,12 +41,16 @@ type PeerConfig = types.PeerConfig
 // Modules receive the kernel at Init and use push registration.
 type Module = engine.Module
 
-// Package describes a deployment unit for DeployPackage.
+// Package describes a deployment unit. Build via PackageInline / PackageFromFile / PackageFromDir.
 type Package struct {
 	Name    string            `json:"name"`
 	Version string            `json:"version,omitempty"`
 	Entry   string            `json:"entry,omitempty"`
-	Files   map[string]string `json:"files"`
+	Files   map[string]string `json:"files,omitempty"`
+
+	// path is set by PackageFromDir / PackageFromFile to route the deploy
+	// through the filesystem-bundling path. Internal.
+	path string `json:"-"`
 }
 
 // ── Health & Metrics ────────────────────────────────────────────────────────

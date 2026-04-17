@@ -178,9 +178,10 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(k, ctx, sdk.KitDeployMsg{
-		Source: "registry-user.ts",
-		Code: `
+	mp, _ := json.Marshal(map[string]string{"name": "registry-user", "entry": "registry-user.ts"})
+	pr, err := sdk.Publish(k, ctx, sdk.PackageDeployMsg{
+		Manifest: mp,
+		Files: map[string]string{"registry-user.ts": `
 			const registryTool = createTool({
 				id: "check-providers",
 				description: "checks which providers are registered",
@@ -192,11 +193,11 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 				}
 			});
 			kit.register("tool", "check-providers", registryTool);
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](k, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:

@@ -13,10 +13,11 @@ type PackageDeployMsg struct {
 func (PackageDeployMsg) BusTopic() string { return "package.deploy" }
 
 type PackageDeployResp struct {
-	Deployed bool   `json:"deployed"`
-	Name     string `json:"name"`
-	Version  string `json:"version"`
-	Source   string `json:"source"`
+	Deployed  bool           `json:"deployed"`
+	Name      string         `json:"name"`
+	Version   string         `json:"version"`
+	Source    string         `json:"source"`
+	Resources []ResourceInfo `json:"resources,omitempty"`
 }
 
 type PackageTeardownMsg struct {

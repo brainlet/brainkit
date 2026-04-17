@@ -54,21 +54,20 @@
       return api;
     },
     deploy: async function(source, code) {
-      var raw = await __go_brainkit_request_async("kit.deploy", JSON.stringify({ source: source, code: code }));
+      var name = source.replace(/\.ts$/, "");
+      var manifest = { name: name, entry: source };
+      var files = {}; files[source] = code;
+      var raw = await __go_brainkit_request_async("package.deploy", JSON.stringify({ manifest: manifest, files: files }));
       var result = JSON.parse(raw);
       if (result && result.error) throw new Error("deploy: " + result.error);
-      _testDeployments.push(source);
+      _testDeployments.push(name);
       return result;
     },
     deployFile: async function(path) {
-      var raw = await __go_brainkit_request_async("kit.deploy.file", JSON.stringify({ path: path }));
+      var raw = await __go_brainkit_request_async("package.deploy", JSON.stringify({ path: path }));
       var result = JSON.parse(raw);
       if (result && result.error) throw new Error("deployFile: " + result.error);
-      if (result && result.resources) {
-        for (var i = 0; i < result.resources.length; i++) {
-          if (result.resources[i].source) _testDeployments.push(result.resources[i].source);
-        }
-      }
+      if (result && result.name) _testDeployments.push(result.name);
       return result;
     },
     sleep: function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); },
@@ -165,7 +164,7 @@
       }
       // Teardown test-scoped deployments only (not beforeAll ones)
       for (var d = _testDeployments.length - 1; d >= 0; d--) {
-        try { __go_brainkit_request("kit.teardown", JSON.stringify({ source: _testDeployments[d] })); } catch(e) {}
+        try { __go_brainkit_request("package.teardown", JSON.stringify({ name: _testDeployments[d] })); } catch(e) {}
       }
       _testDeployments = [];
       for (var k = 0; k < _testHooks.afterEach.length; k++) await _testHooks.afterEach[k]();
@@ -175,7 +174,7 @@
     for (var m = 0; m < _testHooks.afterAll.length; m++) await _testHooks.afterAll[m]();
     // Teardown beforeAll deployments
     for (var b = _beforeAllDeployments.length - 1; b >= 0; b--) {
-      try { __go_brainkit_request("kit.teardown", JSON.stringify({ source: _beforeAllDeployments[b] })); } catch(e) {}
+      try { __go_brainkit_request("package.teardown", JSON.stringify({ name: _beforeAllDeployments[b] })); } catch(e) {}
     }
     _beforeAllDeployments = [];
     _testResults = [];

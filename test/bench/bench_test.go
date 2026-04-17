@@ -15,6 +15,10 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
+func benchTeardownName(source string) string {
+	return strings.TrimSuffix(source, ".ts")
+}
+
 func BenchmarkDeploy_1KB(b *testing.B) {
 	k := benchKit(b)
 	code := `bus.on("x", (msg) => msg.reply({}));`
@@ -25,7 +29,7 @@ func BenchmarkDeploy_1KB(b *testing.B) {
 		testutil.DeployErr(k, source, code)
 		// Teardown via bus — fire and forget for bench
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
+		sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }
@@ -39,7 +43,7 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
 		testutil.DeployErr(k, source, code)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
+		sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }

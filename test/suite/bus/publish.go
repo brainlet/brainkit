@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// pkgTeardown builds a PackageTeardownMsg from a ".ts" source filename.
+func pkgTeardown(source string) sdk.PackageTeardownMsg {
+	return sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}
+}
 
 // testJSPublishReturnsReplyTo verifies that __go_brainkit_bus_publish
 // generates a replyTo and correlationId, and returns them to JS.
@@ -219,14 +225,11 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ greeting: "hello " + msg.payload.name });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "greeter.ts",
-		Code:   tsCode,
-	})
+	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("greeter.ts", tsCode))
 	require.NoError(t, err)
 
 	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) {
+	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) {
 		deployCh <- m
 	})
 	defer deployUnsub()
@@ -253,7 +256,7 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for reply from deployed .ts service")
 	}
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "greeter.ts"})
+	sdk.Publish(env.Kit, ctx, pkgTeardown("greeter.ts"))
 }
 
 // testStreamingChunks verifies msg.send (chunks) + msg.reply (final) from a .ts service.
@@ -267,10 +270,10 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ text: "final", done: true });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: "streamer.ts", Code: tsCode})
+	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("streamer.ts", tsCode))
 	require.NoError(t, err)
 	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- m })
+	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { deployCh <- m })
 	defer deployUnsub()
 	select {
 	case dm := <-deployCh:
@@ -307,7 +310,7 @@ done:
 	assert.Equal(t, "true", lastMsg.Metadata["done"], "last message should have done=true")
 	assert.Contains(t, string(lastMsg.Payload), "final")
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "streamer.ts"})
+	sdk.Publish(env.Kit, ctx, pkgTeardown("streamer.ts"))
 }
 
 // testKitRegisterAgentDiscovery verifies kit.register("agent") makes it
@@ -319,10 +322,10 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 	tsCode := `
 		kit.register("agent", "test-bot", {});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: "bot.ts", Code: tsCode})
+	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("bot.ts", tsCode))
 	require.NoError(t, err)
 	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- m })
+	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { deployCh <- m })
 	defer deployUnsub()
 	select {
 	case dm := <-deployCh:
@@ -349,7 +352,7 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout listing agents")
 	}
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "bot.ts"})
+	sdk.Publish(env.Kit, ctx, pkgTeardown("bot.ts"))
 	time.Sleep(100 * time.Millisecond)
 
 	listResult2, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})

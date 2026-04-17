@@ -23,7 +23,7 @@ func testXDeployTeardownAnother(t *testing.T, env *suite.TestEnv) {
 	secDeploy(t, k, "attacker-teardown-sec.ts", `
 		var result = "UNKNOWN";
 		try {
-			var raw = __go_brainkit_request("kit.teardown", JSON.stringify({source: "victim-svc-sec.ts"}));
+			var raw = __go_brainkit_request("package.teardown", JSON.stringify({name: "victim-svc-sec"}));
 			result = "TEARDOWN_SUCCEEDED:" + raw;
 		} catch(e) {
 			result = "BLOCKED:" + (e.code || e.message);
@@ -309,9 +309,9 @@ func testXDeploySelfRedeploy(t *testing.T, env *suite.TestEnv) {
 	_ = secDeployErr(k, "self-redeploy-sec.ts", `
 		var result = "UNKNOWN";
 		try {
-			var raw = __go_brainkit_request("kit.redeploy", JSON.stringify({
-				source: "self-redeploy-sec.ts",
-				code: 'output("redeployed-version");'
+			var raw = __go_brainkit_request("package.deploy", JSON.stringify({
+				manifest: {name: "self-redeploy-sec", entry: "self-redeploy-sec.ts"},
+				files: {"self-redeploy-sec.ts": 'output("redeployed-version");'}
 			}));
 			result = "REDEPLOYED:" + raw;
 		} catch(e) {

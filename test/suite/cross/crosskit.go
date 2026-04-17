@@ -30,9 +30,10 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 			defer cancel()
 
 			// TS surface: deploy .ts that creates a tool
-			pr1, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-				Source: "cross-ts-tool-cross.ts",
-				Code: `
+			m1, _ := json.Marshal(map[string]string{"name": "cross-ts-tool-cross", "entry": "cross-ts-tool-cross.ts"})
+			pr1, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+				Manifest: m1,
+				Files: map[string]string{"cross-ts-tool-cross.ts": `
 					const myTool = createTool({
 						id: "ts-greeter",
 						description: "greets from TS",
@@ -41,11 +42,11 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 						}
 					});
 					kit.register("tool", "ts-greeter", myTool);
-				`,
+				`},
 			})
 			require.NoError(t, err)
-			ch1 := make(chan sdk.KitDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
+			ch1 := make(chan sdk.PackageDeployResp, 1)
+			us1, _ := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch1 <- r })
 			defer us1()
 			select {
 			case <-ch1:
@@ -75,9 +76,9 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 			assert.Equal(t, "hello from TS, Go", result["greeting"])
 
 			// Cleanup
-			spr1, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "cross-ts-tool-cross.ts"})
-			sch1 := make(chan sdk.KitTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, spr1.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch1 <- r })
+			spr1, _ := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "cross-ts-tool-cross"})
+			sch1 := make(chan sdk.PackageTeardownResp, 1)
+			sun1, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, spr1.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch1 <- r })
 			defer sun1()
 			select {
 			case <-sch1:
@@ -98,9 +99,10 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			// Go surface: "echo" tool is already registered by helpers
 
 			// TS surface: deploy .ts that calls the Go-registered "echo" tool
-			pr3, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-				Source: "cross-go-call-cross.ts",
-				Code: `
+			m3, _ := json.Marshal(map[string]string{"name": "cross-go-call-cross", "entry": "cross-go-call-cross.ts"})
+			pr3, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+				Manifest: m3,
+				Files: map[string]string{"cross-go-call-cross.ts": `
 					const wrapper = createTool({
 						id: "echo-wrapper",
 						description: "calls Go echo tool from TS",
@@ -110,11 +112,11 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 						}
 					});
 					kit.register("tool", "echo-wrapper", wrapper);
-				`,
+				`},
 			})
 			require.NoError(t, err)
-			ch3 := make(chan sdk.KitDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr3.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch3 <- r })
+			ch3 := make(chan sdk.PackageDeployResp, 1)
+			us3, _ := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr3.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch3 <- r })
 			defer us3()
 			select {
 			case <-ch3:
@@ -145,9 +147,9 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["inner"].(map[string]any)
 			assert.Equal(t, "from TS to Go", inner["echoed"])
 
-			spr2, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "cross-go-call-cross.ts"})
-			sch2 := make(chan sdk.KitTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, spr2.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch2 <- r })
+			spr2, _ := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "cross-go-call-cross"})
+			sch2 := make(chan sdk.PackageTeardownResp, 1)
+			sun2, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, spr2.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch2 <- r })
 			defer sun2()
 			select {
 			case <-sch2:
@@ -361,9 +363,10 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts that calls the plugin's "concat" tool
-			pr1, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
-				Source: "ts-calls-plugin-cross.ts",
-				Code: `
+			mfst1, _ := json.Marshal(map[string]string{"name": "ts-calls-plugin-cross", "entry": "ts-calls-plugin-cross.ts"})
+			pr1, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+				Manifest: mfst1,
+				Files: map[string]string{"ts-calls-plugin-cross.ts": `
 					const pluginCaller = createTool({
 						id: "plugin-caller",
 						description: "calls plugin concat tool from TS",
@@ -373,11 +376,11 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 						}
 					});
 					kit.register("tool", "plugin-caller", pluginCaller);
-				`,
+				`},
 			})
 			require.NoError(t, err)
-			ch1 := make(chan sdk.KitDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](kit, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
+			ch1 := make(chan sdk.PackageDeployResp, 1)
+			us1, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch1 <- r })
 			defer us1()
 			select {
 			case <-ch1:
@@ -409,9 +412,9 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["fromPlugin"].(map[string]any)
 			assert.Equal(t, "foobar", inner["result"])
 
-			spr1, _ := sdk.Publish(kit, ctx, sdk.KitTeardownMsg{Source: "ts-calls-plugin-cross.ts"})
-			sch1 := make(chan sdk.KitTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[sdk.KitTeardownResp](kit, ctx, spr1.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch1 <- r })
+			spr1, _ := sdk.Publish(kit, ctx, sdk.PackageTeardownMsg{Name: "ts-calls-plugin-cross"})
+			sch1 := make(chan sdk.PackageTeardownResp, 1)
+			sun1, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](kit, ctx, spr1.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch1 <- r })
 			defer sun1()
 			select {
 			case <-sch1:
@@ -461,20 +464,21 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			time.Sleep(2 * time.Second)
 
 			// Deploy .ts tool
-			pr3, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
-				Source: "ts-alongside-cross.ts",
-				Code: `
+			mfst3, _ := json.Marshal(map[string]string{"name": "ts-alongside-cross", "entry": "ts-alongside-cross.ts"})
+			pr3, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+				Manifest: mfst3,
+				Files: map[string]string{"ts-alongside-cross.ts": `
 					const tsTool = createTool({
 						id: "ts-side-tool",
 						description: "a TS-side tool",
 						execute: async () => ({ from: "ts" })
 					});
 					kit.register("tool", "ts-side-tool", tsTool);
-				`,
+				`},
 			})
 			require.NoError(t, err)
-			ch3 := make(chan sdk.KitDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[sdk.KitDeployResp](kit, ctx, pr3.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch3 <- r })
+			ch3 := make(chan sdk.PackageDeployResp, 1)
+			us3, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr3.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch3 <- r })
 			defer us3()
 			select {
 			case <-ch3:
@@ -506,9 +510,9 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			assert.True(t, names["concat"], "plugin concat tool")
 			assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-			spr2, _ := sdk.Publish(kit, ctx, sdk.KitTeardownMsg{Source: "ts-alongside-cross.ts"})
-			sch2 := make(chan sdk.KitTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[sdk.KitTeardownResp](kit, ctx, spr2.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { sch2 <- r })
+			spr2, _ := sdk.Publish(kit, ctx, sdk.PackageTeardownMsg{Name: "ts-alongside-cross"})
+			sch2 := make(chan sdk.PackageTeardownResp, 1)
+			sun2, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](kit, ctx, spr2.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch2 <- r })
 			defer sun2()
 			select {
 			case <-sch2:

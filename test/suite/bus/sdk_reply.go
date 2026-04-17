@@ -16,14 +16,11 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "echo-svc.ts",
-		Code: `
+	_, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("echo-svc.ts", `
 			bus.on("ping", (msg) => {
 				msg.reply({ pong: true, from: "ts" });
 			});
-		`,
-	})
+		`))
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
@@ -117,16 +114,13 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "calc.ts",
-		Code: `
+	_, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("calc.ts", `
 			bus.on("add", (msg) => {
 				const a = msg.payload.a || 0;
 				const b = msg.payload.b || 0;
 				msg.reply({ result: a + b });
 			});
-		`,
-	})
+		`))
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 

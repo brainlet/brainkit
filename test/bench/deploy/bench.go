@@ -28,7 +28,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
+			sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			cancel()
 		}
 	})
@@ -42,7 +42,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
+			sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			cancel()
 		}
 	})

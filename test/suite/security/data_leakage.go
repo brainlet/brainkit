@@ -31,7 +31,10 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 	}{
 		{"tool-not-found", sdk.ToolCallMsg{Name: "secret-internal-tool-name"}},
 		{"agent-not-found", sdk.AgentGetStatusMsg{Name: "internal-agent"}},
-		{"deploy-bad", sdk.KitDeployMsg{Source: "x.ts", Code: "throw new Error('DB_PASSWORD=secret123');"}},
+		{"deploy-bad", sdk.PackageDeployMsg{
+			Manifest: json.RawMessage(`{"name":"x","entry":"x.ts"}`),
+			Files:    map[string]string{"x.ts": "throw new Error('DB_PASSWORD=secret123');"},
+		}},
 	}
 
 	for _, tc := range busErrors {
@@ -232,7 +235,7 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 	}
 
 	err := secDeployErr(k, "recon-sec.ts", `
-		var raw = __go_brainkit_request("kit.list", "{}");
+		var raw = __go_brainkit_request("package.list", "{}");
 		var result = JSON.parse(raw);
 		output(result);
 	`)
@@ -242,7 +245,7 @@ func testLeakageDeploymentReconnaissance(t *testing.T, env *suite.TestEnv) {
 			return JSON.stringify(r || {});
 		`)
 		if strings.Contains(result, "admin-panel") {
-			t.Logf("FINDING: deployment can enumerate all other deployments via kit.list")
+			t.Logf("FINDING: deployment can enumerate all other deployments via package.list")
 		}
 	}
 

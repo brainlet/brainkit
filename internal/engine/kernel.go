@@ -35,7 +35,6 @@ type Kernel struct {
 	registryDomain      *RegistryDomain
 	tracingDomain       *TracingDomain
 	metricsDomain       *MetricsDomain
-	lifecycle           *LifecycleDomain
 	packageDeployDomain *PackageDeployDomain
 	testingDomain       *TestingDomain
 
@@ -355,7 +354,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		cleanups = append(cleanups, cleanup)
 	}
 
-	kernel.lifecycle = newLifecycleDomain(kernel.deploymentMgr, kernel.remote, kernel.audit, cfg.RuntimeID)
+	kernel.packageDeployDomain.attachLifecycle(kernel.remote, kernel.audit, cfg.RuntimeID)
 
 	kernel.startedAt = time.Now()
 

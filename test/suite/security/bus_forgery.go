@@ -256,7 +256,7 @@ func testForgeryCommandTopicBypass(t *testing.T, env *suite.TestEnv) {
 		var commandTopics = [
 			"tools.call", "tools.list", "tools.resolve",
 			"secrets.set", "secrets.get", "secrets.delete",
-			"kit.deploy", "kit.teardown",
+			"package.deploy", "package.teardown",
 			"wasm.compile", "wasm.run",
 		];
 

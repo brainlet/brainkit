@@ -2,6 +2,8 @@ package bus
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +15,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// pkgDeployMsg builds a PackageDeployMsg from a single source/code pair.
+func pkgDeployMsg(source, code string) sdk.PackageDeployMsg {
+	name := strings.TrimSuffix(source, ".ts")
+	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": source})
+	return sdk.PackageDeployMsg{Manifest: manifest, Files: map[string]string{source: code}}
+}
 
 // testLogHandlerTSCompartment needs its own kernel with a custom LogHandler.
 func testLogHandlerTSCompartment(t *testing.T, _ *suite.TestEnv) {
@@ -28,13 +37,10 @@ func testLogHandlerTSCompartment(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(logEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "log-test.ts",
-		Code:   `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`,
-	})
+	pr, err := sdk.Publish(logEnv.Kit, ctx, pkgDeployMsg("log-test.ts", `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`))
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	us, _ := sdk.SubscribeTo[sdk.KitDeployResp](logEnv.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	us, _ := sdk.SubscribeTo[sdk.PackageDeployResp](logEnv.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer us()
 	select {
 	case <-ch:
@@ -70,13 +76,10 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(logEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "file-a.ts",
-		Code:   `console.log("from file A");`,
-	})
+	pr1, err := sdk.Publish(logEnv.Kit, ctx, pkgDeployMsg("file-a.ts", `console.log("from file A");`))
 	require.NoError(t, err)
-	ch1 := make(chan sdk.KitDeployResp, 1)
-	us1, _ := sdk.SubscribeTo[sdk.KitDeployResp](logEnv.Kit, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch1 <- r })
+	ch1 := make(chan sdk.PackageDeployResp, 1)
+	us1, _ := sdk.SubscribeTo[sdk.PackageDeployResp](logEnv.Kit, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch1 <- r })
 	defer us1()
 	select {
 	case <-ch1:
@@ -84,13 +87,10 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(logEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "file-b.ts",
-		Code:   `console.log("from file B");`,
-	})
+	pr2, err := sdk.Publish(logEnv.Kit, ctx, pkgDeployMsg("file-b.ts", `console.log("from file B");`))
 	require.NoError(t, err)
-	ch2 := make(chan sdk.KitDeployResp, 1)
-	us2, _ := sdk.SubscribeTo[sdk.KitDeployResp](logEnv.Kit, ctx, pr2.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch2 <- r })
+	ch2 := make(chan sdk.PackageDeployResp, 1)
+	us2, _ := sdk.SubscribeTo[sdk.PackageDeployResp](logEnv.Kit, ctx, pr2.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch2 <- r })
 	defer us2()
 	select {
 	case <-ch2:
@@ -143,13 +143,10 @@ func testLogHandlerNilDefault(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(nilEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "nil-test.ts",
-		Code:   `console.log("should not panic");`,
-	})
+	pr, err := sdk.Publish(nilEnv.Kit, ctx, pkgDeployMsg("nil-test.ts", `console.log("should not panic");`))
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	us, _ := sdk.SubscribeTo[sdk.KitDeployResp](nilEnv.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	us, _ := sdk.SubscribeTo[sdk.PackageDeployResp](nilEnv.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer us()
 	select {
 	case <-ch:

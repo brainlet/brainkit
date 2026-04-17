@@ -13,6 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// matrixPkgDeploy builds a single-file PackageDeployMsg for matrix tests.
+func matrixPkgDeploy(name, entry, code string) sdk.PackageDeployMsg {
+	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": entry})
+	return sdk.PackageDeployMsg{Manifest: manifest, Files: map[string]string{entry: code}}
+}
+
 // testTransportMatrixToolsCall — tools.call roundtrip on the env's transport.
 // Ported from transport/matrix_test.go:TestBackendMatrix/tools_call.
 func testTransportMatrixToolsCall(t *testing.T, env *suite.TestEnv) {
@@ -147,24 +153,21 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-		Source: "matrix-deploy-suite.ts",
-		Code: `
+	pr, err := sdk.Publish(rt, ctx, matrixPkgDeploy("matrix-deploy-suite", "matrix-deploy-suite.ts", `
 			const matrixTool = createTool({
 				id: "matrix-tool-suite",
 				description: "matrix test tool",
 				execute: async () => ({ backend: "works" })
 			});
 			kit.register("tool", "matrix-tool-suite", matrixTool);
-		`,
-	})
+		`))
 	require.NoError(t, err)
-	deployCh := make(chan sdk.KitDeployResp, 1)
-	deployUnsub, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { deployCh <- r })
+	deployCh := make(chan sdk.PackageDeployResp, 1)
+	deployUnsub, err := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { deployCh <- r })
 	require.NoError(t, err)
 	defer deployUnsub()
 
-	var deployResp sdk.KitDeployResp
+	var deployResp sdk.PackageDeployResp
 	select {
 	case deployResp = <-deployCh:
 	case <-ctx.Done():
@@ -193,10 +196,10 @@ func testTransportMatrixKitDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	assert.Equal(t, "works", result["backend"])
 
 	// Teardown
-	tdPR, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "matrix-deploy-suite.ts"})
+	tdPR, err := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "matrix-deploy-suite"})
 	require.NoError(t, err)
-	tdCh := make(chan sdk.KitTeardownResp, 1)
-	tdUnsub, err := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { tdCh <- r })
+	tdCh := make(chan sdk.PackageTeardownResp, 1)
+	tdUnsub, err := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { tdCh <- r })
 	require.NoError(t, err)
 	defer tdUnsub()
 
@@ -214,20 +217,17 @@ func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-		Source: "matrix-redeploy-suite.ts", Code: `var v = 1;`,
-	})
+	sdk.Publish(rt, ctx, matrixPkgDeploy("matrix-redeploy-suite", "matrix-redeploy-suite.ts", `var v = 1;`))
 
-	pr, err := sdk.Publish(rt, ctx, sdk.KitRedeployMsg{
-		Source: "matrix-redeploy-suite.ts", Code: `var v = 2;`,
-	})
+	// Re-deploying the same package name is hot-replace via DeploymentManager.
+	pr, err := sdk.Publish(rt, ctx, matrixPkgDeploy("matrix-redeploy-suite", "matrix-redeploy-suite.ts", `var v = 2;`))
 	require.NoError(t, err)
-	ch := make(chan sdk.KitRedeployResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.KitRedeployResp](rt, ctx, pr.ReplyTo, func(r sdk.KitRedeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	unsub, err := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	require.NoError(t, err)
 	defer unsub()
 
-	var resp sdk.KitRedeployResp
+	var resp sdk.PackageDeployResp
 	select {
 	case resp = <-ch:
 	case <-ctx.Done():
@@ -235,9 +235,9 @@ func testTransportMatrixKitRedeploy(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, resp.Deployed)
 
-	tdPR, _ := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "matrix-redeploy-suite.ts"})
-	tdCh := make(chan sdk.KitTeardownResp, 1)
-	tdUnsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { tdCh <- r })
+	tdPR, _ := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "matrix-redeploy-suite"})
+	tdCh := make(chan sdk.PackageTeardownResp, 1)
+	tdUnsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, tdPR.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { tdCh <- r })
 	defer tdUnsub()
 	select {
 	case <-tdCh:

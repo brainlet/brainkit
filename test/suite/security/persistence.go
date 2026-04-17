@@ -67,7 +67,7 @@ func testPersistCodeMutatesStoreDuringRestore(t *testing.T, env *suite.TestEnv) 
 		Source: "mutator-sec.ts",
 		Code: `
 			try {
-				__go_brainkit_request("kit.teardown", JSON.stringify({source: "innocent-sec.ts"}));
+				__go_brainkit_request("package.teardown", JSON.stringify({name: "innocent-sec"}));
 			} catch(e) {}
 			output("mutated");
 		`,

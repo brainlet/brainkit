@@ -168,28 +168,6 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentSetStatusMsg) (*sdk.AgentSetStatusResp, error) {
 				return kernel.agentsDomain.SetStatus(ctx, req)
 			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
-				return kernel.lifecycle.Deploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitTeardownMsg) (*sdk.KitTeardownResp, error) {
-				return kernel.lifecycle.Teardown(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitRedeployMsg) (*sdk.KitRedeployResp, error) {
-				return kernel.lifecycle.Redeploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitListMsg) (*sdk.KitListResp, error) {
-				return kernel.lifecycle.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitDeployFileMsg) (*sdk.KitDeployResp, error) {
-				resources, err := DeployFile(ctx, kernel, req.Path)
-				if err != nil {
-					return nil, err
-				}
-				return &sdk.KitDeployResp{
-					Deployed:  true,
-					Resources: resourceInfosToMessages(resources),
-				}, nil
-			}),
 			// ── SetDraining ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSetDrainingMsg) (*sdk.KitSetDrainingResp, error) {
 				kernel.SetDraining(req.Draining)

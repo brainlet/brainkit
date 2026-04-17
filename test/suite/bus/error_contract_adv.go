@@ -81,9 +81,10 @@ func testErrorContractBusIdempotentDeploy(t *testing.T, _ *suite.TestEnv) {
 
 // testErrorContractBusDeployErrorBadSyntax — DEPLOY_ERROR for bad syntax.
 func testErrorContractBusDeployErrorBadSyntax(t *testing.T, env *suite.TestEnv) {
-	code, details := busErrorCodeAdv(t, env.Kit, sdk.KitDeployMsg{
-		Source: "bad-syntax-adv.ts",
-		Code:   "const x: number = {{{invalid syntax;;;",
+	badManifest, _ := json.Marshal(map[string]string{"name": "bad-syntax-adv", "entry": "bad-syntax-adv.ts"})
+	code, details := busErrorCodeAdv(t, env.Kit, sdk.PackageDeployMsg{
+		Manifest: badManifest,
+		Files:    map[string]string{"bad-syntax-adv.ts": "const x: number = {{{invalid syntax;;;"},
 	})
 	assert.Equal(t, "DEPLOY_ERROR", code)
 	if details != nil {

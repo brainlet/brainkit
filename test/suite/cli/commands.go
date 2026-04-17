@@ -76,13 +76,14 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	deployResp := publishAndWait[sdk.KitDeployMsg, sdk.KitDeployResp](t, env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "echo-svc-cmd.ts",
-		Code: `
+	manifest1, _ := json.Marshal(map[string]string{"name": "echo-svc-cmd", "entry": "echo-svc-cmd.ts"})
+	deployResp := publishAndWait[sdk.PackageDeployMsg, sdk.PackageDeployResp](t, env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest1,
+		Files: map[string]string{"echo-svc-cmd.ts": `
 			bus.on("ping", (msg) => {
 				msg.reply({ pong: msg.payload.value });
 			});
-		`,
+		`},
 	})
 	require.True(t, deployResp.Deployed)
 
@@ -100,14 +101,15 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	deployResp := publishAndWait[sdk.KitDeployMsg, sdk.KitDeployResp](t, env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "async-svc-cmd.ts",
-		Code: `
+	manifest2, _ := json.Marshal(map[string]string{"name": "async-svc-cmd", "entry": "async-svc-cmd.ts"})
+	deployResp := publishAndWait[sdk.PackageDeployMsg, sdk.PackageDeployResp](t, env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest2,
+		Files: map[string]string{"async-svc-cmd.ts": `
 			bus.on("compute", async (msg) => {
 				const result = await Promise.resolve(msg.payload.a + msg.payload.b);
 				msg.reply({ sum: result });
 			});
-		`,
+		`},
 	})
 	require.True(t, deployResp.Deployed)
 

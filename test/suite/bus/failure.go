@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,19 +13,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// deployInlinePkg deploys a single-file inline .ts source via PackageDeployMsg
+// and blocks until the deploy reply arrives. Shared across failure tests.
+func deployInlinePkg(t *testing.T, kit *brainkit.Kit, ctx context.Context, source, code string) {
+	t.Helper()
+	name := strings.TrimSuffix(source, ".ts")
+	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": source})
+	pr, _ := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest,
+		Files:    map[string]string{source: code},
+	})
+	deployCh := make(chan struct{}, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr.ReplyTo, func(_ sdk.PackageDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
+	select {
+	case <-deployCh:
+	case <-ctx.Done():
+		t.Fatal("deploy timeout")
+	}
+	unsub()
+	time.Sleep(100 * time.Millisecond)
+}
+
 func testSyncThrowErrorResponse(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "thrower.ts",
-		Code:   `bus.on("fail", (msg) => { throw new Error("sync boom"); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	deployInlinePkg(t, env.Kit, ctx, "thrower.ts", `bus.on("fail", (msg) => { throw new Error("sync boom"); });`)
 
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "thrower.ts", "fail", map[string]bool{"x": true})
 	errCh := make(chan string, 1)
@@ -47,15 +61,7 @@ func testAsyncRejectionErrorResponse(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "async-fail.ts",
-		Code:   `bus.on("fail", async (msg) => { throw new Error("async boom"); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	deployInlinePkg(t, env.Kit, ctx, "async-fail.ts", `bus.on("fail", async (msg) => { throw new Error("async boom"); });`)
 
 	sendPR, _ := sdk.SendToService(env.Kit, ctx, "async-fail.ts", "fail", map[string]bool{"x": true})
 	errCh := make(chan string, 1)
@@ -88,15 +94,7 @@ func testHandlerFailedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer eventUnsub()
 
-	pr, _ := sdk.Publish(freshEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "event-emitter-fail.ts",
-		Code:   `bus.on("fail", (msg) => { throw new Error("event test"); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](freshEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	deployInlinePkg(t, freshEnv.Kit, ctx, "event-emitter-fail.ts", `bus.on("fail", (msg) => { throw new Error("event test"); });`)
 
 	sdk.SendToService(freshEnv.Kit, ctx, "event-emitter-fail.ts", "fail", map[string]bool{"x": true})
 
@@ -123,9 +121,7 @@ func testRetryPolicyRetries(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(retryEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "retry-test.ts",
-		Code: `
+	deployInlinePkg(t, retryEnv.Kit, ctx, "retry-test.ts", `
 			var _attempts = 0;
 			bus.on("try", (msg) => {
 				_attempts++;
@@ -134,13 +130,7 @@ func testRetryPolicyRetries(t *testing.T, _ *suite.TestEnv) {
 				}
 				msg.reply({ attempts: _attempts, ok: true });
 			});
-		`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](retryEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+		`)
 
 	sendPR, _ := sdk.SendToService(retryEnv.Kit, ctx, "retry-test.ts", "try", map[string]bool{"x": true})
 	replyCh := make(chan map[string]any, 1)
@@ -172,15 +162,7 @@ func testRetryExhaustedDeadLetter(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(dlEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "dl-test.ts",
-		Code:   `bus.on("fail", (msg) => { throw new Error("always fails"); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](dlEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	deployInlinePkg(t, dlEnv.Kit, ctx, "dl-test.ts", `bus.on("fail", (msg) => { throw new Error("always fails"); });`)
 
 	dlCh := make(chan json.RawMessage, 1)
 	dlUnsub, _ := dlEnv.Kit.SubscribeRaw(ctx, "dead-letter", func(msg sdk.Message) {
@@ -226,15 +208,7 @@ func testExhaustedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(exEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "exhaust-evt.ts",
-		Code:   `bus.on("fail", (msg) => { throw new Error("exhaust event"); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](exEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+	deployInlinePkg(t, exEnv.Kit, ctx, "exhaust-evt.ts", `bus.on("fail", (msg) => { throw new Error("exhaust event"); });`)
 
 	exhaustedCh := make(chan sdk.HandlerExhaustedEvent, 1)
 	exUnsub, _ := sdk.SubscribeTo[sdk.HandlerExhaustedEvent](exEnv.Kit, ctx, "bus.handler.exhausted", func(evt sdk.HandlerExhaustedEvent, _ sdk.Message) {
@@ -265,22 +239,14 @@ func testRetryPreservesReplyTo(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(rpEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "replyto-test.ts",
-		Code: `
+	deployInlinePkg(t, rpEnv.Kit, ctx, "replyto-test.ts", `
 			var _count = 0;
 			bus.on("try", (msg) => {
 				_count++;
 				if (_count === 1) throw new Error("first fail");
 				msg.reply({ ok: true, attempt: _count });
 			});
-		`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](rpEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
-	time.Sleep(100 * time.Millisecond)
+		`)
 
 	sendPR, _ := sdk.SendToService(rpEnv.Kit, ctx, "replyto-test.ts", "try", map[string]bool{"x": true})
 	replyCh := make(chan map[string]any, 1)

@@ -117,7 +117,7 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 	for i := 0; i < 50; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: fmt.Sprintf("deploy-stress-bomb-%d.ts", i)})
+		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: fmt.Sprintf("deploy-stress-bomb-%d", i)})
 		cancel()
 	}
 }
@@ -161,7 +161,7 @@ func testExhaustionLifecycleChurn(t *testing.T, env *suite.TestEnv) {
 			bus.on("ping-%d", function(msg) { msg.reply({i: %d}); });
 		`, i, i, i, i))
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
+		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
 		cancel()
 	}
 

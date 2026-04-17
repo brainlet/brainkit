@@ -185,7 +185,7 @@ func secTeardown(t *testing.T, k *brainkit.Kit, source string) {
 }
 
 // secListDeployments lists current deployments.
-func secListDeployments(t *testing.T, k *brainkit.Kit) []sdk.DeploymentInfo {
+func secListDeployments(t *testing.T, k *brainkit.Kit) []sdk.DeployedPackageInfo {
 	t.Helper()
 	return testutil.ListDeployments(t, k)
 }

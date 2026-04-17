@@ -22,9 +22,10 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy .ts that creates a Mastra Agent and registers it
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "ai-agent-agent-adv.ts",
-		Code: `
+	manifest, _ := json.Marshal(map[string]string{"name": "ai-agent-agent-adv", "entry": "ai-agent-agent-adv.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest,
+		Files: map[string]string{"ai-agent-agent-adv.ts": `
 			const myAgent = new Agent({
 				name: "ai-list-agent-adv",
 				model: model("openai", "gpt-4o-mini"),
@@ -38,12 +39,12 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 				hasUsage: !!result.usage,
 				finishReason: result.finishReason,
 			});
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
+	ch := make(chan sdk.PackageDeployResp, 1)
 	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r; mch <- m })
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -123,5 +124,5 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.Equal(t, "busy", statusResp.Status)
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "ai-agent-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "ai-agent-agent-adv"})
 }

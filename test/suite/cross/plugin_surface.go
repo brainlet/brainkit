@@ -207,9 +207,10 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy via bus command
-	pr, err := sdk.Publish(kit, ctx, sdk.KitDeployMsg{
-		Source: "node-deploy-cross.ts",
-		Code:   `const t = createTool({id: "node-tool", description: "test", execute: async () => ({ok:true})}); kit.register("tool", "node-tool", t);`,
+	nodeManifest, _ := json.Marshal(map[string]string{"name": "node-deploy-cross", "entry": "node-deploy-cross.ts"})
+	pr, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+		Manifest: nodeManifest,
+		Files:    map[string]string{"node-deploy-cross.ts": `const t = createTool({id: "node-tool", description: "test", execute: async () => ({ok:true})}); kit.register("tool", "node-tool", t);`},
 	})
 	require.NoError(t, err)
 

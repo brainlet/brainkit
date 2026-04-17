@@ -17,9 +17,10 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	rt := env.Kit
 
 	// 1. Deploy .ts code that creates a new tool
-	pr1, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-		Source: "pipeline-tool-adv.ts",
-		Code: `
+	mp1, _ := json.Marshal(map[string]string{"name": "pipeline-tool-adv", "entry": "pipeline-tool-adv.ts"})
+	pr1, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+		Manifest: mp1,
+		Files: map[string]string{"pipeline-tool-adv.ts": `
 			const greeter = createTool({
 				id: "greeter-tool-adv",
 				description: "greets a person by name",
@@ -28,11 +29,11 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 				}
 			});
 			kit.register("tool", "greeter-tool-adv", greeter);
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	deployCh := make(chan sdk.KitDeployResp, 1)
-	cancelDeploy, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.KitDeployResp, _ sdk.Message) { deployCh <- r })
+	deployCh := make(chan sdk.PackageDeployResp, 1)
+	cancelDeploy, err := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, _ sdk.Message) { deployCh <- r })
 	require.NoError(t, err)
 	defer cancelDeploy()
 	select {
@@ -82,10 +83,10 @@ func testToolPipeline(t *testing.T, env *suite.TestEnv) {
 	}
 
 	// 4. Teardown
-	pr4, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "pipeline-tool-adv.ts"})
+	pr4, err := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "pipeline-tool-adv"})
 	require.NoError(t, err)
-	tearCh := make(chan sdk.KitTeardownResp, 1)
-	cancelTear, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, pr4.ReplyTo, func(r sdk.KitTeardownResp, _ sdk.Message) { tearCh <- r })
+	tearCh := make(chan sdk.PackageTeardownResp, 1)
+	cancelTear, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, pr4.ReplyTo, func(r sdk.PackageTeardownResp, _ sdk.Message) { tearCh <- r })
 	defer cancelTear()
 	select {
 	case <-tearCh:

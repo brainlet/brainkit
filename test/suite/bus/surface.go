@@ -30,8 +30,6 @@ func busCommandTable() []cmdTest {
 		{"agents.get-status", sdk.AgentGetStatusMsg{Name: "ghost"}, sdk.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false},
 		{"agents.set-status", sdk.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, sdk.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false},
 		{"agents.discover", sdk.AgentDiscoverMsg{}, sdk.AgentDiscoverMsg{}, "", false},
-		{"kit.list", sdk.KitListMsg{}, sdk.KitListMsg{}, "", false},
-		{"kit.teardown", sdk.KitTeardownMsg{Source: "ghost.ts"}, sdk.KitTeardownMsg{Source: ""}, "", false},
 		{"secrets.set", sdk.SecretsSetMsg{Name: "matrix-k", Value: "v"}, sdk.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false},
 		{"secrets.get", sdk.SecretsGetMsg{Name: "matrix-k"}, sdk.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false},
 		{"secrets.delete", sdk.SecretsDeleteMsg{Name: "ghost"}, sdk.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false},
@@ -107,7 +105,7 @@ func testBusMatrixGarbagePayload(t *testing.T, _ *suite.TestEnv) {
 	topics := []string{
 		"tools.call", "tools.list", "tools.resolve",
 		"agents.list", "agents.get-status", "agents.set-status", "agents.discover",
-		"kit.list", "kit.deploy", "kit.teardown",
+		"package.deploy",
 		"secrets.set", "secrets.get", "secrets.delete", "secrets.list", "secrets.rotate",
 		"registry.has", "registry.list", "registry.resolve",
 		"metrics.get",

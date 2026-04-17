@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,27 +76,44 @@ func DeployErr(rt sdk.Runtime, source, code string) error {
 }
 
 func DeployWithOpts(rt sdk.Runtime, source, code, packageName string) error {
-	payload, err := roundTrip(rt, sdk.KitDeployMsg{
-		Source: source, Code: code, PackageName: packageName,
-	}, 15*time.Second)
+	name := packageName
+	if name == "" {
+		name = strings.TrimSuffix(source, ".ts")
+	}
+	msg := sdk.PackageDeployMsg{
+		Manifest: inlineManifest(name, source),
+		Files:    map[string]string{source: code},
+	}
+	payload, err := roundTrip(rt, msg, 15*time.Second)
 	if err != nil {
 		return err
 	}
-	_, err = decodeResp[sdk.KitDeployResp](payload)
+	_, err = decodeResp[sdk.PackageDeployResp](payload)
 	return err
 }
 
 func DeployWithResources(t *testing.T, rt sdk.Runtime, source, code string) []sdk.ResourceInfo {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.KitDeployMsg{Source: source, Code: code}, 15*time.Second)
+	name := strings.TrimSuffix(source, ".ts")
+	msg := sdk.PackageDeployMsg{
+		Manifest: inlineManifest(name, source),
+		Files:    map[string]string{source: code},
+	}
+	payload, err := roundTrip(rt, msg, 15*time.Second)
 	if err != nil {
 		t.Fatalf("Deploy(%s): %v", source, err)
 	}
-	resp, err := decodeResp[sdk.KitDeployResp](payload)
+	resp, err := decodeResp[sdk.PackageDeployResp](payload)
 	if err != nil {
 		t.Fatalf("Deploy(%s): %v", source, err)
 	}
 	return resp.Resources
+}
+
+func inlineManifest(name, entry string) json.RawMessage {
+	m := map[string]string{"name": name, "entry": entry}
+	raw, _ := json.Marshal(m)
+	return raw
 }
 
 // ── EvalTS ──────────────────────────────────────────────────────────────────
@@ -135,28 +153,29 @@ func SetDraining(t *testing.T, rt sdk.Runtime, draining bool) {
 
 func Teardown(t *testing.T, rt sdk.Runtime, source string) {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.KitTeardownMsg{Source: source}, 10*time.Second)
+	name := strings.TrimSuffix(source, ".ts")
+	payload, err := roundTrip(rt, sdk.PackageTeardownMsg{Name: name}, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Teardown(%s): %v", source, err)
 	}
-	if _, err := decodeResp[sdk.KitTeardownResp](payload); err != nil {
+	if _, err := decodeResp[sdk.PackageTeardownResp](payload); err != nil {
 		t.Fatalf("Teardown(%s): %v", source, err)
 	}
 }
 
 // ── ListDeployments ─────────────────────────────────────────────────────────
 
-func ListDeployments(t *testing.T, rt sdk.Runtime) []sdk.DeploymentInfo {
+func ListDeployments(t *testing.T, rt sdk.Runtime) []sdk.DeployedPackageInfo {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.KitListMsg{}, 10*time.Second)
+	payload, err := roundTrip(rt, sdk.PackageListDeployedMsg{}, 10*time.Second)
 	if err != nil {
 		t.Fatalf("ListDeployments: %v", err)
 	}
-	resp, err := decodeResp[sdk.KitListResp](payload)
+	resp, err := decodeResp[sdk.PackageListDeployedResp](payload)
 	if err != nil {
 		t.Fatalf("ListDeployments: %v", err)
 	}
-	return resp.Deployments
+	return resp.Packages
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────────

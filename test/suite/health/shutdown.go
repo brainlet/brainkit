@@ -17,17 +17,10 @@ func testDrainsBeforeClose(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "slow.ts",
-		Code: `bus.on("slow", async (msg) => {
-			await new Promise(r => setTimeout(r, 500));
-			msg.reply({ done: true });
-		});`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
+	testutil.Deploy(t, env.Kit, "slow.ts", `bus.on("slow", async (msg) => {
+		await new Promise(r => setTimeout(r, 500));
+		msg.reply({ done: true });
+	});`)
 	time.Sleep(100 * time.Millisecond)
 
 	replyCh := make(chan struct{}, 1)
@@ -54,17 +47,10 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "stuck.ts",
-		Code: `bus.on("stuck", async (msg) => {
-			await new Promise(r => setTimeout(r, 10000));
-			msg.reply({ done: true });
-		});`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
+	testutil.Deploy(t, env.Kit, "stuck.ts", `bus.on("stuck", async (msg) => {
+		await new Promise(r => setTimeout(r, 10000));
+		msg.reply({ done: true });
+	});`)
 	time.Sleep(100 * time.Millisecond)
 
 	sdk.SendToService(env.Kit, ctx, "stuck.ts", "stuck", map[string]bool{"x": true})
@@ -94,14 +80,7 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "dropper.ts",
-		Code:   `bus.on("ping", (msg) => { msg.reply({ got: true }); });`,
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
+	testutil.Deploy(t, env.Kit, "dropper.ts", `bus.on("ping", (msg) => { msg.reply({ got: true }); });`)
 	time.Sleep(100 * time.Millisecond)
 
 	testutil.SetDraining(t, env.Kit, true)

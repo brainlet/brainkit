@@ -3,6 +3,7 @@ package stress
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,13 +168,13 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 		// Teardown via bus — non-fatal error handling
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		pr, err := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: "race-stress-target.ts"})
+		pr, err := sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix("race-stress-target.ts", ".ts")})
 		if err != nil {
 			errs <- err
 			return
 		}
 		ch := make(chan error, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+		unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
 			if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
 				ch <- fmt.Errorf("%s", errMsg)
 			} else {
@@ -225,14 +226,14 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			pr, err := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: source})
+			pr, err := sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			if err != nil {
 				cancel()
 				t.Errorf("goroutine %d cycle %d: teardown publish failed: %v", i, cycle, err)
 				continue
 			}
 			ch := make(chan error, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+			unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
 				if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
 					ch <- fmt.Errorf("%s", errMsg)
 				} else {

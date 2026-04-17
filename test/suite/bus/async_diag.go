@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,10 +20,12 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{Source: source, Code: code})
+	name := strings.TrimSuffix(source, ".ts")
+	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": source})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Manifest: manifest, Files: map[string]string{source: code}})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan sdk.PackageDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:

@@ -92,16 +92,17 @@ func testPluginInProcessDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr5, err := sdk.Publish(rt, ctx, sdk.KitDeployMsg{
-		Source: "plugin-created-cross.ts",
-		Code:   `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) }); kit.register("tool", "plugin-tool", t);`,
+	pluginManifest, _ := json.Marshal(map[string]string{"name": "plugin-created-cross", "entry": "plugin-created-cross.ts"})
+	pr5, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+		Manifest: pluginManifest,
+		Files:    map[string]string{"plugin-created-cross.ts": `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) }); kit.register("tool", "plugin-tool", t);`},
 	})
 	require.NoError(t, err)
-	ch5 := make(chan sdk.KitDeployResp, 1)
-	us5, err := sdk.SubscribeTo[sdk.KitDeployResp](rt, ctx, pr5.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch5 <- r })
+	ch5 := make(chan sdk.PackageDeployResp, 1)
+	us5, err := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr5.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch5 <- r })
 	require.NoError(t, err)
 	defer us5()
-	var deployResp sdk.KitDeployResp
+	var deployResp sdk.PackageDeployResp
 	select {
 	case deployResp = <-ch5:
 	case <-ctx.Done():
@@ -109,10 +110,10 @@ func testPluginInProcessDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	}
 	assert.True(t, deployResp.Deployed)
 
-	pr6, err := sdk.Publish(rt, ctx, sdk.KitTeardownMsg{Source: "plugin-created-cross.ts"})
+	pr6, err := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "plugin-created-cross"})
 	require.NoError(t, err)
-	ch6 := make(chan sdk.KitTeardownResp, 1)
-	us6, _ := sdk.SubscribeTo[sdk.KitTeardownResp](rt, ctx, pr6.ReplyTo, func(r sdk.KitTeardownResp, m sdk.Message) { ch6 <- r })
+	ch6 := make(chan sdk.PackageTeardownResp, 1)
+	us6, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, pr6.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { ch6 <- r })
 	defer us6()
 	select {
 	case <-ch6:

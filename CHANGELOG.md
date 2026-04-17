@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+### Session 04 — Bundle A: Package as the only deployment unit
+
+Removes the legacy `kit.deploy` / `kit.teardown` / `kit.list` /
+`kit.redeploy` / `kit.deploy.file` command surface. `package.deploy`
+/ `package.teardown` / `package.list` / `package.info` are now the
+canonical commands. `brainkit.Package` is the single deployment unit.
+
+Added:
+- `brainkit/package.go` — public `Package` type with builders
+  `PackageInline(name, entry, source)`, `PackageFromFile(path)`,
+  `PackageFromDir(dir)`. `(*Kit).Deploy(ctx, pkg)`,
+  `(*Kit).Teardown(ctx, name)`, `(*Kit).Get(ctx, name)`,
+  `(*Kit).List(ctx)` round-trip through the shared-inbox Caller.
+- `PackageDeployMsg` inline path: `Path == ""` + `Files` set skips
+  esbuild bundling and deploys the entry file directly. `Manifest`
+  carries `{name, entry, version, requires}`.
+- `PackageDeployResp.Resources []sdk.ResourceInfo` — parity with the
+  old `KitDeployResp` shape.
+- `PackageDeployDomain` now emits `kit.deployed` /
+  `kit.teardown.done` events + records to the audit recorder,
+  absorbing the former `LifecycleDomain` side effects.
+
+Changed:
+- `testutil.Deploy` / `DeployWithOpts` / `DeployWithResources` build
+  `PackageDeployMsg` internally; signatures unchanged.
+- `testutil.Teardown` / `ListDeployments` switched to
+  `PackageTeardownMsg` / `PackageListDeployedMsg`. `ListDeployments`
+  returns `[]sdk.DeployedPackageInfo`.
+- `PackageDeployDomain.List` reads from the authoritative
+  `DeploymentManager.ListDeployments()` so restored-from-store
+  deployments remain visible.
+- `PackageDeployDomain.Teardown` is idempotent for missing names
+  (returns `Removed:false` with no error) — matches prior
+  `kit.teardown` semantics, fixes deploy/teardown races.
+- `cmd/brainkit/cmd/list.go` uses `PackageListDeployedMsg`.
+- `internal/engine/runtime/test_runtime.js` `deploy` / `deployFile`
+  / per-test teardown hooks publish `package.*` topics.
+
+Removed:
+- `sdk.KitDeployMsg` / `KitDeployResp` / `KitTeardownMsg` /
+  `KitTeardownResp` / `KitListMsg` / `KitListResp` /
+  `KitRedeployMsg` / `KitRedeployResp` / `KitDeployFileMsg` types
+  and their catalog bindings.
+- `internal/engine/handlers_lifecycle.go` (`LifecycleDomain`) —
+  merged into `PackageDeployDomain`.
+
+Kept:
+- `sdk.KitDeployedEvent` / `sdk.KitTeardownedEvent` — events
+  describe what happened and remain the stable propagation + audit
+  subscription surface.
+
 ### Session 03 — Bundle C: `.ts` bus.call / bus.callTo + JS BrainkitError lift
 
 Closes session 03. Adds request-reply from `.ts` handlers and lifts

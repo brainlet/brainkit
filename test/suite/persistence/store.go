@@ -37,15 +37,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, err := sdk.Publish(k1, ctx, sdk.KitDeployMsg{
-		Source: "greeter-persist.ts",
-		Code:   `bus.on("greet", (msg) => { msg.reply({ hello: "world" }); });`,
-	})
-	require.NoError(t, err)
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k1, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
+	testutil.Deploy(t, k1, "greeter-persist.ts", `bus.on("greet", (msg) => { msg.reply({ hello: "world" }); });`)
 
 	// Verify service works
 	time.Sleep(100 * time.Millisecond)
@@ -103,19 +95,10 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{Source: "temp-persist.ts", Code: `bus.on("x", (m) => m.reply({}));`})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	<-deployCh
-	unsub()
+	testutil.Deploy(t, k, "temp-persist.ts", `bus.on("x", (m) => m.reply({}));`)
 
 	// Teardown
-	tpr, _ := sdk.Publish(k, ctx, sdk.KitTeardownMsg{Source: "temp-persist.ts"})
-	tdCh := make(chan struct{}, 1)
-	tunsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](k, ctx, tpr.ReplyTo, func(_ sdk.KitTeardownResp, _ sdk.Message) { tdCh <- struct{}{} })
-	<-tdCh
-	tunsub()
+	testutil.Teardown(t, k, "temp-persist.ts")
 	k.Close()
 
 	// Kernel 2: should have NO deployments
@@ -145,16 +128,8 @@ func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
 	for _, name := range []string{"first-persist.ts", "second-persist.ts", "third-persist.ts"} {
-		pr, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{
-			Source: name,
-			Code:   `bus.on("ping", (m) => m.reply({}));`,
-		})
-		ch := make(chan struct{}, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { ch <- struct{}{} })
-		<-ch
-		unsub()
+		testutil.Deploy(t, k, name, `bus.on("ping", (m) => m.reply({}));`)
 	}
 	k.Close()
 
@@ -187,14 +162,7 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Deploy a working service
-	pr1, _ := sdk.Publish(k, ctx, sdk.KitDeployMsg{
-		Source: "good-persist.ts",
-		Code:   `bus.on("ping", (msg) => { msg.reply({ ok: true }); });`,
-	})
-	ch1 := make(chan struct{}, 1)
-	u1, _ := sdk.SubscribeTo[sdk.KitDeployResp](k, ctx, pr1.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { ch1 <- struct{}{} })
-	<-ch1
-	u1()
+	testutil.Deploy(t, k, "good-persist.ts", `bus.on("ping", (msg) => { msg.reply({ ok: true }); });`)
 
 	// Persist a broken deployment directly into the store
 	store.SaveDeployment(types.PersistedDeployment{
@@ -278,9 +246,14 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	)
 	require.NoError(t, err)
 
-	// Redeploy with new code — metadata should be preserved
-	testutil.Deploy(t, k, "svc-redeploy-persist.ts",
-		`bus.on("v2", (msg) => msg.reply({ v: 2 }));`)
+	// Redeploy with new code — metadata (packageName) is preserved by
+	// passing the same name explicitly. Under the Package-as-unit model,
+	// packageName is part of the deploy request, not metadata inferred
+	// from the source.
+	err = testutil.DeployWithOpts(k, "svc-redeploy-persist.ts",
+		`bus.on("v2", (msg) => msg.reply({ v: 2 }));`,
+		"my-pkg",
+	)
 	require.NoError(t, err)
 
 	// Check store directly

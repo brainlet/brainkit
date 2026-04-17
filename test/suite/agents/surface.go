@@ -21,9 +21,10 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "surface-ai-gen-adv.ts",
-		Code: `
+	manifest1, _ := json.Marshal(map[string]string{"name": "surface-ai-gen-adv", "entry": "surface-ai-gen-adv.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest1,
+		Files: map[string]string{"surface-ai-gen-adv.ts": `
 			const result = await generateText({
 				model: model("openai", "gpt-4o-mini"),
 				prompt: "What is 2+2? Reply with just the number.",
@@ -34,12 +35,12 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 				hasUsage: !!result.usage,
 				finishReason: result.finishReason,
 			});
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
+	ch := make(chan sdk.PackageDeployResp, 1)
 	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r; mch <- m })
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -57,7 +58,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, parsed["text"], "4", "should contain the answer 4")
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-ai-gen-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "surface-ai-gen-adv"})
 }
 
 // testSurfaceAgentGenerate — deploy agent, call generate, verify response.
@@ -68,9 +69,10 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "surface-gen-agent-adv.ts",
-		Code: `
+	manifest2, _ := json.Marshal(map[string]string{"name": "surface-gen-agent-adv", "entry": "surface-gen-agent-adv.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest2,
+		Files: map[string]string{"surface-gen-agent-adv.ts": `
 			const myAgent = new Agent({
 				name: "surface-gen-agent-adv",
 				model: model("openai", "gpt-4o-mini"),
@@ -83,12 +85,12 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 				text: result.text,
 				hasUsage: !!result.usage,
 			});
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
+	ch := make(chan sdk.PackageDeployResp, 1)
 	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r; mch <- m })
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -124,7 +126,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout listing agents")
 	}
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "surface-gen-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "surface-gen-agent-adv"})
 }
 
 // testSurfaceAgentWithTool — deploy agent with a tool, call generate, verify steps.
@@ -191,9 +193,10 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "ai-svc-agent-adv.ts",
-		Code: `
+	manifest3, _ := json.Marshal(map[string]string{"name": "ai-svc-agent-adv", "entry": "ai-svc-agent-adv.ts"})
+	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: manifest3,
+		Files: map[string]string{"ai-svc-agent-adv.ts": `
 			bus.on("generate", async (msg) => {
 				try {
 					var prompt = (msg.payload && msg.payload.prompt) || "say hello";
@@ -207,12 +210,12 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 					msg.reply({ error: e.message || String(e) });
 				}
 			});
-		`,
+		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.KitDeployResp, 1)
+	ch := make(chan sdk.PackageDeployResp, 1)
 	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.KitDeployResp, m sdk.Message) { ch <- r; mch <- m })
+	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -253,5 +256,5 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 		t.Fatal("timeout waiting for AI service reply")
 	}
 
-	sdk.Publish(env.Kit, ctx, sdk.KitTeardownMsg{Source: "ai-svc-agent-adv.ts"})
+	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "ai-svc-agent-adv"})
 }

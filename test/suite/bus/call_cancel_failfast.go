@@ -104,12 +104,13 @@ func testExhaustedEventCarriesCorrelationId(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(exEnv.Kit, ctx, sdk.KitDeployMsg{
-		Source: "exhaust-cid.ts",
-		Code:   `bus.on("fail", (msg) => { throw new Error("cid exhaust"); });`,
+	exhaustManifest, _ := json.Marshal(map[string]string{"name": "exhaust-cid", "entry": "exhaust-cid.ts"})
+	pr, _ := sdk.Publish(exEnv.Kit, ctx, sdk.PackageDeployMsg{
+		Manifest: exhaustManifest,
+		Files:    map[string]string{"exhaust-cid.ts": `bus.on("fail", (msg) => { throw new Error("cid exhaust"); });`},
 	})
 	deployCh := make(chan struct{}, 1)
-	dUnsub, _ := sdk.SubscribeTo[sdk.KitDeployResp](exEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
+	dUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](exEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.PackageDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	dUnsub()
 	time.Sleep(100 * time.Millisecond)

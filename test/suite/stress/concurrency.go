@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -47,10 +48,10 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, sdk.KitTeardownMsg{Source: source})
+			pr, err := sdk.Publish(tk, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			if err == nil {
 				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, _ sdk.Message) {
+				unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, _ sdk.Message) {
 					ch <- struct{}{}
 				})
 				select {
@@ -167,12 +168,12 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, sdk.KitTeardownMsg{Source: src})
+			pr, err := sdk.Publish(tk, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
 			if err != nil {
 				return
 			}
 			ch := make(chan bool, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.KitTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.KitTeardownResp, msg sdk.Message) {
+			unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
 				ch <- suite.ResponseErrorMessage(msg.Payload) == ""
 			})
 			select {
@@ -404,7 +405,7 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 				testutil.DeployErr(tk, src, `output("churn-stress");`)
 				// Teardown via bus — fire and forget
 				sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
+				sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
 				cancel()
 				i++
 			}

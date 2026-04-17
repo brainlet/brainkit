@@ -16,13 +16,10 @@ func testPumpScheduleLatency(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitDeployMsg{
-		Source: "latency-test.ts",
-		Code:   `bus.on("ping", (msg) => { msg.reply({ pong: true }); });`,
-	})
+	pr, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("latency-test.ts", `bus.on("ping", (msg) => { msg.reply({ pong: true }); });`))
 	require.NoError(t, err)
 	deployCh := make(chan struct{}, 1)
-	unsub, err := sdk.SubscribeTo[sdk.KitDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.KitDeployResp, _ sdk.Message) {
+	unsub, err := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(_ sdk.PackageDeployResp, _ sdk.Message) {
 		deployCh <- struct{}{}
 	})
 	require.NoError(t, err)

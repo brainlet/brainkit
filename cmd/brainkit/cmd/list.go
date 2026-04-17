@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/brainlet/brainkit/sdk"
@@ -14,13 +13,12 @@ func newListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List active deployments",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return connectAndPublish(cmd, sdk.KitListMsg{},
-				func(resp *sdk.KitListResp) {
+			return connectAndPublish(cmd, sdk.PackageListDeployedMsg{},
+				func(resp *sdk.PackageListDeployedResp) {
 					tw := tabwriter.NewWriter(w(cmd), 0, 0, 2, ' ', 0)
-					fmt.Fprintln(tw, "SOURCE\tCREATED\tRESOURCES")
-					for _, d := range resp.Deployments {
-						name := strings.TrimSuffix(d.Source, ".ts")
-						fmt.Fprintf(tw, "%s\t%s\t%d resources\n", name, d.CreatedAt, len(d.Resources))
+					fmt.Fprintln(tw, "NAME\tVERSION\tSOURCE\tSTATUS")
+					for _, p := range resp.Packages {
+						fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Name, p.Version, p.Source, p.Status)
 					}
 					tw.Flush()
 				},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -49,7 +50,7 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: fmt.Sprintf("stress-100-%d.ts", i)})
+		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: fmt.Sprintf("stress-100-%d", i)})
 		cancel()
 	}
 }
@@ -174,7 +175,7 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 			src := fmt.Sprintf("stress-parallel-deploy-%d.ts", i)
 			testutil.DeployErr(tk, src, `output("stress-parallel");`)
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			sdk.Publish(tk, sctx, sdk.KitTeardownMsg{Source: src})
+			sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
 			cancel()
 		}
 	}()
