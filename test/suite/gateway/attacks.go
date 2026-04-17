@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	bkgw "github.com/brainlet/brainkit/gateway"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -150,7 +150,7 @@ func testAttackSSEClientDisconnect(t *testing.T, env *suite.TestEnv) {
 // testAttackCORSBypass — CORS bypass with origin not in allowlist.
 func testAttackCORSBypass(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 		CORS: &bkgw.CORSConfig{
@@ -159,7 +159,7 @@ func testAttackCORSBypass(t *testing.T, env *suite.TestEnv) {
 			AllowHeaders: []string{"Content-Type"},
 		},
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	defer gw.Stop()
 
 	testutil.Deploy(t, k, "gw-cors.ts", `bus.on("api", function(msg) { msg.reply({ok:true}); });`)

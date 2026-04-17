@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	bkgw "github.com/brainlet/brainkit/gateway"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -181,7 +181,8 @@ func testPathParams(t *testing.T, _ *suite.TestEnv) {
 
 func testRouteTable(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kit, bkgw.Config{Listen: "127.0.0.1:0"})
+	gw := bkgw.New(bkgw.Config{Listen: "127.0.0.1:0"})
+	gw.SetRuntime(env.Kit)
 
 	gw.Handle("POST", "/api/chat", "gateway.chat", bkgw.OwnedBy("chat.ts"))
 	gw.HandleStream("GET", "/api/stream", "gateway.stream", bkgw.OwnedBy("chat.ts"))
@@ -402,7 +403,8 @@ func testErrorResponse500(t *testing.T, _ *suite.TestEnv) {
 
 func testRouteReplacement(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kit, bkgw.Config{Listen: "127.0.0.1:0"})
+	gw := bkgw.New(bkgw.Config{Listen: "127.0.0.1:0"})
+	gw.SetRuntime(env.Kit)
 
 	gw.Handle("POST", "/api/chat", "topic.v1", bkgw.OwnedBy("v1.ts"))
 	routes := gw.ListRoutes()
@@ -514,7 +516,7 @@ func testWebSocket(t *testing.T, _ *suite.TestEnv) {
 
 func testRateLimiting(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t)
-	gw := bkgw.New(env.Kit, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:   ":0",
 		NoHealth: true,
 		RateLimit: &bkgw.RateLimitConfig{
@@ -523,7 +525,7 @@ func testRateLimiting(t *testing.T, _ *suite.TestEnv) {
 		},
 	})
 	gw.HandleWebhook("POST", "/test", "gateway.ratelimit.test")
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(env.Kit))
 	defer gw.Stop()
 
 	url := "http://" + gw.Addr() + "/test"

@@ -119,8 +119,10 @@ type Gateway struct {
 	sweepCancel context.CancelFunc
 }
 
-// New creates an HTTP gateway.
-func New(rt sdk.Runtime, cfg Config) *Gateway {
+// New creates an HTTP gateway module. Pass the returned *Gateway to
+// brainkit.Config.Modules; Init captures the Kit as the runtime and calls
+// Start. For standalone use, call SetRuntime(rt) before Start.
+func New(cfg Config) *Gateway {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 30 * time.Second
 	}
@@ -132,13 +134,18 @@ func New(rt sdk.Runtime, cfg Config) *Gateway {
 		logger = slog.Default()
 	}
 	return &Gateway{
-		rt:           rt,
 		config:       cfg,
 		logger:       logger,
 		streamConfig: cfg.Stream.withDefaults(),
 		routes:       newRouteTable(),
 		sessions:     make(map[string]*streamSession),
 	}
+}
+
+// SetRuntime wires the Runtime the gateway uses to dispatch bus commands.
+// Init calls this automatically; standalone users set it before Start.
+func (gw *Gateway) SetRuntime(rt sdk.Runtime) {
+	gw.rt = rt
 }
 
 // Handle registers a request/response route.
@@ -194,6 +201,9 @@ func (gw *Gateway) ListRoutes() []RouteInfo {
 
 // Start begins listening for HTTP connections and subscribes to bus route commands.
 func (gw *Gateway) Start() error {
+	if gw.rt == nil {
+		return fmt.Errorf("gateway: runtime not set — call SetRuntime or add the module to brainkit.Config.Modules")
+	}
 	mux := http.NewServeMux()
 	if !gw.config.NoHealth {
 		registerHealthRoutes(mux, gw.rt)

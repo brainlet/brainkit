@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	bkgw "github.com/brainlet/brainkit/gateway"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -294,7 +294,7 @@ func testStreamGatewayShutdown(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	gw := bkgw.New(k.Kit, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  "127.0.0.1:0",
 		Timeout: 5 * time.Second,
 		Stream: &bkgw.StreamConfig{
@@ -305,7 +305,7 @@ func testStreamGatewayShutdown(t *testing.T, env *suite.TestEnv) {
 			GracePeriod:       5 * time.Second,
 		},
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k.Kit))
 	addr := "http://" + gw.Addr()
 	gw.HandleStream("GET", "/api/shutdown", "ts.shutdown-test.stream")
 

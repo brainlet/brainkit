@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	bkgw "github.com/brainlet/brainkit/gateway"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,11 +17,11 @@ import (
 // secGateway creates a gateway with short timeout for security tests.
 func secGateway(t *testing.T, env *suite.TestEnv) *bkgw.Gateway {
 	t.Helper()
-	gw := bkgw.New(env.Kit, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(env.Kit))
 	t.Cleanup(func() { gw.Stop() })
 	return gw
 }
@@ -40,11 +40,11 @@ func secGwPost(t *testing.T, gw *bkgw.Gateway, path, body string) (int, string) 
 // testGatewayHeaderInjection — inject headers to forge callerID.
 func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	defer gw.Stop()
 
 	secDeploy(t, k, "gw-header-sec.ts", `
@@ -71,11 +71,11 @@ func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
 // testGatewayProtoPollutionViaHTTP — request body with __proto__ pollution.
 func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	defer gw.Stop()
 
 	secDeploy(t, k, "gw-proto-sec.ts", `
@@ -98,11 +98,11 @@ func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 // testGatewayPathTraversalParams — path traversal in URL parameters.
 func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	defer gw.Stop()
 
 	secDeploy(t, k, "gw-params-sec.ts", `
@@ -135,11 +135,11 @@ func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
 // testGatewayWebSocketInjection — WebSocket message injection.
 func testGatewayWebSocketInjection(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	defer gw.Stop()
 
 	ctx := context.Background()

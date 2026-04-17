@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Session 05 Checkpoint 2 — modules/gateway
+
+Second module extracted into `modules/`. Gateway now satisfies
+`brainkit.Module` directly — no adapter layer.
+
+Added:
+- `modules/gateway/module.go` — `(*Gateway).Name / Init / Close` methods
+  on the existing `Gateway` type. `Init(k *Kit)` sets the runtime and
+  calls `Start`; `Close` calls `Stop`. `Status()` reports
+  `brainkit.ModuleStatusStable`.
+- `(*Gateway).SetRuntime(rt)` — standalone users (no Kit) set the
+  runtime before `Start`. `Init` uses this internally.
+
+Changed:
+- `gateway.New(cfg)` — drops the `rt sdk.Runtime` parameter. The
+  Runtime is wired via `Init` (module path) or `SetRuntime`
+  (standalone path).
+- `gateway/` moved to `modules/gateway/` (11 files, history preserved
+  via `git mv`).
+- All gateway test callers migrated:
+  - `bkgw.New(k, cfg); gw.Start()` → `bkgw.New(cfg); gw.Init(k)`
+  - Two route-table-only tests (`testRouteTable`,
+    `testRouteReplacement`) use `SetRuntime` without Start because
+    they don't serve HTTP.
+
 ### Session 05 Checkpoint 1 — modules/mcp
 
 First module extracted from `internal/engine` into a standalone package under

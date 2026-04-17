@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	bkgw "github.com/brainlet/brainkit/gateway"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
@@ -96,8 +96,8 @@ func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.G
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	gw := bkgw.New(k, cfg)
-	require.NoError(t, gw.Start())
+	gw := bkgw.New(cfg)
+	require.NoError(t, gw.Init(k))
 	t.Cleanup(func() { gw.Stop() })
 	addr := "http://" + gw.Addr()
 	gwWaitReady(t, addr)
@@ -107,12 +107,12 @@ func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.G
 // gwStartWithStream starts a gateway with streaming configuration.
 func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConfig) (*bkgw.Gateway, string) {
 	t.Helper()
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  "127.0.0.1:0",
 		Timeout: 5 * time.Second,
 		Stream:  streamCfg,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	t.Cleanup(func() { gw.Stop() })
 	addr := "http://" + gw.Addr()
 	gwWaitReady(t, addr)
@@ -122,11 +122,11 @@ func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConf
 // gwSetup creates a simple gateway with short timeout for adversarial tests.
 func gwSetup(t *testing.T, k *brainkit.Kit) *bkgw.Gateway {
 	t.Helper()
-	gw := bkgw.New(k, bkgw.Config{
+	gw := bkgw.New(bkgw.Config{
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Start())
+	require.NoError(t, gw.Init(k))
 	t.Cleanup(func() { gw.Stop() })
 	gwWaitReady(t, "http://"+gw.Addr())
 	return gw
