@@ -1,6 +1,7 @@
 package brainkit
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
 
@@ -88,6 +89,24 @@ type Config struct {
 	// Modules are optional subsystems that extend the kernel with additional commands.
 	// See brainkit.NewMCPModule() for an example.
 	Modules []Module
+
+	// Audio plays audio bytes from `.ts` agent code that calls
+	// `new Audio(stream).play()`. Nil = silent (the polyfill is
+	// always installed so portable agent code runs unchanged on
+	// headless / server kits). For desktop playback, import
+	// brainkit/audio/local and pass `local.New()`.
+	Audio AudioSink
+}
+
+// AudioSink is the host-side player wired into the Audio
+// polyfill. Implementations live in brainkit/audio/* — desktop
+// (oto), bus, and HTTP/WebSocket sinks fan out the same
+// interface so agent code stays portable.
+//
+// The interface mirrors jsbridge.AudioSink; an alias here so
+// public callers don't need to import the internal package.
+type AudioSink interface {
+	Play(ctx context.Context, audio []byte, mime string) error
 }
 
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
@@ -108,6 +127,10 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		RetryPolicies:  c.RetryPolicies,
 		Logger:         c.Logger,
 		LogHandler:     c.LogHandler,
+	}
+
+	if c.Audio != nil {
+		cfg.AudioSink = c.Audio
 	}
 
 	// Convert []ProviderConfig → map[string]AIProviderRegistration

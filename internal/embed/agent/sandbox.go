@@ -36,6 +36,12 @@ type SandboxConfig struct {
 
 	// CWD is the workspace root for the fs polyfill. Empty = fs operations throw.
 	CWD string
+
+	// AudioSink wires the host-side player for the Audio
+	// polyfill. Nil = jsbridge.NullSink (silent no-op) so
+	// portable agent code calling `new Audio(stream).play()`
+	// doesn't crash on headless kits.
+	AudioSink jsbridge.AudioSink
 }
 
 // Sandbox is an isolated execution environment with its own QuickJS runtime.
@@ -99,6 +105,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.FS(cfg.CWD),      // complete Node.js fs module (workspace-scoped)
 		jsbridge.Exec(cfg.CWD),    // child_process.exec, spawn — rebased under CWD/FSRoot
 		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
+		jsbridge.Audio(jsbridge.AudioWithSink(cfg.AudioSink)), // web-standard Audio class — silent without sink
 	)
 	if err != nil {
 		return nil, fmt.Errorf("agent-embed: create bridge: %w", err)

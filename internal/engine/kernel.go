@@ -206,11 +206,20 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		return nil, err
 	}
 
+	var audioSink jsbridge.AudioSink
+	if cfg.AudioSink != nil {
+		if s, ok := cfg.AudioSink.(jsbridge.AudioSink); ok {
+			audioSink = s
+		} else {
+			return fail(fmt.Errorf("brainkit: AudioSink does not implement jsbridge.AudioSink"))
+		}
+	}
 	agentSandbox, err := agentembed.NewSandbox(agentembed.SandboxConfig{
 		Providers:    providers,
 		EnvVars:      cfg.EnvVars,
 		MaxStackSize: cfg.MaxStackSize,
 		CWD:          cfg.FSRoot,
+		AudioSink:    audioSink,
 		FetchSpanHook: func(method, url string) func(int, error) {
 			// Lazy reference — tracer is initialized after sandbox creation
 			if kernel.tracer == nil {

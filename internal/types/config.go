@@ -54,6 +54,11 @@ type KernelConfig struct {
 	MaxConcurrency     int
 	ProviderKeyMapping map[string]string
 	Modules            []any // engine.Module — uses any to avoid import cycle
+
+	// AudioSink wires the host-side player for the Audio
+	// polyfill (jsbridge.AudioSink). nil = silent. Held as
+	// any to keep this types package free of jsbridge.
+	AudioSink any
 }
 
 // ObservabilityConfig configures the tracing/observability system.

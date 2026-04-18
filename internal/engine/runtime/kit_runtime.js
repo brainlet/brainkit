@@ -326,6 +326,7 @@
       FormData: globalThis.FormData,
       Blob: globalThis.Blob,
       File: globalThis.File,
+      Audio: globalThis.Audio,
       URL: globalThis.URL,
       URLSearchParams: globalThis.URLSearchParams,
       AbortController: globalThis.AbortController,
