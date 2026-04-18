@@ -1,30 +1,53 @@
-// Package brainkit is an embeddable runtime for AI agent teams.
+// Package brainkit is an embeddable runtime for AI agent teams. It
+// combines an in-process JS/TS compartment (QuickJS + SES) with a
+// typed pub/sub bus (Watermill), exposes the result as [Kit], and
+// lets you compose opt-in subsystems through [Module].
 //
-// Create a runtime with [New]. Interact through typed async messages
-// using [sdk.Publish] and [sdk.SubscribeTo]:
+// # Two entry points
 //
-//	kit, _ := brainkit.New(brainkit.Config{
+// Library mode — embed a Kit inside your Go service:
+//
+//	kit, err := brainkit.New(brainkit.Config{
 //	    Namespace: "myapp",
-//	    Storages: map[string]brainkit.StorageConfig{
-//	        "default": brainkit.SQLiteStorage("./data/app.db"),
-//	    },
+//	    Transport: brainkit.EmbeddedNATS(),
 //	    Providers: []brainkit.ProviderConfig{
 //	        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
 //	    },
 //	})
 //	defer kit.Close()
 //
-//	// Deploy a package (async)
-//	pr, _ := sdk.PublishPackageDeploy(kit, ctx, messages.PackageDeployMsg{
-//	    Path: "./agents/support.ts",
-//	})
-//	sdk.SubscribePackageDeployResp(kit, ctx, pr.ReplyTo,
-//	    func(resp messages.PackageDeployResp, msg messages.Message) {
-//	        fmt.Println("Deployed:", resp.Name)
-//	    },
+// Service mode — run brainkit as a long-lived server, composed from
+// the standard module set (gateway, probes, tracing, audit):
+//
+//	srv, _ := server.QuickStart("my-app", "/var/brainkit")
+//	defer srv.Close()
+//	_ = srv.Start(ctx)
+//
+// Full server composition lives in the sibling server package.
+//
+// # Interaction model
+//
+// Every feature is a typed bus command. Deploy packages, schedule
+// messages, manage secrets, call AI providers, talk to plugins —
+// each goes through [sdk.Publish] / [sdk.SubscribeTo] or the
+// typed-generic [Call] / [CallStream] helpers.
+//
+//	resp, err := brainkit.Call[sdk.PackageDeployMsg, sdk.PackageDeployResp](
+//	    kit, ctx, sdk.PackageDeployMsg{Path: "./agents/support"},
 //	)
 //
-// Every feature is a typed bus command — deploy packages, manage providers,
-// schedule messages, manage secrets, control plugins. The SDK generates
-// type-safe Publish/Subscribe wrappers for every command.
+// # Accessors
+//
+// Provider, storage, vector, and secret management consolidate
+// behind narrow accessors that cache a single instance per Kit:
+//
+//	kit.Providers().Register("openai", "openai", cfg)
+//	kit.Secrets().Set(ctx, "API_KEY", "…")
+//
+// # Modules
+//
+// Opt-in subsystems implement [Module]. The standard set lives under
+// modules/*: gateway, mcp, plugins, schedules, audit, tracing,
+// probes, discovery, topology, workflow, harness. Pass instances in
+// [Config.Modules] or rely on server mode's curated defaults.
 package brainkit

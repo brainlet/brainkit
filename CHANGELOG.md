@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Session 12 Bundle A partial — docs pass 1
+
+Root-level documentation pass. Full session-12 scope (bus-topics
+generator, examples directory, benchmarks, final audit) deferred.
+
+Added:
+- `README.md` — hero paragraph, library vs service mode snippets,
+  "Is this for me?" table, module maturity catalog, design-doc
+  pointer.
+- `modules/discovery/doc.go`, `modules/gateway/doc.go`,
+  `modules/mcp/doc.go`, `modules/probes/doc.go`,
+  `modules/tracing/doc.go`, `modules/workflow/doc.go` — package
+  overviews that identify the module's entry points and maturity.
+
+Changed:
+- `doc.go` (root) — rewritten around the library-vs-service
+  framing; introduces accessors and the module composition pattern.
+
 ### Session 11 Bundle B partial — `brainkit new server` scaffolder
 
 Thin additive CLI delivery that exercises the session-11 Bundle A
