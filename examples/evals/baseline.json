@@ -1,0 +1,9 @@
+{
+  "_description": "Baseline for the evals CI gate. Average scores from runEvals + a hand-picked dataset. A run whose averages drop by more than tolerance_percent fails evals-check.",
+  "_tolerance_percent": 25,
+  "_notes": "25% tolerance accommodates LLM judge jitter. Scorer outputs vary between runs on the same dataset — design for 'is the agent still roughly as good as the last baseline' not 'identical'. Keys match Mastra's prebuilt scorer ids verbatim: answer-relevancy-scorer, completeness-scorer.",
+  "scores": {
+    "answer-relevancy-scorer": 0.85,
+    "completeness-scorer":     0.40
+  }
+}

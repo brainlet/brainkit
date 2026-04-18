@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime bench-save bench-check docs-bus-topics examples clean
+.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean
 
 # Default: build the CLI binary
 all: brainkit
@@ -75,6 +75,16 @@ bench-save:
 bench-check:
 	go run scripts/bench-compare.go test/bench/baseline.json test/bench/latest.json
 
+# Eval regression gate. `evals-save` captures latest averages
+# into examples/evals/latest.json; `evals-check` compares to
+# baseline.json and exits non-zero on a regression beyond
+# tolerance_percent. Requires OPENAI_API_KEY.
+evals-save:
+	go run ./examples/evals -save
+
+evals-check:
+	go run ./examples/evals -check
+
 # Regenerate docs/bus-topics.md from sdk/*_messages.go.
 docs-bus-topics:
 	go run scripts/gen-bus-topics.go
@@ -92,6 +102,7 @@ examples:
 	go build -o bin/ai-chat         ./examples/ai-chat
 	go build -o bin/cross-kit       ./examples/cross-kit
 	go build -o bin/custom-scorer   ./examples/custom-scorer
+	go build -o bin/evals           ./examples/evals
 	go build -o bin/hello-embedded  ./examples/hello-embedded
 	go build -o bin/hello-server    ./examples/hello-server
 	go build -o bin/multi-kit       ./examples/multi-kit
