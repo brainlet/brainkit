@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Session 12 Bundle C partial — envelope benchmarks
+
+Wire-format cost coverage. Every reply on the Caller path traverses
+the envelope encode/decode pair, so the round-trip bench is a
+load-bearing baseline.
+
+Added:
+- `test/bench/envelope_test.go`:
+  - `BenchmarkEnvelopeEncode` — EncodeEnvelope alone.
+  - `BenchmarkEnvelopeDecode` — DecodeEnvelope against a
+    pre-encoded payload.
+  - `BenchmarkEnvelopeRoundTrip` — combined cost per reply.
+
 ### Session 12 Bundle C partial — Makefile targets
 
 Plan's `make docs-bus-topics`, `make examples`, `make bench` targets
