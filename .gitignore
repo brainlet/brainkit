@@ -21,3 +21,9 @@ internal/docs/*
 playground
 
 bin/**.go binary
+
+# Runtime state produced by examples / ad-hoc runs
+/nats-data/
+/kit.db
+/audit.db
+/data/
