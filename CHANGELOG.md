@@ -90,6 +90,44 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### plans-02 session 04 — Example: workspace-agent + polyfill fixes
+
+New runnable `examples/workspace-agent/` — a coding agent with
+four explicit tools (read / write / list / exec) that reads and
+writes real files on disk and runs shell commands, all
+sandboxed under the Kit's `FSRoot`.
+
+Live-verified: agent reads `sample.ts`, writes `TODO.md` with
+extracted TODO comments, runs `wc -l sample.ts` via
+`child_process.exec`, writes `13` into `COUNT.txt`.
+
+Shipped alongside real infra fixes the workspace integration
+surfaced:
+
+- `internal/jsbridge/fs.go` — mirror every `fs.promises.<name>`
+  as `fs.<name>` on `globalThis.fs`. Matches Node's dual
+  callback + promise shape.
+- `internal/embed/agent/bundle/build.mjs` — `fs` + `fs/promises`
+  stubs probe `globalThis.fs.<name>` before falling back to
+  `throwFn`. Every async method Mastra imports now resolves.
+  Bundle + bytecode rebuilt per CLAUDE.md 3-step protocol.
+- `internal/jsbridge/exec.go` — `Exec(root)` factory; relative
+  `cwd` on spawn/exec is now rebased under the supplied root
+  (matches `FSPolyfill.resolve`). Closes the escape-the-sandbox
+  class of bug.
+- `internal/embed/agent/sandbox.go` — threads `cfg.CWD` into
+  the exec polyfill.
+
+Added:
+- `examples/workspace-agent/main.go` + `README.md`.
+
+Changed:
+- Polyfill files above.
+- `internal/embed/agent/bundle/agent_embed_bundle.js` + `.bc`
+  regenerated.
+- `examples/README.md` — new row.
+- `Makefile` — `bin/workspace-agent` target.
+
 ### plans-02 session 01 — Example: guardrails (input processors)
 
 New runnable `examples/guardrails/` — three Mastra Agents, each

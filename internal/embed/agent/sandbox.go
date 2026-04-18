@@ -97,7 +97,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.Zlib(),           // zlib.inflate/deflate, gzip — must be after Buffer
 		jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
 		jsbridge.FS(cfg.CWD),      // complete Node.js fs module (workspace-scoped)
-		jsbridge.Exec(),           // child_process.exec, spawn
+		jsbridge.Exec(cfg.CWD),    // child_process.exec, spawn — rebased under CWD/FSRoot
 		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
 	)
 	if err != nil {

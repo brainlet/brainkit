@@ -29,3 +29,4 @@ from the repo root.
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
 | [working-memory](./working-memory/) | Multi-turn agent with `Memory` — remembers names across turns on the same thread; different threads are isolated |
 | [workflows](./workflows/) | Declarative 3-step pipeline through `modules/workflow` (`createStep` + `createWorkflow`) |
+| [workspace-agent](./workspace-agent/) | Coding agent — reads/writes real files + runs shell commands through brainkit's `fs` + `exec` polyfills, sandboxed under `FSRoot` |

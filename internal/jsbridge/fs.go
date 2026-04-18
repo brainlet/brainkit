@@ -2339,5 +2339,34 @@ const fsSetupJS = `
     Stats: Stats,
     Dirent: Dirent,
   };
+
+  // ─── Top-level async methods ────────────────────────────────
+  // Modern Node code frequently calls the promise-returning
+  // variants on the top-level fs module (e.g. Mastra's
+  // LocalFilesystem.init calls ` + "`await fs.mkdir(path, {recursive: true})`" + `).
+  // Node supports this alongside the legacy callback form; the
+  // brainkit polyfill now mirrors every ` + "`fs.promises.<name>`" + `
+  // as ` + "`fs.<name>`" + ` so bundled libraries resolve either way.
+  globalThis.fs.readFile = promises.readFile;
+  globalThis.fs.writeFile = promises.writeFile;
+  globalThis.fs.appendFile = promises.appendFile;
+  globalThis.fs.readdir = promises.readdir;
+  globalThis.fs.stat = promises.stat;
+  globalThis.fs.lstat = promises.lstat;
+  globalThis.fs.access = promises.access;
+  globalThis.fs.mkdir = promises.mkdir;
+  globalThis.fs.mkdtemp = promises.mkdtemp;
+  globalThis.fs.rmdir = promises.rmdir;
+  globalThis.fs.rm = promises.rm;
+  globalThis.fs.unlink = promises.unlink;
+  globalThis.fs.rename = promises.rename;
+  globalThis.fs.copyFile = promises.copyFile;
+  globalThis.fs.realpath = promises.realpath;
+  globalThis.fs.symlink = promises.symlink;
+  globalThis.fs.readlink = promises.readlink;
+  globalThis.fs.chmod = promises.chmod;
+  globalThis.fs.chown = promises.chown;
+  globalThis.fs.truncate = promises.truncate;
+  globalThis.fs.utimes = promises.utimes;
 })();
 `

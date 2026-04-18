@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"github.com/brainlet/brainkit/internal/syncx"
@@ -30,13 +31,45 @@ type ExecPolyfill struct {
 	nextID int
 	procs  map[int]*spawnedProcess
 	bridge *Bridge
+	// root is the Kit FSRoot — relative cwds on spawn / exec
+	// rebase under it so a sandboxed workspace can't escape the
+	// Kit's filesystem boundary.
+	root string
 }
 
 func (p *ExecPolyfill) SetBridge(b *Bridge) { p.bridge = b }
 
-// Exec creates a child process execution polyfill.
-func Exec() *ExecPolyfill {
-	return &ExecPolyfill{procs: map[int]*spawnedProcess{}, nextID: 1}
+// SetRoot attaches the Kit FSRoot so relative `cwd` args on
+// spawn/exec are rebased under it (matching the fs polyfill).
+func (p *ExecPolyfill) SetRoot(root string) { p.root = root }
+
+// Exec creates a child process execution polyfill. Optional
+// root arg = Kit FSRoot; relative `cwd` args on spawn / exec
+// rebase under it (LocalSandbox-style isolation). Pass no arg
+// to leave cwd paths untouched.
+func Exec(root ...string) *ExecPolyfill {
+	p := &ExecPolyfill{procs: map[int]*spawnedProcess{}, nextID: 1}
+	if len(root) > 0 {
+		p.root = root[0]
+	}
+	return p
+}
+
+// resolveCwd rebases a user-supplied cwd under the Kit FSRoot.
+// Absolute paths pass through unchanged. Empty cwd defaults to
+// the FSRoot itself. When no root is configured, the cwd is
+// returned verbatim (dev-mode behavior).
+func (p *ExecPolyfill) resolveCwd(cwd string) string {
+	if p.root == "" {
+		return cwd
+	}
+	if cwd == "" {
+		return p.root
+	}
+	if filepath.IsAbs(cwd) {
+		return cwd
+	}
+	return filepath.Join(p.root, cwd)
 }
 
 func (p *ExecPolyfill) Name() string { return "exec" }
@@ -50,6 +83,14 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 		}
 		command := args[0].ToString()
 
+		// Optional cwd as 2nd arg. When set, rebase under FSRoot.
+		cwd := ""
+		if len(args) >= 2 {
+			cwd = p.resolveCwd(args[1].ToString())
+		} else if p.root != "" {
+			cwd = p.root
+		}
+
 		return ctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 			polyfill := p
 			polyfill.bridge.Go(func(goCtx context.Context) {
@@ -58,6 +99,9 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 					cmd = exec.Command("cmd", "/C", command)
 				} else {
 					cmd = exec.Command("sh", "-c", command)
+				}
+				if cwd != "" {
+					cmd.Dir = cwd
 				}
 
 				var stdoutBuf, stderrBuf strings.Builder
@@ -109,9 +153,15 @@ func (p *ExecPolyfill) Setup(ctx *quickjs.Context) error {
 
 		cmd := exec.Command(command, cmdArgs...)
 
-		// Set up cwd if provided as 3rd arg
-		if len(args) >= 3 && args[2].ToString() != "" {
-			cmd.Dir = args[2].ToString()
+		// Set up cwd if provided as 3rd arg — rebased under
+		// the Kit FSRoot so relative paths can't escape the
+		// sandbox.
+		if len(args) >= 3 {
+			if resolved := p.resolveCwd(args[2].ToString()); resolved != "" {
+				cmd.Dir = resolved
+			}
+		} else if p.root != "" {
+			cmd.Dir = p.root
 		}
 
 		stdoutPipe, err := cmd.StdoutPipe()

@@ -180,42 +180,62 @@ const moduleStubs = {
     var F = globalThis.fs || {};
     export var readFile = F.readFile || ${throwFn("fs.readFile")};
     export var writeFile = F.writeFile || ${throwFn("fs.writeFile")};
+    export var appendFile = F.appendFile || ${throwFn("fs.appendFile")};
     export var readdir = F.readdir || ${throwFn("fs.readdir")};
     export var stat = F.stat || ${throwFn("fs.stat")};
+    export var lstat = F.lstat || ${throwFn("fs.lstat")};
+    export var access = F.access || ${throwFn("fs.access")};
     export var mkdir = F.mkdir || ${throwFn("fs.mkdir")};
     export var unlink = F.unlink || ${throwFn("fs.unlink")};
     export var rm = F.rm || ${throwFn("fs.rm")};
-    export var readFileSync = ${throwFn("fs.readFileSync")};
-    export var writeFileSync = ${throwFn("fs.writeFileSync")};
-    export var existsSync = function() { return false; };
-    export var realpathSync = function(p) { return p; };
-    export var mkdirSync = ${throwFn("fs.mkdirSync")};
-    export var renameSync = ${throwFn("fs.renameSync")};
-    export var rmSync = ${throwFn("fs.rmSync")};
-    export var readdirSync = function() { return []; };
-    export var statSync = function() { return { isFile: function() { return false; }, isDirectory: function() { return false; }, size: 0 }; };
-    export var appendFileSync = ${throwFn("fs.appendFileSync")};
+    export var rename = F.rename || ${throwFn("fs.rename")};
+    export var copyFile = F.copyFile || ${throwFn("fs.copyFile")};
+    export var realpath = F.realpath || ${throwFn("fs.realpath")};
+    export var readFileSync = (F.readFileSync && F.readFileSync.bind(F)) || ${throwFn("fs.readFileSync")};
+    export var writeFileSync = (F.writeFileSync && F.writeFileSync.bind(F)) || ${throwFn("fs.writeFileSync")};
+    export var existsSync = (F.existsSync && F.existsSync.bind(F)) || function() { return false; };
+    export var realpathSync = (F.realpathSync && F.realpathSync.bind(F)) || function(p) { return p; };
+    export var mkdirSync = (F.mkdirSync && F.mkdirSync.bind(F)) || ${throwFn("fs.mkdirSync")};
+    export var renameSync = (F.renameSync && F.renameSync.bind(F)) || ${throwFn("fs.renameSync")};
+    export var rmSync = (F.rmSync && F.rmSync.bind(F)) || ${throwFn("fs.rmSync")};
+    export var readdirSync = (F.readdirSync && F.readdirSync.bind(F)) || function() { return []; };
+    export var statSync = (F.statSync && F.statSync.bind(F)) || function() { return { isFile: function() { return false; }, isDirectory: function() { return false; }, size: 0 }; };
+    export var appendFileSync = (F.appendFileSync && F.appendFileSync.bind(F)) || ${throwFn("fs.appendFileSync")};
+    export var createReadStream = (F.createReadStream && F.createReadStream.bind(F)) || ${throwFn("fs.createReadStream")};
+    export var createWriteStream = (F.createWriteStream && F.createWriteStream.bind(F)) || ${throwFn("fs.createWriteStream")};
+    export var promises = F.promises || {};
     export var constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
-    export default { readFile, writeFile, readdir, stat, mkdir, unlink, rm, readFileSync, writeFileSync, existsSync, realpathSync, mkdirSync, renameSync, rmSync, readdirSync, statSync, appendFileSync, constants };
+    export default { readFile, writeFile, appendFile, readdir, stat, lstat, access, mkdir, unlink, rm, rename, copyFile, realpath, readFileSync, writeFileSync, existsSync, realpathSync, mkdirSync, renameSync, rmSync, readdirSync, statSync, appendFileSync, createReadStream, createWriteStream, promises, constants };
   `,
   "fs/promises": `
-    var F = globalThis.fs || {};
-    export var readFile = F.readFile || ${throwFn("fs.readFile")};
-    export var writeFile = F.writeFile || ${throwFn("fs.writeFile")};
-    export var readdir = F.readdir || ${throwFn("fs.readdir")};
-    export var stat = F.stat || ${throwFn("fs.stat")};
-    export var lstat = ${throwFn("fs.lstat")};
-    export var mkdir = F.mkdir || ${throwFn("fs.mkdir")};
-    export var rm = F.rm || ${throwFn("fs.rm")};
-    export var unlink = F.unlink || ${throwFn("fs.unlink")};
-    export var access = ${throwFn("fs.access")};
-    export var copyFile = ${throwFn("fs.copyFile")};
-    export var rename = ${throwFn("fs.rename")};
-    export var realpath = ${throwFn("fs.realpath")};
-    export var appendFile = ${throwFn("fs.appendFile")};
-    export var symlink = ${throwFn("fs.symlink")};
-    export var readlink = ${throwFn("fs.readlink")};
-    export default { readFile, writeFile, readdir, stat, lstat, mkdir, rm, unlink, access, copyFile, rename, realpath, appendFile, symlink, readlink };
+    // Prefer the fully-implemented globalThis.fs.promises surface
+    // installed by internal/jsbridge/fs.go. Fall back to
+    // top-level globalThis.fs (also populated with promisified
+    // methods), then to a throwFn for truly unavailable ops.
+    var F = (globalThis.fs && globalThis.fs.promises) || globalThis.fs || {};
+    var T = globalThis.fs || {};
+    export var readFile = F.readFile || T.readFile || ${throwFn("fs.readFile")};
+    export var writeFile = F.writeFile || T.writeFile || ${throwFn("fs.writeFile")};
+    export var readdir = F.readdir || T.readdir || ${throwFn("fs.readdir")};
+    export var stat = F.stat || T.stat || ${throwFn("fs.stat")};
+    export var lstat = F.lstat || T.lstat || ${throwFn("fs.lstat")};
+    export var mkdir = F.mkdir || T.mkdir || ${throwFn("fs.mkdir")};
+    export var mkdtemp = F.mkdtemp || T.mkdtemp || ${throwFn("fs.mkdtemp")};
+    export var rmdir = F.rmdir || T.rmdir || ${throwFn("fs.rmdir")};
+    export var rm = F.rm || T.rm || ${throwFn("fs.rm")};
+    export var unlink = F.unlink || T.unlink || ${throwFn("fs.unlink")};
+    export var access = F.access || T.access || ${throwFn("fs.access")};
+    export var copyFile = F.copyFile || T.copyFile || ${throwFn("fs.copyFile")};
+    export var rename = F.rename || T.rename || ${throwFn("fs.rename")};
+    export var realpath = F.realpath || T.realpath || ${throwFn("fs.realpath")};
+    export var appendFile = F.appendFile || T.appendFile || ${throwFn("fs.appendFile")};
+    export var symlink = F.symlink || T.symlink || ${throwFn("fs.symlink")};
+    export var readlink = F.readlink || T.readlink || ${throwFn("fs.readlink")};
+    export var chmod = F.chmod || T.chmod || ${throwFn("fs.chmod")};
+    export var chown = F.chown || T.chown || ${throwFn("fs.chown")};
+    export var truncate = F.truncate || T.truncate || ${throwFn("fs.truncate")};
+    export var utimes = F.utimes || T.utimes || ${throwFn("fs.utimes")};
+    export default { readFile, writeFile, readdir, stat, lstat, mkdir, mkdtemp, rmdir, rm, unlink, access, copyFile, rename, realpath, appendFile, symlink, readlink, chmod, chown, truncate, utimes };
   `,
   "url": `
     export var URL = globalThis.URL;
