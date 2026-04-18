@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>brainkit · voice-realtime</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>brainkit voice-realtime</h1>
+    <p class="tag">push the button to start a live conversation with the agent. it uses OpenAI's realtime API over a WebSocket; your mic streams up as PCM16 24&nbsp;kHz, and the reply plays through your speakers as it's produced.</p>
+
+    <button id="toggle" class="mic">
+      <span class="dot"></span>
+      <span class="label">Start</span>
+    </button>
+
+    <section class="transcript">
+      <h2>Transcript</h2>
+      <ul id="log"></ul>
+    </section>
+
+    <footer>
+      <span id="status" class="status idle">idle</span>
+      <span class="hint">requires a page served over http (localhost) or https; the browser will prompt for mic permission on first use.</span>
+    </footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
