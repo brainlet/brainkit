@@ -43,9 +43,19 @@ export const DefaultExporter = globalThis.__agent_embed.DefaultExporter;
 export const SensitiveDataFilter = globalThis.__agent_embed.SensitiveDataFilter;
 
 // Voice
-export const OpenAIVoice = globalThis.__agent_embed.OpenAIVoice;
+export const MastraVoice = globalThis.__agent_embed.MastraVoice;
 export const CompositeVoice = globalThis.__agent_embed.CompositeVoice;
+export const OpenAIVoice = globalThis.__agent_embed.OpenAIVoice;
 export const OpenAIRealtimeVoice = globalThis.__agent_embed.OpenAIRealtimeVoice;
+export const AzureVoice = globalThis.__agent_embed.AzureVoice;
+export const ElevenLabsVoice = globalThis.__agent_embed.ElevenLabsVoice;
+export const CloudflareVoice = globalThis.__agent_embed.CloudflareVoice;
+export const DeepgramVoice = globalThis.__agent_embed.DeepgramVoice;
+export const PlayAIVoice = globalThis.__agent_embed.PlayAIVoice;
+export const PLAYAI_VOICES = globalThis.__agent_embed.PLAYAI_VOICES;
+export const SpeechifyVoice = globalThis.__agent_embed.SpeechifyVoice;
+export const SarvamVoice = globalThis.__agent_embed.SarvamVoice;
+export const MurfVoice = globalThis.__agent_embed.MurfVoice;
 
 // Evals
 export const createScorer = globalThis.__agent_embed.createScorer;

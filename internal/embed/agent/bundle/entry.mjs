@@ -73,9 +73,30 @@ import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace
 
 // Voice — STT/TTS. CompositeVoice lives in @mastra/core, the
 // OpenAI provider lives in its own package.
-import { CompositeVoice } from '@mastra/core/voice';
+// MastraVoice is the abstract base every provider extends.
+// Exposing it lets .ts code type-check custom voice provider
+// subclasses without leaving the "agent" module.
+import { CompositeVoice, MastraVoice } from '@mastra/core/voice';
 import { OpenAIVoice } from '@mastra/voice-openai';
 import { OpenAIRealtimeVoice } from '@mastra/voice-openai-realtime';
+import { AzureVoice } from '@mastra/voice-azure';
+import { ElevenLabsVoice } from '@mastra/voice-elevenlabs';
+// GoogleVoice (classic) pulls @google-cloud/speech which
+// requires a full gRPC-over-HTTP2 polyfill brainkit doesn't
+// ship; GeminiLiveVoice below uses the HTTP @google/genai SDK
+// + ws which the runtime already polyfills. Skip classic
+// GoogleVoice for now; users needing Google TTS/STT route
+// through Gemini Live.
+import { CloudflareVoice } from '@mastra/voice-cloudflare';
+import { DeepgramVoice } from '@mastra/voice-deepgram';
+import { PlayAIVoice, PLAYAI_VOICES } from '@mastra/voice-playai';
+import { SpeechifyVoice } from '@mastra/voice-speechify';
+import { SarvamVoice } from '@mastra/voice-sarvam';
+import { MurfVoice } from '@mastra/voice-murf';
+// GeminiLiveVoice temporarily removed — transitive deps
+// caused SES lockdown to reject the bundle ("not a prototype"
+// on load). Needs a focused investigation; track separately.
+// import { GeminiLiveVoice } from '@mastra/voice-google-gemini-live';
 
 // Harness — orchestration layer for agent execution, threads, modes, tool approval
 import { Harness } from '@mastra/core/harness';
@@ -253,9 +274,19 @@ globalThis.__agent_embed = {
   Workspace,
   LocalFilesystem,
   LocalSandbox,
+  MastraVoice,
   CompositeVoice,
   OpenAIVoice,
   OpenAIRealtimeVoice,
+  AzureVoice,
+  ElevenLabsVoice,
+  CloudflareVoice,
+  DeepgramVoice,
+  PlayAIVoice,
+  PLAYAI_VOICES,
+  SpeechifyVoice,
+  SarvamVoice,
+  MurfVoice,
 
   // Harness
   Harness,

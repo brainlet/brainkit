@@ -242,7 +242,25 @@ const moduleStubs = {
     export var URLSearchParams = globalThis.URLSearchParams;
     export var fileURLToPath = function(u) { return typeof u === "string" ? u.replace("file://", "") : String(u); };
     export var pathToFileURL = function(p) { return new URL("file://" + p); };
-    export default { URL: globalThis.URL, URLSearchParams: globalThis.URLSearchParams, fileURLToPath, pathToFileURL };
+    // node:url legacy "format" / "parse" API — only shape-
+    // compliant enough to keep node-fetch (pulled in by
+    // @google/genai → GeminiLiveVoice) happy. Full API lives
+    // on the WHATWG URL constructor; consumers doing anything
+    // beyond the basics should use that directly.
+    export var format = function(urlObj) {
+      if (typeof urlObj === "string") return urlObj;
+      if (urlObj instanceof URL) return urlObj.toString();
+      var u = String(urlObj.protocol || "http:") + (urlObj.slashes === false ? "" : "//") +
+              String(urlObj.host || (urlObj.hostname || "") + (urlObj.port ? ":" + urlObj.port : "")) +
+              String(urlObj.pathname || "") + String(urlObj.search || "") + String(urlObj.hash || "");
+      return u;
+    };
+    export var parse = function(s) {
+      try { var u = new URL(s); return { protocol: u.protocol, host: u.host, hostname: u.hostname, port: u.port, pathname: u.pathname, search: u.search, hash: u.hash, href: u.href, path: u.pathname + u.search }; }
+      catch (_) { return { href: String(s) }; }
+    };
+    export var resolve = function(base, rel) { try { return new URL(rel, base).toString(); } catch(_) { return rel; } };
+    export default { URL: globalThis.URL, URLSearchParams: globalThis.URLSearchParams, fileURLToPath, pathToFileURL, format, parse, resolve };
   `,
   "process": `
     var _p = globalThis.process || {};

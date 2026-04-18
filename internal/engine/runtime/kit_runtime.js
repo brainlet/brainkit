@@ -261,11 +261,30 @@
         return Base;
       })(),
       CompositeVoice: embed.CompositeVoice,
+      MastraVoice: embed.MastraVoice,
       // Mastra's realtime voice surface — wraps the OpenAI
       // Realtime WebSocket API. Needs a globalThis WebSocket
       // polyfill OR a Go-side bridge; the pre-flight smoke
       // test in session 12 determines which.
       OpenAIRealtimeVoice: embed.OpenAIRealtimeVoice,
+      // Additional voice providers. Each extends MastraVoice
+      // with its own .speak / .listen; identical polyfill
+      // story — fetch for request/response providers,
+      // globalThis.WebSocket for realtime ones
+      // (GeminiLiveVoice).
+      AzureVoice: embed.AzureVoice,
+      ElevenLabsVoice: embed.ElevenLabsVoice,
+      // GoogleVoice (non-realtime) needs grpc-over-http2;
+      // not bundled. Gemini Live (below) covers Google.
+      CloudflareVoice: embed.CloudflareVoice,
+      DeepgramVoice: embed.DeepgramVoice,
+      PlayAIVoice: embed.PlayAIVoice,
+      PLAYAI_VOICES: embed.PLAYAI_VOICES,
+      SpeechifyVoice: embed.SpeechifyVoice,
+      SarvamVoice: embed.SarvamVoice,
+      MurfVoice: embed.MurfVoice,
+      // GeminiLiveVoice removed pending SES compatibility
+      // investigation (see entry.mjs comment).
       MDocument: embed.MDocument,
       GraphRAG: embed.GraphRAG,
       createVectorQueryTool: embed.createVectorQueryTool,

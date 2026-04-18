@@ -18,8 +18,36 @@ runs in a browser console and in a brainkit kit.
 
 ## Voice providers inside a deployment
 
+brainkit ships every Mastra voice provider that's runnable
+inside the SES compartment, so `.ts` deployments can switch
+vendors without host-side changes:
+
 ```ts
-import { Agent, model, OpenAIVoice, CompositeVoice } from "agent";
+import {
+    OpenAIVoice,
+    OpenAIRealtimeVoice,
+    CompositeVoice,
+    MastraVoice,           // abstract base for custom providers
+    AzureVoice,
+    ElevenLabsVoice,
+    CloudflareVoice,
+    DeepgramVoice,
+    PlayAIVoice,
+    SpeechifyVoice,
+    SarvamVoice,
+    MurfVoice,
+} from "agent";
+```
+
+All of them share the `speak(input, opts?)` + `listen(audio,
+opts?)` contract. Realtime providers (`OpenAIRealtimeVoice`)
+also expose `connect()`, `send(stream)`, and `on("speaker" |
+"writing" | "error", fn)`.
+
+Pick one:
+
+```ts
+import { Agent, model, OpenAIVoice } from "agent";
 
 const voice = new OpenAIVoice();                    // uses OPENAI_API_KEY
 
@@ -31,6 +59,42 @@ const agent = new Agent({
 });
 kit.register("agent", "voice-agent", agent);
 ```
+
+Or mix-and-match with `CompositeVoice`:
+
+```ts
+const voice = new CompositeVoice({
+    speakProvider: new ElevenLabsVoice(),   // high-quality TTS
+    listenProvider: new DeepgramVoice(),    // fast STT
+});
+```
+
+Or subclass `MastraVoice` for a custom provider:
+
+```ts
+class MyRemoteVoice extends MastraVoice {
+    async speak(text) { /* fetch + return stream */ }
+    async listen(audio) { /* upload + return transcript */ }
+}
+```
+
+Provider coverage reality check:
+
+| Provider | Bundled | Notes |
+|---|---|---|
+| `OpenAIVoice` | ✓ | Whisper + TTS; default for voice-chat / voice-agent |
+| `OpenAIRealtimeVoice` | ✓ | Bidirectional WebSocket; used by voice-realtime |
+| `CompositeVoice` | ✓ | Multi-provider routing |
+| `AzureVoice` | ✓ | Azure Cognitive Services |
+| `ElevenLabsVoice` | ✓ | High-quality TTS (+ STT) |
+| `CloudflareVoice` | ✓ | Edge TTS via Workers AI |
+| `DeepgramVoice` | ✓ | TTS + STT |
+| `PlayAIVoice` | ✓ | TTS only |
+| `SpeechifyVoice` | ✓ | TTS only, accessibility focus |
+| `SarvamVoice` | ✓ | Indic-language speak + listen |
+| `MurfVoice` | ✓ | TTS only, studio-quality |
+| `GoogleVoice` (classic) | ✗ | Needs gRPC-over-HTTP2; not bundled |
+| `GeminiLiveVoice` | ✗ | Transitive dep incompat with SES; tracked separately |
 
 Voice APIs on the Agent:
 

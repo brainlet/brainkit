@@ -964,20 +964,37 @@ declare module "agent" {
   export type VoiceAudioStream = any;
 
   /**
-   * Shared shape between `OpenAIVoice` + `CompositeVoice` +
-   * `OpenAIRealtimeVoice`. Only the methods `.speak` /
-   * `.listen` are guaranteed across every provider; realtime
-   * adds `connect` / `send` / `on`.
+   * Common option shapes shared across providers. Individual
+   * providers extend these with their own knobs (emotion,
+   * voiceId, language, etc.).
    */
-  export interface MastraVoice {
-    speak(
-      input: string | VoiceAudioStream,
-      options?: { speaker?: string; responseFormat?: string; [key: string]: any },
-    ): Promise<VoiceAudioStream>;
-    listen(
-      audio: VoiceAudioStream,
-      options?: { filetype?: "mp3" | "mp4" | "mpeg" | "mpga" | "m4a" | "wav" | "webm"; [key: string]: any },
-    ): Promise<string>;
+  export interface VoiceSpeakOptions {
+    speaker?: string;
+    responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm" | string;
+    [key: string]: any;
+  }
+  export interface VoiceListenOptions {
+    filetype?: "mp3" | "mp4" | "mpeg" | "mpga" | "m4a" | "wav" | "webm";
+    language?: string;
+    [key: string]: any;
+  }
+
+  /**
+   * `MastraVoice` is the abstract base class every provider
+   * extends. The contract is `speak()` + `listen()`; realtime
+   * providers add `connect()` / `send()` / `on()`. Exported as
+   * a class so custom provider subclasses type-check against
+   * it directly: `class MyVoice extends MastraVoice { ... }`.
+   */
+  export abstract class MastraVoice {
+    constructor(config?: any);
+    abstract speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream> | void;
+    abstract listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+    getSpeakers?(): Promise<Array<{ voiceId: string; name?: string; [key: string]: any }>>;
+    addInstructions?(instructions: string): void;
+    addTools?(tools: Record<string, unknown>): void;
+    updateConfig?(config: any): void;
+    close?(): void;
   }
 
   /**
@@ -1074,4 +1091,106 @@ declare module "agent" {
     off(event: string, listener: (...args: any[]) => void): this;
     emit(event: string, ...args: any[]): boolean;
   }
+
+  // ── Additional voice providers ────────────────────────────────
+  //
+  // Every provider below is a thin class wrapping the matching
+  // `@mastra/voice-<provider>` package. Each extends MastraVoice
+  // with its own speak / listen + provider-specific constructor
+  // options. Types here are intentionally looser than the
+  // underlying packages — providers rename config fields
+  // between releases, so we document the shape without
+  // committing to version-specific field lists.
+
+  /** Azure Cognitive Services — speak + listen. */
+  export class AzureVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; region?: string; style?: string; pitch?: string; rate?: string; [key: string]: any };
+      listeningModel?: { name?: string; apiKey?: string; region?: string; language?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** ElevenLabs — high-quality TTS + STT. */
+  export class ElevenLabsVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; [key: string]: any };
+      listeningModel?: { name?: string; apiKey?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions & { voiceId?: string; emotion?: string }): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** Cloudflare Workers AI — edge TTS. */
+  export class CloudflareVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; accountId?: string; apiToken?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** Deepgram — TTS + speech-to-text. */
+  export class DeepgramVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; tone?: string; [key: string]: any };
+      listeningModel?: { name?: string; apiKey?: string; format?: string; language?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** PlayAI — natural-sounding TTS. No STT. */
+  export class PlayAIVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; userId?: string; speed?: number; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions & { speed?: number }): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+  /** Map of PlayAI voice presets available without an API call. */
+  export const PLAYAI_VOICES: Record<string, { id: string; name: string; [key: string]: any }>;
+
+  /** Speechify — accessibility-focused TTS. No STT. */
+  export class SpeechifyVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; speed?: number; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions & { speed?: number }): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** Sarvam — Indic-language specialized speak + listen. */
+  export class SarvamVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; language?: string; [key: string]: any };
+      listeningModel?: { name?: string; apiKey?: string; language?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /** Murf — studio-quality TTS. No STT. */
+  export class MurfVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; emotion?: string; [key: string]: any };
+      speaker?: string;
+    });
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions & { emotion?: string }): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  // Note: @mastra/voice-google (classic) pulls @google-cloud/speech
+  // which requires a full gRPC-over-HTTP2 polyfill brainkit does
+  // not ship. Users needing Google TTS/STT can use Gemini Live
+  // (not currently bundled — tracked separately) or reach OpenAI
+  // / Deepgram / ElevenLabs for comparable capabilities.
 }
