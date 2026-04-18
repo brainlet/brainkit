@@ -75,6 +75,7 @@ examples:
 	go build ./examples/plugin-host
 	go build ./examples/secrets
 	go build ./examples/storage-vectors
+	go build ./examples/streaming
 	cd examples/plugin-author && go build .
 	@echo "All examples build."
 

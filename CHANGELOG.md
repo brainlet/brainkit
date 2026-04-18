@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### plans-01 session 08 — Example: Streaming (bus + gateway)
+
+New runnable `examples/streaming/` covers every streaming surface
+the Kit exposes: bus `CallStream`, gateway SSE, gateway
+WebSocket, gateway Webhook. Go-side bus path runs automatically
+under `go run`; HTTP endpoints stay live for curl / wscat hits
+until SIGINT.
+
+Added:
+- `examples/streaming/main.go` — wires 3 gateway routes, deploys
+  a shared counter + webhook `.ts`, drives the bus path via
+  `brainkit.CallStream[CustomMsg, map[string]any, countResp]`.
+- `examples/streaming/README.md` — curl / wscat snippets +
+  when-to-pick-which table for the four surfaces.
+
+Changed:
+- `examples/README.md` — add streaming row.
+- `Makefile` `examples` target builds `./examples/streaming`.
+- `.gitignore` — ignore `streaming` / `secrets` binaries built
+  at repo root.
+
 ### plans-01 session 07 — Example: Secrets lifecycle
 
 New runnable `examples/secrets/` exercises the encrypted secret

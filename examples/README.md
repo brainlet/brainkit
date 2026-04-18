@@ -15,5 +15,6 @@ from the repo root.
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
 | [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via the `Kit.Secrets()` accessor |
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
+| [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
 
 More examples (harness-lite) land as the surrounding modules mature.
