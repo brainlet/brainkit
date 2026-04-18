@@ -38,6 +38,7 @@ bin/**.go binary
 /observability
 /gateway-routes
 /go-tools
+/harness-lite
 /mcp
 /plugin-host
 /schedules
@@ -45,3 +46,6 @@ bin/**.go binary
 /storage-vectors
 /streaming
 /workflows
+
+# plugin-author has its own go.mod — binary builds in-place
+/examples/plugin-author/plugin-author

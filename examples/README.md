@@ -13,6 +13,7 @@ from the repo root.
 | [observability](./observability/) | `audit.query` + `audit.stats` + `trace.list` round-trip via `modules/audit` + `modules/tracing` |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
+| [harness-lite](./harness-lite/) | WIP — frozen `modules/harness` surface: `NewModule`, `Instance`, and the six frozen event types |
 | [mcp](./mcp/) | Wire an external Model Context Protocol server (npx filesystem server) as first-class tools |
 | [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
@@ -21,5 +22,3 @@ from the repo root.
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
 | [workflows](./workflows/) | Declarative 3-step pipeline through `modules/workflow` (`createStep` + `createWorkflow`) |
-
-More examples (harness-lite) land as the surrounding modules mature.

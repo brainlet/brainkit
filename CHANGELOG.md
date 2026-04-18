@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### plans-01 session 14 — Example: Harness-lite (WIP)
+
+New runnable `examples/harness-lite/` demonstrates the frozen
+surface of `modules/harness`: `NewModule`, the `Instance`
+interface, and the six frozen `EventType` constants. Everything
+else in `modules/harness` stays WIP and flagged as such.
+
+Added:
+- `examples/harness-lite/main.go` — wires the harness module
+  with a minimal valid HarnessConfig, resolves `Instance`, and
+  subscribes to the frozen event stream. When the JS-side
+  `__kit.createHarness` is not wired in the build, the example
+  degrades gracefully and prints the Go-side contract (module
+  name + status, Instance methods, frozen event list, boot
+  error) so readers still see the stable shape.
+- `examples/harness-lite/README.md` — WIP banner + link to
+  `modules/harness/README.md` and `designs/09-harness-boundary.md`,
+  frozen-event table (`agent_start`, `agent_end`,
+  `message_update`, `tool_start`, `tool_end`, `error`), frozen
+  Instance interface, rules for what NOT to import, upgrade path.
+
+Changed:
+- `examples/README.md` — replace the "harness-lite lands later"
+  placeholder with the real row.
+- `Makefile` / `.gitignore` — harness-lite binary.
+
 ### plans-01 session 13 — Example: Cross-kit routing
 
 New runnable `examples/cross-kit/` runs two Kits in one process
