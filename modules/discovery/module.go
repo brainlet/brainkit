@@ -1,18 +1,18 @@
 package discovery
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/google/uuid"
 )
 
 // Module is the brainkit.Module form of peer discovery. It owns a Provider
-// (bus or static), self-registers on Kit.Init, and exposes peers.list /
-// peers.resolve bus commands.
+// (bus or static) and self-registers the local peer on Kit.Init so other
+// kits on the same cluster can find it. The bus surface (peers.list /
+// peers.resolve) now lives in modules/topology — callers that want the
+// bus commands must pair discovery with topology (passing this module's
+// Provider() as topology.Config.Discovery).
 type Module struct {
 	cfg      ModuleConfig
 	provider Provider
@@ -48,13 +48,7 @@ func (m *Module) Init(k *brainkit.Kit) error {
 	if name == "" {
 		name = uuid.NewString()
 	}
-	if err := m.provider.Register(Peer{Name: name, Namespace: k.Namespace()}); err != nil {
-		return err
-	}
-
-	k.RegisterCommand(brainkit.Command(m.handleList))
-	k.RegisterCommand(brainkit.Command(m.handleResolve))
-	return nil
+	return m.provider.Register(Peer{Name: name, Namespace: k.Namespace()})
 }
 
 func (m *Module) Close() error {
@@ -64,29 +58,7 @@ func (m *Module) Close() error {
 	return m.provider.Close()
 }
 
-func (m *Module) handleList(ctx context.Context, req sdk.PeersListMsg) (*sdk.PeersListResp, error) {
-	if m.provider == nil {
-		return &sdk.PeersListResp{Peers: []sdk.PeerInfo{}}, nil
-	}
-	peers, err := m.provider.Browse()
-	if err != nil {
-		return nil, err
-	}
-	infos := make([]sdk.PeerInfo, len(peers))
-	for i, p := range peers {
-		infos[i] = sdk.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
-	}
-	namespaces, _ := m.provider.BrowseNamespaces()
-	return &sdk.PeersListResp{Peers: infos, Namespaces: namespaces}, nil
-}
-
-func (m *Module) handleResolve(ctx context.Context, req sdk.PeersResolveMsg) (*sdk.PeersResolveResp, error) {
-	if m.provider == nil {
-		return nil, &sdkerrors.NotConfiguredError{Feature: "discovery"}
-	}
-	addr, err := m.provider.Resolve(req.Name)
-	if err != nil {
-		return nil, err
-	}
-	return &sdk.PeersResolveResp{Namespace: addr}, nil
-}
+// Provider exposes the underlying presence provider so topology (or any
+// other downstream consumer) can read the live peer set. Returns nil
+// when Type is empty.
+func (m *Module) Provider() Provider { return m.provider }

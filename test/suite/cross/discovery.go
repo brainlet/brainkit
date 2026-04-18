@@ -8,11 +8,24 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/discovery"
+	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// busDiscoveryModules pairs a bus-discovery module with a topology
+// module that reads from it. Every peer-ing test uses this pair so
+// tests actually exercise the topology bus surface end-to-end.
+func busDiscoveryModules(heartbeat, ttl time.Duration) []brainkit.Module {
+	d := discovery.NewModule(discovery.ModuleConfig{
+		Type:      "bus",
+		Heartbeat: heartbeat,
+		TTL:       ttl,
+	})
+	return []brainkit.Module{d, topology.NewModule(topology.Config{Discovery: d})}
+}
 
 // --- Discovery tests (from test/adversarial/discovery_test.go + test/infra/discovery_test.go) ---
 
@@ -94,13 +107,7 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-agents-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Modules: []brainkit.Module{
-			discovery.NewModule(discovery.ModuleConfig{
-				Type:      "bus",
-				Heartbeat: 1 * time.Second,
-				TTL:       5 * time.Second,
-			}),
-		},
+		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
 	defer kit1.Close()
@@ -109,13 +116,7 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-workers-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Modules: []brainkit.Module{
-			discovery.NewModule(discovery.ModuleConfig{
-				Type:      "bus",
-				Heartbeat: 1 * time.Second,
-				TTL:       5 * time.Second,
-			}),
-		},
+		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
 	defer kit2.Close()
@@ -160,13 +161,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-stay-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Modules: []brainkit.Module{
-			discovery.NewModule(discovery.ModuleConfig{
-				Type:      "bus",
-				Heartbeat: 1 * time.Second,
-				TTL:       5 * time.Second,
-			}),
-		},
+		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
 	defer kit1.Close()
@@ -175,13 +170,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 		Namespace: "disc-leave-cross",
 		CallerID:  "host",
 		Transport: brainkit.NATS(natsURL),
-		Modules: []brainkit.Module{
-			discovery.NewModule(discovery.ModuleConfig{
-				Type:      "bus",
-				Heartbeat: 1 * time.Second,
-				TTL:       5 * time.Second,
-			}),
-		},
+		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
 
@@ -215,13 +204,7 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 			Namespace: ns,
 			CallerID:  "host",
 			Transport: brainkit.NATS(natsURL),
-			Modules: []brainkit.Module{
-				discovery.NewModule(discovery.ModuleConfig{
-					Type:      "bus",
-					Heartbeat: 1 * time.Second,
-					TTL:       5 * time.Second,
-				}),
-			},
+			Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() { kit.Close() })
@@ -270,9 +253,8 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 		CallerID:  "test-node",
 		Transport: brainkit.EmbeddedNATS(),
 		Modules: []brainkit.Module{
-			discovery.NewModule(discovery.ModuleConfig{
-				Type: "static",
-				StaticPeers: []discovery.PeerConfig{
+			topology.NewModule(topology.Config{
+				Peers: []topology.Peer{
 					{Name: "peer-a", Namespace: "ns-a", Address: "localhost:4222"},
 					{Name: "peer-b", Namespace: "ns-b", Address: "localhost:4223"},
 				},

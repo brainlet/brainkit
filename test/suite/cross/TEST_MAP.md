@@ -65,10 +65,20 @@
 | testDiscoveryRegister | Creates empty static provider, registers a peer, browses, asserts 1 peer |
 | testDiscoveryResolveNonexistent | Creates empty static provider, resolves unknown name, asserts error |
 | testDiscoveryClose | Creates static provider, closes, asserts no error |
-| testDiscoveryStaticPeersBus | Creates a Node with embedded NATS + static peers config, publishes PeersListMsg via subscribe-first pattern, verifies peer-a and peer-b appear |
-| testDiscoveryBusPeers | Creates 2 Kits on shared NATS with bus discovery, waits for heartbeat convergence, verifies mutual discovery via peers.list + namespaces field (requires Podman) |
-| testDiscoveryBusLeave | Creates 2 Kits on shared NATS with bus discovery, verifies discovery, closes one Kit, verifies graceful leave removes peer immediately (requires Podman) |
-| testDiscoveryBusNamespaces | Creates 4 Kits (observer + 2 agents replicas + 1 gateway) on shared NATS, verifies BrowseNamespaces deduplicates agents to 2 unique namespaces (requires Podman) |
+| testDiscoveryStaticPeersBus | Creates a Kit with embedded NATS + topology static peers, publishes PeersListMsg, verifies peer-a and peer-b appear |
+| testDiscoveryBusPeers | Creates 2 Kits on shared NATS with discovery + topology (bus mode), waits for heartbeat convergence, verifies mutual discovery via peers.list + namespaces field (requires Podman) |
+| testDiscoveryBusLeave | Creates 2 Kits on shared NATS with discovery + topology (bus mode), verifies discovery, closes one Kit, verifies graceful leave removes peer immediately (requires Podman) |
+| testDiscoveryBusNamespaces | Creates 4 Kits (observer + 2 agents replicas + 1 gateway) on shared NATS with discovery + topology, verifies BrowseNamespaces deduplicates agents to 2 unique namespaces (requires Podman) |
+
+### topology.go — Topology module tests
+
+| Function | Purpose |
+|----------|---------|
+| testTopologyStaticResolve | Constructs a topology.Module with 2 static peers, verifies Resolve() returns the configured namespace and errors on unknown names |
+| testTopologyPeersListBus | Wires topology static peers on a Memory Kit, publishes PeersListMsg, verifies the bus response lists both configured peers |
+| testTopologyNoModuleCallToRawNamespace | Without topology wired, WithCallTo("ns") passes the argument through verbatim as a raw namespace (timeouts on a phantom namespace) |
+| testTopologyCallToErrorsOnUnknownName | With topology wired, WithCallTo("not-a-peer") surfaces a resolve error mentioning the unresolved name |
+| testTopologyCallToResolvesAcrossKits | Two Kits on shared NATS, caller's topology maps "target-peer" → target's namespace; asserts Resolve round-trip returns the configured mapping (requires Podman) |
 
 ### backend_matrix.go — Cross-Kit publish/reply and error propagation
 

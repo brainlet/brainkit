@@ -65,6 +65,19 @@ func (k *Kit) RegisterCommand(spec CommandSpec) {
 	k.kernel.RegisterCommand(spec)
 }
 
+// Module looks up a Kit-scoped module by Name. Used for cross-module
+// coordination (e.g. WithCallTo consults the topology module when
+// present to resolve peer names). Returns (nil, false) when the
+// module is absent.
+func (k *Kit) Module(name string) (Module, bool) {
+	for _, m := range k.modules {
+		if m.Name() == name {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
 // RegisterRawTool registers a pre-built RegisteredTool with the Kit's tool
 // registry. Modules use this to surface tools whose executor isn't a typed
 // Go function (e.g. MCP tools that proxy to an external server).

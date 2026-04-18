@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+### Session 08 Bundle A — modules/topology
+
+Cross-kit routing ergonomics split out into a dedicated module. The
+`peers.list` / `peers.resolve` bus commands move from `modules/discovery`
+into `modules/topology`; discovery is reduced to a Provider library
+(presence + self-registration). `WithCallTo(name)` now consults the
+topology module to map peer names onto namespaces.
+
+Added:
+- `modules/topology/` — `Module{Resolve, Peers, Namespaces}` with
+  `Config{Peers []Peer, Discovery ProviderSource}`. Static peers +
+  optional presence provider (usually `modules/discovery.Module`).
+  Registers `peers.list` / `peers.resolve` bus commands.
+- `modules/topology.ProviderSource` — narrow interface discovery
+  satisfies, so topology reads the provider lazily and module init
+  order doesn't matter.
+- `(*brainkit.Kit).Module(name) (Module, bool)` — general lookup for
+  cross-module coordination. `WithCallTo` uses it to find topology;
+  any module with a duck-typed `Resolve(string) (string, error)` can
+  participate.
+- `topology.Peer` alias over `discovery.Peer` — single shape across
+  the two modules.
+- Four new tests in `test/suite/cross/topology.go`: static resolve,
+  bus peers.list, no-module raw-namespace fallback, topology resolve
+  error surfacing.
+
+Changed:
+- `brainkit/call.go` — `WithCallTo(name)` resolves via topology when
+  the module is wired; falls back to raw namespace when absent.
+- `modules/discovery/module.go` — dropped `handleList` / `handleResolve`
+  and their `RegisterCommand` calls. Added `Provider()` accessor so
+  topology can read the live provider without type-asserting.
+- `test/suite/cross/discovery.go` — bus tests now wire
+  `busDiscoveryModules()` (discovery + topology pair); the static
+  `peers.list` test drives topology directly.
+- `test/suite/cross/TEST_MAP.md` — documents the new topology row +
+  updated discovery wiring.
+
+Migration:
+
+Before (session 05):
+```go
+brainkit.New(brainkit.Config{
+    Modules: []brainkit.Module{
+        discovery.NewModule(discovery.ModuleConfig{Type: "static", StaticPeers: ...}),
+    },
+})
+```
+
+After:
+```go
+d := discovery.NewModule(discovery.ModuleConfig{Type: "bus"})
+brainkit.New(brainkit.Config{
+    Modules: []brainkit.Module{
+        d,
+        topology.NewModule(topology.Config{
+            Peers:     []topology.Peer{{Name: "analytics", Namespace: "analytics-prod"}},
+            Discovery: d,
+        }),
+    },
+})
+```
+
 ### Session 07 — modules/plugins
 
 The subprocess plugin supervisor, WebSocket endpoint, and plugin.*

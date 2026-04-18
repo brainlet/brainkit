@@ -81,6 +81,13 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("discovery/bus_leave", func(t *testing.T) { testDiscoveryBusLeave(t, env) })
 		t.Run("discovery/bus_namespaces", func(t *testing.T) { testDiscoveryBusNamespaces(t, env) })
 
+		// topology.go — Topology module
+		t.Run("topology/static_resolve", func(t *testing.T) { testTopologyStaticResolve(t, env) })
+		t.Run("topology/peers_list_bus", func(t *testing.T) { testTopologyPeersListBus(t, env) })
+		t.Run("topology/no_module_call_to_raw", func(t *testing.T) { testTopologyNoModuleCallToRawNamespace(t, env) })
+		t.Run("topology/call_to_errors_on_unknown_name", func(t *testing.T) { testTopologyCallToErrorsOnUnknownName(t, env) })
+		t.Run("topology/call_to_resolves_across_kits", func(t *testing.T) { testTopologyCallToResolvesAcrossKits(t, env) })
+
 		// backend_matrix.go — ported from adversarial/crosskit_matrix_test.go
 		t.Run("crosskit/publish_reply", func(t *testing.T) { testCrossKitPublishReply(t, env) })
 		t.Run("crosskit/error_propagation", func(t *testing.T) { testCrossKitErrorPropagation(t, env) })

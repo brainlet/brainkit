@@ -43,10 +43,33 @@ func WithCallTimeout(d time.Duration) CallOption {
 	return func(c *callConfig) { c.timeout = d }
 }
 
-// WithCallTo routes the call to a different namespace. Requires the runtime
-// to implement sdk.CrossNamespaceRuntime.
-func WithCallTo(namespace string) CallOption {
-	return func(c *callConfig) { c.targetNS = namespace }
+// WithCallTo routes the call to a peer identified by name. When the
+// topology module is wired on the Kit, name is resolved to a
+// namespace via the module's peer table; otherwise name is used as
+// a raw namespace. Requires the runtime to implement
+// sdk.CrossNamespaceRuntime.
+func WithCallTo(name string) CallOption {
+	return func(c *callConfig) { c.targetNS = name }
+}
+
+// resolveTargetNS consults the topology module when present to map
+// the user-supplied target (peer name) onto a concrete namespace.
+// Without the module, name passes through unchanged.
+func (k *Kit) resolveTargetNS(name string) (string, error) {
+	if name == "" {
+		return "", nil
+	}
+	m, ok := k.Module("topology")
+	if !ok {
+		return name, nil
+	}
+	resolver, ok := m.(interface {
+		Resolve(string) (string, error)
+	})
+	if !ok {
+		return name, nil
+	}
+	return resolver.Resolve(name)
 }
 
 // WithCallMeta adds metadata key/values to the published message.
@@ -120,8 +143,13 @@ func Call[Req sdk.BrainkitMessage, Resp any](k *Kit, ctx context.Context, req Re
 		return zero, fmt.Errorf("brainkit.Call: caller not initialized")
 	}
 
+	targetNS, err := k.resolveTargetNS(cfg.targetNS)
+	if err != nil {
+		return zero, fmt.Errorf("brainkit.Call: resolve %q: %w", cfg.targetNS, err)
+	}
+
 	replyPayload, err := c.Call(ctx, req.BusTopic(), payload, caller.Config{
-		TargetNamespace: cfg.targetNS,
+		TargetNamespace: targetNS,
 		Metadata:        cfg.meta,
 		NoCancelSignal:  cfg.noCancelSignal,
 	})
@@ -197,8 +225,13 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 		return onChunk(chunk)
 	}
 
+	targetNS, err := k.resolveTargetNS(cfg.targetNS)
+	if err != nil {
+		return zero, fmt.Errorf("brainkit.CallStream: resolve %q: %w", cfg.targetNS, err)
+	}
+
 	replyPayload, err := c.Call(ctx, topic, payload, caller.Config{
-		TargetNamespace: cfg.targetNS,
+		TargetNamespace: targetNS,
 		Metadata:        cfg.meta,
 		StreamHandler:   streamH,
 		BufferSize:      cfg.bufferSize,
