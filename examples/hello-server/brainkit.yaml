@@ -1,0 +1,8 @@
+namespace: hello-server
+fs_root: ./examples/hello-server/data
+
+transport:
+  type: embedded
+
+gateway:
+  listen: :8080

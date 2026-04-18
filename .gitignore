@@ -27,3 +27,10 @@ bin/**.go binary
 /kit.db
 /audit.db
 /data/
+/examples/*/data/
+
+# Binaries built at repo root by `go build ./examples/...`
+/hello-embedded
+/hello-server
+/multi-kit
+/gateway-routes
