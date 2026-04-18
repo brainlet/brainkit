@@ -149,8 +149,16 @@ declare module "agent" {
     autoResumeSuspendedTools?: boolean;
     /** Max concurrent tool calls. @default 1 when approval required, 10 otherwise */
     toolCallConcurrency?: number;
-    /** Output schema for structured output. */
+    /** Output schema for structured output. Legacy single-call form. */
     output?: import("ai").ZodType;
+    /**
+     * Typed structured output for `agent.generate` / `agent.stream`.
+     * Takes precedence over `output` when both are set. On `stream`,
+     * the result exposes `object: Promise<T>` + `objectStream: AsyncIterable<Partial<T>>`.
+     */
+    structuredOutput?: {
+      schema: import("ai").ZodType;
+    };
     /** Extra options passthrough. */
     [key: string]: any;
   }
@@ -182,13 +190,23 @@ declare module "agent" {
     isContinued: boolean;
   }
 
-  export interface AgentStreamResult {
+  export interface AgentStreamResult<OUTPUT = unknown> {
     /** Async iterable of text chunks. */
     textStream: AsyncIterable<string>;
     /** Async iterable of typed stream parts. */
     fullStream: AsyncIterable<import("ai").StreamPart>;
+    /**
+     * Progressive partials of the structured output. Only populated
+     * when `structuredOutput.schema` was set on the call.
+     */
+    objectStream?: AsyncIterable<Partial<OUTPUT>>;
     /** Promise: final complete text. */
     text: Promise<string>;
+    /**
+     * Promise: final parsed structured object. Only populated when
+     * `structuredOutput.schema` was set on the call.
+     */
+    object?: Promise<OUTPUT>;
     /** Promise: token usage. */
     usage: Promise<{ promptTokens: number; completionTokens: number; totalTokens: number }>;
     /** Promise: finish reason. */
@@ -633,18 +651,41 @@ declare module "agent" {
     sources: Array<{ text: string; score: number }>;
   }
 
-  export function createVectorQueryTool(config: {
-    vectorStore: VectorStoreInstance;
-    indexName: string;
-    embedder: import("ai").EmbeddingModel;
-    topK?: number;
-    description?: string;
-  }): Tool;
+  /**
+   * Create a Mastra vector-query tool. Two shapes:
+   *   - `{ vectorStore: VectorStoreInstance, ... }` — direct instance (the
+   *     path brainkit consumers use because there's no Mastra registry
+   *     inside the SES compartment).
+   *   - `{ vectorStoreName: string, ... }` — Mastra registry lookup (only
+   *     works when a Mastra instance is configured; not applicable inside
+   *     a brainkit deployment).
+   * `model` is the embedding model used to vectorize the incoming query.
+   */
+  export function createVectorQueryTool(
+    config:
+      | {
+          vectorStore: VectorStoreInstance;
+          indexName: string;
+          model: import("ai").EmbeddingModel;
+          topK?: number;
+          description?: string;
+          enableFilter?: boolean;
+          reranker?: { scorer?: Scorer; model?: import("ai").EmbeddingModel; weights?: RerankWeights; topK?: number };
+        }
+      | {
+          vectorStoreName: string;
+          indexName: string;
+          model: import("ai").EmbeddingModel;
+          topK?: number;
+          description?: string;
+          enableFilter?: boolean;
+        },
+  ): Tool;
 
   export function createDocumentChunkerTool(config: {
     vectorStore: VectorStoreInstance;
     indexName: string;
-    embedder: import("ai").EmbeddingModel;
+    model: import("ai").EmbeddingModel;
     chunkOptions?: ChunkOptions;
   }): Tool;
 
@@ -653,18 +694,61 @@ declare module "agent" {
     description?: string;
   }): Tool;
 
-  export function rerank(config: {
-    results: Array<{ text: string; score: number }>;
-    query: string;
-    topK?: number;
-  }): Promise<Array<{ text: string; score: number }>>;
+  /**
+   * Positional rerank. Accepts the Mastra query-result shape returned by
+   * `VectorStoreInstance.query` and a relevance model.
+   */
+  export function rerank(
+    results: QueryResult[],
+    query: string,
+    model: import("ai").EmbeddingModel,
+    options?: { topK?: number; weights?: RerankWeights },
+  ): Promise<RerankResult[]>;
 
+  /**
+   * Rerank via a custom scorer (LLM-as-judge or code scorer). Weights
+   * combine semantic relevance, vector similarity, and position.
+   */
   export function rerankWithScorer(config: {
-    results: Array<{ text: string; score: number }>;
+    results: QueryResult[];
     query: string;
-    scorer: Scorer;
-    topK?: number;
-  }): Promise<Array<{ text: string; score: number }>>;
+    scorer: Scorer | RelevanceScoreProvider;
+    options?: {
+      weights?: RerankWeights;
+      queryEmbedding?: number[];
+      topK?: number;
+    };
+  }): Promise<RerankResult[]>;
+
+  /** Weights for the combined reranking score. Must sum to 1.0. */
+  export interface RerankWeights {
+    semantic?: number;
+    vector?: number;
+    position?: number;
+  }
+
+  export interface QueryResult {
+    id: string;
+    score: number;
+    metadata?: Record<string, any>;
+    vector?: number[];
+  }
+
+  export interface RerankResult {
+    result: QueryResult;
+    score: number;
+    details: {
+      semantic: number;
+      vector: number;
+      position: number;
+      queryAnalysis?: { magnitude: number; dominantFeatures: number[] };
+    };
+  }
+
+  /** Relevance score provider — Mastra's shipped scorers (Cohere, etc.). */
+  export interface RelevanceScoreProvider {
+    score(query: string, text: string): Promise<number> | number;
+  }
 
   // ── Observability ─────────────────────────────────────────────
 
@@ -762,19 +846,96 @@ declare module "agent" {
   /** Scorer instance (result of builder chain). */
   export type Scorer = ScorerBuilder;
 
-  /** Run batch evaluations. */
-  export function runEvals(config: {
-    scorers: Record<string, { scorer: Scorer; sampling?: any }>;
-    dataset: Array<{ input: any; output: any }>;
-  }): Promise<EvalRunResult>;
+  /**
+   * Batch-evaluate an Agent or Workflow against a dataset, applying
+   * one or more scorers concurrently. Returns aggregate + per-item
+   * scores.
+   */
+  export function runEvals(config: RunEvalsOptions): Promise<RunEvalsResult>;
 
-  export interface EvalRunResult {
+  export interface RunEvalsOptions {
+    /** The target to evaluate. */
+    target: Agent | Workflow;
+    /** Test cases. */
+    data: RunEvalsDataItem[];
+    /**
+     * Scorers to run. Flat array applies every scorer to the raw
+     * output. For agents, the `AgentScorerConfig` object lets you
+     * separate agent-output scorers from trajectory scorers.
+     */
+    scorers: Scorer[] | AgentScorerConfig | WorkflowScorerConfig;
+    /** Options forwarded to the target during execution. */
+    targetOptions?: AgentCallOptions | Record<string, any>;
+    /** Concurrent test cases. Default: 1. */
+    concurrency?: number;
+    /** Callback fired after each item completes. */
+    onItemComplete?: (ctx: {
+      item: RunEvalsDataItem;
+      targetResult: any;
+      scorerResults: Record<string, ScorerRunResult>;
+    }) => void;
+  }
+
+  export interface RunEvalsDataItem {
+    input: string | string[] | Message[] | any;
+    groundTruth?: any;
+    expectedTrajectory?: any;
+    requestContext?: any;
+    tracingContext?: any;
+    startOptions?: any;
+  }
+
+  export interface AgentScorerConfig {
+    agent?: Scorer[];
+    trajectory?: Scorer[];
+  }
+
+  export interface WorkflowScorerConfig {
+    workflow?: Scorer[];
+    trajectory?: Scorer[];
+    steps?: Record<string, Scorer[]>;
+  }
+
+  export interface RunEvalsResult {
+    scores: Record<string, number>;
+    summary: {
+      totalItems: number;
+      completedItems?: number;
+      failedItems?: number;
+    };
     results: Array<{
-      input: any;
-      output: any;
-      scores: Record<string, ScorerRunResult>;
+      item: RunEvalsDataItem;
+      targetResult: any;
+      scorerResults: Record<string, ScorerRunResult>;
     }>;
   }
+
+  // ── Prebuilt scorer factories (@mastra/evals/scorers/prebuilt) ────
+  //
+  // These ship with Mastra but become usable inside a .ts deployment
+  // only when the brainkit bundle re-exports them (session 05 lands
+  // the endowment wiring). Types declared up front so the IDE sees
+  // them once the runtime surface catches up.
+
+  export interface LLMJudgeScorerOptions {
+    model: any;
+    options?: { uncertaintyWeight?: number; scale?: number };
+  }
+
+  export function createAnswerRelevancyScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createFaithfulnessScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createBiasScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createHallucinationScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createToxicityScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createContextPrecisionScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createContextRelevanceScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createPromptAlignmentScorer(opts: LLMJudgeScorerOptions): Scorer;
+
+  export function createCompletenessScorer(): Scorer;
+  export function createContentSimilarityScorer(): Scorer;
+  export function createKeywordCoverageScorer(): Scorer;
+  export function createTextualDifferenceScorer(): Scorer;
+  export function createToneScorer(): Scorer;
 
   // ── Observability extras ────────────────────────────────────────
 
