@@ -10,6 +10,7 @@ from the repo root.
 | [agent-stream](./agent-stream/) | `agent.stream()` from inside a deployment — plain text streaming + `structuredOutput` → typed partials, both piped over bus `CallStream` + SSE gateway |
 | [ai-chat](./ai-chat/) | Register an AI provider, deploy a `.ts` that calls `generateText`, print the model's reply |
 | [cross-kit](./cross-kit/) | Two Kits on a shared in-process NATS, routed by peer name through `modules/topology` + `WithCallTo` |
+| [custom-scorer](./custom-scorer/) | Domain-specific `createScorer` — regex scorer + LLM-judge scorer side by side on the same dataset; highlights regex-vs-LLM tradeoffs |
 | [hello-embedded](./hello-embedded/) | Library mode: embed a Kit, deploy an inline `.ts`, call it, print the reply |
 | [hello-server](./hello-server/) | Service mode: `brainkit.yaml` + `server.New` + `Start` |
 | [multi-kit](./multi-kit/) | Two Kits in one process, routed by peer name through `modules/topology` |

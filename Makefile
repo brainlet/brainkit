@@ -91,6 +91,7 @@ examples:
 	go build -o bin/agent-stream    ./examples/agent-stream
 	go build -o bin/ai-chat         ./examples/ai-chat
 	go build -o bin/cross-kit       ./examples/cross-kit
+	go build -o bin/custom-scorer   ./examples/custom-scorer
 	go build -o bin/hello-embedded  ./examples/hello-embedded
 	go build -o bin/hello-server    ./examples/hello-server
 	go build -o bin/multi-kit       ./examples/multi-kit
