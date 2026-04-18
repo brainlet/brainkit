@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/types"
 )
 
@@ -32,24 +31,6 @@ func NewKitStore(cfg Config) (types.KitStore, error) {
 			return nil, fmt.Errorf("store: postgres requires PostgresURL")
 		}
 		return NewPostgresKitStore(cfg.PostgresURL)
-	default:
-		return nil, fmt.Errorf("store: unknown backend %q (supported: sqlite, postgres)", cfg.Backend)
-	}
-}
-
-// NewAuditStore creates an audit.Store from configuration.
-func NewAuditStore(cfg Config) (audit.Store, error) {
-	switch cfg.Backend {
-	case "", "sqlite":
-		if cfg.SQLitePath == "" {
-			return nil, fmt.Errorf("store: sqlite requires SQLitePath")
-		}
-		return NewSQLiteAuditStore(cfg.SQLitePath)
-	case "postgres":
-		if cfg.PostgresURL == "" {
-			return nil, fmt.Errorf("store: postgres requires PostgresURL")
-		}
-		return NewPostgresAuditStore(cfg.PostgresURL)
 	default:
 		return nil, fmt.Errorf("store: unknown backend %q (supported: sqlite, postgres)", cfg.Backend)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	provreg "github.com/brainlet/brainkit/internal/providers"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
@@ -36,6 +37,14 @@ func (k *Kernel) SetScheduleHandler(h types.ScheduleHandler) { k.scheduleHandler
 // (and therefore reserved for request/response routing). Schedules reject
 // command topics — scheduling a command would bypass reply plumbing.
 func (k *Kernel) HasCommand(topic string) bool { return k.catalog.HasCommand(topic) }
+
+// SetAuditStore attaches (or detaches) the Recorder's underlying store.
+// The audit module calls this during Init; without a store the Recorder
+// is a no-op.
+func (k *Kernel) SetAuditStore(s auditpkg.Store) { k.audit.SetStore(s) }
+
+// SetAuditVerbosity flips the Recorder between normal and verbose tiers.
+func (k *Kernel) SetAuditVerbosity(v auditpkg.Verbosity) { k.audit.SetVerbosity(v) }
 
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }

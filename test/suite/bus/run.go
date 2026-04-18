@@ -207,5 +207,6 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("audit_prune_works", func(t *testing.T) { testAuditPruneWorks(t, env) })
 		t.Run("audit_tool_call_recorded", func(t *testing.T) { testAuditToolCallRecorded(t, env) })
 		t.Run("audit_metrics_get_includes_bus", func(t *testing.T) { testAuditMetricsGetIncludesBus(t, env) })
+		t.Run("audit_no_module_commands_absent", func(t *testing.T) { testAuditNoModuleCommandsAbsent(t, env) })
 	})
 }

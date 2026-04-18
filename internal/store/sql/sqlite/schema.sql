@@ -50,22 +50,5 @@ CREATE TABLE IF NOT EXISTS schedule_fires (
     PRIMARY KEY (schedule_id, fire_time)
 );
 
--- AuditStore tables
-
-CREATE TABLE IF NOT EXISTS audit_events (
-    id         TEXT PRIMARY KEY,
-    created_at  TEXT NOT NULL,
-    category   TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    source     TEXT NOT NULL DEFAULT '',
-    runtime_id TEXT NOT NULL DEFAULT '',
-    namespace  TEXT NOT NULL DEFAULT '',
-    data       TEXT NOT NULL DEFAULT '{}',
-    duration   INTEGER NOT NULL DEFAULT 0,
-    error_msg  TEXT NOT NULL DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_events(category);
-CREATE INDEX IF NOT EXISTS idx_audit_type ON audit_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_audit_source ON audit_events(source);
+-- AuditStore tables moved to modules/audit/stores — the KitStore DB no
+-- longer carries an audit_events table.

@@ -45,6 +45,27 @@ func NewRecorderWithConfig(cfg RecorderConfig) *Recorder {
 	return &Recorder{store: cfg.Store, runtimeID: cfg.RuntimeID, namespace: cfg.Namespace, verbosity: cfg.Verbosity}
 }
 
+// SetStore attaches (or detaches) the underlying store. Safe on a nil
+// Recorder; pass nil to make subsequent Record calls no-ops. The audit
+// module calls this at Init/Close; no other caller should mutate the
+// store mid-run, so no synchronization is used beyond the happens-before
+// ordering provided by brainkit.New's module init phase.
+func (r *Recorder) SetStore(s Store) {
+	if r == nil {
+		return
+	}
+	r.store = s
+}
+
+// SetVerbosity flips the recorder's verbosity tier. Same lifecycle
+// expectations as SetStore — called once from the audit module's Init.
+func (r *Recorder) SetVerbosity(v Verbosity) {
+	if r == nil {
+		return
+	}
+	r.verbosity = v
+}
+
 func (r *Recorder) record(category, typ, source string, data any, duration time.Duration, errMsg string) {
 	if r == nil || r.store == nil {
 		return

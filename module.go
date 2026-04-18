@@ -119,3 +119,13 @@ func (k *Kit) SetScheduleHandler(h types.ScheduleHandler) { k.kernel.SetSchedule
 // for request/response routing). Modules that accept topic arguments
 // (e.g. schedules) use this to reject command topics.
 func (k *Kit) HasCommand(topic string) bool { return k.kernel.HasCommand(topic) }
+
+// SetAuditStore attaches a store to the Kit's central audit Recorder. The
+// Recorder always exists; without a store, Record calls no-op. The audit
+// module calls this during Init so every subsystem's Record calls start
+// persisting. Pass nil to detach.
+func (k *Kit) SetAuditStore(s AuditStore) { k.kernel.SetAuditStore(s) }
+
+// SetAuditVerbosity switches the Recorder between normal and verbose
+// tiers. Owned by the audit module.
+func (k *Kit) SetAuditVerbosity(v AuditVerbosity) { k.kernel.SetAuditVerbosity(v) }

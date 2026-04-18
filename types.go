@@ -3,6 +3,7 @@ package brainkit
 import (
 	"encoding/json"
 
+	"github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/types"
@@ -24,6 +25,19 @@ type ErrorContext = types.ErrorContext
 // name it directly since modules/schedules.NewModule returns a value
 // that already satisfies it.
 type ScheduleHandler = types.ScheduleHandler
+
+// AuditStore is the persistence interface used by the central Recorder
+// and the audit module's query commands. Re-exported from internal/audit
+// so callers of (*Kit).SetAuditStore can name the argument type.
+type AuditStore = audit.Store
+
+// AuditVerbosity tier controls how much detail the Recorder writes.
+type AuditVerbosity = audit.Verbosity
+
+const (
+	AuditVerbosityNormal  = audit.VerbosityNormal
+	AuditVerbosityVerbose = audit.VerbosityVerbose
+)
 
 // ── Common types ─────────────────────────────────────────────────────────────
 

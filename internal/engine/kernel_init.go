@@ -191,19 +191,12 @@ func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 }
 
 func (k *Kernel) initAudit(cfg types.KernelConfig) func() {
-	// Audit requires an explicit AuditStore. No auto-creation from FSRoot —
-	// the audit module (session 05) owns that wiring. When no store is
-	// provided, k.audit stays nil; the recorder helpers no-op on nil.
-	if cfg.AuditStore == nil {
-		return nil
-	}
-	verbosity := auditpkg.VerbosityNormal
-	if cfg.AuditVerbose {
-		verbosity = auditpkg.VerbosityVerbose
-	}
-	k.auditStore = cfg.AuditStore
+	// Always create the Recorder — it's nil-safe without a store (Record
+	// calls no-op until the audit module attaches one via SetStore). The
+	// audit module owns the store wiring; the Recorder stays in core so
+	// every subsystem can record unconditionally.
 	k.audit = auditpkg.NewRecorderWithConfig(auditpkg.RecorderConfig{
-		Store: cfg.AuditStore, RuntimeID: cfg.RuntimeID, Namespace: cfg.Namespace, Verbosity: verbosity,
+		RuntimeID: cfg.RuntimeID, Namespace: cfg.Namespace,
 	})
 	return nil
 }

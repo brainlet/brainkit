@@ -61,8 +61,7 @@ type Kernel struct {
 	storages  map[string]*libsql.Server
 
 	secretStore   secrets.SecretStore
-	audit         *auditpkg.Recorder // centralized event log — nil-safe
-	auditStore    auditpkg.Store     // underlying store for query access
+	audit *auditpkg.Recorder // centralized event log — nil-safe
 	node          *Node              // optional back-reference, set by Node after creation
 	deploymentMgr *DeploymentManager // owns deploy/teardown/eval lifecycle
 

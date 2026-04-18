@@ -2,6 +2,103 @@
 
 ## Unreleased
 
+### Session 06 Bundle B — modules/audit
+
+Audit log query + storage split out of core. The `Recorder` (event
+producer) stays in `internal/audit` and is nil-safe without a store; the
+new `modules/audit` attaches a store at Init time, registers the
+audit.query / audit.stats / audit.prune bus commands, and ships two
+backends (`stores.SQLite`, `stores.Postgres`). Two duplicate SQLite audit
+store implementations (`internal/audit/store.go`, `internal/store/auditstore.go`)
+collapse into one.
+
+Added:
+- `modules/audit/` package:
+  - `module.go` — `NewModule(Config{Store, Verbose, OwnStore})`. Init
+    calls `(*Kit).SetAuditStore(store)` so every subsystem's Record
+    calls start persisting, applies Verbose via `SetAuditVerbosity`,
+    and registers the three bus handlers.
+  - `handlers.go` — `domain` wraps the module's Store. Each handler
+    is nil-safe on a missing store (returns empty / false), so a Kit
+    that wires the module with no store still answers the bus
+    commands with empty results.
+  - `types.go` — re-exports `audit.Store / Event / Query / Verbosity`
+    under `audit.` (the module package name) for ergonomic callers.
+  - `stores/sqlite.go` — consolidated SQLite audit store (columns
+    `timestamp, type, ...` — the pre-module schema in
+    `internal/audit/store.go` won out).
+  - `stores/postgres.go` — Postgres audit store built on the shared
+    sqlc-generated `internal/store/sqlgen/postgres` Queries. Creates
+    the `audit_events` table on Open (no longer relies on KitStore
+    to bring it along).
+- `(*audit.Recorder).SetStore(s)` / `SetVerbosity(v)` — module-facing
+  hooks to swap the store and verbosity post-construction.
+- `(*Kit).SetAuditStore(s)` / `(*Kit).SetAuditVerbosity(v)` — Kit-level
+  delegates. `brainkit.AuditStore`, `brainkit.AuditVerbosity`, and the
+  `AuditVerbosityNormal/Verbose` consts are re-exported in `types.go`
+  so external callers can name the argument types without importing
+  `internal/audit`.
+- `(*Kernel).SetAuditStore` / `SetAuditVerbosity` — engine delegates.
+
+Changed:
+- `internal/engine/kernel.go` — `Recorder` is now always created in
+  `initAudit` (no store = no-op). Removed the `auditStore` field — the
+  module owns the reference and the handlers read it directly.
+- `internal/engine/kernel_init.go` — `initAudit` dropped its
+  conditional "no AuditStore → stay nil" branch; Recorder always
+  exists.
+- `internal/engine/catalog.go` — audit.query / stats / prune
+  nodeCommand entries removed (module registers them).
+- `internal/engine/handlers_audit.go` — **deleted**; `AuditDomain`
+  moved verbatim into `modules/audit/handlers.go` (renamed to
+  `domain`, unexported).
+- `internal/types/config.go` — dropped `KernelConfig.AuditStore` and
+  `KernelConfig.AuditVerbose`. No top-level `brainkit.Config.AuditStore`
+  existed, so no migration impact there.
+- `test/suite/env.go` — always appends `auditmod.NewModule(Config{})`
+  to Config.Modules so the audit.* bus commands are registered in
+  every test; no store is wired by default (tests stay permissive,
+  matching the legacy FSRoot-less behavior).
+
+Removed:
+- `internal/audit/store.go` — dead code, had no callers.
+- `internal/audit/store_test.go` — tested the deleted SQLite store.
+- `internal/store/auditstore.go` — replaced by
+  `modules/audit/stores/sqlite.go`.
+- `internal/store/auditstore_pg.go` — replaced by
+  `modules/audit/stores/postgres.go`.
+- `internal/store/factory.NewAuditStore` — no external callers; the
+  module-builders (`stores.NewSQLite`, `stores.NewPostgres`) are the
+  public surface now.
+- `internal/store/store_test.go` — audit store tests + factory audit
+  branch dropped (`TestFactory_SQLite` still covers KitStore).
+
+Migration:
+
+Before:
+```go
+audit, _ := store.NewSQLiteAuditStore(path) // internal/store
+cfg := types.KernelConfig{AuditStore: audit}
+```
+
+After:
+```go
+import (
+    auditmod  "github.com/brainlet/brainkit/modules/audit"
+    auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+)
+
+auditStore, _ := auditstores.NewSQLite(path)
+kit, _ := brainkit.New(brainkit.Config{
+    Modules: []brainkit.Module{
+        auditmod.NewModule(auditmod.Config{Store: auditStore, OwnStore: true}),
+    },
+})
+```
+
+Without the module: the Recorder still runs (nil-safe), no events are
+persisted, and audit.query / stats / prune bus commands are absent.
+
 ### Session 06 Bundle A — modules/schedules
 
 Scheduling is now a stand-alone `brainkit.Module`. Persisted cron-like

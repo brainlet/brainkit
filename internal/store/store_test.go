@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -135,45 +134,7 @@ func testKitStorePlugins(t *testing.T, store types.KitStore) {
 	assert.Len(t, running, 0)
 }
 
-// --- AuditStore tests (run against any backend) ---
-
-func testAuditStoreRecordAndQuery(t *testing.T, store audit.Store) {
-	store.Record(audit.Event{Category: "plugin", Type: "plugin.started", Source: "kv"})
-	store.Record(audit.Event{Category: "security", Type: "tools.call.denied", Source: "bad"})
-	store.Record(audit.Event{Category: "tools", Type: "tools.call.completed", Source: "echo", Duration: 50 * time.Millisecond})
-
-	all, err := store.Query(audit.Query{})
-	require.NoError(t, err)
-	assert.Len(t, all, 3)
-
-	plugins, err := store.Query(audit.Query{Category: "plugin"})
-	require.NoError(t, err)
-	assert.Len(t, plugins, 1)
-
-	count, err := store.Count()
-	require.NoError(t, err)
-	assert.Equal(t, int64(3), count)
-
-	byCat, err := store.CountByCategory()
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), byCat["plugin"])
-	assert.Equal(t, int64(1), byCat["security"])
-	assert.Equal(t, int64(1), byCat["tools"])
-}
-
-func testAuditStorePrune(t *testing.T, store audit.Store) {
-	now := time.Now()
-	store.Record(audit.Event{Timestamp: now.Add(-48 * time.Hour), Category: "old", Type: "old.event", Source: "old"})
-	store.Record(audit.Event{Timestamp: now, Category: "new", Type: "new.event", Source: "new"})
-
-	err := store.Prune(24 * time.Hour)
-	require.NoError(t, err)
-
-	remaining, err := store.Query(audit.Query{})
-	require.NoError(t, err)
-	assert.Len(t, remaining, 1)
-	assert.Equal(t, "new", remaining[0].Source)
-}
+// AuditStore tests moved to modules/audit/stores.
 
 // --- SQLite backend tests ---
 
@@ -192,20 +153,7 @@ func TestSQLiteKitStore(t *testing.T) {
 	t.Run("plugins", func(t *testing.T) { testKitStorePlugins(t, makeStore(t)) })
 }
 
-func TestSQLiteAuditStore(t *testing.T) {
-	t.Run("record_and_query", func(t *testing.T) {
-		s, err := NewSQLiteAuditStore(filepath.Join(t.TempDir(), "audit.db"))
-		require.NoError(t, err)
-		defer s.Close()
-		testAuditStoreRecordAndQuery(t, s)
-	})
-	t.Run("prune", func(t *testing.T) {
-		s, err := NewSQLiteAuditStore(filepath.Join(t.TempDir(), "audit.db"))
-		require.NoError(t, err)
-		defer s.Close()
-		testAuditStorePrune(t, s)
-	})
-}
+// Audit store tests moved to modules/audit/stores (stores.SQLite / stores.Postgres).
 
 // --- Factory tests ---
 
@@ -216,17 +164,9 @@ func TestFactory_SQLite(t *testing.T) {
 	require.NoError(t, err)
 	defer kitStore.Close()
 
-	auditStore, err := NewAuditStore(Config{Backend: "sqlite", SQLitePath: filepath.Join(dir, "audit.db")})
-	require.NoError(t, err)
-	defer auditStore.Close()
-
-	// Verify they work
+	// Verify it works
 	err = kitStore.SaveDeployment(types.PersistedDeployment{Source: "test.ts", Code: "code", DeployedAt: time.Now()})
 	require.NoError(t, err)
-
-	auditStore.Record(audit.Event{Category: "test", Type: "test.event"})
-	count, _ := auditStore.Count()
-	assert.Equal(t, int64(1), count)
 }
 
 func TestFactory_UnknownBackend(t *testing.T) {

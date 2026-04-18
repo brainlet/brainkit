@@ -18,6 +18,7 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
+	auditmod "github.com/brainlet/brainkit/modules/audit"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
@@ -241,6 +242,11 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 		schedStore = s
 	}
 	kitCfg.Modules = append(kitCfg.Modules, schedulesmod.NewModule(schedulesmod.Config{Store: schedStore}))
+
+	// Audit commands come from modules/audit — always include. Without a
+	// backing store the Recorder is a no-op and audit.query/stats/prune
+	// return empty results (matches the legacy FSRoot-less behavior).
+	kitCfg.Modules = append(kitCfg.Modules, auditmod.NewModule(auditmod.Config{}))
 
 	// Transport: default to memory (fast GoChannel) for suite tests.
 	// Campaigns override with WithTransport("nats"), WithTransport("embedded"), etc.
