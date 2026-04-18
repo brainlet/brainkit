@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/ctxkeys"
 	"github.com/brainlet/brainkit/sdk/pluginws"
@@ -17,13 +18,18 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// wsClient implements sdk.Runtime over WebSocket.
+// wsClient implements Client (sdk.Runtime + Caller()) over WebSocket.
 type wsClient struct {
 	conn      *websocket.Conn
 	mu        sync.Mutex
 	eventSubs map[string][]func(sdk.Message) // topic → handlers
 	subMu     sync.RWMutex
+	caller    *Caller // constructed in Run once the manifest is acked.
 }
+
+// Caller returns the shared-inbox reply router for brainkit.Call.
+// Nil until the plugin has connected and its inbox is live.
+func (c *wsClient) Caller() *Caller { return c.caller }
 
 func (c *wsClient) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
 	// Extract metadata from context so the host stamps them on the bus message.
@@ -164,6 +170,18 @@ func (p *Plugin) Run() error {
 		})
 		rt.subMu.Unlock()
 	}
+
+	// Build the shared-inbox Caller on the plugin's dedicated inbox.
+	// The host auto-forwards bus messages for subscribed topics over WS,
+	// so rt.SubscribeRaw → TypeSubscribe → host bus sub → event flow back
+	// is the same path the reply router consumes.
+	inbox := fmt.Sprintf("_brainkit.plugin-inbox.%s.%s", p.owner, p.name)
+	plugCaller, err := caller.NewCallerWithInbox(rt, inbox, nil)
+	if err != nil {
+		return fmt.Errorf("plugin: caller init: %w", err)
+	}
+	rt.caller = plugCaller
+	defer plugCaller.Close()
 
 	// READY — host reads this from stdout
 	fmt.Fprintf(os.Stdout, "READY:%s/%s@%s\n", p.owner, p.name, p.version)

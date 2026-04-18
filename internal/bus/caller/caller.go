@@ -151,18 +151,29 @@ type Config struct {
 // runtimeID. Subscribes to the inbox and to `bus.handler.exhausted` for
 // fail-fast shortcutting. Callers must Close() to release both.
 func NewCaller(rt sdk.Runtime, runtimeID string, logger *slog.Logger) (*Caller, error) {
+	if runtimeID == "" {
+		return nil, fmt.Errorf("caller: runtimeID is required")
+	}
+	return NewCallerWithInbox(rt, fmt.Sprintf("_brainkit.inbox.%s", runtimeID), logger)
+}
+
+// NewCallerWithInbox creates a Caller bound to an explicit inbox
+// topic — used by the plugin SDK, which builds
+// `_brainkit.plugin-inbox.<owner>.<name>` instead of the Kit's
+// `_brainkit.inbox.<runtimeID>` scheme.
+func NewCallerWithInbox(rt sdk.Runtime, inbox string, logger *slog.Logger) (*Caller, error) {
 	if rt == nil {
 		return nil, fmt.Errorf("caller: rt is required")
 	}
-	if runtimeID == "" {
-		return nil, fmt.Errorf("caller: runtimeID is required")
+	if inbox == "" {
+		return nil, fmt.Errorf("caller: inbox is required")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	c := &Caller{
 		rt:     rt,
-		inbox:  fmt.Sprintf("_brainkit.inbox.%s", runtimeID),
+		inbox:  inbox,
 		logger: logger,
 	}
 	inboxUnsub, err := rt.SubscribeRaw(context.Background(), c.inbox, c.onInbox)

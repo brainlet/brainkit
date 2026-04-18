@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Session 09 Bundle A — Plugin SDK Caller
+
+Plugins can now issue typed `brainkit.Call` requests back to the host.
+The plugin-side Client gains a `Caller()` accessor that returns a
+shared-inbox reply router bound to a dedicated plugin inbox, so the
+same `brainkit.Call[Req,Resp]` generic works unchanged from plugin code.
+
+Added:
+- `sdk/plugin.BusCaller` interface — `sdk.Runtime` plus `Caller() *Caller`.
+- `sdk/plugin.Caller` type alias over `internal/bus/caller.Caller` so
+  plugin authors never reach into internal packages.
+- `sdk/plugin.Client` is now typed as `BusCaller` (was `sdk.Runtime`).
+- `caller.NewCallerWithInbox(rt, inbox, logger)` — explicit-inbox
+  constructor. The plugin SDK builds
+  `_brainkit.plugin-inbox.<owner>.<name>` instead of the Kit's
+  `_brainkit.inbox.<runtimeID>` scheme.
+- `caller_test.go` — unit coverage for `NewCallerWithInbox` (topic
+  propagation + argument validation).
+- `test/suite/plugins/caller_test.go` — e2e assertion that a running
+  plugin's `Client.Caller()` exposes the documented inbox topic.
+
+Changed:
+- `sdk/plugin/serve.go` — `wsClient.caller` built after the manifest
+  handshake via `caller.NewCallerWithInbox`. Closed with the plugin.
+
 ### Session 08 Bundle B — modules/harness (WIP)
 
 Move the harness agent-orchestration layer out of `internal/harness`

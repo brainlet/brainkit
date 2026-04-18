@@ -3,11 +3,27 @@ package plugin
 import (
 	"encoding/json"
 
+	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// Client is an alias for sdk.Runtime — the interface plugin handlers receive.
-type Client = sdk.Runtime
+// Caller is the shared-inbox reply router used by brainkit.Call from
+// the plugin side. Type-aliased from the internal implementation so
+// plugin authors never reach into internal/.
+type Caller = caller.Caller
+
+// BusCaller is the narrow surface a plugin's brainkit.Call path
+// exercises. It adds Caller() on top of sdk.Runtime so plugin handlers
+// can issue typed Calls against the host bus.
+type BusCaller interface {
+	sdk.Runtime
+	Caller() *Caller
+}
+
+// Client is the interface plugin handlers receive. Satisfies
+// sdk.Runtime (publish / subscribe) and provides the shared-inbox
+// reply router via Caller() for brainkit.Call.
+type Client = BusCaller
 
 // PluginManifest declares a plugin's capabilities.
 type PluginManifest struct {

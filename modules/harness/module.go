@@ -1,6 +1,8 @@
 package harness
 
 import (
+	"fmt"
+
 	"github.com/brainlet/brainkit"
 )
 
@@ -31,11 +33,15 @@ func (m *Module) Status() brainkit.ModuleStatus  { return brainkit.ModuleStatusW
 // Harness needs a Runtime (BridgeEval access); the Kit's bridge
 // satisfies it via brainkit.HarnessRuntime.
 func (m *Module) Init(k *brainkit.Kit) error {
-	rt := k.HarnessRuntime()
-	if rt == nil {
+	raw := k.HarnessRuntime()
+	if raw == nil {
 		return nil // Harness cannot run without a JS runtime.
 	}
-	h, err := Init(rt.(Runtime), m.cfg.Harness)
+	rt, ok := raw.(Runtime)
+	if !ok {
+		return fmt.Errorf("harness: Kit.HarnessRuntime() returned %T which does not satisfy harness.Runtime", raw)
+	}
+	h, err := Init(rt, m.cfg.Harness)
 	if err != nil {
 		return err
 	}
