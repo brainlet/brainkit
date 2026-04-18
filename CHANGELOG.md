@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Session 10 part 1 — accessor API (additive)
+
+Consolidate registry management behind narrow accessor types. Future
+work (session 10 part 2) will delete the Kit-level Register/Unregister/
+List methods and route callers through the accessors exclusively;
+this commit lands the additive surface first so the deletion pass
+has something to migrate to.
+
+Added:
+- `brainkit/accessors.go` with four accessor types:
+  - `Providers` — Register / Unregister / List / Get / Has over AI
+    providers.
+  - `Storages` — same shape over storage backends.
+  - `Vectors` — same shape over vector stores.
+  - `Secrets` — Set / Get / Delete / List / Rotate over the secret
+    store. Returns a clear "no store configured" error when the Kit
+    was built without `SecretKey`.
+- `(*Kit).Providers()` / `Storages()` / `Vectors()` / `Secrets()` —
+  cached-per-Kit accessor constructors. Same pointer on repeated
+  calls.
+- `(*engine.Kernel).ProviderRegistry()` — narrow accessor so
+  brainkit-level wrappers can read registry state without extending
+  Kernel's delegation surface.
+- `accessors_test.go` — round-trip coverage for Providers and
+  Secrets; the accessor-caching guarantee.
+
+Changed:
+- `kit.go` — `Kit` struct gained four accessor cache fields.
+
 ### Session 09 Bundle B — WS cancel + .ts cancel helpers
 
 Host cancellation now propagates across every surface. Cancelling a

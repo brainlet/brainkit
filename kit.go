@@ -30,6 +30,15 @@ type Kit struct {
 	kernel  *engine.Kernel
 	node    *engine.Node
 	modules []Module // Kit-scoped modules initialized from cfg.Modules
+
+	// Accessor caches — populated lazily on first call to the
+	// matching accessor method. They are stateless wrappers over the
+	// kernel's registries / secret store, so a single instance per
+	// Kit is enough.
+	providers *Providers
+	storages  *Storages
+	vectors   *Vectors
+	secrets   *Secrets
 }
 
 // New creates a brainkit runtime from config.

@@ -97,6 +97,11 @@ func (k *Kernel) SetPluginRestarter(r PluginRestarter) {
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }
 
+// ProviderRegistry exposes the shared provider/storage/vector registry
+// so brainkit-level accessors (Providers/Storages/Vectors) can issue
+// narrow reads without duplicating delegations on Kernel.
+func (k *Kernel) ProviderRegistry() *provreg.ProviderRegistry { return k.providers }
+
 // CreateAgent creates a persistent agent in the runtime.
 func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error) {
 	return k.agents.CreateAgent(cfg)
