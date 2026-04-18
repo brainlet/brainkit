@@ -45,6 +45,11 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("websocket", func(t *testing.T) { testWebSocket(t, env) })
 		t.Run("rate_limiting", func(t *testing.T) { testRateLimiting(t, env) })
 
+		// bus_api.go — built-in /api/bus + /api/stream endpoints.
+		t.Run("bus_api/health_round_trip", func(t *testing.T) { testBusAPIHealthRoundTrip(t, env) })
+		t.Run("bus_api/missing_topic", func(t *testing.T) { testBusAPIMissingTopic(t, env) })
+		t.Run("bus_api/stream_ndjson", func(t *testing.T) { testBusAPIStreamNDJSON(t, env) })
+
 		// stream.go — streaming tests (from infra/stream_test.go)
 		t.Run("stream_heartbeat_timeout", func(t *testing.T) { testStreamHeartbeatTimeout(t, env) })
 		t.Run("stream_max_duration", func(t *testing.T) { testStreamMaxDuration(t, env) })

@@ -2,241 +2,53 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net"
-	"net/http"
-	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
-	"time"
 
-	"github.com/brainlet/brainkit"
-	cliconfig "github.com/brainlet/brainkit/cmd/brainkit/config"
-	"github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/google/uuid"
+	"github.com/brainlet/brainkit/server"
 	"github.com/spf13/cobra"
 )
 
 func newStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var configPath string
+	c := &cobra.Command{
 		Use:   "start",
-		Short: "Start a brainkit instance",
+		Short: "Start a brainkit server from a YAML config",
+		Long: `Start loads a brainkit server from a YAML config file and runs it
+until SIGINT or SIGTERM. The config file shape is documented at
+brainkit/server/testdata/example.yaml; environment variables
+referenced as $VAR or ${VAR} are substituted at load time.
+
+The composed Server wires the standard module set (gateway,
+probes, tracing, audit) and registers POST /api/bus +
+POST /api/stream on the gateway — the canonical entry points
+used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := cliconfig.LoadConfig()
+			cfg, err := server.LoadConfig(configPath)
 			if err != nil {
-				return err
-			}
-			bkCfg, err := cliconfig.BuildConfig(cfg)
-			if err != nil {
-				return fmt.Errorf("build config: %w", err)
-			}
-			kit, err := brainkit.New(bkCfg)
-			if err != nil {
-				return fmt.Errorf("create: %w", err)
+				return fmt.Errorf("load config %q: %w", configPath, err)
 			}
 
-			// Start control API server on a random local port
-			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			srv, err := server.New(cfg)
 			if err != nil {
-				kit.Close()
-				return fmt.Errorf("control api listen: %w", err)
+				return fmt.Errorf("build server: %w", err)
 			}
-			port := ln.Addr().(*net.TCPAddr).Port
+			defer srv.Close()
 
-			mux := http.NewServeMux()
-			mux.HandleFunc("POST /api/bus", controlBusHandler(kit))
-			mux.HandleFunc("POST /api/stream", controlStreamHandler(kit))
-			controlSrv := &http.Server{Handler: mux}
-			go controlSrv.Serve(ln)
-
-			// Write pidfile with control port so CLI commands can discover it
-			pidDir := "data"
-			os.MkdirAll(pidDir, 0755)
-			pidFile := filepath.Join(pidDir, "brainkit.pid")
-			os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", port)), 0644)
-			defer os.Remove(pidFile)
+			ctx, stop := signal.NotifyContext(context.Background(),
+				syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
 
 			slog.Info("brainkit started",
 				slog.String("namespace", cfg.Namespace),
-				slog.String("transport", cfg.Transport),
-				slog.String("control", fmt.Sprintf("http://127.0.0.1:%d", port)),
-				slog.String("workspace", cfg.FSRoot),
+				slog.String("listen", cfg.Gateway.Listen),
+				slog.String("fs_root", cfg.FSRoot),
 			)
-
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			<-sigCh
-
-			slog.Info("shutting down")
-
-			// Shutdown with a hard deadline — don't hang on stuck connections.
-			// Second Ctrl+C force-exits immediately.
-			shutdownDone := make(chan error, 1)
-			go func() {
-				shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer shutCancel()
-				controlSrv.Shutdown(shutCtx)
-				shutdownDone <- kit.Shutdown(shutCtx)
-			}()
-
-			select {
-			case err := <-shutdownDone:
-				return err
-			case <-sigCh:
-				slog.Warn("force exit")
-				os.Exit(1)
-				return nil
-			}
+			return srv.Start(ctx)
 		},
 	}
-}
-
-// controlBusHandler handles POST /api/bus — generic bus request-reply over HTTP.
-// Body: {"topic":"kit.health","payload":{}}
-// Response: {"payload":{...}} or {"error":"..."}
-func controlBusHandler(kit *brainkit.Kit) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-
-		var req struct {
-			Topic   string          `json:"topic"`
-			Payload json.RawMessage `json:"payload"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
-			return
-		}
-		if req.Topic == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic is required"})
-			return
-		}
-
-		// Use the HTTP request context — inherits the client's timeout.
-		// No server-side timeout cap — the client controls how long to wait.
-		ctx := r.Context()
-
-		correlationID := uuid.NewString()
-		replyTo := req.Topic + ".reply." + correlationID
-
-		replyCh := make(chan sdk.Message, 1)
-		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscribe: " + err.Error()})
-			return
-		}
-		defer unsub()
-
-		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := kit.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
-			return
-		}
-
-		select {
-		case msg := <-replyCh:
-			writeJSON(w, http.StatusOK, map[string]json.RawMessage{"payload": msg.Payload})
-		case <-ctx.Done():
-			writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timeout waiting for response"})
-		}
-	}
-}
-
-// controlStreamHandler handles POST /api/stream — bus publish + stream all events as NDJSON.
-// Each intermediate message (done=false) is written as a JSON line and flushed.
-// The terminal message (done=true) is written last, then the response closes.
-func controlStreamHandler(kit *brainkit.Kit) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-
-		var req struct {
-			Topic   string          `json:"topic"`
-			Payload json.RawMessage `json:"payload"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
-			return
-		}
-		if req.Topic == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic is required"})
-			return
-		}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
-			return
-		}
-
-		ctx := r.Context()
-		correlationID := uuid.NewString()
-		replyTo := req.Topic + ".reply." + correlationID
-
-		eventCh := make(chan sdk.Message, 100)
-		unsub, err := kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			select {
-			case eventCh <- msg:
-			default:
-			}
-		})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscribe: " + err.Error()})
-			return
-		}
-		defer unsub()
-
-		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := kit.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.WriteHeader(http.StatusOK)
-		flusher.Flush()
-
-		enc := json.NewEncoder(w)
-		for {
-			select {
-			case msg := <-eventCh:
-				done := msg.Metadata != nil && msg.Metadata["done"] == "true"
-				evt := map[string]any{
-					"payload": json.RawMessage(msg.Payload),
-					"done":    done,
-				}
-				enc.Encode(evt)
-				flusher.Flush()
-				if done {
-					return
-				}
-			case <-ctx.Done():
-				enc.Encode(map[string]string{"error": "timeout"})
-				flusher.Flush()
-				return
-			}
-		}
-	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	c.Flags().StringVarP(&configPath, "config", "c", "brainkit.yaml", "path to server config YAML")
+	return c
 }

@@ -13,79 +13,123 @@ import (
 )
 
 func newDeployCmd() *cobra.Command {
+	var endpoint string
 	c := &cobra.Command{
 		Use:   "deploy <file-or-dir>",
-		Short: "Deploy a .ts file or package directory",
-		Args:  cobra.ExactArgs(1),
+		Short: "Deploy a .ts file or package directory to a running server",
+		Long: `Deploy posts a package to a running brainkit server via
+POST /api/bus. A plain .ts file ships as a single-entry inline
+package; a directory ships with its manifest.json plus every
+.ts under it (excluding node_modules, .git, and types/).`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
 			info, err := os.Stat(path)
 			if err != nil {
 				return fmt.Errorf("cannot read %s: %w", path, err)
 			}
-			if info.IsDir() {
-				return deployDirectory(cmd, path)
+
+			msg, err := buildDeployMsg(path, info)
+			if err != nil {
+				return err
 			}
-			return deployFile(cmd, path)
+
+			ctx, cancel := withTimeout(cmd.Context())
+			defer cancel()
+
+			payload, err := json.Marshal(msg)
+			if err != nil {
+				return fmt.Errorf("marshal deploy msg: %w", err)
+			}
+
+			client := newBusClient(endpoint)
+			reply, err := client.call(ctx, msg.BusTopic(), payload)
+			if err != nil {
+				return err
+			}
+
+			var resp sdk.PackageDeployResp
+			if err := json.Unmarshal(reply, &resp); err != nil {
+				return fmt.Errorf("decode response: %w (body: %s)", err, string(reply))
+			}
+
+			if jsonOutput {
+				return writeJSONPretty(cmd.OutOrStdout(), reply)
+			}
+			version := resp.Version
+			if version == "" {
+				version = "0.0.0"
+			}
+			cmd.Printf("Deployed %s v%s (%s)\n", resp.Name, version, resp.Source)
+			return nil
 		},
 	}
+	c.Flags().StringVarP(&endpoint, "endpoint", "e", "", "server endpoint (default http://127.0.0.1:8080)")
 	return c
 }
 
-// deployFile wraps a single .ts file as a virtual package.
-// hello.ts → package "hello", deployed as hello.ts, namespace ts.hello.*
-func deployFile(cmd *cobra.Command, path string) error {
+// buildDeployMsg wraps a filesystem path as a PackageDeployMsg.
+// Files send as inline sources so the server doesn't need
+// filesystem access to the caller's machine.
+func buildDeployMsg(path string, info os.FileInfo) (sdk.PackageDeployMsg, error) {
+	if info.IsDir() {
+		return buildDirectoryMsg(path)
+	}
+	return buildFileMsg(path)
+}
+
+// buildFileMsg wraps a single .ts file as a one-entry package.
+// hello.ts → package "hello", deployed as hello.ts, namespace
+// ts.hello.*.
+func buildFileMsg(path string) (sdk.PackageDeployMsg, error) {
 	code, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return sdk.PackageDeployMsg{}, err
 	}
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","entry":%q}`, name, filename)
-	return connectAndPublish(cmd, sdk.PackageDeployMsg{
+	return sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{filename: string(code)},
-	},
-		func(resp *sdk.PackageDeployResp) {
-			cmd.Printf("Deployed %s (%s)\n", resp.Name, resp.Source)
-		},
-	)
+	}, nil
 }
 
-// deployDirectory reads manifest + recursively collects all .ts files for inline deploy.
-func deployDirectory(cmd *cobra.Command, path string) error {
+// buildDirectoryMsg reads manifest.json + every .ts file in the
+// directory tree (skipping node_modules / .git / types).
+func buildDirectoryMsg(path string) (sdk.PackageDeployMsg, error) {
 	manifestData, err := os.ReadFile(filepath.Join(path, "manifest.json"))
 	if err != nil {
-		return fmt.Errorf("read manifest: %w", err)
+		return sdk.PackageDeployMsg{}, fmt.Errorf("read manifest: %w", err)
 	}
 	files := make(map[string]string)
-	filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			name := d.Name()
-			if name == "node_modules" || name == ".git" || name == "types" {
+			switch d.Name() {
+			case "node_modules", ".git", "types":
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if filepath.Ext(d.Name()) == ".ts" {
-			rel, _ := filepath.Rel(path, p)
-			data, readErr := os.ReadFile(p)
-			if readErr != nil {
-				return readErr
-			}
-			files[rel] = string(data)
+		if filepath.Ext(d.Name()) != ".ts" {
+			return nil
 		}
+		rel, _ := filepath.Rel(path, p)
+		data, readErr := os.ReadFile(p)
+		if readErr != nil {
+			return readErr
+		}
+		files[rel] = string(data)
 		return nil
 	})
-	return connectAndPublish(cmd, sdk.PackageDeployMsg{
+	if walkErr != nil {
+		return sdk.PackageDeployMsg{}, fmt.Errorf("walk package: %w", walkErr)
+	}
+	return sdk.PackageDeployMsg{
 		Manifest: json.RawMessage(manifestData),
 		Files:    files,
-	},
-		func(resp *sdk.PackageDeployResp) {
-			cmd.Printf("Deployed %s v%s (%s)\n", resp.Name, resp.Version, resp.Source)
-		},
-	)
+	}, nil
 }

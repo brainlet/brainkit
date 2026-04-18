@@ -66,15 +66,22 @@ func (c *StreamConfig) withDefaults() StreamConfig {
 
 // Config configures the HTTP gateway.
 type Config struct {
-	Listen      string
-	Timeout     time.Duration
-	Middleware  []Middleware
-	CORS        *CORSConfig
-	NoHealth    bool
-	Logger      *slog.Logger     // optional — nil = slog.Default()
-	Tracer      Tracer           // optional — creates root spans for requests
-	RateLimit   *RateLimitConfig // optional — global rate limiter (429 when exceeded)
-	Stream      *StreamConfig    // optional — SSE streaming config. nil = use defaults.
+	Listen     string
+	Timeout    time.Duration
+	Middleware []Middleware
+	CORS       *CORSConfig
+	NoHealth   bool
+	Logger     *slog.Logger     // optional — nil = slog.Default()
+	Tracer     Tracer           // optional — creates root spans for requests
+	RateLimit  *RateLimitConfig // optional — global rate limiter (429 when exceeded)
+	Stream     *StreamConfig    // optional — SSE streaming config. nil = use defaults.
+
+	// NoBusAPI disables the built-in POST /api/bus +
+	// POST /api/stream endpoints. Default: off (endpoints are
+	// registered). The bus API is the canonical entry point for
+	// the brainkit CLI and any external HTTP client that wants
+	// to drive a running Kit over the bus.
+	NoBusAPI bool
 }
 
 // Tracer is a minimal tracing interface to avoid importing kit/tracing.
@@ -207,6 +214,9 @@ func (gw *Gateway) Start() error {
 	mux := http.NewServeMux()
 	if !gw.config.NoHealth {
 		registerHealthRoutes(mux, gw.rt)
+	}
+	if !gw.config.NoBusAPI {
+		registerBusAPIRoutes(mux, gw.rt)
 	}
 	mux.HandleFunc("/", gw.dispatch)
 

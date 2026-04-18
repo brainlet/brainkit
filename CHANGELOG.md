@@ -2,6 +2,95 @@
 
 ## Unreleased
 
+### plans-01 session 02 — CLI rewrite to 5 verbs
+
+Completes the Session 11 Bundle B work from `plans/`. The CLI now
+speaks to a running server over a built-in gateway HTTP endpoint
+instead of a separate pidfile-based control server. The control
+surface is now one HTTP server (the gateway) serving both user
+routes and `POST /api/bus` + `POST /api/stream`.
+
+Five verbs total:
+
+```
+brainkit start    [--config brainkit.yaml]      # run a server
+brainkit deploy   <file|dir> --endpoint <url>   # deploy a package
+brainkit call     <topic>    --endpoint <url>   # generic bus request
+brainkit inspect  <subject>  --endpoint <url>   # human-readable query
+brainkit new      <kind> <name>                 # scaffolder (package|plugin|server)
+```
+
+Added:
+- `modules/gateway/bus_api.go` — registers `POST /api/bus` and
+  `POST /api/stream` on the gateway. Driven by `Config.NoBusAPI`
+  (default on).
+- `cmd/brainkit/cmd/client.go` — `busClient` for POST to
+  `/api/bus` + NDJSON `/api/stream`; peels envelope wrappers.
+- `cmd/brainkit/cmd/call.go` — generic `brainkit call <topic>`
+  verb. Reads payload from `--payload`, `--payload-file`, or
+  stdin. `--stream` opts into NDJSON streaming.
+- `cmd/brainkit/cmd/inspect.go` — subject-dispatched inspector:
+  `health`, `packages`, `plugins`, `schedules`, `agents`,
+  `audit`, `traces`, `routes`. `--json` flips to raw payload.
+- `test/suite/gateway/bus_api.go` — round-trip + streaming
+  coverage for the new gateway endpoints.
+- New CLI e2e tests: `testInspectHealth`,
+  `testInspectHealthJSON`, `testCallVerb`, `testDeployVerb`,
+  `testDeployFullWorkflow`.
+
+Changed:
+- `modules/gateway/Config` — added `NoBusAPI` (default false).
+- `cmd/brainkit/cmd/start.go` — loads config via
+  `server.LoadConfig`, boots `server.New`, signal-driven shutdown.
+  Dropped the embedded control HTTP server + pidfile.
+- `cmd/brainkit/cmd/deploy.go` — rewrite onto `busClient`;
+  `--endpoint` flag replaces pidfile discovery.
+- `cmd/brainkit/cmd/root.go` — registers only 5 verbs + version.
+- `test/suite/cli/` — rewrote tests around the new verbs with
+  their own test server harness; dropped legacy workflow tests.
+- `test/suite/cli/TEST_MAP.md` — tracks the new shape.
+
+Removed:
+- `cmd/brainkit/cmd/eval.go`, `health.go`, `init.go`, `list.go`,
+  `plugin.go`, `plugin_lifecycle.go`, `plugin_list.go`,
+  `resources.go`, `secrets.go`, `send.go`, `teardown.go`,
+  `test.go`, `helpers.go`.
+- `cmd/brainkit/config/` — entire Viper-driven config pkg; the
+  CLI now reads YAML via `server.LoadConfig`.
+
+Migration:
+
+Before:
+
+```sh
+brainkit start                   # wrote data/brainkit.pid
+brainkit health                  # hit pidfile port
+brainkit deploy ./pkg            # hit pidfile port
+brainkit eval "output(1+1)"
+brainkit send hello ping '{}'
+brainkit secrets set K V
+brainkit teardown hello
+```
+
+After:
+
+```sh
+brainkit start --config brainkit.yaml       # now uses server.New
+brainkit inspect health --endpoint :8080
+brainkit deploy ./pkg --endpoint :8080
+brainkit call kit.eval --payload '{"code":"output(1+1)","mode":"ts"}' \
+    --endpoint :8080
+brainkit call ts.hello.ping --payload '{}' --endpoint :8080
+brainkit call secrets.set --payload '{"name":"K","value":"V"}' \
+    --endpoint :8080
+brainkit call package.teardown --payload '{"name":"hello"}' \
+    --endpoint :8080
+```
+
+The legacy subcommands map cleanly onto bus topics consumable
+through `brainkit call`; `inspect` bundles the most common
+read-only queries behind friendlier names.
+
 ### plans-01 session 01 — sdkgen Call wrappers
 
 Extend `cmd/sdkgen` to emit a second file — `call_gen.go` at repo
