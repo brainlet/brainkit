@@ -71,6 +71,7 @@ examples:
 	go build ./examples/hello-server
 	go build ./examples/multi-kit
 	go build ./examples/gateway-routes
+	go build ./examples/go-tools
 	go build ./examples/plugin-host
 	cd examples/plugin-author && go build .
 	@echo "All examples build."

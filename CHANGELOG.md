@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### plans-01 session 05 — Example: Typed Go tools
+
+New runnable `examples/go-tools/` demonstrates how to register
+typed Go functions as first-class bus tools. Deployed `.ts` code
+and Go callers both invoke them through `tools.call`.
+
+Added:
+- `examples/go-tools/main.go` — registers `weather` (stubbed
+  lookup, typed struct I/O) and `math.add` (pure function);
+  deploys a `.ts` that calls both via `bus.call("tools.call", ...)`;
+  also invokes directly from Go through the generated
+  `brainkit.CallToolCall` wrapper.
+- `examples/go-tools/README.md` — run / output / typed-vs-plugin
+  comparison table.
+
+Changed:
+- `examples/README.md` — add go-tools row.
+- `Makefile` `examples` target builds `./examples/go-tools`.
+
 ### plans-01 session 04 — Example: AI providers + agents
 
 New runnable `examples/ai-chat/` demonstrates the library-mode AI
