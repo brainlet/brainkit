@@ -251,6 +251,18 @@
       DefaultExporter: embed.DefaultExporter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
+      // Processors — built-in input/output middleware for Agents.
+      // Used inside an Agent config as `inputProcessors` /
+      // `outputProcessors` for safety and shaping.
+      ModerationProcessor: embed.ModerationProcessor,
+      PromptInjectionDetector: embed.PromptInjectionDetector,
+      PIIDetector: embed.PIIDetector,
+      SystemPromptScrubber: embed.SystemPromptScrubber,
+      UnicodeNormalizer: embed.UnicodeNormalizer,
+      LanguageDetector: embed.LanguageDetector,
+      TokenLimiterProcessor: embed.TokenLimiterProcessor,
+      BatchPartsProcessor: embed.BatchPartsProcessor,
+      StructuredOutputProcessor: embed.StructuredOutputProcessor,
       // JS built-ins
       console: {
         log:   function() { __go_console_log_tagged(source, "log", __util_format(Array.prototype.slice.call(arguments))); },

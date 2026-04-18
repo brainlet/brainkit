@@ -30,6 +30,7 @@ bin/**.go binary
 /examples/*/data/
 
 # Binaries built at repo root by `go build ./examples/...`
+/agent-forge
 /agent-spawner
 /ai-chat
 /cross-kit

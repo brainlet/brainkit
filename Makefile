@@ -83,6 +83,7 @@ docs-bus-topics:
 # plugin-author) are handled via a subshell so their go.mod is
 # picked up as a nested module.
 examples:
+	go build ./examples/agent-forge
 	go build ./examples/agent-spawner
 	go build ./examples/ai-chat
 	go build ./examples/cross-kit

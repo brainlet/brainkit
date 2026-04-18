@@ -90,6 +90,56 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### post-1.0-rc.1 — Example: agent-forge (flagship meta-programming)
+
+New runnable `examples/agent-forge/`. A Go process deploys a
+multi-agent pipeline that designs, writes, reviews, and deploys
+a brand-new brainkit agent from a freeform request, then calls
+the freshly-forged agent directly. One `.ts` file exercises
+every major brainkit primitive in a single realistic workflow.
+
+Pipeline:
+
+```
+request → architect (gpt-4o-mini, JSON spec)
+        → coder (gpt-4o, full reference corpus in prompt)
+        → dountil loop (max 3 iterations):
+             3 parallel reviewers (safety / style / correctness, gpt-4o)
+             → if any flag issues, patch-coder (gpt-4o) applies fixes
+        → deploy (bus.call "package.deploy")
+```
+
+Added:
+- `examples/agent-forge/main.go` — Go entry point, deploys the
+  forge, calls `ts.agent-forge.create`, parses result, then calls
+  the forged agent's `ts.<name>.ask` topic.
+- `examples/agent-forge/forge.ts` — complete workflow + three
+  reviewer agents + parallel aggregation + deterministic verdict
+  folding + patch coder.
+- `examples/agent-forge/README.md` — architecture diagram, model
+  matrix, design rationale (why text-parsed JSON over
+  `output: ZodSchema`, why three parallel reviewers over a
+  supervisor, why the coder gets the full reference corpus),
+  extension ideas.
+
+Changed:
+- `reference.go` — added the `everything` pack (concatenates all
+  raw .md + .d.ts entries) for maximum coder grounding.
+- `internal/engine/runtime/kit_runtime.js` — exposed Mastra's
+  input/output processors (`ModerationProcessor`,
+  `PromptInjectionDetector`, `PIIDetector`, `SystemPromptScrubber`,
+  `UnicodeNormalizer`, `LanguageDetector`, `TokenLimiterProcessor`,
+  `BatchPartsProcessor`, `StructuredOutputProcessor`) as
+  Compartment endowments for future use.
+- `examples/README.md` — agent-forge added at the top of the
+  table; agent-spawner reframed as the minimal primitive example.
+- `Makefile` / `.gitignore` — agent-forge binary.
+
+Verified: three live runs on different requests (tweet-bot,
+plain-explain, pirate-translator), each completing in 10–30
+seconds with a single review iteration and a deployed agent
+that replied correctly on its public `ts.<name>.ask` topic.
+
 ### post-1.0-rc.1 — Embedded reference corpus
 
 New core feature. brainkit now ships an embedded corpus of its

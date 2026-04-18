@@ -86,6 +86,21 @@ var packs = map[string][]string{
 		"go-config.md",
 		"go-sdk.md",
 	},
+	// Everything. Use this pack when a coder agent needs maximum
+	// grounding and you don't want to guess which docs it should
+	// see. ~250kb; fits comfortably in a modern model's context.
+	"everything": {
+		"globals.d.ts",
+		"kit.d.ts",
+		"agent.d.ts",
+		"ai.d.ts",
+		"brainkit.d.ts",
+		"ts-runtime.md",
+		"ai-sdk.md",
+		"mastra.md",
+		"go-config.md",
+		"go-sdk.md",
+	},
 }
 
 // ReferenceKind is "pack" for curated bundles, "raw" for direct
@@ -116,6 +131,7 @@ var packDescriptions = map[string]string{
 	"tool-author":     "Everything needed to write createTool(...) + bus handlers. Lighter than agent-author.",
 	"workflow-author": "Compose Mastra workflows (createWorkflow + createStep + agent steps) inside a .ts deployment.",
 	"kit-consumer":    "Go consumer reference: Config, Kit methods, Call wrappers, Module composition.",
+	"everything":      "The whole corpus — every .d.ts + every .md, concatenated. Use when you want maximum grounding and don't want to pick.",
 }
 
 // Reference returns the content of the named reference. Names are

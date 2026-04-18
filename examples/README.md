@@ -5,7 +5,8 @@ from the repo root.
 
 | Example | What it shows |
 |---|---|
-| [agent-spawner](./agent-spawner/) | Peak use case — an agent that designs and deploys other agents at runtime; Go then calls the spawned agent directly |
+| [agent-forge](./agent-forge/) | Flagship meta-programming example — multi-agent pipeline (architect → coder → 3 parallel reviewers in a dountil loop → deploy) that designs, writes, reviews, and deploys a brand-new agent at runtime |
+| [agent-spawner](./agent-spawner/) | Minimal meta-programming example — an agent with a `deploy_agent` tool that templates a .ts package and deploys it, for learning the primitive before agent-forge |
 | [ai-chat](./ai-chat/) | Register an AI provider, deploy a `.ts` that calls `generateText`, print the model's reply |
 | [cross-kit](./cross-kit/) | Two Kits on a shared in-process NATS, routed by peer name through `modules/topology` + `WithCallTo` |
 | [hello-embedded](./hello-embedded/) | Library mode: embed a Kit, deploy an inline `.ts`, call it, print the reply |
