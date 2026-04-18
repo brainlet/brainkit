@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime docs-bus-topics examples clean
+.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime bench-save bench-check docs-bus-topics examples clean
 
 # Default: build the CLI binary
 all: brainkit
@@ -57,6 +57,23 @@ bench-stable:
 # Run runtime benchmarks (Kit construction, Call round trip, deploy, eval, bus).
 bench-runtime:
 	go test -run='^$$' -bench=. -benchmem -benchtime=1x ./test/bench/...
+
+# Capture the gated runtime benches to test/bench/latest.json — the
+# artifact bench-check compares against baseline.json. `2>/dev/null`
+# drops interleaved log lines from Kit SES init so the parser sees
+# clean stdout.
+bench-save:
+	@mkdir -p test/bench
+	go test -run='^$$' -benchmem -benchtime=5x \
+		-bench='BenchmarkCall$$|BenchmarkCallParallel$$|BenchmarkEnvelopeEncode$$|BenchmarkEnvelopeDecode$$|BenchmarkEnvelopeRoundTrip$$|BenchmarkKitNew$$' \
+		./test/bench/ 2>/dev/null > test/bench/latest.json
+	@echo "Wrote test/bench/latest.json"
+
+# Compare test/bench/latest.json against test/bench/baseline.json and
+# fail if any non-skipped metric regresses beyond the baseline's
+# tolerance_percent. Run `make bench-save && make bench-check`.
+bench-check:
+	go run scripts/bench-compare.go test/bench/baseline.json test/bench/latest.json
 
 # Regenerate docs/bus-topics.md from sdk/*_messages.go.
 docs-bus-topics:

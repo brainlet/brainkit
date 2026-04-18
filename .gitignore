@@ -49,3 +49,7 @@ bin/**.go binary
 
 # plugin-author has its own go.mod — binary builds in-place
 /examples/plugin-author/plugin-author
+
+# Bench artifact produced by `make bench-save`; baseline.json is the
+# committed reference.
+/test/bench/latest.json

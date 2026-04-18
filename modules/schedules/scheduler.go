@@ -214,10 +214,17 @@ func (s *Scheduler) fire(e *entry) {
 		return
 	}
 
+	// NextFire is observed by List() under s.mu — mutate it inside
+	// the same lock so -race doesn't see a torn read on the
+	// re-arm path.
+	s.mu.Lock()
 	e.NextFire = time.Now().Add(e.Duration)
+	snapshot := e.PersistedSchedule
+	s.mu.Unlock()
+
 	e.timer.Reset(e.Duration)
 	if s.store != nil {
-		if err := s.store.SaveSchedule(e.PersistedSchedule); err != nil {
+		if err := s.store.SaveSchedule(snapshot); err != nil {
 			s.persistenceError(context.Background(), "SaveSchedule", e.ID, err)
 		}
 	}

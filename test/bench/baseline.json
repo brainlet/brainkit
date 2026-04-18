@@ -1,0 +1,22 @@
+{
+  "_description": "Baseline for CI regression gate. Captured via `make bench-save` on the commit that introduces this file. CI fails if any non-skipped benchmark's ns_per_op or allocs_per_op exceeds (baseline * (1 + tolerance_percent/100)). Regenerate after an intentional perf change with `make bench-save && mv test/bench/latest.json test/bench/baseline.json` and note the delta in CHANGELOG.",
+  "_machine": "darwin/arm64 Apple M1 Max — CI should capture its own on the runner class it gates against",
+  "_benchtime": "5x",
+  "_tolerance_percent": 50,
+  "_tolerance_notes": "50% accommodates non-dedicated-machine jitter on Call-path benchmarks. The gate catches 1.5× regressions — design for 'perf is roughly the same order of magnitude' rather than 'perf is identical to last week'. Tune downward when CI runs on dedicated hardware.",
+  "_skip_in_gate": [
+    "BenchmarkKitNew",
+    "BenchmarkEnvelopeEncode",
+    "BenchmarkEnvelopeDecode",
+    "BenchmarkEnvelopeRoundTrip"
+  ],
+  "_skip_reason": "KitNew is SES-init sensitive (9×10⁸ ns/op); envelope benches are sub-microsecond and jitter ±50% on non-dedicated CI. Gate focuses on BenchmarkCall / BenchmarkCallParallel — the user-visible round-trip path, millisecond scale, where a real regression is obvious.",
+  "benchmarks": {
+    "BenchmarkCall":              {"ns_per_op": 86950,     "allocs_per_op": 217, "bytes_per_op": 15948},
+    "BenchmarkCallParallel":      {"ns_per_op": 56908,     "allocs_per_op": 201, "bytes_per_op": 13662},
+    "BenchmarkEnvelopeEncode":    {"ns_per_op": 916,       "allocs_per_op": 3,   "bytes_per_op": 416},
+    "BenchmarkEnvelopeDecode":    {"ns_per_op": 2867,      "allocs_per_op": 8,   "bytes_per_op": 361},
+    "BenchmarkEnvelopeRoundTrip": {"ns_per_op": 3442,      "allocs_per_op": 11,  "bytes_per_op": 774},
+    "BenchmarkKitNew":            {"ns_per_op": 959386317, "allocs_per_op": 5700,"bytes_per_op": 1040734}
+  }
+}

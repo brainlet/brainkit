@@ -37,9 +37,12 @@ type DeploymentManager struct {
 	subCleanup      func(id string) // called on subscription cancel
 	scheduleCleanup func(id string) // called on schedule cancel
 
-	// currentSource is the .ts file currently being evaluated. Safe without mutex
-	// because all reads/writes happen inside serialized QuickJS eval contexts.
-	currentSource string
+	// currentSource is the .ts file currently being evaluated. Read
+	// from arbitrary goroutines (tracing spans, audit source
+	// attribution), so the raw slot lives behind an atomic.Value
+	// to keep -race quiet. Writers still serialize through
+	// setCurrentSource / Deploy.
+	currentSource atomic.Value // string
 }
 
 type DeploymentManagerConfig struct {
@@ -86,7 +89,17 @@ func (m *DeploymentManager) SetDeployOrderSeed(seed int32) {
 }
 
 func (m *DeploymentManager) setCurrentSource(source string) {
-	m.currentSource = source
+	m.currentSource.Store(source)
+}
+
+// getCurrentSource returns the source currently being evaluated,
+// or "" when nothing is in flight.
+func (m *DeploymentManager) getCurrentSource() string {
+	v := m.currentSource.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
 }
 
 func (m *DeploymentManager) Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error) {

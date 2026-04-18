@@ -1,6 +1,130 @@
 # Changelog
 
+## v1.0.0-rc.1 — 2026-04-18
+
+First release candidate for brainkit 1.0 — the reshape is in. The
+surface from `v1-rc` has been rebuilt into an embeddable library
+with a narrow Go API, opt-in modules, a thin `server` package for
+standalone mode, and a CLI that stays out of the way.
+
+### What shipped
+
+- **Narrow Go surface.** `brainkit.New` returns a `*Kit` with only
+  the accessors every consumer needs: `Providers()`, `Secrets()`,
+  `Storage()`, `Vectors()`, `HarnessRuntime()`, `Close()`,
+  `Shutdown()`, `Deploy()`, `RegisterTool()`, `SubscribeRaw()`.
+  Everything else goes through opt-in modules.
+- **Generated Call wrappers.** `sdkgen` now emits one synchronous
+  `CallXxx` per `sdk.Msg` / `sdk.Resp` pair — 62 typed wrappers at
+  the repo root, no type-parameter guessing at the call site.
+  Regenerate with `make generate`.
+- **Five-verb CLI.** `cmd/brainkit` is `start`, `deploy`, `call`,
+  `inspect`, `new`, plus `version`. The CLI drives a running Kit
+  through the gateway's `/api/bus` endpoint — no pidfile, no
+  shared-process protocol.
+- **Modules**: `gateway`, `mcp`, `plugins`, `schedules`, `audit`,
+  `tracing`, `probes`, `discovery`, `topology`, `workflow`, and a
+  WIP `harness`. Every module has a README with a maturity tag;
+  only `harness` ships WIP. The `Instance` interface + six frozen
+  event types (`agent_start`, `agent_end`, `message_update`,
+  `tool_start`, `tool_end`, `error`) are the stable harness
+  contract.
+- **Server package.** `server.QuickStart` wires the standard
+  module set (gateway, probes, tracing, audit) and loads config
+  from `brainkit.yaml`. See `examples/hello-server`.
+- **Plugin SDK.** Subprocess supervisor + WS control plane
+  (cancel, subscribe). Plugins are standalone Go binaries with
+  their own `go.mod`, built and run by the host Kit. See
+  `examples/plugin-host` + `examples/plugin-author`.
+- **Streaming.** Symmetric `bus.send` / `msg.send` chunk paths and
+  `CallStream[Req, Chunk, Resp]` on the Go side. Gateway HTTP
+  surfaces — `HandleStream` (SSE), `HandleWebSocket`,
+  `HandleWebhook` — exercise the same bus plumbing.
+- **Examples tree.** 16 runnable examples (hello-embedded,
+  hello-server, ai-chat, cross-kit, multi-kit, observability,
+  gateway-routes, go-tools, harness-lite, mcp, plugin-host,
+  plugin-author, schedules, secrets, storage-vectors, streaming,
+  workflows). Each has its own README, and `make examples` smoke
+  builds the lot.
+- **Bench regression gate.** `test/bench/baseline.json` +
+  `scripts/bench-compare.go` + `.github/workflows/bench.yml`.
+  `make bench-save && make bench-check` gates PRs on the user
+  visible round trip (`Call`, `CallParallel`) against a 50%
+  regression threshold. Microbenches (envelope encode/decode)
+  and `KitNew` (SES-init sensitive) are recorded but not gated.
+
+### Race-safety fixes
+
+- `internal/audit.Recorder` — `SetStore` / `SetVerbosity` /
+  `record` now share a `sync.RWMutex` so the audit module's
+  Close path can't race in-flight event writes.
+- `internal/engine.DeploymentManager.currentSource` — promoted
+  from a bare string to `atomic.Value`; tracing + audit span
+  attribution is observed from arbitrary goroutines.
+- `modules/schedules.Scheduler.fire` — `NextFire` re-arm and
+  `SaveSchedule` snapshot now happen under `s.mu` so `List` sees
+  a coherent view of every entry.
+- `test/suite/bus/sdk_reply.go`, `test/suite/security/cross_deploy.go`,
+  `test/suite/security/secrets.go` — subscriber-callback slices
+  guarded with `sync.Mutex`.
+
+### Module status
+
+| Module | Status |
+|---|---|
+| audit, discovery, gateway, mcp, plugins, probes, schedules, topology, tracing, workflow | stable |
+| harness | WIP — only `Instance` + six frozen events are stable |
+
+### Known pre-1.0 caveats
+
+- `test/suite/stress/{redeploy_race,exhaustion_lifecycle_churn}`
+  occasionally leaves deployments behind under concurrent
+  churn — bug filed, does not block library consumers.
+- `test/suite/cross` requires Podman; CI configures the runner
+  before invoking `make test`.
+
+### Reshape details (sessions 01 – 14 + polish)
+
+Per-session entries follow. The headline work is summarized
+above; the details below document exactly what changed where.
+
 ## Unreleased
+
+### plans-01 session 15 — Baseline, CI regression gate, 1.0-rc.1
+
+Closes plans-01. Captures a runtime benchmark baseline, wires a
+regression gate that runs on every PR, and tags the `v1.0.0-rc.1`
+release.
+
+Added:
+- `test/bench/baseline.json` — 5x benchtime run on darwin/arm64
+  (M1 Max). CI should re-capture on its own runner. Includes
+  `_skip_in_gate` (KitNew + all envelope benches, too noisy to
+  gate) and `_tolerance_percent: 50`.
+- `scripts/bench-compare.go` — parses `go test -bench` output
+  (robust to interleaved SES-init log lines), diffs against
+  baseline, fails with non-zero exit on any non-skipped metric
+  that regresses more than tolerance_percent. ns/op and
+  allocs/op both checked.
+- `.github/workflows/bench.yml` — runs `make bench-save` then
+  `make bench-check` on PRs + main pushes; uploads raw output
+  as a 14-day artifact.
+- `test/suite/envelope/TEST_MAP.md` + `test/suite/plugins/TEST_MAP.md` —
+  the two domains missing the standard test map.
+
+Changed:
+- `Makefile` — new `bench-save` and `bench-check` targets; both
+  in `.PHONY`.
+- `internal/audit/recorder.go` — `sync.RWMutex` around
+  store/verbosity mutation + reads.
+- `internal/engine/deployment.go` + `kernel_delegations.go` —
+  `currentSource` promoted to `atomic.Value`.
+- `modules/schedules/scheduler.go` — `fire()` snapshots under
+  `s.mu` before handing off to timer.Reset / SaveSchedule.
+- `test/suite/bus/sdk_reply.go`, `test/suite/security/cross_deploy.go`,
+  `test/suite/security/secrets.go` — subscriber callbacks now
+  guard their shared slices under `sync.Mutex`.
+- `CHANGELOG.md` — `v1.0.0-rc.1` summary section at the top.
 
 ### plans-01 session 14 — Example: Harness-lite (WIP)
 

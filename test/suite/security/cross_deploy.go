@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -167,9 +168,12 @@ func testXDeployMailboxEavesdrop(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
+	var mu sync.Mutex
 	var intercepted []string
 	unsub, _ := k.SubscribeRaw(ctx, "ts.private-svc-sec.internal-api", func(m sdk.Message) {
+		mu.Lock()
 		intercepted = append(intercepted, string(m.Payload))
+		mu.Unlock()
 	})
 	defer unsub()
 
@@ -185,7 +189,10 @@ func testXDeployMailboxEavesdrop(t *testing.T, env *suite.TestEnv) {
 	case <-time.After(3 * time.Second):
 	}
 
-	t.Logf("Eavesdropper intercepted %d messages", len(intercepted))
+	mu.Lock()
+	got := len(intercepted)
+	mu.Unlock()
+	t.Logf("Eavesdropper intercepted %d messages", got)
 }
 
 // testXDeployAgentRegistrationRace — two deployments race to register the same agent name.

@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -98,16 +99,22 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 
+	var mu sync.Mutex
 	var received []json.RawMessage
 	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
 		func(payload json.RawMessage, msg sdk.Message) {
+			mu.Lock()
 			received = append(received, payload)
+			mu.Unlock()
 		})
 	require.NoError(t, err)
 	defer unsub()
 
 	time.Sleep(500 * time.Millisecond)
-	assert.GreaterOrEqual(t, len(received), 4, "expected 3 chunks + 1 final")
+	mu.Lock()
+	got := len(received)
+	mu.Unlock()
+	assert.GreaterOrEqual(t, got, 4, "expected 3 chunks + 1 final")
 }
 
 func testSDKSendToService(t *testing.T, env *suite.TestEnv) {

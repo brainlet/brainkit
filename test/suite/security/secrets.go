@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -175,9 +176,12 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 	<-ch
 	unsub()
 
+	var auditMu sync.Mutex
 	var auditEvents []string
 	auditUnsub, _ := k.SubscribeRaw(ctx, "secrets.accessed", func(m sdk.Message) {
+		auditMu.Lock()
 		auditEvents = append(auditEvents, string(m.Payload))
+		auditMu.Unlock()
 	})
 	defer auditUnsub()
 
@@ -189,8 +193,12 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	t.Logf("Audit events captured by eavesdropper: %d", len(auditEvents))
-	for _, e := range auditEvents {
+	auditMu.Lock()
+	snapshot := append([]string(nil), auditEvents...)
+	auditMu.Unlock()
+
+	t.Logf("Audit events captured by eavesdropper: %d", len(snapshot))
+	for _, e := range snapshot {
 		t.Logf("  Audit: %s", e)
 	}
 }

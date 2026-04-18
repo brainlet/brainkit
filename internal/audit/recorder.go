@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	stdErrors "errors"
+	"sync"
 	"time"
 
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -21,10 +22,17 @@ const (
 // Recorder provides typed convenience methods for recording audit events.
 // All methods are safe to call on a nil Recorder (no-op).
 type Recorder struct {
+	// mu guards store + verbosity against the audit module's
+	// Init/Close calls (SetStore / SetVerbosity) racing with
+	// in-flight record() traffic — exposed under -race as a Close
+	// path clearing the store while background goroutines still
+	// emit events.
+	mu        sync.RWMutex
 	store     Store
+	verbosity Verbosity
+
 	runtimeID string
 	namespace string
-	verbosity Verbosity
 }
 
 // RecorderConfig configures the Recorder.
@@ -46,35 +54,41 @@ func NewRecorderWithConfig(cfg RecorderConfig) *Recorder {
 }
 
 // SetStore attaches (or detaches) the underlying store. Safe on a nil
-// Recorder; pass nil to make subsequent Record calls no-ops. The audit
-// module calls this at Init/Close; no other caller should mutate the
-// store mid-run, so no synchronization is used beyond the happens-before
-// ordering provided by brainkit.New's module init phase.
+// Recorder; pass nil to make subsequent Record calls no-ops.
 func (r *Recorder) SetStore(s Store) {
 	if r == nil {
 		return
 	}
+	r.mu.Lock()
 	r.store = s
+	r.mu.Unlock()
 }
 
-// SetVerbosity flips the recorder's verbosity tier. Same lifecycle
-// expectations as SetStore — called once from the audit module's Init.
+// SetVerbosity flips the recorder's verbosity tier.
 func (r *Recorder) SetVerbosity(v Verbosity) {
 	if r == nil {
 		return
 	}
+	r.mu.Lock()
 	r.verbosity = v
+	r.mu.Unlock()
 }
 
 func (r *Recorder) record(category, typ, source string, data any, duration time.Duration, errMsg string) {
-	if r == nil || r.store == nil {
+	if r == nil {
+		return
+	}
+	r.mu.RLock()
+	store := r.store
+	r.mu.RUnlock()
+	if store == nil {
 		return
 	}
 	var payload json.RawMessage
 	if data != nil {
 		payload, _ = json.Marshal(data)
 	}
-	r.store.Record(Event{
+	store.Record(Event{
 		Timestamp: time.Now(),
 		Category:  category,
 		Type:      typ,
@@ -92,7 +106,7 @@ func (r *Recorder) record(category, typ, source string, data any, duration time.
 // Data under `errorCode` and `errorDetails` so the log remains
 // machine-queryable. Plain errors collapse to INTERNAL_ERROR.
 func (r *Recorder) recordErr(category, typ, source string, data map[string]any, duration time.Duration, err error) {
-	if r == nil || r.store == nil || err == nil {
+	if r == nil || err == nil {
 		return
 	}
 	if data == nil {
@@ -214,7 +228,7 @@ func (r *Recorder) HealthChanged(component, status string, healthy bool) {
 // BusCommandCompleted records a bus command that completed successfully.
 // Only recorded in verbose mode — normal mode skips routine command completions.
 func (r *Recorder) BusCommandCompleted(topic, callerID string, duration time.Duration) {
-	if r == nil || r.verbosity < VerbosityVerbose {
+	if !r.IsVerbose() {
 		return
 	}
 	r.record("bus", "bus.command.completed", topic, map[string]any{
@@ -225,7 +239,7 @@ func (r *Recorder) BusCommandCompleted(topic, callerID string, duration time.Dur
 // MetricsSnapshot records a periodic metrics snapshot.
 // Only recorded in verbose mode.
 func (r *Recorder) MetricsSnapshot(data any) {
-	if r == nil || r.verbosity < VerbosityVerbose {
+	if !r.IsVerbose() {
 		return
 	}
 	r.record("metrics", "metrics.snapshot", "kernel", data, 0, "")
@@ -233,5 +247,10 @@ func (r *Recorder) MetricsSnapshot(data any) {
 
 // IsVerbose returns true if verbose audit recording is enabled.
 func (r *Recorder) IsVerbose() bool {
-	return r != nil && r.verbosity >= VerbosityVerbose
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.verbosity >= VerbosityVerbose
 }

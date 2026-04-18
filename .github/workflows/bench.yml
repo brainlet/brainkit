@@ -1,0 +1,36 @@
+name: bench-gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  bench:
+    name: Runtime benchmarks + regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Run runtime benchmarks
+        run: make bench-save
+
+      - name: Compare against baseline
+        run: make bench-check
+
+      - name: Upload raw bench output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-latest
+          path: test/bench/latest.json
+          if-no-files-found: warn
+          retention-days: 14
