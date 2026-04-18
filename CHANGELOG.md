@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### Session 10 part 2 — retire kernel-scoped Module interface
+
+Dead scaffolding from the pre-brainkit.Module era gets removed. No
+shipped module has used `engine.Module` since session 05 finished
+migrating everything to `brainkit.Module` (Init(*Kit)).
+
+Removed:
+- `internal/engine/module.go` — the kernel-scoped Module interface.
+- `Kernel.modules` field + the close loop in
+  `internal/engine/kernel_shutdown.go`. Close ordering is owned
+  entirely by `brainkit.Kit`.
+- `NewKernel` cfg.Modules iteration — the `if _, ok := raw.(Module)`
+  branch was a no-op for every shipped module.
+- `brainkit.Config.toKernelConfig`'s `unwrapEngineModule` bridge —
+  modules now pass through the public Module interface verbatim.
+- `TestModuleCloseReverseOrder` + `closeOrderModule` in
+  `internal/engine/module_test.go` — exercised the deleted interface.
+
+### Session 12 Bundle B continued — examples/gateway-routes
+
+Third entry in the examples tree. HTTP gateway on a bare Kit —
+`GET /hello` forwards to a deployed `.ts` handler. Demonstrates
+gateway module composition without pulling in `brainkit/server`.
+
+Added:
+- `examples/gateway-routes/main.go`.
+- `examples/gateway-routes/README.md`.
+
+### Session 12 Bundle B continued — examples/multi-kit
+
+Second entry in the examples tree. Two Kits in one process, routed
+by peer name through `modules/topology`. Exercises the session-08
+Bundle A topology module with a static peer table.
+
+Added:
+- `examples/multi-kit/main.go`.
+- `examples/multi-kit/README.md`.
+- `.gitignore` — ignore runtime state (nats-data, kit.db, audit.db,
+  data/) so ad-hoc example runs from repo root don't pollute git.
+
 ### Session 12 Bundle B partial — examples/hello-embedded
 
 First entry in the examples tree. Runs end-to-end from

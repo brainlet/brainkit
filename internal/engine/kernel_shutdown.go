@@ -109,10 +109,6 @@ func (k *Kernel) close() error {
 	if k.agentsDomain != nil && k.agents != nil {
 		k.agentsDomain.UnregisterAllForKit(k.agents.ID())
 	}
-	// Close modules (reverse init order)
-	for i := len(k.modules) - 1; i >= 0; i-- {
-		collect(k.modules[i].Close())
-	}
 	if k.config.Store != nil {
 		collect(k.config.Store.Close())
 	}

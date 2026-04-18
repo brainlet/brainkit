@@ -76,38 +76,6 @@ func TestModuleRegisterCommandDuplicatePanics(t *testing.T) {
 	k.RegisterCommand(commandSpec{topic: "__test.dup"})
 }
 
-func TestModuleCloseReverseOrder(t *testing.T) {
-	var order []string
-	makeModule := func(name string) Module {
-		return &closeOrderModule{name: name, order: &order}
-	}
-
-	k := &Kernel{
-		catalog: buildCommandCatalog(),
-		modules: []Module{makeModule("a"), makeModule("b"), makeModule("c")},
-	}
-
-	// Simulate close loop (same logic as kernel_shutdown.go)
-	for i := len(k.modules) - 1; i >= 0; i-- {
-		k.modules[i].Close()
-	}
-
-	if len(order) != 3 {
-		t.Fatalf("expected 3 closes, got %d", len(order))
-	}
-	if order[0] != "c" || order[1] != "b" || order[2] != "a" {
-		t.Fatalf("expected close order [c b a], got %v", order)
-	}
-}
-
-type closeOrderModule struct {
-	name  string
-	order *[]string
-}
-
-func (m *closeOrderModule) Name() string        { return m.name }
-func (m *closeOrderModule) Init(k *Kernel) error { return nil }
-func (m *closeOrderModule) Close() error {
-	*m.order = append(*m.order, m.name)
-	return nil
-}
+// Module close ordering is owned by brainkit.Kit (reverses its own
+// modules slice). The kernel-scoped Module interface was retired
+// when every shipped module migrated to brainkit.Module.

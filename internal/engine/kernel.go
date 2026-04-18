@@ -98,7 +98,6 @@ type Kernel struct {
 	// Per-instance catalogs (built in NewKernel, before initTransport)
 	catalog *commandRegistry
 	events  *knownEventRegistry
-	modules []Module // initialized modules, closed in reverse order
 }
 
 // enterHandler marks a bus handler as active.
@@ -324,19 +323,9 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
 
-	// Initialize legacy kernel-scoped modules. New-style modules (satisfying
-	// brainkit.Module, with Init(*Kit)) are initialized from brainkit.New
-	// after the Kit is fully constructed — they're skipped here.
-	for _, raw := range cfg.Modules {
-		mod, ok := raw.(Module)
-		if !ok {
-			continue
-		}
-		if err := mod.Init(kernel); err != nil {
-			return fail(fmt.Errorf("brainkit: module %q init: %w", mod.Name(), err))
-		}
-		kernel.modules = append(kernel.modules, mod)
-	}
+	// Modules satisfying brainkit.Module (Init(*Kit)) are initialized
+	// from brainkit.New after the Kit is fully constructed. Nothing
+	// to do here — the kernel-scoped Module interface was retired.
 
 	// Initial probe — probes module (session 05) owns periodic probing.
 	go kernel.ProbeAll()
