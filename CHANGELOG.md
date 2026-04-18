@@ -90,119 +90,149 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
-### plans-02 session 04 — Example: workspace-agent + polyfill fixes
+### plans-02 — Mastra feature coverage
 
-New runnable `examples/workspace-agent/` — a coding agent with
-four explicit tools (read / write / list / exec) that reads and
-writes real files on disk and runs shell commands, all
-sandboxed under the Kit's `FSRoot`.
+Ten new runnable examples + three infra additions that fill
+out Mastra feature coverage inside brainkit: guardrails,
+working memory, RAG, workspace tooling, evals, HITL (tool +
+workflow), streaming, custom scorers, and voice. Plus a
+web-standard `Audio` polyfill with an opt-in desktop sink so
+voice flows actually play through the speakers.
 
-Live-verified: agent reads `sample.ts`, writes `TODO.md` with
-extracted TODO comments, runs `wc -l sample.ts` via
-`child_process.exec`, writes `13` into `COUNT.txt`.
+Highlights:
 
-Shipped alongside real infra fixes the workspace integration
-surfaced:
+- **Examples** — ten new directories under `examples/`, one
+  per session. Every example ships a `README.md` and is wired
+  into the `make examples` target.
+- **Voice** — `OpenAIVoice` + `CompositeVoice` are now
+  endowed for `.ts` deployments; `examples/voice-agent/`
+  drives a full speak → listen → generate → speak round trip
+  via OpenAI Whisper + TTS.
+- **Audio** — new `brainkit/audio` public package (`Sink`,
+  `Null`, `Func`, `Composite`) + `brainkit/audio/local`
+  opt-in desktop sink (oto + go-mp3 + minimal WAV). Zero cost
+  on kits that don't play audio.
+- **jsbridge** — the JS↔Go boundary is now binary-safe
+  end-to-end. `fetch`, `createReadStream`, and `btoa/atob` all
+  preserve raw bytes through base64 markers instead of
+  dropping them into Go strings where JSON marshal rewrites
+  invalid UTF-8 as U+FFFD. Unblocked multipart uploads
+  (Whisper, image APIs) and binary response bodies (MP3, PNG,
+  arbitrary octet streams).
+- **Prebuilt scorers** — every `@mastra/evals/scorers/prebuilt`
+  factory (`createAnswerRelevancyScorer`,
+  `createCompletenessScorer`, `createFaithfulnessScorer`,
+  `createBiasScorer`, etc.) is now endowed alongside
+  `createScorer` / `runEvals`.
+- **RAG surface** — `agent.d.ts` discriminated union for
+  `createVectorQueryTool` (direct-instance vs registry),
+  `rerank` positional signature, nested `rerankWithScorer`
+  options match the runtime.
+
+Docker-compose ports allocated across plans-02:
+
+| Example | Service | Host port |
+|---|---|---|
+| examples/storage-vectors | pgvector (pg16) | 5433 |
+| examples/rag-pipeline | pgvector (pg16) | 5434 |
+
+No tag cut — plans-02 is examples + audio infra + bundle
+endowments; no change to the v1 public library surface.
+
+#### Session details
+
+**Session 01 — guardrails** — `examples/guardrails/`. Three
+agents (clean / injection / pii) showing
+`PromptInjectionDetector({strategy:"rewrite"})` and
+`PIIDetector({strategy:"redact"})`. README includes the full
+strategy matrix and the correction that `ModerationProcessor`
+supports only `block|warn|filter`.
+
+**Session 02 — working-memory** — `examples/working-memory/`.
+Multi-turn agent that remembers the user's name across turns
+on the same `thread.id` and forgets across thread boundaries.
+SQLite-backed, one-line swap for Postgres / Mongo / Upstash.
+
+**Session 03 — rag-pipeline** — `examples/rag-pipeline/`.
+Full `MDocument.chunk` → `embeddingModel.doEmbed` → `vectorStore.upsert` →
+`createVectorQueryTool` flow with positive + negative
+questions (agent declines rather than hallucinates). Ships
+`docker-compose.yml` on port 5434; `-rerank` flag routes
+through `rerankWithScorer`. Uses the direct-instance shape of
+`createVectorQueryTool` because brainkit deployments don't
+carry a Mastra registry.
+
+**Session 04 — workspace-agent** — `examples/workspace-agent/`.
+Coding agent with four explicit tools (read / write / list /
+exec) reading and writing real files and running shell
+commands, sandboxed under `FSRoot`. Live-verified: reads
+`sample.ts`, writes `TODO.md` from extracted comments, runs
+`wc -l sample.ts` via `child_process.exec`. Shipped alongside
+polyfill fixes:
 
 - `internal/jsbridge/fs.go` — mirror every `fs.promises.<name>`
-  as `fs.<name>` on `globalThis.fs`. Matches Node's dual
-  callback + promise shape.
+  as `fs.<name>` on `globalThis.fs` (Node's dual callback +
+  promise shape).
 - `internal/embed/agent/bundle/build.mjs` — `fs` + `fs/promises`
   stubs probe `globalThis.fs.<name>` before falling back to
-  `throwFn`. Every async method Mastra imports now resolves.
-  Bundle + bytecode rebuilt per CLAUDE.md 3-step protocol.
+  `throwFn`.
 - `internal/jsbridge/exec.go` — `Exec(root)` factory; relative
-  `cwd` on spawn/exec is now rebased under the supplied root
-  (matches `FSPolyfill.resolve`). Closes the escape-the-sandbox
-  class of bug.
+  `cwd` on spawn/exec rebased under the supplied root.
 - `internal/embed/agent/sandbox.go` — threads `cfg.CWD` into
   the exec polyfill.
 
-Added:
-- `examples/workspace-agent/main.go` + `README.md`.
+**Session 05 — evals** — `examples/evals/`. `runEvals` +
+`createAnswerRelevancyScorer` + `createCompletenessScorer` over
+a committed 6-prompt dataset. `-save` writes `latest.json`,
+`-check` compares vs `baseline.json` with `_tolerance_percent`
+and exits non-zero on regression — same gate pattern as
+`bench-save` / `bench-check`. Makefile targets + Makefile
+wiring included.
 
-Changed:
-- Polyfill files above.
-- `internal/embed/agent/bundle/agent_embed_bundle.js` + `.bc`
-  regenerated.
-- `examples/README.md` — new row.
-- `Makefile` — `bin/workspace-agent` target.
+**Session 06 — hitl-tool-approval** — `examples/hitl-tool-approval/`.
+Synchronous HITL: a tool marked `requireApproval:true` pauses
+the agent; Go approves / declines via a bus topic;
+`generateWithApproval` drives the loop.
 
-### plans-02 session 01 — Example: guardrails (input processors)
+**Session 07 — hitl-workflow** — `examples/hitl-workflow/`.
+Workflow HITL: middle step calls `suspend({reason, artifact})`
+and Go resumes with `CallWorkflowResume({RunID, Step,
+ResumeData})`. SQLite storage makes the snapshot durable
+across process restart. No API key needed — deterministic
+steps.
 
-New runnable `examples/guardrails/` — three Mastra Agents, each
-with a different guardrail posture: clean (no processor),
-injection (`PromptInjectionDetector({strategy: "rewrite"})`), and
-pii (`PIIDetector({strategy: "redact", detectionTypes:
-["email","phone","name"]})`).
+**Session 08 — agent-stream** — `examples/agent-stream/`.
+`agent.stream()` inside a deployment, chunks piped out via
+`msg.send`. Two topics: a haiku streamer using
+`stream.textStream` for token-level deltas, and a planner
+using `structuredOutput: {schema: z.array(...)}` + filtering
+`stream.fullStream` for `"object-result"` chunks. Gateway SSE
+routes expose both so `curl` sees the same stream.
 
-Live-verified: injection test returns a neutralized reply; PII
-test declines to repeat email + phone.
+**Session 09 — custom-scorer** — `examples/custom-scorer/`.
+Domain-specific `createScorer` builder side-by-side with a
+prebuilt LLM-judge on the same dataset. Highlights the
+regex-vs-LLM tradeoff for custom quality gates.
 
-README includes the full strategy matrix and the correction that
-`ModerationProcessor` supports only `block|warn|filter` (no
-`rewrite` / `redact`).
+**Session 10 — voice-agent** — `examples/voice-agent/`. Full
+speak → listen → generate → speak round trip via
+`OpenAIVoice`. The round trip was the forcing function for
+the binary-safe jsbridge boundary (MP3 bytes round-trip
+through fetch response, FormData upload, and
+`createReadStream` without UTF-8 corruption). Uses the new
+`Audio` polyfill so playback is three lines of `.ts` + one
+line of Go:
 
-Added:
-- `examples/guardrails/main.go` + `README.md`.
+```ts
+await new Audio(buf).play();   // inside the .ts
+```
 
-Changed:
-- `examples/README.md` — new row.
-- `Makefile` — `bin/guardrails` target.
+```go
+Config.Audio = local.New()     // in the Go kit config
+```
 
-### plans-02 session 08 — Example: agent-stream (textStream + structuredOutput)
-
-New runnable `examples/agent-stream/` — Mastra `agent.stream()`
-inside a deployed `.ts`, piping chunks out via `msg.send`. Two
-topics: a haiku streamer that iterates `stream.textStream` for
-token-level deltas, and a planner that uses
-`structuredOutput: { schema: z.array(...) }` and filters
-`stream.fullStream` for `"object-result"` chunks to stream typed
-partials. Each wired to a gateway SSE route so curl sees the
-same stream.
-
-Live-verified: 5-step plan filled out incrementally, final
-`stream.object` carries the full array.
-
-Added:
-- `examples/agent-stream/main.go` + `README.md`.
-
-Changed:
-- `examples/README.md` — new row.
-- `Makefile` — `bin/agent-stream` target.
-
-### plans-02 session 07 — Example: hitl-workflow (suspend/resume)
-
-New runnable `examples/hitl-workflow/` — a 3-step workflow where
-the middle step calls `suspend({reason, artifact})` and the Go
-side resumes with `CallWorkflowResume({RunID, Step, ResumeData})`.
-SQLite on the `"default"` storage slot makes the suspended
-snapshot durable across process restart.
-
-No API key needed — steps are deterministic.
-
-Added:
-- `examples/hitl-workflow/main.go` + `README.md`.
-
-Changed:
-- `examples/README.md` — new row.
-- `Makefile` — `bin/hitl-workflow` target.
-
-### plans-02 session 02 — Example: working-memory
-
-New runnable `examples/working-memory/` — multi-turn Mastra
-agent that remembers the user's name across turns on the same
-`thread.id`, and correctly forgets it when the thread changes
-(even with the same `resource` id). SQLite-backed storage;
-one-line swap for Postgres/Mongo/Upstash.
-
-Added:
-- `examples/working-memory/main.go` + `README.md` — 3-turn
-  trace that demonstrates thread isolation.
-
-Changed:
-- `examples/README.md` — new row.
-- `Makefile` — `bin/working-memory` target.
+Session 12 (voice-realtime) deferred to plans-03 — requires
+user back-and-forth that wasn't in scope for a batch run.
 
 ### post-1.0-rc.1 — ScaffoldPackage + package-workflow example + agent-forge refactor
 

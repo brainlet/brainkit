@@ -672,6 +672,45 @@ Pass a `RequestContext` via `options.requestContext`; dynamic `instructions` / `
 
 ---
 
+## Voice
+
+```typescript
+// Voice providers — endowed via the "agent" module.
+import { OpenAIVoice, CompositeVoice } from "agent";
+
+// One provider for both speak + listen.
+const voice = new OpenAIVoice();                      // uses OPENAI_API_KEY
+const stream = await voice.speak("hello",            // → Node Readable
+    { responseFormat: "mp3" });
+const text   = await voice.listen(stream,             // → string transcript
+    { filetype: "mp3" });
+
+// Or mix providers per leg.
+const split = new CompositeVoice({
+    speakProvider:  new OpenAIVoice(),
+    listenProvider: new OpenAIVoice(),
+});
+
+// Wire on an Agent.
+const agent = new Agent({
+    name: "voice-agent",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "You answer concisely.",
+    voice,
+});
+// agent.voice.speak(...) / agent.voice.listen(...) are available.
+```
+
+Playback uses the **web-standard `Audio` polyfill**: `new
+Audio(streamOrBufferOrPath).play()`. Resolves URL / path /
+Buffer / Uint8Array / Blob / Node Readable / Web ReadableStream.
+Route the bytes by wiring `Config.Audio` on the Go side
+(`brainkit/audio/local.New()` for desktop speakers, `audio.Func(fn)`
+for bus / HTTP fan-out, `audio.Composite(...)` for multi-sink).
+Without a sink, `play()` resolves silently so portable agent code
+runs unchanged on headless kits. See `examples/voice-agent/` for
+the full round trip.
+
 ## HITL (human-in-the-loop) recap
 
 - **Tool-level:** `createTool({ requireApproval: true })` — the tool call suspends with `AgentResult.suspendPayload` populated and `runId` / `toolCallId` captured. Resume with `agent.approveToolCallGenerate({ runId, toolCallId })` or `declineToolCallGenerate(...)`. Streaming variants exist.
