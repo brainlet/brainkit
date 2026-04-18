@@ -22,6 +22,12 @@ Optional flags:
   default the example wires `brainkit/audio/local` on
   `Config.Audio` so `new Audio(buf).play()` inside the `.ts`
   deployment routes bytes to the system audio device.
+- `-check-audio` — skip the voice round trip; just run the
+  headless audio self-test (1 kHz tone through the sink + OS
+  volume / mute / device probe) and exit. Useful in CI or
+  remote sessions where no human can confirm audibility; if
+  `peak sample` is non-zero + duration ≈ 1s + volume > 0 + not
+  muted, the pipeline is wired correctly.
 
 Expected tail:
 

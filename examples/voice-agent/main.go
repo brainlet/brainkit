@@ -46,11 +46,44 @@ func main() {
 	outDir := flag.String("out", "./voice-agent-out", "directory for generated audio files (survives the run so you can play back)")
 	question := flag.String("question", "What is the capital of France? One short sentence.", "the question synthesized to audio then transcribed + answered")
 	play := flag.Bool("play", true, "play the synthesized audio through the desktop speakers via brainkit/audio/local")
+	checkAudio := flag.Bool("check-audio", false, "skip the voice round trip; just run the headless audio self-test (1 kHz tone + device probe) and exit")
 	flag.Parse()
+
+	if *checkAudio {
+		if err := runAudioCheck(); err != nil {
+			log.Fatalf("voice-agent: audio check: %v", err)
+		}
+		return
+	}
 
 	if err := run(*outDir, *question, *play); err != nil {
 		log.Fatalf("voice-agent: %v", err)
 	}
+}
+
+// runAudioCheck is the "is my audio actually wired?" smoke
+// test. Plays a known-good 1 second sine through the local
+// sink + reports system volume / output device / peak sample.
+// No API key required.
+func runAudioCheck() error {
+	sink := local.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	res := sink.Check(ctx)
+	fmt.Println("[voice-agent] audio self-test")
+	fmt.Print(res)
+	if res.Err != nil {
+		return res.Err
+	}
+	if res.PeakSample < 1000 {
+		return fmt.Errorf("peak sample %d is below silence threshold — the sink isn't seeing real audio", res.PeakSample)
+	}
+	if !res.OK() {
+		fmt.Println("[voice-agent] completed with warnings (see above); hardware may still need attention.")
+	} else {
+		fmt.Println("[voice-agent] ✓ audio pipeline passed every check")
+	}
+	return nil
 }
 
 func run(outRaw, question string, play bool) error {
