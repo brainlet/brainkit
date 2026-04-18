@@ -36,20 +36,64 @@ declare module "agent" {
     /** Supervisor mode — delegates to sub-agents. */
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
 
-    /** Resume a suspended tool call with approval. HITL pattern. */
-    approveToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+    /** Resume a suspended generate run with fresh input. HITL pattern. */
+    resumeGenerate(resumeData: unknown, options: AgentCallOptions & { runId: string; toolCallId?: string }): Promise<AgentResult>;
 
-    /** Decline a suspended tool call. HITL pattern. */
-    declineToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+    /** Resume a suspended stream run with fresh input. HITL pattern. */
+    resumeStream(resumeData: unknown, options: AgentCallOptions & { runId: string; toolCallId?: string }): Promise<AgentStreamResult>;
 
-    /** Resume a suspended tool call with approval (streaming). */
-    approveToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+    /** Resume a suspended network run. */
+    resumeNetwork(resumeData: unknown, options: AgentCallOptions & { runId: string }): Promise<AgentResult>;
+
+    /** Approve a suspended tool call (non-streaming). HITL pattern. */
+    approveToolCallGenerate(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentResult>;
+
+    /** Decline a suspended tool call (non-streaming). */
+    declineToolCallGenerate(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentResult>;
+
+    /** Approve a suspended tool call (streaming). HITL pattern. */
+    approveToolCall(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
 
     /** Decline a suspended tool call (streaming). */
-    declineToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+    declineToolCall(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+
+    /** Approve a suspended tool call inside a network run. */
+    approveNetworkToolCall(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentResult>;
+
+    /** Decline a suspended tool call inside a network run. */
+    declineNetworkToolCall(opts: AgentCallOptions & { runId: string; toolCallId: string }): Promise<AgentResult>;
 
     /** Attached voice provider (set via AgentConfig.voice). */
     readonly voice: MastraVoice;
+
+    // ── Accessors ──────────────────────────────────────────────────
+
+    /** Returns the configured voice provider (resolved if dynamic). */
+    getVoice(opts?: { requestContext?: RequestContext }): Promise<MastraVoice | undefined>;
+    /** Returns the configured memory (resolved if dynamic). */
+    getMemory(opts?: { requestContext?: RequestContext }): Promise<Memory | undefined>;
+    /** Returns true if memory is configured on this agent. */
+    hasOwnMemory(): boolean;
+    /** Returns the configured workspace (resolved if dynamic). */
+    getWorkspace(opts?: { requestContext?: RequestContext }): Promise<Workspace | undefined>;
+    /** Returns true if a workspace is configured on this agent. */
+    hasOwnWorkspace(): boolean;
+    /** Returns the agent's instructions (resolved if dynamic). */
+    getInstructions(opts?: { requestContext?: RequestContext }): Promise<string | string[]>;
+    /** Returns the agent description (empty string if unset). */
+    getDescription(): string;
+    /** Returns the tool map (resolved if dynamic). */
+    listTools(opts?: { requestContext?: RequestContext }): Promise<Record<string, Tool>>;
+    /** Returns workflows attached to this agent. */
+    listWorkflows(opts?: { requestContext?: RequestContext }): Promise<Record<string, Workflow>>;
+    /** Returns scorers attached to this agent. */
+    listScorers(opts?: { requestContext?: RequestContext }): Promise<Record<string, { scorer: Scorer; sampling?: any }>>;
+    /** Returns sub-agents for network/delegation patterns. */
+    listAgents(opts?: { requestContext?: RequestContext }): Promise<Record<string, Agent>>;
+    /** Returns input processors (including memory-derived). */
+    listInputProcessors(requestContext?: RequestContext): Promise<any[]>;
+    /** Returns output processors (including memory-derived). */
+    listOutputProcessors(requestContext?: RequestContext): Promise<any[]>;
   }
 
   export interface AgentConfig {
@@ -264,15 +308,59 @@ declare module "agent" {
     requireApproval?: boolean;
   }
 
+  /**
+   * Context handed to a tool's `execute` function. Covers every
+   * shape Mastra passes at runtime — HITL suspend/resume, the
+   * streaming writer slot, and the back-references to agent /
+   * workflow / MCP contexts.
+   */
   export interface ToolExecutionContext {
     requestContext?: RequestContext;
+    abortSignal?: AbortSignal;
+    mastra?: Mastra;
+    /** Writable stream a tool can pipe progress updates into. */
+    writer?: any;
+    /** Workspace binding (when the agent has a workspace). */
+    workspace?: Workspace;
+    /** Present when invoked from an Agent execution. */
+    agent?: {
+      toolCallId: string;
+      threadId?: string;
+      resourceId?: string;
+      suspend?: (payload: unknown) => Promise<never>;
+      resumeData?: unknown;
+      writableStream?: any;
+    };
+    /** Present when invoked from a Workflow step. */
+    workflow?: {
+      runId: string;
+      stepId: string;
+      suspend?: (payload: unknown) => Promise<never>;
+    };
+    /** Present when invoked through MCP. */
+    mcp?: {
+      toolCallId: string;
+      [key: string]: unknown;
+    };
   }
 
   export interface Tool {
     id: string;
     description?: string;
+    inputSchema?: import("ai").ZodType;
+    outputSchema?: import("ai").ZodType;
+    suspendSchema?: import("ai").ZodType;
+    resumeSchema?: import("ai").ZodType;
+    /** HITL gate — when true, calls suspend for human approval. */
+    requireApproval?: boolean;
+    /** Provider-specific tool options (OpenAI, Anthropic, etc.). */
+    providerOptions?: Record<string, Record<string, unknown>>;
     execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
   }
+
+  /** Broader alias — Mastra accepts AI SDK tools alongside Mastra ones. */
+  export type ToolAction = Tool;
+  export type ToolsInput = Record<string, Tool>;
 
   // ── Workflows ─────────────────────────────────────────────────
 
@@ -434,31 +522,104 @@ declare module "agent" {
     readOnly?: boolean;
     /** Number of recent messages to include. false to disable. @default 10 */
     lastMessages?: number | false;
-    /** Semantic recall via vector embeddings. */
-    semanticRecall?: boolean | {
-      topK?: number;
-      messageRange?: number;
-      scope?: "thread" | "resource";
-    };
-    /** Working memory for persistent user data. */
-    workingMemory?: boolean | {
-      enabled: boolean;
-      scope?: "thread" | "resource";
-      template?: string;
-      schema?: import("ai").ZodType;
-      version?: "vnext";
-    };
+    /**
+     * Semantic recall via vector embeddings. `boolean` toggles
+     * the feature with defaults; the object form tunes per-kit.
+     */
+    semanticRecall?: boolean | SemanticRecallConfig;
+    /**
+     * Working memory for persistent user data. Discriminated
+     * union matching Mastra source: enabled:false | template |
+     * schema variant.
+     */
+    workingMemory?: WorkingMemory;
     /** Auto-generate thread titles from first message. */
     generateTitle?: boolean | {
       model?: any;
       instructions?: string;
     };
     /** Observational memory — 3-tier compression. */
-    observationalMemory?: boolean | {
-      scope?: "thread" | "resource";
-      model?: string;
-      observation?: { messageTokens?: number };
-      reflection?: { observationTokens?: number };
+    observationalMemory?: boolean | ObservationalMemoryOptions;
+  }
+
+  /** Full semantic-recall configuration. */
+  export interface SemanticRecallConfig {
+    /** How many semantically-similar messages to include. */
+    topK?: number;
+    /**
+     * Window of messages around each hit — either a scalar
+     * (before == after) or an explicit pair.
+     */
+    messageRange?: number | { before: number; after: number };
+    /** `thread` = per-thread scope; `resource` = whole user. */
+    scope?: "thread" | "resource";
+    /** Minimum score to include a hit. */
+    threshold?: number;
+    /** Named index for the vector store. */
+    indexName?: string;
+    /** Backend-specific index config (metric, hnsw / ivf knobs). */
+    indexConfig?: VectorIndexConfig;
+  }
+
+  /**
+   * Vector index configuration — shape shared by storage-backed
+   * memory, RAG, and any user-managed index.
+   */
+  export interface VectorIndexConfig {
+    type?: "ivfflat" | "hnsw" | "flat";
+    metric?: "cosine" | "euclidean" | "dotproduct";
+    ivf?: { lists?: number };
+    hnsw?: { m?: number; efConstruction?: number };
+  }
+
+  /**
+   * Working memory — discriminated union:
+   * - `{ enabled: false }` — disabled.
+   * - `{ enabled: true; template }` — freeform Markdown template.
+   * - `{ enabled: true; schema }` — typed Zod schema.
+   */
+  export type WorkingMemory =
+    | { enabled: false }
+    | {
+        enabled: true;
+        template: string;
+        scope?: "thread" | "resource";
+        version?: "vnext";
+      }
+    | {
+        enabled: true;
+        schema: import("ai").ZodType;
+        scope?: "thread" | "resource";
+        version?: "vnext";
+      };
+
+  /**
+   * Observational memory — Mastra's "journal" style persistence
+   * that the model writes to autonomously.
+   */
+  export interface ObservationalMemoryOptions {
+    enabled?: boolean;
+    scope?: "thread" | "resource";
+    model?: any;
+    observation?: {
+      model?: any;
+      messageTokens?: number;
+      modelSettings?: any;
+      maxTokensPerBatch?: number;
+      bufferTokens?: number;
+      instruction?: string;
+      threadTitle?: string;
+    };
+    reflection?: {
+      model?: any;
+      observationTokens?: number;
+      modelSettings?: any;
+      instruction?: string;
+    };
+    shareTokenBudget?: boolean;
+    retrieval?: {
+      topK?: number;
+      threshold?: number;
     };
   }
 
@@ -505,9 +666,40 @@ declare module "agent" {
     listIndexes(): Promise<string[]>;
     describeIndex(indexName: string): Promise<any>;
     deleteIndex(indexName: string): Promise<void>;
-    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
-    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown>; ids?: string[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: VectorFilter; includeVector?: boolean }): Promise<QueryResult[]>;
+    /** Upsert a single entry by id. Some backends alias this to upsert. */
+    updateIndexById?(indexName: string, id: string, update: { vector?: number[]; metadata?: Record<string, unknown> }): Promise<void>;
+    /** Delete a single entry. */
+    deleteIndexById?(indexName: string, id: string): Promise<void>;
   }
+
+  /**
+   * Filter DSL accepted by every Mastra vector store.
+   * Operators match MongoDB's convention; brainkit vector
+   * backends implement the subset their engine supports.
+   */
+  export type VectorFilter = Record<string, FilterOperator | string | number | boolean | null | (string | number | boolean | null)[]>;
+
+  export type FilterOperator =
+    | { $eq: unknown }
+    | { $ne: unknown }
+    | { $gt: number | string | Date }
+    | { $gte: number | string | Date }
+    | { $lt: number | string | Date }
+    | { $lte: number | string | Date }
+    | { $in: unknown[] }
+    | { $nin: unknown[] }
+    | { $exists: boolean }
+    | { $regex: string }
+    | { $contains: unknown }
+    | { $size: number }
+    | { $and: VectorFilter[] }
+    | { $or: VectorFilter[] }
+    | { $not: VectorFilter };
+
+  /** Single hit from vector `.query(...)`. Alias for VectorQueryResult. */
+  export type QueryResult = VectorQueryResult;
 
   export interface VectorEntry {
     id?: string;
@@ -521,6 +713,8 @@ declare module "agent" {
     score: number;
     metadata?: Record<string, unknown>;
     vector?: number[];
+    /** Some backends (Pinecone, Chroma) return the source document verbatim. */
+    document?: string;
   }
 
   export class LibSQLVector implements VectorStoreInstance {
@@ -565,12 +759,70 @@ declare module "agent" {
 
   // ── RequestContext ─────────────────────────────────────────────
 
-  /** Key-value context for dynamic config resolvers. */
-  export class RequestContext {
-    constructor(entries?: Array<[string, string]>);
-    get(key: string): string | undefined;
-    set(key: string, value: string): void;
-    has(key: string): boolean;
+  /**
+   * Key-value context carried through agent / tool / workflow
+   * execution. Mastra uses this for per-call configuration
+   * (tenant id, locale, feature flags). The generic narrows
+   * `.get` / `.set` to the declared value type.
+   *
+   * @example
+   * ```ts
+   * type Ctx = { userId: string; tenantId: string };
+   * const rc = new RequestContext<Ctx>();
+   * rc.set("userId", "abc");        // typed: value must be string
+   * const id = rc.get("userId");     // typed: string | undefined
+   * ```
+   */
+  export class RequestContext<Values extends Record<string, any> = Record<string, any>> {
+    constructor(initial?: Iterable<[keyof Values, Values[keyof Values]]> | RequestContext<Values>);
+
+    set<K extends keyof Values>(key: K, value: Values[K]): this;
+    get<K extends keyof Values, R = Values[K]>(key: K): R | undefined;
+    has<K extends keyof Values>(key: K): boolean;
+    delete<K extends keyof Values>(key: K): boolean;
+    clear(): void;
+    keys(): IterableIterator<keyof Values>;
+    values(): IterableIterator<Values[keyof Values]>;
+    entries(): IterableIterator<[keyof Values, Values[keyof Values]]>;
+    /** NOTE: method (not a number property) — matches Mastra's source. */
+    size(): number;
+    forEach(cb: (value: Values[keyof Values], key: keyof Values, ctx: this) => void, thisArg?: unknown): void;
+    toJSON(): Record<string, any>;
+    /** Snapshot of every value. */
+    readonly all: Values;
+    [Symbol.iterator](): IterableIterator<[keyof Values, Values[keyof Values]]>;
+  }
+
+  /**
+   * Reserved keys Mastra interprets specifically when they
+   * appear on a RequestContext. Using the constants keeps code
+   * robust against Mastra renaming the underlying string.
+   */
+  export const MASTRA_RESOURCE_ID_KEY: "mastra__resourceId";
+  export const MASTRA_THREAD_ID_KEY: "mastra__threadId";
+
+  // ── Mastra top-level class ─────────────────────────────────────
+
+  /**
+   * Mastra coordinator. brainkit deployments don't construct
+   * this directly (the Kit owns agent / workflow / storage
+   * registration), but several AgentConfig fields declare
+   * `mastra?: Mastra` — the type alias keeps those slots
+   * structured instead of `any`.
+   *
+   * Not runtime-instantiable inside a brainkit deployment.
+   */
+  export class Mastra {
+    readonly agents: Record<string, Agent>;
+    readonly workflows: Record<string, Workflow>;
+    getAgent(name: string): Agent | undefined;
+    listAgents(): Record<string, Agent>;
+    getWorkflow(name: string): Workflow | undefined;
+    listWorkflows(): Record<string, Workflow>;
+    getVector(name: string): any;
+    getStorage(): any;
+    getMemory(): Memory | undefined;
+    getLogger(): any;
   }
 
   // ── Workspace ─────────────────────────────────────────────────
@@ -621,32 +873,77 @@ declare module "agent" {
 
   // ── RAG ───────────────────────────────────────────────────────
 
-  /** Document class for RAG chunking. */
+  /**
+   * Document class for RAG chunking. Every factory returns an
+   * `MDocument` instance whose `chunk()` method emits chunks
+   * ready for embedding + upsert.
+   */
   export class MDocument {
     static fromText(text: string, metadata?: Record<string, unknown>): MDocument;
     static fromMarkdown(markdown: string, metadata?: Record<string, unknown>): MDocument;
-    chunk(options?: ChunkOptions): Promise<DocumentChunk[]>;
+    static fromHTML(html: string, metadata?: Record<string, unknown>): MDocument;
+    static fromJSON(json: string | Record<string, unknown>, metadata?: Record<string, unknown>): MDocument;
+    /** PDF extraction is provider-dependent; source is a path or Buffer. */
+    static fromPDF(source: string | Uint8Array, metadata?: Record<string, unknown>): MDocument;
+    /** Docx extraction; source is a path or Buffer. */
+    static fromDocx(source: string | Uint8Array, metadata?: Record<string, unknown>): MDocument;
+    static fromCSV(csv: string, metadata?: Record<string, unknown>): MDocument;
+
+    chunk(options?: ChunkingConfig): Promise<DocumentChunk[]>;
+    getText(): string;
+    getDocs(): DocumentChunk[];
+    getMetadata(): Record<string, unknown>;
   }
 
-  export interface ChunkOptions {
-    strategy?: "recursive" | "character" | "token" | "markdown" | "html";
-    size?: number;
-    maxSize?: number;
-    overlap?: number;
-    separator?: string;
-    headers?: [string, string][] | Record<string, string>;
-    [key: string]: any;
+  /**
+   * Chunking configuration — discriminated union so IDE
+   * completion narrows on strategy-specific knobs. Mirror of
+   * Mastra's chunking strategies in `@mastra/rag`.
+   */
+  export type ChunkingConfig =
+    | { strategy?: "recursive"; size?: number; maxSize?: number; overlap?: number; separators?: string[]; separator?: string; extract?: ChunkExtractConfig }
+    | { strategy: "character"; size?: number; maxSize?: number; overlap?: number; separator?: string; extract?: ChunkExtractConfig }
+    | { strategy: "token"; size?: number; maxSize?: number; overlap?: number; encoding?: string; extract?: ChunkExtractConfig }
+    | { strategy: "markdown"; headers?: [string, string][] | Record<string, string>; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
+    | { strategy: "html"; headers?: [string, string][] | Record<string, string>; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
+    | { strategy: "sentence"; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
+    | { strategy: "semantic"; threshold?: number; embeddingModel?: any; extract?: ChunkExtractConfig }
+    | { strategy: "json"; size?: number; maxSize?: number; overlap?: number; convertLists?: boolean; extract?: ChunkExtractConfig }
+    | { strategy: "latex"; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig };
+
+  export interface ChunkExtractConfig {
+    /** Extract keywords from each chunk (default false). */
+    keywords?: boolean | { count?: number };
+    /** Extract summary. */
+    summary?: boolean | { prompt?: string };
+    /** Extract questions a chunk could answer. */
+    questions?: boolean | { count?: number };
+    /** Extract title. */
+    title?: boolean | { prompt?: string };
   }
+
+  /** Legacy alias; prefer ChunkingConfig in new code. */
+  export type ChunkOptions = ChunkingConfig;
 
   export interface DocumentChunk {
     text: string;
     metadata: Record<string, unknown>;
   }
 
-  /** Graph RAG for knowledge graph queries. */
+  /**
+   * Graph RAG — builds a knowledge graph over a chunk set then
+   * queries it with random-walk restart for multi-hop recall.
+   */
   export class GraphRAG {
-    constructor(config: { vectorStore: VectorStoreInstance; embedder: import("ai").EmbeddingModel });
-    query(query: string, options?: { topK?: number }): Promise<GraphRAGResult>;
+    constructor(config: { dimension: number; threshold?: number });
+    /** Build the graph from pre-chunked docs + their embeddings. */
+    createGraph(chunks: DocumentChunk[], embeddings: number[][]): Promise<void>;
+    query(opts: {
+      queryEmbedding: number[];
+      topK?: number;
+      randomWalkSteps?: number;
+      restartProb?: number;
+    }): Promise<GraphRAGResult>;
   }
 
   export interface GraphRAGResult {

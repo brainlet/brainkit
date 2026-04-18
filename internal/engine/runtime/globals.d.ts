@@ -316,6 +316,30 @@ declare class File extends Blob {
   readonly lastModified: number;
 }
 
+/**
+ * Brainkit's typed error class — thrown from every bus helper
+ * (`bus.call`, `msg.reply({ ok: false, ... })`) and from the
+ * runtime dispatch layer. Extends `Error` with `code` + `details`
+ * as first-class constructor parameters.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await bus.call("some.topic", data);
+ * } catch (err) {
+ *   if (err instanceof BrainkitError && err.code === "TIMEOUT") {
+ *     // handle timeout
+ *   }
+ * }
+ * ```
+ */
+declare class BrainkitError extends Error {
+  constructor(message: string, code?: string, details?: Record<string, unknown>);
+  readonly name: "BrainkitError";
+  readonly code: string;
+  readonly details: Record<string, unknown>;
+}
+
 declare class GoSocket {
   connect(portOrOpts: number | { host?: string; port?: number; tls?: boolean }, host?: string): this;
   write(data: any, encoding?: string, cb?: (err?: Error) => void): boolean;
