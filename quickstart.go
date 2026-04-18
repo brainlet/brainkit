@@ -5,16 +5,15 @@ import (
 	"path/filepath"
 )
 
-// QuickStart creates a fully-wired Kit with embedded NATS + SQLite persistence.
-// Intended as the "batteries-included" path for interactive development and
-// demos; library-embedded use should call New with an explicit Config.
+// QuickStart creates a bare Kit wired with embedded NATS + SQLite
+// persistence — the "batteries-included" library-mode helper for
+// demos and interactive development. It does NOT compose the
+// standard module set; that lives in `brainkit/server.QuickStart`,
+// which returns a Server (Kit + gateway + probes + tracing + audit).
 //
 // fsRoot must be an existing writable directory. QuickStart writes:
 //   - <fsRoot>/nats-data/    (embedded NATS JetStream store)
 //   - <fsRoot>/kit.db        (deployments + schedules + plugins)
-//
-// Tracing and the audit store are not wired here yet — session 05 attaches
-// those via modules.
 func QuickStart(namespace, fsRoot string) (*Kit, error) {
 	if fsRoot == "" {
 		return nil, fmt.Errorf("brainkit.QuickStart: fsRoot is required")
@@ -29,8 +28,5 @@ func QuickStart(namespace, fsRoot string) (*Kit, error) {
 		FSRoot:    fsRoot,
 		Transport: EmbeddedNATS(),
 		Store:     store,
-		// TODO(session-05): attach tracing + audit + workflow modules here
-		// via a dedicated preset package (importing modules/* from brainkit
-		// root would create a cycle — modules import brainkit.Kit).
 	})
 }

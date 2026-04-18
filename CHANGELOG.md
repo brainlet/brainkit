@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Session 12 Bundle C partial — audit fixes
+
+Fix the long-standing `go vet ./...` failure, clear the last
+session-scoped TODO, and finalize `brainkit.QuickStart`'s role.
+
+Changed:
+- `internal/tracing/tracer_test.go` — drop the four broken SQLite
+  trace store tests (pointed at the session-05 extraction target);
+  use `SpanHandle.TraceID()` accessor instead of the private field.
+- `modules/tracing/sqlite_store_test.go` — move the SQLite trace
+  store tests here with proper imports through the public tracer
+  types.
+- `internal/tracing/tracer.go` — add `SpanHandle.TraceID()` public
+  accessor so tests + downstream consumers can look up a span's
+  trace without reaching into the private `span` field.
+- `brainkit/quickstart.go` — drop the session-05 TODO. Comment now
+  clarifies the library vs service split (root QuickStart = bare
+  Kit; `brainkit/server.QuickStart` = composed runtime).
+
+Fixed:
+- `go vet ./...` passes clean — the tracing test regression that
+  dated back to session 05 is resolved.
+
 ### Session 12 Bundle C partial — kit_new + call benchmarks
 
 First entries under `test/bench/` that target the session-10 / 11

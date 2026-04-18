@@ -150,6 +150,15 @@ func (h *SpanHandle) ChildContext(ctx context.Context) context.Context {
 	})
 }
 
+// TraceID returns the trace identifier this span belongs to. Useful
+// for downstream lookups (e.g. TraceStore.GetTrace) after End.
+func (h *SpanHandle) TraceID() string {
+	if h.tracer == nil {
+		return ""
+	}
+	return h.span.TraceID
+}
+
 func newSpanID() string {
 	return uuid.NewString()[:16]
 }
