@@ -8,7 +8,12 @@
 internal/embed/compiler/deps/
 
 
-# wasmgen binary (not the source directory)
+# Go binary output directory — `make brainkit` + `make examples`
+# land every compiled Go binary under /bin/. Covers wasmgen,
+# example binaries, and the brainkit CLI.
+/bin/
+
+# wasmgen binary (legacy location — new builds go to /bin/)
 /wasmgen
 
 decisions/
@@ -29,7 +34,9 @@ bin/**.go binary
 /data/
 /examples/*/data/
 
-# Binaries built at repo root by `go build ./examples/...`
+# Stray root-level binaries from pre-/bin/ builds — keep these
+# ignored so developers upgrading from older checkouts don't
+# accidentally commit them.
 /agent-forge
 /agent-spawner
 /ai-chat
@@ -49,7 +56,8 @@ bin/**.go binary
 /streaming
 /workflows
 
-# plugin-author has its own go.mod — binary builds in-place
+# plugin-author has its own go.mod — stray legacy binary next to
+# its source, new builds land in /bin/.
 /examples/plugin-author/plugin-author
 
 # Bench artifact produced by `make bench-save`; baseline.json is the

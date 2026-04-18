@@ -79,30 +79,33 @@ bench-check:
 docs-bus-topics:
 	go run scripts/gen-bus-topics.go
 
-# Smoke-check every example builds. Per-example modules (e.g.
+# Smoke-check every example builds. All binaries land under bin/
+# so the repo root stays clean. Per-example modules (e.g.
 # plugin-author) are handled via a subshell so their go.mod is
-# picked up as a nested module.
+# picked up as a nested module; their binary also lands in
+# ../../bin/ via a relative -o path.
 examples:
-	go build ./examples/agent-forge
-	go build ./examples/agent-spawner
-	go build ./examples/ai-chat
-	go build ./examples/cross-kit
-	go build ./examples/hello-embedded
-	go build ./examples/hello-server
-	go build ./examples/multi-kit
-	go build ./examples/observability
-	go build ./examples/gateway-routes
-	go build ./examples/go-tools
-	go build ./examples/harness-lite
-	go build ./examples/mcp
-	go build ./examples/plugin-host
-	go build ./examples/schedules
-	go build ./examples/secrets
-	go build ./examples/storage-vectors
-	go build ./examples/streaming
-	go build ./examples/workflows
-	cd examples/plugin-author && go build .
-	@echo "All examples build."
+	@mkdir -p bin
+	go build -o bin/agent-forge     ./examples/agent-forge
+	go build -o bin/agent-spawner   ./examples/agent-spawner
+	go build -o bin/ai-chat         ./examples/ai-chat
+	go build -o bin/cross-kit       ./examples/cross-kit
+	go build -o bin/hello-embedded  ./examples/hello-embedded
+	go build -o bin/hello-server    ./examples/hello-server
+	go build -o bin/multi-kit       ./examples/multi-kit
+	go build -o bin/observability   ./examples/observability
+	go build -o bin/gateway-routes  ./examples/gateway-routes
+	go build -o bin/go-tools        ./examples/go-tools
+	go build -o bin/harness-lite    ./examples/harness-lite
+	go build -o bin/mcp             ./examples/mcp
+	go build -o bin/plugin-host     ./examples/plugin-host
+	go build -o bin/schedules       ./examples/schedules
+	go build -o bin/secrets         ./examples/secrets
+	go build -o bin/storage-vectors ./examples/storage-vectors
+	go build -o bin/streaming       ./examples/streaming
+	go build -o bin/workflows       ./examples/workflows
+	cd examples/plugin-author && go build -o ../../bin/plugin-author .
+	@echo "All examples built into bin/"
 
 # Clean generated bundles, node_modules, and binaries
 clean:
