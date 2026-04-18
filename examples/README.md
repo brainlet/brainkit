@@ -12,6 +12,7 @@ from the repo root.
 | [observability](./observability/) | `audit.query` + `audit.stats` + `trace.list` round-trip via `modules/audit` + `modules/tracing` |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
+| [mcp](./mcp/) | Wire an external Model Context Protocol server (npx filesystem server) as first-class tools |
 | [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
 | [schedules](./schedules/) | Cron-style scheduled bus messages — `modules/schedules`, create / cancel via generated wrappers |

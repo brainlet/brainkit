@@ -73,6 +73,7 @@ examples:
 	go build ./examples/observability
 	go build ./examples/gateway-routes
 	go build ./examples/go-tools
+	go build ./examples/mcp
 	go build ./examples/plugin-host
 	go build ./examples/schedules
 	go build ./examples/secrets

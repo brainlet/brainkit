@@ -37,6 +37,7 @@ bin/**.go binary
 /observability
 /gateway-routes
 /go-tools
+/mcp
 /plugin-host
 /schedules
 /secrets

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### plans-01 session 11 — Example: MCP external servers
+
+New runnable `examples/mcp/` wires the npx-published
+`@modelcontextprotocol/server-filesystem` MCP server as
+first-class tools on a brainkit Kit. Lists 14 tools and calls
+`read_text_file` against a seeded temp file.
+
+Added:
+- `examples/mcp/main.go` — spawns the npx MCP server at Kit
+  init via `modules/mcp.New`, lists tools via
+  `brainkit.CallMcpListTools`, reads a seeded file via
+  `brainkit.CallMcpCallTool`. macOS `/var` → `/private/var`
+  resolved with `filepath.EvalSymlinks` so the allowed-dirs
+  check passes.
+- `examples/mcp/README.md` — prerequisites, expected output,
+  multi-server cookbook, macOS symlink note.
+
+Changed:
+- `examples/README.md` — add mcp row.
+- `Makefile` / `.gitignore` — mcp binary.
+
 ### plans-01 session 10 — Example: Audit + tracing query
 
 New runnable `examples/observability/`. Wires `modules/audit` +
