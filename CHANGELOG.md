@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Session 12 Bundle A continued — bus-topics generator
+
+Generated reference doc listing every bus topic + its request/
+response types. Single source of truth derived from
+`sdk/*_messages.go` via `go/parser` — no runtime cost, no manual
+sync.
+
+Added:
+- `scripts/gen-bus-topics.go` — build-tag-ignored AST walker that
+  emits `docs/bus-topics.md`. Run from repo root:
+  `go run scripts/gen-bus-topics.go`.
+- `docs/bus-topics.md` — sorted table of 73 topics (request type,
+  response type, source file). Events show "(no reply)".
+
 ### Session 12 Bundle A continued — module READMEs
 
 Every `modules/*` package (except harness, which already had one)
