@@ -16,6 +16,7 @@
 | testInit | Runs `brainkit init` in a temp dir and asserts brainkit.yaml is created |
 | testNewModule | Runs `brainkit new module my-mod` and asserts manifest.json, hello.ts, tsconfig.json, and type declaration files are created |
 | testNewPlugin | Runs `brainkit new plugin my-plug --owner testorg` and asserts main.go is created with the owner string |
+| testNewServer | Runs `brainkit new server my-srv --dir <tmp>` and asserts main.go / brainkit.yaml / go.mod / README.md are created and reference the `github.com/brainlet/brainkit/server` package |
 | testFullWorkflow | Starts a brainkit instance, then exercises health, deploy, list, send, eval, secrets set/get/list/delete, teardown, and list again end-to-end |
 | testSendWithAsyncHandler | Starts a brainkit instance, deploys a .ts with async bus.on handler using setTimeout, sends a message, and verifies the computed sum is returned |
 

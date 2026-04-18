@@ -128,6 +128,33 @@ func testNewPlugin(t *testing.T, _ *suite.TestEnv) {
 	assert.Contains(t, string(mainGo), `"testorg"`)
 }
 
+// testNewServer asserts that `brainkit new server` drops a main.go,
+// brainkit.yaml, and go.mod that reference the session-11 server
+// package. Pairs with testdata/example.yaml's shape.
+func testNewServer(t *testing.T, _ *suite.TestEnv) {
+	tmpDir := t.TempDir()
+	srvDir := filepath.Join(tmpDir, "my-srv")
+
+	out, err := runCLI(t, "new", "server", "my-srv", "--dir", srvDir)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Created server my-srv")
+
+	assert.FileExists(t, filepath.Join(srvDir, "main.go"))
+	assert.FileExists(t, filepath.Join(srvDir, "brainkit.yaml"))
+	assert.FileExists(t, filepath.Join(srvDir, "go.mod"))
+	assert.FileExists(t, filepath.Join(srvDir, "README.md"))
+
+	mainGo, _ := os.ReadFile(filepath.Join(srvDir, "main.go"))
+	assert.Contains(t, string(mainGo), `"github.com/brainlet/brainkit/server"`)
+	assert.Contains(t, string(mainGo), "server.LoadConfig")
+	assert.Contains(t, string(mainGo), "server.New")
+
+	yaml, _ := os.ReadFile(filepath.Join(srvDir, "brainkit.yaml"))
+	assert.Contains(t, string(yaml), "namespace: my-srv")
+	assert.Contains(t, string(yaml), "transport:")
+	assert.Contains(t, string(yaml), "gateway:")
+}
+
 func testFullWorkflow(t *testing.T, _ *suite.TestEnv) {
 	if testing.Short() {
 		t.Skip("skipping full CLI workflow in short mode")

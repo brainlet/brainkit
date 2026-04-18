@@ -14,6 +14,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("init", func(t *testing.T) { testInit(t, env) })
 		t.Run("new_package", func(t *testing.T) { testNewPackage(t, env) })
 		t.Run("new_plugin", func(t *testing.T) { testNewPlugin(t, env) })
+		t.Run("new_server", func(t *testing.T) { testNewServer(t, env) })
 
 		// cobra.go — Full E2E (needs running brainkit start)
 		t.Run("full_workflow", func(t *testing.T) { testFullWorkflow(t, env) })

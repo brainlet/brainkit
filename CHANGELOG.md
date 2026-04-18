@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Session 11 Bundle B partial — `brainkit new server` scaffolder
+
+Thin additive CLI delivery that exercises the session-11 Bundle A
+server package. Generates a runnable Go module that loads a YAML
+config and boots via `server.New` + `Start`. Full 5-verb CLI rewrite
+(deploy/call/inspect over HTTP gateway, delete legacy subcommands)
+deferred to a dedicated session.
+
+Added:
+- `cmd/brainkit/cmd/new_server.go` — `brainkit new server <name>`
+  scaffolds `main.go`, `brainkit.yaml`, `go.mod`, `README.md`, and
+  `.gitignore` under `./<name>/`.
+- `test/suite/cli/testNewServer` — round-trip assertion that the
+  generated files reference `github.com/brainlet/brainkit/server`
+  and that the YAML carries the namespace + gateway sections.
+
 ### Session 11 Bundle A — brainkit/server
 
 New package `brainkit/server` composes a Kit with the standard
