@@ -14,8 +14,10 @@ import (
 // This prevents the WS read loop from blocking when a tool handler needs
 // to make bus round-trips (publish + wait for event response over WS).
 type toolDispatcher struct {
-	sem chan struct{} // semaphore for max concurrent tool calls
-	wg  sync.WaitGroup
+	sem      chan struct{} // semaphore for max concurrent tool calls
+	wg       sync.WaitGroup
+	cancelMu sync.Mutex
+	cancels  map[string]context.CancelFunc // toolCallID → cancel
 }
 
 // newToolDispatcher creates a dispatcher with the given max concurrency.
@@ -25,13 +27,29 @@ func newToolDispatcher(maxConcurrency int) *toolDispatcher {
 		maxConcurrency = 10
 	}
 	return &toolDispatcher{
-		sem: make(chan struct{}, maxConcurrency),
+		sem:     make(chan struct{}, maxConcurrency),
+		cancels: make(map[string]context.CancelFunc),
 	}
 }
 
-// dispatch runs a tool handler in a bounded goroutine.
+// cancel invokes and removes the CancelFunc registered for toolCallID.
+// No-op when the call has already finished or was never dispatched —
+// matches the at-least-once nature of the WS cancel frame.
+func (d *toolDispatcher) cancel(toolCallID string) {
+	d.cancelMu.Lock()
+	cancel := d.cancels[toolCallID]
+	delete(d.cancels, toolCallID)
+	d.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// dispatch runs a tool handler in a bounded goroutine. A per-call ctx
+// is stored in the cancel map so host-side TypeCancel frames can abort
+// it via dispatcher.cancel.
 func (d *toolDispatcher) dispatch(
-	ctx context.Context,
+	parentCtx context.Context,
 	conn *websocket.Conn,
 	msgID string,
 	rt *wsClient,
@@ -41,11 +59,22 @@ func (d *toolDispatcher) dispatch(
 	d.wg.Add(1)
 	d.sem <- struct{}{} // acquire slot
 
+	callCtx, callCancel := context.WithCancel(parentCtx)
+	d.cancelMu.Lock()
+	d.cancels[msgID] = callCancel
+	d.cancelMu.Unlock()
+
 	go func() {
 		defer d.wg.Done()
 		defer func() { <-d.sem }() // release slot
+		defer func() {
+			d.cancelMu.Lock()
+			delete(d.cancels, msgID)
+			d.cancelMu.Unlock()
+			callCancel()
+		}()
 
-		result, err := handler(ctx, rt, call.Input)
+		result, err := handler(callCtx, rt, call.Input)
 
 		var errStr string
 		if err != nil {
@@ -59,7 +88,7 @@ func (d *toolDispatcher) dispatch(
 
 		rt.mu.Lock()
 		defer rt.mu.Unlock()
-		wsjson.Write(ctx, conn, pluginws.Message{
+		wsjson.Write(parentCtx, conn, pluginws.Message{
 			Type: pluginws.TypeToolResult,
 			ID:   msgID,
 			Data: resultData,

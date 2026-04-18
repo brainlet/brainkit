@@ -25,6 +25,7 @@ const (
 	TypeToolCall    = "tool.call"
 	TypeEvent       = "event" // bus event forwarded to plugin
 	TypeShutdown    = "shutdown"
+	TypeCancel      = "tool.cancel" // cancel an in-flight tool call
 )
 
 // Manifest is sent by the plugin after connecting.
@@ -81,4 +82,13 @@ type EventMsg struct {
 	Topic    string          `json:"topic"`
 	Payload  json.RawMessage `json:"payload"`
 	CallerID string          `json:"callerID,omitempty"`
+}
+
+// CancelMsg is sent by the host to signal that an in-flight tool call
+// should be aborted. Plugins look up the cancel func they recorded
+// when the tool call arrived and invoke it. ToolCallID matches the
+// Message.ID of the original TypeToolCall frame.
+type CancelMsg struct {
+	ToolCallID string `json:"toolCallId"`
+	Reason     string `json:"reason,omitempty"`
 }

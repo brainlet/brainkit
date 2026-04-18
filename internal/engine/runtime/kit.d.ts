@@ -37,6 +37,35 @@ declare module "kit" {
     call<T = any>(topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
     /** Cross-kit variant of call(): routes the request to a different namespace. */
     callTo<T = any>(namespace: string, topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
+    /**
+     * Subscribe to cancel signals for an in-flight Call identified by
+     * correlationId. The handler fires when the upstream caller
+     * cancels (ctx done, timeout, explicit abort). Returns an
+     * unsubscribe function.
+     *
+     * @example
+     *   bus.on("expensive", async (msg) => {
+     *     const unsub = bus.onCancel(msg.correlationId, () => abort());
+     *     try { return await run(); }
+     *     finally { unsub(); }
+     *   });
+     */
+    onCancel(correlationId: string, handler: (evt: any) => void): () => void;
+    /**
+     * Build an AbortController wired to the cancel signal for msg's
+     * correlationId. Pass the returned signal to fetch() / any
+     * AbortController-aware API and call cleanup before returning.
+     *
+     * @example
+     *   bus.on("long-request", async (msg) => {
+     *     const { signal, cleanup } = bus.withCancelController(msg);
+     *     try {
+     *       const res = await fetch(url, { signal });
+     *       msg.reply(await res.json());
+     *     } finally { cleanup(); }
+     *   });
+     */
+    withCancelController(msg: BusMessage): { signal: AbortSignal; cleanup: () => void };
   };
 
   export interface BusMessage {

@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Session 09 Bundle B — WS cancel + .ts cancel helpers
+
+Host cancellation now propagates across every surface. Cancelling a
+`ToolCall` to a plugin fires a WS TypeCancel frame that aborts the
+plugin-side handler ctx. `.ts` handlers get `bus.onCancel` and
+`bus.withCancelController` so they can plumb cancellation into
+fetch / AbortController-aware APIs.
+
+Added:
+- `sdk/pluginws.TypeCancel` constant + `CancelMsg{ToolCallID, Reason}`
+  — the WS cancel frame shape.
+- `sdk/plugin.toolDispatcher.cancel(toolCallID)` — look up and fire
+  the stored CancelFunc for an in-flight tool call. Dispatcher now
+  wraps each handler's ctx in a WithCancel and stores the cancel
+  in a toolCallID-keyed map cleaned up on completion.
+- `bus.onCancel(correlationId, handler)` (runtime/bus.js) —
+  subscribes to `_brainkit.cancel`, filters by correlationId, fires
+  handler on match. Returns unsubscribe.
+- `bus.withCancelController(msg)` (runtime/bus.js) — returns
+  `{signal, cleanup}` wiring a DOM AbortController to the cancel
+  channel for this msg's correlationId.
+- `runtime/kit.d.ts` — JSDoc declarations for both helpers with
+  fetch-integration examples.
+- `test/suite/plugins/cancel_test.go` — e2e assertion that
+  cancelling a ToolCall on the host triggers TypeCancel and the
+  plugin's handler returns before its 10s fallback.
+
+Changed:
+- `modules/plugins/ws_server.go` — `callTool` emits TypeCancel on
+  `<-ctx.Done()` before returning the ctx error. Best-effort write
+  on a fresh 2s ctx so an already-closed parent doesn't block.
+- `sdk/plugin/serve.go` — Run loop handles incoming TypeCancel frames
+  by delegating to `dispatcher.cancel`.
+
 ### Session 09 Bundle A — Plugin SDK Caller
 
 Plugins can now issue typed `brainkit.Call` requests back to the host.

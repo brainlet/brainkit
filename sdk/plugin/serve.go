@@ -241,6 +241,11 @@ func (p *Plugin) Run() error {
 			json.Unmarshal(msg.Data, &evt)
 			rt.dispatchEvent(evt)
 
+		case pluginws.TypeCancel:
+			var cancelMsg pluginws.CancelMsg
+			json.Unmarshal(msg.Data, &cancelMsg)
+			dispatcher.cancel(cancelMsg.ToolCallID)
+
 		case pluginws.TypeShutdown:
 			return nil
 		}

@@ -333,9 +333,20 @@ func (pc *pluginWSConn) callTool(ctx context.Context, tool string, input json.Ra
 		}
 		return result.Result, nil
 	case <-ctx.Done():
+		// Host-side ctx cancelled before the plugin replied. Fire a
+		// best-effort TypeCancel so the plugin can abort its handler
+		// (fetch, subagent, etc.) rather than run to completion.
 		pc.mu.Lock()
 		delete(pc.pending, id)
 		pc.mu.Unlock()
+		cancelData, _ := json.Marshal(pluginws.CancelMsg{ToolCallID: id, Reason: ctx.Err().Error()})
+		writeCtx, writeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = wsjson.Write(writeCtx, pc.conn, pluginws.Message{
+			Type: pluginws.TypeCancel,
+			ID:   id,
+			Data: cancelData,
+		})
+		writeCancel()
 		return nil, ctx.Err()
 	case <-time.After(30 * time.Second):
 		pc.mu.Lock()

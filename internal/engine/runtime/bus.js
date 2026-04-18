@@ -252,6 +252,34 @@
       __go_brainkit_bus_unschedule(scheduleId);
       _resourceRegistry.unregister("schedule", scheduleId);
     },
+    // onCancel(correlationId, handler) → subscribes to `_brainkit.cancel`,
+    // filters by correlationId, invokes handler when the upstream caller
+    // signals cancellation. Returns an unsubscribe function.
+    onCancel: function(correlationId, handler) {
+      if (!correlationId) throw new BrainkitError("bus.onCancel: correlationId is required", "VALIDATION_ERROR", { field: "correlationId" });
+      if (typeof handler !== "function") throw new BrainkitError("bus.onCancel: handler must be a function", "VALIDATION_ERROR", { field: "handler" });
+      var subId = globalThis.__kit_bus.subscribe("_brainkit.cancel", function(msg) {
+        var body = msg && msg.payload;
+        if (body && body.correlationId === correlationId) {
+          try { handler(body); } catch (_) {}
+        }
+      });
+      return function() { globalThis.__kit_bus.unsubscribe(subId); };
+    },
+    // withCancelController(msg) → { signal, cleanup }. Handlers pass
+    // signal to fetch / AbortController-aware APIs and call cleanup
+    // before they return so the cancel subscription is torn down.
+    withCancelController: function(msg) {
+      var controller = new AbortController();
+      var unsubscribe = function() {};
+      var correlationId = msg && msg.correlationId;
+      if (correlationId) {
+        unsubscribe = globalThis.__kit_bus.onCancel(correlationId, function() {
+          controller.abort();
+        });
+      }
+      return { signal: controller.signal, cleanup: unsubscribe };
+    },
   };
 
   // ─── kit.register ─────────────────────────────────────────────
