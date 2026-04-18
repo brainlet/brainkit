@@ -98,6 +98,7 @@ examples:
 	go build -o bin/package-workflow ./examples/package-workflow
 	go build -o bin/gateway-routes  ./examples/gateway-routes
 	go build -o bin/go-tools        ./examples/go-tools
+	go build -o bin/guardrails      ./examples/guardrails
 	go build -o bin/harness-lite    ./examples/harness-lite
 	go build -o bin/hitl-workflow   ./examples/hitl-workflow
 	go build -o bin/mcp             ./examples/mcp

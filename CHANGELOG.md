@@ -90,6 +90,28 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### plans-02 session 01 — Example: guardrails (input processors)
+
+New runnable `examples/guardrails/` — three Mastra Agents, each
+with a different guardrail posture: clean (no processor),
+injection (`PromptInjectionDetector({strategy: "rewrite"})`), and
+pii (`PIIDetector({strategy: "redact", detectionTypes:
+["email","phone","name"]})`).
+
+Live-verified: injection test returns a neutralized reply; PII
+test declines to repeat email + phone.
+
+README includes the full strategy matrix and the correction that
+`ModerationProcessor` supports only `block|warn|filter` (no
+`rewrite` / `redact`).
+
+Added:
+- `examples/guardrails/main.go` + `README.md`.
+
+Changed:
+- `examples/README.md` — new row.
+- `Makefile` — `bin/guardrails` target.
+
 ### plans-02 session 08 — Example: agent-stream (textStream + structuredOutput)
 
 New runnable `examples/agent-stream/` — Mastra `agent.stream()`

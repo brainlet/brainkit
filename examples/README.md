@@ -17,6 +17,7 @@ from the repo root.
 | [package-workflow](./package-workflow/) | The on-disk package lifecycle: `ScaffoldPackage` → edit → add a sibling file → `PackageFromDir` deploy → teardown. The shape `brainkit new package` produces, unpacked into Go. |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
+| [guardrails](./guardrails/) | Input processors on an Agent — `PromptInjectionDetector` rewrites hostile input, `PIIDetector` masks PII |
 | [harness-lite](./harness-lite/) | WIP — frozen `modules/harness` surface: `NewModule`, `Instance`, and the six frozen event types |
 | [hitl-workflow](./hitl-workflow/) | Workflow-based HITL: a step calls `suspend(reason)`, Go resumes with `CallWorkflowResume` — durable across process restart when storage is configured |
 | [mcp](./mcp/) | Wire an external Model Context Protocol server (npx filesystem server) as first-class tools |
