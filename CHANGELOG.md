@@ -90,6 +90,35 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### post-1.0-rc.1 — Embedded reference corpus
+
+New core feature. brainkit now ships an embedded corpus of its
+own reference docs (docs/llm/*.md) and TypeScript declaration
+files (internal/engine/runtime/*.d.ts), exposed to Go consumers,
+to deployed `.ts` compartments, and over the bus. Purpose: an
+agent that designs or edits another agent can condition its
+underlying LLM on the real brainkit surface instead of guessing.
+
+Added:
+- `brainkit.Reference(name)` — returns a raw file or a composed
+  pack body as UTF-8.
+- `brainkit.ReferenceList()` + `brainkit.ReferenceNames()` —
+  enumerate packs and raw files with kind / size / description.
+- Four curated packs composing the corpus by intent:
+  `agent-author`, `tool-author`, `workflow-author`,
+  `kit-consumer`.
+- `sdk.KitReferenceMsg` / `KitReferenceResp` + `sdk.KitReferenceListMsg`
+  / `KitReferenceListResp`. Generated `brainkit.CallKitReference`
+  and `brainkit.CallKitReferenceList` wrappers (total: 64).
+- JS endowment: `await reference.get(name)` and
+  `await reference.list()` in every deployed `.ts`.
+
+Changed:
+- `brainkit.New` registers the reference commands before module
+  init so modules can depend on them being present.
+- `internal/engine/runtime/kit_runtime.js` adds the `reference`
+  endowment backed by the bus command.
+
 ### post-1.0-rc.1 — Example: agent-spawner (peak use case)
 
 New runnable `examples/agent-spawner/`. An architect agent uses a

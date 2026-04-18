@@ -183,6 +183,25 @@
       secrets: {
         get: rewrapErrors(_kitObj.secrets.get),
       },
+      // Embedded LLM-reference corpus. Deployments that build
+      // architect-style agents use reference.get(name) to pull a
+      // pack or raw doc and drop it into a system prompt, so the
+      // underlying LLM writes code against the actual brainkit
+      // surface instead of guessing. Lists every available name
+      // + size via reference.list().
+      reference: {
+        get: async function(name) {
+          if (!name || typeof name !== "string") {
+            throw new BrainkitError("reference.get: name is required", "VALIDATION_ERROR", { field: "name" });
+          }
+          var resp = await globalThis.__kit_bus.call("kit.reference", { name: name }, { timeoutMs: 5000 });
+          return (resp && resp.content) || "";
+        },
+        list: async function() {
+          var resp = await globalThis.__kit_bus.call("kit.reference.list", null, { timeoutMs: 5000 });
+          return (resp && resp.references) || [];
+        },
+      },
       generateWithApproval: _kitObj.generateWithApproval,
       // AI SDK
       generateText: embed.generateText,

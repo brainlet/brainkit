@@ -84,6 +84,12 @@ func New(cfg Config) (*Kit, error) {
 		kit.kernel = node.Kernel
 	}
 
+	// Register the reference catalog + fetch commands before modules
+	// init — deployments or modules that want to pull the embedded
+	// LLM-reference corpus need the handler wired before any bus
+	// traffic starts.
+	registerReferenceCommands(kit)
+
 	// Initialize Kit-scoped modules (Init(*Kit)) after the kernel is built
 	// but before the transport router starts — modules that register bus
 	// commands must be able to add them to the catalog before bindings are

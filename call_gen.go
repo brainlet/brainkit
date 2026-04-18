@@ -121,6 +121,20 @@ func CallKitHealth(k *Kit, ctx context.Context, msg sdk.KitHealthMsg, opts ...Ca
 	return Call[sdk.KitHealthMsg, sdk.KitHealthResp](k, ctx, msg, opts...)
 }
 
+// CallKitReference issues a synchronous request→response Call for KitReferenceMsg and
+// returns the decoded KitReferenceResp. Equivalent to
+// Call[sdk.KitReferenceMsg, sdk.KitReferenceResp] with the types saturated.
+func CallKitReference(k *Kit, ctx context.Context, msg sdk.KitReferenceMsg, opts ...CallOption) (sdk.KitReferenceResp, error) {
+	return Call[sdk.KitReferenceMsg, sdk.KitReferenceResp](k, ctx, msg, opts...)
+}
+
+// CallKitReferenceList issues a synchronous request→response Call for KitReferenceListMsg and
+// returns the decoded KitReferenceListResp. Equivalent to
+// Call[sdk.KitReferenceListMsg, sdk.KitReferenceListResp] with the types saturated.
+func CallKitReferenceList(k *Kit, ctx context.Context, msg sdk.KitReferenceListMsg, opts ...CallOption) (sdk.KitReferenceListResp, error) {
+	return Call[sdk.KitReferenceListMsg, sdk.KitReferenceListResp](k, ctx, msg, opts...)
+}
+
 // CallKitSend issues a synchronous request→response Call for KitSendMsg and
 // returns the decoded KitSendResp. Equivalent to
 // Call[sdk.KitSendMsg, sdk.KitSendResp] with the types saturated.

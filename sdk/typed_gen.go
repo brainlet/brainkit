@@ -152,6 +152,26 @@ func SubscribeKitHealthResp(rt Runtime, ctx context.Context, topic string, handl
 	return SubscribeTo[KitHealthResp](rt, ctx, topic, handler)
 }
 
+// PublishKitReference publishes a KitReferenceMsg and returns routing info for the response.
+func PublishKitReference(rt Runtime, ctx context.Context, msg KitReferenceMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitReferenceResp subscribes to the response topic for a KitReferenceMsg command.
+func SubscribeKitReferenceResp(rt Runtime, ctx context.Context, topic string, handler func(KitReferenceResp, Message)) (func(), error) {
+	return SubscribeTo[KitReferenceResp](rt, ctx, topic, handler)
+}
+
+// PublishKitReferenceList publishes a KitReferenceListMsg and returns routing info for the response.
+func PublishKitReferenceList(rt Runtime, ctx context.Context, msg KitReferenceListMsg, opts ...PublishOption) (PublishResult, error) {
+	return Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitReferenceListResp subscribes to the response topic for a KitReferenceListMsg command.
+func SubscribeKitReferenceListResp(rt Runtime, ctx context.Context, topic string, handler func(KitReferenceListResp, Message)) (func(), error) {
+	return SubscribeTo[KitReferenceListResp](rt, ctx, topic, handler)
+}
+
 // PublishKitSend publishes a KitSendMsg and returns routing info for the response.
 func PublishKitSend(rt Runtime, ctx context.Context, msg KitSendMsg, opts ...PublishOption) (PublishResult, error) {
 	return Publish(rt, ctx, msg, opts...)
