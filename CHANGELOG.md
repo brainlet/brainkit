@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Session 08 Bundle B — modules/harness (WIP)
+
+Move the harness agent-orchestration layer out of `internal/harness`
+into `modules/harness` as a brainkit.Module. Marked WIP — only the
+`Instance` interface + frozen `Event` / `EventType` set are stable.
+
+Added:
+- `modules/harness/` — the pre-move package (bridge, config, display,
+  harness, runtime, schema, types) now under `modules/`.
+- `modules/harness/module.go` — `Module` wrapping the inner Harness.
+  `Init` creates the Harness from `Kit.HarnessRuntime()` when the
+  Kit has a JS bridge; otherwise no-ops. Reports
+  `brainkit.ModuleStatusWIP`.
+- `modules/harness/instance.go` — frozen `Instance` interface
+  (`SendMessage / Abort / Steer / FollowUp / Subscribe /
+  CurrentThread / CurrentMode / Close`) + `Event` / `EventType`
+  enum with the 6 frozen values. `instanceAdapter` maps the WIP
+  `*Harness` onto `Instance` so downstream consumers import the
+  interface, not the struct.
+- `modules/harness/README.md` — WIP banner, frozen event table,
+  "not frozen" summary.
+- `modules/harness/doc.go` — package overview + usage example.
+- `modules/harness/module_test.go` — lifecycle assertion for
+  `Init(Close)` via a Kit built with the module.
+- `(*Kernel).HarnessRuntime()` / `(*Kit).HarnessRuntime() any` — kit
+  side adapter implementing the harness `Runtime` interface. `any`
+  in the public signature keeps `quickjs-go` out of brainkit's
+  exported surface.
+
+Removed:
+- `internal/harness/` — moved verbatim to `modules/harness/`.
+
 ### Session 08 Bundle A — modules/topology
 
 Cross-kit routing ergonomics split out into a dedicated module. The

@@ -183,6 +183,18 @@ func (k *Kit) ShutdownSignal() <-chan struct{} { return k.kernel.ShutdownSignal(
 // module requires real networking and refuses "memory".
 func (k *Kit) TransportKind() string { return k.kernel.TransportKind() }
 
+// HarnessRuntime returns the kernel's bridge adapter for the harness
+// module. The concrete return type implements modules/harness.Runtime
+// without requiring brainkit to import the quickjs-go types in its
+// public surface. Returns nil when the Kit has no JS bridge.
+func (k *Kit) HarnessRuntime() any {
+	rt := k.kernel.HarnessRuntime()
+	if rt == nil {
+		return nil
+	}
+	return rt
+}
+
 // SetPluginChecker installs the module-side plugin-presence gate used
 // by package deploys with `requires.plugins`. Owned by the plugins
 // module (nil when the module is absent → no plugin requirements can
