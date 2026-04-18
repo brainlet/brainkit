@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Session 12 Bundle B partial — examples/hello-embedded
+
+First entry in the examples tree. Runs end-to-end from
+`go run ./examples/hello-embedded` with no external dependencies.
+
+Added:
+- `examples/README.md` — index + maturity roadmap.
+- `examples/hello-embedded/main.go` — embeds a Kit on memory
+  transport, deploys an inline `.ts` handler, calls it, prints the
+  reply.
+- `examples/hello-embedded/README.md` — migration pointers for NATS
+  transport, disk packages, and providers.
+
 ### Session 12 Bundle A partial — docs pass 1
 
 Root-level documentation pass. Full session-12 scope (bus-topics
