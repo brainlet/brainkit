@@ -240,6 +240,27 @@
       Workspace: embed.Workspace,
       LocalFilesystem: embed.LocalFilesystem,
       LocalSandbox: embed.LocalSandbox,
+      // Voice — OpenAIVoice handles whisper-1 (STT) + tts-1 (TTS);
+      // CompositeVoice routes different providers for STT vs TTS.
+      //
+      // Patch: @mastra/voice-openai@0.11 calls `this.traced(fn, name)()`
+      // in speak/listen, but MastraVoice doesn't provide `traced`.
+      // The Mastra build pipeline wraps this via a decorator at
+      // publish time in their managed deployment; the raw
+      // published package leaves the call unresolved, so
+      // speak/listen crash with `TypeError: not a function`.
+      // Polyfill `traced` to an identity wrapper —
+      // `traced(fn, name) => fn`. brainkit's own tracing module
+      // still produces spans; we just lose the voice-specific
+      // span names that Mastra's decorator would have added.
+      OpenAIVoice: (function() {
+        const Base = embed.OpenAIVoice;
+        if (Base && Base.prototype && typeof Base.prototype.traced !== "function") {
+          Base.prototype.traced = function(fn, _name) { return fn; };
+        }
+        return Base;
+      })(),
+      CompositeVoice: embed.CompositeVoice,
       MDocument: embed.MDocument,
       GraphRAG: embed.GraphRAG,
       createVectorQueryTool: embed.createVectorQueryTool,
@@ -251,6 +272,25 @@
       DefaultExporter: embed.DefaultExporter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
+      // Prebuilt scorer factories (`@mastra/evals/scorers/prebuilt`).
+      // Available inside a deployed .ts as plain globals, e.g.
+      // `createAnswerRelevancyScorer({ model: model("openai", ...) })`.
+      createCompletenessScorer: embed.createCompletenessScorer,
+      createTextualDifferenceScorer: embed.createTextualDifferenceScorer,
+      createKeywordCoverageScorer: embed.createKeywordCoverageScorer,
+      createContentSimilarityScorer: embed.createContentSimilarityScorer,
+      createToneScorer: embed.createToneScorer,
+      createAnswerRelevancyScorer: embed.createAnswerRelevancyScorer,
+      createAnswerSimilarityScorer: embed.createAnswerSimilarityScorer,
+      createFaithfulnessScorer: embed.createFaithfulnessScorer,
+      createHallucinationScorer: embed.createHallucinationScorer,
+      createBiasScorer: embed.createBiasScorer,
+      createToxicityScorer: embed.createToxicityScorer,
+      createContextPrecisionScorer: embed.createContextPrecisionScorer,
+      createContextRelevanceScorerLLM: embed.createContextRelevanceScorerLLM,
+      createNoiseSensitivityScorerLLM: embed.createNoiseSensitivityScorerLLM,
+      createPromptAlignmentScorerLLM: embed.createPromptAlignmentScorerLLM,
+      createToolCallAccuracyScorerLLM: embed.createToolCallAccuracyScorerLLM,
       // Processors — built-in input/output middleware for Agents.
       // Used inside an Agent config as `inputProcessors` /
       // `outputProcessors` for safety and shaping.
@@ -283,6 +323,9 @@
       Request: globalThis.Request,
       Response: globalThis.Response,
       Headers: globalThis.Headers,
+      FormData: globalThis.FormData,
+      Blob: globalThis.Blob,
+      File: globalThis.File,
       URL: globalThis.URL,
       URLSearchParams: globalThis.URLSearchParams,
       AbortController: globalThis.AbortController,

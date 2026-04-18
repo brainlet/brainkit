@@ -71,6 +71,11 @@ import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/obs
 // Workspace — filesystem, sandbox, skills, search
 import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
 
+// Voice — STT/TTS. CompositeVoice lives in @mastra/core, the
+// OpenAI provider lives in its own package.
+import { CompositeVoice } from '@mastra/core/voice';
+import { OpenAIVoice } from '@mastra/voice-openai';
+
 // Harness — orchestration layer for agent execution, threads, modes, tool approval
 import { Harness } from '@mastra/core/harness';
 import { askUserTool, submitPlanTool, taskWriteTool, taskCheckTool } from '@mastra/core/harness';
@@ -247,6 +252,8 @@ globalThis.__agent_embed = {
   Workspace,
   LocalFilesystem,
   LocalSandbox,
+  CompositeVoice,
+  OpenAIVoice,
 
   // Harness
   Harness,

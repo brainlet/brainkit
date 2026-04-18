@@ -42,6 +42,28 @@ export const Observability = globalThis.__agent_embed.Observability;
 export const DefaultExporter = globalThis.__agent_embed.DefaultExporter;
 export const SensitiveDataFilter = globalThis.__agent_embed.SensitiveDataFilter;
 
+// Voice
+export const OpenAIVoice = globalThis.__agent_embed.OpenAIVoice;
+export const CompositeVoice = globalThis.__agent_embed.CompositeVoice;
+
 // Evals
 export const createScorer = globalThis.__agent_embed.createScorer;
 export const runEvals = globalThis.__agent_embed.runEvals;
+
+// Prebuilt scorer factories (@mastra/evals/scorers/prebuilt).
+export const createCompletenessScorer = globalThis.__agent_embed.createCompletenessScorer;
+export const createTextualDifferenceScorer = globalThis.__agent_embed.createTextualDifferenceScorer;
+export const createKeywordCoverageScorer = globalThis.__agent_embed.createKeywordCoverageScorer;
+export const createContentSimilarityScorer = globalThis.__agent_embed.createContentSimilarityScorer;
+export const createToneScorer = globalThis.__agent_embed.createToneScorer;
+export const createAnswerRelevancyScorer = globalThis.__agent_embed.createAnswerRelevancyScorer;
+export const createAnswerSimilarityScorer = globalThis.__agent_embed.createAnswerSimilarityScorer;
+export const createFaithfulnessScorer = globalThis.__agent_embed.createFaithfulnessScorer;
+export const createHallucinationScorer = globalThis.__agent_embed.createHallucinationScorer;
+export const createBiasScorer = globalThis.__agent_embed.createBiasScorer;
+export const createToxicityScorer = globalThis.__agent_embed.createToxicityScorer;
+export const createContextPrecisionScorer = globalThis.__agent_embed.createContextPrecisionScorer;
+export const createContextRelevanceScorerLLM = globalThis.__agent_embed.createContextRelevanceScorerLLM;
+export const createNoiseSensitivityScorerLLM = globalThis.__agent_embed.createNoiseSensitivityScorerLLM;
+export const createPromptAlignmentScorerLLM = globalThis.__agent_embed.createPromptAlignmentScorerLLM;
+export const createToolCallAccuracyScorerLLM = globalThis.__agent_embed.createToolCallAccuracyScorerLLM;

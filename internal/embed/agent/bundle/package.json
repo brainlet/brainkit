@@ -24,6 +24,7 @@
     "@mastra/pg": "^1.8.0",
     "@mastra/rag": "^2.1.0",
     "@mastra/upstash": "^1.0.4",
+    "@mastra/voice-openai": "^0.11.12",
     "ai": "^6.0.116",
     "events": "^3.3.0",
     "mongodb": "^7.1.1",
