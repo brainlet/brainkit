@@ -32,6 +32,8 @@ from the repo root.
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
 | [voice-agent](./voice-agent/) | Full speak → listen → generate → speak round trip via `OpenAIVoice` — TTS to MP3, STT back to text, generate answer, TTS to a second MP3 |
+| [voice-broadcast](./voice-broadcast/) | Single TTS fans through `audio.Composite` to three sinks at once — desktop speakers + MP3 file + bus topic — with a subscriber watching; shows the Sink primitive |
+| [voice-chat](./voice-chat/) | Minimum canonical "agent speaks answers" — stdin question, `agent.generate` + `voice.speak`, played via `new Audio(stream).play()`. The baseline you add voice to an existing agent with |
 | [voice-realtime](./voice-realtime/) | Live bidirectional voice in a browser — mic PCM16 streams up over WS, `OpenAIRealtimeVoice` replies as the model speaks, plays back in the page + desktop speakers |
 | [working-memory](./working-memory/) | Multi-turn agent with `Memory` — remembers names across turns on the same thread; different threads are isolated |
 | [workflows](./workflows/) | Declarative 3-step pipeline through `modules/workflow` (`createStep` + `createWorkflow`) |
