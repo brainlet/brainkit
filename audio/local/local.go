@@ -33,7 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/jsbridge"
+	"github.com/brainlet/brainkit/audio"
 	"github.com/ebitengine/oto/v3"
 	"github.com/hajimehoshi/go-mp3"
 )
@@ -104,8 +104,8 @@ func (s *Sink) initOnce() error {
 	return nil
 }
 
-// Play satisfies jsbridge.AudioSink. Decodes the audio and
-// blocks until playback finishes (or ctx is cancelled).
+// Play satisfies audio.Sink. Decodes the audio and blocks until
+// playback finishes (or ctx is cancelled).
 func (s *Sink) Play(ctx context.Context, audio []byte, mime string) error {
 	if err := s.initOnce(); err != nil {
 		return err
@@ -275,4 +275,4 @@ func resampleNearest(pcm []byte, srcRate, dstRate, channels int) []byte {
 }
 
 // Compile-time assertion that Sink implements the contract.
-var _ jsbridge.AudioSink = (*Sink)(nil)
+var _ audio.Sink = (*Sink)(nil)

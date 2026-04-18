@@ -2,7 +2,8 @@
 
 Full speak → listen → generate → speak round trip with
 `OpenAIVoice` on a brainkit Agent. Exercises every leg of the
-voice surface without needing a pre-recorded sample.
+voice surface without needing a pre-recorded sample — and plays
+both clips out the speakers while it runs.
 
 ## Run
 
@@ -17,6 +18,10 @@ Optional flags:
   to your CWD.
 - `-question "..."` — the question synthesized to audio.
   Defaults to a short factual prompt.
+- `-play=false` — skip desktop playback (headless runs, CI). By
+  default the example wires `brainkit/audio/local` on
+  `Config.Audio` so `new Audio(buf).play()` inside the `.ts`
+  deployment routes bytes to the system audio device.
 
 Expected tail:
 
@@ -40,6 +45,7 @@ Expected tail:
 | `agent.generate` | the model in the middle of the round trip |
 | `fs.writeFile` / `fs.createReadStream` | persisting MP3s + replaying them as upload bodies |
 | `Buffer.concat` | drain a Node Readable into a single buffer |
+| `new Audio(buf).play()` | web-standard playback via `brainkit/audio/local` |
 
 The MP3s round-trip cleanly because the jsbridge boundary is
 binary-safe — fetch responses, FormData uploads, and
@@ -63,9 +69,37 @@ binary-safe — fetch responses, FormData uploads, and
    })
 ```
 
+## Audio playback
+
+`brainkit/audio` is the public surface. Three pieces:
+
+```go
+import (
+    "github.com/brainlet/brainkit/audio"
+    "github.com/brainlet/brainkit/audio/local"
+)
+
+kit, _ := brainkit.New(brainkit.Config{
+    // Pick one:
+    Audio: local.New(),                               // desktop speakers
+    // Audio: audio.Func(fn),                         // ad-hoc sink (bus, HTTP)
+    // Audio: audio.Composite(local.New(), mySink),   // fan-out
+    // Audio: nil,                                    // silent (default)
+})
+```
+
+The JS side calls the web-standard `new Audio(src).play()` — no
+brainkit-specific API. `src` accepts URL strings, file paths,
+Buffer/Uint8Array, Blob, Node Readable, or Web ReadableStream;
+format is sniffed from container magic. Zero-config, zero cost
+on kits that don't play audio.
+
 ## See also
 
 - `internal/engine/runtime/kit_runtime.js` — endows
-  `OpenAIVoice` and `CompositeVoice` for `.ts` deployments.
+  `OpenAIVoice`, `CompositeVoice`, and `Audio` for `.ts`
+  deployments.
 - `internal/jsbridge/fetch.go` — multipart/form-data + binary
   body serialization used by `voice.listen`.
+- `internal/jsbridge/audio.go` — the `Audio` polyfill +
+  `jsbridge.AudioSink` contract that `brainkit/audio` builds on.
