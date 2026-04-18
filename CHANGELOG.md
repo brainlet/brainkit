@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Session 12 Bundle A continued — module READMEs
+
+Every `modules/*` package (except harness, which already had one)
+gained a README with maturity banner, usage snippet, bus surface,
+and cross-links. Matches the module catalog in the root README.
+
+Added:
+- `modules/audit/README.md`, `modules/discovery/README.md`,
+  `modules/gateway/README.md`, `modules/mcp/README.md`,
+  `modules/plugins/README.md`, `modules/probes/README.md`,
+  `modules/schedules/README.md`, `modules/topology/README.md`,
+  `modules/tracing/README.md`, `modules/workflow/README.md`.
+
 ### Session 12 Bundle B continued — examples/plugin-author
 
 Fifth entry in the examples tree. Minimal subprocess plugin —
