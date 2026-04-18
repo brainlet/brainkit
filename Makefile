@@ -73,6 +73,7 @@ examples:
 	go build ./examples/gateway-routes
 	go build ./examples/go-tools
 	go build ./examples/plugin-host
+	go build ./examples/schedules
 	go build ./examples/secrets
 	go build ./examples/storage-vectors
 	go build ./examples/streaming

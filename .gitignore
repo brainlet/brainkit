@@ -37,6 +37,7 @@ bin/**.go binary
 /gateway-routes
 /go-tools
 /plugin-host
+/schedules
 /secrets
 /storage-vectors
 /streaming

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### plans-01 session 09 — Example: Schedules
+
+New runnable `examples/schedules/` exercises the cron-style
+scheduler end-to-end: wire `modules/schedules`, deploy a `.ts`
+handler, create a schedule via `brainkit.CallScheduleCreate`,
+collect ticks, cancel.
+
+Added:
+- `examples/schedules/main.go` — 3-tick round trip against a
+  "every 2s" schedule, cancel when done.
+- `examples/schedules/README.md` — expression grammar + restart
+  survival cookbook.
+
+Changed:
+- `examples/README.md` — add schedules row.
+- `Makefile` / `.gitignore` — schedules binary.
+
 ### plans-01 session 08 — Example: Streaming (bus + gateway)
 
 New runnable `examples/streaming/` covers every streaming surface
