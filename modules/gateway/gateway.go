@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -182,6 +183,35 @@ func (gw *Gateway) HandleWebSocket(path, topic string, opts ...RouteOption) {
 	gw.routes.add(&route{Method: "GET", Path: path, Topic: topic, Type: routeWebSocket, Owner: cfg.owner, Config: cfg})
 }
 
+// HandleWebSocketAudio opens a duplex binary WebSocket. Every
+// inbound frame (text or binary) publishes on inTopic with a
+// persistent session id; every message received on outTopic is
+// written back to the browser as a binary frame. Long-lived
+// connection — does not go through the request/reply pattern
+// the regular WebSocket handler uses.
+//
+// Both outTopic and inTopic are subscribed for the lifetime of
+// the connection; drop + reconnect cleans up automatically.
+func (gw *Gateway) HandleWebSocketAudio(path, inTopic, outTopic string, opts ...RouteOption) {
+	cfg := routeConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	gw.routes.add(&route{Method: "GET", Path: path, Topic: inTopic, OutTopic: outTopic, Type: routeWebSocketAudio, Owner: cfg.owner, Config: cfg})
+}
+
+// HandleStatic serves the contents of fsys at the given path
+// prefix. Trailing slash in `prefix` is optional. Use a
+// `go:embed` FS to ship assets in-binary, or `os.DirFS` for a
+// directory on disk.
+func (gw *Gateway) HandleStatic(prefix string, fsys fs.FS, opts ...RouteOption) {
+	cfg := routeConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	gw.routes.add(&route{Method: "GET", Path: prefix, Type: routeStatic, Owner: cfg.owner, Config: cfg, Static: fsys})
+}
+
 // HandleWebhook registers a fire-and-forget route.
 func (gw *Gateway) HandleWebhook(method, path, topic string, opts ...RouteOption) {
 	cfg := routeConfig{}
@@ -337,6 +367,10 @@ func (gw *Gateway) dispatch(w http.ResponseWriter, r *http.Request) {
 		gw.handleWebhook(w, r, matched, pathParams)
 	case routeWebSocket:
 		gw.handleWebSocket(w, r, matched, pathParams)
+	case routeWebSocketAudio:
+		gw.handleWebSocketAudio(w, r, matched)
+	case routeStatic:
+		gw.handleStatic(w, r, matched)
 	}
 }
 

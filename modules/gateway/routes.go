@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"io/fs"
 	"strings"
 	"github.com/brainlet/brainkit/internal/syncx"
 )
@@ -12,15 +13,19 @@ const (
 	routeStream
 	routeWebhook
 	routeWebSocket
+	routeWebSocketAudio
+	routeStatic
 )
 
 type route struct {
-	Method string
-	Path   string
-	Topic  string
-	Type   routeType
-	Owner  string
-	Config routeConfig
+	Method   string
+	Path     string
+	Topic    string
+	OutTopic string // routeWebSocketAudio: audio out from kit → browser
+	Type     routeType
+	Owner    string
+	Config   routeConfig
+	Static   fs.FS // routeStatic: files served at Path prefix
 }
 
 // RouteInfo is the public view of a route.
@@ -97,13 +102,35 @@ func (t *routeTable) list() []RouteInfo {
 func (t *routeTable) match(method, path string) (*route, map[string]string) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
+	// Static routes use prefix match; everything else uses exact
+	// segment match. Exact matches win over static prefixes so a
+	// dedicated /foo route still beats a sibling /-rooted static.
+	var staticHit *route
 	for _, r := range t.routes {
+		if r.Type == routeStatic {
+			if method == "GET" || method == "HEAD" {
+				prefix := r.Path
+				if !strings.HasSuffix(prefix, "/") {
+					prefix += "/"
+				}
+				if path == strings.TrimSuffix(r.Path, "/") || strings.HasPrefix(path, prefix) {
+					// Longest prefix wins so nested statics can shadow roots.
+					if staticHit == nil || len(r.Path) > len(staticHit.Path) {
+						staticHit = r
+					}
+				}
+			}
+			continue
+		}
 		if r.Method != method && r.Method != "*" {
 			continue
 		}
 		if params, ok := matchPath(r.Path, path); ok {
 			return r, params
 		}
+	}
+	if staticHit != nil {
+		return staticHit, nil
 	}
 	return nil, nil
 }
@@ -135,6 +162,10 @@ func routeTypeName(t routeType) string {
 		return "webhook"
 	case routeWebSocket:
 		return "websocket"
+	case routeWebSocketAudio:
+		return "websocket-audio"
+	case routeStatic:
+		return "static"
 	default:
 		return "unknown"
 	}
@@ -148,6 +179,10 @@ func routeTypeFromName(name string) routeType {
 		return routeWebhook
 	case "websocket":
 		return routeWebSocket
+	case "websocket-audio":
+		return routeWebSocketAudio
+	case "static":
+		return routeStatic
 	default:
 		return routeHandle
 	}
