@@ -67,6 +67,7 @@ docs-bus-topics:
 # picked up as a nested module.
 examples:
 	go build ./examples/ai-chat
+	go build ./examples/cross-kit
 	go build ./examples/hello-embedded
 	go build ./examples/hello-server
 	go build ./examples/multi-kit

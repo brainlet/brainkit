@@ -31,6 +31,7 @@ bin/**.go binary
 
 # Binaries built at repo root by `go build ./examples/...`
 /ai-chat
+/cross-kit
 /hello-embedded
 /hello-server
 /multi-kit

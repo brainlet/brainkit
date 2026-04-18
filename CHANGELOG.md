@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### plans-01 session 13 — Example: Cross-kit routing
+
+New runnable `examples/cross-kit/` runs two Kits in one process
+over a shared in-process NATS server, routed by peer name
+through `modules/topology` + `brainkit.WithCallTo`. Zero
+external infra.
+
+Added:
+- `examples/cross-kit/main.go` — boots `nats-io/nats-server/v2`
+  directly (picks a free port), wires two Kits against its URL,
+  deploys a report handler on `analytics-prod`, calls from
+  `orchestrator` with `WithCallTo("analytics")`.
+- `examples/cross-kit/README.md` — shared-NATS explanation,
+  scale-up with bus discovery, production shape.
+
+Changed:
+- `examples/README.md` — add cross-kit row.
+- `Makefile` / `.gitignore` — cross-kit binary.
+
 ### plans-01 session 12 — Example: Workflows
 
 New runnable `examples/workflows/` demonstrates a declarative
