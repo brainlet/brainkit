@@ -99,9 +99,26 @@ func main() {
 		fmt.Println(text)
 	}
 	if u, ok := out["usage"].(map[string]any); ok {
+		// AI SDK v5 renamed the fields to inputTokens / outputTokens;
+		// the Mastra v4 fork we bundle still uses promptTokens /
+		// completionTokens for some paths. Read both.
+		prompt := firstNonNil(u["inputTokens"], u["promptTokens"])
+		completion := firstNonNil(u["outputTokens"], u["completionTokens"])
 		fmt.Printf("---\ntokens: prompt=%v completion=%v total=%v\n",
-			u["promptTokens"], u["completionTokens"], u["totalTokens"])
+			prompt, completion, u["totalTokens"])
 	}
+}
+
+// firstNonNil returns the first argument that is non-nil, or nil
+// if they all are. Used to reconcile the AI SDK v5 usage-field
+// rename (inputTokens/outputTokens) with the older Mastra names.
+func firstNonNil(vs ...any) any {
+	for _, v := range vs {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 // resolveAPIKey picks an API key from (in priority) --api-key

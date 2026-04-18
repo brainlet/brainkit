@@ -115,32 +115,33 @@ func buildPlugin(ctx context.Context, binaryPath string) error {
 	return build.Run()
 }
 
-// waitForPluginRegistered blocks until plugin.registered for
-// pluginName or the deadline elapses.
+// waitForPluginRegistered blocks until plugin.list includes
+// pluginName with an active status, or the deadline elapses.
+//
+// Polling `plugin.list` beats subscribing to `plugin.registered`
+// because the registration event can fire before the host's
+// subscribe call finishes — the kit boots the plugin supervisor
+// as part of brainkit.New. Polling a query is race-free.
 func waitForPluginRegistered(ctx context.Context, kit *brainkit.Kit, pluginName string, timeout time.Duration) error {
 	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	ch := make(chan struct{}, 1)
-	unsub, err := sdk.SubscribeTo[sdk.PluginRegisteredEvent](kit, deadline, "plugin.registered",
-		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
-			if evt.Name == pluginName {
-				select {
-				case ch <- struct{}{}:
-				default:
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		resp, err := brainkit.CallPluginListRunning(kit, deadline, sdk.PluginListRunningMsg{},
+			brainkit.WithCallTimeout(500*time.Millisecond))
+		if err == nil {
+			for _, p := range resp.Plugins {
+				if p.Name == pluginName && p.Status != "crashed" && p.Status != "stopped" {
+					return nil
 				}
 			}
-		})
-	if err != nil {
-		return fmt.Errorf("subscribe plugin.registered: %w", err)
-	}
-	defer unsub()
-
-	select {
-	case <-ch:
-		return nil
-	case <-deadline.Done():
-		return fmt.Errorf("timeout waiting for plugin %q to register", pluginName)
+		}
+		select {
+		case <-deadline.Done():
+			return fmt.Errorf("timeout waiting for plugin %q to register", pluginName)
+		case <-tick.C:
+		}
 	}
 }
 

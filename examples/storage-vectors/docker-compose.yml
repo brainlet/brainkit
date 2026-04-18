@@ -1,0 +1,38 @@
+# docker-compose for examples/storage-vectors — stands up a
+# Postgres with the pgvector extension pre-installed so the
+# vector similarity demo runs end-to-end instead of gracefully
+# skipping on the embedded libsql build.
+#
+# Usage:
+#   cd examples/storage-vectors
+#   docker compose up -d
+#   export OPENAI_API_KEY=sk-...
+#   export PGVECTOR_URL="postgres://brainkit:brainkit@127.0.0.1:5433/brainkit?sslmode=disable"
+#   go run .
+#   docker compose down -v
+#
+# The default PGVECTOR_URL in the example README matches the
+# service below. If you already run Postgres on 5432, change
+# the host port mapping here.
+
+services:
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: brainkit-pgvector-demo
+    environment:
+      POSTGRES_USER: brainkit
+      POSTGRES_PASSWORD: brainkit
+      POSTGRES_DB: brainkit
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brainkit -d brainkit"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgvector_data:

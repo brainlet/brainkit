@@ -40,6 +40,20 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
+	// Vector backend: PgVector when PGVECTOR_URL is set (the
+	// docker-compose.yml shipped alongside this example provisions
+	// it on that URL by default), SQLite otherwise. The SQLite path
+	// gracefully degrades when the embedded build is missing the
+	// libsql_vector_idx extension; the PgVector path needs a
+	// running Postgres with the `vector` extension installed.
+	vecCfg := brainkit.SQLiteVector(filepath.Join(tmp, "vectors.db"))
+	vecLabel := "sqlite (libsql)"
+	if url := os.Getenv("PGVECTOR_URL"); url != "" {
+		vecCfg = brainkit.PgVectorStore(url)
+		vecLabel = "pgvector (" + url + ")"
+	}
+	fmt.Printf("vector backend: %s\n", vecLabel)
+
 	cfg := brainkit.Config{
 		Namespace: "storage-vectors-demo",
 		Transport: brainkit.Memory(),
@@ -48,7 +62,7 @@ func run() error {
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "kv.db")),
 		},
 		Vectors: map[string]brainkit.VectorConfig{
-			"default": brainkit.SQLiteVector(filepath.Join(tmp, "vectors.db")),
+			"default": vecCfg,
 		},
 	}
 

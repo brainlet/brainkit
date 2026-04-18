@@ -58,6 +58,34 @@ func parseStreamEvent(payload []byte, metadata map[string]string) streamEvent {
 	evt.Payload = payload
 	evt.Metadata = metadata
 	json.Unmarshal(payload, &evt)
+	// Envelope-wrapped terminal: the JS side emits
+	// `msg.reply({done:true,total:N})` as
+	// {"ok":true,"data":{"done":true,"total":N}} with
+	// `envelope=true` + `done=true` metadata. Flatten to the
+	// shape the reassembly path expects: Type="end", Total=N,
+	// Data=unwrapped payload. Without this, the writeLoop
+	// dropped prior chunks when the terminal beat them.
+	if evt.Type == "" && metadata != nil && metadata["envelope"] == "true" && metadata["done"] == "true" {
+		var env struct {
+			OK   bool `json:"ok"`
+			Data struct {
+				Done  bool            `json:"done"`
+				Total int             `json:"total"`
+				Raw   json.RawMessage `json:"-"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(payload, &env) == nil && env.OK {
+			evt.Type = "end"
+			evt.Total = env.Data.Total
+			// Reuse full inner Data as the SSE data payload.
+			var inner struct {
+				Data json.RawMessage `json:"data"`
+			}
+			if json.Unmarshal(payload, &inner) == nil {
+				evt.Data = inner.Data
+			}
+		}
+	}
 	return evt
 }
 
@@ -100,6 +128,21 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, id, eventName st
 func writeKeepalive(w http.ResponseWriter, flusher http.Flusher) {
 	w.Write([]byte(":keepalive\n\n"))
 	flusher.Flush()
+}
+
+// unwrapEnvelope extracts the inner `data` field from the
+// {"ok":true,"data":...} envelope `msg.reply` emits on the JS
+// side. Falls back to the raw payload when unwrapping fails so
+// the client still sees something useful.
+func unwrapEnvelope(payload []byte) []byte {
+	var env struct {
+		OK   bool            `json:"ok"`
+		Data json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(payload, &env) == nil && env.OK && len(env.Data) > 0 {
+		return env.Data
+	}
+	return payload
 }
 
 func writeSyntheticError(w http.ResponseWriter, flusher http.Flusher, id, reason, msg string) {
@@ -247,31 +290,55 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 					s.mu.Unlock()
 					s.terminate(evt.Type)
 				} else {
-					// Untyped done=true (from handleHandlerFailure)
+					// Untyped done=true. Two legitimate sources:
+					//   (a) a handler that used `msg.reply(...)` — the
+					//       JS wire wraps it as {"ok":true,"data":...}
+					//       with `envelope=true` metadata. Treat as a
+					//       clean `event: end` carrying data.
+					//   (b) handleHandlerFailure publishing an error
+					//       ack with `{"error":"..."}` — treat as an
+					//       error stream terminal.
 					s.mu.Lock()
 					id := formatStreamID(s.id, s.nextID)
 					s.nextID++
 					s.mu.Unlock()
-					errMsg := string(evt.Payload)
-					var parsed struct{ Error string `json:"error"` }
-					if json.Unmarshal(evt.Payload, &parsed) == nil && parsed.Error != "" {
-						errMsg = parsed.Error
+					if evt.Metadata != nil && evt.Metadata["envelope"] == "true" {
+						data := unwrapEnvelope(evt.Payload)
+						line := writeSSEEvent(w, flusher, id, "end", data)
+						s.mu.Lock()
+						s.buffer = append(s.buffer, bufferedEvent{id: s.nextID - 1, data: line})
+						s.mu.Unlock()
+						s.terminate("end")
+					} else {
+						errMsg := string(evt.Payload)
+						var parsed struct{ Error string `json:"error"` }
+						if json.Unmarshal(evt.Payload, &parsed) == nil && parsed.Error != "" {
+							errMsg = parsed.Error
+						}
+						writeSyntheticError(w, flusher, id, "producer_error", errMsg)
+						s.terminate("producer_error")
 					}
-					writeSyntheticError(w, flusher, id, "producer_error", errMsg)
-					s.terminate("producer_error")
 				}
 				return
 			}
 
-			// Data event
+			// Data event. msg.send chunks are intentionally raw (see
+			// the note on scopedMsg.send in runtime/bus.js), so we
+			// don't get a wrapped {type, data} envelope for them.
+			// When Data is nil, fall back to the raw payload so the
+			// SSE data field carries the chunk's JSON verbatim.
 			eventName := evt.Type
 			if evt.Type == "event" && evt.Event != "" {
 				eventName = evt.Event
 			}
+			data := evt.Data
+			if len(data) == 0 && len(evt.Payload) > 0 {
+				data = json.RawMessage(evt.Payload)
+			}
 
 			s.mu.Lock()
 			id := formatStreamID(s.id, s.nextID)
-			line := writeSSEEvent(w, flusher, id, eventName, evt.Data)
+			line := writeSSEEvent(w, flusher, id, eventName, data)
 			s.buffer = append(s.buffer, bufferedEvent{id: s.nextID, data: line})
 			s.nextID++
 			s.eventCount++
