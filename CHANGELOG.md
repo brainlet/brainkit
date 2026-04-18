@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Session 12 Bundle C partial — Makefile targets
+
+Plan's `make docs-bus-topics`, `make examples`, `make bench` targets
+land. The existing `make bench` shipped as-embed benchmarks only;
+renamed to avoid stepping on the runtime-bench work from session
+12 Bundle C.
+
+Added:
+- `make docs-bus-topics` — regenerate `docs/bus-topics.md`.
+- `make examples` — smoke-build every runnable example (including
+  the nested `plugin-author` module).
+- `make bench-runtime` — run `test/bench/...` under `-benchtime=1x`.
+
 ### Session 12 Bundle A continued — bus-topics generator
 
 Generated reference doc listing every bus topic + its request/

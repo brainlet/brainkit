@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build test test-v bench bench-stable clean
+.PHONY: all brainkit install deps deps-go deps-npm build test test-v bench bench-stable bench-runtime docs-bus-topics examples clean
 
 # Default: build the CLI binary
 all: brainkit
@@ -48,6 +48,25 @@ bench:
 # Run as-embed benchmarks with 3 iterations for stable numbers
 bench-stable:
 	cd internal/embed/compiler && go test -run='^$$' -bench=. -benchmem -benchtime=3x -timeout 30m
+
+# Run runtime benchmarks (Kit construction, Call round trip, deploy, eval, bus).
+bench-runtime:
+	go test -run='^$$' -bench=. -benchmem -benchtime=1x ./test/bench/...
+
+# Regenerate docs/bus-topics.md from sdk/*_messages.go.
+docs-bus-topics:
+	go run scripts/gen-bus-topics.go
+
+# Smoke-check every example builds. Per-example modules (e.g.
+# plugin-author) are handled via a subshell so their go.mod is
+# picked up as a nested module.
+examples:
+	go build ./examples/hello-embedded
+	go build ./examples/hello-server
+	go build ./examples/multi-kit
+	go build ./examples/gateway-routes
+	cd examples/plugin-author && go build .
+	@echo "All examples build."
 
 # Clean generated bundles, node_modules, and binaries
 clean:
