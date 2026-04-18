@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Session 12 Bundle B continued — examples/plugin-author
+
+Fifth entry in the examples tree. Minimal subprocess plugin —
+registers one typed tool + one bus subscription, runs as a
+standalone binary. Carries its own go.mod with replace directives
+back to the repo so plugins stay a separate module (matching the
+shape downstream authors would ship).
+
+Added:
+- examples/plugin-author/main.go — `bkplugin.New` + `Tool` + `On`
+  + `Run`. No protocol boilerplate; `Run` owns the WS handshake.
+- examples/plugin-author/go.mod — separate module with replace
+  directives for brainkit, sdk, vendor_quickjs, vendor_typescript.
+- examples/plugin-author/go.sum.
+- examples/plugin-author/README.md — build instructions + host-
+  side wiring snippet.
+
+Changed:
+- examples/README.md — add plugin-author row.
+
 ### Session 12 Bundle C partial — audit fixes
 
 Fix the long-standing `go vet ./...` failure, clear the last

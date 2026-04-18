@@ -9,6 +9,6 @@ from the repo root.
 | [hello-server](./hello-server/) | Service mode: `brainkit.yaml` + `server.New` + `Start` |
 | [multi-kit](./multi-kit/) | Two Kits in one process, routed by peer name through `modules/topology` |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
+| [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |
 
-More examples (plugin-author, harness-lite) land as the surrounding
-modules mature.
+More examples (harness-lite) land as the surrounding modules mature.
