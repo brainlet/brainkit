@@ -120,6 +120,7 @@ examples:
 	go build -o bin/secrets         ./examples/secrets
 	go build -o bin/storage-vectors ./examples/storage-vectors
 	go build -o bin/streaming       ./examples/streaming
+	go build -o bin/voice-agent     ./examples/voice-agent
 	go build -o bin/workflows       ./examples/workflows
 	go build -o bin/working-memory  ./examples/working-memory
 	go build -o bin/workspace-agent ./examples/workspace-agent

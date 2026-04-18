@@ -30,6 +30,7 @@ from the repo root.
 | [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via the `Kit.Secrets()` accessor |
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
+| [voice-agent](./voice-agent/) | Full speak → listen → generate → speak round trip via `OpenAIVoice` — TTS to MP3, STT back to text, generate answer, TTS to a second MP3 |
 | [working-memory](./working-memory/) | Multi-turn agent with `Memory` — remembers names across turns on the same thread; different threads are isolated |
 | [workflows](./workflows/) | Declarative 3-step pipeline through `modules/workflow` (`createStep` + `createWorkflow`) |
 | [workspace-agent](./workspace-agent/) | Coding agent — reads/writes real files + runs shell commands through brainkit's `fs` + `exec` polyfills, sandboxed under `FSRoot` |
