@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### plans-01 session 07 — Example: Secrets lifecycle
+
+New runnable `examples/secrets/` exercises the encrypted secret
+store end to end. Set / Get / Rotate / List / Delete through the
+`Kit.Secrets()` accessor.
+
+Added:
+- `examples/secrets/main.go` + `util.go` — Kit with explicit
+  `SecretKey`, walks the lifecycle, prints every intermediate
+  state.
+- `examples/secrets/README.md` — accessor vs `$secret:NAME`
+  config resolution cookbook.
+
+Changed:
+- `examples/README.md` — add secrets row.
+- `Makefile` `examples` target builds `./examples/secrets`.
+
 ### plans-01 session 06 — Example: Storage + vectors
 
 New runnable `examples/storage-vectors/`: persistent KV via
