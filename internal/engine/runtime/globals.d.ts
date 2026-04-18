@@ -186,6 +186,136 @@ declare var child_process: {
   };
 };
 
+// ── Web-standard audio + media polyfills ───────────────────────
+// All live on globalThis via internal/jsbridge/audio.go,
+// websocket.go, and fetch.go. Shapes are broader than the
+// plain DOM definitions — `new Audio(src)` accepts streams /
+// buffers on the brainkit side, and the WebSocket constructor
+// carries Node `ws`'s custom-header + EventEmitter surface
+// alongside WHATWG.
+
+/** Web-standard Audio — backed by the configured `audio.Sink`. */
+declare class Audio {
+  /**
+   * @param src URL string, filesystem path, Buffer, Uint8Array,
+   *            Blob, Node Readable, or Web ReadableStream.
+   */
+  constructor(src?: string | any);
+
+  src: string | any;
+  paused: boolean;
+  ended: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+  muted: boolean;
+  loop: boolean;
+  autoplay: boolean;
+  preload: "none" | "metadata" | "auto";
+
+  onplay: ((ev?: any) => void) | null;
+  onpause: ((ev?: any) => void) | null;
+  onended: ((ev?: any) => void) | null;
+  onerror: ((ev?: any) => void) | null;
+
+  /** Resolves when playback ends. Rejects on sink error. */
+  play(): Promise<void>;
+  pause(): void;
+  load(): void;
+  canPlayType(type: string): "" | "maybe" | "probably";
+
+  addEventListener(event: "play" | "pause" | "ended" | "error", listener: (ev?: any) => void): void;
+  removeEventListener(event: string, listener: (ev?: any) => void): void;
+}
+
+/**
+ * Client WebSocket — combined WHATWG + Node `ws` surface.
+ * Supports custom headers via the 3-arg constructor
+ * (`new WebSocket(url, protocols, { headers })`) for
+ * Authorization + OpenAI-Beta handshake scenarios.
+ */
+declare class WebSocket {
+  constructor(
+    url: string,
+    protocols?: string | string[],
+    options?: { headers?: Record<string, string>; [key: string]: any },
+  );
+
+  readonly url: string;
+  readonly protocol: string;
+  readonly extensions: string;
+  readonly readyState: number;
+  readonly bufferedAmount: number;
+  binaryType: "nodebuffer" | "arraybuffer" | "blob" | "fragments";
+
+  onopen: ((ev?: any) => void) | null;
+  onmessage: ((ev: { data: any; type: "message" }) => void) | null;
+  onerror: ((ev?: any) => void) | null;
+  onclose: ((ev: { code: number; reason: string; wasClean: boolean }) => void) | null;
+
+  static readonly CONNECTING: 0;
+  static readonly OPEN: 1;
+  static readonly CLOSING: 2;
+  static readonly CLOSED: 3;
+  readonly CONNECTING: 0;
+  readonly OPEN: 1;
+  readonly CLOSING: 2;
+  readonly CLOSED: 3;
+
+  // WHATWG.
+  send(data: string | ArrayBufferLike | ArrayBufferView | Blob, cb?: (err?: Error) => void): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(event: "open" | "message" | "error" | "close", listener: (ev?: any) => void): void;
+  removeEventListener(event: string, listener: (ev?: any) => void): void;
+  dispatchEvent(event: any): boolean;
+
+  // Node `ws` extensions — EventEmitter surface + terminate().
+  on(event: "open", listener: () => void): this;
+  on(event: "message", listener: (data: any) => void): this;
+  on(event: "error", listener: (err: Error) => void): this;
+  on(event: "close", listener: (code: number, reason: string) => void): this;
+  on(event: string, listener: (...args: any[]) => void): this;
+  once(event: string, listener: (...args: any[]) => void): this;
+  off(event: string, listener: (...args: any[]) => void): this;
+  removeListener(event: string, listener: (...args: any[]) => void): this;
+  emit(event: string, ...args: any[]): boolean;
+  terminate(): void;
+}
+
+/** FormData polyfill. Multipart/form-data body for fetch uploads. */
+declare class FormData {
+  constructor();
+  append(name: string, value: string | Blob, filename?: string): void;
+  set(name: string, value: string | Blob, filename?: string): void;
+  delete(name: string): void;
+  has(name: string): boolean;
+  get(name: string): string | Blob | null;
+  getAll(name: string): Array<string | Blob>;
+  entries(): IterableIterator<[string, string | Blob]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string | Blob>;
+  forEach(fn: (value: string | Blob, name: string, parent: FormData) => void): void;
+  [Symbol.iterator](): IterableIterator<[string, string | Blob]>;
+}
+
+/** Blob polyfill — carries bytes verbatim for FormData / fetch. */
+declare class Blob {
+  constructor(parts?: any[], options?: { type?: string });
+  readonly size: number;
+  readonly type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  text(): Promise<string>;
+  stream(): any;
+  slice(start?: number, end?: number, contentType?: string): Blob;
+}
+
+/** File extends Blob with a filename + last-modified timestamp. */
+declare class File extends Blob {
+  constructor(parts: any[], name: string, options?: { type?: string; lastModified?: number });
+  readonly name: string;
+  readonly lastModified: number;
+}
+
 declare class GoSocket {
   connect(portOrOpts: number | { host?: string; port?: number; tls?: boolean }, host?: string): this;
   write(data: any, encoding?: string, cb?: (err?: Error) => void): boolean;

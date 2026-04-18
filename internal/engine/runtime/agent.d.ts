@@ -47,6 +47,9 @@ declare module "agent" {
 
     /** Decline a suspended tool call (streaming). */
     declineToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+
+    /** Attached voice provider (set via AgentConfig.voice). */
+    readonly voice: MastraVoice;
   }
 
   export interface AgentConfig {
@@ -76,8 +79,8 @@ declare module "agent" {
     memory?: Memory | (() => Memory);
     /** Format for skill injection. @default 'xml' */
     skillsFormat?: "xml" | "json";
-    /** Voice settings for speech input/output. */
-    voice?: any;
+    /** Voice provider — OpenAIVoice / CompositeVoice / OpenAIRealtimeVoice. */
+    voice?: MastraVoice;
     /** Workspace for file storage and code execution. */
     workspace?: Workspace | (() => Workspace | undefined);
     /** Input processors — middleware before the LLM. */
@@ -923,13 +926,20 @@ declare module "agent" {
   }
 
   export function createAnswerRelevancyScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createAnswerSimilarityScorer(opts: LLMJudgeScorerOptions): Scorer;
   export function createFaithfulnessScorer(opts: LLMJudgeScorerOptions): Scorer;
   export function createBiasScorer(opts: LLMJudgeScorerOptions): Scorer;
   export function createHallucinationScorer(opts: LLMJudgeScorerOptions): Scorer;
   export function createToxicityScorer(opts: LLMJudgeScorerOptions): Scorer;
   export function createContextPrecisionScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createContextRelevanceScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createPromptAlignmentScorer(opts: LLMJudgeScorerOptions): Scorer;
+  // The prebuilt LLM-judge scorers Mastra exports suffixed with
+  // `LLM`; brainkit re-exports them under the same name so
+  // consumers can tell the judge variant apart from the
+  // code-only scorers above at a glance.
+  export function createContextRelevanceScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
+  export function createNoiseSensitivityScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
+  export function createPromptAlignmentScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
+  export function createToolCallAccuracyScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
 
   export function createCompletenessScorer(): Scorer;
   export function createContentSimilarityScorer(): Scorer;
@@ -941,5 +951,127 @@ declare module "agent" {
 
   export class SensitiveDataFilter {
     constructor(config?: { patterns?: RegExp[]; replacement?: string });
+  }
+
+  // ── Voice providers ────────────────────────────────────────────
+
+  /**
+   * Audio bytes produced or consumed by a voice provider.
+   * Mastra historically uses NodeJS.ReadableStream; brainkit's
+   * polyfill surface also accepts Uint8Array + Int16Array on
+   * send(), so the type here is intentionally loose.
+   */
+  export type VoiceAudioStream = any;
+
+  /**
+   * Shared shape between `OpenAIVoice` + `CompositeVoice` +
+   * `OpenAIRealtimeVoice`. Only the methods `.speak` /
+   * `.listen` are guaranteed across every provider; realtime
+   * adds `connect` / `send` / `on`.
+   */
+  export interface MastraVoice {
+    speak(
+      input: string | VoiceAudioStream,
+      options?: { speaker?: string; responseFormat?: string; [key: string]: any },
+    ): Promise<VoiceAudioStream>;
+    listen(
+      audio: VoiceAudioStream,
+      options?: { filetype?: "mp3" | "mp4" | "mpeg" | "mpga" | "m4a" | "wav" | "webm"; [key: string]: any },
+    ): Promise<string>;
+  }
+
+  /**
+   * OpenAI's whisper (STT) + TTS provider. Without config the
+   * constructor uses `process.env.OPENAI_API_KEY`.
+   */
+  export class OpenAIVoice implements MastraVoice {
+    constructor(config?: {
+      speechModel?: { name?: string; apiKey?: string; options?: any };
+      listeningModel?: { name?: string; apiKey?: string; options?: any };
+      speaker?: string;
+    });
+    speak(
+      input: string | VoiceAudioStream,
+      options?: { speaker?: string; responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm"; [key: string]: any },
+    ): Promise<VoiceAudioStream>;
+    listen(
+      audio: VoiceAudioStream,
+      options?: { filetype?: "mp3" | "mp4" | "mpeg" | "mpga" | "m4a" | "wav" | "webm"; [key: string]: any },
+    ): Promise<string>;
+  }
+
+  /**
+   * Route speak() and listen() through different providers so
+   * you can mix-and-match (e.g. OpenAI TTS + a separate STT).
+   */
+  export class CompositeVoice implements MastraVoice {
+    constructor(config: {
+      speakProvider?: MastraVoice;
+      listenProvider?: MastraVoice;
+      realtimeProvider?: MastraVoice;
+    });
+    speak(input: string | VoiceAudioStream, options?: any): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: any): Promise<string>;
+  }
+
+  /**
+   * OpenAI Realtime voice — bidirectional WebSocket session.
+   * Requires `globalThis.WebSocket` (brainkit ships a client
+   * polyfill in `internal/jsbridge/websocket.go`).
+   */
+  export class OpenAIRealtimeVoice implements MastraVoice {
+    constructor(config?: {
+      realtimeConfig?: {
+        model?: string;
+        apiKey?: string;
+        url?: string;
+        options?: {
+          sessionConfig?: {
+            turn_detection?: {
+              type?: "server_vad";
+              threshold?: number;
+              silence_duration_ms?: number;
+              prefix_padding_ms?: number;
+            };
+            [key: string]: any;
+          };
+        };
+      };
+      speaker?: string;
+    });
+
+    /** Open the WebSocket session. */
+    connect(options?: { runtimeContext?: any }): Promise<void>;
+    /** Close the WebSocket session. */
+    disconnect(): void;
+    close(): void;
+
+    /** Push microphone audio to the model. */
+    send(audio: VoiceAudioStream | Int16Array, eventId?: string): Promise<void>;
+    /** Trigger a TTS response. */
+    speak(input: string, options?: { speaker?: string; [key: string]: any }): Promise<VoiceAudioStream>;
+    /** Single-shot listen path (buffers internally). */
+    listen(audio: VoiceAudioStream, options?: any): Promise<string>;
+
+    /** Update session config mid-flight (voice, VAD, instructions). */
+    updateSession(config: any): void;
+    updateConfig(config: any): void;
+
+    /**
+     * Realtime events:
+     *   "speaker"   - a new reply audio stream (Node Readable of PCM)
+     *   "writing"   - partial / final transcript ({text, role, response_id})
+     *   "speaking"  - each decoded audio chunk ({audio, response_id})
+     *   "session.created" / "session.updated"
+     *   "response.created" / "response.done"
+     *   "error"     - provider errors
+     */
+    on(event: "speaker", listener: (stream: VoiceAudioStream) => void): this;
+    on(event: "writing", listener: (ev: { text: string; role: "user" | "assistant"; response_id?: string }) => void): this;
+    on(event: "speaking", listener: (ev: { audio: any; response_id?: string }) => void): this;
+    on(event: "error", listener: (err: { message: string; code?: string; details?: any }) => void): this;
+    on(event: string, listener: (...args: any[]) => void): this;
+    off(event: string, listener: (...args: any[]) => void): this;
+    emit(event: string, ...args: any[]): boolean;
   }
 }
