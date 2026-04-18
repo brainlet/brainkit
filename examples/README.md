@@ -19,5 +19,6 @@ from the repo root.
 | [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via the `Kit.Secrets()` accessor |
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
+| [workflows](./workflows/) | Declarative 3-step pipeline through `modules/workflow` (`createStep` + `createWorkflow`) |
 
 More examples (harness-lite) land as the surrounding modules mature.

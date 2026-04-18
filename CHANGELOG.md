@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### plans-01 session 12 — Example: Workflows
+
+New runnable `examples/workflows/` demonstrates a declarative
+3-step pipeline through `modules/workflow`. Deploys a `.ts` with
+`createStep` / `createWorkflow`, kicks off a run via
+`brainkit.CallWorkflowStart`, prints every step's output.
+
+Added:
+- `examples/workflows/main.go` — research → draft → review
+  pipeline. Real workflow evaluation on the memory transport.
+- `examples/workflows/README.md` — graph diagram, persistence +
+  branching cookbooks.
+
+Changed:
+- `examples/README.md` — add workflows row.
+- `Makefile` / `.gitignore` — workflows binary.
+
 ### plans-01 session 11 — Example: MCP external servers
 
 New runnable `examples/mcp/` wires the npx-published

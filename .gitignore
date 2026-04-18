@@ -43,3 +43,4 @@ bin/**.go binary
 /secrets
 /storage-vectors
 /streaming
+/workflows
