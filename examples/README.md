@@ -19,6 +19,7 @@ from the repo root.
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
 | [guardrails](./guardrails/) | Input processors on an Agent — `PromptInjectionDetector` rewrites hostile input, `PIIDetector` masks PII |
 | [harness-lite](./harness-lite/) | WIP — frozen `modules/harness` surface: `NewModule`, `Instance`, and the six frozen event types |
+| [hitl-tool-approval](./hitl-tool-approval/) | Synchronous HITL: a tool marked `requireApproval:true` pauses the agent; Go approves/declines via a bus topic; uses `generateWithApproval` |
 | [hitl-workflow](./hitl-workflow/) | Workflow-based HITL: a step calls `suspend(reason)`, Go resumes with `CallWorkflowResume` — durable across process restart when storage is configured |
 | [mcp](./mcp/) | Wire an external Model Context Protocol server (npx filesystem server) as first-class tools |
 | [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |

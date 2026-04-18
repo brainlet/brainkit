@@ -100,6 +100,7 @@ examples:
 	go build -o bin/go-tools        ./examples/go-tools
 	go build -o bin/guardrails      ./examples/guardrails
 	go build -o bin/harness-lite    ./examples/harness-lite
+	go build -o bin/hitl-tool-approval ./examples/hitl-tool-approval
 	go build -o bin/hitl-workflow   ./examples/hitl-workflow
 	go build -o bin/mcp             ./examples/mcp
 	go build -o bin/plugin-host     ./examples/plugin-host
