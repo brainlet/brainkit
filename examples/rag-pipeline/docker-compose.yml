@@ -1,0 +1,37 @@
+# docker-compose for examples/rag-pipeline — stands up a
+# Postgres with the pgvector extension pre-installed so the
+# RAG (chunk → embed → upsert → query tool) flow runs
+# end-to-end.
+#
+# Usage:
+#   cd examples/rag-pipeline
+#   docker compose up -d
+#   export OPENAI_API_KEY=sk-...
+#   export PGVECTOR_URL="postgres://brainkit:brainkit@127.0.0.1:5434/brainkit?sslmode=disable"
+#   go run .
+#   docker compose down -v
+#
+# Port 5434 coexists with examples/storage-vectors (5433) so
+# the two compose stacks can run side-by-side on one machine.
+
+services:
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: brainkit-pgvector-rag
+    environment:
+      POSTGRES_USER: brainkit
+      POSTGRES_PASSWORD: brainkit
+      POSTGRES_DB: brainkit
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgvector_rag_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brainkit -d brainkit"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgvector_rag_data:

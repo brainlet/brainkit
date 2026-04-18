@@ -224,50 +224,40 @@ const graphTool = createGraphRAGTool({
 
 ## End-to-end RAG pipeline
 
+The full chunk → embed → upsert → query-tool → agent loop is
+broken out as [`examples/rag-pipeline/`](../../examples/rag-pipeline/),
+compose file + seed corpus + positive / negative evaluation
+included. Highlights worth reading inline:
+
 ```ts
-// 1. Chunk the source.
-const doc = MDocument.fromMarkdown(rawMarkdown);
-const chunks = await doc.chunk({ strategy: "markdown", maxSize: 500 });
+// 1. Chunk. maxSize small enough that each fact lives in one chunk.
+const doc    = MDocument.fromText(text, { docId });
+const chunks = await doc.chunk({ strategy: "recursive", maxSize: 400, overlap: 40 });
 
-// 2. Embed + upsert.
-const vs = vectorStore("default");
-await vs.createIndex({ indexName: "docs", dimension: 1536 });
+// 2. Embed + upsert (same as the End-to-end example above).
 
-for (const chunk of chunks) {
-    const { embedding } = await embed({
-        model: embeddingModel("openai", "text-embedding-3-small"),
-        value: chunk.text,
-    });
-    await vs.upsert({
-        indexName: "docs",
-        vectors:   [embedding],
-        ids:       [crypto.randomUUID()],
-        metadata:  [{ text: chunk.text }],
-    });
-}
-
-// 3. Give the agent a retrieval tool.
+// 3. Retrieval tool — use the DIRECT-instance shape inside brainkit
+//    deployments. The `vectorStoreName: "..."` shape routes through
+//    `mastra.getVector(name)`, which isn't wired inside the SES
+//    compartment — prefer `vectorStore:`.
 const queryTool = createVectorQueryTool({
-    vectorStoreName: "default",
-    indexName:       "docs",
-    model:           embeddingModel("openai", "text-embedding-3-small"),
+    vectorStore: vectorStore("docs"),
+    indexName:   "docs",
+    model:       embeddingModel("openai", "text-embedding-3-small"),
 });
 
 const agent = new Agent({
     name:         "rag-bot",
     model:        model("openai", "gpt-4o-mini"),
-    instructions: "Answer using the vector query tool to find relevant context.",
-    tools:        { search: queryTool },
+    instructions: "Answer using the vector query tool. If the tool output doesn't contain the answer, decline.",
+    tools:        { queryTool },
 });
-
-const result = await agent.generate(
-    "What does the documentation say about deployment?"
-);
-msg.reply({ text: result.text });
 ```
 
 See [`examples/storage-vectors/`](../../examples/storage-vectors/)
-for the working end-to-end program.
+for the raw upsert + query path without an Agent, and
+[`examples/rag-pipeline/`](../../examples/rag-pipeline/) for the
+full agent-driven flow with reranking.
 
 ## What's tested
 

@@ -116,6 +116,7 @@ examples:
 	go build -o bin/hitl-workflow   ./examples/hitl-workflow
 	go build -o bin/mcp             ./examples/mcp
 	go build -o bin/plugin-host     ./examples/plugin-host
+	go build -o bin/rag-pipeline    ./examples/rag-pipeline
 	go build -o bin/schedules       ./examples/schedules
 	go build -o bin/secrets         ./examples/secrets
 	go build -o bin/storage-vectors ./examples/storage-vectors

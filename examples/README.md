@@ -26,6 +26,7 @@ from the repo root.
 | [mcp](./mcp/) | Wire an external Model Context Protocol server (npx filesystem server) as first-class tools |
 | [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
+| [rag-pipeline](./rag-pipeline/) | Full Mastra RAG flow — `MDocument.chunk` + embeddings + pgvector + `createVectorQueryTool` on an Agent, with positive / negative questions + optional `rerankWithScorer` path |
 | [schedules](./schedules/) | Cron-style scheduled bus messages — `modules/schedules`, create / cancel via generated wrappers |
 | [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via the `Kit.Secrets()` accessor |
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
