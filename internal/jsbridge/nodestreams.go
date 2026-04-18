@@ -140,7 +140,13 @@ const nodeStreamsJS = `
     // prevents data loss between consecutive conn.command() calls.
     [Symbol.asyncIterator]() {
       var self = this;
-      var done = false;
+      // If the readable side already ended BEFORE the iterator
+      // was set up (e.g. the producer did push(buf) + push(null)
+      // synchronously, as PassThrough.end(buf) does), the "end"
+      // event already fired and there's no listener path to
+      // trigger onEnd. Mark done synchronously and carry the
+      // remaining _buffer contents into the iterator's queue.
+      var done = !!self._ended;
       var queue = [];
       var waiting = null;
 
@@ -170,10 +176,20 @@ const nodeStreamsJS = `
         }
       }
 
+      // Drain any pre-buffered data into the iterator queue so
+      // already-terminated streams (PassThrough.end(buf) flow)
+      // still yield their contents before the done: true signal.
+      if (self._buffer && self._buffer.length) {
+        for (var b = 0; b < self._buffer.length; b++) {
+          queue.push({ value: self._buffer[b], done: false });
+        }
+        self._buffer.length = 0;
+      }
+
       self.on("data", onData);
       self.on("end", onEnd);
       self.on("error", onError);
-      self.resume();
+      if (!done) self.resume();
 
       return {
         next: function() {
@@ -280,15 +296,33 @@ const nodeStreamsJS = `
       return true;
     }
 
+    // end() writes the optional final chunk, runs _final, fires
+    // "finish", and — critically for Transform / PassThrough — calls
+    // _flush + pushes null so the readable side terminates. Without
+    // the null push, async iterators on the readable half wait for
+    // more data forever and deadlock any consumer doing
+    // ` + "`for await (const c of pt) {...}`" + ` on a PassThrough that was
+    // ended with a buffer (the OpenAI voice speak() pattern).
     end(chunk, enc, cb) {
       if (typeof chunk === "function") { cb = chunk; chunk = undefined; }
       if (typeof enc === "function") { cb = enc; enc = undefined; }
       if (chunk !== undefined && chunk !== null) this.write(chunk, enc);
       this.writable = false;
-      if (this._final) {
-        this._final(function() { if (cb) cb(); });
-      } else {
+      var self = this;
+      var finalize = function() {
+        if (typeof self._flush === "function") {
+          self._flush(function() {
+            self.push(null);
+          });
+        } else {
+          self.push(null);
+        }
         if (cb) cb();
+      };
+      if (this._final) {
+        this._final(finalize);
+      } else {
+        finalize();
       }
       this.emit("finish");
     }

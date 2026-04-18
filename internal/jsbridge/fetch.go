@@ -2,7 +2,9 @@ package jsbridge
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -84,7 +86,25 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 
 				var bodyReader io.Reader
 				if req.Body != nil && *req.Body != "" {
-					bodyReader = strings.NewReader(*req.Body)
+					// JS side signals binary bodies (multipart, Blob, ArrayBuffer)
+					// by base64-encoding the payload + setting
+					// x-brainkit-body-encoding: base64. Decode here and strip
+					// the marker so it never reaches the wire.
+					if enc := req.Headers["x-brainkit-body-encoding"]; enc == "base64" {
+						raw, decErr := base64.StdEncoding.DecodeString(*req.Body)
+						if decErr != nil {
+							ctx.Schedule(func(ctx *quickjs.Context) {
+								errVal := ctx.NewError(fmt.Errorf("fetch: decode binary body: %w", decErr))
+								defer errVal.Free()
+								reject(errVal)
+							})
+							return
+						}
+						bodyReader = bytes.NewReader(raw)
+						delete(req.Headers, "x-brainkit-body-encoding")
+					} else {
+						bodyReader = strings.NewReader(*req.Body)
+					}
 				}
 
 				httpReq, err := http.NewRequestWithContext(goCtx, req.Method, req.URL, bodyReader)
@@ -215,12 +235,25 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 						return
 					}
 
+					// Binary responses (audio, images, octet-stream, ...) cannot
+					// survive Go-string → JSON-marshal → JS-string because
+					// invalid UTF-8 bytes get rewritten as U+FFFD. Base64
+					// the body and let the JS side decode it back.
+					bodyStr := ""
+					bodyEncoding := ""
+					if isTextContentType(contentType) {
+						bodyStr = string(respBody)
+					} else {
+						bodyStr = base64.StdEncoding.EncodeToString(respBody)
+						bodyEncoding = "base64"
+					}
 					result := map[string]interface{}{
-						"status":     resp.StatusCode,
-						"statusText": resp.Status,
-						"body":       string(respBody),
-						"headers":    respHeaders,
-						"url":        respURL,
+						"status":       resp.StatusCode,
+						"statusText":   resp.Status,
+						"body":         bodyStr,
+						"bodyEncoding": bodyEncoding,
+						"headers":      respHeaders,
+						"url":          respURL,
 					}
 					b, _ := json.Marshal(result)
 					resultJSON := string(b)
@@ -236,7 +269,136 @@ func (p *FetchPolyfill) Setup(ctx *quickjs.Context) error {
 	return evalJS(ctx, fetchJS)
 }
 
+// isTextContentType returns true when the response Content-Type is
+// known to be UTF-8 safe (so the body survives Go-string +
+// JSON-marshal). Anything else gets base64'd to preserve binary.
+func isTextContentType(ct string) bool {
+	if ct == "" {
+		// Empty bodies and unknown types are safest as text — they
+		// either round-trip (ASCII) or are short enough that
+		// caller can override.
+		return true
+	}
+	low := strings.ToLower(ct)
+	if strings.HasPrefix(low, "text/") {
+		return true
+	}
+	if strings.HasPrefix(low, "application/json") ||
+		strings.HasPrefix(low, "application/xml") ||
+		strings.HasPrefix(low, "application/javascript") ||
+		strings.HasPrefix(low, "application/x-www-form-urlencoded") ||
+		strings.HasPrefix(low, "application/x-ndjson") ||
+		strings.HasPrefix(low, "application/ld+json") {
+		return true
+	}
+	if strings.Contains(low, "+json") || strings.Contains(low, "+xml") {
+		return true
+	}
+	return false
+}
+
 const fetchJS = `
+// FormData — minimal polyfill for multipart/form-data bodies.
+// The OpenAI Node SDK + many HTTP clients check
+// ` + "`body instanceof FormData`" + ` during request serialization, which
+// throws ReferenceError when FormData is undefined. Shape
+// matches the Fetch spec: append / get / getAll / has / set /
+// delete / entries / keys / values / forEach.
+globalThis.FormData = class FormData {
+  constructor() {
+    // entries is an ordered list of {name, value, filename} so
+    // duplicate appends preserve order + multi-value semantics.
+    this._e = [];
+  }
+  append(name, value, filename) {
+    this._e.push({ name: String(name), value: value, filename: filename });
+  }
+  set(name, value, filename) {
+    const k = String(name);
+    this._e = this._e.filter(x => x.name !== k);
+    this._e.push({ name: k, value: value, filename: filename });
+  }
+  delete(name) { const k = String(name); this._e = this._e.filter(x => x.name !== k); }
+  has(name) { const k = String(name); return this._e.some(x => x.name === k); }
+  get(name) {
+    const k = String(name);
+    const hit = this._e.find(x => x.name === k);
+    return hit ? hit.value : null;
+  }
+  getAll(name) {
+    const k = String(name);
+    return this._e.filter(x => x.name === k).map(x => x.value);
+  }
+  *entries() { for (const e of this._e) yield [e.name, e.value]; }
+  *keys()    { for (const e of this._e) yield e.name; }
+  *values()  { for (const e of this._e) yield e.value; }
+  [Symbol.iterator]() { return this.entries(); }
+  forEach(fn) { for (const e of this._e) fn(e.value, e.name, this); }
+};
+
+// Blob — minimal spec-shape polyfill. Many SDKs wrap upload
+// bytes in a Blob; the polyfill carries the bytes verbatim for
+// round-tripping through FormData + fetch.
+if (typeof globalThis.Blob === 'undefined' || globalThis.Blob === null) {
+  globalThis.Blob = class Blob {
+    constructor(parts, options) {
+      this._parts = parts || [];
+      this.type = (options && options.type) || '';
+      this.size = 0;
+      for (const p of this._parts) {
+        if (typeof p === 'string') this.size += p.length;
+        else if (p && typeof p.length === 'number') this.size += p.length;
+        else if (p && typeof p.byteLength === 'number') this.size += p.byteLength;
+      }
+    }
+    arrayBuffer() {
+      const bufs = this._parts.map(p => {
+        if (typeof p === 'string') return new TextEncoder().encode(p);
+        if (p && p.buffer) return new Uint8Array(p.buffer, p.byteOffset || 0, p.byteLength);
+        if (p && typeof p.length === 'number') return new Uint8Array(p);
+        return new Uint8Array(0);
+      });
+      const total = bufs.reduce((a, b) => a + b.byteLength, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const b of bufs) { out.set(b, off); off += b.byteLength; }
+      return Promise.resolve(out.buffer);
+    }
+    text() {
+      return this.arrayBuffer().then(ab => new TextDecoder().decode(ab));
+    }
+    stream() {
+      // OpenAI SDK's multipart serializer reads file.stream() to
+      // pipe contents into the request. Wrap the arrayBuffer in a
+      // single-chunk ReadableStream so the existing Fetch path
+      // drains cleanly.
+      const buf = this;
+      return new ReadableStream({
+        start(controller) {
+          buf.arrayBuffer().then(ab => {
+            controller.enqueue(new Uint8Array(ab));
+            controller.close();
+          });
+        },
+      });
+    }
+    slice(start, end, contentType) {
+      return new Blob([], { type: contentType || this.type });
+    }
+  };
+}
+
+// File — extends Blob with a name + lastModified.
+if (typeof globalThis.File === 'undefined' || globalThis.File === null) {
+  globalThis.File = class File extends globalThis.Blob {
+    constructor(parts, name, options) {
+      super(parts, options);
+      this.name = String(name || '');
+      this.lastModified = (options && options.lastModified) || Date.now();
+    }
+  };
+}
+
 globalThis.Headers = class Headers {
   constructor(init) {
     this._m = {};
@@ -253,7 +415,27 @@ globalThis.Headers = class Headers {
   get(n) { return this._m[n.toLowerCase()] || null; }
   has(n) { return n.toLowerCase() in this._m; }
   set(n, v) { this._m[n.toLowerCase()] = String(v); }
+  // append adds a value to an existing header (comma-joined per
+  // Fetch spec) or sets it when absent. Required by the OpenAI
+  // Node SDK's Headers accumulator and any other lib that
+  // follows the real fetch Headers contract.
+  append(n, v) {
+    const k = n.toLowerCase();
+    if (k in this._m) {
+      this._m[k] = this._m[k] + ", " + String(v);
+    } else {
+      this._m[k] = String(v);
+    }
+  }
   delete(n) { delete this._m[n.toLowerCase()]; }
+  getSetCookie() {
+    // Spec method: return all set-cookie values as an array.
+    // brainkit keeps a single string keyed on set-cookie; split
+    // on the pattern browsers use when round-tripping.
+    const v = this._m["set-cookie"];
+    if (!v) return [];
+    return String(v).split(/, (?=[^;]+?=)/);
+  }
   entries() { return Object.entries(this._m)[Symbol.iterator](); }
   keys() { return Object.keys(this._m)[Symbol.iterator](); }
   values() { return Object.values(this._m)[Symbol.iterator](); }
@@ -267,6 +449,7 @@ globalThis.Response = class Response {
       // Streaming response from Go — body is {status, headers, url, body: ReadableStream}
       this._body = null;
       this._bodyStream = body.body;
+      this._bodyEncoding = '';
       this.status = body.status || 200;
       this.ok = this.status >= 200 && this.status < 300;
       this.statusText = body.statusText || '';
@@ -276,6 +459,10 @@ globalThis.Response = class Response {
       this._body = body != null ? String(body) : '';
       this._bodyStream = null;
       init = init || {};
+      // bodyEncoding === 'base64' means the body is base64-encoded
+      // raw bytes (binary response from Go that wouldn't survive
+      // JSON-marshal as a string). Decode lazily in arrayBuffer / body.
+      this._bodyEncoding = init.bodyEncoding || '';
       this.status = init.status || 200;
       this.ok = this.status >= 200 && this.status < 300;
       this.statusText = init.statusText || '';
@@ -286,27 +473,30 @@ globalThis.Response = class Response {
     this.redirected = false;
     this.bodyUsed = false;
   }
+  _bytes() {
+    // Return the body as a Uint8Array. Handles both base64-encoded
+    // binary and plain text (utf-8 encoded).
+    if (this._bodyEncoding === 'base64') {
+      const bin = atob(this._body || '');
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i) & 0xFF;
+      return u8;
+    }
+    return new TextEncoder().encode(this._body || '');
+  }
   get body() {
     if (this._bodyStream) return this._bodyStream;
-    const text = this._body;
     if (typeof ReadableStream === 'undefined') return null;
+    const bytes = this._bytes();
     return new ReadableStream({
       start(controller) {
-        if (text && text.length > 0) {
-          if (typeof TextEncoder !== 'undefined') {
-            controller.enqueue(new TextEncoder().encode(text));
-          } else {
-            controller.enqueue(text);
-          }
-        }
+        if (bytes.byteLength > 0) controller.enqueue(bytes);
         controller.close();
       }
     });
   }
   async text() {
     this.bodyUsed = true;
-    if (this._body !== null) return this._body;
-    // Read from stream
     if (this._bodyStream) {
       const reader = this._bodyStream.getReader();
       const chunks = [];
@@ -317,21 +507,46 @@ globalThis.Response = class Response {
         chunks.push(typeof value === 'string' ? value : decoder.decode(value));
       }
       this._body = chunks.join('');
+      this._bodyStream = null;
+      this._bodyEncoding = '';
       return this._body;
     }
-    return '';
+    if (this._bodyEncoding === 'base64') {
+      // Caller asked for text on a binary body — best-effort decode
+      // through TextDecoder so utf-8 sequences come out right.
+      return new TextDecoder().decode(this._bytes());
+    }
+    return this._body || '';
   }
   async json() { return JSON.parse(await this.text()); }
   async arrayBuffer() {
     this.bodyUsed = true;
-    const text = await this.text();
-    const enc = new TextEncoder();
-    return enc.encode(text).buffer;
+    if (this._bodyStream) {
+      const reader = this._bodyStream.getReader();
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const u8 = value instanceof Uint8Array ? value :
+                   typeof value === 'string' ? new TextEncoder().encode(value) :
+                   new Uint8Array(value);
+        chunks.push(u8);
+        total += u8.byteLength;
+      }
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+      this._bodyStream = null;
+      return out.buffer;
+    }
+    return this._bytes().buffer;
   }
   clone() {
     if (this._bodyStream) throw new Error('Cannot clone a streaming response');
     return new Response(this._body, {
-      status: this.status, statusText: this.statusText, headers: this.headers._m
+      status: this.status, statusText: this.statusText, headers: this.headers._m,
+      bodyEncoding: this._bodyEncoding
     });
   }
 };
@@ -348,6 +563,80 @@ globalThis.Request = class Request {
   async json() { return JSON.parse(this._body); }
 };
 
+// _serializeBody turns whatever the caller passed in as the
+// request body into a string (or base64-wrapped-string for
+// binary multipart) the Go fetch side can forward. Handles:
+//   - FormData → multipart/form-data with a generated boundary;
+//     sets Content-Type on the headers in place. Supports
+//     Blob/File parts (reads .arrayBuffer() for the bytes).
+//   - URLSearchParams → x-www-form-urlencoded string.
+//   - Blob / ArrayBuffer / TypedArray → base64-wrapped string
+//     with a Content-Type default.
+//   - string / everything else → String(body).
+// The returned object is { body, headers } — headers are the
+// possibly-augmented request headers.
+async function _serializeBody(body, headers) {
+  if (body == null) return { body: null, headers };
+  if (typeof body === 'string') return { body, headers };
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const boundary = '----brainkitBoundary' + Math.random().toString(16).slice(2);
+    const enc = new TextEncoder();
+    const parts = [];
+    for (const [name, value] of body.entries()) {
+      let header;
+      let bytes;
+      if (value && typeof value === 'object' && typeof value.arrayBuffer === 'function') {
+        const fname = value.name || name;
+        const ctype = value.type || 'application/octet-stream';
+        header = 'Content-Disposition: form-data; name="' + name +
+                 '"; filename="' + fname + '"\r\n' +
+                 'Content-Type: ' + ctype + '\r\n\r\n';
+        bytes = new Uint8Array(await value.arrayBuffer());
+      } else {
+        header = 'Content-Disposition: form-data; name="' + name + '"\r\n\r\n';
+        bytes = enc.encode(String(value));
+      }
+      parts.push(enc.encode('--' + boundary + '\r\n' + header));
+      parts.push(bytes);
+      parts.push(enc.encode('\r\n'));
+    }
+    parts.push(enc.encode('--' + boundary + '--\r\n'));
+    const total = parts.reduce((n, b) => n + b.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const b of parts) { out.set(b, off); off += b.byteLength; }
+    // Base64 encode so the body survives the JSON hop to Go.
+    let bin = '';
+    for (let i = 0; i < out.byteLength; i++) bin += String.fromCharCode(out[i]);
+    headers['content-type'] = 'multipart/form-data; boundary=' + boundary;
+    headers['x-brainkit-body-encoding'] = 'base64';
+    return { body: btoa(bin), headers };
+  }
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+    if (!headers['content-type']) headers['content-type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+    return { body: body.toString(), headers };
+  }
+  if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    if (!headers['content-type']) headers['content-type'] = body.type || 'application/octet-stream';
+    const ab = await body.arrayBuffer();
+    const u8 = new Uint8Array(ab);
+    let bin = '';
+    for (let i = 0; i < u8.byteLength; i++) bin += String.fromCharCode(u8[i]);
+    headers['x-brainkit-body-encoding'] = 'base64';
+    return { body: btoa(bin), headers };
+  }
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    const u8 = body instanceof ArrayBuffer ? new Uint8Array(body) :
+               new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+    if (!headers['content-type']) headers['content-type'] = 'application/octet-stream';
+    let bin = '';
+    for (let i = 0; i < u8.byteLength; i++) bin += String.fromCharCode(u8[i]);
+    headers['x-brainkit-body-encoding'] = 'base64';
+    return { body: btoa(bin), headers };
+  }
+  return { body: String(body), headers };
+}
+
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : (input && input.url) || String(input);
   const opts = init || {};
@@ -360,12 +649,14 @@ globalThis.fetch = async (input, init) => {
   const headers = {};
   if (opts.headers) {
     if (typeof opts.headers.forEach === 'function') {
-      opts.headers.forEach((v, k) => { headers[k] = v; });
+      opts.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
     } else if (typeof opts.headers === 'object') {
-      for (const [k, v] of Object.entries(opts.headers)) headers[k] = String(v);
+      for (const [k, v] of Object.entries(opts.headers)) headers[k.toLowerCase()] = String(v);
     }
   }
-  const body = opts.body != null ? String(opts.body) : null;
+  const serialized = await _serializeBody(opts.body, headers);
+  const body = serialized.body;
+  Object.assign(headers, serialized.headers);
 
   // Always use streaming mode — Go decides based on response Content-Type
   // whether to read the full body or deliver chunks incrementally.
@@ -376,7 +667,8 @@ globalThis.fetch = async (input, init) => {
     // Non-streaming response — full body returned as JSON
     const data = JSON.parse(raw);
     const resp = new Response(data.body, {
-      status: data.status, statusText: data.statusText, headers: data.headers
+      status: data.status, statusText: data.statusText, headers: data.headers,
+      bodyEncoding: data.bodyEncoding || ''
     });
     resp.url = data.url || url;
     return resp;

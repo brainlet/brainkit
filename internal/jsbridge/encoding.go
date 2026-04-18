@@ -133,7 +133,47 @@ globalThis.TextDecoder = class TextDecoder {
     return result;
   }
 };
-globalThis.btoa = (s) => __go_btoa(s);
-globalThis.atob = (s) => __go_atob(s);
+// btoa / atob — pure JS. Cannot route through Go because
+// quickjs-go ToString() re-encodes single latin1 codepoints
+// (0x80-0xFF) as 2-byte UTF-8 sequences, corrupting binary
+// payloads. Spec-compliant btoa interprets the input as a
+// binary string (each char in 0-255), so we emit base64
+// straight from char codes here.
+(function() {
+  var alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  globalThis.btoa = function(s) {
+    s = String(s);
+    var out = "";
+    for (var i = 0; i < s.length; i += 3) {
+      var c1 = s.charCodeAt(i)     & 0xFF;
+      var c2 = s.charCodeAt(i + 1) & 0xFF;
+      var c3 = s.charCodeAt(i + 2) & 0xFF;
+      var has2 = i + 1 < s.length;
+      var has3 = i + 2 < s.length;
+      out += alpha.charAt(c1 >> 2);
+      out += alpha.charAt(((c1 & 0x03) << 4) | (c2 >> 4));
+      out += has2 ? alpha.charAt(((c2 & 0x0F) << 2) | (c3 >> 6)) : "=";
+      out += has3 ? alpha.charAt(c3 & 0x3F) : "=";
+    }
+    return out;
+  };
+  var lookup = new Int8Array(128);
+  for (var i = 0; i < alpha.length; i++) lookup[alpha.charCodeAt(i)] = i;
+  globalThis.atob = function(s) {
+    s = String(s).replace(/=+$/, "");
+    var out = "";
+    var buf = 0, bits = 0;
+    for (var i = 0; i < s.length; i++) {
+      var v = lookup[s.charCodeAt(i) & 0x7F];
+      buf = (buf << 6) | v;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        out += String.fromCharCode((buf >> bits) & 0xFF);
+      }
+    }
+    return out;
+  };
+})();
 `)
 }

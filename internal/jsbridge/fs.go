@@ -1731,10 +1731,12 @@ func (p *FSPolyfill) registerStreamBridges(ctx *quickjs.Context, b *Bridge, root
 				}
 				n, readErr := f.Read(buf)
 				if n > 0 {
-					chunk := string(buf[:n])
-					escaped, _ := json.Marshal(chunk)
+					// Binary-safe transport: base64 the chunk so MP3 /
+					// image / arbitrary bytes survive the JS string
+					// boundary. JS side decodes back to a Uint8Array.
+					b64 := base64.StdEncoding.EncodeToString(buf[:n])
 					qctx.Schedule(func(qctx *quickjs.Context) {
-						qctx.Eval(fmt.Sprintf(`globalThis.__fs_streams[%q]&&globalThis.__fs_streams[%q]._onData(%s)`, streamID, streamID, string(escaped)))
+						qctx.Eval(fmt.Sprintf(`globalThis.__fs_streams[%q]&&globalThis.__fs_streams[%q]._onDataB64(%q)`, streamID, streamID, b64))
 					})
 				}
 				if readErr == io.EOF {
@@ -2246,14 +2248,20 @@ const fsSetupJS = `
       readable.pending = true;
       var streamID = __go_fs_createReadStream(path, JSON.stringify(opts || {}));
       globalThis.__fs_streams[streamID] = {
-        _onData: function(chunk) {
+        _onDataB64: function(b64) {
+          // Go ships base64-encoded chunks (binary-safe across
+          // the JS boundary); decode to Uint8Array so consumers
+          // see real bytes.
+          var bin = atob(b64);
+          var u8 = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i) & 0xFF;
           if (readable.pending) {
             readable.pending = false;
             readable.emit("open", -1);
             readable.emit("ready");
           }
-          readable.bytesRead += chunk.length;
-          readable.push(chunk);
+          readable.bytesRead += u8.byteLength;
+          readable.push(u8);
         },
         _onEnd: function() {
           readable.push(null);

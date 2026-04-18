@@ -704,7 +704,7 @@ func TestFsCreateReadStreamPipe(t *testing.T) {
 	tmpDir := t.TempDir()
 	os.WriteFile(filepath.Join(tmpDir, "stream-src.txt"), []byte("stream content here"), 0644)
 
-	b := newTestBridge(t, Events(), NodeStreams(), FS(tmpDir))
+	b := newTestBridge(t, Encoding(), Events(), NodeStreams(), FS(tmpDir))
 
 	// createReadStream should return a Readable with pipe(), emit 'open', track bytesRead
 	val, err := b.EvalAsync("test.js", `(async function() {
@@ -717,9 +717,18 @@ func TestFsCreateReadStreamPipe(t *testing.T) {
 			rs.on("open", function() { gotOpen = true; });
 			rs.on("data", function(chunk) { chunks.push(chunk); });
 			rs.on("end", function() {
+				// Chunks are Uint8Array (binary-safe); concat then decode.
+				var total = 0;
+				for (var i = 0; i < chunks.length; i++) total += chunks[i].byteLength;
+				var out = new Uint8Array(total);
+				var off = 0;
+				for (var j = 0; j < chunks.length; j++) {
+					out.set(chunks[j], off);
+					off += chunks[j].byteLength;
+				}
 				resolve(JSON.stringify({
 					hasPipe: hasPipe, hasPending: hasPending, gotOpen: gotOpen,
-					data: chunks.join(""), bytesRead: rs.bytesRead
+					data: new TextDecoder().decode(out), bytesRead: rs.bytesRead
 				}));
 			});
 			rs.on("error", function(e) { resolve("ERROR:" + e.message); });
