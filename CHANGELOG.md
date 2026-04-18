@@ -90,6 +90,38 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### post-1.0-rc.1 — ScaffoldPackage + package-workflow example + agent-forge refactor
+
+Extracts the CLI's `brainkit new package` logic into a reusable
+Go helper and makes the on-disk package lifecycle a first-class
+story in the examples.
+
+Added:
+- `brainkit.ScaffoldPackage(dir, name, entry, source, opts...)` —
+  writes the standard package layout (`manifest.json`,
+  `tsconfig.json`, `types/*.d.ts`, entry file) plus optional
+  `Extra` siblings. `ScaffoldOptions` carries version,
+  description, and an Overwrite flag.
+- `examples/package-workflow/` — full lifecycle demo:
+  `ScaffoldPackage` → deploy via `PackageFromDir` → edit
+  `index.ts` on disk → redeploy → add a sibling helper file →
+  redeploy → teardown. Dir survives on disk so a developer
+  can open it in an IDE (tsconfig + types already wired).
+
+Changed:
+- `cmd/brainkit/cmd/new_package.go` — refactored to call
+  `brainkit.ScaffoldPackage` instead of duplicating the file
+  writes. Single source of truth for the layout.
+- `examples/agent-forge/` — workflow no longer deploys in-JS.
+  Terminal step returns `{approved, name, code, iterations,
+  issues}`. Go main scaffolds the forged agent via
+  `ScaffoldPackage` into `./forged-agents/<name>/`, deploys via
+  `PackageFromDir`, then calls it. Default `-keep=true` so the
+  scaffolded agent persists for IDE inspection.
+
+Net effect: every forged agent now lives as a real editable
+brainkit package, not as an inline string in a bus payload.
+
 ### post-1.0-rc.1 — Example: agent-forge (flagship meta-programming)
 
 New runnable `examples/agent-forge/`. A Go process deploys a

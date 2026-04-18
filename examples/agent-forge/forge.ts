@@ -1,21 +1,25 @@
-// agent-forge: a multi-agent pipeline that designs, writes,
-// reviews, and deploys a brand-new brainkit .ts agent based on
-// a freeform user request. Wraps every major brainkit primitive
-// in one realistic use case.
+// agent-forge: a multi-agent pipeline that designs, writes, and
+// reviews a brand-new brainkit .ts agent from a freeform user
+// request. Wraps every major brainkit primitive in one realistic
+// use case.
 //
 // Wired as a Mastra workflow inside a SES Compartment:
-//   architect  → spec
-//   coder      → first-pass code (gpt-5.3)
-//   dountil:
-//     reviewer (supervisor + subagents) → approved? | issues
-//     patch-coder (gpt-5.3)             → fixed code
-//   deploy     → bus.call("package.deploy", …)
+//   architect     → spec
+//   coder         → first-pass code (gpt-4o)
+//   dountil loop (≤3 passes):
+//     reviewer panel (safety / style / correctness, gpt-4o)
+//     patch-coder (gpt-4o) fixes flagged issues
+//   shape-result  → terminal output {approved, name, code, …}
+//
+// Ownership boundary: the workflow NEVER deploys. It returns the
+// reviewed source plus spec back to Go, which scaffolds a real
+// on-disk package via brainkit.ScaffoldPackage, deploys it with
+// brainkit.PackageFromDir, and calls it. Keeps every generated
+// agent inspectable in an IDE (tsconfig.json + types/ included).
 //
 // Handlers exposed:
-//   ts.agent-forge.create  — input: { request }, reply: ForgeResult
-//
-// Ownership: Go side (main.go) deploys this TS, calls create,
-// then calls the freshly-forged agent's ts.<name>.ask topic.
+//   ts.agent-forge.create  — input: { request },
+//                            reply:  { approved, name, code, iterations, issues }
 
 // Model assignment: coder slot benefits from the highest-quality
 // available model; architect + reviewers can run on a cheaper
@@ -384,9 +388,15 @@ const reviewAndPatchStep = createStep({
     },
 });
 
-// ── DEPLOY ──────────────────────────────────────────────────
-const deployStep = createStep({
-    id: "deploy",
+// ── SHAPE RESULT ─────────────────────────────────────────────
+// The forge used to call bus.call("package.deploy", …) from
+// inside JS. Moving it out keeps the workflow honest — Go owns
+// where files live on disk, scaffolds a proper package dir via
+// brainkit.ScaffoldPackage, and deploys via PackageFromDir. So
+// this last step just shapes the terminal workflow output and
+// hands the final code back to the Go caller.
+const shapeResultStep = createStep({
+    id: "shape-result",
     inputSchema: z.object({
         spec: SpecZodSchema,
         code: z.string(),
@@ -398,45 +408,23 @@ const deployStep = createStep({
         })),
     }),
     outputSchema: z.object({
-        deployed: z.boolean(),
-        name: z.string(),
-        topic: z.string(),
-        iterations: z.number(),
         approved: z.boolean(),
+        name: z.string(),
+        code: z.string(),
+        iterations: z.number(),
         issues: z.array(z.object({
             category: z.string(),
             message: z.string(),
         })),
-        code: z.string(),
     }),
     execute: async ({ inputData }) => {
         const name = inputData.spec.name || "unnamed-agent";
-        if (!inputData.approved) {
-            // Review loop exhausted without approval — surface the
-            // best-effort code + issue log. Deploy is skipped so a
-            // broken agent never becomes callable.
-            return {
-                deployed: false,
-                name,
-                topic: "",
-                iterations: inputData.iterationCount,
-                approved: false,
-                issues: inputData.issues,
-                code: inputData.code,
-            };
-        }
-        const manifest = { name, entry: name + ".ts" };
-        const files = {};
-        files[name + ".ts"] = inputData.code;
-        const resp = await bus.call("package.deploy", { manifest, files }, { timeoutMs: 30000 });
         return {
-            deployed: !!resp.deployed,
+            approved: inputData.approved,
             name,
-            topic: "ts." + name + ".ask",
-            iterations: inputData.iterationCount,
-            approved: true,
-            issues: [],
             code: inputData.code,
+            iterations: inputData.iterationCount,
+            issues: inputData.approved ? [] : inputData.issues,
         };
     },
 });
@@ -446,29 +434,27 @@ const forgeWorkflow = createWorkflow({
     id: "forge",
     inputSchema: z.object({ request: z.string() }),
     outputSchema: z.object({
-        deployed: z.boolean(),
-        name: z.string(),
-        topic: z.string(),
-        iterations: z.number(),
         approved: z.boolean(),
+        name: z.string(),
+        code: z.string(),
+        iterations: z.number(),
         issues: z.array(z.object({
             category: z.string(),
             message: z.string(),
         })),
-        code: z.string(),
     }),
 })
     .then(architectStep)
     .then(coderStep)
     .dountil(reviewAndPatchStep, async ({ inputData }) => {
-        // Stop either when the supervisor approves or after 3
-        // passes (original + 2 patches). Iteration count is
+        // Stop either when the reviewer panel approves or after
+        // 3 passes (original + 2 patches). Iteration count is
         // tracked on inputData because brainkit's Mastra fork
         // doesn't inject an iterationCount helper.
         if (inputData.iterationCount >= 3) return true;
         return inputData.approved;
     })
-    .then(deployStep)
+    .then(shapeResultStep)
     .commit();
 
 kit.register("workflow", "forge", forgeWorkflow);

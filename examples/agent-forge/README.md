@@ -1,16 +1,24 @@
 # agent-forge
 
 **The flagship meta-programming example**: a Go process deploys a
-multi-agent pipeline that designs, writes, reviews, and deploys a
-brand-new brainkit agent at runtime — then the Go process calls
-that freshly-forged agent directly.
+multi-agent pipeline that designs, writes, and reviews a
+brand-new brainkit agent from a freeform request. When the forge
+returns approved source, Go scaffolds a real on-disk package
+(`manifest.json` + `tsconfig.json` + `types/*.d.ts` + `index.ts`),
+deploys it via `brainkit.PackageFromDir`, and calls the forged
+agent through its public bus topic.
 
 One `.ts` file wires, in a single compartment, every major
-brainkit primitive: Mastra `createWorkflow` + `createStep`, a
-`dountil` review loop, sub-agents composed via specialist roles,
-Zod-described prompts, the embedded reference corpus
-(`reference.get("everything")`), and in-JS package deployment
-via `bus.call("package.deploy", …)`.
+brainkit primitive the forge needs: Mastra `createWorkflow` +
+`createStep`, a `dountil` review loop, three sub-reviewers
+running in parallel, and the embedded reference corpus
+(`reference.get("everything")`).
+
+The Go side handles disk + deploy via the reusable
+`brainkit.ScaffoldPackage` helper — the exact same layout the
+`brainkit new package` CLI produces. After a forge run you can
+`cd` into the scaffolded dir and open it in any IDE with full
+TypeScript autocomplete, no `npm install` required.
 
 ## How it works
 
@@ -18,31 +26,47 @@ via `bus.call("package.deploy", …)`.
 request
    │
    ▼
-architect step (gpt-4o-mini)
-   │   JSON spec: { name, purpose, instructions, askShape, needsMemory }
+architect step (gpt-4o-mini)               ─┐
+   │   JSON spec: { name, purpose,          │ inside forge.ts
+   │   instructions, askShape, needsMemory }│ (SES compartment,
+   ▼                                         │  Mastra workflow)
+coder step (gpt-4o)                         │
+   │   full brainkit reference corpus in   │
+   │   system prompt; first-pass .ts       │
+   ▼                                         │
+dountil review loop (max 3 passes)          │
+   │   ┌─ runReviewPanel (3 in parallel) ─┐ │
+   │   │  safety-reviewer                  │ │
+   │   │  style-reviewer                   │ │
+   │   │  correctness-reviewer             │ │
+   │   └───────────────────────────────────┘ │
+   │        │ if any reviewer flags issues   │
+   │        ▼                                 │
+   │   patch-coder (gpt-4o) applies fixes    │
+   │        │ unanimous approval              │
+   ▼                                          │
+shape-result step                            │
+   │ { approved, name, code, iterations }   ─┘
+   │
    ▼
-coder step (gpt-4o)
-   │   full brainkit reference corpus injected as system prompt
-   │   first-pass .ts source
+Go process (main.go)
+   │   ScaffoldPackage(./forged-agents/<name>/, name, "index.ts", code)
+   │       writes manifest.json + tsconfig.json + types/*.d.ts + index.ts
+   │   PackageFromDir(./forged-agents/<name>/) → kit.Deploy(…)
+   │
    ▼
-dountil review loop (max 3 passes)
-   │   ┌─ runReviewPanel runs three reviewers in parallel ─┐
-   │   │  safety-reviewer    (credentials, fs, fetch)       │
-   │   │  style-reviewer     (kit.register, bus.on, imports) │
-   │   │  correctness-reviewer (spec ↔ source match)         │
-   │   └───────────────────────────────────────────────────┘
-   │        │ if any reviewer flags issues
-   │        ▼
-   │   patch-coder (gpt-4o) applies fixes, loop re-runs
-   │        │ if all three reviewers return ok=true
-   │        ▼
-   │   approved — loop exits
+ts.<name>.ask
+   │
    ▼
-deploy step
-   │   bus.call("package.deploy", { manifest, files })
-   ▼
-{ deployed, name, topic, iterations, code }
+Go calls → forged agent replies
 ```
+
+The workflow deliberately **stops before deploy**. Ownership is
+clean: the forge produces reviewed source, the Go caller owns
+the on-disk package directory and the deploy step. That means
+every forged agent lives as an inspectable, editable,
+version-controllable directory — not a blob of code wedged
+into a JS string.
 
 Iteration cap: 3 passes (original + 2 patches). When the cap is
 hit without approval, the forge returns best-effort code + the

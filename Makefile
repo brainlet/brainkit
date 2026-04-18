@@ -94,6 +94,7 @@ examples:
 	go build -o bin/hello-server    ./examples/hello-server
 	go build -o bin/multi-kit       ./examples/multi-kit
 	go build -o bin/observability   ./examples/observability
+	go build -o bin/package-workflow ./examples/package-workflow
 	go build -o bin/gateway-routes  ./examples/gateway-routes
 	go build -o bin/go-tools        ./examples/go-tools
 	go build -o bin/harness-lite    ./examples/harness-lite

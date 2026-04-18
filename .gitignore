@@ -49,12 +49,20 @@ bin/**.go binary
 /go-tools
 /harness-lite
 /mcp
+/package-workflow
 /plugin-host
 /schedules
 /secrets
 /storage-vectors
 /streaming
 /workflows
+
+# Persistent scaffolds produced by examples that demonstrate the
+# on-disk package lifecycle. These live where the example points,
+# but ignore the default paths so a developer can iterate without
+# polluting git status.
+/forged-agents/
+/package-workflow-demo/
 
 # plugin-author has its own go.mod — stray legacy binary next to
 # its source, new builds land in /bin/.
