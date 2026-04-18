@@ -5,6 +5,7 @@ from the repo root.
 
 | Example | What it shows |
 |---|---|
+| [agent-spawner](./agent-spawner/) | Peak use case — an agent that designs and deploys other agents at runtime; Go then calls the spawned agent directly |
 | [ai-chat](./ai-chat/) | Register an AI provider, deploy a `.ts` that calls `generateText`, print the model's reply |
 | [cross-kit](./cross-kit/) | Two Kits on a shared in-process NATS, routed by peer name through `modules/topology` + `WithCallTo` |
 | [hello-embedded](./hello-embedded/) | Library mode: embed a Kit, deploy an inline `.ts`, call it, print the reply |

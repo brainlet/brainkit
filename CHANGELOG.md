@@ -90,6 +90,29 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### post-1.0-rc.1 — Example: agent-spawner (peak use case)
+
+New runnable `examples/agent-spawner/`. An architect agent uses a
+`deploy_agent` tool to design and deploy a new agent at runtime;
+the Go process then calls the spawned agent directly via its
+public `ts.<name>.ask` topic. Demonstrates the full in-JS
+deploy path (`bus.call("package.deploy", …)`) and the
+step.content walk needed to extract tool inputs/outputs from the
+AI SDK 5 result shape. Two live OpenAI calls per run
+(architect design pass + spawned-agent answer pass); requires
+`OPENAI_API_KEY`.
+
+Added:
+- `examples/agent-spawner/main.go` — the full round trip.
+- `examples/agent-spawner/README.md` — architecture diagram,
+  spawn-template explanation, tool-result parsing pattern,
+  extension ideas.
+
+Changed:
+- `examples/README.md` — add agent-spawner row at the top of
+  the table.
+- `Makefile` / `.gitignore` — agent-spawner binary.
+
 ### plans-01 session 15 — Baseline, CI regression gate, 1.0-rc.1
 
 Closes plans-01. Captures a runtime benchmark baseline, wires a
