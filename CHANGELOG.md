@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Session 11 Bundle A — brainkit/server
+
+New package `brainkit/server` composes a Kit with the standard
+service-mode module set (gateway, probes, tracing, audit, optional
+plugins) behind a single lifecycle. Server-mode defaults reject
+memory transport, auto-open a SQLite kit store + audit store under
+FSRoot, and turn tracing / probes on by default.
+
+Added:
+- `brainkit/server/server.go` — `Config{Namespace, Transport, FSRoot,
+  KitStorePath, SecretKey, Gateway, Providers, Storages, Vectors,
+  Plugins, Audit, Tracing, Probes, Packages, Extra}` + `Server{Kit,
+  Start, Stop, Close}`.
+- `brainkit/server/config.go` — `LoadConfig(path)` reads YAML,
+  substitutes `$VAR` / `${VAR}` against the process environment,
+  projects onto runtime Config.
+- `brainkit/server/quickstart.go` — `QuickStart(namespace, fsRoot,
+  opts...)` with WithListen / WithSecretKey / WithPackages /
+  WithExtraModules options.
+- `brainkit/server/doc.go` — package overview.
+- `brainkit/server/testdata/example.yaml` — illustrative config.
+- `brainkit/server/server_test.go` — validator coverage,
+  Start/Stop lifecycle, Kit accessor smoke test, LoadConfig env
+  substitution round-trip.
+
 ### Session 10 part 1 — accessor API (additive)
 
 Consolidate registry management behind narrow accessor types. Future

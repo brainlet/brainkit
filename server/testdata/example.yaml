@@ -1,0 +1,40 @@
+# Example brainkit server configuration. Environment variables
+# referenced as $NAME or ${NAME} are substituted at load time.
+
+namespace: my-app
+fs_root: /var/brainkit
+
+transport:
+  type: nats
+  url: $NATS_URL
+  nats_name: brainkit-prod
+
+secret_key: $SECRET_KEY
+
+gateway:
+  listen: :8080
+  timeout: 30s
+
+providers:
+  - name: openai
+    type: openai
+    api_key: $OPENAI_API_KEY
+
+storages:
+  default:
+    type: sqlite
+    path: /var/brainkit/default.db
+
+vectors:
+  default:
+    type: sqlite
+    path: /var/brainkit/vector.db
+
+plugins: []
+
+audit:
+  path: /var/brainkit/audit.db
+  verbose: false
+
+packages:
+  - path: ./agents/support
