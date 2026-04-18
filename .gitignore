@@ -82,3 +82,6 @@ bin/**.go binary
 # Bench artifact produced by `make bench-save`; baseline.json is the
 # committed reference.
 /test/bench/latest.json
+
+# Audio captured by `examples/voice-agent` runs.
+voice-agent-out/*.mp3

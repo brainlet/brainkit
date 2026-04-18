@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/audio/local"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -44,14 +45,15 @@ type reply struct {
 func main() {
 	outDir := flag.String("out", "./voice-agent-out", "directory for generated audio files (survives the run so you can play back)")
 	question := flag.String("question", "What is the capital of France? One short sentence.", "the question synthesized to audio then transcribed + answered")
+	play := flag.Bool("play", true, "play the synthesized audio through the desktop speakers via brainkit/audio/local")
 	flag.Parse()
 
-	if err := run(*outDir, *question); err != nil {
+	if err := run(*outDir, *question, *play); err != nil {
 		log.Fatalf("voice-agent: %v", err)
 	}
 }
 
-func run(outRaw, question string) error {
+func run(outRaw, question string, play bool) error {
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
 		return fmt.Errorf("OPENAI_API_KEY is required")
@@ -69,12 +71,20 @@ func run(outRaw, question string) error {
 	wsRoot := filepath.Dir(outDir)
 	outSubdir := filepath.Base(outDir)
 
-	kit, err := brainkit.New(brainkit.Config{
+	cfg := brainkit.Config{
 		Namespace: "voice-agent-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    wsRoot,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-	})
+	}
+	if play {
+		// Wire desktop playback. Without this, .ts code calling
+		// `new Audio(stream).play()` resolves silently — bytes
+		// still flow, but no speaker output. local.New() opens
+		// the system audio device on first play (lazy).
+		cfg.Audio = local.New()
+	}
+	kit, err := brainkit.New(cfg)
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
 	}
@@ -139,11 +149,14 @@ bus.on("ask", async (msg) => {
     const question = (msg.payload && msg.payload.question) || "";
     const outDir = %q;
 
-    // 1. speak(question) → MP3 stream → disk.
+    // 1. speak(question) → MP3 stream → disk + speakers.
     const qStream = await agent.voice.speak(question, { responseFormat: "mp3" });
     const qBuf = await streamToBuffer(qStream);
     const questionMp3 = outDir + "/question.mp3";
     await fs.writeFile(questionMp3, qBuf);
+    // Web-standard Audio polyfill — silent on headless kits,
+    // routes to brainkit/audio/local on desktop kits.
+    await new Audio(qBuf).play();
 
     // 2. listen(audio) → transcript.
     const transcript = await agent.voice.listen(fs.createReadStream(questionMp3), {
@@ -153,11 +166,12 @@ bus.on("ask", async (msg) => {
     // 3. generate(transcript).
     const gen = await agent.generate(String(transcript));
 
-    // 4. speak(answer) → MP3 stream → disk.
+    // 4. speak(answer) → MP3 stream → disk + speakers.
     const aStream = await agent.voice.speak(gen.text || "", { responseFormat: "mp3" });
     const aBuf = await streamToBuffer(aStream);
     const answerMp3 = outDir + "/answer.mp3";
     await fs.writeFile(answerMp3, aBuf);
+    await new Audio(aBuf).play();
 
     msg.reply({
         question,
