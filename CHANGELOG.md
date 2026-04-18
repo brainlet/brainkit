@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### plans-01 session 06 — Example: Storage + vectors
+
+New runnable `examples/storage-vectors/`: persistent KV via
+Mastra Memory + SQLite, plus vector store / similarity search
+from a deployed `.ts`. Uses `OPENAI_API_KEY` for embeddings.
+
+Added:
+- `examples/storage-vectors/main.go` — configures a Kit with
+  SQLite storage + SQLite vector store, deploys two `.ts`
+  packages (KV demo + vector demo), runs round-trips, prints
+  results. Gracefully skips the vector half when either the API
+  key or the libsql vector extension is missing.
+- `examples/storage-vectors/README.md` — Postgres / pgvector /
+  MongoDB backend-swap cookbook; libsql-vector-extensions note.
+
+Changed:
+- `internal/engine/runtime/resolve.js` — pass `url:` (not
+  deprecated `connectionUrl:`) when constructing `LibSQLVector`.
+  The Mastra libsql package renamed the field to align with the
+  libsql client API; the old name silently dropped the URL.
+
+Fixed:
+- `LibSQLVector` constructor was receiving `url: undefined`
+  because the JS runtime still passed the deprecated
+  `connectionUrl` key. Vector-store deployments that called
+  `vectorStore(name)` failed at init time with
+  `LibsqlError: URL_INVALID`. Now initializes correctly (where
+  the libsql build ships vector extensions).
+
+Changed:
+- `examples/README.md` — add storage-vectors row.
+- `Makefile` `examples` target builds `./examples/storage-vectors`.
+
 ### plans-01 session 05 — Example: Typed Go tools
 
 New runnable `examples/go-tools/` demonstrates how to register

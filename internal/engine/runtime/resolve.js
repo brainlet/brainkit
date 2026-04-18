@@ -89,7 +89,7 @@
     var cfg = parsed.config || {};
     var instance;
     switch (parsed.type) {
-      case "libsql": instance = new embed.LibSQLVector({ id: name, connectionUrl: cfg.URL, authToken: cfg.AuthToken }); break;
+      case "libsql": instance = new embed.LibSQLVector({ id: name, url: cfg.URL, authToken: cfg.AuthToken }); break;
       case "pgvector": instance = new embed.PgVector({ id: name, connectionString: cfg.ConnectionString }); break;
       case "mongodb": instance = new embed.MongoDBVector({ id: name, uri: cfg.URI, dbName: cfg.DBName }); break;
       default: throw new Error("vector store type '" + parsed.type + "' not available");

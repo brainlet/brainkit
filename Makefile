@@ -73,6 +73,7 @@ examples:
 	go build ./examples/gateway-routes
 	go build ./examples/go-tools
 	go build ./examples/plugin-host
+	go build ./examples/storage-vectors
 	cd examples/plugin-author && go build .
 	@echo "All examples build."
 

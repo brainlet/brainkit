@@ -13,5 +13,6 @@ from the repo root.
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
 | [plugin-author](./plugin-author/) | Minimal subprocess plugin (own go.mod) — one tool + one subscription, built as a standalone binary |
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
+| [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 
 More examples (harness-lite) land as the surrounding modules mature.

@@ -30,7 +30,11 @@ bin/**.go binary
 /examples/*/data/
 
 # Binaries built at repo root by `go build ./examples/...`
+/ai-chat
 /hello-embedded
 /hello-server
 /multi-kit
 /gateway-routes
+/go-tools
+/plugin-host
+/storage-vectors
