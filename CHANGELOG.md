@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Session 12 Bundle C partial — kit_new + call benchmarks
+
+First entries under `test/bench/` that target the session-10 / 11
+primitives directly. Baselines for the Kit construction cost and
+the shared-inbox Caller round trip.
+
+Added:
+- `test/bench/kit_new_test.go`:
+  - `BenchmarkKitNew` — construct + Close on memory transport.
+  - `BenchmarkKitNewGoroutineDelta` — reports net goroutine delta
+    across New+Shutdown, surfaces leak regressions.
+- `test/bench/call_test.go`:
+  - `BenchmarkCall` — tools.call round trip answered by the
+    in-process echo tool (serialize + publish + inbox demux +
+    decode).
+  - `BenchmarkCallParallel` — same path under b.RunParallel to
+    exercise the pending-map contention.
+
 ### Session 10 part 2 — retire kernel-scoped Module interface
 
 Dead scaffolding from the pre-brainkit.Module era gets removed. No
