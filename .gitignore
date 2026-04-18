@@ -56,6 +56,17 @@ bin/**.go binary
 /storage-vectors
 /streaming
 /workflows
+/working-memory
+/workspace-agent
+/guardrails
+/rag-pipeline
+/evals
+/custom-scorer
+/hitl-tool-approval
+/hitl-workflow
+/agent-stream
+/voice-agent
+/voice-realtime
 
 # Persistent scaffolds produced by examples that demonstrate the
 # on-disk package lifecycle. These live where the example points,
