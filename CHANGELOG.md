@@ -90,6 +90,23 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### plans-02 session 07 — Example: hitl-workflow (suspend/resume)
+
+New runnable `examples/hitl-workflow/` — a 3-step workflow where
+the middle step calls `suspend({reason, artifact})` and the Go
+side resumes with `CallWorkflowResume({RunID, Step, ResumeData})`.
+SQLite on the `"default"` storage slot makes the suspended
+snapshot durable across process restart.
+
+No API key needed — steps are deterministic.
+
+Added:
+- `examples/hitl-workflow/main.go` + `README.md`.
+
+Changed:
+- `examples/README.md` — new row.
+- `Makefile` — `bin/hitl-workflow` target.
+
 ### plans-02 session 02 — Example: working-memory
 
 New runnable `examples/working-memory/` — multi-turn Mastra

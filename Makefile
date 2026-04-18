@@ -98,6 +98,7 @@ examples:
 	go build -o bin/gateway-routes  ./examples/gateway-routes
 	go build -o bin/go-tools        ./examples/go-tools
 	go build -o bin/harness-lite    ./examples/harness-lite
+	go build -o bin/hitl-workflow   ./examples/hitl-workflow
 	go build -o bin/mcp             ./examples/mcp
 	go build -o bin/plugin-host     ./examples/plugin-host
 	go build -o bin/schedules       ./examples/schedules
