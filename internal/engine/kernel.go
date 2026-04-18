@@ -83,6 +83,15 @@ type Kernel struct {
 	// bus commands dispatch through this. Nil when the module isn't active.
 	scheduleHandler types.ScheduleHandler
 
+	// Plugin checker — set by modules/plugins.Module at Init time for the
+	// package-deploy `Requires.plugins` gate. Nil when the module isn't
+	// active; handlers_package_deploy substitutes a permissive stub.
+	pluginChecker deploy.PluginChecker
+
+	// Plugin restarter — set by modules/plugins.Module for SecretsDomain's
+	// rotation-driven plugin restart. Nil when the module isn't active.
+	pluginRestarter PluginRestarter
+
 	// Health
 	startedAt time.Time
 
@@ -248,13 +257,13 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	// Initialize secret store
 	kernel.secretStore = resolveSecretStore(cfg, logger)
 
-	// pluginCheckerFactory closure captures kernel.node (set later by Node)
+	// Plugin checker is set at Kit.Init time by modules/plugins; the factory
+	// reads kernel.pluginChecker so the closure is stable whether or not the
+	// module is active.
 	kernel.packageDeployDomain = newPackageDeployDomain(
 		kernel,
 		kernel.secretStore,
-		func() deploy.PluginChecker {
-			return &pluginCheckerImpl{node: kernel.node}
-		},
+		func() deploy.PluginChecker { return kernel.pluginChecker },
 	)
 	// SecretsDomain constructed later (needs kernel.remote for bus publishing)
 

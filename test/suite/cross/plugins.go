@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -338,12 +339,16 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 		CallerID:  "host",
 		FSRoot:    tmpDir,
 		Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-test-cross")),
-		Plugins: []brainkit.PluginConfig{
-			{
-				Name:         "testplugin",
-				Binary:       pluginBinary,
-				StartTimeout: 30 * time.Second,
-			},
+		Modules: []brainkit.Module{
+			pluginsmod.NewModule(pluginsmod.Config{
+				Plugins: []brainkit.PluginConfig{
+					{
+						Name:         "testplugin",
+						Binary:       pluginBinary,
+						StartTimeout: 30 * time.Second,
+					},
+				},
+			}),
 		},
 	})
 	require.NoError(t, err)

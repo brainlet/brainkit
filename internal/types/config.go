@@ -87,7 +87,6 @@ type NodeConfig struct {
 	Messaging MessagingConfig
 	NodeID    string
 	Namespace string
-	Plugins   []PluginConfig
 }
 
 // MessagingConfig configures the transport-backed runtime host.

@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	auditpkg "github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/deploy"
 	"github.com/brainlet/brainkit/internal/engine"
+	"github.com/brainlet/brainkit/internal/secrets"
+	"github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
@@ -129,3 +134,54 @@ func (k *Kit) SetAuditStore(s AuditStore) { k.kernel.SetAuditStore(s) }
 // SetAuditVerbosity switches the Recorder between normal and verbose
 // tiers. Owned by the audit module.
 func (k *Kit) SetAuditVerbosity(v AuditVerbosity) { k.kernel.SetAuditVerbosity(v) }
+
+// Audit returns the central event recorder. Modules that record events
+// from non-bus code paths (e.g. the plugins module's WS server) call
+// methods on this directly.
+func (k *Kit) Audit() *auditpkg.Recorder { return k.kernel.Audit() }
+
+// SecretStore exposes the encrypted secret store. The plugins module
+// uses it to resolve $secret:NAME references in plugin env vars.
+func (k *Kit) SecretStore() secrets.SecretStore { return k.kernel.SecretStore() }
+
+// Store returns the configured KitStore (nil if unset). Modules that
+// persist their own state (plugins, schedules) read it here.
+func (k *Kit) Store() types.KitStore { return k.kernel.Store() }
+
+// Tools exposes the shared tool registry. Modules register plugin or
+// subsystem tools through this.
+func (k *Kit) Tools() *tools.ToolRegistry { return k.kernel.Tools }
+
+// Tracer returns the runtime tracer for modules that need to mark
+// cross-cutting spans (plugin tool calls, workflow steps).
+func (k *Kit) Tracer() *tracing.Tracer { return k.kernel.Tracer() }
+
+// Remote returns the transport-level client for modules that need raw
+// publish/subscribe with metadata (plugins WS server, presence).
+func (k *Kit) Remote() *transport.RemoteClient { return k.kernel.Remote() }
+
+// ShutdownSignal is a channel that closes when the Kit is tearing down.
+// Long-running module goroutines select on it to exit promptly.
+func (k *Kit) ShutdownSignal() <-chan struct{} { return k.kernel.ShutdownSignal() }
+
+// TransportKind returns the normalized transport type ("memory",
+// "embedded", "nats", "amqp", "redis"). Modules use this to refuse
+// configurations that the transport can't support — e.g. plugins
+// module requires real networking and refuses "memory".
+func (k *Kit) TransportKind() string { return k.kernel.TransportKind() }
+
+// SetPluginChecker installs the module-side plugin-presence gate used
+// by package deploys with `requires.plugins`. Owned by the plugins
+// module (nil when the module is absent → no plugin requirements can
+// be satisfied).
+func (k *Kit) SetPluginChecker(pc deploy.PluginChecker) { k.kernel.SetPluginChecker(pc) }
+
+// SetPluginRestarter installs the module-side plugin restarter used by
+// secrets rotation to restart plugins whose env refers to a rotated
+// secret. Owned by the plugins module.
+func (k *Kit) SetPluginRestarter(r PluginRestarter) { k.kernel.SetPluginRestarter(r) }
+
+// PluginRestarter is the narrow surface the plugins module exposes to
+// secret rotation — list + restart. Re-exported from engine so Kit
+// callers can name it.
+type PluginRestarter = engine.PluginRestarter

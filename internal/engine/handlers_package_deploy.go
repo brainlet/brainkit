@@ -127,10 +127,7 @@ func (d *PackageDeployDomain) Deploy(ctx context.Context, req sdk.PackageDeployM
 
 	adapter := &deployerAdapter{deployer: d.deployer, packageName: pkgName}
 
-	var pluginChecker deploy.PluginChecker
-	if d.pluginCheckerFactory != nil {
-		pluginChecker = d.pluginCheckerFactory()
-	}
+	pluginChecker := d.resolvePluginChecker()
 
 	pkg, err := deploy.DeployPackage(ctx, adapter, req.Path, pluginChecker, d.newSecretChecker())
 	if err != nil {
@@ -189,8 +186,8 @@ func (d *PackageDeployDomain) deployInline(ctx context.Context, req sdk.PackageD
 		return nil, &sdkerrors.ValidationError{Field: "files", Message: fmt.Sprintf("entry %q not found", manifest.Entry)}
 	}
 
-	if manifest.Requires != nil && d.pluginCheckerFactory != nil {
-		pc := d.pluginCheckerFactory()
+	if manifest.Requires != nil {
+		pc := d.resolvePluginChecker()
 		pm := deploy.PackageManifest{
 			Name: manifest.Name, Version: manifest.Version, Entry: manifest.Entry, Requires: manifest.Requires,
 		}
@@ -311,7 +308,7 @@ func (d *PackageDeployDomain) Info(_ context.Context, req sdk.PackageDeployInfoM
 
 func (d *PackageDeployDomain) newSecretChecker() deploy.SecretChecker {
 	if d.secretStore == nil {
-		return nil
+		return denyAllSecretChecker{}
 	}
 	return &domainSecretChecker{store: d.secretStore}
 }
@@ -325,21 +322,33 @@ func (c *domainSecretChecker) HasSecret(name string) bool {
 	return err == nil && val != ""
 }
 
-// pluginCheckerImpl checks running plugins.
-type pluginCheckerImpl struct {
-	node *Node
-}
+// denyAllSecretChecker answers no to every secret-presence query. Used as
+// the fallback when no secret store is configured — a package that
+// `requires.secrets` cannot deploy, which is the correct behavior.
+type denyAllSecretChecker struct{}
 
-func (c *pluginCheckerImpl) IsPluginRunning(name string) bool {
-	if c.node == nil {
-		return false
+func (denyAllSecretChecker) HasSecret(string) bool { return false }
+
+// denyAllPluginChecker answers no to every plugin-presence query. Used
+// as the fallback when no module has registered a real checker — every
+// `requires.plugins` entry fails with "plugin X is not running", which
+// is the correct behavior: if the plugins module isn't loaded, no
+// plugin is running.
+type denyAllPluginChecker struct{}
+
+func (denyAllPluginChecker) IsPluginRunning(string) bool { return false }
+
+// resolvePluginChecker returns the active checker, falling back to
+// denyAllPluginChecker when modules/plugins hasn't registered one.
+func (d *PackageDeployDomain) resolvePluginChecker() deploy.PluginChecker {
+	if d.pluginCheckerFactory == nil {
+		return denyAllPluginChecker{}
 	}
-	for _, p := range c.node.ListRunningPlugins() {
-		if p.Name == name {
-			return true
-		}
+	pc := d.pluginCheckerFactory()
+	if pc == nil {
+		return denyAllPluginChecker{}
 	}
-	return false
+	return pc
 }
 
 // DeployFile deploys a single .ts file with import resolution via esbuild.

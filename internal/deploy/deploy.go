@@ -33,11 +33,10 @@ func DeployPackage(ctx context.Context, deployer Deployer, dir string, plugins P
 		return nil, fmt.Errorf("package.deploy: %w", err)
 	}
 
-	// 3. Validate dependencies
-	if plugins != nil && secrets != nil {
-		if err := ValidateDeps(manifest, plugins, secrets); err != nil {
-			return nil, err
-		}
+	// 3. Validate dependencies. Callers must provide non-nil checkers;
+	// use denyAll* fallbacks when the backing subsystem is absent.
+	if err := ValidateDeps(manifest, plugins, secrets); err != nil {
+		return nil, err
 	}
 
 	// 4. Bundle from entry point

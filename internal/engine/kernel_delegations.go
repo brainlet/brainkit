@@ -6,9 +6,12 @@ import (
 	"fmt"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/deploy"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
 	provreg "github.com/brainlet/brainkit/internal/providers"
+	"github.com/brainlet/brainkit/internal/secrets"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
+	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"log/slog"
@@ -45,6 +48,51 @@ func (k *Kernel) SetAuditStore(s auditpkg.Store) { k.audit.SetStore(s) }
 
 // SetAuditVerbosity flips the Recorder between normal and verbose tiers.
 func (k *Kernel) SetAuditVerbosity(v auditpkg.Verbosity) { k.audit.SetVerbosity(v) }
+
+// Audit returns the central Recorder for modules that need to record
+// events directly (e.g. the plugins module's WS server recording
+// plugin.registered / health.changed).
+func (k *Kernel) Audit() *auditpkg.Recorder { return k.audit }
+
+// SecretStore exposes the encrypted secret store for modules that need
+// to resolve $secret: references at Kit init time.
+func (k *Kernel) SecretStore() secrets.SecretStore { return k.secretStore }
+
+// Store exposes the kit's configured KitStore (nil if none).
+func (k *Kernel) Store() types.KitStore { return k.config.Store }
+
+// Tracer exposes the runtime tracer. Modules use this to mark plugin
+// tool invocations and other cross-cutting spans.
+func (k *Kernel) Tracer() *tracingpkg.Tracer { return k.tracer }
+
+// ShutdownSignal returns a channel that closes when the kernel is
+// tearing down. Modules with long-running goroutines (plugin restart
+// backoff) select on this to exit promptly.
+func (k *Kernel) ShutdownSignal() <-chan struct{} { return k.bridge.GoContext().Done() }
+
+// TransportKind returns the normalized transport type ("memory",
+// "embedded", "nats", "amqp", "redis"). Modules use this to refuse
+// configurations that the transport can't support — e.g. the plugins
+// module requires real networking and refuses "memory".
+func (k *Kernel) TransportKind() string {
+	if k.transport == nil {
+		return ""
+	}
+	return k.transport.Kind
+}
+
+// SetPluginChecker installs the module-side PluginChecker used by
+// package-deploy's `Requires.plugins` gate. Pass nil to detach.
+func (k *Kernel) SetPluginChecker(pc deploy.PluginChecker) { k.pluginChecker = pc }
+
+// SetPluginRestarter installs the module-side PluginRestarter used by
+// SecretsDomain for rotation-driven plugin restart. Pass nil to detach.
+func (k *Kernel) SetPluginRestarter(r PluginRestarter) {
+	k.pluginRestarter = r
+	if k.secretsDomain != nil {
+		k.secretsDomain.pluginRestarter = r
+	}
+}
 
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }

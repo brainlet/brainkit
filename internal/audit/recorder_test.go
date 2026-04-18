@@ -1,7 +1,7 @@
 package audit
 
 import (
-	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,10 +9,70 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// memStore is a minimal in-memory Store for recorder tests. The real
+// SQLite/Postgres stores moved to modules/audit/stores to avoid the
+// internal/audit → internal/store import cycle; the recorder only needs
+// Record/Query/Count/CountByCategory for these tests.
+type memStore struct {
+	mu     sync.Mutex
+	events []Event
+}
+
+func newMemStore() *memStore { return &memStore{} }
+
+func (s *memStore) Record(e Event) {
+	if e.Timestamp.IsZero() {
+		e.Timestamp = time.Now()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, e)
+}
+
+func (s *memStore) Query(q Query) ([]Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Event
+	for _, e := range s.events {
+		if q.Category != "" && e.Category != q.Category {
+			continue
+		}
+		if q.Type != "" && e.Type != q.Type {
+			continue
+		}
+		if q.Source != "" && e.Source != q.Source {
+			continue
+		}
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []Event{}
+	}
+	return out, nil
+}
+
+func (s *memStore) Prune(_ time.Duration) error { return nil }
+
+func (s *memStore) Count() (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return int64(len(s.events)), nil
+}
+
+func (s *memStore) CountByCategory() (map[string]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]int64)
+	for _, e := range s.events {
+		result[e.Category]++
+	}
+	return result, nil
+}
+
+func (s *memStore) Close() error { return nil }
+
 func TestVerboseMode_BusCommandCompleted(t *testing.T) {
-	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "audit.db"))
-	require.NoError(t, err)
-	defer store.Close()
+	store := newMemStore()
 
 	// Normal mode — BusCommandCompleted should NOT record
 	normal := NewRecorderWithConfig(RecorderConfig{
@@ -36,9 +96,7 @@ func TestVerboseMode_BusCommandCompleted(t *testing.T) {
 }
 
 func TestVerboseMode_MetricsSnapshot(t *testing.T) {
-	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "audit.db"))
-	require.NoError(t, err)
-	defer store.Close()
+	store := newMemStore()
 
 	// Normal mode — skipped
 	normal := NewRecorder(store, "rt1", "ns1")
@@ -57,8 +115,7 @@ func TestVerboseMode_MetricsSnapshot(t *testing.T) {
 }
 
 func TestIsVerbose(t *testing.T) {
-	store, _ := NewSQLiteStore(filepath.Join(t.TempDir(), "audit.db"))
-	defer store.Close()
+	store := newMemStore()
 
 	normal := NewRecorder(store, "rt1", "ns1")
 	assert.False(t, normal.IsVerbose())
@@ -73,9 +130,7 @@ func TestIsVerbose(t *testing.T) {
 }
 
 func TestCountByCategory(t *testing.T) {
-	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "audit.db"))
-	require.NoError(t, err)
-	defer store.Close()
+	store := newMemStore()
 
 	store.Record(Event{Category: "plugin", Type: "plugin.started", Source: "a"})
 	store.Record(Event{Category: "plugin", Type: "plugin.stopped", Source: "a"})

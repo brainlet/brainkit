@@ -12,6 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -189,12 +190,16 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				CallerID:  "host",
 				FSRoot:    tmpDir,
 				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin")),
-				Plugins: []brainkit.PluginConfig{
-					{
-						Name:         "testplugin",
-						Binary:       pluginBinary,
-						StartTimeout: 30 * time.Second,
-					},
+				Modules: []brainkit.Module{
+					pluginsmod.NewModule(pluginsmod.Config{
+						Plugins: []brainkit.PluginConfig{
+							{
+								Name:         "testplugin",
+								Binary:       pluginBinary,
+								StartTimeout: 30 * time.Second,
+							},
+						},
+					}),
 				},
 			})
 			require.NoError(t, err)
@@ -269,12 +274,16 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				CallerID:  "host",
 				FSRoot:    tmpDir,
 				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin-list")),
-				Plugins: []brainkit.PluginConfig{
-					{
-						Name:         "testplugin",
-						Binary:       pluginBinary,
-						StartTimeout: 30 * time.Second,
-					},
+				Modules: []brainkit.Module{
+					pluginsmod.NewModule(pluginsmod.Config{
+						Plugins: []brainkit.PluginConfig{
+							{
+								Name:         "testplugin",
+								Binary:       pluginBinary,
+								StartTimeout: 30 * time.Second,
+							},
+						},
+					}),
 				},
 			})
 			require.NoError(t, err)
@@ -349,12 +358,16 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				CallerID:  "host",
 				FSRoot:    tmpDir,
 				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin")),
-				Plugins: []brainkit.PluginConfig{
-					{
-						Name:         "testplugin",
-						Binary:       pluginBinary,
-						StartTimeout: 30 * time.Second,
-					},
+				Modules: []brainkit.Module{
+					pluginsmod.NewModule(pluginsmod.Config{
+						Plugins: []brainkit.PluginConfig{
+							{
+								Name:         "testplugin",
+								Binary:       pluginBinary,
+								StartTimeout: 30 * time.Second,
+							},
+						},
+					}),
 				},
 			})
 			require.NoError(t, err)
@@ -450,12 +463,16 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				CallerID:  "host",
 				FSRoot:    tmpDir,
 				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin-alongside")),
-				Plugins: []brainkit.PluginConfig{
-					{
-						Name:         "testplugin",
-						Binary:       pluginBinary,
-						StartTimeout: 30 * time.Second,
-					},
+				Modules: []brainkit.Module{
+					pluginsmod.NewModule(pluginsmod.Config{
+						Plugins: []brainkit.PluginConfig{
+							{
+								Name:         "testplugin",
+								Binary:       pluginBinary,
+								StartTimeout: 30 * time.Second,
+							},
+						},
+					}),
 				},
 			})
 			require.NoError(t, err)

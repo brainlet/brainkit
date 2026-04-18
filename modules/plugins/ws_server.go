@@ -1,4 +1,4 @@
-package engine
+package plugins
 
 import (
 	"context"
@@ -19,9 +19,9 @@ import (
 )
 
 // pluginWSServer hosts a WebSocket endpoint for plugin connections.
-// Started by the Node when plugins are configured.
+// Started by the Module when plugins are configured.
 type pluginWSServer struct {
-	node     *Node
+	mod      *Module
 	listener net.Listener
 	server   *http.Server
 	mu       sync.Mutex
@@ -44,9 +44,9 @@ type pluginWSConn struct {
 	cancelPing context.CancelFunc
 }
 
-func newPluginWSServer(node *Node) (*pluginWSServer, error) {
+func newPluginWSServer(mod *Module) (*pluginWSServer, error) {
 	s := &pluginWSServer{
-		node:  node,
+		mod:   mod,
 		conns: make(map[string]*pluginWSConn),
 	}
 
@@ -117,7 +117,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		toolDef := toolDef
 		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, toolDef.Name)
 
-		s.node.Kernel.Tools.Register(tools.RegisteredTool{
+		s.mod.kit.Tools().Register(tools.RegisteredTool{
 			Name:        fullName,
 			ShortName:   toolDef.Name,
 			Owner:       manifest.Owner,
@@ -150,13 +150,13 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		slog.Int("tools", len(manifest.Tools)))
 
 	// Emit plugin.registered event
-	s.node.Kernel.publish(ctx, sdk.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(sdk.PluginRegisteredEvent{
+	_, _ = s.mod.kit.PublishRaw(ctx, sdk.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(sdk.PluginRegisteredEvent{
 		Owner:   manifest.Owner,
 		Name:    manifest.Name,
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
 	}))
-	s.node.Kernel.audit.PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
+	s.mod.kit.Audit().PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
 
 	// Subscribe to topics declared in manifest
 	for _, topic := range manifest.Subscriptions {
@@ -179,7 +179,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 				if err := conn.Ping(pingCtx); err != nil {
 					if pc.healthy {
 						pc.healthy = false
-						s.node.Kernel.audit.PluginHealthChanged(pc.name, "unhealthy")
+						s.mod.kit.Audit().PluginHealthChanged(pc.name, "unhealthy")
 						slog.Warn("plugin ws: heartbeat failed",
 							slog.String("plugin", pc.name),
 							slog.String("error", err.Error()))
@@ -190,7 +190,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 					pc.mu.Unlock()
 					if !pc.healthy {
 						pc.healthy = true
-						s.node.Kernel.audit.PluginHealthChanged(pc.name, "healthy")
+						s.mod.kit.Audit().PluginHealthChanged(pc.name, "healthy")
 						slog.Info("plugin ws: heartbeat recovered", slog.String("plugin", pc.name))
 					}
 				}
@@ -226,7 +226,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 			json.Unmarshal(respMsg.Data, &pub)
 			if len(pub.Metadata) > 0 {
 				if rt, ok := pub.Metadata["replyTo"]; ok && rt != "" {
-					resolved := s.node.Kernel.remote.ResolvedTopic(rt)
+					resolved := s.mod.kit.Remote().ResolvedTopic(rt)
 					slog.Info("plugin ws: publish with replyTo",
 						slog.String("plugin", pc.name),
 						slog.String("topic", pub.Topic),
@@ -234,9 +234,9 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 						slog.String("replyTo_resolved", resolved))
 					pub.Metadata["replyTo"] = resolved
 				}
-				s.node.Kernel.remote.PublishRawWithMeta(ctx, pub.Topic, pub.Payload, pub.Metadata)
+				s.mod.kit.Remote().PublishRawWithMeta(ctx, pub.Topic, pub.Payload, pub.Metadata)
 			} else {
-				s.node.Kernel.publish(ctx, pub.Topic, pub.Payload)
+				_, _ = s.mod.kit.PublishRaw(ctx, pub.Topic, pub.Payload)
 			}
 
 		case pluginws.TypeSubscribe:
@@ -267,7 +267,7 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 // Uses fan-out subscriber so every plugin instance receives all events (not competing
 // with command handlers in the queue group).
 func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
-	unsub, err := s.node.Kernel.remote.SubscribeRawFanOut(context.Background(), topic, func(msg sdk.Message) {
+	unsub, err := s.mod.kit.Remote().SubscribeRawFanOut(context.Background(), topic, func(msg sdk.Message) {
 		evtData, _ := json.Marshal(pluginws.EventMsg{
 			Topic:    msg.Topic,
 			Payload:  msg.Payload,

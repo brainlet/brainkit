@@ -30,24 +30,9 @@ func (k *Kernel) Metrics() types.KernelMetrics {
 		m.Bus = &snap
 	}
 
-	// Plugin metrics from Node's WS server
-	if k.node != nil && k.node.plugins != nil && k.node.plugins.wsServer != nil {
-		k.node.plugins.wsServer.mu.Lock()
-		m.ActivePlugins = len(k.node.plugins.wsServer.conns)
-		for _, pc := range k.node.plugins.wsServer.conns {
-			pc.mu.Lock()
-			pm := types.PluginMetrics{
-				Name:       pc.name,
-				Healthy:    pc.healthy,
-				ToolCalls:  pc.toolCalls,
-				ToolErrors: pc.toolErrors,
-				LastPong:   pc.lastPong,
-			}
-			pc.mu.Unlock()
-			m.Plugins = append(m.Plugins, pm)
-		}
-		k.node.plugins.wsServer.mu.Unlock()
-	}
+	// Plugin metrics are now sourced from modules/plugins (which holds the
+	// WS server state). metrics.get returns no plugin details when the module
+	// is absent; see modules/plugins if richer metrics are needed.
 
 	return m
 }

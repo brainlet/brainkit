@@ -1,4 +1,4 @@
-package engine
+package plugins
 
 import (
 	"bufio"
@@ -8,18 +8,17 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"syscall"
 	"time"
 
+	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-
-// pluginManager manages plugin subprocesses for a Node.
+// pluginManager manages plugin subprocesses for a Module.
 type pluginManager struct {
-	node         *Node
+	mod          *Module
 	wsServer     *pluginWSServer
 	plugins      map[string]*pluginConn
 	mu           syncx.Mutex
@@ -40,15 +39,15 @@ type pluginConn struct {
 	stopping bool // true when stopPlugin was called — prevents auto-restart
 }
 
-func newPluginManager(node *Node) *pluginManager {
+func newPluginManager(mod *Module) *pluginManager {
 	return &pluginManager{
-		node:    node,
+		mod:     mod,
 		plugins: make(map[string]*pluginConn),
 	}
 }
 
 func (pm *pluginManager) log() *slog.Logger {
-	return pm.node.Kernel.logger
+	return pm.mod.kit.Logger()
 }
 
 func (pm *pluginManager) startAll(configs []types.PluginConfig) {
@@ -56,7 +55,7 @@ func (pm *pluginManager) startAll(configs []types.PluginConfig) {
 		cfg := configs[i]
 		pluginDefaults(&cfg)
 		if err := pm.startPlugin(cfg, 0); err != nil {
-			types.InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", cfg.Name, err), types.ErrorContext{
+			pm.mod.kit.ReportError(fmt.Errorf("plugin %s: %w", cfg.Name, err), types.ErrorContext{
 				Operation: "StartPlugin", Component: "plugin", Source: cfg.Name,
 			})
 		}
@@ -72,7 +71,7 @@ func (pm *pluginManager) startPlugin(cfg types.PluginConfig, restartCount int) e
 
 	// Start WS server on first plugin (lazy init)
 	if pm.wsServer == nil {
-		ws, err := newPluginWSServer(pm.node)
+		ws, err := newPluginWSServer(pm.mod)
 		if err != nil {
 			cancel()
 			return fmt.Errorf("plugin ws server: %w", err)
@@ -86,18 +85,18 @@ func (pm *pluginManager) startPlugin(cfg types.PluginConfig, restartCount int) e
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_WS_URL=%s", pm.wsServer.URL()))
-	env = append(env, fmt.Sprintf("BRAINKIT_NAMESPACE=%s", pm.node.Kernel.Namespace()))
-	env = append(env, fmt.Sprintf("BRAINKIT_NODE_ID=%s", pm.node.nodeID))
+	env = append(env, fmt.Sprintf("BRAINKIT_NAMESPACE=%s", pm.mod.kit.Namespace()))
+	env = append(env, fmt.Sprintf("BRAINKIT_NODE_ID=%s", pm.mod.kit.CallerID()))
 	if len(cfg.Config) > 0 {
 		env = append(env, fmt.Sprintf("BRAINKIT_PLUGIN_CONFIG=%s", string(cfg.Config)))
 	}
 	// Resolve $secret: references in env
-	if pm.node.Kernel.secretStore != nil {
+	if secretStore := pm.mod.kit.SecretStore(); secretStore != nil {
 		for i, e := range env {
 			parts := strings.SplitN(e, "=", 2)
 			if len(parts) == 2 && strings.HasPrefix(parts[1], "$secret:") {
 				secretName := strings.TrimPrefix(parts[1], "$secret:")
-				val, err := pm.node.Kernel.secretStore.Get(context.Background(), secretName)
+				val, err := secretStore.Get(context.Background(), secretName)
 				if err == nil && val != "" {
 					env[i] = parts[0] + "=" + val
 				}
@@ -228,8 +227,8 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	select {
 	case <-time.After(backoff):
 		// Backoff elapsed — proceed with restart
-	case <-pm.node.Kernel.bridge.GoContext().Done():
-		// Bridge shutting down — don't restart, exit immediately
+	case <-pm.mod.kit.ShutdownSignal():
+		// Kit shutting down — don't restart, exit immediately
 		close(pc.done)
 		return
 	}
@@ -247,7 +246,7 @@ func (pm *pluginManager) watchProcess(pc *pluginConn) {
 	pc.cancel()
 
 	if restartErr := pm.startPlugin(pc.config, nextRestart); restartErr != nil {
-		types.InvokeErrorHandler(pm.node.Kernel.config.ErrorHandler, fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), types.ErrorContext{
+		pm.mod.kit.ReportError(fmt.Errorf("plugin %s: %w", pc.config.Name, restartErr), types.ErrorContext{
 			Operation: "RestartPlugin", Component: "plugin", Source: pc.config.Name,
 		})
 		close(pc.done)

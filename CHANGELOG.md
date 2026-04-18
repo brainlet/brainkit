@@ -2,6 +2,129 @@
 
 ## Unreleased
 
+### Session 07 — modules/plugins
+
+The subprocess plugin supervisor, WebSocket endpoint, and plugin.*
+lifecycle commands move out of `internal/engine` into a stand-alone
+`brainkit.Module`. Core no longer knows about plugins; Kits that don't
+wire the module run without a WS server or subprocess supervisor.
+
+Added:
+- `modules/plugins/` package:
+  - `manager.go` — subprocess supervisor (ported verbatim from
+    `internal/engine/plugin_manager.go`).
+  - `ws_server.go` — plugin WebSocket endpoint (ported from
+    `internal/engine/plugin_ws.go`).
+  - `handlers.go` — `lifecycleDomain` with plugin.start / stop /
+    restart / list / status bus handlers (ported from
+    `internal/engine/handlers_plugins.go`, renamed).
+  - `module.go` — `NewModule(Config{Plugins, Store})`. Init launches
+    configured plugins, restores running plugins from the Store, wires
+    the plugin.* bus commands (incl. plugin.manifest), attaches
+    itself as both the deploy.PluginChecker (for
+    `requires.plugins` gating) and engine.PluginRestarter (for
+    secrets-rotation restart). Close stops plugins + WS server and
+    detaches both hooks.
+  - `types.go` — narrow `Store` interface (LoadRunningPlugins /
+    SaveRunningPlugin / DeleteRunningPlugin / LoadInstalledPlugins).
+    brainkit.KitStore satisfies it structurally.
+  - `doc.go` — package overview + usage example.
+- Kit surface additions to support module-owned plugins:
+  - `(*Kit).Audit() *audit.Recorder` — for modules to record events
+    directly (WS server emits plugin.registered / health.changed).
+  - `(*Kit).SecretStore() secrets.SecretStore` — `$secret:NAME`
+    resolution in plugin env.
+  - `(*Kit).Store() types.KitStore` — installed-plugin lookup.
+  - `(*Kit).Tools() *tools.ToolRegistry` — register plugin-backed tools.
+  - `(*Kit).Tracer() *tracing.Tracer` — plugin tool spans.
+  - `(*Kit).Remote() *transport.RemoteClient` — WS server's raw
+    PublishRawWithMeta / SubscribeRawFanOut / ResolvedTopic paths.
+  - `(*Kit).ShutdownSignal() <-chan struct{}` — restart backoff abort.
+  - `(*Kit).TransportKind() string` — normalized transport type so
+    modules can refuse "memory" (plugins need real networking).
+  - `(*Kit).SetPluginChecker(pc)` + `(*Kit).SetPluginRestarter(r)` —
+    the module installs these hooks at Init.
+  - `brainkit.PluginRestarter` alias over `engine.PluginRestarter`.
+- `(*Kernel)` mirror accessors for each of the above, plus
+  `Kernel.pluginChecker` / `Kernel.pluginRestarter` storage fields.
+
+Changed:
+- `internal/engine/kernel.go` — `packageDeployDomain` built with a
+  stable closure reading `kernel.pluginChecker`. The old Node-capturing
+  `pluginCheckerImpl` is gone.
+- `internal/engine/handlers_package_deploy.go` — `resolvePluginChecker`
+  and `newSecretChecker` now always return non-nil checkers
+  (`denyAllPluginChecker`, `denyAllSecretChecker`) when the backing
+  subsystem is absent. `internal/deploy.DeployPackage` drops its
+  `if plugins != nil && secrets != nil` guard — the callers provide
+  denyAll fallbacks instead.
+- `internal/transport/transport.go` — `Transport.Kind` records the
+  normalized transport type; `Kernel.TransportKind()` + `Kit.TransportKind()`
+  expose it to modules so they can refuse unsupported configurations.
+- `internal/engine/node.go` — stripped all plugin fields (`plugins`,
+  `pluginLifecycle`) and lifecycle methods (StartPlugin, StopPlugin,
+  RestartPlugin, ListRunningPlugins, restoreRunningPlugins,
+  processPluginManifest, pluginToolTopic, mustMarshalJSON).
+- `internal/engine/catalog.go` — removed plugin.start / stop /
+  restart / list / status / manifest nodeCommand entries; module
+  registers them.
+- `internal/engine/metrics.go` — plugin details no longer emitted
+  from the engine snapshot.
+- `internal/types/config.go` — `NodeConfig.Plugins` removed.
+- `brainkit.Config.Plugins` field removed; `brainkit.PluginConfig`
+  alias stays for callers that build config lists.
+- `internal/audit/recorder_test.go` — switched to an in-memory test
+  store (the SQLite store moved to `modules/audit/stores` last
+  session; the cross-package cycle blocked the original import).
+
+Fixed:
+- Package deploy now validates `requires.secrets` even when no plugins
+  module is loaded. Previously `ValidateDeps` was guarded by
+  `if plugins != nil && secrets != nil`, so if the plugin checker was
+  nil both plugin AND secret validation silently no-op'd. Secrets
+  validation now runs against a deny-all secret checker when the
+  secret store is absent, so `requires.secrets` on a no-store Kit
+  fails with a clear "secret X is not set" error instead of
+  deploying a broken package.
+- `modules/plugins.Module.Init` / `StartPlugin` reject the memory
+  transport up front (WS control plane can't bind and plugin→bus
+  traffic can't flow in-process). Previously the module accepted the
+  config silently and failed later at listener bind time.
+
+Removed:
+- `internal/engine/plugin_manager.go` — moved to module.
+- `internal/engine/plugin_ws.go` — moved to module.
+- `internal/engine/handlers_plugins.go` — moved to module.
+
+Migration:
+
+Before:
+```go
+brainkit.New(brainkit.Config{
+    Transport: brainkit.NATS(url),
+    Plugins: []brainkit.PluginConfig{{Name: "x", Binary: "./x"}},
+})
+```
+
+After:
+```go
+import pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+
+brainkit.New(brainkit.Config{
+    Transport: brainkit.NATS(url),
+    Modules: []brainkit.Module{
+        pluginsmod.NewModule(pluginsmod.Config{
+            Plugins: []brainkit.PluginConfig{{Name: "x", Binary: "./x"}},
+            Store:   kitStore, // optional — enables restart-survival
+        }),
+    },
+})
+```
+
+Without the module: the plugin.* bus commands are absent, no WS
+server is started, and every `requires.plugins` package deploy entry
+fails with "plugin X is not running".
+
 ### Session 06 Bundle B — modules/audit
 
 Audit log query + storage split out of core. The `Recorder` (event

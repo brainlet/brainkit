@@ -349,40 +349,7 @@ func buildCommandCatalog() *commandRegistry {
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployInfoMsg) (*sdk.PackageDeployInfoResp, error) {
 				return kernel.packageDeployDomain.Info(ctx, req)
 			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
-				return node.processPluginManifest(ctx, req)
-			}),
-			// ── Plugin Lifecycle ──
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStartMsg) (*sdk.PluginStartResp, error) {
-				if node.pluginLifecycle == nil {
-					node.pluginLifecycle = newPluginLifecycleDomain(node)
-				}
-				return node.pluginLifecycle.Start(ctx, req)
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStopMsg) (*sdk.PluginStopResp, error) {
-				if node.pluginLifecycle == nil {
-					node.pluginLifecycle = newPluginLifecycleDomain(node)
-				}
-				return node.pluginLifecycle.Stop(ctx, req)
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginRestartMsg) (*sdk.PluginRestartResp, error) {
-				if node.pluginLifecycle == nil {
-					node.pluginLifecycle = newPluginLifecycleDomain(node)
-				}
-				return node.pluginLifecycle.Restart(ctx, req)
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginListRunningMsg) (*sdk.PluginListRunningResp, error) {
-				if node.pluginLifecycle == nil {
-					node.pluginLifecycle = newPluginLifecycleDomain(node)
-				}
-				return node.pluginLifecycle.List(ctx, req)
-			}),
-			nodeCommand(func(ctx context.Context, node *Node, req sdk.PluginStatusMsg) (*sdk.PluginStatusResp, error) {
-				if node.pluginLifecycle == nil {
-					node.pluginLifecycle = newPluginLifecycleDomain(node)
-				}
-				return node.pluginLifecycle.Status(ctx, req)
-			}),
+			// ── Plugin Lifecycle (moved to modules/plugins) ──
 			// ── Testing ──
 			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TestRunMsg) (*sdk.TestRunResp, error) {
 				return kernel.testingDomain.Run(ctx, req)

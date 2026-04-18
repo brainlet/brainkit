@@ -11,6 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -44,9 +45,13 @@ func TestMetricsPluginE2E(t *testing.T) {
 		Namespace: "test-metrics-plugin",
 		Transport: brainkit.EmbeddedNATS(),
 		FSRoot:    tmpDir,
-		Plugins: []brainkit.PluginConfig{{
-			Name: "metrics", Binary: binaryPath, AutoRestart: false,
-		}},
+		Modules: []brainkit.Module{
+			pluginsmod.NewModule(pluginsmod.Config{
+				Plugins: []brainkit.PluginConfig{{
+					Name: "metrics", Binary: binaryPath, AutoRestart: false,
+				}},
+			}),
+		},
 	})
 	require.NoError(t, err)
 	defer kit.Close()

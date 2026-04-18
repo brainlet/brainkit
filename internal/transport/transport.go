@@ -41,6 +41,11 @@ type Transport struct {
 	FanOutSubscriber message.Subscriber // unique group per instance (all replicas receive)
 	closeFns         []func() error
 
+	// Kind is the normalized transport type ("memory", "embedded", "nats",
+	// "amqp", "redis"). Modules use this to reject configurations the
+	// transport can't support (e.g. plugins need real networking).
+	Kind string
+
 	// TopicSanitizer transforms logical topic names into transport-safe names.
 	// Applied automatically by RemoteClient and Host.
 	TopicSanitizer func(string) string
@@ -91,33 +96,48 @@ func (t *Transport) Close() error {
 func NewTransportSet(cfg TransportConfig) (*Transport, error) {
 	logger := watermill.NopLogger{}
 
+	var (
+		t    *Transport
+		err  error
+		kind string
+	)
 	switch cfg.Type {
 	case "memory":
 		pubSub := gochannel.NewGoChannel(gochannel.Config{
 			Persistent: true,
 		}, logger)
-		return &Transport{
+		t = &Transport{
 			Publisher:        pubSub,
 			Subscriber:       pubSub,
 			FanOutSubscriber: pubSub, // GoChannel: all subscribers get all messages by default
 			closeFns:         []func() error{pubSub.Close},
-		}, nil
+		}
+		kind = "memory"
 
 	case "", "embedded":
-		return newEmbeddedNATSTransport(cfg, logger)
+		t, err = newEmbeddedNATSTransport(cfg, logger)
+		kind = "embedded"
 
 	case "nats":
-		return newNATSTransport(cfg, logger)
+		t, err = newNATSTransport(cfg, logger)
+		kind = "nats"
 
 	case "amqp":
-		return newAMQPTransport(cfg, logger)
+		t, err = newAMQPTransport(cfg, logger)
+		kind = "amqp"
 
 	case "redis":
-		return newRedisTransport(cfg, logger)
+		t, err = newRedisTransport(cfg, logger)
+		kind = "redis"
 
 	default:
 		return nil, fmt.Errorf("unknown transport type: %q (supported: memory, embedded, nats, amqp, redis)", cfg.Type)
 	}
+	if err != nil {
+		return nil, err
+	}
+	t.Kind = kind
+	return t, nil
 }
 
 // ---------------------------------------------------------------------------

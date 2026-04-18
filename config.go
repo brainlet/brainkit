@@ -67,9 +67,6 @@ type Config struct {
 	// Nil + FSRoot empty = no persistence (ephemeral).
 	Store KitStore
 
-	// Plugins to start automatically (requires Transport).
-	Plugins []PluginConfig
-
 	// Logger for structured logging. Nil = slog.Default().
 	Logger *slog.Logger
 
@@ -182,11 +179,6 @@ func (c Config) toNodeConfig(kernelCfg types.KernelConfig) types.NodeConfig {
 			RedisURL:     c.Transport.redisURL,
 			NATSStoreDir: natsStoreDir,
 		},
-	}
-
-	// Convert plugins
-	if len(c.Plugins) > 0 {
-		nc.Plugins = c.Plugins
 	}
 
 	return nc

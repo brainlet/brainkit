@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -104,9 +105,13 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-ws-sub",
 		Transport: brainkit.EmbeddedNATS(),
-		Plugins: []brainkit.PluginConfig{{
-			Name: "sub-test", Binary: binaryPath, AutoRestart: false,
-		}},
+		Modules: []brainkit.Module{
+			pluginsmod.NewModule(pluginsmod.Config{
+				Plugins: []brainkit.PluginConfig{{
+					Name: "sub-test", Binary: binaryPath, AutoRestart: false,
+				}},
+			}),
+		},
 	})
 	require.NoError(t, err)
 	defer kit.Close()
