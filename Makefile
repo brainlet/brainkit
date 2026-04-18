@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build test test-v bench bench-stable bench-runtime docs-bus-topics examples clean
+.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime docs-bus-topics examples clean
 
 # Default: build the CLI binary
 all: brainkit
@@ -32,6 +32,11 @@ build:
 	cd internal/embed/ai/bundle && node build.mjs
 	cd internal/embed/agent/bundle && node build.mjs
 	cd internal/embed/compiler/bundle && node build.mjs
+
+# Regenerate SDK wrappers (sdk/typed_gen.go + root call_gen.go).
+# Run after adding / renaming anything in sdk/*_messages.go.
+generate:
+	go run ./cmd/sdkgen -messages ./sdk -out ./sdk/typed_gen.go -call-out ./call_gen.go
 
 # Run all tests
 test:

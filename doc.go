@@ -30,11 +30,15 @@
 // Every feature is a typed bus command. Deploy packages, schedule
 // messages, manage secrets, call AI providers, talk to plugins —
 // each goes through [sdk.Publish] / [sdk.SubscribeTo] or the
-// typed-generic [Call] / [CallStream] helpers.
+// generated synchronous wrappers (one per Msg/Resp pair):
 //
-//	resp, err := brainkit.Call[sdk.PackageDeployMsg, sdk.PackageDeployResp](
-//	    kit, ctx, sdk.PackageDeployMsg{Path: "./agents/support"},
+//	resp, err := brainkit.CallPackageDeploy(kit, ctx,
+//	    sdk.PackageDeployMsg{Path: "./agents/support"},
 //	)
+//
+// The generic [Call] / [CallStream] helpers stay exported for
+// advanced uses; the wrappers just saturate the type parameters
+// so the call site doesn't guess.
 //
 // # Accessors
 //

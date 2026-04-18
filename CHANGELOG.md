@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+### plans-01 session 01 — sdkgen Call wrappers
+
+Extend `cmd/sdkgen` to emit a second file — `call_gen.go` at repo
+root, `package brainkit` — with one synchronous Call wrapper per
+`Msg→Resp` pair. Eliminates the type-parameter guessing that
+`brainkit.Call[Req, Resp]` required.
+
+Before:
+
+```go
+resp, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](k, ctx, msg)
+```
+
+After:
+
+```go
+resp, err := brainkit.CallToolCall(k, ctx, msg)
+```
+
+The underlying generic stays exported for advanced uses (custom
+`Resp` types, dynamic dispatch). The wrappers just saturate the
+type parameters mechanically.
+
+Added:
+- `cmd/sdkgen/main.go` — `-call-out` flag + `generateCallWrappers`
+  emitter. Defaults to `./call_gen.go`.
+- `call_gen.go` (generated, committed) — 62 Call wrappers, one
+  per `Msg/Resp` pair.
+- `call_gen_test.go` — smoke test for `CallKitHealth`, parity
+  test against the generic, option-passthrough test for
+  `WithCallTimeout`.
+- `Makefile` `generate` target regenerates both
+  `sdk/typed_gen.go` and `call_gen.go`.
+
+Changed:
+- `README.md` + root `doc.go` — hero snippet uses
+  `brainkit.CallPackageDeploy(...)` instead of the generic form.
+
 ### Session 12 Bundle C partial — envelope benchmarks
 
 Wire-format cost coverage. Every reply on the Caller path traverses

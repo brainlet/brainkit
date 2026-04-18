@@ -24,8 +24,8 @@ kit, _ := brainkit.New(brainkit.Config{
 })
 defer kit.Close()
 
-resp, err := brainkit.Call[sdk.PackageDeployMsg, sdk.PackageDeployResp](
-    kit, ctx, sdk.PackageDeployMsg{Path: "./agents/support"})
+resp, err := brainkit.CallPackageDeploy(kit, ctx,
+    sdk.PackageDeployMsg{Path: "./agents/support"})
 ```
 
 **Service mode — run brainkit as a server:**
