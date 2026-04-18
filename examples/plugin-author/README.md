@@ -39,6 +39,29 @@ kit, _ := brainkit.New(brainkit.Config{
 After `kit.Deploy` or a bus `tools.call` for `echo`, the host
 dispatches to this plugin over the WS control plane.
 
+## Run + verify end-to-end
+
+A runnable host lives at [`examples/plugin-host/`](../plugin-host/)
+alongside this directory. It builds this plugin from source into a
+temp directory, boots a Kit, waits for the plugin to register,
+calls the `echo` tool, and prints the reply:
+
+```sh
+go run ./examples/plugin-host
+# building plugin …
+# plugin registered: test/plugin-author@0.1.0
+# echo reply: {"echoed":"ping"}
+```
+
+The same flow runs under `go test`:
+
+```sh
+go test ./examples/plugin-host
+```
+
+The test is skipped under `go test -short` because it shells out
+to `go build`.
+
 ## What it shows
 
 - `bkplugin.New(owner, name, version, opts...)` is the manifest

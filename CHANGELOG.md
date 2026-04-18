@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### plans-01 session 03 — Plugin example runnable + integration test
+
+The plugin example is now driven end-to-end by a real host binary.
+`examples/plugin-host/` lives alongside `plugin-author/` (rather
+than nested inside it) because `plugin-author` ships its own
+`go.mod` with replace directives back to the repo root; a host
+binary inside that nested module would be confined to the plugin's
+module graph.
+
+Added:
+- `examples/plugin-host/main.go` — standalone runnable. Builds
+  `examples/plugin-author` from source into a temp directory,
+  boots a Kit with `modules/plugins` pointed at the binary, polls
+  `plugin.list` until `demo` is running, invokes the `echo` tool
+  through `brainkit.CallToolCall`, prints the reply.
+- `examples/plugin-host/main_test.go` — `TestPluginRoundTrip`
+  drives the same flow under `*testing.T`. Skipped under
+  `-short` because it shells out to `go build`.
+- `examples/plugin-host/README.md` — run + test instructions,
+  contrast with the `test/suite/plugins/` inline-build pattern.
+
+Changed:
+- `examples/plugin-author/README.md` — points at the host runner.
+- `examples/README.md` — add plugin-host row.
+- `Makefile` `examples` target builds `./examples/plugin-host`.
+
 ### plans-01 session 02 — CLI rewrite to 5 verbs
 
 Completes the Session 11 Bundle B work from `plans/`. The CLI now
