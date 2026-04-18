@@ -75,6 +75,7 @@ import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace
 // OpenAI provider lives in its own package.
 import { CompositeVoice } from '@mastra/core/voice';
 import { OpenAIVoice } from '@mastra/voice-openai';
+import { OpenAIRealtimeVoice } from '@mastra/voice-openai-realtime';
 
 // Harness — orchestration layer for agent execution, threads, modes, tool approval
 import { Harness } from '@mastra/core/harness';
@@ -254,6 +255,7 @@ globalThis.__agent_embed = {
   LocalSandbox,
   CompositeVoice,
   OpenAIVoice,
+  OpenAIRealtimeVoice,
 
   // Harness
   Harness,

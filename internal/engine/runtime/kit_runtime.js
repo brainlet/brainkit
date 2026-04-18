@@ -261,6 +261,11 @@
         return Base;
       })(),
       CompositeVoice: embed.CompositeVoice,
+      // Mastra's realtime voice surface — wraps the OpenAI
+      // Realtime WebSocket API. Needs a globalThis WebSocket
+      // polyfill OR a Go-side bridge; the pre-flight smoke
+      // test in session 12 determines which.
+      OpenAIRealtimeVoice: embed.OpenAIRealtimeVoice,
       MDocument: embed.MDocument,
       GraphRAG: embed.GraphRAG,
       createVectorQueryTool: embed.createVectorQueryTool,

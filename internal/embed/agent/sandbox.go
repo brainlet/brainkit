@@ -105,6 +105,7 @@ func NewSandbox(cfg SandboxConfig) (*Sandbox, error) {
 		jsbridge.FS(cfg.CWD),      // complete Node.js fs module (workspace-scoped)
 		jsbridge.Exec(cfg.CWD),    // child_process.exec, spawn — rebased under CWD/FSRoot
 		jsbridge.Fetch(fetchOpts...),  // fetch, Headers, Request, Response
+		jsbridge.WebSocketPoly(),      // client WebSocket — must come after Fetch (shares Bridge.Go)
 		jsbridge.Audio(jsbridge.AudioWithSink(cfg.AudioSink)), // web-standard Audio class — silent without sink
 	)
 	if err != nil {

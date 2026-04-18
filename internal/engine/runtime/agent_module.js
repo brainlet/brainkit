@@ -45,6 +45,7 @@ export const SensitiveDataFilter = globalThis.__agent_embed.SensitiveDataFilter;
 // Voice
 export const OpenAIVoice = globalThis.__agent_embed.OpenAIVoice;
 export const CompositeVoice = globalThis.__agent_embed.CompositeVoice;
+export const OpenAIRealtimeVoice = globalThis.__agent_embed.OpenAIRealtimeVoice;
 
 // Evals
 export const createScorer = globalThis.__agent_embed.createScorer;

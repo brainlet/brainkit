@@ -468,6 +468,27 @@ const result = await esbuild.build({
   treeShaking: true,
   plugins: [
     nodeStubPlugin,
+    // Redirect `ws` (Node WebSocket) to the jsbridge polyfill.
+    // @mastra/voice-openai-realtime does `import { WebSocket } from 'ws'`;
+    // without this alias esbuild resolves ws's browser field to an
+    // empty module and `new WebSocket(...)` throws "not a function".
+    {
+      name: "ws-alias",
+      setup(build) {
+        build.onResolve({ filter: /^ws$/ }, () => ({
+          path: "ws-polyfill",
+          namespace: "ws-polyfill-ns",
+        }));
+        build.onLoad({ filter: /.*/, namespace: "ws-polyfill-ns" }, () => ({
+          contents: `
+const WS = globalThis.WebSocket;
+export { WS as WebSocket };
+export default WS;
+`,
+          loader: "js",
+        }));
+      },
+    },
     // Force lru-cache to use CJS build — ESM version uses top-level await
     // which esbuild can't bundle in IIFE format. CJS version works fine.
     {
