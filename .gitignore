@@ -34,6 +34,7 @@ bin/**.go binary
 /hello-embedded
 /hello-server
 /multi-kit
+/observability
 /gateway-routes
 /go-tools
 /plugin-host

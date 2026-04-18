@@ -70,6 +70,7 @@ examples:
 	go build ./examples/hello-embedded
 	go build ./examples/hello-server
 	go build ./examples/multi-kit
+	go build ./examples/observability
 	go build ./examples/gateway-routes
 	go build ./examples/go-tools
 	go build ./examples/plugin-host

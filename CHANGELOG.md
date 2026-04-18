@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### plans-01 session 10 — Example: Audit + tracing query
+
+New runnable `examples/observability/`. Wires `modules/audit` +
+`modules/tracing` on a Kit, generates deploy / call events,
+queries both stores, pretty-prints results.
+
+Added:
+- `examples/observability/main.go` — `audit.query`,
+  `audit.stats`, `trace.list` round-trip.
+- `examples/observability/README.md` — filter cookbook +
+  retention pattern (prune via a scheduled bus topic).
+
+Changed:
+- `examples/README.md` — add observability row.
+- `Makefile` / `.gitignore` — observability binary.
+
 ### plans-01 session 09 — Example: Schedules
 
 New runnable `examples/schedules/` exercises the cron-style
