@@ -90,6 +90,27 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### plans-02 session 08 — Example: agent-stream (textStream + structuredOutput)
+
+New runnable `examples/agent-stream/` — Mastra `agent.stream()`
+inside a deployed `.ts`, piping chunks out via `msg.send`. Two
+topics: a haiku streamer that iterates `stream.textStream` for
+token-level deltas, and a planner that uses
+`structuredOutput: { schema: z.array(...) }` and filters
+`stream.fullStream` for `"object-result"` chunks to stream typed
+partials. Each wired to a gateway SSE route so curl sees the
+same stream.
+
+Live-verified: 5-step plan filled out incrementally, final
+`stream.object` carries the full array.
+
+Added:
+- `examples/agent-stream/main.go` + `README.md`.
+
+Changed:
+- `examples/README.md` — new row.
+- `Makefile` — `bin/agent-stream` target.
+
 ### plans-02 session 07 — Example: hitl-workflow (suspend/resume)
 
 New runnable `examples/hitl-workflow/` — a 3-step workflow where

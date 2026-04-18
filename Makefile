@@ -88,6 +88,7 @@ examples:
 	@mkdir -p bin
 	go build -o bin/agent-forge     ./examples/agent-forge
 	go build -o bin/agent-spawner   ./examples/agent-spawner
+	go build -o bin/agent-stream    ./examples/agent-stream
 	go build -o bin/ai-chat         ./examples/ai-chat
 	go build -o bin/cross-kit       ./examples/cross-kit
 	go build -o bin/hello-embedded  ./examples/hello-embedded
