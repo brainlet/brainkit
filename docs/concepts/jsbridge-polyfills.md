@@ -75,12 +75,14 @@ b, err := jsbridge.New(bridgeCfg,
     jsbridge.Zlib(),           // zlib.inflate/deflate/gzip — after Buffer
     jsbridge.WebAssembly(),    // WebAssembly.instantiate (wazero-backed)
     jsbridge.FS(cfg.CWD),      // fs / fs/promises (workspace-scoped)
-    jsbridge.Exec(),           // child_process.exec, spawn
-    jsbridge.Fetch(fetchOpts...), // fetch, Headers, Request, Response
+    jsbridge.Exec(cfg.CWD),    // child_process.exec, spawn — rebased under CWD
+    jsbridge.Fetch(fetchOpts...), // fetch, Headers, Request, Response, FormData, Blob, File
+    jsbridge.WebSocketPoly(),  // client WebSocket (WHATWG + Node `ws` compat) — after Fetch
+    jsbridge.Audio(jsbridge.AudioWithSink(cfg.AudioSink)), // web-standard Audio class
 )
 ```
 
-27 polyfills in total. The exact list is the source of truth —
+29 polyfills in total. The exact list is the source of truth —
 `sandbox.go` imports them in the order above, and SES lockdown runs
 afterwards. Each polyfill has focused Go tests in
 `internal/jsbridge/*_test.go`.
@@ -210,7 +212,7 @@ absolute outside-root paths). Escaping returns a typed
 `*sdk.WorkspaceEscapeError`. When `FSRoot` is empty, every `fs.*`
 call fails with `NOT_CONFIGURED`.
 
-### Fetch — HTTP + streaming SSE
+### Fetch — HTTP + streaming SSE, binary-safe
 
 Two paths:
 
@@ -220,10 +222,58 @@ Two paths:
   from the HTTP response and pushes each into a JS `ReadableStream`
   controller via `ctx.Schedule`.
 
-`Fetch` runs last in the init order because it depends on `Headers`,
-`Request`, `Response`, `ReadableStream`, `AbortSignal`, and
-`TextEncoder`. It accepts a `FetchSpanHook` so the tracing module can
-attach OTel spans around each outbound request.
+Non-text bodies (MP3, PNG, `application/octet-stream`, …) are
+base64-encoded on both legs with an `x-brainkit-body-encoding:
+base64` marker or a `bodyEncoding` field on the response JSON,
+so arbitrary bytes survive the Go-string + JSON hop without
+UTF-8 replacement-char corruption. Request body coverage
+includes `FormData` (serialized to `multipart/form-data` with a
+generated boundary), `Blob`, `ArrayBuffer`, and typed arrays.
+
+Also ships alongside `Fetch`: polyfills for `Headers` (with
+`append`, `getSetCookie`, case-insensitive keys), `Request`,
+`Response`, `FormData`, `Blob`, and `File` (extends `Blob`). It
+accepts a `FetchSpanHook` so the tracing module can attach
+OTel spans around each outbound request.
+
+### WebSocket — client-side Node + WHATWG combined
+
+`globalThis.WebSocket` wraps `github.com/coder/websocket` in
+client mode. Single class covers both surfaces any consumer
+expects:
+
+- **WHATWG** — `new WebSocket(url, protocols)`, `onopen /
+  onmessage / onerror / onclose`, `addEventListener`, `send`,
+  `close`, `readyState`, the four state constants.
+- **Node `ws`** — `new WebSocket(url, protocols, {headers})`
+  for `Authorization` / custom handshake headers, EventEmitter
+  `ws.on("message" | "open" | "error" | "close", fn)`, binary
+  frames delivered as `Buffer` / `Uint8Array`.
+
+Both API styles live on the same object — any consumer resolves.
+Binary frames cross the JS↔Go boundary via base64 (same pattern
+as Fetch and Audio), so non-ASCII byte streams stay intact.
+
+Needed because `@mastra/voice-openai-realtime` does `import
+{ WebSocket } from "ws"`; `build.mjs` aliases `ws` to a tiny
+shim that re-exports `globalThis.WebSocket` so the Mastra lib
+binds to the polyfill unchanged.
+
+### Audio — web-standard `new Audio(src).play()`
+
+Lifts `globalThis.Audio` shaped like `HTMLAudioElement`.
+Resolves `src` into bytes (URL via `fetch`, path via `fs`,
+`Buffer` / `Uint8Array` / `Blob` / Node Readable / Web
+`ReadableStream`), sniffs the container magic for MP3 / WAV /
+OGG / FLAC, and hands the payload to a configured
+`jsbridge.AudioSink`. With no sink wired, `play()` resolves
+silently so portable agent code runs on headless kits.
+
+The public Go side lives at `brainkit/audio` (`Sink`, `Null`,
+`Func`, `Composite`) with opt-in desktop playback in
+`brainkit/audio/local`. See the
+[voice-and-audio guide](../guides/voice-and-audio.md) for the
+wiring shape.
 
 ### WebAssembly — wazero-backed
 
@@ -243,8 +293,14 @@ Every polyfill ships with Go unit tests under
 - `net_test.go` — TCP connect/write/close, TLS upgrade.
 - `dns_test.go` — `dns.lookup` (sync + promises).
 - `zlib_test.go` — inflate/deflate/gzip round trips.
-- `fetch_test.go` — status, headers, streaming bodies, `AbortSignal`.
-- `fs_test.go` — workspace escape, readFile/writeFile, promises API.
+- `fetch_test.go` — status, headers, streaming bodies, `AbortSignal`,
+  multipart/form-data + binary body round trips.
+- `fs_test.go` — workspace escape, readFile/writeFile, promises API,
+  binary-safe `createReadStream` chunks.
+- `websocket_test.go` — text + binary round-trip, `Authorization`
+  header forwarded through the handshake.
+- `audio_test.go` — sink dispatch, mime sniff, pause/cancel,
+  Null default.
 
 The tests run under the standard Go toolchain — no Node, no esbuild,
 no browser — because the polyfills are Go code. That is the whole

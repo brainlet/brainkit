@@ -122,6 +122,7 @@ Walkthroughs and concept-level docs under `guides/`:
 - [`guides/go-sdk.md`](guides/go-sdk.md) — the Go-side SDK in narrative form.
 - [`guides/ts-services.md`](guides/ts-services.md) — writing `.ts` services against the endowments.
 - [`guides/ai-and-agents.md`](guides/ai-and-agents.md) — building Mastra agents, tools and memories.
+- [`guides/voice-and-audio.md`](guides/voice-and-audio.md) — voice providers, `new Audio(stream).play()` + `audio.Sink` fan-out, browser realtime, desktop audio self-test.
 - [`guides/vectors-and-rag.md`](guides/vectors-and-rag.md) — embedding pipelines, `MDocument`, `GraphRAG`, `createVectorQueryTool`.
 - [`guides/storage-and-memory.md`](guides/storage-and-memory.md) — the storage pool, vector pool and Mastra `Memory`.
 - [`guides/transport-backends.md`](guides/transport-backends.md) — memory / embedded-NATS / NATS / AMQP / Redis trade-offs and topic sanitisers.

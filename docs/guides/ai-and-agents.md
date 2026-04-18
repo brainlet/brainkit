@@ -328,9 +328,17 @@ reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
     brainkit.WithCallTimeout(60*time.Second))
 ```
 
+## Voice
+
+Voice is its own guide — see [voice-and-audio.md](voice-and-audio.md).
+The headline: `new Audio(stream).play()` routes TTS through a
+pluggable `audio.Sink` (desktop speakers, disk, bus fan-out),
+`OpenAIRealtimeVoice` works inside the SES compartment via a
+client `WebSocket` polyfill, and four runnable examples
+(`voice-chat`, `voice-agent`, `voice-broadcast`,
+`voice-realtime`) cover the common shapes.
+
 ## What's verified
 
 Every snippet above is taken from the `examples/` programs or from
-the project's fixture suite. Mastra features not exercised in
-fixtures (voice, some workspace features) are intentionally left
-out — treat anything not covered here as unverified.
+the project's fixture suite.
