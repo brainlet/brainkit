@@ -105,6 +105,7 @@ examples:
 	go build -o bin/storage-vectors ./examples/storage-vectors
 	go build -o bin/streaming       ./examples/streaming
 	go build -o bin/workflows       ./examples/workflows
+	go build -o bin/working-memory  ./examples/working-memory
 	cd examples/plugin-author && go build -o ../../bin/plugin-author .
 	@echo "All examples built into bin/"
 

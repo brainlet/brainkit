@@ -90,6 +90,22 @@ above; the details below document exactly what changed where.
 
 ## Unreleased
 
+### plans-02 session 02 — Example: working-memory
+
+New runnable `examples/working-memory/` — multi-turn Mastra
+agent that remembers the user's name across turns on the same
+`thread.id`, and correctly forgets it when the thread changes
+(even with the same `resource` id). SQLite-backed storage;
+one-line swap for Postgres/Mongo/Upstash.
+
+Added:
+- `examples/working-memory/main.go` + `README.md` — 3-turn
+  trace that demonstrates thread isolation.
+
+Changed:
+- `examples/README.md` — new row.
+- `Makefile` — `bin/working-memory` target.
+
 ### post-1.0-rc.1 — ScaffoldPackage + package-workflow example + agent-forge refactor
 
 Extracts the CLI's `brainkit new package` logic into a reusable
