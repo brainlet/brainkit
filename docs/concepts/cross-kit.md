@@ -1,136 +1,239 @@
 # Cross-Kit Communication
 
-Multiple Kits can run on the same transport and communicate across namespace boundaries. This enables isolation patterns (dev/prod, multi-tenant) while allowing controlled inter-Kit messaging.
+Multiple Kits can sit on the same transport and route calls between
+each other by namespace. This is how brainkit scales from one process
+(embedded `*Kit`) to a fleet (many Kits sharing NATS, Redis, or AMQP)
+without changing the call surface. Every Kit implements
+`sdk.CrossNamespaceRuntime`, so any code that has a Kit handle can
+reach any other Kit's namespace.
 
-## Why Cross-Kit
+## The Model
 
-A single Kit is a self-contained runtime — its own QuickJS heap, its own tool registry, its own deployed .ts services. But real deployments need multiple Kits:
+- **Namespace.** Each Kit has one, set via `Config.Namespace`. Every
+  published topic is prefixed with that namespace before hitting the
+  transport. When `orchestrator` publishes `ts.report-svc.quarterly`,
+  the wire name is `orchestrator.ts.report-svc.quarterly` (sanitized
+  per transport).
+- **Target namespace.** `brainkit.WithCallTo(name)` switches the
+  prefix to a target: the request goes to `analytics-prod` but the
+  reply-to is still on `orchestrator`. Responses flow back through
+  the caller's inbox.
+- **Peer names.** Most deployments want to call peers by a short
+  logical name (`"analytics"`, `"ingest"`) rather than the full
+  namespace. The `topology` module provides the name → namespace
+  table; `WithCallTo` consults it automatically.
 
-- **Dev/prod isolation**: A dev Kit and a prod Kit share the same NATS cluster but shouldn't see each other's messages by default
-- **Multi-tenant**: Each tenant gets a Kit with its own namespace, tools, and agents
-- **Microservice decomposition**: One Kit per domain (orders, payments, notifications) communicating over the bus
-
-Cross-Kit communication lets Kit A send a message to Kit B's namespace. Kit B's handlers process it as if it were a local message. The response comes back through the replyTo mechanism.
-
-## The CrossNamespaceRuntime Interface
+## The Minimal Flow
 
 ```go
-// sdk/runtime.go
+// Kit A — target
+target, _ := brainkit.New(brainkit.Config{
+    Namespace: "analytics-prod",
+    Transport: brainkit.NATS(natsURL),
+    FSRoot:    ".",
+})
+defer target.Close()
+
+// Deploy a handler that answers the quarterly report topic.
+_, _ = target.Deploy(ctx, brainkit.PackageInline("report-svc", "report.ts", `
+    bus.on("quarterly", (msg) => {
+        msg.reply({ revenue: 1234567, quarter: msg.payload.quarter });
+    });
+`))
+
+// Kit B — caller (same NATS)
+caller, _ := brainkit.New(brainkit.Config{
+    Namespace: "orchestrator",
+    Transport: brainkit.NATS(natsURL),
+    FSRoot:    ".",
+    Modules: []brainkit.Module{
+        topology.NewModule(topology.Config{
+            Peers: []topology.Peer{
+                {Name: "analytics", Namespace: "analytics-prod"},
+            },
+        }),
+    },
+})
+defer caller.Close()
+
+reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](caller, ctx,
+    sdk.CustomMsg{
+        Topic:   "ts.report-svc.quarterly",
+        Payload: json.RawMessage(`{"quarter":"Q4"}`),
+    },
+    brainkit.WithCallTo("analytics"),
+    brainkit.WithCallTimeout(10*time.Second),
+)
+```
+
+See `examples/cross-kit/main.go` for the full runnable source — it
+boots a standalone NATS server and shares it between two Kits in the
+same process. `examples/multi-kit/main.go` shows the same wiring with
+an embedded NATS transport per Kit when you only need name resolution
+(replies over two independent embedded transports do not route).
+
+## How `WithCallTo` Resolves
+
+`WithCallTo(name)` passes the name through `Kit.resolveTargetNS(name)`:
+
+1. If the `topology` module is loaded, call `topology.Resolve(name)`.
+   This returns the configured namespace or an error if the name is
+   unknown.
+2. If the module is not loaded, `name` is used as the raw namespace.
+   This is handy for ad-hoc scripts where you know the namespace
+   up front.
+
+The generated `sdk.PeersResolveMsg` round-trip
+(`sdk.PeersResolveMsg{Name: "analytics"}`) is a bus-level alternative;
+it runs through the same table.
+
+```go
+resp, _ := brainkit.Call[sdk.PeersResolveMsg, sdk.PeersResolveResp](
+    caller, ctx, sdk.PeersResolveMsg{Name: "analytics"})
+// resp.Namespace == "analytics-prod"
+```
+
+Likewise, `sdk.PeersListMsg` enumerates every name + namespace the
+topology module knows about.
+
+## Topology Module
+
+`modules/topology` owns `peers.list`, `peers.resolve`, and the
+`WithCallTo` resolution hook.
+
+### Static peers
+
+```go
+topology.NewModule(topology.Config{
+    Peers: []topology.Peer{
+        {Name: "analytics", Namespace: "analytics-prod"},
+        {Name: "ingest",    Namespace: "ingest-prod"},
+    },
+})
+```
+
+### Dynamic peers via discovery
+
+Pair with `modules/discovery` to refresh the peer table from the bus
+or from a static list broadcast via heartbeats:
+
+```go
+d := discovery.NewModule(discovery.ModuleConfig{
+    Type:      "bus",
+    Heartbeat: 10 * time.Second,
+    TTL:       30 * time.Second,
+})
+brainkit.New(brainkit.Config{
+    Transport: brainkit.NATS(url),
+    Modules: []brainkit.Module{
+        d,
+        topology.NewModule(topology.Config{Discovery: d}),
+    },
+})
+```
+
+Three discovery types ship:
+
+| Type       | Source                                             |
+| ---------- | -------------------------------------------------- |
+| `"static"` | Fixed list from `ModuleConfig.StaticPeers`.        |
+| `"bus"`    | Heartbeat + presence over the shared transport.   |
+| `""`       | Disabled (discovery is a no-op).                   |
+
+There is no mDNS/UDP multicast. Peer presence is propagated through
+the same transport the Kits already share.
+
+## Reaching In-JS
+
+Deployed `.ts` code has the same affordance through `bus.callTo`:
+
+```typescript
+const resp = await bus.callTo("analytics",
+    "ts.report-svc.quarterly",
+    { quarter: "Q4" },
+    { timeoutMs: 10000 });
+```
+
+`bus.sendTo(name, topic, payload)` is the fire-and-forget variant.
+Both resolve through the host Kit's topology module.
+
+## Cross-Namespace Low-Level API
+
+Beneath the typed layer, the SDK offers raw access:
+
+```go
 type CrossNamespaceRuntime interface {
     Runtime
-    PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (correlationID string, err error)
-    SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (cancel func(), err error)
+    PublishRawTo(ctx, targetNamespace, topic string, payload json.RawMessage) (string, error)
+    SubscribeRawTo(ctx, targetNamespace, topic string, handler func(sdk.Message)) (func(), error)
 }
+
+// And typed convenience:
+pr, err := sdk.PublishTo(kit, ctx, "analytics-prod",
+    sdk.CustomMsg{Topic: "ts.report-svc.quarterly", Payload: q4})
 ```
 
-Both standalone and transport-connected Kit implement this. Plugin clients do NOT — plugins talk to their host Kit only.
+These are the hooks modules use when they need to publish events into
+other namespaces (for example, a discovery module broadcasting
+presence across the fleet). Application code should prefer
+`brainkit.Call(..., WithCallTo(...))` so it picks up retries, cancel
+propagation, and audit middleware for free.
 
-## How Namespace Routing Works
+## Topic Prefix Rules
 
-Every Kit has a namespace (from `Config.Namespace`, default `"user"`). When a Kit publishes to topic `tools.call`, the RemoteClient prefixes it with the namespace:
+| Call                                  | Wire topic (approx.)                      |
+| ------------------------------------- | ----------------------------------------- |
+| `Call(kit, ctx, m)` (same Kit)        | `<self>.<m.BusTopic()>`                   |
+| `Call(kit, ctx, m, WithCallTo("b"))`  | `<target>.<m.BusTopic()>`                 |
+| reply from handler                    | `<caller>.<caller inbox topic>`           |
+| `bus.on("t")` in package `p`          | `<deploying Kit ns>.ts.p.t` subscription  |
 
-```
-Logical: tools.call
-Namespace: kit-a
-Wire topic: kit-a.tools.call (then sanitized per transport)
-```
+Sanitization (dots → dashes on NATS/embedded, slashes → dashes on
+AMQP) happens transparently — both publish and subscribe go through
+the same function so the logical topic always round-trips.
 
-`PublishRawTo` uses the TARGET namespace instead:
+## Transport Requirements
 
-```go
-// internal/messaging/client.go
-func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespace, logicalTopic string, payload json.RawMessage) (string, error) {
-    // resolves to: targetNamespace.logicalTopic (sanitized)
-    // replyTo resolves to: callerNamespace.replyTopic (sanitized)
-}
-```
+Cross-Kit only works if both Kits share a transport that can route
+between them:
 
-The replyTo topic is always resolved with the CALLER's namespace — so responses come back to the sender, not the target.
+- **Memory** and **EmbeddedNATS** default configurations are per-Kit
+  and cannot see each other. Two Kits booted with
+  `brainkit.EmbeddedNATS()` each spin up their own NATS server — they
+  do not cross. `examples/multi-kit/main.go` intentionally shows only
+  the resolution step under that constraint.
+- **NATS JetStream** (`brainkit.NATS(url)`) pointed at the same server
+  works out of the box. `examples/cross-kit/main.go` boots a standalone
+  `nats-server/v2` in-process and shares its URL.
+- **AMQP** and **Redis Streams** work the same way — both Kits need to
+  point at the same broker.
 
-## Using PublishTo from Go
+For single-process tests, prefer a shared external NATS. For real
+deployments, use a shared broker and let both Kits join the same
+cluster.
 
-The SDK provides a typed generic function:
+## When to Add a Second Kit
 
-```go
-// sdk/cross.go
-func PublishTo[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
-```
+Use a second Kit when the workloads have different lifetimes,
+different resource profiles, or different blast radiuses:
 
-Example — Kit A sends a tool call to Kit B:
+- **Dev vs prod** on the same NATS cluster — different namespaces
+  prevent crossover traffic.
+- **Tenant isolation** — one Kit per tenant with a scoped tool
+  registry and provider keys.
+- **Domain boundaries** — `orders`, `payments`, `notifications` as
+  separate Kits that collaborate over typed bus topics.
 
-```go
-// Kit A (namespace: "kit-a")
-pr, err := sdk.PublishTo(kitA, ctx, "kit-b", sdk.ToolCallMsg{
-    Name:  "echo",
-    Input: map[string]string{"message": "hello from kit-a"},
-})
+For lower-touch splits (e.g. dev ergonomics on one workstation), a
+single Kit with multiple deployed packages is cheaper — each `.ts`
+package is already isolated in its own SES Compartment on a shared
+heap.
 
-// Subscribe to replyTo — comes back on kit-a's namespace
-unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](kitA, ctx, pr.ReplyTo,
-    func(resp sdk.ToolCallResp, msg sdk.Message) {
-        fmt.Println("response:", string(resp.Result))
-    })
-defer unsub()
-```
+## See Also
 
-## Reaching .ts Services Across Kits
-
-To send a message to a .ts service deployed on another Kit, use `PublishTo` with a `CustomMsg` targeting the service's mailbox topic:
-
-```go
-// Kit A sends to Kit B's "greeter.ts" service
-pr, err := sdk.PublishTo(kitA, ctx, "kit-b", sdk.CustomMsg{
-    Topic:   "ts.greeter.greet",
-    Payload: json.RawMessage(`{"name":"world"}`),
-})
-```
-
-The wire topic becomes `kit-b.ts.greeter.greet` (sanitized per transport). Kit B's handler — registered via `bus.on("greet")` in greeter.ts — receives it.
-
-## Discovery
-
-Discovery resolves Kit names to addresses. Two providers:
-
-### Static
-
-Fixed configuration — you know your peers at startup:
-
-```go
-discovery.NewStaticFromConfig([]discovery.PeerConfig{
-    {Name: "kit-b", Namespace: "kit-b", Address: "10.0.1.2:9090"},
-})
-```
-
-`Resolve("kit-b")` returns the namespace for routing. `Browse()` returns all known peers.
-
-### Multicast (LAN)
-
-Zero-config UDP multicast for development. Kits announce themselves on `224.0.0.251:5353` with a custom protocol (NOT actual mDNS):
-
-```
-BRAINKIT|_brainkit._tcp|kit-a|10.0.1.1:9001
-```
-
-Each Kit listens for announcements and builds a peer map. Re-announces on read timeout (1 second) to handle late joiners.
-
-```go
-d, err := discovery.NewMulticast("_brainkit._tcp")
-d.Register(discovery.Peer{Name: "kit-a", Address: "10.0.1.1:9001"})
-// Other Kits on the LAN discover kit-a automatically
-```
-
-## Cross-Kit Test Coverage
-
-14 cross-Kit tests in `test/cross/` run on NATS:
-
-| Test | What it covers |
-|------|---------------|
-| ts→Go | .ts deploys tool, Go on other Kit calls it |
-| Go→ts | Go registers tool, .ts on other Kit calls it via tools.call |
-| ts→WASM | .ts deploys tool, WASM shard on other Kit calls it via _busPublish |
-| WASM→Go | WASM calls Go-registered tool across Kits |
-| Plugin→Go | Plugin registers tool, Go on other Kit calls it |
-| WASM→Plugin | WASM calls plugin tool across Kits |
-| Chain (A→B→C) | Three-Kit chain — message flows through all three |
-
-All tests use `testutil.NewTestKernelPairFull` which creates two Kits on the same NATS transport with different namespaces.
+- `examples/cross-kit/main.go` — two Kits on a shared external NATS.
+- `examples/multi-kit/main.go` — topology-only demo in one process.
+- `modules/topology/README.md` — peer table internals.
+- `modules/discovery/README.md` — heartbeat + static discovery.
+- [bus-and-messaging.md](bus-and-messaging.md) — the unified topic
+  model `WithCallTo` builds on.

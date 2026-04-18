@@ -1,210 +1,205 @@
 # Storage and Memory
 
-brainkit supports 5 storage backends and 3 vector backends for agent memory, conversation threads, and embeddings. Storage can be embedded (Go-managed SQLite) or external (Postgres, MongoDB, Upstash).
+brainkit exposes storage backends as a named map on `Config`.
+Deployed `.ts` code resolves them by name through `storage("name")`
+and hands the result to Mastra classes (`Memory`, `LibSQLStore`,
+`PostgresStore`, etc.) and to workflow snapshot persistence.
 
-## Embedded Storage (LibSQL Bridge)
-
-The simplest option — brainkit starts a Go HTTP server backed by a local SQLite file. No containers, no connection strings, no setup:
+## Wire storages from Go
 
 ```go
+import (
+    "path/filepath"
+    "github.com/brainlet/brainkit"
+)
+
 kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: brainkit.Memory(),
+    FSRoot:    "/var/lib/my-app",
     Storages: map[string]brainkit.StorageConfig{
-        "default": brainkit.SQLiteStorage("./data.db"),
+        "default": brainkit.SQLiteStorage(filepath.Join("/var/lib/my-app", "kv.db")),
     },
 })
 ```
 
-Inside .ts code, `new LibSQLStore({ id: "my-store" })` auto-connects to the embedded server — no URL needed. The bridge speaks the Hrana v2/v3 pipeline protocol (same wire format as Turso's `sqld`), so Mastra's `@libsql/client` HTTP mode works unmodified.
+Five storage builders ship out of the box:
 
-The bridge server (`internal/libsql/server.go`):
-- Pure Go — `modernc.org/sqlite`, no CGo
-- WAL mode + 5s busy timeout
-- Auto-assigned port on `127.0.0.1`
-- Supports transactions (baton mechanism), batch operations, SQL caching
-- Creates parent directories automatically
+| Builder | Backing store |
+|---|---|
+| `brainkit.SQLiteStorage(path)` | SQLite via embedded libsql bridge. `":memory:"` works. |
+| `brainkit.PostgresStorage(dsn)` | Postgres via `pg` driver over jsbridge. |
+| `brainkit.MongoDBStorage(uri, dbName)` | MongoDB via `node-mongodb-native` driver. |
+| `brainkit.UpstashStorage(url, token)` | Upstash REST storage. |
+| `brainkit.InMemoryStorage()` | Ephemeral in-process, lost on close. |
 
-### Multiple storages
+Manage the registry at runtime via `kit.Storages()`:
+
+```go
+kit.Storages().Register("scratch",
+    brainkit.StorageType("sqlite"),
+    map[string]any{"path": ":memory:"})
+
+for _, s := range kit.Storages().List() {
+    fmt.Println(s.Name, s.Type)
+}
+
+kit.Storages().Unregister("scratch")
+```
+
+## Access from `.ts`
+
+```ts
+import { storage, Memory, LibSQLStore } from "kit";
+
+const store = new LibSQLStore({ id: "chat-threads" });
+const mem   = new Memory({ storage: store });
+```
+
+`new LibSQLStore({ id })` auto-connects to the Kit's embedded
+SQLite bridge; no URL or credentials needed. Use `storage("name")`
+to resolve a specific backend by its Go-side name:
+
+```ts
+const pg = storage("pg");
+const mem = new Memory({ storage: pg });
+```
+
+Multiple backends:
 
 ```go
 Storages: map[string]brainkit.StorageConfig{
-    "default": brainkit.SQLiteStorage("./data.db"),      // memory, workflows, traces
-    "vectors": brainkit.SQLiteStorage("./vectors.db"),    // vector embeddings
-    "scratch": brainkit.SQLiteStorage(":memory:"),        // ephemeral, lost on close
+    "default": brainkit.SQLiteStorage("/var/lib/app/kv.db"),
+    "vectors": brainkit.SQLiteStorage("/var/lib/app/vectors.db"),
+    "cache":   brainkit.SQLiteStorage(":memory:"),
 },
 ```
 
-```typescript
-const memory = new LibSQLStore({ id: "mem" });                         // → data.db
-const vectors = new LibSQLVector({ id: "vecs", storage: "vectors" });  // → vectors.db
-const temp = new LibSQLStore({ id: "tmp", storage: "scratch" });       // → in-memory
-```
+## Agent memory
 
-### Runtime management
+`Memory` stores messages, observations, and reflections keyed by
+`threadId` and `resourceId`.
 
-```go
-k.AddStorage("analytics", kit.SQLiteStorage("./analytics.db"))
-k.RemoveStorage("analytics")
-url := k.StorageURL("default") // "http://127.0.0.1:54321"
-```
+```ts
+const mem = new Memory({ storage: new LibSQLStore({ id: "chat" }) });
 
-## Five Storage Providers
-
-| Provider | Constructor | Protocol | Auth Methods Tested |
-|----------|------------|----------|---------------------|
-| InMemoryStore | `new InMemoryStore()` | N/A | N/A |
-| LibSQLStore | `new LibSQLStore({id, url?, authToken?})` | HTTP (Hrana) | embedded + container |
-| PostgresStore | `new PostgresStore({id, connectionString})` | TCP | SCRAM-SHA-256, md5, trust |
-| MongoDBStore | `new MongoDBStore({id, uri, dbName})` | TCP | SCRAM-SHA-256, SCRAM-SHA-1, no-auth |
-| UpstashStore | `new UpstashStore({id, url, token})` | HTTP | token auth |
-
-All tested with real infrastructure — no mocks. Auth matrix in `test/auth/auth_test.go`.
-
-### Go-side provider registry
-
-```go
-Storages: map[string]brainkit.StorageConfig{
-    "default": brainkit.InMemoryStorage(),
-    "pg":      brainkit.PostgresStorage("postgres://..."),
-},
-```
-
-Then in .ts: `const store = storage("pg");` — resolves from the Go registry, creates a real `PostgresStore` instance.
-
-## Memory with Agents
-
-Mastra's `Memory` class provides conversation thread management on top of any storage backend:
-
-```typescript
-// fixtures/ts/agent/with-memory-inmemory/index.ts
-const store = new InMemoryStore();
-const mem = new Memory({ storage: store });
-
-const agent = new Agent({
-    name: "memory-agent",
+const chat = new Agent({
+    name: "chatter",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "Remember the user's name.",
+    instructions: "Remember what the user told you.",
     memory: mem,
 });
 
-kit.register("agent", "memory-agent", agent);
-
-await agent.generate("My name is David", {
-    threadId: "thread-1",
+await chat.generate("My name is David", {
+    threadId:   "thread-1",
     resourceId: "user-1",
 });
 
-const result = await agent.generate("What's my name?", {
-    threadId: "thread-1",
+const r = await chat.generate("What's my name?", {
+    threadId:   "thread-1",
     resourceId: "user-1",
 });
-// result.text contains "David"
+// r.text should reference "David"
 ```
 
-Memory auto-saves messages to the thread on every `generate`/`stream` call. Messages are recalled automatically when the same `threadId` is used.
+`threadId` scopes the conversation; `resourceId` scopes the owner
+(a user, a session, whatever you need to separate histories on).
+Messages on the same `threadId` are automatically replayed into
+subsequent `generate` / `stream` calls.
 
-### With Postgres
+Swap in Postgres / Mongo / Upstash by changing the storage
+resolver:
 
-```typescript
-// fixtures/ts/agent/with-memory-postgres/index.ts
-const store = new PostgresStore({
-    id: "pg-mem",
-    connectionString: process.env.DATABASE_URL,
-});
-const mem = new Memory({ storage: store });
-
-const agent = new Agent({
-    name: "pg-agent",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "You remember everything.",
-    memory: mem,
-});
+```ts
+const mem = new Memory({ storage: new PostgresStore({ id: "pg-mem" }) });
+const mem = new Memory({ storage: new MongoDBStore({ id: "mongo-mem" }) });
+const mem = new Memory({ storage: storage("cache") });
 ```
 
-PostgresStore uses the `pg` npm driver through brainkit's jsbridge polyfills (net.Socket → Go `net.Conn`, crypto → Go `crypto`). SCRAM-SHA-256 auth works through WebCrypto (`crypto.subtle.deriveBits`).
+## Mastra Memory surface
 
-### With MongoDB
+The Memory class exposes methods that work across every storage
+backend:
 
-```typescript
-// fixtures/ts/agent/with-memory-mongodb/index.ts
-const store = new MongoDBStore({
-    id: "mongo-mem",
-    uri: process.env.MONGODB_URI,
-    dbName: "brainkit",
-});
-const mem = new Memory({ storage: store });
+```ts
+await mem.saveThread({ thread: {
+    id: "t-1",
+    title: "first thread",
+    resourceId: "demo",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+}});
+const t = await mem.getThreadById({ threadId: "t-1" });
+await mem.saveMessages({ messages: [...] });
+const msgs = await mem.query({ threadId: "t-1", limit: 10 });
 ```
 
-MongoDBStore uses the `node-mongodb-native` driver through jsbridge polyfills. SCRAM-SHA-256 auth works through Node.js crypto path (`crypto.pbkdf2Sync` + `crypto.createHmac`).
+See [`examples/storage-vectors/`](../../examples/storage-vectors/)
+for a program that deploys a `.ts` handler that saves and retrieves
+a thread through `Memory` over SQLite storage:
 
-## Three Vector Providers
+```ts
+const store = storage("default");
+const mem   = new Memory({ storage: store });
 
-| Provider | Constructor | Protocol |
-|----------|------------|----------|
-| LibSQLVector | `new LibSQLVector({id, connectionUrl?, authToken?})` | HTTP (Hrana) |
-| PgVector | `new PgVector({id, connectionString})` | TCP |
-| MongoDBVector | `new MongoDBVector({id, uri, dbName})` | TCP |
-
-### Go-side registration
-
-```go
-Vectors: map[string]brainkit.VectorConfig{
-    "main": brainkit.PgVectorStore(pgConnStr),
-},
-```
-
-Then in .ts: `const vs = vectorStore("main");` — creates a real `PgVector` instance.
-
-### Vector operations
-
-```typescript
-// fixtures/ts/vector/pgvector-methods/index.ts
-const vs = new PgVector({
-    id: "test-vectors",
-    connectionString: process.env.PG_VECTOR_URL,
+bus.on("put", async (msg) => {
+    const thread = {
+        id: msg.payload.id,
+        title: msg.payload.title,
+        resourceId: "demo",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+    await mem.saveThread({ thread });
+    msg.reply({ saved: msg.payload.id });
 });
 
-// Create index
-await vs.createIndex("docs", 1536, "cosine");
-
-// Upsert
-await vs.upsert("docs", [
-    { id: "doc-1", values: embedding1, metadata: { title: "Getting Started" } },
-    { id: "doc-2", values: embedding2, metadata: { title: "API Reference" } },
-]);
-
-// Query
-const results = await vs.query("docs", queryEmbedding, 5);
-// results: [{id, score, metadata}, ...]
+bus.on("get", async (msg) => {
+    const thread = await mem.getThreadById({ threadId: msg.payload.id });
+    msg.reply({ found: thread !== null, thread });
+});
 ```
 
-## Observational Memory
+## Workflow snapshot persistence
 
-LibSQLStore, PostgresStore, and MongoDBStore support 3-tier observational memory:
-1. **Messages** → raw conversation turns
-2. **Observations** → compressed summaries extracted from messages
-3. **Reflections** → higher-level patterns extracted from observations
+Whenever `Config.Storages` is non-empty, brainkit promotes Mastra's
+internal storage from the in-memory fallback to a real backend
+during init. This makes workflow state durable:
 
-InMemoryStore and UpstashStore support basic memory (threads + messages) but not the observational compression pipeline.
+- `workflow.status` reads from storage — survives Kit restart.
+- Suspended workflows survive restarts; `workflow.resume` works on
+  the new Kit.
+- `restartActiveWorkflows` on startup picks up `running` /
+  `waiting` runs from the previous process.
 
-## Workflow Snapshot Persistence
+No manual step is required — declaring a storage is enough. See
+[`examples/workflows/`](../../examples/workflows/).
 
-When a storage backend is configured (any entry in `Config.Storages`), brainkit automatically upgrades Mastra's internal storage from `InMemoryStore` to the configured backend during Kit initialization. This means:
+## Auth matrix
 
-- Workflow snapshots (step results, suspend state, execution paths) persist to the real database
-- `workflow.status` queries read from storage — works even after Kit restart
-- On startup, `restartActiveWorkflows()` picks up any runs that were `running` or `waiting` when the previous Kit died
-- Suspended workflows survive Kit restarts — `workflow.resume` works on the new Kit
+| Backend | Protocol | Auth methods exercised |
+|---|---|---|
+| SQLite (libsql bridge) | HTTP (Hrana v2/v3) | Embedded + token over container |
+| Postgres | TCP | SCRAM-SHA-256, md5, trust |
+| MongoDB | TCP | SCRAM-SHA-256, SCRAM-SHA-1, no-auth |
+| Upstash | HTTP | Token |
 
-The storage upgrade calls `storage.init()` which creates Mastra's domain tables (`mastra_workflow_snapshot`, `mastra_threads`, `mastra_messages`, etc.).
+All tested against real infrastructure; no mocks. SCRAM-SHA-256
+and Postgres CRAM paths use brainkit's jsbridge polyfills
+(`net.Socket` → Go `net.Conn`, WebCrypto `subtle.deriveBits` for
+scramming). See the knowledge base in `../brainkit-maps/knowledge/`
+for specific test results.
 
-## Choosing a Provider
+## Choosing a backend
 
-| Use Case | Recommended |
-|----------|-------------|
-| Development | Embedded LibSQL (zero setup, persistent) |
-| CI/testing | InMemoryStore (fast, no cleanup) |
-| Single-node production | Embedded LibSQL or PostgresStore |
-| Multi-node production | PostgresStore or remote Turso |
-| Existing MongoDB infra | MongoDBStore |
-| Serverless/edge | UpstashStore (HTTP-only) |
-| Need observational memory | LibSQL, Postgres, or MongoDB only |
+| Scenario | Pick |
+|---|---|
+| Local development | `SQLiteStorage("./data.db")` — zero setup, persistent. |
+| Unit tests | `InMemoryStorage()` or `SQLiteStorage(":memory:")`. |
+| Single-node production | SQLite via bridge, or Postgres. |
+| Multi-node production | Postgres, or remote Turso (`LibSQLStore` with URL). |
+| Existing MongoDB infra | `MongoDBStorage`. |
+| Serverless / edge | `UpstashStorage`. |
+
+Vector stores live in `Config.Vectors` — see
+[vectors-and-rag.md](vectors-and-rag.md).

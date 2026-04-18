@@ -1,339 +1,330 @@
 # TypeScript Services
 
-A .ts service is a TypeScript file deployed into a SES Compartment that subscribes to bus topics and handles messages. This is the primary pattern for AI agent services, tool providers, and message handlers in brainkit.
+A "service" in brainkit is a `.ts` file deployed into a SES
+Compartment that subscribes to bus topics and handles incoming
+messages. Services host agents, tools, workflows, and ad-hoc
+handlers — anything you'd otherwise write as a long-running
+process, but expressed as a bundle of message handlers.
 
-## The Service Pattern
+## The mailbox namespace
+
+Every deployment has a stable namespace:
+
+- Deploy with name `"my-service"` → handlers land on
+  `ts.my-service.<topic>`.
+- `bus.on("ask")` inside that deployment subscribes to
+  `ts.my-service.ask`.
+- Go callers reach it with
+  `brainkit.Call[sdk.CustomMsg, Resp](..., sdk.CustomMsg{Topic: "ts.my-service.ask", ...})`
+  or `sdk.SendToService(kit, ctx, "my-service", "ask", payload)`.
+- Other `.ts` code reaches it with
+  `bus.sendTo("my-service", "ask", data)` (or `bus.callTo(...)` for
+  request/response).
+
+The deployment name is the first argument to `PackageInline`, the
+`name` field in a package `manifest.yaml`, or the directory basename
+for `PackageFromDir`.
+
+## Endowments
+
+`.ts` code runs inside a SES Compartment with a fixed set of
+endowments on `globalThis`:
 
 ```typescript
-// Deploy this via sdk.Publish(rt, ctx, sdk.KitDeployMsg{Source: "my-service.ts", Code: ...})
-
-// bus.on subscribes to the deployment mailbox: ts.my-service.<topic>
-bus.on("greet", async (msg) => {
-    const name = msg.payload?.name || "world";
-    msg.reply({ greeting: `Hello, ${name}!` });
-});
+import { generateText, streamText, generateObject, streamObject,
+         embed, embedMany, z } from "ai";
+import { Agent, createTool, createWorkflow, createStep,
+         Memory, InMemoryStore, LibSQLStore } from "agent";
+import { bus, kit, model, embeddingModel,
+         storage, vectorStore, tools, fs, mcp, output } from "kit";
 ```
 
-When this is deployed as `my-service.ts`:
-- `bus.on("greet")` subscribes to `ts.my-service.greet`
-- Go code sends messages via `sdk.SendToService(rt, ctx, "my-service.ts", "greet", payload)`
-- Other .ts code sends via `bus.sendTo("my-service.ts", "greet", data)`
-
-## Four Modules
-
-Every .ts file has access to four modules via endowments:
-
-```typescript
-import { generateText, streamText, generateObject, streamObject, embed, embedMany, z } from "ai";
-import { Agent, createTool, createWorkflow, createStep, Memory, InMemoryStore, ... } from "agent";
-import { bus, kit, model, embeddingModel, tools, fs, mcp, output, generateWithApproval, ... } from "kit";
-import { compile } from "compiler";
-```
-
-The `import` statements are stripped during deployment — the symbols come from Compartment endowments, not ES module resolution. But the imports serve as documentation and give TypeScript IDE support via the `.d.ts` files.
+The `import` lines are stripped during deployment — the symbols are
+already on `globalThis`. Keep them in source for type-checking and
+IDE autocomplete via the shipped `.d.ts` files.
 
 ## Bus API
 
-### bus.publish — request/response
+Symmetric with the Go surface:
+
+| Go | TypeScript |
+|---|---|
+| `sdk.Publish` | `bus.publish(topic, payload)` |
+| `sdk.Emit` | `bus.emit(topic, payload)` |
+| `sdk.SubscribeTo` | `bus.subscribe(topic, handler)` |
+| `brainkit.Call` | `bus.call(topic, payload, { timeoutMs })` |
+| `sdk.SendToService` | `bus.sendTo(service, topic, payload)` |
+| `brainkit.CallStream` | `bus.callStream(topic, payload, onChunk)` |
+| `WithCallTo("peer")` | `bus.callTo("peer", topic, payload)` |
+| `Kit.Deploy` handler | `bus.on(topic, handler)` |
+
+### bus.on — subscribe to the mailbox
 
 ```typescript
-// fixtures/ts/bus/publish-reply/index.ts
-const result = bus.publish("test.greet", { name: "brainkit" });
-// result.replyTo: unique reply topic
-// result.correlationId: for filtering
+bus.on("greet", (msg) => {
+    const name = msg.payload?.name || "world";
+    msg.reply({ greeting: `hello, ${name}` });
+});
+```
 
-bus.subscribe(result.replyTo, (msg) => {
-    // msg.payload is the response
+`bus.on` is only valid inside a deployed `.ts` file — it needs the
+deployment name to scope the subscription. Calling it outside a
+deployment throws.
+
+Handlers may be `async`; the runtime's job pump drives promises and
+scheduled callbacks.
+
+### bus.publish / bus.subscribe — arbitrary topics
+
+```typescript
+const pr = bus.publish("inventory.update", { sku: "X", qty: 5 });
+// pr.replyTo, pr.correlationId
+
+bus.subscribe(pr.replyTo, (msg) => {
+    // one-shot reply
 });
 ```
 
 ### bus.emit — fire-and-forget
 
 ```typescript
-// fixtures/ts/bus/emit-fire-and-forget/index.ts
-bus.emit("events.user-logged-in", { userId: "123" });
-// No replyTo, no response expected
+bus.emit("events.signup", { userId: "123" });
 ```
 
-### bus.on — mailbox pattern (deployed services only)
+### bus.call — await a reply
 
 ```typescript
-// Subscribes to ts.<source>.<localTopic>
-bus.on("ask", (msg) => {
-    msg.reply({ answer: "42" });
-});
+const resp = await bus.call("tools.call", {
+    name: "math.add",
+    input: { a: 2, b: 3 },
+}, { timeoutMs: 2000 });
 ```
 
-`bus.on` only works inside deployed .ts files — it requires a deployment namespace. Calling it outside a deployment throws `"bus.on() can only be used inside a deployed .ts file"`.
+`bus.call` is the `.ts` twin of `brainkit.Call`. It publishes,
+subscribes to the private reply, and resolves with the decoded
+payload.
 
-### bus.subscribe — absolute topic
+### bus.sendTo / bus.callTo — service addressing
 
 ```typescript
-// Subscribe to any topic (not namespace-scoped)
-bus.subscribe("system.events.shutdown", (msg) => {
-    console.log("shutdown received");
-});
+// Fire-and-forget send to another service's mailbox.
+bus.sendTo("logger", "write", { line: "ok" });
+
+// Request/response against a named peer via topology.
+const r = await bus.callTo("analytics", "summary.get", { day: "2024-11-14" });
 ```
 
-### bus.sendTo — service-to-service
+## The message object
 
-```typescript
-// Equivalent to sdk.SendToService in Go
-const result = bus.sendTo("other-service.ts", "process", { data: "hello" });
-// Publishes to ts.other-service.process with replyTo
-```
-
-## Message Object
-
-Every handler receives a `msg` with:
+Every handler receives:
 
 ```typescript
 interface BusMessage {
-    payload: unknown;           // parsed JSON data
-    replyTo: string;            // reply topic (empty for emit'd events)
-    correlationId: string;      // for response filtering
-    topic: string;              // the topic this arrived on
-    callerId: string;           // sender identity
+    payload: unknown;        // parsed JSON body
+    topic: string;
+    replyTo: string;         // "" for emitted events
+    correlationId: string;
+    callerId: string;
 
-    reply(data: unknown): void;  // final response (done=true)
-    send(data: unknown): void;   // intermediate chunk (done=false)
+    reply(data: unknown): void;  // terminal — sets done=true
+    send(data:  unknown): void;  // intermediate chunk — done=false
 }
 ```
 
-### msg.reply — final response
+### msg.reply — terminal response
 
 ```typescript
-bus.on("calculate", (msg) => {
-    const result = msg.payload.a + msg.payload.b;
-    msg.reply({ result }); // done=true in metadata
+bus.on("add", (msg) => {
+    const { a, b } = msg.payload;
+    msg.reply({ sum: a + b });
 });
 ```
 
 ### msg.send — streaming chunks
 
 ```typescript
-// fixtures/ts/bus/streaming-send-reply/index.ts
-bus.on("stream", (msg) => {
-    msg.send({ chunk: 1 });  // done=false
-    msg.send({ chunk: 2 });  // done=false
-    msg.send({ chunk: 3 });  // done=false
-    msg.reply({ done: true, total: 3 }); // done=true (final)
+bus.on("count", (msg) => {
+    const n = msg.payload.n || 3;
+    for (let i = 1; i <= n; i++) msg.send({ tick: i });
+    msg.reply({ done: true, total: n });
 });
 ```
 
-The Go side distinguishes chunks from the final response via `msg.Metadata["done"]`.
+The Go side distinguishes chunks from the terminal reply via the
+`done` flag in metadata. Use `brainkit.CallStream` to consume
+them in order.
 
-## Resource Registration
+See [`examples/streaming/`](../../examples/streaming/).
 
-Creating a tool, agent, or workflow in .ts code does NOT automatically register it. You must call `kit.register`:
+## Registering resources
+
+`kit.register(type, name, ref)` is the only way to make a resource
+visible outside the deployment. Valid types: `"tool"`, `"agent"`,
+`"workflow"`, `"memory"`.
 
 ```typescript
-// fixtures/ts/tools/create-register-call/index.ts
 const myTool = createTool({
     id: "multiply",
-    description: "multiplies two numbers",
+    description: "Multiplies two numbers",
     inputSchema: z.object({ a: z.number(), b: z.number() }),
-    execute: async ({ context: input }) => ({ result: input.a * input.b }),
+    execute: async ({ context: { a, b } }) => ({ result: a * b }),
 });
-
 kit.register("tool", "multiply", myTool);
-// NOW it's callable from Go, plugins, other .ts code
 ```
 
 ```typescript
-// fixtures/ts/agent/generate-basic/index.ts
 const agent = new Agent({
-    name: "my-agent",
+    name: "haiku-bot",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "You are helpful.",
+    instructions: "Write one three-line haiku per prompt.",
 });
-
-kit.register("agent", "my-agent", agent);
-// NOW it appears in agents.list
+kit.register("agent", "haiku-bot", agent);
 ```
 
-Valid types: `"tool"`, `"agent"`, `"workflow"`, `"memory"`. Registration is idempotent — registering the same type+name twice is a no-op.
+Registration is idempotent — registering the same `type+name`
+twice is a no-op. When the deployment is torn down, every resource
+it registered is removed automatically.
 
-## AI in Services
+## Calling Go-registered tools
 
-The canonical pattern — a .ts service that calls AI and replies via the bus:
+Go-registered tools are first-class bus citizens. Call them with
+`bus.call("tools.call", ...)`:
 
 ```typescript
-// Pattern from test/surface/ts_test.go — TestTS_BusServiceAsAIProxy
-bus.on("generate", async (msg) => {
+const sum = await bus.call("tools.call", {
+    name: "math.add",
+    input: { a: 2, b: 3 },
+}, { timeoutMs: 2000 });
+// sum.result is the tool's output
+```
+
+Or wrap one as a Mastra-compatible agent tool with `tool(name)`:
+
+```typescript
+const agent = new Agent({
+    name: "math-bot",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "Use the math.add tool for arithmetic.",
+    tools: { multiply: tool("math.add") },
+});
+```
+
+See [`examples/go-tools/`](../../examples/go-tools/).
+
+## Pattern: service with an agent
+
+```typescript
+const researcher = new Agent({
+    name: "researcher",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "Answer research questions concisely.",
+});
+kit.register("agent", "researcher", researcher);
+
+bus.on("ask", async (msg) => {
     try {
-        const result = await generateText({
-            model: model("openai", "gpt-4o-mini"),
-            prompt: msg.payload.prompt || "say hello",
-            maxTokens: 20,
-        });
-        msg.reply({ text: result.text, usage: result.usage });
+        const r = await researcher.generate(msg.payload.prompt, { maxSteps: 3 });
+        msg.reply({ text: r.text, usage: r.usage });
     } catch (e) {
-        msg.reply({ error: e.message });
+        msg.reply({ error: String(e?.message || e) });
     }
 });
 ```
 
-Async handlers work — the `bus.on` handler can `await` any Promise (fetch, generateText, agent.generate, tools.call, setTimeout). The QuickJS job pump processes Schedule'd callbacks every 10ms, enabling full async operation inside bus handlers.
+See [`examples/ai-chat/`](../../examples/ai-chat/) and
+[`examples/agent-spawner/`](../../examples/agent-spawner/).
 
-## Agents in Services
-
-```typescript
-// fixtures/ts/agent/generate-with-tools/index.ts
-const searchTool = createTool({
-    id: "search",
-    description: "searches the web",
-    inputSchema: z.object({ query: z.string() }),
-    execute: async ({ context: { query } }) => {
-        return { results: [`Result for: ${query}`] };
-    },
-});
-
-const agent = new Agent({
-    name: "researcher",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Use the search tool to answer questions.",
-    tools: { search: searchTool },
-});
-
-kit.register("agent", "researcher", agent);
-
-const result = await agent.generate("What is brainkit?");
-output({ text: result.text, hasSteps: result.steps.length > 0 });
-```
-
-## Agents with Memory
+## Pattern: streaming reply
 
 ```typescript
-// fixtures/ts/agent/with-memory-inmemory/index.ts
-const store = new InMemoryStore();
-const mem = new Memory({ storage: store });
-
-const agent = new Agent({
-    name: "memory-agent",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Remember the user's name.",
-    memory: mem,
+bus.on("stream", async (msg) => {
+    const stream = await streamText({
+        model: model("openai", "gpt-4o-mini"),
+        prompt: msg.payload.prompt,
+    });
+    for await (const delta of stream.textStream) {
+        msg.send({ delta });
+    }
+    msg.reply({ done: true });
 });
-
-kit.register("agent", "memory-agent", agent);
-
-// First call — agent learns the name
-await agent.generate("My name is David", {
-    threadId: "thread-1",
-    resourceId: "user-1",
-});
-
-// Second call — agent remembers
-const result = await agent.generate("What's my name?", {
-    threadId: "thread-1",
-    resourceId: "user-1",
-});
-// result.text contains "David"
 ```
 
-For persistent memory, replace `InMemoryStore` with `LibSQLStore`, `PostgresStore`, or `MongoDBStore`. See [storage-and-memory.md](storage-and-memory.md).
+Consume with `brainkit.CallStream`, `gateway.HandleStream` (SSE),
+or `gateway.HandleWebSocket`. See
+[`examples/streaming/`](../../examples/streaming/).
 
-## HITL Approval
+## Pattern: cancellation
 
-`generateWithApproval` routes tool approval through the bus. Any surface (Go, .ts, plugin) can approve or decline.
+Long-running handlers should watch for cancellation — the
+`brainkit.Call` helper publishes a `_brainkit.cancel` control
+message when its `ctx` is cancelled before a terminal reply.
 
 ```typescript
-// fixtures/ts/agent/hitl-bus-approval/index.ts
-const deleteTool = createTool({
-    id: "delete-record",
-    description: "Delete a record — requires human approval",
-    inputSchema: z.object({ id: z.string() }),
-    requireApproval: true,
-    execute: async ({ id }) => ({ deleted: true }),
+bus.on("slow", async (msg) => {
+    for (let i = 0; i < 100; i++) {
+        if (msg.cancelled) break;
+        msg.send({ tick: i });
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    msg.reply({ done: true });
 });
-
-const agent = new Agent({
-    name: "hitl-agent",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Always use the delete-record tool when asked to delete.",
-    tools: { "delete-record": deleteTool },
-});
-
-const result = await generateWithApproval(agent, "Delete record xyz-789", {
-    approvalTopic: "approvals.pending",
-    timeout: 10000,
-});
-// result.text — the agent's final response after approval
 ```
 
-The bus lifecycle (publish approval request, subscribe for response, wait with timeout) is handled by a Go bridge function — no JS closures, no setTimeout, no GC risk. See [hitl-approval.md](hitl-approval.md).
-
-## Using Go-Registered Tools from .ts
-
-```typescript
-// fixtures/ts/agent/with-registered-tool/index.ts
-// "multiply" was registered in Go before this .ts runs
-const multiplyTool = tool("multiply");
-
-const agent = new Agent({
-    name: "math-bot",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Use the multiply tool.",
-    tools: { multiply: multiplyTool },
-});
-
-const result = await agent.generate("What is 6 times 7?", { maxSteps: 3 });
-```
-
-`tool("name")` resolves a Go-registered tool into a Mastra-compatible tool object that agents can use. It calls `tools.resolve(name)` to get the metadata and wraps it with `createTool({ execute: async (input) => tools.call(name, input) })`.
+Pass `WithCallNoCancelSignal()` on the Go side if a peer opts out of
+this signal.
 
 ## Workflows
 
+`createStep` + `createWorkflow` wire typed steps into a pipeline.
+
 ```typescript
-// fixtures/ts/workflow/then-basic/index.ts
 const step1 = createStep({
     id: "uppercase",
-    inputSchema: z.object({ text: z.string() }),
+    inputSchema:  z.object({ text: z.string() }),
     outputSchema: z.object({ upper: z.string() }),
     execute: async ({ inputData }) => ({ upper: inputData.text.toUpperCase() }),
 });
 
-const step2 = createStep({
-    id: "exclaim",
-    inputSchema: z.object({ upper: z.string() }),
-    outputSchema: z.object({ result: z.string() }),
-    execute: async ({ inputData }) => ({ result: inputData.upper + "!!!" }),
-});
-
 const wf = createWorkflow({
-    id: "my-workflow",
-    inputSchema: z.object({ text: z.string() }),
-    outputSchema: z.object({ result: z.string() }),
-}).then(step1).then(step2).commit();
+    id: "shout",
+    inputSchema:  z.object({ text: z.string() }),
+    outputSchema: z.object({ upper: z.string() }),
+}).then(step1).commit();
 
-const run = await wf.createRun();
-const result = await run.start({ inputData: { text: "hello" } });
-output({ status: result.status, result: result.result });
-// status: "success", result: { result: "HELLO!!!" }
+kit.register("workflow", "shout", wf);
 ```
 
-## Output
+Run from Go with `brainkit.CallWorkflowStart`. See
+[`examples/workflows/`](../../examples/workflows/).
 
-`output(value)` sets the deployment's return value, readable from Go:
+## output
+
+`output(value)` stores a final return value on the deployment,
+readable from Go.
 
 ```typescript
-output({ status: "ok", count: 42 });
+output({ ready: true, version: "1.0.0" });
 ```
 
-```go
-// Go side — after deploy
-result, _ := k.EvalTS(ctx, "__read.ts", `return globalThis.__module_result || "null"`)
-// result: '{"status":"ok","count":42}'
-```
+## console
 
-## Console
-
-`console.log/warn/error/info/debug` are per-source tagged:
+`console.log / warn / error / info / debug` are tagged with the
+source file and routed through `Config.LogHandler` when set,
+otherwise printed via the runtime logger.
 
 ```typescript
-console.log("starting up");  // [my-service.ts] [log] starting up
-console.error("something broke"); // [my-service.ts] [error] something broke
+console.log("starting up");
+// [my-service.ts] [log] starting up
 ```
 
-Routed through `Config.LogHandler` if set, otherwise printed via `log.Printf`.
+## What's intentionally absent
+
+- No blocking bus helpers, no `PublishAwait`, no hidden synchronous
+  waits. Every round trip is an explicit publish / subscribe /
+  wait.
+- No ES module resolution. The `import` lines are stripped; all
+  symbols come from endowments.
+- No module-level side effects at deploy time beyond creating the
+  resources and calling `kit.register` / `bus.on`. The deployment
+  returns once the top-level code finishes; handlers then run as
+  messages arrive.

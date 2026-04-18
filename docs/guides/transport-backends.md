@@ -1,141 +1,156 @@
 # Transport Backends
 
-brainkit supports 5 Watermill transport backends. Embedded NATS is the default — zero-config, real pub/sub. External transports enable multi-Kit communication and plugin subprocesses.
+A Kit has exactly one transport. Pick it with one of the
+`brainkit.Memory()` / `brainkit.EmbeddedNATS()` /
+`brainkit.NATS(url)` / `brainkit.AMQP(url)` / `brainkit.Redis(url)`
+constructors.
 
-## The Five Backends
+| Backend | Constructor | `kit.TransportKind()` | Topic sanitizer |
+|---|---|---|---|
+| GoChannel | `brainkit.Memory()` | `"memory"` | none |
+| Embedded NATS | `brainkit.EmbeddedNATS()` (default) | `"embedded"` | dots → dashes |
+| External NATS JetStream | `brainkit.NATS(url)` | `"nats"` | dots → dashes |
+| AMQP (RabbitMQ) | `brainkit.AMQP(url)` | `"amqp"` | slashes → dashes |
+| Redis Streams | `brainkit.Redis(url)` | `"redis"` | none |
 
-| Backend | Type String | Topic Sanitizer | Container | Use Case |
-|---------|------------|-----------------|-----------|----------|
-| GoChannel | `"memory"` | none | none | Tests. Single-Kit, synchronous. |
-| Embedded NATS | `"embedded"` / `""` | dots → dashes | none | Default. Zero-config, plugins, real pub/sub. |
-| NATS JetStream | `"nats"` | dots → dashes | `nats:latest -js` | Multi-Kit, plugins, production. |
-| AMQP (RabbitMQ) | `"amqp"` | slashes → dashes | `rabbitmq:management` | Existing RabbitMQ infra. |
-| Redis Streams | `"redis"` | none | `redis:latest` | Existing Redis infra. |
+Zero value for `Config.Transport` resolves to
+`brainkit.EmbeddedNATS()`.
 
-## Configuration
-
-Transports are configured via `Config.Transport` and related fields:
+## Memory
 
 ```go
-kit, err := brainkit.New(brainkit.Config{
+brainkit.New(brainkit.Config{
+    Namespace: "my-test",
+    Transport: brainkit.Memory(),
+    FSRoot:    ".",
+})
+```
+
+In-process GoChannel transport. Synchronous delivery, no disk, no
+goroutines beyond the QuickJS runtime itself. Use it for tests and
+single-process demos.
+
+Limits: no cross-process communication, no plugins (the plugin
+supervisor refuses `"memory"`), no NATS JetStream durability.
+
+## Embedded NATS
+
+```go
+brainkit.New(brainkit.Config{
     Namespace: "my-app",
-    Transport: "nats",
-    NATSURL:   "nats://localhost:4222",
-    NATSName:  "my-app",        // durable prefix for JetStream consumers
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    "/var/lib/my-app",
 })
 ```
 
-Transport-related fields in `brainkit.Config`:
+Zero-config in-process NATS server with JetStream. Behaves like a
+real NATS server but runs inside the Go process. Plugins work,
+cross-Kit communication inside the same process works, every
+transport feature (durable streams, ack policies, sanitizers)
+matches external NATS.
+
+JetStream stream data is persisted under
+`<FSRoot>/nats-data/`. Empty `FSRoot` keeps state ephemeral.
+
+Use `brainkit.WithNATSName(name)` to override the durable consumer
+prefix:
 
 ```go
-// Transport fields in brainkit.Config
-Transport   string // "memory", "embedded" (default), "nats", "amqp", "redis"
-NATSURL     string // "nats://localhost:4222"
-NATSName    string // durable consumer prefix
-AMQPURL     string // "amqp://guest:guest@localhost:5672/"
-RedisURL    string // "redis://localhost:6379/0"
+brainkit.EmbeddedNATS(brainkit.WithNATSName("my-app-consumers"))
 ```
 
-## Topic Sanitizers
+This is the default — the zero value of `TransportConfig`
+promotes to `EmbeddedNATS()` inside `brainkit.New`.
 
-Each transport has characters that are invalid in its topic/subject/table naming system. The transport's sanitizer transforms logical topics before publishing and subscribing. This is automatic — user code works with logical names.
-
-### NATS
-
-Dots are NATS subject delimiters. All dots, slashes, @, and spaces become dashes:
-
-```
-tools.call → tools-call
-ts.my-service.greet → ts-my-service-greet
-plugin.tool.acme/plugin@1.0.0/echo → plugin-tool-acme-plugin-1-0-0-echo
-```
-
-### AMQP
-
-Dots are native routing key delimiters — preserved. Slashes, @, spaces become dashes:
-
-```
-tools.call → tools.call (unchanged)
-plugin.tool.acme/plugin@1.0.0/echo → plugin.tool.acme-plugin-1.0.0-echo
-```
-
-### GoChannel + Redis
-
-No sanitization needed — accept any string.
-
-## NATS JetStream Details
-
-NATS uses JetStream with auto-provisioning. On first subscribe, a JetStream stream is created for the subject. This can be slow — 1-5 seconds per stream.
+## External NATS JetStream
 
 ```go
-// internal/messaging/transport.go — NATS config
-publisher, err := wmnats.NewPublisher(wmnats.PublisherConfig{
-    URL:               url,
-    SubjectCalculator: natsSubjectCalc, // dots → dashes
-    JetStream:         wmnats.JetStreamConfig{AutoProvision: true, TrackMsgId: true},
-})
-
-subscriber, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
-    URL:               url,
-    QueueGroupPrefix:  durablePrefix,
-    SubscribersCount:  1,
-    CloseTimeout:      15 * time.Second,
-    AckWaitTimeout:    30 * time.Second,
-    SubscribeTimeout:  30 * time.Second,
-    JetStream: wmnats.JetStreamConfig{
-        AutoProvision: true,
-        DurablePrefix: durablePrefix,
-        TrackMsgId:    true,
-    },
+brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: brainkit.NATS("nats://nats.example.com:4222",
+        brainkit.WithNATSName("my-app")),
+    FSRoot:    "/var/lib/my-app",
 })
 ```
 
-`brainkit.New` with Transport set waits up to 2 minutes for `router.Running()` to account for JetStream stream provisioning. If it times out, you get `TimeoutError{Operation: "router start (NATS JetStream provisioning)"}`.
+Connects to an external NATS server. Identical feature set to
+embedded; pick external when multiple Kits across machines need to
+share the bus.
 
-**NATS topic gotcha:** The original NATS JetStream hanging issue was caused by dots in stream names. The `TopicSanitizer` (dots → dashes) fixes this. If you ever bypass the sanitizer, streams with dots in their names will hang during auto-provisioning.
+JetStream streams are provisioned on first subscribe. The router
+start waits up to 2 minutes for this to complete; if it times out
+you get `*sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}`.
 
-## Transport Matrix Testing
-
-Every operation is tested on every backend. The test matrix in `test/transport/matrix_test.go` runs operations across 5 backends (memory, embedded, nats, amqp, redis):
-
-| Operation | What it tests |
-|-----------|-------------|
-| `tools_call` | Tool invocation round-trip |
-| `tools_list` | Tool listing |
-| `tools_resolve` | Tool metadata lookup |
-| `fs_write_read` | File write + read round-trip |
-| `fs_mkdir_list_stat_delete` | Full filesystem lifecycle |
-| `agents_list_empty` | Agent registry query |
-| `kit_deploy_teardown` | .ts deployment + teardown |
-| `async_correlation` | CorrelationID-based response routing |
-| `kit_redeploy` | Atomic teardown + deploy |
-| `registry_has_list` | Provider registry queries |
-
-Container-based backends (NATS, AMQP, Redis) use testcontainers-go with Podman. The test helper `testutil.AllBackends(t)` returns only available backends — GoChannel and Embedded NATS always, container backends only if Podman is running.
-
-## Backend Readiness
-
-Some backends need time after container start before they can process messages (AMQP queue binding, NATS JetStream provisioning). The test helper `WaitForBackendReady` probes with a pub/sub round-trip:
+## AMQP (RabbitMQ)
 
 ```go
-// internal/testutil/backend.go
-func WaitForBackendReady(t *testing.T, transport *messaging.Transport) {
-    for attempt := 0; attempt < 5; attempt++ {
-        // Publish probe message → subscribe → wait for round-trip
-        // Retries with increasing delay
-    }
-}
+brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: brainkit.AMQP("amqp://guest:guest@rabbit.example.com:5672/"),
+    FSRoot:    "/var/lib/my-app",
+})
 ```
 
-## Choosing a Backend
+Useful when your infrastructure already runs RabbitMQ.
 
-| Scenario | Recommended |
-|----------|-------------|
-| Default | `"embedded"` (zero-config, real pub/sub) |
-| Tests | `"memory"` (synchronous, no I/O) |
-| Multi-Kit, plugins | `"nats"` |
-| Existing RabbitMQ | `"amqp"` |
-| Existing Redis | `"redis"` |
-| Production, new infra | `"nats"` (best JetStream durability + competing consumers) |
+## Redis Streams
 
-Embedded NATS and external NATS are the backends tested with plugins and cross-Kit communication. The others work for single-Kit transport but haven't been validated for plugin subprocess flows.
+```go
+brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: brainkit.Redis("redis://redis.example.com:6379/0"),
+    FSRoot:    "/var/lib/my-app",
+})
+```
+
+Watermill's Redis Streams driver. Useful when the rest of the
+stack already runs Redis.
+
+## Topic sanitizers
+
+Every transport has invalid characters in its subject / routing
+key / stream name rules. brainkit rewrites logical topics into
+transport-legal ones automatically.
+
+| Transport | Rule | Example |
+|---|---|---|
+| GoChannel / Redis | no rewrite | `tools.call` → `tools.call` |
+| NATS (embedded + external) | dots → dashes | `tools.call` → `tools-call` |
+| AMQP | slashes → dashes (dots preserved as routing key delimiters) | `plugin.tool.acme/x@1/echo` → `plugin.tool.acme-x@1-echo` |
+
+Application code always speaks the logical topic. Sanitizers are
+transparent.
+
+## Picking a backend
+
+| Scenario | Pick |
+|---|---|
+| Unit tests | `brainkit.Memory()` |
+| Library embed, single process | `brainkit.EmbeddedNATS()` — default |
+| Plugins in a single process | `brainkit.EmbeddedNATS()` |
+| Multiple Kits across machines | `brainkit.NATS(url)` |
+| Existing RabbitMQ | `brainkit.AMQP(url)` |
+| Existing Redis | `brainkit.Redis(url)` |
+
+Embedded NATS and external NATS are the only transports validated
+against the plugin supervisor and cross-Kit flows. The others
+carry the core bus surface but aren't part of the plugin /
+cross-Kit matrix.
+
+## Inspecting the running transport
+
+```go
+fmt.Println(kit.TransportKind())  // "memory" | "embedded" | "nats" | "amqp" | "redis"
+```
+
+Modules use this to refuse configurations they can't support (e.g.
+`modules/plugins` rejects `"memory"`).
+
+## Transport matrix in tests
+
+`test/transport/matrix_test.go` exercises every bus operation
+against every backend. Container-backed backends (NATS, AMQP,
+Redis) use testcontainers-go with Podman — the helper
+`testutil.AllBackends(t)` returns only those that are reachable.
+See [`../../test/transport/`](../../test/transport/) for the full
+matrix.

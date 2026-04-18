@@ -1,132 +1,248 @@
 # Plugins
 
-Plugins are separate Go processes that extend a Kit's capabilities. They connect to the host Kit via WebSocket, register tools, and handle calls through a JSON protocol. No Watermill or transport dependency — plugins only need the SDK module.
+Plugins are separately-compiled Go binaries that extend a Kit's
+capabilities at runtime. They connect to the host over localhost
+WebSocket, register tools and bus subscriptions, and are
+supervised by the `modules/plugins` manager (launch, restart,
+shutdown, persistence).
 
-## Building a Plugin
+Plugins require a non-memory transport — the WebSocket server
+needs real networking and the `plugin.*` bus commands run over the
+external transport the plugins share with the host. `EmbeddedNATS`
+works out of the box.
+
+See [`examples/plugin-author/`](../../examples/plugin-author/) for
+a minimal plugin and
+[`examples/plugin-host/`](../../examples/plugin-host/) for a live
+round-trip host that builds the plugin from source.
+
+## Plugin project layout
+
+Plugins live in their own Go module with their own `go.mod`, so
+they can ship as standalone binaries. Use `replace` directives
+while developing in-tree:
+
+```
+examples/plugin-author/
+├── go.mod          # own module
+├── main.go         # one file per plugin is plenty
+└── README.md
+```
+
+Minimal `go.mod`:
+
+```go
+module github.com/your-org/my-plugin
+
+go 1.26
+
+require github.com/brainlet/brainkit/sdk v1.0.0-rc.1
+```
+
+Plugins depend only on the `brainkit/sdk` tree:
+
+- `sdk/plugin` — the author-facing framework
+  (`bkplugin.New`, `bkplugin.Tool`, `bkplugin.On`).
+- `sdk` — message types, the `Runtime` interface.
+- `sdk/pluginws` — WebSocket wire-protocol types.
+
+No QuickJS, no Watermill, no esbuild.
+
+## Write a plugin
 
 ```go
 package main
 
 import (
     "context"
+    "encoding/json"
     "log"
 
     bkplugin "github.com/brainlet/brainkit/sdk/plugin"
 )
 
+type EchoIn  struct { Text   string `json:"text"` }
+type EchoOut struct { Echoed string `json:"echoed"` }
+
 func main() {
-    p := bkplugin.New("acme", "my-plugin", "1.0.0",
-        bkplugin.WithDescription("A sample plugin"),
-    )
+    p := bkplugin.New("brainlet", "plugin-author", "0.1.0",
+        bkplugin.WithDescription("Minimal brainkit plugin example"))
 
-    bkplugin.Tool(p, "echo", "echoes the input", handleEcho)
-    bkplugin.Tool(p, "concat", "concatenates strings", handleConcat)
+    bkplugin.Tool(p, "echo", "Echo the input text back.",
+        func(_ context.Context, _ bkplugin.Client, in EchoIn) (EchoOut, error) {
+            return EchoOut{Echoed: in.Text}, nil
+        })
 
-    p.OnStart(func(client bkplugin.Client) error {
-        log.Println("plugin started")
-        return nil
-    })
+    bkplugin.On[json.RawMessage](p, "demo.events",
+        func(_ context.Context, payload json.RawMessage, _ bkplugin.Client) {
+            log.Printf("received demo.events: %s", string(payload))
+        })
 
     if err := p.Run(); err != nil {
-        log.Fatal(err)
+        log.Fatalf("plugin run: %v", err)
     }
 }
-
-type EchoInput struct {
-    Message string `json:"message"`
-}
-type EchoOutput struct {
-    Echoed string `json:"echoed"`
-}
-
-func handleEcho(ctx context.Context, client bkplugin.Client, input EchoInput) (EchoOutput, error) {
-    return EchoOutput{Echoed: input.Message}, nil
-}
-
-type ConcatInput struct {
-    A string `json:"a"`
-    B string `json:"b"`
-}
-type ConcatOutput struct {
-    Result string `json:"result"`
-}
-
-func handleConcat(ctx context.Context, client bkplugin.Client, input ConcatInput) (ConcatOutput, error) {
-    return ConcatOutput{Result: input.A + input.B}, nil
-}
 ```
 
-## Plugin Lifecycle
+Build a flat binary:
 
-```
-1. Host starts plugin subprocess, passes BRAINKIT_PLUGIN_WS_URL env var
-2. Plugin connects to host via WebSocket
-3. Plugin sends manifest (tool definitions) over WS
-4. Host registers tools, sends manifest.ack
-5. Plugin prints "READY:acme/my-plugin@1.0.0" to stdout
-6. Host reads READY → plugin is operational
-7. Host sends tool.call messages over WS
-8. Plugin executes tools, sends tool.result back
-9. Plugin runs until SIGTERM
+```bash
+cd plugin-author
+go mod tidy
+go build .
 ```
 
-Environment variables injected by the host:
+Output: an `./plugin-author` binary with no runtime dependencies
+beyond its own Go module.
 
-| Var | Value |
-|-----|-------|
-| `BRAINKIT_PLUGIN_WS_URL` | WebSocket URL to connect to host |
-| `BRAINKIT_NAMESPACE` | Kit namespace |
-| `BRAINKIT_NODE_ID` | Host node ID |
-| `BRAINKIT_PLUGIN_CONFIG` | Plugin-specific config JSON |
+## Host a plugin
 
-## Host Configuration
+Wire `modules/plugins` on the host Kit and point it at the built
+binary:
 
 ```go
+import (
+    "github.com/brainlet/brainkit"
+    pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+)
+
 kit, err := brainkit.New(brainkit.Config{
-    Namespace: "my-app",
-    Transport: "nats",
-    NATSURL:   "nats://localhost:4222",
-    Plugins: []brainkit.PluginConfig{{
-        Name:        "my-plugin",
-        Binary:      "./plugins/my-plugin",
-        AutoRestart: true,
-        Env: map[string]string{
-            "DB_PATH": "/data/plugin.db",
-        },
-    }},
+    Namespace: "plugin-host-demo",
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    "/var/lib/host",
+    Modules: []brainkit.Module{
+        pluginsmod.NewModule(pluginsmod.Config{
+            Plugins: []brainkit.PluginConfig{{
+                Name:         "demo",
+                Binary:       "./examples/plugin-author/plugin-author",
+                AutoRestart:  false,
+                StartTimeout: 15 * time.Second,
+            }},
+        }),
+    },
 })
 ```
 
-Plugins require a transport backend (not memory) because the host needs a running Node for the WS server.
+`brainkit.PluginConfig` fields most users touch:
 
-## Plugin Dependencies
+| Field | Purpose |
+|---|---|
+| `Name` | Logical identifier on the bus. |
+| `Binary` | Path to the plugin binary. |
+| `AutoRestart` | Restart with exponential backoff on exit. |
+| `StartTimeout` | How long to wait for the READY line. |
+| `Env` | Extra env vars passed to the plugin process. |
+| `Args` | Extra CLI args. |
 
-Plugins depend only on the SDK module:
+## Wait for registration
 
+Plugins announce themselves on the `plugin.registered` event.
+Subscribe with `sdk.SubscribeTo`:
+
+```go
+unsub, err := sdk.SubscribeTo[sdk.PluginRegisteredEvent](
+    kit, ctx, "plugin.registered",
+    func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+        if evt.Name == "demo" {
+            fmt.Printf("plugin ready: %s/%s@%s\n",
+                evt.Owner, evt.Name, evt.Version)
+        }
+    })
+defer unsub()
 ```
-go get github.com/brainlet/brainkit/sdk
+
+Once the event fires, the plugin's tools appear in the Kit's tool
+registry alongside Go-registered tools and are callable via
+`tools.call` from every surface.
+
+## Call a plugin tool
+
+Same `tools.call` topic as Go tools:
+
+```go
+resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+    Name:  "echo",
+    Input: map[string]any{"text": "ping"},
+}, brainkit.WithCallTimeout(10*time.Second))
+// resp.Result == json.RawMessage(`{"echoed":"ping"}`)
 ```
 
-This gives you: `sdk/plugin` (framework), `sdk` (message types, Runtime interface), `sdk/pluginws` (protocol types). Dependencies: `coder/websocket` + `google/uuid`. No quickjs, no watermill, no esbuild.
+From `.ts`:
 
-## Calling Plugin Tools from .ts
-
-Deployed .ts code calls plugin tools via `tools.call()`:
-
-```typescript
-bus.on("process", async (msg) => {
-    const result = await tools.call("set", { key: "hello", value: "world" });
-    msg.reply(result);
-});
+```ts
+const r = await bus.call("tools.call", {
+    name:  "echo",
+    input: { text: "ping" },
+}, { timeoutMs: 10000 });
 ```
 
-The tool name matches the short name registered by the plugin. The bus routes the call through the host's WS connection to the plugin.
+## Lifecycle and bus commands
 
-## Available Plugins
+The `modules/plugins` manager owns:
 
-| Plugin | Tools | Description |
-|--------|-------|-------------|
-| `brainkit-plugin-kv` | set, get, delete, list | SQLite key-value store |
-| `brainkit-plugin-hackernews` | top, new, best, item, search, user | Hacker News reader |
-| `brainkit-plugin-wikipedia` | search, summary, article, random, links | Wikipedia reader |
-| `brainkit-plugin-cron` | create, list, remove, pause, resume | Job scheduling |
+1. **Supervision** — launch, restart with exponential backoff,
+   shutdown on Kit close, optional persistence of the plugin set to
+   `Config.Store` for restart recovery.
+2. **WebSocket server** — the plugin dials into a localhost
+   endpoint for manifest handshake, tool-call dispatch, bus
+   publish / subscribe bridging, and heartbeat.
+3. **`plugin.*` bus commands** — `plugin.start`, `plugin.stop`,
+   `plugin.restart`, `plugin.listRunning`, `plugin.status`,
+   `plugin.manifest`.
+
+All six commands have generated Call wrappers:
+`brainkit.CallPluginStart`, `CallPluginStop`, `CallPluginRestart`,
+etc.
+
+## Host environment variables
+
+The manager injects a small fixed set into the plugin process:
+
+| Variable | Meaning |
+|---|---|
+| `BRAINKIT_PLUGIN_WS_URL` | WebSocket URL to dial back to the host. |
+| `BRAINKIT_NAMESPACE` | Host Kit namespace. |
+| `BRAINKIT_PLUGIN_NAME` | The plugin's configured name. |
+| `BRAINKIT_PLUGIN_CONFIG` | JSON string of plugin-specific config. |
+
+Additional `Env` in `PluginConfig` is merged on top. Values of the
+form `$secret:NAME` are resolved against the Kit's secret store
+before the process is launched.
+
+## Protocol outline
+
+1. Host starts the binary with injected env.
+2. Plugin dials `BRAINKIT_PLUGIN_WS_URL`.
+3. Plugin sends a manifest frame listing tools and bus
+   subscriptions.
+4. Host registers tools, returns `manifest.ack`.
+5. Plugin prints `READY:<owner>/<name>@<version>` to stdout.
+6. Host reads `READY` → plugin is operational. Tools appear in
+   `tools.list`; subscriptions start receiving messages.
+7. Host dispatches `tool.call` frames; plugin returns
+   `tool.result`. Bus publishes from the plugin traverse the WS
+   connection and get rebroadcast on the host transport.
+8. On SIGTERM, the plugin's `Run()` returns and the process exits.
+
+Details live in `sdk/pluginws/` (wire protocol) and
+`modules/plugins/` (host supervisor). Most plugin authors never
+touch either.
+
+## Secrets rotation
+
+When the plugins module is wired and you call
+`kit.Secrets().Rotate(ctx, name, newValue)`, the manager checks
+whether any plugin's `Env` references `$secret:name` and restarts
+those plugins with the refreshed value. Nothing extra to wire —
+`modules/plugins` registers a restarter with the Kit during `Init`.
+
+## Cancellation
+
+Tool calls plumb cancellation end-to-end:
+
+- Go caller ctx cancelled → host sends a `tool.cancel` frame to
+  the plugin → plugin's `ctx` in the tool handler is cancelled.
+- Plugin returns promptly; the host finalizes the call with
+  `*caller.CallCancelledError`.
+
+Long-running tools should watch `ctx.Done()` and return early.

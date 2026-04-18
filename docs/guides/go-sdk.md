@@ -1,243 +1,464 @@
 # Go SDK
 
-The SDK package (`sdk/`) is the public Go API for interacting with brainkit. It works with any `sdk.Runtime` — Kit or plugin client.
+The Go API surface you write against is the `brainkit` package
+(Kit, Config, accessors, Call wrappers) plus a thin `sdk` package
+that owns the message envelope and typed message shapes. This guide
+covers every piece you'd reach for in a production program.
 
-## The Async Pattern
-
-brainkit is pure async pub/sub. Every operation follows the same pattern:
-
-```go
-// 1. Publish — returns routing info
-pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: input})
-
-// 2. Subscribe to the reply topic
-done := make(chan sdk.ToolCallResp, 1)
-unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr.ReplyTo,
-    func(resp sdk.ToolCallResp, msg sdk.Message) {
-        done <- resp
-    })
-defer unsub()
-
-// 3. Wait
-select {
-case resp := <-done:
-    fmt.Println("result:", string(resp.Result))
-case <-ctx.Done():
-    fmt.Println("timeout")
-}
-```
-
-There is no `AskSync`, no `PublishAwait`, no blocking helper. You always publish, subscribe, and wait explicitly.
-
-## Core Functions
-
-### Publish — typed request with replyTo
+## The Kit
 
 ```go
-func Publish[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T, opts ...PublishOption) (PublishResult, error)
-```
+import "github.com/brainlet/brainkit"
 
-Sends a typed message. Generates a correlationID and replyTo topic automatically.
-
-```go
-type PublishResult struct {
-    MessageID     string // Watermill message UUID
-    CorrelationID string // for response filtering
-    ReplyTo       string // where responses will be sent
-    Topic         string // where the message was published
-}
-```
-
-### Emit — fire-and-forget
-
-```go
-func Emit[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, msg T) error
-```
-
-Sends a typed message with no replyTo. No response expected.
-
-```go
-sdk.Emit(rt, ctx, sdk.KitDeployedEvent{
-    Source:    "my-service.ts",
-    Resources: resources,
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "my-app",
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    "/var/lib/my-app",
 })
+if err != nil { log.Fatal(err) }
+defer kit.Close()
 ```
 
-### SubscribeTo — typed subscription
+`brainkit.New` returns a `*Kit`. Everything else hangs off the Kit
+or the package — there is no separate Runtime type you need to
+construct.
+
+Lifecycle:
+
+| Method | Behaviour |
+|---|---|
+| `kit.Close()` | Fast shutdown with a 5 s drain timeout. |
+| `kit.Shutdown(ctx)` | Graceful drain bound by `ctx`. |
+| `kit.ShutdownSignal()` | `<-chan struct{}` closed when tear-down begins. Long-running goroutines select on it. |
+
+Identity helpers:
 
 ```go
-func SubscribeTo[T any](rt Runtime, ctx context.Context, topic string, handler func(T, sdk.Message)) (func(), error)
+kit.Namespace()      // string
+kit.CallerID()       // string stamped into outbound metadata
+kit.TransportKind()  // "memory" | "embedded" | "nats" | "amqp" | "redis"
 ```
 
-Subscribes to a topic and deserializes messages into type T. Returns a cancel function. The subscription is active before SubscribeTo returns (contract: no race between publish and subscribe).
+## Config
 
-### Reply — respond to a message
+`brainkit.Config` is a flat struct. Zero value yields an in-memory
+Kit with no persistence and auto-detected AI providers. Common
+fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `Namespace` | `string` | Bus topic namespace. Default `"user"`. |
+| `CallerID` | `string` | Identity in metadata. Defaults to `Namespace`. |
+| `ClusterID` | `string` | Logical group (peers with same transport + cluster discover each other). Default `"default"`. |
+| `Transport` | `TransportConfig` | See [transport-backends.md](transport-backends.md). |
+| `FSRoot` | `string` | Filesystem sandbox for deployed `.ts`. |
+| `Storages` | `map[string]StorageConfig` | Named KV / SQL backends resolved via `storage("name")` in `.ts`. |
+| `Vectors` | `map[string]VectorConfig` | Named vector stores resolved via `vectorStore("name")` in `.ts`. |
+| `Providers` | `[]ProviderConfig` | AI providers. Nil = auto-detect from env. |
+| `EnvVars` | `map[string]string` | Overrides `os.Getenv` within this Kit. |
+| `SecretKey` | `string` | Master key for the encrypted secret store. Empty = env-only dev mode. |
+| `SecretStore` | `SecretStore` | Override the auto-created store. |
+| `Tracing` | `bool` | Enable tracing with an auto-created in-memory store. |
+| `TraceStore` | `TraceStore` | Override the auto-created trace store. |
+| `TraceSampleRate` | `float64` | 0.0–1.0. Default 1.0. |
+| `Store` | `KitStore` | Persistence for deployments, schedules, plugins. `nil` = ephemeral. |
+| `Logger` | `*slog.Logger` | Default `slog.Default()`. |
+| `LogHandler` | `func(LogEntry)` | Tagged log stream from `.ts` and the runtime. |
+| `ErrorHandler` | `func(error)` | Non-fatal error sink. |
+| `MaxConcurrency` | `int` | Concurrent bus handler cap. 0 = unlimited. |
+| `MaxStackSize` | `int` | QuickJS stack bytes. Default 1 MB. |
+| `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
+| `Modules` | `[]Module` | Opt-in subsystems. |
+
+## Accessors
+
+After `New`, four accessors manage registered resources:
 
 ```go
-func Reply(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
+kit.Providers()  // *Providers — Register, Unregister, List, Get, Has
+kit.Storages()   // *Storages  — (plural) same five methods
+kit.Vectors()    // *Vectors   — same five methods
+kit.Secrets()    // *Secrets   — Set, Get, Delete, List, Rotate
 ```
 
-Sends a final response to the message's replyTo topic. Sets `done=true` in metadata. Returns `ErrNoReplyTo` if the message has no replyTo (was emitted, not published). Returns `ErrNotReplier` if the runtime doesn't implement the Replier interface.
-
-### SendChunk — intermediate streaming response
+Example:
 
 ```go
-func SendChunk(rt Runtime, ctx context.Context, msg sdk.Message, payload any) error
+kit.Providers().Register("openai", brainkit.AIProviderType("openai"),
+    map[string]any{"apiKey": os.Getenv("OPENAI_API_KEY")})
+
+list := kit.Storages().List()
+for _, s := range list { fmt.Println(s.Name, s.Type) }
+
+if err := kit.Secrets().Set(ctx, "API_TOKEN", "sk-..."); err != nil { ... }
 ```
 
-Same as Reply but sets `done=false`. Use for streaming patterns where multiple responses precede a final Reply.
+Secrets require `Config.SecretKey`; otherwise `Set`/`Get`/`Delete`
+return an error wrapping a `NotConfigured` shape.
+
+See [`examples/secrets/`](../../examples/secrets/).
+
+## Providers
+
+Twelve builders in the `brainkit` package, each returning
+`ProviderConfig`:
 
 ```go
-// Pattern from test/bus/sdk_reply_test.go
-sdk.SubscribeTo[json.RawMessage](rt, ctx, "request.topic",
-    func(payload json.RawMessage, msg sdk.Message) {
-        sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 1})
-        sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 2})
-        sdk.SendChunk(rt, ctx, msg, map[string]int{"chunk": 3})
-        sdk.Reply(rt, ctx, msg, map[string]any{"done": true, "total": 3})
-    })
+brainkit.OpenAI(key, opts...)
+brainkit.Anthropic(key, opts...)
+brainkit.Google(key, opts...)
+brainkit.Mistral(key, opts...)
+brainkit.Groq(key, opts...)
+brainkit.DeepSeek(key, opts...)
+brainkit.XAI(key, opts...)
+brainkit.Cohere(key, opts...)
+brainkit.Perplexity(key, opts...)
+brainkit.TogetherAI(key, opts...)
+brainkit.Fireworks(key, opts...)
+brainkit.Cerebras(key, opts...)
 ```
 
-### SendToService — address a .ts service
+Options: `brainkit.WithBaseURL(url)`, `brainkit.WithHeaders(h)`.
+
+Pass them in `Config.Providers`, or leave nil to auto-detect from
+env (`OPENAI_API_KEY` → `openai`, `ANTHROPIC_API_KEY` →
+`anthropic`, etc.).
+
+## Storage + vector constructors
 
 ```go
-func SendToService(rt Runtime, ctx context.Context, service, topic string, payload any, opts ...PublishOption) (PublishResult, error)
+brainkit.SQLiteStorage(path)
+brainkit.PostgresStorage(dsn)
+brainkit.MongoDBStorage(uri, dbName)
+brainkit.UpstashStorage(url, token)
+brainkit.InMemoryStorage()
+
+brainkit.SQLiteVector(path)
+brainkit.PgVectorStore(dsn)
+brainkit.MongoDBVectorStore(uri, dbName)
 ```
 
-Resolves the naming convention and publishes:
-- `"my-agent.ts"` + `"ask"` → topic `"ts.my-agent.ask"`
-- `"my-agent"` + `"ask"` → topic `"ts.my-agent.ask"` (`.ts` suffix optional)
-- `"nested/svc"` + `"rpc"` → topic `"ts.nested.svc.rpc"`
+Use the results as values inside `Config.Storages` / `Config.Vectors`.
+
+## Calling over the bus
+
+### Typed generic
 
 ```go
-// Pattern from test/bus/sdk_reply_test.go
-pr, err := sdk.SendToService(rt, ctx, "calc.ts", "add", map[string]int{"a": 17, "b": 25})
+func Call[Req sdk.BrainkitMessage, Resp any](
+    k *Kit, ctx context.Context, req Req, opts ...CallOption,
+) (Resp, error)
 ```
 
-### PublishTo — cross-Kit
+Publishes `req` on `req.BusTopic()`, waits for the reply on a
+private shared-inbox topic, returns the decoded response. Requires
+either `ctx.Deadline()` or `WithCallTimeout`; otherwise returns
+`*caller.NoDeadlineError`.
 
 ```go
-func PublishTo[T sdk.BrainkitMessage](rt Runtime, ctx context.Context, targetNamespace string, msg T, opts ...PublishOption) (PublishResult, error)
-```
-
-Publishes to a specific Kit's namespace. Requires `CrossNamespaceRuntime` (Kit, not plugin client). See [cross-kit.md](../concepts/cross-kit.md).
-
-### WithReplyTo — override reply topic
-
-```go
-pr, err := sdk.SendToService(rt, ctx, "streamer.ts", "stream",
-    json.RawMessage(`{}`),
-    sdk.WithReplyTo("my-custom-reply-topic"),
+resp, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
+    kit, ctx,
+    sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"msg": "hi"}},
+    brainkit.WithCallTimeout(2*time.Second),
 )
-// Responses go to "my-custom-reply-topic" instead of auto-generated UUID topic
 ```
 
-## Typed Message Pairs
-
-Every command has a request type and a response type in `sdk/`:
-
-| Request | Response | Topic |
-|---------|----------|-------|
-| `ToolCallMsg` | `ToolCallResp` | `tools.call` |
-| `ToolListMsg` | `ToolListResp` | `tools.list` |
-| `ToolResolveMsg` | `ToolResolveResp` | `tools.resolve` |
-| `KitDeployMsg` | `KitDeployResp` | `kit.deploy` |
-| `KitTeardownMsg` | `KitTeardownResp` | `kit.teardown` |
-| `KitRedeployMsg` | `KitRedeployResp` | `kit.redeploy` |
-| `KitListMsg` | `KitListResp` | `kit.list` |
-| `AgentListMsg` | `AgentListResp` | `agents.list` |
-| `AgentDiscoverMsg` | `AgentDiscoverResp` | `agents.discover` |
-| `AgentGetStatusMsg` | `AgentGetStatusResp` | `agents.get-status` |
-| `AgentSetStatusMsg` | `AgentSetStatusResp` | `agents.set-status` |
-| `WorkflowStartMsg` | `WorkflowStartResp` | `workflow.start` |
-| `WorkflowStartAsyncMsg` | `WorkflowStartAsyncResp` | `workflow.startAsync` |
-| `WorkflowStatusMsg` | `WorkflowStatusResp` | `workflow.status` |
-| `WorkflowResumeMsg` | `WorkflowResumeResp` | `workflow.resume` |
-| `WorkflowCancelMsg` | `WorkflowCancelResp` | `workflow.cancel` |
-| `WorkflowListMsg` | `WorkflowListResp` | `workflow.list` |
-| `WorkflowRunsMsg` | `WorkflowRunsResp` | `workflow.runs` |
-| `WorkflowRestartMsg` | `WorkflowRestartResp` | `workflow.restart` |
-| `McpListToolsMsg` | `McpListToolsResp` | `mcp.listTools` |
-| `McpCallToolMsg` | `McpCallToolResp` | `mcp.callTool` |
-| `RegistryHasMsg` | `RegistryHasResp` | `registry.has` |
-| `RegistryListMsg` | `RegistryListResp` | `registry.list` |
-| `RegistryResolveMsg` | `RegistryResolveResp` | `registry.resolve` |
-| `SecretsSetMsg` | `SecretsSetResp` | `secrets.set` |
-| `SecretsGetMsg` | `SecretsGetResp` | `secrets.get` |
-| `SecretsDeleteMsg` | `SecretsDeleteResp` | `secrets.delete` |
-| `SecretsListMsg` | `SecretsListResp` | `secrets.list` |
-| `SecretsRotateMsg` | `SecretsRotateResp` | `secrets.rotate` |
-
-### CustomMsg — ad-hoc topics
-
-For topics not in the command catalog (user-defined services, custom events):
+For bespoke topics use `sdk.CustomMsg`:
 
 ```go
-pr, err := sdk.Publish(rt, ctx, sdk.CustomMsg{
-    Topic:   "my-custom-topic",
-    Payload: json.RawMessage(`{"hello":"world"}`),
-})
+payload, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](
+    kit, ctx,
+    sdk.CustomMsg{
+        Topic:   "ts.greeter.hello",
+        Payload: json.RawMessage(`{"name":"world"}`),
+    },
+    brainkit.WithCallTimeout(2*time.Second),
+)
 ```
 
-`CustomMsg.MarshalJSON` serializes only the Payload (not the Topic wrapper) so subscribers receive the inner payload directly. This means `json.Marshal(customMsg)` drops the Topic — use `customMsg.String()` for debugging.
+### Generated wrappers
 
-### Events
-
-Fire-and-forget events:
+`call_gen.go` ships 62 generated wrappers — one per typed
+Msg/Resp pair — that saturate the generics so your call sites stay
+readable:
 
 ```go
-sdk.Emit(rt, ctx, sdk.KitDeployedEvent{Source: "my-service.ts"})
-sdk.Emit(rt, ctx, sdk.KitTeardownedEvent{Source: "my-service.ts", Removed: 3})
-sdk.Emit(rt, ctx, sdk.PluginRegisteredEvent{Owner: "acme", Name: "cron", Version: "1.0.0", Tools: 5})
+resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{...})
+resp, err := brainkit.CallAuditQuery(kit, ctx, sdk.AuditQueryMsg{...})
+resp, err := brainkit.CallScheduleCreate(kit, ctx, sdk.ScheduleCreateMsg{...})
+resp, err := brainkit.CallMcpListTools(kit, ctx, sdk.McpListToolsMsg{})
 ```
 
-## Generated Typed Wrappers
+Your editor's autocomplete on `brainkit.Call` will show you the
+full list.
 
-`sdk/typed_gen.go` (generated by `codegen/sdkgen`) provides typed wrapper functions for every message pair:
+### Streaming
 
 ```go
-// These are thin aliases — no additional logic
-pr, err := sdk.PublishToolCall(rt, ctx, sdk.ToolCallMsg{...})
-unsub, err := sdk.SubscribeToolCallResp(rt, ctx, pr.ReplyTo, handler)
-
-pr, err := sdk.PublishKitDeploy(rt, ctx, sdk.KitDeployMsg{...})
-unsub, err := sdk.SubscribeKitDeployResp(rt, ctx, pr.ReplyTo, handler)
+func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
+    k *Kit, ctx context.Context, req Req,
+    onChunk func(Chunk) error,
+    opts ...CallOption,
+) (Resp, error)
 ```
 
-Use them for discoverability — your IDE's autocomplete shows every available operation. But they're strictly optional; `sdk.Publish` + `sdk.SubscribeTo` work with any message type.
+`onChunk` is invoked for every intermediate `msg.send(...)` chunk
+in arrival order; the terminal `msg.reply(...)` is returned as
+`Resp`. Returning a non-nil error from `onChunk` finalizes the call
+with that error.
 
-## Error Handling
+```go
+var chunks []json.RawMessage
+final, err := brainkit.CallStream[sdk.CustomMsg, json.RawMessage, json.RawMessage](
+    kit, ctx,
+    sdk.CustomMsg{Topic: "ts.streamer.stream", Payload: json.RawMessage(`{}`)},
+    func(c json.RawMessage) error { chunks = append(chunks, c); return nil },
+    brainkit.WithCallTimeout(10*time.Second),
+    brainkit.WithCallBuffer(128),
+    brainkit.WithCallBufferPolicy(brainkit.BufferBlock),
+)
+```
+
+See [`examples/streaming/`](../../examples/streaming/).
+
+### Call options
+
+| Option | Effect |
+|---|---|
+| `WithCallTimeout(d)` | Absolute timeout. Earlier ctx deadline wins. |
+| `WithCallTo(name)` | Route to a peer namespace. When the `topology` module is wired, `name` is resolved to a namespace; otherwise `name` is used verbatim. |
+| `WithCallMeta(map)` | Append metadata to the published message. |
+| `WithCallBuffer(n)` | Streaming: channel capacity (default 64). |
+| `WithCallBufferPolicy(p)` | `BufferBlock` (default), `BufferDropNewest`, `BufferDropOldest`, `BufferError`. |
+| `WithCallNoCancelSignal()` | Suppress the best-effort `_brainkit.cancel` publish on ctx cancel. |
+
+### Raw envelope
+
+The typed Call helpers are the normal path. If you need the raw
+envelope (custom topics, pre-built payload, subscription
+bookkeeping) use the `sdk` package directly:
 
 ```go
 import "github.com/brainlet/brainkit/sdk"
 
-_, err := sdk.SendToService(rt, ctx, "calc.ts", "add", payload)
-if err != nil {
-    var notFound *sdk.NotFoundError
-    var exists *sdk.AlreadyExistsError
-    var valErr *sdk.ValidationError
-    var timeout *sdk.TimeoutError
+pr, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{Name: "echo"})
+// pr.ReplyTo, pr.CorrelationID, pr.MessageID, pr.Topic
 
+unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr.ReplyTo,
+    func(resp sdk.ToolCallResp, m sdk.Message) { /* ... */ })
+defer unsub()
+
+err = sdk.Emit(kit, ctx, sdk.PluginRegisteredEvent{Name: "cron"})
+pr, err = sdk.SendToService(kit, ctx, "calc.ts", "add", map[string]int{"a": 1, "b": 2})
+```
+
+`Kit` implements `sdk.Runtime`, `sdk.CrossNamespaceRuntime`, and
+`sdk.Replier`, so everything in `sdk/` that takes a Runtime accepts
+it.
+
+## Registering Go tools
+
+Tools registered in Go are callable over the bus topic `tools.call`
+from every surface — `.ts` code, plugins, other Go callers — and
+the registry exposes them through `tools.list` with generated JSON
+schema.
+
+```go
+type AddInput  struct { A int `json:"a"`; B int `json:"b"` }
+type AddOutput struct { Sum int `json:"sum"` }
+
+err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
+    Description: "Return a + b as a typed sum.",
+    Execute: func(_ context.Context, in AddInput) (any, error) {
+        return AddOutput{Sum: in.A + in.B}, nil
+    },
+})
+```
+
+`RegisterTool[T]` is a package-level generic function, not a Kit
+method. Schema derives from struct tags via reflection. Invoke:
+
+```go
+resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+    Name:  "math.add",
+    Input: map[string]any{"a": 40, "b": 2},
+})
+// resp.Result == json.RawMessage(`{"sum":42}`)
+```
+
+See [`examples/go-tools/`](../../examples/go-tools/).
+
+## Deploying TypeScript
+
+`.ts` services are built as packages and evaluated inside SES
+Compartments.
+
+```go
+// Inline — handy for tests and demos.
+kit.Deploy(ctx, brainkit.PackageInline("greeter", "greeter.ts",
+    `bus.on("hello", (m) => m.reply({ok: true}));`))
+
+// Single file from disk.
+kit.Deploy(ctx, brainkit.PackageFromFile("./svc/agent.ts"))
+
+// Directory with a brainkit.yaml manifest (multi-file packages).
+kit.Deploy(ctx, brainkit.PackageFromDir("./svc"))
+
+// List everything currently deployed.
+names, err := kit.List(ctx)
+
+// Get the source / manifest of a deployment.
+pkg, err := kit.Get(ctx, "greeter")
+
+// Remove a deployment. All resources it registered are dropped.
+err = kit.Teardown(ctx, "greeter")
+```
+
+Deployments register handlers on the mailbox namespace
+`ts.<deployment-name>.<topic>` — the topic string used by
+`bus.on(...)` inside the `.ts` file.
+
+## Module composition
+
+Modules are opt-in subsystems that extend the Kit with additional
+bus commands. They implement a three-method interface:
+
+```go
+type Module interface {
+    Name() string
+    Init(k *Kit) error
+    Close() error
+}
+```
+
+Modules may additionally implement `StatusReporter` to expose a
+maturity tag (`stable`, `beta`, `wip`).
+
+Shipped modules live under `modules/`:
+
+| Module | Constructor | Status |
+|---|---|---|
+| `modules/audit` | `audit.NewModule(audit.Config{...})` | stable |
+| `modules/discovery` | `discovery.NewModule(discovery.Config{...})` | stable |
+| `modules/gateway` | `gateway.New(gateway.Config{...})` | stable |
+| `modules/harness` | `harness.NewModule(harness.Config{...})` | WIP |
+| `modules/mcp` | `mcpmod.New(map[string]mcpmod.ServerConfig{...})` | stable |
+| `modules/plugins` | `pluginsmod.NewModule(pluginsmod.Config{...})` | stable |
+| `modules/probes` | `probes.NewModule(probes.Config{...})` | stable |
+| `modules/schedules` | `schedulesmod.NewModule(schedulesmod.Config{...})` | stable |
+| `modules/topology` | `topology.NewModule(topology.Config{...})` | stable |
+| `modules/tracing` | `tracing.New(tracing.Config{...})` | stable |
+| `modules/workflow` | `workflowmod.New()` | stable |
+
+Wire them by passing to `Config.Modules`:
+
+```go
+import (
+    "github.com/brainlet/brainkit/modules/audit"
+    "github.com/brainlet/brainkit/modules/tracing"
+)
+
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "obs-demo",
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    "/tmp/obs",
+    Modules: []brainkit.Module{
+        audit.NewModule(audit.Config{Store: auditStore}),
+        tracing.New(tracing.Config{Store: traceStore}),
+    },
+})
+```
+
+Order within the slice determines `Init` order and reverse `Close`
+order — put dependency modules (audit, tracing) before modules
+that use them.
+
+## Cross-namespace calls
+
+`WithCallTo("peer-name")` sends to a peer on the same transport.
+When `modules/topology` is wired, `peer-name` is resolved through
+its peer table; otherwise the name is treated as a raw namespace.
+See [`examples/cross-kit/`](../../examples/cross-kit/) and
+[`examples/multi-kit/`](../../examples/multi-kit/).
+
+Raw cross-namespace publish / subscribe is also available via
+`sdk.PublishTo` + `Kit.SubscribeRawTo`, but the `WithCallTo` option
+on `Call` / `CallStream` is the normal path.
+
+## The server package
+
+For long-running processes, `brainkit/server` composes a Kit with a
+YAML config, HTTP gateway, tracing, probes, audit, and (optionally)
+plugins.
+
+```go
+import "github.com/brainlet/brainkit/server"
+
+cfg, err := server.LoadConfig("brainkit.yaml")
+srv, err := server.New(cfg)
+defer srv.Close()
+
+ctx, stop := signal.NotifyContext(context.Background(),
+    syscall.SIGINT, syscall.SIGTERM)
+defer stop()
+
+if err := srv.Start(ctx); err != nil { log.Fatal(err) }
+```
+
+For programmatic use without a YAML file:
+
+```go
+srv, err := server.QuickStart("my-app", "/var/lib/my-app",
+    server.WithListen(":8080"),
+    server.WithSecretKey(os.Getenv("BRAINKIT_SECRET_KEY")),
+    server.WithPackages("./packages/*"),
+    server.WithExtraModules(myModule),
+)
+```
+
+See [`examples/hello-server/`](../../examples/hello-server/).
+
+## Error types
+
+Every typed call error is matchable with `errors.As`:
+
+```go
+import (
+    "errors"
+    "github.com/brainlet/brainkit/internal/bus/caller"
+    "github.com/brainlet/brainkit/sdk"
+)
+
+_, err := brainkit.Call[...](kit, ctx, req)
+if err != nil {
+    var (
+        timeout *caller.CallTimeoutError
+        cancel  *caller.CallCancelledError
+        decode  *caller.DecodeError
+        noDead  *caller.NoDeadlineError
+        notFnd  *sdk.NotFoundError
+        exists  *sdk.AlreadyExistsError
+        valErr  *sdk.ValidationError
+    )
     switch {
-    case errors.As(err, &notFound):
-        fmt.Printf("%s %q not found\n", notFound.Resource, notFound.Name)
-    case errors.As(err, &exists):
-        fmt.Printf("%s %q already exists (%s)\n", exists.Resource, exists.Name, exists.Hint)
-    case errors.As(err, &valErr):
-        fmt.Printf("invalid %s: %s\n", valErr.Field, valErr.Message)
     case errors.As(err, &timeout):
-        fmt.Printf("timeout: %s\n", timeout.Operation)
-    case errors.Is(err, sdk.ErrNoReplyTo):
-        fmt.Println("message has no reply destination")
+    case errors.As(err, &cancel):
+    case errors.As(err, &decode):
+    case errors.As(err, &noDead):
+    case errors.As(err, &notFnd):
+    case errors.As(err, &exists):
+    case errors.As(err, &valErr):
     default:
-        fmt.Printf("error: %v\n", err)
     }
 }
 ```
 
-See [error-handling.md](../concepts/error-handling.md) for the full error type inventory.
+Decode errors preserve the raw payload so you can log the wire bytes
+when a schema drifts.
 
-## The Runtime Interface
+## Runtime interface
+
+`Kit` implements this interface, and so do plugin clients:
 
 ```go
 type Runtime interface {
@@ -247,19 +468,5 @@ type Runtime interface {
 }
 ```
 
-Kit and plugin clients both implement this. Code that takes `sdk.Runtime` works with either.
-
-## The Message Envelope
-
-```go
-// sdk/bus.go
-type Message struct {
-    Topic    string            `json:"topic"`
-    Payload  []byte            `json:"payload"`
-    CallerID string            `json:"callerId,omitempty"`
-    TraceID  string            `json:"traceId,omitempty"`
-    Metadata map[string]string `json:"metadata,omitempty"`
-}
-```
-
-Five fields. `Metadata` carries `replyTo`, `correlationId`, `done`, `callerId`, and `depth`. This is the internal platform envelope — the typed message types (ToolCallMsg, etc.) are the Payload, deserialized by `SubscribeTo`.
+Library code that accepts `sdk.Runtime` works with both surfaces
+unchanged.

@@ -1,33 +1,79 @@
-# Mastra Framework — API Reference for brainkit
+# Mastra (`"agent"` module) — API Reference (brainkit runtime)
 
-> `import { Agent, createTool, createWorkflow, createStep, Memory, ... } from "agent";`
-> Types verified against actual Mastra source and brainkit fixtures.
+Source of truth: `internal/engine/runtime/agent.d.ts`. The `"agent"` module inside `.ts` deployments re-exports Mastra — no wrapping. Mastra types use AI SDK v4 token names in `AgentResult.usage` (`promptTokens` / `completionTokens`); AI SDK v5 functions use v5 names (`inputTokens` / `outputTokens`). Do not cross-pollinate.
+
+```typescript
+import {
+    Agent, createTool, createWorkflow, createStep,
+    Memory, InMemoryStore, LibSQLStore, UpstashStore, PostgresStore, MongoDBStore,
+    LibSQLVector, PgVector, MongoDBVector, ModelRouterEmbeddingModel,
+    MDocument, GraphRAG,
+    createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool,
+    rerank, rerankWithScorer,
+    Observability, DefaultExporter, SensitiveDataFilter,
+    createScorer, runEvals,
+    Workspace, LocalFilesystem, LocalSandbox,
+    RequestContext,
+    z,
+} from "agent";
+import { model, embeddingModel, kit, bus } from "kit";
+```
+
+`z` is re-exported from `"ai"` — the same Zod instance. Use either import.
+
+---
 
 ## Agent
 
 ```typescript
 class Agent {
     constructor(config: AgentConfig);
+
     generate(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
     stream(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentStreamResult>;
+    network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
+
+    // Human-in-the-loop tool-call suspension
+    approveToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+    declineToolCallGenerate(opts: { runId: string; toolCallId: string }): Promise<AgentResult>;
+    approveToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
+    declineToolCallStream(opts: { runId: string; toolCallId: string }): Promise<AgentStreamResult>;
 }
 ```
+
+`network(...)` runs the agent in supervisor mode, delegating to `config.agents`.
 
 ### AgentConfig
 
 ```typescript
 interface AgentConfig {
-    name?: string;
     id?: string;
+    name: string;
     description?: string;
-    instructions?: string | ((ctx: { requestContext?: RequestContext }) => string | Promise<string>);
-    model: LanguageModel;  // use model("openai", "gpt-4o-mini") from "kit"
-    tools?: Record<string, Tool> | ((ctx: { requestContext?: RequestContext }) => Record<string, Tool>);
-    maxSteps?: number;     // default: 5
-    toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
-    memory?: Memory;
-    agents?: Record<string, Agent>;  // sub-agents for delegation
+    instructions:
+        | string
+        | string[]
+        | ((ctx: { requestContext?: RequestContext }) => string | string[] | Promise<string | string[]>);
+    model: any;                         // from kit.model(...) or a resolver fn / retry array
+    maxRetries?: number;                // default 0
+    tools?:
+        | Record<string, Tool>
+        | ((ctx: { requestContext?: RequestContext }) => Record<string, Tool> | Promise<Record<string, Tool>>);
+    workflows?: Record<string, Workflow> | (() => Record<string, Workflow>);
     defaultOptions?: Partial<AgentCallOptions>;
+    agents?: Record<string, Agent> | (() => Record<string, Agent>);           // sub-agents (network mode)
+    scorers?: Record<string, { scorer: Scorer; sampling?: any }>;
+    memory?: Memory | (() => Memory);
+    skillsFormat?: "xml" | "json";      // default "xml"
+    voice?: any;
+    workspace?: Workspace | (() => Workspace | undefined);
+    inputProcessors?: any[];            // pre-LLM middleware
+    outputProcessors?: any[];           // post-LLM middleware
+    maxProcessorRetries?: number;
+    providerOptions?: Record<string, Record<string, unknown>>;
+    requestContextSchema?: ZodType;
+    maxSteps?: number;                  // convenience, forwarded via defaultOptions
+    [key: string]: any;
 }
 ```
 
@@ -35,59 +81,148 @@ interface AgentConfig {
 
 ```typescript
 interface AgentCallOptions {
-    modelSettings?: { temperature?: number; maxTokens?: number; topP?: number; };
-    activeTools?: string[];
-    toolChoice?: "auto" | "none" | "required";
-    instructions?: string;
-    maxSteps?: number;
-    structuredOutput?: { schema: ZodType };
-    onStepFinish?: (step: StepResult) => void;
-    onFinish?: (result: AgentResult) => void;
-    onError?: (error: { error: Error }) => void;
-    memory?: { thread?: { id: string }; resource?: string };
-    threadId?: string;
-    resourceId?: string;
+    instructions?: string | string[];
+    system?: string;
+    context?: Message[];
+    memory?: { thread?: string | { id: string }; resource?: string };
+    runId?: string;
+    savePerStep?: boolean;              // default false
     requestContext?: RequestContext;
+    maxSteps?: number;
+    providerOptions?: Record<string, Record<string, unknown>>;
+    onStepFinish?: (event: any) => void | Promise<void>;
+    onFinish?:     (event: any) => void | Promise<void>;
+    onChunk?:      (event: any) => void | Promise<void>;
+    onError?:      (event: any) => void | Promise<void>;
+    activeTools?: string[];
     abortSignal?: AbortSignal;
+    inputProcessors?: any[];
+    outputProcessors?: any[];
+    maxProcessorRetries?: number;
+    toolsets?: Record<string, Record<string, Tool>>;
+    toolChoice?: "auto" | "none" | "required" | { type: "tool"; toolName: string };
+    modelSettings?: Record<string, any>;     // temperature, maxTokens, topP, …
+    scorers?: Record<string, { scorer: any; sampling?: any }>;
+    returnScorerData?: boolean;
     requireToolApproval?: boolean;
+    autoResumeSuspendedTools?: boolean;
+    toolCallConcurrency?: number;            // default 1 w/ approval, 10 otherwise
+    output?: ZodType;                        // structured output
+    [key: string]: any;
 }
 ```
 
-### AgentResult
+### AgentResult (v4 usage names)
 
 ```typescript
 interface AgentResult {
     text: string;
-    reasoning?: string;
-    toolCalls: ToolCall[];
-    toolResults: ToolResult[];
-    finishReason: FinishReason;
-    usage: Usage;
-    steps: StepResult[];
-    response: ResponseMeta;
+    reasoningText?: string;
+    object?: unknown;                    // populated when options.output set
+    toolCalls:   Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    toolResults: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>;
+    finishReason: string;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };   // v4 names
+    steps: AgentStepResult[];
+    response: { id: string; modelId: string; timestamp: string };
     runId?: string;
-    suspendPayload?: { toolCallId: string; toolName: string; args: any };
+    traceId?: string;
+    suspendPayload?: unknown;            // HITL: present when a tool call suspended
+    providerMetadata?: Record<string, unknown>;
+}
+
+interface AgentStepResult {
+    text: string;
+    reasoning?: string;
+    toolCalls:   Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    toolResults: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>;
+    finishReason: string;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    stepType: string;
+    isContinued: boolean;
+}
+
+interface AgentStreamResult {
+    textStream: AsyncIterable<string>;
+    fullStream: AsyncIterable<import("ai").StreamPart>;
+    text:         Promise<string>;
+    usage:        Promise<{ promptTokens: number; completionTokens: number; totalTokens: number }>;
+    finishReason: Promise<string>;
+    toolCalls:    Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>>;
+    toolResults:  Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>>;
+    steps:        Promise<AgentStepResult[]>;
+}
+
+interface Message {
+    role: "system" | "user" | "assistant" | "tool";
+    content: import("ai").MessageContent;   // string | ContentPart[]
 }
 ```
 
-## createTool
+### Register with the Kit
+
+```typescript
+const a = new Agent({
+    name: "researcher",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "You research topics thoroughly.",
+    tools: { search },
+});
+kit.register("agent", "researcher", a);
+
+bus.on("ask", async (msg) => {
+    const r = await a.generate(String(msg.payload?.prompt ?? ""));
+    msg.reply({ text: r.text, usage: r.usage });       // v4-shaped usage
+});
+```
+
+---
+
+## Tools: `createTool`
 
 ```typescript
 function createTool(config: ToolConfig): Tool;
 
 interface ToolConfig {
     id: string;
-    description: string;
-    inputSchema?: ZodType;
+    description?: string;
+    inputSchema?:  ZodType;
     outputSchema?: ZodType;
-    requireApproval?: boolean;
-    execute: (input: { context: any }, opts?: { requestContext?: any }) => Promise<any>;
+    execute?: (input: any, context?: ToolExecutionContext) => Promise<unknown>;
+    suspendSchema?: ZodType;
+    resumeSchema?:  ZodType;
+    requireApproval?: boolean;       // suspend before running — HITL
+}
+
+interface ToolExecutionContext {
+    requestContext?: RequestContext;
+}
+
+interface Tool {
+    id: string;
+    description?: string;
+    execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
 }
 ```
 
-**Rule:** `createTool()` creates a tool object. It does NOT register it. Call `kit.register("tool", name, tool)` to make it discoverable.
+Mastra tools are class-like — not the plain objects of AI SDK's `tool()`. The Mastra runtime sometimes wraps the call as `{ context, runtimeContext }`, sometimes passes raw args — normalise defensively:
 
-## createWorkflow / createStep
+```typescript
+const calc = createTool({
+    id: "add",
+    description: "Add two numbers",
+    inputSchema: z.object({ a: z.number(), b: z.number() }),
+    execute: async (args) => {
+        const { a, b } = (args && args.context) || args || {};
+        return { result: a + b };
+    },
+});
+kit.register("tool", "add", calc);
+```
+
+---
+
+## Workflows
 
 ```typescript
 function createWorkflow(config: WorkflowConfig): WorkflowBuilder;
@@ -95,200 +230,502 @@ function createStep(config: StepConfig): Step;
 
 interface WorkflowConfig {
     id: string;
-    inputSchema: ZodType;
-    outputSchema: ZodType;
+    inputSchema?:  ZodType;
+    outputSchema?: ZodType;
+    stateSchema?:  ZodType;
 }
 
 interface StepConfig {
     id: string;
-    inputSchema: ZodType;
-    outputSchema: ZodType;
-    resumeSchema?: ZodType;
-    suspendSchema?: ZodType;
-    stateSchema?: ZodType;
-    execute: (ctx: {
-        inputData: any;
-        resumeData?: any;
-        suspendData?: any;
-        suspend: (data?: any) => Promise<void>;
-        state: any;
-        setState: (state: any) => Promise<void>;
-        getInitData: () => any;
-        getStepResult: (stepId: string) => any;
-    }) => Promise<any>;
+    inputSchema?:  ZodType;
+    outputSchema?: ZodType;
+    stateSchema?:  ZodType;
+    execute?: (context: StepExecutionContext) => Promise<unknown>;
 }
 
-interface WorkflowConfig {
-    id: string;
-    inputSchema: ZodType;
-    outputSchema: ZodType;
-    stateSchema?: ZodType;
-    retryConfig?: { attempts?: number; delay?: number };
+interface StepExecutionContext {
+    inputData: Record<string, any>;
+    mapiData?: Record<string, unknown>;
+    state: Record<string, any>;
+    setState(keyOrUpdates: string | Record<string, any>, value?: any): void;
+    getStepResult(stepId: string): any;
+    suspend(data?: unknown): void;                  // HITL pause
+    resumeData?: Record<string, any>;
 }
 
 interface WorkflowBuilder {
     then(step: Step): WorkflowBuilder;
-    branch(conditions: [predicate, Step][]): WorkflowBuilder;
     parallel(steps: Step[]): WorkflowBuilder;
-    sleep(durationMsOrFn: number | ((ctx: any) => number)): WorkflowBuilder;
-    sleepUntil(dateOrFn: Date | ((ctx: any) => Date)): WorkflowBuilder;
-    foreach(step: Step, opts?: { concurrency?: number }): WorkflowBuilder;
-    loop(step: Step, opts: { condition: (ctx: any) => boolean }): WorkflowBuilder;
+    branch(config: BranchConfig | Step[][]): WorkflowBuilder;
+    foreach(config: ForEachConfig): WorkflowBuilder;
+    dountil(step: Step, condition?: (ctx: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
+    sleep(ms: number): WorkflowBuilder;
     commit(): Workflow;
 }
 
+interface BranchConfig {
+    condition: (data: Record<string, unknown>) => boolean;
+    trueStep: Step;
+    falseStep?: Step;
+}
+
+interface ForEachConfig {
+    items: string;
+    step: Step;
+}
+
 interface Workflow {
-    createRun(opts?: { runId?: string; resourceId?: string }): Promise<WorkflowRun>;
-    getWorkflowRunById(runId: string): Promise<WorkflowState | null>;
-    listWorkflowRuns(opts?: { status?: string }): Promise<{ runs: any[]; total: number }>;
-    restartAllActiveWorkflowRuns(): Promise<void>;
+    createRun(opts?: { runId?: string }): Promise<WorkflowRun>;
 }
 
 interface WorkflowRun {
     runId: string;
-    start(opts: { inputData: any }): Promise<WorkflowResult>;
-    resume(opts: { resumeData?: any; step?: string }): Promise<WorkflowResult>;
-    restart(): Promise<WorkflowResult>;
-    cancel(): Promise<void>;
-    stream(opts: { inputData: any }): Promise<ReadableStream>;
+    start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
+    resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string },
+           resumeData?: Record<string, unknown>): Promise<WorkflowRunResult>;
+    cancel(): void;
+    readonly status: string;
+    readonly currentStep: string;
 }
 
-interface WorkflowResult {
-    status: "success" | "failed" | "suspended" | "running" | "waiting" | "canceled" | "pending";
-    result?: any;
-    steps?: Record<string, { status: string; output?: any; error?: any }>;
+interface WorkflowRunResult {
+    status: "completed" | "suspended" | "failed" | "success";
+    result?: Record<string, unknown>;
+    runId?: string;
+    steps?: Record<string, StepRunResult>;
 }
+
+interface StepRunResult { status: string; output?: unknown; }
 ```
+
+```typescript
+const s1 = createStep({
+    id: "normalize",
+    inputSchema:  z.object({ message: z.string() }),
+    outputSchema: z.object({ message: z.string() }),
+    execute: async ({ inputData }) => ({ message: inputData.message.trim() }),
+});
+
+const wf = createWorkflow({
+    id: "pipeline",
+    inputSchema:  z.object({ message: z.string() }),
+    outputSchema: z.object({ message: z.string() }),
+}).then(s1).commit();
+
+kit.register("workflow", "pipeline", wf);
+```
+
+Suspend/resume: any step can call `ctx.suspend({ why: … })`. The run's `status` becomes `"suspended"`; call `run.resume({ resumeData: … })` (or `run.resume(stepId, resumeData)`) to continue.
+
+---
 
 ## Memory
 
 ```typescript
 class Memory {
-    constructor(config: { storage: StorageInstance });
+    constructor(config: MemoryConfig);
+
+    createThread(opts: { resourceId: string; threadId?: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
+    saveThread(opts: { thread: Thread }): Promise<Thread>;
+    getThreadById(opts: { threadId: string }): Promise<Thread | null>;
+    updateThread(opts: { threadId: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
+    listThreads(filter?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
+
+    saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    deleteMessages(opts: { threadId: string }): Promise<void>;
+    recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
+
+    deleteThread(threadId: string): Promise<void>;
+    setStorage(storage: StorageInstance): void;
+    setVector(vector: VectorStoreInstance): void;
 }
+
+interface Thread {
+    id: string;
+    resourceId: string;
+    title?: string;
+    createdAt: Date;
+    updatedAt: Date;
+    metadata?: Record<string, unknown>;
+}
+
+interface RecallResult {
+    messages: Message[];
+    workingMemory?: string;
+}
+
+interface MemoryConfig {
+    storage?: StorageInstance;
+    vector?:  VectorStoreInstance | false;     // false disables semantic recall
+    embedder?: string | any;                   // "provider/model-id" or EmbeddingModel
+    embedderOptions?: { dimensions?: number };
+    options?: MemoryOptions;
+}
+
+interface MemoryOptions {
+    readOnly?: boolean;                        // default false
+    lastMessages?: number | false;             // default 10
+    semanticRecall?: boolean | {
+        topK?: number;
+        messageRange?: number;
+        scope?: "thread" | "resource";
+    };
+    workingMemory?: boolean | {
+        enabled: boolean;
+        scope?: "thread" | "resource";
+        template?: string;
+        schema?: ZodType;
+        version?: "vnext";
+    };
+    generateTitle?: boolean | { model?: any; instructions?: string };
+    observationalMemory?: boolean | {
+        scope?: "thread" | "resource";
+        model?: string;
+        observation?: { messageTokens?: number };
+        reflection?:  { observationTokens?: number };
+    };
+}
+
+kit.register("memory", "main", new Memory({
+    storage: new LibSQLStore({ url: "file:./mem.db" }),
+    vector:  new LibSQLVector({ connectionUrl: "file:./mem.db" }),
+    embedder: "openai/text-embedding-3-small",
+    options: { lastMessages: 20, semanticRecall: { topK: 5 } },
+}));
 ```
 
-Used on Agent: `new Agent({ memory: new Memory({ storage: store }) })`.
+---
 
-## Storage Backends
+## Storage backends
+
+All storage classes implement `StorageInstance`:
 
 ```typescript
-class InMemoryStore { constructor(); }
-class LibSQLStore { constructor(opts: { id: string; url?: string; authToken?: string; storage?: string }); }
-class PostgresStore { constructor(opts: { id?: string; connectionString: string }); }
-class MongoDBStore { constructor(opts: { id?: string; uri: string; dbName: string }); }
-class UpstashStore { constructor(opts: { id?: string; url: string; token: string }); }
+interface StorageInstance { readonly __storageType: string; }
+
+class InMemoryStore { constructor(config?: { id?: string }); }
+class LibSQLStore   { constructor(config: { id?: string; url?: string; authToken?: string; storage?: string }); }
+class UpstashStore  { constructor(config: { id?: string; url: string; token: string }); }
+class PostgresStore { constructor(config: { id?: string; connectionString: string }); init(): Promise<void>; }
+class MongoDBStore  { constructor(config: { id?: string; uri?: string; url?: string; dbName?: string }); init(): Promise<void>; }
 ```
 
-## Vector Backends
+`LibSQLStore` file-URL guard: `opts.url` must include `file:` (throws `BrainkitError("VALIDATION_ERROR")` otherwise). Use `"file:./data.db"` or `"file::memory:"`.
+
+`PostgresStore` / `MongoDBStore` require `init()` before first use (creates tables / indexes).
+
+---
+
+## Vector stores
 
 ```typescript
-class LibSQLVector {
-    constructor(opts: { id: string; connectionUrl?: string; authToken?: string; storage?: string });
-    createIndex(name: string, dimension: number, metric?: string): Promise<void>;
-    upsert(index: string, vectors: VectorRecord[]): Promise<void>;
-    query(index: string, embedding: number[], topK?: number): Promise<QueryResult[]>;
-    listIndexes(): Promise<IndexInfo[]>;
-    deleteIndex(name: string): Promise<void>;
+interface VectorStoreInstance {
+    readonly __vectorType: string;
+    createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    query(opts:  { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
 }
 
-class PgVector {
-    constructor(opts: { id: string; connectionString: string });
-    // same methods as LibSQLVector
+interface VectorEntry {
+    id?: string;
+    vector: number[];
+    metadata?: Record<string, unknown>;
+    [key: string]: any;
 }
 
-class MongoDBVector {
-    constructor(opts: { id: string; uri: string; dbName: string });
-    // same methods as LibSQLVector
+interface VectorQueryResult {
+    id: string;
+    score: number;
+    metadata?: Record<string, unknown>;
+    vector?: number[];
+}
+
+class LibSQLVector  { constructor(config: { id?: string; connectionUrl?: string; url?: string; authToken?: string; storage?: string }); }
+class PgVector      { constructor(config: { id?: string; connectionString: string }); }
+class MongoDBVector { constructor(config: { id?: string; uri: string; dbName?: string }); }
+```
+
+`LibSQLVector` file-URL guard: `opts.connectionUrl` (NOT `opts.url`) must include `file:` — throws `BrainkitError("VALIDATION_ERROR")` otherwise. `url` is tolerated as a secondary field for Mastra parity but the validation is against `connectionUrl`.
+
+---
+
+## Embedding router
+
+```typescript
+class ModelRouterEmbeddingModel {
+    constructor(modelId: string);   // e.g. "openai/text-embedding-3-small"
 }
 ```
+
+Used where Mastra accepts an embedder string. For direct calls prefer `embeddingModel("openai", "text-embedding-3-small")` from `"kit"`.
+
+---
 
 ## RAG
 
 ```typescript
 class MDocument {
-    static fromText(text: string): MDocument;
-    static fromMarkdown(md: string): MDocument;
-    chunk(opts: { strategy: "recursive" | "markdown" | "token"; size: number; overlap?: number }): Promise<MDocument[]>;
-    getText(): string;
+    static fromText(text: string, metadata?: Record<string, unknown>): MDocument;
+    static fromMarkdown(markdown: string, metadata?: Record<string, unknown>): MDocument;
+    chunk(options?: ChunkOptions): Promise<DocumentChunk[]>;
+}
+
+interface ChunkOptions {
+    strategy?: "recursive" | "character" | "token" | "markdown" | "html";
+    size?: number;
+    maxSize?: number;
+    overlap?: number;
+    separator?: string;
+    headers?: [string, string][] | Record<string, string>;
+    [key: string]: any;
+}
+
+interface DocumentChunk {
+    text: string;
+    metadata: Record<string, unknown>;
 }
 
 class GraphRAG {
-    constructor(opts: { model: LanguageModel; vectorStore: VectorStore; indexName: string; embeddingModel: EmbeddingModel });
-    addDocuments(docs: MDocument[]): Promise<void>;
-    query(query: string): Promise<any>;
+    constructor(config: { vectorStore: VectorStoreInstance; embedder: import("ai").EmbeddingModel });
+    query(query: string, options?: { topK?: number }): Promise<GraphRAGResult>;
 }
 
-function createVectorQueryTool(opts: { vectorStoreName: string; indexName: string; model: EmbeddingModel }): Tool;
-function createDocumentChunkerTool(opts: { strategy: string; size: number; overlap?: number }): Tool;
-function createGraphRAGTool(opts: { graphRag: GraphRAG; description: string }): Tool;
-function rerank(results: any[], query: string, opts: { model: LanguageModel; topK?: number }): Promise<any[]>;
-function rerankWithScorer(results: any[], query: string, opts: { scorer: Function; topK?: number }): Promise<any[]>;
-```
-
-## Evals
-
-```typescript
-function createScorer(opts: { name: string; description?: string }): ScorerBuilder;
-
-interface ScorerBuilder {
-    preprocess(fn: (ctx: { output: string }) => any): ScorerBuilder;
-    generateScore(fn: ((ctx: { output: string; expectedOutput?: string; preprocessResult?: any }) => number) | { model: LanguageModel; instructions: string; outputSchema: ZodType }): ScorerBuilder;
-    generateReason(fn: (ctx: { score: number }) => string): ScorerBuilder;
+interface GraphRAGResult {
+    answer: string;
+    sources: Array<{ text: string; score: number }>;
 }
 
-function runEvals(opts: {
-    agent: Agent;
-    data: { input: string; expectedOutput?: string }[];
-    scorers: ScorerBuilder[];
-    concurrency?: number;
-}): Promise<{ scores: Record<string, number>; summary: { totalItems: number } }>;
+function createVectorQueryTool(config: {
+    vectorStore: VectorStoreInstance;
+    indexName: string;
+    embedder: import("ai").EmbeddingModel;
+    topK?: number;
+    description?: string;
+}): Tool;
+
+function createDocumentChunkerTool(config: {
+    vectorStore: VectorStoreInstance;
+    indexName: string;
+    embedder: import("ai").EmbeddingModel;
+    chunkOptions?: ChunkOptions;
+}): Tool;
+
+function createGraphRAGTool(config: {
+    graphRag: GraphRAG;
+    description?: string;
+}): Tool;
+
+function rerank(config: {
+    results: Array<{ text: string; score: number }>;
+    query: string;
+    topK?: number;
+}): Promise<Array<{ text: string; score: number }>>;
+
+function rerankWithScorer(config: {
+    results: Array<{ text: string; score: number }>;
+    query: string;
+    scorer: Scorer;
+    topK?: number;
+}): Promise<Array<{ text: string; score: number }>>;
 ```
+
+---
 
 ## Observability
 
 ```typescript
 class Observability {
-    constructor(opts: { configs: Record<string, { serviceName: string; exporters: Exporter[] }> });
+    constructor(config: ObservabilityConfig);
+}
+
+interface ObservabilityConfig {
+    configs: Record<string, {
+        serviceName: string;
+        exporters: DefaultExporter[];
+    }>;
 }
 
 class DefaultExporter {
-    constructor(opts: { storage: StorageInstance; strategy?: "realtime" | "batch" });
+    constructor(config: { storage: StorageInstance; strategy?: "realtime" | "batch" });
+}
+
+class SensitiveDataFilter {
+    constructor(config?: { patterns?: RegExp[]; replacement?: string });
 }
 ```
 
-## Other Exports
+Traces flow through the kit's own tracing module when the deployment lives inside brainkit; Mastra's `Observability` is for cases where you want a parallel Mastra-native trace sink.
+
+---
+
+## Evals (`createScorer` + `runEvals`)
 
 ```typescript
-class RequestContext {
-    constructor(data?: Record<string, any>);
-    get(key: string): any;
+function createScorer(config: ScorerConfig): ScorerBuilder;
+
+interface ScorerConfig {
+    id: string;
+    name?: string;
+    description?: string;
+    type?: "agent" | { input: ZodType; output: ZodType };
+    judge?: { model: any; instructions?: string };       // LLM-as-judge config
 }
 
-class Workspace {
-    constructor(opts: { id: string; filesystem: LocalFilesystem; sandbox?: LocalSandbox; bm25?: boolean });
+interface ScorerBuilder {
+    preprocess(fn: (ctx: { run: ScorerRunContext; results?: any }) => any | Promise<any>): ScorerBuilder;
+    analyze(fn:    (ctx: { results: any; run: ScorerRunContext }) => any | Promise<any>): ScorerBuilder;
+    generateScore(fnOrConfig:
+        | ((ctx: { results: any; run: ScorerRunContext }) => number | Promise<number>)
+        | { description: string; judge?: { model: any; instructions: string };
+            createPrompt: (ctx: { results: any; run: ScorerRunContext }) => string | Promise<string> }
+    ): ScorerBuilder;
+    generateReason(fnOrConfig:
+        | ((ctx: { results: any; run: ScorerRunContext }) => string | Promise<string>)
+        | { description: string; judge?: { model: any; instructions: string };
+            createPrompt: (ctx: { results: any; run: ScorerRunContext }) => string | Promise<string> }
+    ): ScorerBuilder;
+    run(input: ScorerRunInput): Promise<ScorerRunResult>;
 }
+
+interface ScorerRunContext { input: any; output: any; }
+interface ScorerRunInput   { input: Array<{ role: string; content: string }>; output: { role: string; text: string }; }
+interface ScorerRunResult  { score: number; reason?: string; runId: string; [key: string]: any; }
+
+type Scorer = ScorerBuilder;
+
+function runEvals(config: {
+    scorers: Record<string, { scorer: Scorer; sampling?: any }>;
+    dataset: Array<{ input: any; output: any }>;
+}): Promise<EvalRunResult>;
+
+interface EvalRunResult {
+    results: Array<{
+        input: any;
+        output: any;
+        scores: Record<string, ScorerRunResult>;
+    }>;
+}
+```
+
+Builder chain: `.preprocess()` → `.analyze()` → `.generateScore()` → `.generateReason()` → `.run()`. Only `generateScore` is required; all steps are optional otherwise.
+
+---
+
+## Workspace + sandboxes
+
+```typescript
+class Workspace {
+    constructor(config: WorkspaceConfig);
+    init(): Promise<void>;
+    destroy(): Promise<void>;
+    search(query: string, options?: { limit?: number }): Promise<WorkspaceSearchResult[]>;
+    index(filePath: string, content: string): Promise<void>;
+    getInfo(): WorkspaceInfo;
+    getInstructions(): string;
+}
+
+interface WorkspaceSearchResult { path: string; content: string; score: number; }
+interface WorkspaceInfo         { id: string; name?: string; basePath: string; }
 
 class LocalFilesystem {
-    constructor(opts: { basePath: string; allowedPaths?: string[] });
+    constructor(config: { basePath: string; allowedPaths?: string[]; contained?: boolean });
 }
 
 class LocalSandbox {
-    constructor(opts: { workingDirectory: string });
+    constructor(config?: { workingDirectory?: string; env?: Record<string, string>; defaultShell?: string });
 }
 
-class ModelRouterEmbeddingModel { /* for multi-model routing */ }
-
-const z: ZodInstance; // Zod v4 — same instance as in "ai" module
+interface WorkspaceConfig {
+    id?: string;
+    name?: string;
+    filesystem: LocalFilesystem;
+    sandbox?: LocalSandbox;
+    bm25?: boolean | { k1?: number; b?: number };
+    vectorStore?: VectorStoreInstance;
+    embedder?: (text: string) => Promise<number[]>;
+    searchIndexName?: string;
+    tools?: Record<string, Tool>;
+    skills?: string[];
+    lsp?: boolean | { command: string; args?: string[] };
+}
 ```
 
-## Shared Types
+Wire a workspace into an agent via `agent.config.workspace`. Sandboxed shell + file surface; only enable when the deployment is trusted.
+
+---
+
+## RequestContext
 
 ```typescript
-type FinishReason = "stop" | "length" | "content-filter" | "tool-calls" | "error" | "suspended" | "other";
-interface Usage { promptTokens: number; completionTokens: number; totalTokens: number; }
-interface ResponseMeta { id: string; modelId: string; timestamp: Date; }
-interface ToolCall { toolCallId: string; toolName: string; args: Record<string, unknown>; }
-interface ToolResult { toolCallId: string; toolName: string; args: any; result: any; }
-interface StepResult { text: string; reasoning?: string; toolCalls: ToolCall[]; toolResults: ToolResult[]; finishReason: FinishReason; usage: Usage; stepType: string; isContinued: boolean; }
+class RequestContext {
+    constructor(entries?: Array<[string, string]>);
+    get(key: string): string | undefined;
+    set(key: string, value: string): void;
+    has(key: string): boolean;
+}
+```
+
+Pass a `RequestContext` via `options.requestContext`; dynamic `instructions` / `tools` / `agents` resolvers receive it.
+
+---
+
+## HITL (human-in-the-loop) recap
+
+- **Tool-level:** `createTool({ requireApproval: true })` — the tool call suspends with `AgentResult.suspendPayload` populated and `runId` / `toolCallId` captured. Resume with `agent.approveToolCallGenerate({ runId, toolCallId })` or `declineToolCallGenerate(...)`. Streaming variants exist.
+- **Workflow-level:** inside a step's `execute`, call `ctx.suspend(data)` — the run's `status` becomes `"suspended"`. Resume with `run.resume({ resumeData })`.
+- **Generic wrapper:** `generateWithApproval` from `"kit"` (see `ts-runtime.md`) — externalises approval over the brainkit bus for any handler.
+
+---
+
+## Example — agent + memory + tool + bus
+
+```typescript
+import {
+    Agent, createTool,
+    Memory, LibSQLStore, LibSQLVector,
+    z,
+} from "agent";
+import { model, kit, bus } from "kit";
+
+const search = createTool({
+    id: "search",
+    description: "Search the knowledge base",
+    inputSchema: z.object({ q: z.string() }),
+    execute: async (args) => {
+        const { q } = (args && args.context) || args;
+        return { hits: ["…results for " + q] };
+    },
+});
+
+const memory = new Memory({
+    storage: new LibSQLStore({ url: "file:./mem.db" }),
+    vector:  new LibSQLVector({ connectionUrl: "file:./mem.db" }),
+    embedder: "openai/text-embedding-3-small",
+    options:  { lastMessages: 20, semanticRecall: { topK: 5 } },
+});
+
+const agent = new Agent({
+    name: "researcher",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "You research topics thoroughly, citing sources.",
+    tools: { search },
+    memory,
+});
+
+kit.register("agent", "researcher", agent);
+
+bus.on("ask", async (msg) => {
+    const { prompt, threadId, user } = msg.payload || {};
+    const r = await agent.generate(String(prompt || ""), {
+        memory: { thread: threadId, resource: user },
+    });
+    msg.reply({
+        text: r.text,
+        usage: r.usage,                     // v4 names
+        runId: r.runId,
+    });
+});
 ```

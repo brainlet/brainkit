@@ -1,90 +1,143 @@
 # AI and Agents
 
-brainkit embeds the Vercel AI SDK and Mastra framework. AI calls (generateText, streamText, embed) are direct — no bus messages, no handlers, no wrappers. Agent creation uses Mastra's `Agent` class directly.
+brainkit ships the Vercel AI SDK and the Mastra agent framework
+inside the JS runtime, plus a thin Go surface that registers AI
+providers on the Kit. Use `generateText` / `streamText` /
+`generateObject` / `embed` directly, or compose agents with tools,
+memory, workflows, and sub-agents.
 
-## AI SDK — Direct Calls
+## Register providers from Go
+
+Twelve providers ship as `Config.Providers` builders. Either set
+them explicitly:
+
+```go
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "ai-chat",
+    Transport: brainkit.Memory(),
+    FSRoot:    ".",
+    Providers: []brainkit.ProviderConfig{
+        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
+        brainkit.Anthropic(os.Getenv("ANTHROPIC_API_KEY")),
+    },
+})
+```
+
+...or leave `Providers` nil to auto-detect from environment
+variables: `OPENAI_API_KEY` → `openai`, `ANTHROPIC_API_KEY` →
+`anthropic`, and the equivalents for `google`, `mistral`, `groq`,
+`deepseek`, `xai`, `cohere`, `perplexity`, `togetherai`,
+`fireworks`, `cerebras`.
+
+Point a builder at a compatible endpoint with options:
+
+```go
+brainkit.OpenAI(key,
+    brainkit.WithBaseURL("https://my-proxy.example.com/v1"),
+    brainkit.WithHeaders(map[string]string{"X-Org": "acme"}),
+)
+```
+
+Manage providers after boot via `kit.Providers()` —
+`Register` / `Unregister` / `List` / `Get` / `Has`.
+
+See [`examples/ai-chat/`](../../examples/ai-chat/) for a complete
+single-provider program, and
+[`examples/agent-spawner/`](../../examples/agent-spawner/) for a
+live two-agent pipeline.
+
+## Resolve models in `.ts`
+
+```ts
+model("openai", "gpt-4o-mini")
+model("anthropic", "claude-sonnet-4-5")
+model("google", "gemini-2.0-flash")
+model("groq", "llama-3.3-70b")
+
+embeddingModel("openai", "text-embedding-3-small") // 1536 dims
+embeddingModel("openai", "text-embedding-3-large") // 3072 dims
+```
+
+Only providers registered on the Kit resolve successfully. Calling
+`model("anthropic", ...)` without an `anthropic` provider produces
+a model handle that will fail at invocation time.
+
+## Direct AI SDK calls
 
 ### generateText
 
-```typescript
-// fixtures/ts/ai/generate-text-basic/index.ts
-const result = await generateText({
-    model: model("openai", "gpt-4o-mini"),
-    prompt: "What is 2+2? Reply with just the number.",
-    maxTokens: 10,
-});
-
-output({
-    text: result.text,               // "4"
-    finishReason: result.finishReason, // "stop"
-    usage: result.usage,              // {promptTokens, completionTokens, totalTokens}
+```ts
+bus.on("chat", async (msg) => {
+    const r = await generateText({
+        model: model("openai", "gpt-4o-mini"),
+        prompt: msg.payload.prompt,
+        maxTokens: 200,
+    });
+    msg.reply({
+        text: r.text,
+        usage: r.usage,
+        finishReason: r.finishReason,
+    });
 });
 ```
+
+`r.usage` normalizes across providers; the AI SDK also surfaces
+`inputTokens` / `outputTokens` on some providers. See the
+`agent-spawner` example for a defensive mapping.
 
 ### streamText
 
-```typescript
-// fixtures/ts/ai/stream-text-basic/index.ts
-const result = await streamText({
-    model: model("openai", "gpt-4o-mini"),
-    prompt: "Count from 1 to 5.",
+```ts
+bus.on("stream", async (msg) => {
+    const stream = await streamText({
+        model: model("openai", "gpt-4o-mini"),
+        prompt: msg.payload.prompt,
+    });
+    for await (const delta of stream.textStream) msg.send({ delta });
+    msg.reply({ done: true });
 });
-
-const chunks: string[] = [];
-for await (const chunk of result.textStream) {
-    chunks.push(chunk);
-}
-
-const fullText = await result.text;
-const usage = await result.usage;
 ```
+
+Consume from Go with `brainkit.CallStream`, via the gateway as SSE
+with `gw.HandleStream(...)`, or over WebSocket with
+`gw.HandleWebSocket(...)`. See
+[`examples/streaming/`](../../examples/streaming/).
 
 ### generateObject
 
-```typescript
-// fixtures/ts/ai/generate-object-basic/index.ts
-const result = await generateObject({
+```ts
+const r = await generateObject({
     model: model("openai", "gpt-4o-mini"),
     prompt: "Generate a person with name and age.",
-    schema: z.object({
-        name: z.string(),
-        age: z.number(),
-    }),
+    schema: z.object({ name: z.string(), age: z.number() }),
 });
-
-output(result.object); // {name: "Alice", age: 30}
+msg.reply(r.object);
 ```
 
 ### embed / embedMany
 
-```typescript
-// fixtures/ts/ai/embed-single/index.ts
-const result = await embed({
+```ts
+const e = await embed({
     model: embeddingModel("openai", "text-embedding-3-small"),
-    value: "Hello world",
+    value: "hello world",
 });
+// e.embedding is number[] (length 1536)
+```
 
-output({
-    dimensions: result.embedding.length,  // 1536
-    hasUsage: !!result.usage,
+```ts
+const r = await embedMany({
+    model: embeddingModel("openai", "text-embedding-3-small"),
+    values: ["hello", "world", "foo"],
 });
 ```
 
-```typescript
-// fixtures/ts/ai/embed-many/index.ts
-const result = await embedMany({
-    model: embeddingModel("openai", "text-embedding-3-small"),
-    values: ["Hello", "World", "Foo"],
-});
+See [vectors-and-rag.md](vectors-and-rag.md) for wiring embeddings
+into a vector store.
 
-output({ count: result.embeddings.length }); // 3
-```
+### Inline tools on generateText
 
-### Tool use with AI SDK
-
-```typescript
-// fixtures/ts/ai/generate-text-with-tools/index.ts
-const result = await generateText({
+```ts
+const r = await generateText({
     model: model("openai", "gpt-4o-mini"),
     prompt: "What is 6 times 7?",
     tools: {
@@ -96,42 +149,32 @@ const result = await generateText({
     },
     maxSteps: 3,
 });
-
-output({
-    text: result.text,        // "42"
-    hasToolCalls: result.toolCalls.length > 0,
-    hasSteps: result.steps.length > 0,
-});
 ```
 
 ## Agents — Mastra
 
-### Creating an Agent
+### Create + register
 
-```typescript
-// fixtures/ts/agent/generate-basic/index.ts
-const myAgent = new Agent({
-    name: "my-agent",
+```ts
+const researcher = new Agent({
+    name: "researcher",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "Reply with exactly: AGENT_WORKS",
+    instructions: "Answer research questions concisely.",
 });
+kit.register("agent", "researcher", researcher);
 
-kit.register("agent", "my-agent", myAgent);
-
-const result = await myAgent.generate("Say the magic word");
-output({
-    text: result.text,
-    hasUsage: !!result.usage,
-    finishReason: result.finishReason,
-});
+const r = await researcher.generate("What is brainkit?", { maxSteps: 3 });
+msg.reply({ text: r.text, usage: r.usage });
 ```
 
-**Important:** `new Agent({...})` creates the agent. `kit.register("agent", name, agent)` makes it visible in the agent registry (agents.list, agents.discover). Creating without registering is valid — the agent works but isn't discoverable.
+`new Agent(...)` creates the agent; `kit.register("agent", name,
+ref)` makes it visible to `agents.list`, `agents.discover`, and the
+Mastra tool-registry pipeline. Unregistered agents work locally but
+aren't discoverable over the bus.
 
-### Agent with Tools
+### Tools on agents
 
-```typescript
-// fixtures/ts/agent/generate-with-tools/index.ts
+```ts
 const searchTool = createTool({
     id: "search",
     description: "Search the web",
@@ -150,70 +193,63 @@ const agent = new Agent({
 });
 ```
 
-### Agent Streaming
+Use a Go-registered tool from `.ts`:
 
-```typescript
-// fixtures/ts/agent/stream-basic/index.ts
-const agent = new Agent({
-    name: "streamer",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Be concise.",
-});
-
-const stream = await agent.stream("Count to 5");
-
-const chunks: string[] = [];
-for await (const chunk of stream.textStream) {
-    chunks.push(chunk);
-}
-
-const text = await stream.text;
-const usage = await stream.usage;
-```
-
-### Agent with Go-Registered Tools
-
-```typescript
-// fixtures/ts/agent/with-registered-tool/index.ts
-// "multiply" was registered in Go before this .ts file runs
-const multiplyTool = tool("multiply");
-
+```ts
 const agent = new Agent({
     name: "math-bot",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "Use the multiply tool.",
-    tools: { multiply: multiplyTool },
+    instructions: "Use the math.add tool for arithmetic.",
+    tools: { math_add: tool("math.add") },
 });
-
-const result = await agent.generate("What is 6 times 7?", { maxSteps: 3 });
 ```
 
-### Agent with Memory
+See [`examples/go-tools/`](../../examples/go-tools/).
 
-```typescript
-// fixtures/ts/agent/with-memory-inmemory/index.ts
-const store = new InMemoryStore();
-const mem = new Memory({ storage: store });
+### Streaming
 
-const agent = new Agent({
-    name: "memory-agent",
+```ts
+const stream = await agent.stream("Count to five.");
+for await (const chunk of stream.textStream) msg.send({ delta: chunk });
+msg.reply({ done: true, usage: await stream.usage });
+```
+
+### Agent memory
+
+`Memory` gives the agent persistent state keyed by
+`threadId` + `resourceId`.
+
+```ts
+const mem = new Memory({ storage: new LibSQLStore({ id: "chat-memory" }) });
+
+const chat = new Agent({
+    name: "chatter",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "Remember the user's name.",
+    instructions: "Remember what the user told you.",
     memory: mem,
 });
 
-await agent.generate("My name is David", { threadId: "t1", resourceId: "user-1" });
-const result = await agent.generate("What's my name?", { threadId: "t1", resourceId: "user-1" });
+await chat.generate("My name is David", {
+    threadId: "thread-1",
+    resourceId: "user-1",
+});
+const r = await chat.generate("What's my name?", {
+    threadId: "thread-1",
+    resourceId: "user-1",
+});
 ```
 
-### Agent Networks (Sub-Agents)
+`LibSQLStore({ id })` resolves the Kit's named SQLite storage; swap
+for `new InMemoryStore()` during development. Full details in
+[storage-and-memory.md](storage-and-memory.md).
 
-```typescript
-// fixtures/ts/agent/subagents-basic/index.ts
+### Sub-agents
+
+```ts
 const mathAgent = new Agent({
     name: "math",
     model: model("openai", "gpt-4o-mini"),
-    instructions: "You are a math expert. Compute what's asked.",
+    instructions: "You are a math expert.",
 });
 
 const supervisor = new Agent({
@@ -224,133 +260,77 @@ const supervisor = new Agent({
     maxSteps: 5,
 });
 
-const result = await supervisor.generate("What is 123 * 456?");
+const r = await supervisor.generate("What is 123 * 456?");
 ```
 
-Each sub-agent becomes a tool (`agent-math`) that the supervisor can call.
+Each sub-agent becomes a tool the supervisor can invoke.
 
-## Workflows
+## Agent-spawning agents
 
-```typescript
-// fixtures/ts/workflow/then-basic/index.ts
-const step1 = createStep({
-    id: "uppercase",
-    inputSchema: z.object({ text: z.string() }),
-    outputSchema: z.object({ upper: z.string() }),
-    execute: async ({ inputData }) => ({ upper: inputData.text.toUpperCase() }),
-});
+Agents can deploy new agents at runtime — the "agent architect"
+pattern. The `deploy_agent` tool template generates a `.ts` source
+string and calls `bus.call("package.deploy", ...)`.
 
-const step2 = createStep({
-    id: "exclaim",
-    inputSchema: z.object({ upper: z.string() }),
-    outputSchema: z.object({ result: z.string() }),
-    execute: async ({ inputData }) => ({ result: inputData.upper + "!!!" }),
-});
-
-const wf = createWorkflow({
-    id: "my-workflow",
-    inputSchema: z.object({ text: z.string() }),
-    outputSchema: z.object({ result: z.string() }),
-}).then(step1).then(step2).commit();
-
-const run = await wf.createRun();
-const result = await run.start({ inputData: { text: "hello" } });
-// result.status: "success"
-// result.result: { result: "HELLO!!!" }
-```
-
-### Branching
-
-```typescript
-// fixtures/ts/workflow/branch/index.ts
-const wf = createWorkflow({
-    id: "branching",
-    inputSchema: z.object({ type: z.string() }),
-    outputSchema: z.any(),
-})
-.then(classifyStep)
-.branch([
-    [({ inputData }) => inputData.classification === "urgent", urgentStep],
-    [({ inputData }) => inputData.classification === "normal", normalStep],
-])
-.commit();
-```
-
-### Parallel
-
-```typescript
-// fixtures/ts/workflow/parallel/index.ts
-const wf = createWorkflow({...})
-.then(fetchStep)
-.parallel([analyzeStep, summarizeStep, extractStep])
-.then(mergeStep)
-.commit();
-```
-
-## Evals
-
-### createScorer
-
-```typescript
-// fixtures/ts/evals/create-scorer/index.ts
-const accuracy = createScorer({
-    name: "accuracy",
-    description: "Checks if output contains expected answer",
-}).generateScore(({ output, expectedOutput }) => {
-    return output.toLowerCase().includes(expectedOutput.toLowerCase()) ? 1 : 0;
+```ts
+const deployAgent = createTool({
+    id: "deploy_agent",
+    description: "Spawn a brand new agent on this Kit.",
+    inputSchema: z.object({
+        name: z.string(),
+        instructions: z.string(),
+    }),
+    execute: async ({ context }) => {
+        const { name, instructions } = context;
+        const src =
+            `const a = new Agent({ name: ${JSON.stringify(name)},` +
+            `  model: model("openai", "gpt-4o-mini"),` +
+            `  instructions: ${JSON.stringify(instructions)} });` +
+            `kit.register("agent", ${JSON.stringify(name)}, a);` +
+            `bus.on("ask", async (msg) => {` +
+            `  const r = await a.generate(msg.payload.prompt);` +
+            `  msg.reply({ text: r.text, usage: r.usage });` +
+            `});`;
+        const resp = await bus.call("package.deploy", {
+            manifest: { name, entry: `${name}.ts` },
+            files: { [`${name}.ts`]: src },
+        }, { timeoutMs: 30000 });
+        return { deployed: !!resp.deployed, name: resp.name || name,
+                 topic: `ts.${name}.ask` };
+    },
 });
 ```
 
-### runEvals
+The full working program, including the Go side that calls the
+spawned agent, is in
+[`examples/agent-spawner/`](../../examples/agent-spawner/).
 
-```typescript
-// fixtures/ts/evals/batch/index.ts
-const results = await runEvals({
-    agent: myAgent,
-    data: [
-        { input: "What is 2+2?", expectedOutput: "4" },
-        { input: "Capital of France?", expectedOutput: "paris" },
-    ],
-    scorers: [accuracy],
-});
+## Calling agents from Go
 
-output({
-    totalItems: results.summary.totalItems,
-    scores: results.scores,
-});
+Every registered agent responds on `agents.generate` and friends:
+
+```go
+resp, err := brainkit.CallAgentList(kit, ctx, sdk.AgentListMsg{},
+    brainkit.WithCallTimeout(2*time.Second))
+for _, a := range resp.Agents {
+    fmt.Println(a.Name, a.Instructions)
+}
 ```
 
-### LLM Judge Pattern
+For request/response against a service-hosted agent, call the
+service's topic:
 
-```typescript
-// fixtures/ts/evals/llm-judge/index.ts
-const helpfulness = createScorer({
-    name: "helpfulness",
-    description: "LLM judges helpfulness",
-}).generateScore({
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Rate helpfulness 0-1. Return JSON: {score: number}",
-    outputSchema: z.object({ score: z.number() }),
-});
+```go
+reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
+    sdk.CustomMsg{
+        Topic:   "ts.researcher.ask",
+        Payload: json.RawMessage(`{"prompt":"what is brainkit?"}`),
+    },
+    brainkit.WithCallTimeout(60*time.Second))
 ```
 
-## Model Resolution
+## What's verified
 
-`model(provider, modelId)` resolves from AI providers auto-detected via `os.Getenv`:
-
-```typescript
-model("openai", "gpt-4o-mini")         // OpenAI
-model("anthropic", "claude-sonnet-4-20250514") // Anthropic
-model("google", "gemini-2.0-flash")    // Google
-model("groq", "llama-3.3-70b")        // Groq
-model("deepseek", "deepseek-chat")     // DeepSeek
-
-embeddingModel("openai", "text-embedding-3-small") // 1536 dims
-embeddingModel("openai", "text-embedding-3-large") // 3072 dims
-```
-
-Only providers whose API keys are present in the environment are available. Calling `model("anthropic", "...")` without `ANTHROPIC_API_KEY` set returns a string identifier (no API key, calls will fail).
-
-## What's Real vs Mastra Upstream
-
-Everything documented here is tested in brainkit's fixture suite. Features that exist in Mastra but aren't tested through brainkit (processors, voice, some workspace features) are NOT documented here — they may or may not work. If it's in `fixtures/ts/`, it works. If it's not, treat it as unverified.
+Every snippet above is taken from the `examples/` programs or from
+the project's fixture suite. Mastra features not exercised in
+fixtures (voice, some workspace features) are intentionally left
+out — treat anything not covered here as unverified.

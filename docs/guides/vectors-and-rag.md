@@ -1,230 +1,278 @@
 # Vectors and RAG
 
-brainkit bundles Mastra's RAG toolkit — vector stores, document processing, chunking, reranking, and GraphRAG. All operations run inside the QuickJS runtime via the "agent" module.
+Vector stores are declared alongside storage on `Config.Vectors`
+and resolved from `.ts` through `vectorStore("name")`. The bundled
+Mastra RAG toolkit (MDocument, chunkers, rerank, GraphRAG,
+`createVectorQueryTool`) operates on the resolved store — no
+separate setup.
 
-## Vector Stores
-
-Three providers, all tested with real containers:
-
-```typescript
-// LibSQLVector — embedded or remote
-const vs = new LibSQLVector({ id: "docs" });  // embedded bridge
-const vs = new LibSQLVector({ id: "docs", connectionUrl: "http://libsql-server:8080" }); // remote
-
-// PgVector — requires Postgres with pgvector extension
-const vs = new PgVector({ id: "docs", connectionString: "postgres://..." });
-
-// MongoDBVector — requires MongoDB Atlas Vector Search
-const vs = new MongoDBVector({ id: "docs", uri: "mongodb://...", dbName: "myapp" });
-```
-
-### Index lifecycle
-
-```typescript
-// fixtures/ts/vector/libsql-create-upsert-query/index.ts
-await vs.createIndex("knowledge", 1536, "cosine");
-
-await vs.upsert("knowledge", [
-    { id: "chunk-1", values: embedding, metadata: { source: "docs.md", page: 1 } },
-    { id: "chunk-2", values: embedding2, metadata: { source: "api.md", page: 3 } },
-]);
-
-const results = await vs.query("knowledge", queryEmbedding, 5);
-// [{id: "chunk-1", score: 0.95, metadata: {source: "docs.md"}}, ...]
-
-const indexes = await vs.listIndexes();
-await vs.deleteIndex("knowledge");
-```
-
-### From Go registry
+## Wire vector stores from Go
 
 ```go
-Vectors: map[string]brainkit.VectorConfig{
-    "main": brainkit.PgVectorStore(pgURL),
-},
+kit, err := brainkit.New(brainkit.Config{
+    Namespace: "rag-demo",
+    Transport: brainkit.Memory(),
+    FSRoot:    "/var/lib/rag",
+    Vectors: map[string]brainkit.VectorConfig{
+        "default": brainkit.SQLiteVector("/var/lib/rag/vectors.db"),
+    },
+    Providers: []brainkit.ProviderConfig{
+        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
+    },
+})
 ```
 
-```typescript
-const vs = vectorStore("main"); // resolves from Go registry
+Three constructors ship out of the box:
+
+| Builder | Backend |
+|---|---|
+| `brainkit.SQLiteVector(path)` | libsql / SQLite via embedded bridge. |
+| `brainkit.PgVectorStore(dsn)` | Postgres with the `pgvector` extension. |
+| `brainkit.MongoDBVectorStore(uri, dbName)` | MongoDB Atlas Vector Search. |
+
+Runtime management:
+
+```go
+for _, v := range kit.Vectors().List() {
+    fmt.Println(v.Name, v.Type)
+}
 ```
 
-## Document Processing
+## Resolve from `.ts`
 
-`MDocument` processes documents into chunks for embedding:
+```ts
+import { vectorStore, embeddingModel, MDocument, LibSQLVector } from "kit";
 
-```typescript
-// fixtures/ts/rag/chunk-text/index.ts
-import { MDocument } from "agent";
+// Registry-backed
+const vs = vectorStore("default");
 
-const doc = MDocument.fromText("Long document text here...");
+// Direct instantiation — resolves to the Kit's embedded SQLite bridge
+const vs2 = new LibSQLVector({ id: "docs" });
+
+// Remote libsql / Turso
+const vs3 = new LibSQLVector({ id: "docs", url: process.env.LIBSQL_URL });
+```
+
+## Index lifecycle
+
+The vector API uses object arguments everywhere. Positional
+arguments are not supported.
+
+```ts
+await vs.createIndex({ indexName: "docs", dimension: 1536 });
+
+await vs.upsert({
+    indexName: "docs",
+    vectors:   [embedding1, embedding2],
+    ids:       ["doc-1", "doc-2"],
+    metadata:  [
+        { title: "Getting Started" },
+        { title: "API Reference" },
+    ],
+});
+
+const hits = await vs.query({
+    indexName:   "docs",
+    queryVector: queryEmbedding,
+    topK:        5,
+});
+// hits: [{ id, score, metadata }, ...]
+
+const indexes = await vs.listIndexes();
+await vs.describeIndex("docs");
+await vs.deleteVectors({ indexName: "docs", ids: ["doc-1"] });
+await vs.deleteIndex("docs");
+```
+
+## End-to-end example
+
+From [`examples/storage-vectors/`](../../examples/storage-vectors/):
+
+```ts
+const store = vectorStore("default");
+const embed = embeddingModel("openai", "text-embedding-3-small");
+
+let indexReady = false;
+async function ensureIndex(dim) {
+    if (indexReady) return;
+    await store.createIndex({ indexName: "demo", dimension: dim });
+    indexReady = true;
+}
+
+bus.on("seed", async (msg) => {
+    const docs = msg.payload.docs;
+    const { embeddings } = await embed.doEmbed({ values: docs.map((d) => d.text) });
+    await ensureIndex(embeddings[0].length);
+    await store.upsert({
+        indexName: "demo",
+        vectors:   embeddings,
+        ids:       docs.map((d) => d.id),
+        metadata:  docs.map((d) => ({ text: d.text })),
+    });
+    msg.reply({ inserted: docs.length });
+});
+
+bus.on("query", async (msg) => {
+    const { embeddings } = await embed.doEmbed({ values: [msg.payload.query] });
+    const hits = await store.query({
+        indexName:   "demo",
+        queryVector: embeddings[0],
+        topK:        msg.payload.k || 2,
+    });
+    msg.reply({ hits: hits.map((h) => ({
+        id: h.id, score: h.score, text: h.metadata.text,
+    })) });
+});
+```
+
+The Go side publishes `seed` then `query`. Similarity search is
+transport-backed — the Go caller never touches the vectors
+directly.
+
+## Document processing with MDocument
+
+```ts
+const doc = MDocument.fromText(rawText);
 const chunks = await doc.chunk({
     strategy: "recursive",
-    size: 500,
-    overlap: 50,
+    maxSize:  500,
+    overlap:  50,
 });
-// chunks: MDocument[] — each chunk is a smaller document
 ```
 
-### Chunking strategies
+Other strategies:
 
-```typescript
-// Text — basic character splitting
-await doc.chunk({ strategy: "recursive", size: 1000, overlap: 100 });
+| Strategy | Source | Notes |
+|---|---|---|
+| `"recursive"` | `MDocument.fromText(...)` | Basic character splitting. |
+| `"markdown"` | `MDocument.fromMarkdown(...)` | Splits on headings, preserves header metadata. |
+| `"token"` | `MDocument.fromText(...)` | Splits by token count (js-tiktoken). |
 
-// Markdown — splits on headings, preserves structure
-// fixtures/ts/rag/chunk-markdown/index.ts
-const doc = MDocument.fromMarkdown("# Title\n\nContent here...");
-await doc.chunk({ strategy: "markdown", size: 500 });
-
-// Token — splits by token count (uses tiktoken)
-// fixtures/ts/rag/chunk-token/index.ts
-await doc.chunk({ strategy: "token", size: 200, overlap: 20 });
-```
+Each chunk carries its source text (`chunk.text`) and optional
+structure metadata.
 
 ## createVectorQueryTool
 
-Wraps a vector store as an agent tool:
+Wraps a vector store as an agent tool. The agent calls the tool
+when it needs semantic retrieval; your code doesn't do the
+query/embedding plumbing.
 
-```typescript
-// fixtures/ts/rag/vector-query/index.ts
-import { createVectorQueryTool } from "agent";
-
+```ts
 const queryTool = createVectorQueryTool({
-    vectorStoreName: "main",        // name from vectorStore() registry
-    indexName: "knowledge",
-    model: embeddingModel("openai", "text-embedding-3-small"),
+    vectorStoreName: "default",
+    indexName:       "docs",
+    model:           embeddingModel("openai", "text-embedding-3-small"),
 });
 
 const agent = new Agent({
-    name: "rag-agent",
-    model: model("openai", "gpt-4o-mini"),
+    name:         "rag-agent",
+    model:        model("openai", "gpt-4o-mini"),
     instructions: "Use the vector query tool to find relevant information.",
-    tools: { vectorQuery: queryTool },
+    tools:        { vectorQuery: queryTool },
 });
 ```
 
 ## Reranking
 
-After vector retrieval, rerank results by relevance:
+Post-retrieval reranking:
 
-```typescript
-// fixtures/ts/rag/rerank/index.ts
-import { rerank } from "agent";
-
+```ts
 const reranked = await rerank(results, query, {
     model: model("openai", "gpt-4o-mini"),
-    topK: 3,
+    topK:  3,
 });
 ```
 
-`rerankWithScorer` uses a custom scorer function:
+Custom scorer:
 
-```typescript
-import { rerankWithScorer } from "agent";
-
+```ts
 const reranked = await rerankWithScorer(results, query, {
-    scorer: async (result, query) => {
-        // Custom relevance scoring logic
-        return result.metadata.source === "trusted" ? 1.0 : 0.5;
-    },
+    scorer: async (result, q) =>
+        result.metadata.source === "trusted" ? 1.0 : 0.5,
     topK: 3,
 });
 ```
 
 ## GraphRAG
 
-Knowledge graph extraction + retrieval:
+`GraphRAG` extracts entities and relationships, stores them in a
+vector store, and retrieves over the resulting knowledge graph.
 
-```typescript
-// fixtures/ts/rag/graph-rag/index.ts
-import { GraphRAG, createGraphRAGTool } from "agent";
-
+```ts
 const graphRag = new GraphRAG({
-    model: model("openai", "gpt-4o-mini"),
-    vectorStore: vectorStore("main"),
-    indexName: "graph",
+    model:          model("openai", "gpt-4o-mini"),
+    vectorStore:    vectorStore("default"),
+    indexName:      "graph",
     embeddingModel: embeddingModel("openai", "text-embedding-3-small"),
 });
 
-// Add documents — extracts entities and relationships
 await graphRag.addDocuments([
     MDocument.fromText("Alice works at Acme Corp. Bob is Alice's manager."),
 ]);
 
-// Query — traverses the knowledge graph
 const results = await graphRag.query("Who does Alice work with?");
 ```
 
-`createGraphRAGTool` wraps GraphRAG as an agent tool:
+Wrap as an agent tool:
 
-```typescript
+```ts
 const graphTool = createGraphRAGTool({
     graphRag,
-    description: "Query the knowledge graph for entity relationships",
-});
-
-const agent = new Agent({
-    tools: { graph: graphTool },
-    // ...
+    description: "Query the knowledge graph for entity relationships.",
 });
 ```
 
-## Document Chunker Tool
+## End-to-end RAG pipeline
 
-Wraps document chunking as an agent tool:
-
-```typescript
-import { createDocumentChunkerTool } from "agent";
-
-const chunkerTool = createDocumentChunkerTool({
-    strategy: "markdown",
-    size: 500,
-    overlap: 50,
-});
-
-// Agent can process documents on demand
-const agent = new Agent({
-    tools: { chunker: chunkerTool },
-    // ...
-});
-```
-
-## End-to-End RAG Pattern
-
-```typescript
-// 1. Process documents into chunks
+```ts
+// 1. Chunk the source.
 const doc = MDocument.fromMarkdown(rawMarkdown);
-const chunks = await doc.chunk({ strategy: "markdown", size: 500 });
+const chunks = await doc.chunk({ strategy: "markdown", maxSize: 500 });
 
-// 2. Embed and store chunks
-const vs = vectorStore("main");
-await vs.createIndex("docs", 1536, "cosine");
+// 2. Embed + upsert.
+const vs = vectorStore("default");
+await vs.createIndex({ indexName: "docs", dimension: 1536 });
 
 for (const chunk of chunks) {
     const { embedding } = await embed({
         model: embeddingModel("openai", "text-embedding-3-small"),
-        value: chunk.getText(),
+        value: chunk.text,
     });
-    await vs.upsert("docs", [{
-        id: crypto.randomUUID(),
-        values: embedding,
-        metadata: { text: chunk.getText() },
-    }]);
+    await vs.upsert({
+        indexName: "docs",
+        vectors:   [embedding],
+        ids:       [crypto.randomUUID()],
+        metadata:  [{ text: chunk.text }],
+    });
 }
 
-// 3. Create agent with vector query tool
+// 3. Give the agent a retrieval tool.
 const queryTool = createVectorQueryTool({
-    vectorStoreName: "main",
-    indexName: "docs",
-    model: embeddingModel("openai", "text-embedding-3-small"),
+    vectorStoreName: "default",
+    indexName:       "docs",
+    model:           embeddingModel("openai", "text-embedding-3-small"),
 });
 
 const agent = new Agent({
-    name: "rag-bot",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Answer questions using the vector query tool to find relevant context.",
-    tools: { search: queryTool },
+    name:         "rag-bot",
+    model:        model("openai", "gpt-4o-mini"),
+    instructions: "Answer using the vector query tool to find relevant context.",
+    tools:        { search: queryTool },
 });
 
-const result = await agent.generate("What does the documentation say about deployment?");
+const result = await agent.generate(
+    "What does the documentation say about deployment?"
+);
+msg.reply({ text: result.text });
 ```
+
+See [`examples/storage-vectors/`](../../examples/storage-vectors/)
+for the working end-to-end program.
+
+## What's tested
+
+Vector and RAG paths are exercised against real backends (libsql,
+pgvector, MongoDB). See fixture inventory under
+`fixtures/ts/vector/` and `fixtures/ts/rag/` — any feature with a
+fixture there is tested in CI. Features that exist in Mastra but
+aren't covered by a fixture should be treated as unverified.

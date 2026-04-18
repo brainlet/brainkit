@@ -1,92 +1,117 @@
 # Bundle and Bytecode
 
-brainkit bundles the entire Mastra framework + AI SDK + 12 provider factories + Zod into a single JavaScript file that loads into QuickJS at startup. This bundle is 16.5MB of minified JS. Loading it from source takes ~500ms. Loading precompiled bytecode takes ~200ms. Both are embedded in the Go binary via `//go:embed`.
+Every Kit embeds a single pre-built JavaScript bundle that carries the
+entire Mastra framework, the Vercel AI SDK, 12 provider factories, and
+Zod. It is built once per release with esbuild, compiled to QuickJS
+bytecode, and embedded in the Go binary via `//go:embed`. A fresh Kit
+loads that bytecode in ~200 ms — versus ~500 ms to parse the raw JS —
+and that is what makes `brainkit.New` a library call instead of a
+subprocess bring-up.
 
-## What's in the Bundle
+## What the Bundle Contains
 
-The bundle (`internal/embed/agent/agent_embed_bundle.js`) is built by esbuild from `internal/embed/agent/bundle/entry.mjs`. It contains:
+`internal/embed/agent/agent_embed_bundle.js` (~16 MB) and the
+accompanying `.bc` file (~15 MB) cover:
 
-- **Mastra core**: Agent, createTool, createWorkflow, createStep, Memory, RequestContext
-- **Mastra stores**: InMemoryStore, LibSQLStore, PostgresStore, MongoDBStore, UpstashStore
-- **Mastra vectors**: LibSQLVector, PgVector, MongoDBVector
-- **Mastra workspace**: Workspace, LocalFilesystem, LocalSandbox
-- **Mastra RAG**: MDocument, GraphRAG, createVectorQueryTool, createDocumentChunkerTool, rerank
-- **Mastra evals**: createScorer, runEvals, Observability, DefaultExporter
-- **AI SDK**: generateText, streamText, generateObject, streamObject, embed, embedMany
-- **AI SDK providers**: createOpenAI, createAnthropic, createGoogleGenerativeAI, createMistral, createXai, createGroq, createDeepSeek, createCerebras, createPerplexity, createTogetherAI, createFireworks, createCohere
-- **Zod v4**: z (schema builder + validation)
-- **SES**: Compartment, lockdown, harden (loaded separately as ses.umd.js)
+- **Mastra core** — `Agent`, `createTool`, `createWorkflow`,
+  `createStep`, `Memory`, `RequestContext`, `Observability`,
+  `DefaultExporter`.
+- **Mastra stores** — `InMemoryStore`, `LibSQLStore`, `PostgresStore`,
+  `MongoDBStore`, `UpstashStore`.
+- **Mastra vectors** — `LibSQLVector`, `PgVector`, `MongoDBVector`.
+- **Mastra workspace** — `Workspace`, `LocalFilesystem`,
+  `LocalSandbox`.
+- **Mastra RAG** — `MDocument`, `GraphRAG`, `createVectorQueryTool`,
+  `createDocumentChunkerTool`, `rerank`, `rerankWithScorer`.
+- **Mastra evals** — `createScorer`, `runEvals`,
+  `ModelRouterEmbeddingModel`.
+- **AI SDK** — `generateText`, `streamText`, `generateObject`,
+  `streamObject`, `embed`, `embedMany`.
+- **12 AI-SDK provider factories** — `createOpenAI`,
+  `createAnthropic`, `createGoogleGenerativeAI`, `createMistral`,
+  `createXai`, `createGroq`, `createDeepSeek`, `createCerebras`,
+  `createPerplexity`, `createTogetherAI`, `createFireworks`,
+  `createCohere`.
+- **Zod v4** — `z`.
+- **SES** is loaded separately from `ses.umd.js`.
 
-Everything is exposed on `globalThis.__agent_embed` after the bundle loads.
+Everything lands on `globalThis.__agent_embed` after the bundle
+finishes evaluating.
 
-## The Build Process
+Source of truth: `internal/embed/agent/bundle/entry.mjs`.
 
-`internal/embed/agent/bundle/build.mjs` runs esbuild:
+## The Build Pipeline
 
-```bash
-cd internal/embed/agent/bundle && node build.mjs
+Bundle production lives in `internal/embed/agent/bundle/`:
+
+```
+bundle/
+├── build.mjs      ← esbuild driver
+├── entry.mjs      ← re-exports every public symbol
+├── meta.json      ← esbuild metadata for size reports
+├── node_modules/  ← npm install output used by build.mjs
+└── package.json
 ```
 
-esbuild bundles `entry.mjs` with:
-- `format: "iife"` — wraps in an immediately-invoked function
-- `platform: "browser"` — no Node.js built-in resolution
-- `minify: true` + `treeShaking: true`
-- `nodeStubPlugin` — replaces `import { X } from 'stream'` etc. with thin re-exports from globalThis
+To rebuild:
 
-### Node.js Module Stubs
+```bash
+cd internal/embed/agent/bundle && node build.mjs          # 1. Rebuild JS
+go run internal/embed/agent/cmd/compile-bundle/main.go     # 2. Recompile bytecode
+go build ./...                                             # 3. Re-embed both
+```
 
-The Mastra code and its npm dependencies do `import { Readable } from 'stream'`, `import crypto from 'crypto'`, etc. Since esbuild runs in Node.js at build time, it needs to resolve these imports. The `nodeStubPlugin` intercepts them and provides stub modules:
+esbuild settings (`format: "iife"`, `platform: "browser"`, `minify:
+true`, `treeShaking: true`) produce a single IIFE that attaches its
+exports to `globalThis.__agent_embed`. A custom plugin —
+`nodeStubPlugin` — intercepts every bare `import ... from "stream"`,
+`"crypto"`, `"net"`, etc. and replaces it with a thin re-export from
+`globalThis`:
 
 ```javascript
-// build.mjs — crypto stub
-"crypto": `
-    var C = globalThis.crypto || {};
-    export var createHash = C.createHash || function() { ... };
-    export var pbkdf2Sync = C.pbkdf2Sync || function() { ... };
-    export var webcrypto = globalThis.crypto;
-    export default { createHash, pbkdf2Sync, webcrypto, ... };
+// build.mjs — stream stub excerpt
+"stream": `
+  var s = globalThis.stream || {};
+  export var Readable = s.Readable;
+  export var Writable = s.Writable;
+  export var Duplex = s.Duplex;
+  export var Transform = s.Transform;
+  export default s;
 `,
 ```
 
-At runtime, `globalThis.crypto` has the real Go-backed implementations from jsbridge polyfills. The stub just wires the import resolution. See [jsbridge-polyfills.md](jsbridge-polyfills.md).
+The stubs never contain logic — the actual implementations are the Go
+polyfills in `internal/jsbridge/*.go` (loaded into the same
+`globalThis` before the bundle evaluates). That invariant —
+"jsbridge-first, bundle stubs are re-exports" — is enforced by CLAUDE.md
+and spot-checked in `jsbridge/*_test.go`.
 
-**Critical rule:** Never put implementations in build.mjs stubs. They are thin re-exports ONLY. Implementations go in `internal/jsbridge/*.go` with Go test coverage.
+## The Load Order
 
-## The Loading Sequence
-
-`LoadBundle` in `internal/embed/agent/embed.go` loads SES and the Mastra bundle in order:
+`LoadBundle` in `internal/embed/agent/embed.go` runs five phases in
+order:
 
 ```
-1. runtimeGlobalsJS (agent-embed-setup.js)
-   └─ Pre-lockdown captures: saves Math.random, Date.now, Date constructor
-      before SES freezes them as "ambient authority"
-   └─ require() shim: handles dynamic require() for otel, zod, vscode-jsonrpc
-
-2. sesPolyfillsSource (ses-polyfills.js)
-   └─ Console stubs, Iterator prototype fix for QuickJS compatibility
-
-3. sesSource (ses.umd.js)
-   └─ SES library: provides Compartment, harden, lockdown
-
-4. sesLockdownJS
-   └─ lockdown({ errorTaming: "unsafe", overrideTaming: "moderate",
-                 consoleTaming: "unsafe", evalTaming: "unsafe-eval" })
-   └─ After this: Math.random(), Date.now(), new Date() throw in Compartments
-      (restored via pre-lockdown captures in kit_runtime.js endowments)
-
-5. bundleBytecode (agent_embed_bundle.bc) — preferred
-   OR bundleSource (agent_embed_bundle.js) — fallback
-   └─ After this: globalThis.__agent_embed has everything
+1. runtimeGlobalsJS  (pre-lockdown captures + require() shim)
+2. sesPolyfillsSource (ses_polyfills.js — console/Iterator fixes)
+3. sesSource          (ses.umd.js — Compartment/harden/lockdown)
+4. sesLockdownJS      (calls lockdown() with tame-friendly options)
+5. bundleBytecode     (agent_embed_bundle.bc — preferred)
+    OR bundleSource   (agent_embed_bundle.js — fallback)
 ```
 
-### Pre-lockdown Captures
+After phase 5, `globalThis.__agent_embed` is populated and the Kit's
+Compartment factory can use it to build per-deployment endowments.
 
-SES lockdown tames `Math.random`, `Date.now`, and `Date()` as "ambient authority" — code in Compartments can't call them. But AI SDK, Mastra, and user code need dates and random numbers.
+### Pre-lockdown captures
 
-The solution: capture the real implementations BEFORE lockdown runs:
+SES's `lockdown()` tames `Math.random`, `Date.now`, and the `Date`
+constructor as ambient authority — code inside Compartments cannot
+call them. The bundle stores the real implementations before lockdown
+runs:
 
 ```javascript
-// runtimeGlobalsJS — runs BEFORE lockdown
+// runtimeGlobalsJS
 (function() {
     var _origMathRandom = Math.random.bind(Math);
     var _origDateNow = Date.now.bind(Date);
@@ -99,16 +124,27 @@ The solution: capture the real implementations BEFORE lockdown runs:
 })();
 ```
 
-Then kit_runtime.js builds `BrainkitDate` and a patched `Math` from these captures and includes them in the Compartment endowments. Inside a Compartment, `Date.now()` calls the captured `_origDateNow`, not the tamed one.
+The deployment pipeline reads `__brainkit_pre_lockdown` when building
+per-package Compartment globals, so deployed `.ts` code sees a
+working `Date.now()` and `Math.random()` even though the intrinsics
+are tamed. See [deployment-pipeline.md](deployment-pipeline.md).
+
+### The `require()` shim
+
+A handful of bundle dependencies (`@opentelemetry/api`, `zod/v4`,
+`vscode-jsonrpc/node`, `vscode-languageserver-protocol`, `execa`)
+perform dynamic `require()` calls that esbuild cannot resolve at
+build time. The runtimeGlobalsJS installs a `globalThis.require`
+function that serves no-op stubs for those cases — OTel becomes a
+tracer/span pair of shapes that record nothing; missing LSP deps
+become empty objects.
 
 ## Bytecode Caching
 
-QuickJS can compile JavaScript to bytecode — a binary format that loads faster than parsing and evaluating source text. brainkit pre-compiles the bundle:
-
-```bash
-go run internal/embed/agent/cmd/compile-bundle/main.go
-# Output: agent_embed_bundle.js (16.2 MB) → agent_embed_bundle.bc (14.8 MB)
-```
+QuickJS supports compiling JavaScript to a portable bytecode that
+loads without parsing. `internal/embed/agent/cmd/compile-bundle/main.go`
+runs the bundle through `Bridge.CompileBytecode()` and writes
+`agent_embed_bundle.bc` (~15 MB) next to the source.
 
 Both files are embedded in the Go binary:
 
@@ -120,66 +156,89 @@ var bundleSource string
 var bundleBytecode []byte
 ```
 
-`LoadBundle` prefers bytecode:
+`LoadBundle` prefers bytecode — the JS source is only loaded when the
+`.bc` is empty (which would indicate an out-of-band build):
 
 ```go
 if len(bundleBytecode) > 0 {
     val, err := b.EvalBytecode(bundleBytecode)
-    // ...
+    if err != nil { return err }
+    val.Free()
     return nil
 }
-// Fallback to source
 val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
 ```
 
-### The Stale Bytecode Trap
+### The stale bytecode trap
 
-**This has caused real bugs.** After modifying `build.mjs` (e.g., renaming `__node_crypto` to `crypto`), you MUST rebuild BOTH the JS bundle AND the bytecode:
+This has burned real bugs. If you change `build.mjs`, you MUST
+rebuild both the JS bundle and the bytecode. The three-step sequence
+above is non-optional; the rule lives in `CLAUDE.md`:
 
-```bash
-cd internal/embed/agent/bundle && node build.mjs          # 1. Rebuild JS bundle
-go run internal/embed/agent/cmd/compile-bundle/main.go     # 2. Recompile bytecode
-go build ./...                                             # 3. Re-embed both
-```
+> After modifying `internal/embed/agent/bundle/build.mjs` (esbuild
+> stubs for Node.js modules), you MUST rebuild THREE things in order:
+> JS bundle → bytecode cache (.bc) → `go build ./...`.
 
-If you skip step 2, the `.bc` file still contains the OLD code. Since `LoadBundle` loads bytecode preferentially, the new `.js` is ignored. The code looks correct in `agent_embed_bundle.js` but the runtime uses the stale `.bc`. This manifests as "not a function" errors in seemingly unrelated code.
+Skipping the bytecode step leaves the old code live — the new `.js`
+is ignored because the Kit preferentially loads the `.bc`. Symptoms
+are usually "not a function" errors in seemingly unrelated code.
+Renames like `__node_crypto` → `crypto` have historically tripped
+this exact trap in the PgVector probe path.
 
-Example: after the `__node_*` → clean name rename, the PgVector probe test failed with "not a function" because the bytecode still referenced `globalThis.__node_crypto` which no longer existed. Rebuilding the bytecode fixed it.
+## Scoped Console
 
-## The require() Shim
+`lockdown()` is called with `consoleTaming: "unsafe"` so bundle code
+can `console.log` normally, but SES still emits warnings during
+lockdown about non-standard QuickJS intrinsics ("Removing unpermitted
+intrinsics …"). The runtime mutes every `console.*` method during
+`lockdown()` and restores them afterwards, emitting a single
+`[brainkit] SES lockdown complete (<n> non-standard intrinsics
+removed)` line at debug level.
 
-The Mastra bundle has dynamic `require()` calls for packages that can't be resolved at esbuild time:
+## Bundle Size (current build)
 
-```javascript
-globalThis.require = function(mod) {
-    if (mod === "@opentelemetry/api") return _otelStub;
-    if (mod === "zod/v4" || mod === "zod") return globalThis.__zod_v4_module || _zodV4Wrapper;
-    if (mod === "vscode-jsonrpc/node") return globalThis.__vscode_jsonrpc_node || {};
-    if (mod === "execa") return { execa: globalThis.__execa_polyfill || throwFn };
-    return {};
-};
-```
+| File                          | Size   |
+| ----------------------------- | ------ |
+| `agent_embed_bundle.js`       | ~16.6 MB |
+| `agent_embed_bundle.bc`       | ~15.0 MB |
 
-The OpenTelemetry stub is a full no-op implementation: `_noopTracer`, `_noopSpan`, `SpanStatusCode`, `SpanKind`, `context`, `diag`, `propagation`. This prevents Mastra's OTel instrumentation from crashing in QuickJS while being effectively disabled.
+Rough breakdown of the JS bundle:
 
-## Bundle Size Breakdown
+| Component                                  | Approx. size |
+| ------------------------------------------ | ------------ |
+| Mastra core + workflows + agents           | ~6 MB        |
+| AI SDK + 12 provider factories             | ~4 MB        |
+| `tiktoken` (tokenizer for RAG)             | ~2 MB        |
+| MongoDB driver                             | ~600 KB      |
+| PostgreSQL driver                          | ~400 KB      |
+| Zod v4                                     | ~500 KB      |
+| `@libsql/client` (HTTP mode)               | ~200 KB      |
+| sentiment, xxhash, misc helpers            | ~2 MB        |
+| IIFE wrappers, minification overhead        | ~800 KB      |
 
-The 16.5MB bundle breaks down roughly as:
+Numbers are approximate and drift with releases — read `meta.json`
+after a build for the authoritative report.
 
-| Component | Size |
-|-----------|------|
-| Mastra core + workflows + agents | ~6MB |
-| AI SDK + 12 provider factories | ~4MB |
-| pg driver (node-postgres) | ~400KB |
-| MongoDB driver (node-mongodb-native) | ~600KB |
-| @libsql/client (HTTP mode) | ~200KB |
-| tiktoken (tokenizer for RAG) | ~2MB |
-| Zod v4 | ~500KB |
-| Other deps (sentiment, xxhash, etc.) | ~2MB |
-| esbuild overhead (IIFE wrappers, etc.) | ~800KB |
+## One Bundle, Many Compartments
 
-## The AS Compiler's Separate Bundle (Dormant)
+The bundle is loaded exactly once per Kit process. Each deployed
+`.ts` package gets its own SES Compartment whose globals reference
+the same frozen bundle exports. This is the mechanism that keeps the
+memory footprint constant per Kit even when dozens of packages are
+deployed — you do not pay for Mastra twice. See
+[deployment-pipeline.md](deployment-pipeline.md) for the Compartment
+construction step.
 
-The AssemblyScript compiler (`internal/embed/compiler/`) has its own bundle and its own QuickJS runtime. It is **dormant** — not wired to the Kit or exposed through any bus commands. It remains as a Go library for potential future use (sandboxed computation, user-submitted modules).
+## See Also
 
-The compiler bundle has a separate, simpler `build.mjs` with only `fs` and `crypto` stubs (no Mastra, no AI SDK).
+- `internal/embed/agent/embed.go` — `LoadBundle` / `LoadPrelude`
+  entry points.
+- `internal/embed/agent/bundle/build.mjs` — esbuild driver and the
+  full stub table.
+- `internal/embed/agent/bundle/entry.mjs` — canonical export list.
+- `internal/embed/agent/cmd/compile-bundle/main.go` — bytecode
+  compile step.
+- [jsbridge-polyfills.md](jsbridge-polyfills.md) — the Go polyfills
+  the bundle stubs re-export from.
+- [deployment-pipeline.md](deployment-pipeline.md) — how a
+  Compartment consumes the bundle's frozen exports at deploy time.

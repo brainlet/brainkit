@@ -1,170 +1,257 @@
 # Provider Registry
 
-The provider registry maps named configurations to runtime instances. When .ts code calls `model("openai", "gpt-4o-mini")`, the registry resolves the provider config, creates an AI SDK provider instance, and returns a language model. The same pattern works for storage backends and vector stores.
+The Kit owns four registries: AI providers, storages, vector stores,
+and secrets. Each is a named table that Go code populates and JS code
+resolves. When a deployed `.ts` package calls `model("openai",
+"gpt-4o-mini")`, `storage("main")`, or `vectorStore("docs")`, the call
+routes into the registry, finds the registration, and returns a live
+Mastra / AI SDK instance.
 
-## Three Categories
+## Four Registries
 
-| Category | Go Registration | JS Resolution | Instance Created |
-|----------|----------------|---------------|-----------------|
-| AI Provider | Auto-detected from `os.Getenv` | `model(name, id)` / `provider(name)` | AI SDK provider factory (createOpenAI, etc.) |
-| Storage | `brainkit.Config.Storages` | `storage(name)` | Mastra store (InMemoryStore, PostgresStore, etc.) |
-| Vector Store | `brainkit.Config.Vectors` | `vectorStore(name)` | Mastra vector (LibSQLVector, PgVector, etc.) |
+| Accessor           | Kit API                      | Purpose                                   |
+| ------------------ | ---------------------------- | ----------------------------------------- |
+| AI providers       | `kit.Providers()`            | Model factories for `generateText` et al. |
+| Storages           | `kit.Storages()`             | Mastra stores (memory, message history).  |
+| Vectors            | `kit.Vectors()`              | Embedding-backed retrieval stores.        |
+| Secrets            | `kit.Secrets()`              | Encrypted key/value store.                |
 
-## Go-Side Registration
-
-Providers are registered at Kit creation time via typed config structs:
+All four accessors are lazily allocated and stable across calls.
+Typical pattern:
 
 ```go
-// AI providers are auto-detected from os.Getenv (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY)
-k, err := brainkit.New(brainkit.Config{
-    Vectors: map[string]brainkit.VectorConfig{
-        "main": brainkit.PgVectorStore("postgres://..."),
-    },
-    Storages: map[string]brainkit.StorageConfig{
-        "default": brainkit.InMemoryStorage(),
+kit, _ := brainkit.New(brainkit.Config{
+    Namespace: "analytics",
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    ".",
+    SecretKey: "hex-32-bytes",
+    Providers: []brainkit.ProviderConfig{
+        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
+        brainkit.Anthropic(os.Getenv("ANTHROPIC_API_KEY")),
     },
 })
+
+kit.Storages().Register("main", brainkit.StorageType("libsql"),
+    types.LibSQLStorageConfig{URL: "file:./kit.db"})
+kit.Vectors().Register("docs", brainkit.VectorStoreType("pgvector"),
+    types.PgVectorConfig{URL: os.Getenv("PG_URL")})
+_ = kit.Secrets().Set(ctx, "slack-token", os.Getenv("SLACK_TOKEN"))
 ```
 
-Runtime registration is also supported:
+## AI Providers
+
+### 12 first-class providers
+
+Top-level constructors build `ProviderConfig` values you pass to
+`Config.Providers`:
 
 ```go
-k.RegisterAIProvider("groq", registry.AIProviderGroq, registry.GroqProviderConfig{APIKey: "gsk-..."})
-k.RegisterVectorStore("docs", registry.VectorStoreLibSQL, registry.LibSQLVectorConfig{URL: "http://..."})
-k.RegisterStorage("cache", registry.StorageInMemory, registry.InMemoryStorageConfig{})
+Providers: []brainkit.ProviderConfig{
+    brainkit.OpenAI(key),
+    brainkit.Anthropic(key),
+    brainkit.Google(key),
+    brainkit.Mistral(key),
+    brainkit.Groq(key),
+    brainkit.DeepSeek(key),
+    brainkit.XAI(key),
+    brainkit.Cohere(key),
+    brainkit.Perplexity(key),
+    brainkit.TogetherAI(key),
+    brainkit.Fireworks(key),
+    brainkit.Cerebras(key),
+}
 ```
 
-## 47 Typed Config Structs
+Each constructor accepts `brainkit.WithBaseURL(url)` and
+`brainkit.WithHeaders(map[string]string{})` to swap endpoints or
+inject custom auth headers.
 
-### AI Providers (15 types)
+### Advanced types
 
-| Type Constant | Config Struct | Key Fields |
-|---------------|--------------|------------|
-| `AIProviderOpenAI` | `OpenAIProviderConfig` | APIKey, BaseURL |
-| `AIProviderAnthropic` | `AnthropicProviderConfig` | APIKey, BaseURL |
-| `AIProviderGoogle` | `GoogleProviderConfig` | APIKey, BaseURL |
-| `AIProviderMistral` | `MistralProviderConfig` | APIKey, BaseURL |
-| `AIProviderCohere` | `CohereProviderConfig` | APIKey, BaseURL |
-| `AIProviderGroq` | `GroqProviderConfig` | APIKey, BaseURL |
-| `AIProviderPerplexity` | `PerplexityProviderConfig` | APIKey, BaseURL |
-| `AIProviderDeepSeek` | `DeepSeekProviderConfig` | APIKey, BaseURL |
-| `AIProviderFireworks` | `FireworksProviderConfig` | APIKey, BaseURL |
-| `AIProviderTogetherAI` | `TogetherAIProviderConfig` | APIKey, BaseURL |
-| `AIProviderXAI` | `XAIProviderConfig` | APIKey, BaseURL |
-| `AIProviderCerebras` | `CerebrasProviderConfig` | APIKey, BaseURL |
-| `AIProviderAzure` | `AzureProviderConfig` | APIKey, BaseURL, ResourceName, DeploymentName |
-| `AIProviderHuggingFace` | `HuggingFaceProviderConfig` | APIKey, BaseURL |
-| `AIProviderBedrock` | `BedrockProviderConfig` | Region, AccessKeyID, SecretAccessKey |
+The underlying provider type table (`internal/types/providers.go`)
+also knows Azure, Bedrock, Vertex, and HuggingFace — register these
+by calling the runtime API directly:
 
-### Storage Backends (14 types)
+```go
+kit.Providers().Register("azure-main", brainkit.AIProviderType("azure"),
+    types.AzureProviderConfig{...})
+```
 
-| Type Constant | Config Struct | Protocol |
-|---------------|--------------|----------|
-| `StorageInMemory` | `InMemoryStorageConfig` | N/A |
-| `StorageLibSQL` | `LibSQLStorageConfig` | HTTP (Hrana) |
-| `StoragePostgres` | `PostgresStorageConfig` | TCP |
-| `StorageMongoDB` | `MongoDBStorageConfig` | TCP |
-| `StorageUpstash` | `UpstashStorageConfig` | HTTP |
-| `StorageClickHouse` | `ClickHouseStorageConfig` | HTTP |
-| `StorageCloudflareD1` | `CloudflareD1StorageConfig` | HTTP |
-| `StorageConvex` | `ConvexStorageConfig` | HTTP |
-| `StorageDynamoDB` | `DynamoDBStorageConfig` | HTTP |
-| `StorageLanceDB` | `LanceDBStorageConfig` | Embedded |
-| `StorageMSSQL` | `MSSQLStorageConfig` | TCP |
-| `StorageDuckDB` | `DuckDBStorageConfig` | Embedded |
-| `StorageCouchbase` | `CouchbaseStorageConfig` | TCP |
-| `StorageCloudflareKV` | `CloudflareKVStorageConfig` | HTTP |
+The JS runtime resolves the type string to a Mastra provider factory.
+If a backing factory is not compiled into the current bundle, the
+resolution fails fast with a `NOT_CONFIGURED` error — you only pay
+for what you use.
 
-### Vector Stores (16 types)
+### Runtime API
 
-| Type Constant | Config Struct | Protocol |
-|---------------|--------------|----------|
-| `VectorStoreLibSQL` | `LibSQLVectorConfig` | HTTP |
-| `VectorStorePg` | `PgVectorConfig` | TCP |
-| `VectorStoreMongoDB` | `MongoDBVectorConfig` | TCP |
-| `VectorStorePinecone` | `PineconeVectorConfig` | HTTP |
-| `VectorStoreQdrant` | `QdrantVectorConfig` | HTTP |
-| `VectorStoreChroma` | `ChromaVectorConfig` | HTTP |
-| `VectorStoreUpstash` | `UpstashVectorConfig` | HTTP |
-| `VectorStoreAstra` | `AstraVectorConfig` | HTTP |
-| `VectorStoreElasticsearch` | `ElasticsearchVectorConfig` | HTTP |
-| `VectorStoreOpenSearch` | `OpenSearchVectorConfig` | HTTP |
-| `VectorStoreTurbopuffer` | `TurbopufferVectorConfig` | HTTP |
-| `VectorStoreCloudflare` | `CloudflareVectorConfig` | HTTP |
-| `VectorStoreDuckDB` | `DuckDBVectorConfig` | Embedded |
-| `VectorStoreLanceDB` | `LanceDBVectorConfig` | Embedded |
-| `VectorStoreConvex` | `ConvexVectorConfig` | HTTP |
-| `VectorStoreS3` | `S3VectorConfig` | HTTP |
+```go
+kit.Providers().Register(name string, typ AIProviderType, config any) error
+kit.Providers().Unregister(name string)
+kit.Providers().List() []ProviderInfo
+kit.Providers().Has(name string) bool
+kit.Providers().Get(name string) (AIProviderRegistration, bool)
+```
 
-Most of these are type definitions waiting for bundle integration. Currently bundled and tested: InMemory, LibSQL, Postgres, MongoDB, Upstash (storage); LibSQL, Pg, MongoDB (vectors); OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, xAI, Cerebras, Perplexity, TogetherAI, Fireworks, Cohere (AI providers).
+### JS resolution
 
-## JS-Side Resolution
+```typescript
+const ai = model("openai", "gpt-4o-mini");        // LanguageModel
+const claude = model("anthropic", "claude-3-5-sonnet-latest");
+const r = await generateText({ model: ai, prompt: "hi" });
+```
 
-When .ts code calls `model("openai", "gpt-4o-mini")`, the flow is:
+Under the hood, `model(providerName, modelID)` reads
+`globalThis.__kit_providers[providerName]`, finds the factory by type
+(`openai` → `createOpenAI` from `@ai-sdk/openai`), instantiates it,
+and wires the returned provider to the requested model ID.
 
-1. `kit_runtime.js` `resolveModel(providerName, modelId)` reads from `globalThis.__kit_providers` (injected during Kit init)
-2. Looks up the provider factory name: `openai` → `createOpenAI`
-3. Calls `embed.createOpenAI({ apiKey: pc.APIKey, baseURL: pc.BaseURL })(modelId)`
-4. Returns a real AI SDK `LanguageModel` instance
+Auto-detection from `os.Getenv` is off by default — pass explicit
+`brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))` to wire a provider.
+`process.env` inside the JS sandbox is the Go process's real
+environment, so Mastra libraries that read keys from `process.env`
+still work alongside registry-backed providers.
 
-For `storage("name")` and `vectorStore("name")`:
+## Storages
 
-1. `kit_runtime.js` calls `__go_registry_resolve(category, name)` — a Go bridge function
-2. Go looks up the registration in `ProviderRegistry`, returns JSON with type + config
-3. JS switches on type and instantiates the real Mastra class: `new PostgresStore({ connectionString })`, `new LibSQLVector({ connectionUrl })`, etc.
-4. Instances are cached per name — subsequent calls return the same instance (IIFE closure cache, not `this`-based, because endowment functions are detached from their object)
+Storages back Mastra's memory + message history + workflow snapshot
+tables. A single registered name serves multiple Mastra features.
 
-## AI Provider Auto-Detection
+### Types
 
-AI providers are auto-detected from `os.Getenv`. If `OPENAI_API_KEY` is set in the host environment, the OpenAI provider is available automatically in .ts code via `model("openai", "gpt-4o-mini")`. No explicit `AIProviders` map is needed.
+`StorageType` is a string alias with constants for every supported
+backend:
 
-The JS `process.env` proxy reads directly from the Go-backed environment, so Mastra libraries that read API keys from `process.env` (e.g., `process.env.OPENAI_API_KEY`) just work without explicit configuration.
+```
+memory, libsql, postgres, mongodb, upstash,
+cloudflare-d1, cloudflare-kv, clickhouse, convex, couchbase,
+dynamodb, lance, mssql, duckdb
+```
+
+Pass the corresponding `types.*StorageConfig` value when registering.
+Only a subset is bundled at any given time — `libsql` and `postgres`
+are the main-line backends, others are opt-in per release.
+
+### Runtime API
+
+```go
+kit.Storages().Register(name string, typ StorageType, config any) error
+kit.Storages().List() []StorageInfo
+kit.Storages().Has(name string) bool
+kit.Storages().Get(name string) (StorageRegistration, bool)
+kit.Storages().Unregister(name string)
+```
+
+### JS resolution
+
+```typescript
+const s = storage("main");                          // Mastra store
+const memory = new Memory({ storage: s });          // Mastra memory
+```
+
+`storage(name)` calls a Go bridge (`__go_registry_resolve`) that
+returns `{type, config}`. The JS side switches on `type` to
+instantiate the real Mastra class (`new LibSQLStore({...})`,
+`new PostgresStore({...})`, etc.) and caches the instance for
+subsequent calls.
+
+## Vectors
+
+Vector registries follow the same pattern:
+
+```go
+kit.Vectors().Register("qdrant", brainkit.VectorStoreType("qdrant"),
+    types.QdrantVectorConfig{URL: "...", APIKey: "..."})
+```
+
+`VectorStoreType` constants cover `libsql`, `pgvector`, `mongodb`,
+`pinecone`, `qdrant`, `chroma`, `upstash`, `astra`, `elasticsearch`,
+`opensearch`, `turbopuffer`, `cloudflare`, `duckdb`, `lance`,
+`convex`, `couchbase`, and `s3vectors`. Bundled backends are a
+subset — the same NOT_CONFIGURED contract applies when you resolve
+something the current bundle does not know how to build.
+
+JS side:
+
+```typescript
+const v = vectorStore("qdrant");
+await v.upsert({ indexName: "knowledge", vectors: [...], metadata: [...] });
+```
+
+## Secrets
+
+`kit.Secrets()` is the only accessor that talks to a persistent
+store. When `Config.SecretKey` is set, secrets are encrypted at rest
+with AES-GCM and persisted via the configured `Config.SecretStore`
+(or the Kit's default SQLite store when none is given).
+
+```go
+_ = kit.Secrets().Set(ctx, "slack-token", "xoxp-…")
+val, _ := kit.Secrets().Get(ctx, "slack-token")
+_ = kit.Secrets().Delete(ctx, "slack-token")
+list, _ := kit.Secrets().List(ctx)   // metadata only, no values
+_ = kit.Secrets().Rotate(ctx, "slack-token", "xoxp-new-…")
+```
+
+Without a `SecretKey`, the accessor falls back to an env-backed
+read-only store: `Get` returns the value of `SECRETS_<NAME>` (or
+`NAME` lower-cased) from the process environment, while `Set`,
+`Delete`, and `Rotate` return a `NOT_CONFIGURED` error.
+
+Secrets have a rotation hook — when the `plugins` module is wired,
+rotating a secret referenced by a plugin's env restarts the plugin
+to pick up the new value. This is what makes `kit.Secrets().Rotate`
+safe to call on a running fleet.
 
 ## Health Probing
 
-The registry supports live health probes for registered providers:
+The `probes` module runs periodic health checks against every
+registered provider/storage/vector. Each backend exposes a probe
+endpoint:
 
-```go
-result := k.ProbeAIProvider("openai")
-// result.Available: true/false
-// result.Latency: time.Duration
-// result.Capabilities: KnownAICapabilities for this provider type
-// result.Error: "" or error message
-```
+- **AI provider** — HTTP GET to `/v1/models` (or the provider's
+  equivalent) with the configured API key. Latency + availability.
+- **Storage** — instantiate in JS and call `listThreads({})` once.
+- **Vector** — instantiate in JS and call `listIndexes()` once.
 
-AI provider probes make an HTTP GET to `/models` with the provider's API key. Vector store and storage probes instantiate the store in JS and call a simple operation (`listIndexes()` for vectors, `listThreads({})` for storage).
+Results are surfaced through the probes module's bus commands
+(`probes.list`, `probes.run`) and, when the tracing module is loaded,
+are emitted as OpenTelemetry attributes.
 
-Periodic probing runs automatically if `Config.Probe.PeriodicInterval` is set:
+## Runtime Registration from JS
 
-```go
-brainkit.New(brainkit.Config{
-    Probe: registry.ProbeConfig{
-        PeriodicInterval: 5 * time.Minute,
-        Timeout:          10 * time.Second,
-    },
-})
-```
-
-## Dynamic Registration from .ts
-
-The `registry` object in .ts code supports runtime registration:
+`.ts` packages can add providers at runtime through the `registry`
+endowment:
 
 ```typescript
-// Register a new provider at runtime
-registry.register("provider", "custom-openai", {
+registry.register("provider", "custom", {
     type: "openai",
-    apiKey: "sk-...",
-    baseURL: "https://my-proxy.com/v1",
+    apiKey: secret("openai-proxy"),
+    baseURL: "https://proxy.internal/v1",
 });
-
-// Check availability
-registry.has("provider", "custom-openai"); // true
-
-// List all providers
-registry.list("provider"); // [{name, type, healthy, lastProbed}]
-
-// Unregister
-registry.unregister("provider", "custom-openai");
+const ai = model("custom", "gpt-4o-mini");
 ```
 
-These call `__go_brainkit_control("registry.register", ...)` which routes to the Go ProviderRegistry.
+This bridges to `kit.Providers().Register(...)` on the Go side. The
+same pattern works for `"storage"` and `"vector"` categories.
+
+## Summary
+
+- Four typed registries: providers, storages, vectors, secrets.
+- 12 shipped AI providers with top-level constructors; more types are
+  registerable via `kit.Providers().Register`.
+- Storages and vectors expose the full Mastra catalog as typed
+  constants; bundle only what you use.
+- Secrets are encrypted with `Config.SecretKey`, rotate-aware when
+  plugins are wired.
+- Every registration is visible to deployed `.ts` code through
+  `model`, `storage`, `vectorStore`, `secret`, and `registry`
+  endowments.
+
+## See Also
+
+- `providers.go`, `accessors.go` — Kit registration surface.
+- `internal/types/providers.go` — the canonical type constants.
+- [deployment-pipeline.md](deployment-pipeline.md) — how `.ts`
+  packages see the registry through endowments.
+- [error-handling.md](error-handling.md) — `NOT_CONFIGURED` and
+  `NOT_FOUND` semantics for the registry.

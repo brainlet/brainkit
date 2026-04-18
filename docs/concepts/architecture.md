@@ -1,139 +1,237 @@
 # Architecture
 
-brainkit is a Go runtime that embeds four subsystems into one process: QuickJS (JavaScript), SES (sandboxing), Watermill (pub/sub messaging), and typescript-go (TS transpilation). The result is a platform where Go and TypeScript communicate over a shared message bus.
+brainkit 1.0 is a single Go package that boots an in-process AI runtime.
+One call — `brainkit.New(Config)` — returns a `*Kit` that owns a QuickJS
+sandbox, a Watermill message bus, a tool/provider/storage registry, and
+any modules you plug in. Everything runs in one OS process by default;
+transports (NATS, Redis, AMQP) are opt-in knobs on the same type.
 
-## Why This Architecture
-
-The traditional approach to AI agent platforms is a microservice mesh: separate processes for the agent runtime, tool execution, workflow engine, message broker, and storage. This works but introduces latency, deployment complexity, and failure modes at every boundary.
-
-brainkit takes the opposite approach: everything runs in one OS process. The JS runtime (QuickJS) is embedded in Go via CGo. The message bus (Watermill) routes messages in-process by default, with optional external transports (NATS, Redis, AMQP, Postgres, SQLite) for multi-node deployments. TypeScript transpilation happens natively in Go via a vendored microsoft/typescript-go.
-
-This means a tool call from an AI agent doesn't leave the process. A `.ts` service publishing to the bus doesn't cross a network boundary. Everything is function calls and channels until you explicitly opt into distributed communication via a Kit with Transport set.
-
-## Two Runtime Modes
-
-### Standalone Kit
-
-The standalone Kit is the local runtime. It owns all state:
-
-- One QuickJS runtime with SES lockdown, Mastra bundle, and 20+ Node.js polyfills
-- One tool registry shared across all surfaces (Go, TS, plugins)
-- One Watermill router processing command and event messages
-- Zero or more deployed `.ts` files, each in its own SES Compartment
-- Zero or more embedded SQLite storage bridges (libsql HTTP servers)
-
-A standalone Kit uses an in-memory transport — messages never leave the process. This is the default and fastest configuration.
+## The Kit
 
 ```go
-// AI providers auto-detected from os.Getenv (e.g. OPENAI_API_KEY)
 kit, err := brainkit.New(brainkit.Config{
-    Namespace: "my-kit",
-    FSRoot:    "/tmp/workspace",
+    Namespace: "hello",
+    Transport: brainkit.Memory(),
+    FSRoot:    ".",
 })
 defer kit.Close()
 ```
 
-### Transport-Connected Kit
+That Kit is the runtime. It is the only top-level object. A Kit:
 
-When `Config.Transport` is set, Kit creates a transport-connected runtime with plugin support and cross-Kit networking. The public API is the same `*brainkit.Kit`.
+- Hosts **one QuickJS runtime** with SES locked down. All deployed `.ts`
+  services and every agent, tool, workflow, and MCP client share the
+  same JS heap. Isolation is per-Compartment, not per-OS-process.
+- Owns **one Watermill router** (the bus). Every subsystem — Go, JS,
+  plugins, gateway handlers — speaks to every other subsystem by
+  publishing messages. There is no separate RPC layer.
+- Exposes **typed Go accessors** for providers, storages, vectors, and
+  secrets (`kit.Providers()`, `kit.Storages()`, `kit.Vectors()`,
+  `kit.Secrets()`).
+- Loads **zero or more Modules** (gateway, audit, tracing, probes,
+  topology, discovery, plugins, MCP, schedules, workflow, harness)
+  which wire themselves into the bus during `Init`.
+- Accepts **deployments** — `.ts` packages that register handlers via
+  `bus.on` and become addressable at `ts.<pkg>.<topic>`.
+
+See `examples/hello-embedded/main.go` for the minimum viable Kit.
+
+## Narrow Public Surface
+
+The top-level `brainkit` package is intentionally small. The shipped API
+is:
+
+- **Constructor.** `New(Config) (*Kit, error)`.
+- **Config builders.** `Memory()`, `EmbeddedNATS()`, `NATS(url)`,
+  `AMQP(url)`, `Redis(url)`; `OpenAI(key)`, `Anthropic(key)`, … for the
+  12 supported providers.
+- **Deployment helpers.** `PackageInline(name, entry, source)`,
+  `PackageFromDir(dir)`, `PackageFromFile(path)`, then
+  `kit.Deploy(ctx, pkg)`.
+- **Bus calls.** The generic
+  `Call[Req, Resp any](kit, ctx, req, opts…) (Resp, error)` plus
+  `CallStream[Req, Chunk, Resp any]` for servers that emit chunks
+  before a terminal reply.
+- **62 generated wrappers** in `call_gen.go` that bind `Call` to every
+  typed bus topic shipped out of the box (`CallPackageDeploy`,
+  `CallKitHealth`, `CallAgentDiscover`, `CallAuditQuery`,
+  `CallPeersResolve`, …). Regenerate them with `make generate` after
+  adding new typed message types.
+- **Typed tool registration.** `RegisterTool(kit, name, TypedTool[T])`
+  registers a typed Go function as a first-class tool. See
+  `examples/go-tools/main.go`.
+- **Lifecycle.** `kit.Shutdown(ctx)` drains gracefully, `kit.Close()`
+  is the quick equivalent.
+
+Everything else — envelopes, error codes, cross-namespace helpers,
+message types — lives in `github.com/brainlet/brainkit/sdk` and is
+consumed by both module authors and plugin authors.
+
+## Modules
+
+Modules are the extension point. A module implements three methods:
 
 ```go
-kit, err := brainkit.New(brainkit.Config{
-    Namespace: "my-kit",
-    FSRoot:    "/tmp/workspace",
-    Transport: "nats",
-    NATSURL:   "nats://localhost:4222",
-    Plugins: []brainkit.PluginConfig{
-        {Name: "my-plugin", Binary: "./my-plugin", AutoRestart: true},
+type Module interface {
+    Name() string
+    Init(k *Kit) error
+    Close() error
+}
+```
+
+Optionally a module can implement `StatusReporter` to declare itself
+`ModuleStatusStable`, `ModuleStatusBeta`, or `ModuleStatusWIP`. The
+status surfaces through `kit.Status()` so a caller can refuse to boot
+when a WIP module is loaded in production.
+
+`Init` runs in registration order before the router starts, so a module
+can freely subscribe to bus topics, register commands
+(`RegisterCommand`), or configure its own transport. The 11 modules
+that ship in 1.0-rc.1 are:
+
+| Module     | Status | Purpose                                            |
+| ---------- | ------ | -------------------------------------------------- |
+| audit      | stable | Append-only log of bus traffic and tool calls.     |
+| discovery  | stable | Static/bus-based peer discovery (no multicast).    |
+| gateway    | stable | HTTP/SSE/WS/Webhook edge on top of typed topics.   |
+| harness    | WIP    | Streaming agent harness (only `Instance` frozen).  |
+| mcp        | stable | MCP stdio/HTTP servers as tool sources.            |
+| plugins    | stable | Subprocess plugins over a WebSocket control plane. |
+| probes     | stable | `/healthz`, `/readyz`, periodic probe scheduler.   |
+| schedules  | stable | Cron + one-shot bus publishes.                     |
+| topology   | stable | Named peer table used by `WithCallTo`.             |
+| tracing    | stable | OpenTelemetry span export.                         |
+| workflow   | stable | Mastra workflow start/cancel/status wrappers.      |
+
+Loading a module is declarative:
+
+```go
+kit, _ := brainkit.New(brainkit.Config{
+    Namespace: "edge",
+    Transport: brainkit.EmbeddedNATS(),
+    Modules: []brainkit.Module{
+        gateway.New(gateway.Config{Listen: ":8080"}),
+        topology.NewModule(topology.Config{
+            Peers: []topology.Peer{{Name: "analytics", Namespace: "analytics-prod"}},
+        }),
     },
 })
-kit.Start(ctx) // restores running plugins, launches configured plugins
-defer kit.Close()
 ```
 
-Both standalone and transport-connected Kit implement `sdk.Runtime` (PublishRaw, SubscribeRaw, Close) and `sdk.CrossNamespaceRuntime` (PublishRawTo, SubscribeRawTo) and `sdk.Replier` (ReplyRaw). Any code that takes an `sdk.Runtime` works with either.
+Modules never reach into each other. They compose through the bus.
 
-## Initialization Order
+## Transports
 
-`brainkit.New` initializes subsystems in a strict order. Each step depends on the previous ones. The order matters — reordering causes failures that are hard to debug because the dependencies are implicit.
+`Config.Transport` is a struct value, not a string:
 
-**Step 1 — QuickJS sandbox.** `agentembed.NewSandbox` creates a `jsbridge.Bridge` (QuickJS runtime with mutex-serialized eval), loads 24 polyfills in dependency order (Events before NodeStreams before Buffer before Net — because Socket extends Duplex which extends EventEmitter), then loads SES (polyfills -> ses.umd.js -> lockdown -> Mastra bundle). After this step, `globalThis.__agent_embed` exists with Agent, createTool, createWorkflow, the AI SDK, and all Mastra exports. See [jsbridge-polyfills.md](jsbridge-polyfills.md) and [bundle-and-bytecode.md](bundle-and-bytecode.md).
+```go
+Transport: brainkit.NATS("nats://localhost:4222"),
+```
 
-**Step 2 — Domain handlers.** Creates ToolsDomain, AgentsDomain. These are thin wrappers that route typed messages to the underlying registries and JS runtime. They exist so the command catalog can dispatch to typed handlers.
+The five constructors return typed `TransportConfig` values:
 
-**Step 3 — Go↔JS bridges.** `registerBridges()` sets up 12 functions on `globalThis`:
-- `__go_brainkit_request` / `__go_brainkit_request_async` — synchronous/async command invocation via the LocalInvoker
-- `__go_brainkit_control` — local-only operations (tools.register, agents.register, registry.register/unregister)
-- `__go_brainkit_bus_publish` / `__go_brainkit_bus_emit` / `__go_brainkit_bus_reply` — bus operations
-- `__go_brainkit_subscribe` / `__go_brainkit_unsubscribe` — bus subscriptions
-- `__go_brainkit_await_approval` — HITL approval bridge (Go-side bus lifecycle)
-- `__go_console_log_tagged` — per-Compartment tagged logging
-- `__go_registry_resolve` / `__go_registry_has` / `__go_registry_list` — provider registry queries
+| Constructor       | Kind         | Use case                            |
+| ----------------- | ------------ | ----------------------------------- |
+| `Memory()`        | `"memory"`   | Single-process, fastest path.       |
+| `EmbeddedNATS()`  | `"embedded"` | Single-process, JetStream semantics. |
+| `NATS(url)`       | `"nats"`     | Multi-Kit production, JetStream.    |
+| `AMQP(url)`       | `"amqp"`     | RabbitMQ, topic sanitizer.          |
+| `Redis(url)`      | `"redis"`    | Redis Streams.                      |
 
-These bridges MUST be registered before loadRuntime (step 5) because kit_runtime.js calls them during evaluation.
+Leaving `Transport` zero defaults to `Memory()` inside `New`. The
+kernel and router are wired in the same place regardless of kind;
+changing transport changes only where bytes travel. See
+[bus-and-messaging.md](bus-and-messaging.md) for the topic rules each
+backend applies.
 
-**Step 4 — Embedded storages.** Starts a libsql HTTP bridge server for each SQLite `StorageConfig`. Each server is a Go HTTP server speaking the Hrana pipeline protocol, backed by a local SQLite file via `modernc.org/sqlite`. The server URL is injected into JS globalThis so `new LibSQLStore({ id: "x" })` can connect without the user providing a URL.
+## Deployment Pipeline
 
-**Step 5 — Kit runtime.** `loadRuntime()` evaluates 8 JS files in dependency order (patches, bridges, approval, infrastructure, resolve, bus, kit_runtime, test_runtime), then registers ES modules: `"kit"`, `"ai"`, `"agent"`, `"fs"`, `"fs/promises"`. After this step, `import { bus } from "kit"` works in deployed .ts code.
+A deployment is a `.ts` (or `.js`) package plus a manifest:
 
-**Step 5b — Mastra storage upgrade.** If any storage backend is configured, resolves the default storage, calls `storage.init()` (creates `mastra_workflow_snapshot` and other Mastra domain tables), and upgrades the `_storeHolder` from InMemoryStore to the configured backend. All subsequent workflow snapshots persist to the real database.
+```go
+kit.Deploy(ctx, brainkit.PackageInline(
+    "greeter", "greeter.ts",
+    `bus.on("hello", (msg) => msg.reply({ greeting: "hi " + msg.payload.name }));`,
+))
+```
 
-**Step 6 — Provider registry.** Creates `ProviderRegistry` and registers all AI providers, vector stores, and storages from config. AI providers are auto-detected from `os.Getenv` (e.g. `OPENAI_API_KEY` makes the OpenAI provider available automatically).
+Under the hood, `Deploy` publishes a `sdk.PackageDeployMsg` on the
+`package.deploy` topic. The handler runs the package entry through the
+vendored microsoft/typescript-go transpiler, loads it into a fresh SES
+Compartment, and exposes every `bus.on(topic, …)` at
+`ts.<pkg>.<topic>`. Any subsequent Kit call to that topic enters the
+Compartment, runs the JS handler, and replies through the bus. See
+[deployment-pipeline.md](deployment-pipeline.md).
 
-**Step 7 — Remaining domains.** Creates LifecycleDomain, PackagesDomain, SecretsDomain, TestingDomain. Starts periodic health probing if configured. Connects to MCP servers.
+## Providers, Storages, Vectors, Secrets
 
-**Step 8 — MCP.** Connects to configured MCP servers (stdio or HTTP), fetches their tool lists, registers each MCP tool in the shared tool registry with a GoFuncExecutor that calls through the MCP client.
+Four typed registries hang off the Kit:
 
-**Step 9 — Transport + router.** Creates or uses injected Watermill transport. Creates a router with three middleware: DepthMiddleware (cycle detection at depth 16), CallerIDMiddleware (stamps caller identity), MetricsMiddleware (processing time tracking). For standalone Kit, registers command bindings and starts the router immediately. For transport-connected Kit, defers to the caller.
+```go
+kit.Providers().Register("openai", "openai", ProviderConfig{APIKey: "..."})
+kit.Storages().Register("main", "libsql", StorageConfig{URL: "file:./kit.db"})
+kit.Vectors().Register("qdrant", "qdrant", VectorConfig{URL: "..."})
+```
 
-**Step 10 — Job pump + recovery.** `startJobPump()` starts a background goroutine (tracked via `bridge.Go` so it's cancelled on Close) that processes QuickJS scheduled callbacks every 100ms (with immediate wake on `pumpSignal`). After the pump starts, persisted .ts deployments are re-deployed (`redeployPersistedDeployments`), persisted schedules are restored, and `restartActiveWorkflows()` picks up any workflow runs that were active before the previous shutdown (status `running` or `waiting` in storage). This is Mastra's `restartAllActiveWorkflowRuns()` called on each registered workflow.
+Each registry owns its own table of named backends. Deployed `.ts` code
+sees the same table through `globalThis.__kit_providers` and calls it
+through Mastra (`model("openai", "gpt-4o")`) or through
+`kit.register(type, name, ref)` for tools/agents/workflows/memories.
+See [provider-registry.md](provider-registry.md).
 
-## Shutdown Order
+## CLI
 
-`Kit.Close()` reverses initialization:
+`brainkit` the binary is a thin shell around the library. It exposes
+five verbs:
 
-1. Set `closed = true` (prevents new operations)
-2. Cancel all JS-side bus subscriptions (prevents new callbacks into QuickJS)
-3. Close the Watermill router (stops processing messages — no more handler invocations)
-4. Unregister all agents for this Kit
-5. Close MCP connections
-6. Close KitStore
-7. Close the agent sandbox — this is where QuickJS is freed. `bridge.Close()` cancels all tracked goroutines (job pump, fetch calls, fs operations), waits for them to finish (`wg.Wait()`), nullifies global JS references to break closure chains, runs GC, then frees the QuickJS context and runtime.
-8. Close embedded storages (stop libsql HTTP servers, close SQLite files)
-9. Close transport — but only if Kit owns it (`ownsTransport == true`). When a transport-connected Kit is configured, the transport lifecycle is managed accordingly.
+- `brainkit start` — boots `server.New(cfg)` from `brainkit.yaml`.
+- `brainkit deploy <file|dir>` — wraps a `.ts` tree as a
+  `PackageDeployMsg` and POSTs it to a running Kit's gateway.
+- `brainkit call <topic> --payload '{…}'` — POSTs a typed bus call to
+  `/api/bus` (or `/api/stream` for chunked replies).
+- `brainkit inspect <kit>` — prints deployments, modules, providers.
+- `brainkit new <name>` — scaffolds a `.ts` package.
 
-The order matters for safety: router stops before QuickJS is freed (no handler can touch JS after step 3), goroutines finish before context is freed (step 7 waits), transport closes last (nothing can publish after this).
+The CLI never embeds a Kit of its own. It talks to running Kits via
+the gateway module's HTTP surface. For embedded use, import the Go
+library directly.
 
-## The Four Subsystems
+## Server Package
 
-### QuickJS
+`brainkit/server` packages the common production layout:
 
-The JavaScript engine. Embedded via `buke/quickjs-go` (CGo wrapper). brainkit wraps it in `jsbridge.Bridge` which adds:
+```go
+srv, _ := server.QuickStart("edge", "./workspace")
+_ = srv.Start(ctx)
+```
 
-- **Mutex-serialized eval.** All `Eval`/`EvalAsync`/`EvalBytecode` calls acquire a mutex. This makes the Bridge safe for concurrent Go callers — multiple goroutines can call EvalTS without corrupting QuickJS state.
+`QuickStart` wires `EmbeddedNATS`, a SQLite storage, and a gateway on
+`:8080`; `server.New(cfg)` accepts the full `server.Config` (transport,
+providers, plugins, audit, tracing, probes, packages, extra modules)
+for real deployments. The server rejects `Memory()` transport — use
+the library directly if you want an in-process Kit.
 
-- **Tracked goroutines.** `Bridge.Go(fn)` starts a goroutine that's tracked by a WaitGroup and receives a context that's cancelled on Close. Every polyfill that does async work (fetch, fs, net, exec, timers) uses `Bridge.Go` instead of bare `go`. This guarantees no goroutine touches QuickJS after Close.
+## Plugins
 
-- **Reentrant evaluation.** `EvalOnJSThread` handles the case where a bus handler (running in a goroutine) needs to execute JS while another EvalTS is already holding the mutex. If the caller is on the JS thread (same goroutine), it calls `ctx.Eval` directly. If it's a different goroutine, it uses `ctx.Schedule` to queue the eval and waits for the result via a channel. The Await loop in the active EvalTS processes the Schedule'd callback.
+Plugins are separate Go binaries with their own `go.mod`. They link
+`github.com/brainlet/brainkit/sdk/plugin`, declare tools and bus
+subscriptions through `bkplugin.New(...).Tool(...).On(...)`, and ship
+as `./bin/myplugin`. The host Kit's `plugins` module launches each
+plugin as a subprocess, connects to it over a WebSocket control plane,
+and brokers its tool calls / bus messages through the host bus. The
+host Kit must run on a non-memory transport because plugins connect
+into the transport by URL. See `examples/plugin-author/main.go` and
+`modules/plugins/README.md`.
 
-- **Background job processing.** `ProcessScheduledJobs` calls `ctx.Loop()` which processes both Schedule'd callbacks (from Go goroutines) and JS microtasks (Promise continuations). The job pump calls this every 10ms.
+## Ports of Call
 
-### SES (Secure EcmaScript)
+- Minimal Kit: `examples/hello-embedded/main.go`.
+- Typed Go tools: `examples/go-tools/main.go`.
+- Agent that spawns other agents: `examples/agent-spawner/main.go`.
+- Streaming over bus + SSE + WebSocket + webhook:
+  `examples/streaming/main.go`.
+- Multiple Kits in one process: `examples/multi-kit/main.go`.
+- Kits over a shared external NATS: `examples/cross-kit/main.go`.
+- Standalone plugin binary: `examples/plugin-author/main.go`.
 
-SES provides `Compartment` and `lockdown()`. After `lockdown()` runs, all JavaScript intrinsics are frozen — `Math.random()`, `Date.now()`, and `new Date()` become "tamed" (throw errors as ambient authority). Each deployed `.ts` file gets its own Compartment with explicit endowments that restore access via pre-lockdown captures stored in `__brainkit_pre_lockdown`. See [deployment-pipeline.md](deployment-pipeline.md).
-
-### Watermill
-
-The message routing framework. brainkit uses it in a specific way: the command catalog defines typed commands (tools.call, kit.deploy, agents.list, etc.) that are registered as Watermill consumer handlers. Each command has a topic, a request type, and a response type. The Host publishes responses to the replyTo topic from the inbound message metadata.
-
-Six transport backends are supported, each with a topic sanitizer that transforms logical topic names into transport-safe names (dots → dashes for NATS, dots → underscores for SQL). See [bus-and-messaging.md](bus-and-messaging.md).
-
-### typescript-go
-
-Vendored from microsoft/typescript-go. Pure Go — no Node.js, no esbuild, no external process. Used by `kit.Deploy` when the source file has a `.ts` extension. Strips type annotations, interfaces, generics, type aliases. Preserves all runtime code, imports, exports, async/await. See [deployment-pipeline.md](deployment-pipeline.md).
-
-## Memory Model
-
-Each Kit has one QuickJS heap (~256MB address space reservation, ~50-80MB actual for the Mastra bundle). The job pump goroutine and each deployed .ts service's bus subscriptions run within the same QuickJS heap — there's no per-service isolation at the memory level. Isolation is at the Compartment level (frozen endowments, separate global objects) not at the memory level.
-
-Note: wazero (WebAssembly runtime) is still a dependency — used by `jsbridge/webassembly.go` to provide `WebAssembly.instantiate()` for JS libraries that ship WASM modules (like xxhash-wasm). The AssemblyScript compiler in `internal/embed/compiler/` is dormant and not wired to the Kit.
+Every example is `go run`-able from the repo root.

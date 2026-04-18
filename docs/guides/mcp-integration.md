@@ -1,146 +1,148 @@
 # MCP Integration
 
-brainkit connects to MCP (Model Context Protocol) servers and registers their tools in the shared tool registry. MCP tools become callable from Go, .ts, and plugins — same as any other tool.
+`modules/mcp` wires external Model Context Protocol servers as
+first-class bus tools. Once wired, every tool the MCP server
+advertises becomes callable through the same `tools.call` topic as
+Go- and plugin-registered tools.
 
-## Configuration
+Working end-to-end example:
+[`examples/mcp/`](../../examples/mcp/).
 
-MCP servers are configured on Config:
+## Wire an MCP server
 
 ```go
+import (
+    "github.com/brainlet/brainkit"
+    mcpmod "github.com/brainlet/brainkit/modules/mcp"
+)
+
 kit, err := brainkit.New(brainkit.Config{
-    MCPServers: map[string]mcp.ServerConfig{
-        "filesystem": {
-            Command: "npx",
-            Args:    []string{"-y", "@modelcontextprotocol/server-filesystem", "/tmp"},
-        },
-        "remote-api": {
-            URL: "http://localhost:8080/mcp",
-        },
+    Namespace: "mcp-demo",
+    Transport: brainkit.Memory(),
+    FSRoot:    "/tmp/mcp-demo",
+    Modules: []brainkit.Module{
+        mcpmod.New(map[string]mcpmod.ServerConfig{
+            "fs": {
+                Command: "npx",
+                Args:    []string{"-y", "@modelcontextprotocol/server-filesystem", "/tmp/mcp-demo"},
+            },
+            "remote": {
+                URL: "http://localhost:8080/mcp",
+            },
+        }),
     },
 })
 ```
 
-Two transport types:
+`mcpmod.New` (not `NewModule` — this one is spelled differently)
+takes a `map[string]mcpmod.ServerConfig`. Both stdio subprocesses
+and HTTP endpoints work:
 
-| Transport | Config | How it works |
-|-----------|--------|-------------|
-| Stdio | `Command` + `Args` + `Env` | Launches subprocess, communicates over stdin/stdout |
-| HTTP | `URL` | Connects to HTTP/Streamable HTTP endpoint |
+| Transport | Config fields | Behaviour |
+|---|---|---|
+| Stdio | `Command`, `Args`, `Env` | Launches a subprocess and speaks JSON-RPC over stdin/stdout. |
+| HTTP / Streamable HTTP | `URL`, `Headers` | Connects to the given endpoint. |
 
-## What Happens at Init
+On Kit start the module dials every server, performs the MCP
+`Initialize` handshake, fetches the tool catalog, and registers
+each tool in the shared registry under the fully qualified name
+`mcp/<server>@1.0.0/<tool>` with a short name of `<tool>`.
 
-During `brainkit.New`, for each MCP server config:
-
-1. Client connects (starts subprocess or opens HTTP connection)
-2. MCP Initialize handshake (protocol version, capabilities)
-3. `ListTools` fetches all tools the server provides
-4. Each tool is registered in the shared tool registry as `mcp/<server>@1.0.0/<tool>`
+## List available tools
 
 ```go
-// kit/kernel.go — MCP setup
-for name, serverCfg := range cfg.MCPServers {
-    kernel.mcp.Connect(ctx, name, serverCfg)
-    for _, tool := range kernel.mcp.ListToolsForServer(name) {
-        fullName := toolreg.ComposeName("mcp", tool.ServerName, "1.0.0", tool.Name)
-        kernel.Tools.Register(toolreg.RegisteredTool{
-            Name:      fullName,
-            ShortName: tool.Name,
-            Executor:  &toolreg.GoFuncExecutor{Fn: func(ctx, callerID, input) {
-                return kernel.mcp.CallTool(ctx, tool.ServerName, tool.Name, input)
-            }},
-        })
-    }
+list, err := brainkit.CallMcpListTools(kit, ctx,
+    sdk.McpListToolsMsg{Server: "fs"},
+    brainkit.WithCallTimeout(45*time.Second))
+for _, t := range list.Tools {
+    fmt.Printf("%s  %s\n", t.Name, t.Description)
 }
 ```
 
-After init, MCP tools appear in `tools.list` alongside Go-registered and .ts-registered tools.
+Leave `Server` empty to list across every wired server.
 
-## Calling MCP Tools
-
-### From Go
+## Call a tool
 
 ```go
-// Via the standard tool call mechanism
-pr, _ := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
-    Name:  "read_file",  // short name resolution finds mcp/filesystem@1.0.0/read_file
-    Input: map[string]any{"path": "/tmp/test.txt"},
-})
-```
-
-### From .ts
-
-```typescript
-// Via tools.call (resolves through the shared registry)
-const result = await tools.call("read_file", { path: "/tmp/test.txt" });
-
-// Via mcp.callTool (direct, specifying server name)
-const result = await mcp.callTool("filesystem", "read_file", { path: "/tmp/test.txt" });
-```
-
-### Listing MCP Tools
-
-```typescript
-// All tools from all MCP servers
-const allTools = mcp.listTools();
-
-// Tools from a specific server
-const fsTools = mcp.listTools("filesystem");
-```
-
-```go
-pr, _ := sdk.Publish(rt, ctx, sdk.McpListToolsMsg{Server: "filesystem"})
-```
-
-## Bus Topics
-
-| Topic | Request | Response |
-|-------|---------|----------|
-| `mcp.listTools` | `{server?: string}` | `{tools: [{name, server, description}]}` |
-| `mcp.callTool` | `{server: string, tool: string, args: any}` | `{result: any}` |
-
-## The Test MCP Server
-
-`test/testmcp/main.go` is a minimal MCP server used for testing:
-
-```go
-// test/testmcp/main.go
-func main() {
-    s := server.NewMCPServer("testmcp", "1.0.0")
-    s.AddTool(mcp.Tool{
-        Name:        "echo",
-        Description: "echoes the input",
-    }, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        return mcp.NewToolResultText(fmt.Sprintf("echo: %v", req.Params.Arguments)), nil
-    })
-    transport.ServeStdio(s)
-}
-```
-
-Compiled and launched by the test helper:
-
-```go
-binary := testutil.BuildTestMCP(t)
-kit, _ := brainkit.New(brainkit.Config{
-    MCPServers: map[string]mcp.ServerConfig{
-        "test": {Command: binary},
+res, err := brainkit.CallMcpCallTool(kit, ctx,
+    sdk.McpCallToolMsg{
+        Server: "fs",
+        Tool:   "read_text_file",
+        Args:   map[string]any{"path": "/tmp/mcp-demo/hello.txt"},
     },
+    brainkit.WithCallTimeout(30*time.Second))
+// res.Result is json.RawMessage containing the MCP tool output.
+```
+
+Or through the generic tool surface (short-name resolution finds
+the MCP tool):
+
+```go
+resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+    Name:  "read_text_file",
+    Input: map[string]any{"path": "/tmp/mcp-demo/hello.txt"},
 })
 ```
 
-## Error Handling
+From `.ts`:
 
-```go
-// No MCP servers configured
-pr, _ := sdk.Publish(rt, ctx, sdk.McpListToolsMsg{})
-// Response error: ErrMCPNotConfigured ("mcp: no MCP servers configured")
+```ts
+// Short name via the shared registry
+const r = await bus.call("tools.call", {
+    name:  "read_text_file",
+    input: { path: "/tmp/mcp-demo/hello.txt" },
+});
 
-// Server not connected
-mcp.callTool("nonexistent", "tool", {})
-// NotFoundError{Resource: "mcp-server", Name: "nonexistent"}
+// Explicit server + tool via the mcp helper
+const all = mcp.listTools();        // every MCP server
+const fs  = mcp.listTools("fs");    // just the "fs" server
+const r2  = await mcp.callTool("fs", "read_text_file", {
+    path: "/tmp/mcp-demo/hello.txt",
+});
 ```
+
+## Use MCP tools in an agent
+
+Because MCP tools appear in the registry, `tool(name)` picks them
+up:
+
+```ts
+const agent = new Agent({
+    name:         "fs-agent",
+    model:        model("openai", "gpt-4o-mini"),
+    instructions: "Use the MCP filesystem tools to answer.",
+    tools: {
+        read_text_file: tool("read_text_file"),
+        list_directory: tool("list_directory"),
+    },
+});
+
+const r = await agent.generate("What files are in /tmp/mcp-demo?");
+```
+
+## Bus commands
+
+Both commands have generated Call wrappers:
+
+| Command | Request | Response | Wrapper |
+|---|---|---|---|
+| `mcp.listTools` | `sdk.McpListToolsMsg` | `sdk.McpListToolsResp` | `brainkit.CallMcpListTools` |
+| `mcp.callTool` | `sdk.McpCallToolMsg` | `sdk.McpCallToolResp` | `brainkit.CallMcpCallTool` |
+
+## Errors
+
+| Condition | Error |
+|---|---|
+| No MCP servers wired | `ErrMCPNotConfigured` |
+| Unknown server name | `*sdk.NotFoundError{Resource: "mcp-server", Name: ...}` |
+| Tool handshake fails during init | Kit construction returns an error. |
 
 ## Limitations
 
-- MCP connections are established at Kit init time. Runtime connect/disconnect requires Kit restart.
-- Only the tool primitive is supported. MCP resources, prompts, and sampling are not yet integrated.
-- MCP server stdout (beyond the JSON-RPC protocol) is not captured.
+- MCP servers are wired at Kit start. Connect / disconnect at
+  runtime requires a restart. (Multi-server graceful reconnection
+  is on the roadmap.)
+- Only the tool primitive is exposed. MCP resources, prompts, and
+  sampling are not yet integrated.
+- Stdio server output beyond JSON-RPC is not captured — configure
+  your MCP server to log to stderr if you need it.

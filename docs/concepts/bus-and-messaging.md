@@ -1,221 +1,297 @@
 # Bus and Messaging
 
-All communication in brainkit flows through a message bus built on Watermill. Go code, deployed .ts services, WASM shards, and plugins all use the same bus — different APIs, same underlying transport.
+Every subsystem in brainkit — Go caller, deployed `.ts` handler,
+plugin subprocess, HTTP gateway request — speaks to every other
+subsystem by publishing messages. The bus is the only wire. A single
+typed surface (`brainkit.Call`, `sdk.Publish`, `bus.call`, `bus.on`)
+is exposed in Go, the SDK, and the JS runtime.
 
-## The Command Catalog
+## Topic Model
 
-The bus isn't a free-form pub/sub system. It has a typed command catalog — a fixed set of topics, each with a request type, a response type, and a Go handler. The catalog is defined once in `kit/catalog.go` and used by both standalone and transport-connected Kit.
+A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
+`package.deploy`). Three kinds coexist:
+
+- **Generated topics.** Every typed message in `sdk/*_messages.go`
+  declares a `BusTopic()` string. The generator in
+  `scripts/gen-bus-topics.go` writes `docs/bus-topics.md` from those
+  declarations. 1.0-rc.1 ships ~75 topics covering
+  `package.*`, `kit.*`, `plugin.*`, `workflow.*`, `audit.*`,
+  `schedules.*`, `secrets.*`, `storages.*`, `vectors.*`,
+  `providers.*`, `gateway.http.*`, `peers.*`, `cluster.peers`,
+  `mcp.*`, `registry.*`, `trace.*`, `tools.*`, `test.run`.
+- **Deployment mailboxes.** A `.ts` package `foo` that calls
+  `bus.on("bar", …)` registers the handler at `ts.foo.bar`. The prefix
+  is automatic — callers address the deployment by that topic.
+- **Application events.** Anything else is free-form. A workflow can
+  `sdk.Emit(ctx, MyEvent{…})` where `MyEvent.BusTopic()` returns
+  `orders.completed` and any subscriber can receive it.
+
+The Kit does not maintain a separate command catalog — the set of
+topics is just the set of `BusTopic()` values plus whatever a
+deployment or plugin registers at runtime.
+
+## Typed Calls from Go
+
+Every typed topic has two access paths:
+
+### Generic `Call`
 
 ```go
-// kit/catalog.go — simplified
-specs := []commandSpec{
-    kitCommand(func(ctx context.Context, k *Kit, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
-        return k.toolsDomain.Call(ctx, req)
-    }),
-    kitCommand(func(ctx context.Context, k *Kit, req sdk.KitDeployMsg) (*sdk.KitDeployResp, error) {
-        return k.lifecycle.Deploy(ctx, req)
-    }),
-    transportCommand(func(ctx context.Context, k *Kit, req sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
-        return k.processPluginManifest(ctx, req)
-    }),
-    // ... 30+ commands total
-}
+reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](
+    kit, ctx,
+    sdk.CustomMsg{
+        Topic:   "ts.greeter.hello",
+        Payload: json.RawMessage(`{"name":"world"}`),
+    },
+    brainkit.WithCallTimeout(2*time.Second),
+)
 ```
 
-Each command has a topic (from `BusTopic()` on the message type), a decoder, and a handler. `kitCommand` commands run on any Kit. `transportCommand` commands only run on a Kit with Transport set (they need plugin infrastructure).
+The generic takes a request type that implements `sdk.BrainkitMessage`
+(one method: `BusTopic() string`) and a response type. The response can
+be a concrete struct or `json.RawMessage` to skip decoding.
 
-### Current command topics
+`Call` requires a deadline. If `ctx` has no deadline and no
+`WithCallTimeout` is passed, it returns `*caller.NoDeadlineError`. This
+is deliberate — nobody should wait on the bus forever.
 
-| Domain | Topics | Handler |
-|--------|--------|---------|
-| `tools.*` | call, resolve, list | ToolsDomain |
-| `agents.*` | list, discover, get-status, set-status | AgentsDomain |
-| `kit.*` | deploy, teardown, redeploy, list, deploy.file | LifecycleDomain |
-| `workflow.*` | start, startAsync, status, resume, cancel, list, runs, restart | Catalog (inline JS eval) |
-| `mcp.*` | listTools, callTool | Catalog (inline) |
-| `registry.*` | has, list, resolve | Catalog (inline) |
-| `secrets.*` | set, get, delete, list, rotate | SecretsDomain |
-| `packages.*` | search, install, remove, update, list, info | PackagesDomain |
-| `package.*` | deploy, teardown, redeploy, list, info | PackageDeployDomain |
-| `metrics.get` | | Catalog (inline) |
-| `trace.*` | get, list | Catalog (inline) |
-| `peers.*` | list, resolve (transport-connected Kit only) | Catalog (inline) |
-| `test.run` | | TestingDomain |
-| `plugin.*` | manifest, state.get, state.set, start, stop, restart, list, status (transport-connected Kit only) | PluginLifecycleDomain |
-| `gateway.http.*` | route.add, route.remove, route.list, status | Gateway (bus subscriber) |
+### Generated wrappers
 
-Topics NOT in the catalog are user-defined — `.ts` services use `bus.on("topic")` to create mailbox handlers, WASM shards register handlers via `bus_on`, and Go code can subscribe with `sdk.SubscribeTo`. These bypass the catalog entirely.
-
-### How commands are routed
-
-When `sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: ...})` is called:
-
-1. `sdk.Publish` marshals the message, generates a correlationID and replyTo topic, stamps them in context
-2. `RemoteClient.PublishRaw` resolves the namespace+topic, applies the transport's topic sanitizer, publishes via Watermill
-3. The Host's consumer handler receives the Watermill message on the sanitized topic
-4. The handler looks up the command in the catalog by topic, decodes the payload, calls the Go handler
-5. The handler returns a response (or error)
-6. The Host marshals the response and publishes it to the replyTo topic from the inbound message metadata
-7. The caller's `sdk.SubscribeTo` handler receives the response on the replyTo topic
-
-The replyTo topic is unique per Publish call (format: `<topic>.reply.<uuid>`), so multiple concurrent callers don't interfere.
-
-### The LocalInvoker shortcut
-
-When JS code calls `__go_brainkit_request("tools.call", payload)`, it doesn't go through the transport. The LocalInvoker looks up the command in the catalog and calls the handler directly — same Go function, no Watermill, no serialization round-trip. This is why tool calls from .ts code are fast: they skip the entire transport layer.
+`call_gen.go` contains 62 type-safe shortcuts wired to the shipped
+topics. They exist so a caller doesn't have to spell the types twice.
 
 ```go
-// kit/local_invoker.go
-func (i *LocalInvoker) Invoke(ctx context.Context, topic string, payload json.RawMessage) (json.RawMessage, error) {
-    spec, ok := commandCatalog().Lookup(topic)
-    if !ok || spec.invokeKit == nil {
-        return nil, fmt.Errorf("unknown topic: %s", topic)
-    }
-    return spec.invokeKit(ctx, i.kit, payload)
-}
+resp, err := brainkit.CallKitHealth(kit, ctx, sdk.KitHealthMsg{})
+route, err := brainkit.CallGatewayRouteAdd(kit, ctx, sdk.GatewayRouteAddMsg{...})
+deployed, err := brainkit.CallPackageDeploy(kit, ctx, sdk.PackageDeployMsg{...})
 ```
 
-Workflow bus commands use `kernel.EvalTS()` to call Mastra's Workflow APIs via the JS registry — the Go catalog handler generates JS code that calls `workflow.createRun()`, `run.start()`, `run.resume()`, etc.
+Regenerate after adding a typed message with `make generate`. The
+paired `sdk/typed_gen.go` file ships typed helpers usable from module
+code (no Kit handle).
 
-## The Async Pattern
-
-brainkit uses pure async pub/sub. There is no blocking `AskSync`, no `PublishAwait`, no request-response helper that hides the async nature. The pattern is always:
+### Call options
 
 ```go
-// 1. Publish — returns routing info
-pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "echo", Input: input})
+brainkit.WithCallTimeout(d time.Duration)        // absolute timeout
+brainkit.WithCallTo(name string)                  // cross-namespace; see topology module
+brainkit.WithCallMeta(map[string]string)          // extra message metadata
+brainkit.WithCallBuffer(n int)                    // stream buffer size (CallStream only)
+brainkit.WithCallBufferPolicy(BufferBlock|...)    // stream overflow policy
+brainkit.WithCallNoCancelSignal()                 // suppress _brainkit.cancel on ctx cancel
+```
 
-// 2. Subscribe to the replyTo topic
-done := make(chan sdk.ToolCallResp, 1)
-unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr.ReplyTo,
-    func(resp sdk.ToolCallResp, msg sdk.Message) {
-        done <- resp
-    })
+## Streaming: `CallStream`
+
+When a handler emits chunks before a terminal reply, use
+`CallStream`:
+
+```go
+chunks := []map[string]any{}
+result, err := brainkit.CallStream[sdk.CustomMsg, map[string]any, struct {
+    Done  bool `json:"done"`
+    Total int  `json:"total"`
+}](
+    kit, ctx,
+    sdk.CustomMsg{Topic: "ts.streaming-demo.count", Payload: json.RawMessage(`{"n":5}`)},
+    func(chunk map[string]any) error { chunks = append(chunks, chunk); return nil },
+    brainkit.WithCallTimeout(5*time.Second),
+)
+```
+
+Chunks arrive in publish order. Returning a non-nil error from the
+chunk callback finalizes the call with that error. The JS side emits
+chunks with `msg.send(data)` and the terminal reply with
+`msg.reply(data)`. See `examples/streaming/main.go`.
+
+### Buffer policies
+
+`CallStream` buffers chunks while the callback runs. Four overflow
+policies are exported:
+
+| Policy             | Behaviour                                        |
+| ------------------ | ------------------------------------------------ |
+| `BufferBlock`      | Back-pressure the producer (default, 64 slots).  |
+| `BufferDropNewest` | Drop incoming chunks when the buffer is full.    |
+| `BufferDropOldest` | Evict the oldest queued chunk.                   |
+| `BufferError`      | Fail the call with `*caller.BufferOverflowError`.|
+
+## Fire-and-Forget: `sdk.Emit`
+
+Publishing an event with no expected reply uses `sdk.Emit`:
+
+```go
+err := sdk.Emit(kit, ctx, MyEvent{Kind: "ready"})
+```
+
+`Emit` publishes to `msg.BusTopic()` without a reply-to. Subscribers
+are set up with `sdk.SubscribeTo[T](rt, ctx, topic, handler)`:
+
+```go
+unsub, _ := sdk.SubscribeTo[MyEvent](kit, ctx, "app.ready",
+    func(ev MyEvent, _ sdk.Message) { /* … */ })
 defer unsub()
-
-// 3. Wait with timeout
-select {
-case resp := <-done:
-    // use resp
-case <-ctx.Done():
-    // timeout
-}
 ```
 
-This is verbose but explicit. You always know where the response comes from, you always handle timeouts, and you never block a goroutine waiting for a bus response.
+Unlike `Call`, subscribe-based reads never decode error envelopes as
+failures — an envelope with `Ok=false` is delivered to the handler with
+`T` at its zero value, and the raw envelope is available on
+`msg.Payload` (decode with `sdk.DecodeEnvelope`).
 
-For convenience, the SDK provides typed wrappers like `sdk.PublishToolCall` and `sdk.SubscribeToolCallResp` (generated by `codegen/sdkgen`), but they're thin aliases over `Publish` and `SubscribeTo`.
+## Envelopes
 
-## Transport Backends
-
-Five transport backends are supported. The transport is configured via `Config.Transport`:
-
-| Backend | Config Type | Topic Sanitizer | Container |
-|---------|------------|-----------------|-----------|
-| GoChannel (memory) | `"memory"` | none | none |
-| Embedded NATS | `"embedded"` / `""` | dots → dashes | none |
-| NATS JetStream | `"nats"` | dots → dashes, slashes → dashes | `nats:latest -js` |
-| AMQP (RabbitMQ) | `"amqp"` | slashes → dashes | `rabbitmq:management` |
-| Redis Streams | `"redis"` | none | `redis:latest` |
-
-### Topic sanitizers
-
-Each transport has characters that are special or invalid in topic names. The sanitizer transforms logical topics (like `tools.call.reply.abc-123`) into transport-safe names before publishing and subscribing.
-
-For NATS: dots are subject delimiters, so `tools.call` → `tools-call`. This is handled automatically by `RemoteClient` and `Host` — user code works with logical topic names.
-
-GoChannel and Redis accept any string — no sanitization needed.
-
-### NATS JetStream specifics
-
-NATS uses JetStream with auto-provisioning. Each subscriber gets a durable consumer with a queue group. The `SubjectCalculator` maps topics to NATS subjects (replacing dots with dashes). The `DurablePrefix` is sanitized from the `NATSName` config.
-
-Auto-provisioning means the first subscriber to a topic creates a JetStream stream. This can be slow — up to 30 seconds per topic on cold start. Kit with Transport set waits up to 2 minutes for `router.Running()` to account for this.
-
-## Namespace Routing
-
-Every Kit has a namespace (default: `"user"`). All topics are prefixed with the namespace before hitting the transport:
-
-```
-Logical topic: tools.call
-Namespace: my-kit
-Wire topic: my-kit.tools.call (then sanitized per transport)
-```
-
-`RemoteClient.resolvedTopic` handles this:
+Typed replies cross the wire wrapped in an envelope so errors survive
+the round trip:
 
 ```go
-func (c *RemoteClient) resolvedTopic(logicalTopic string) string {
-    topic := NamespacedTopic(c.namespace, logicalTopic)
-    if c.topicSanitizer != nil {
-        topic = c.topicSanitizer(topic)
-    }
-    return topic
+type Envelope struct {
+    Ok    bool            `json:"ok"`
+    Data  json.RawMessage `json:"data,omitempty"`
+    Error *EnvelopeError  `json:"error,omitempty"`
 }
 ```
 
-Cross-Kit communication uses `PublishRawToNamespace` which prefixes with the TARGET namespace instead of the sender's:
+`sdk.EnvelopeOK`, `sdk.EnvelopeErr`, `sdk.EncodeEnvelope`,
+`sdk.DecodeEnvelope`, `sdk.FromEnvelope`, and `sdk.ToEnvelope` bracket
+the pattern. `FromEnvelope` maps a typed error envelope to one of the
+typed error values in `sdk/sdkerrors` (NOT_FOUND → `*NotFoundError`,
+TIMEOUT → `*TimeoutError`, and 11 others). See
+[error-handling.md](error-handling.md).
+
+Inside `Call`, envelope unwrapping happens automatically: a success
+envelope's `Data` is decoded into `Resp`, an error envelope becomes a
+typed Go error.
+
+## Cross-Namespace Calls
+
+Each Kit has a namespace (`Config.Namespace`). Every published topic is
+prefixed with that namespace before hitting the transport. To call
+across namespaces, pass `brainkit.WithCallTo(name)`:
 
 ```go
-func (c *RemoteClient) PublishRawToNamespace(ctx context.Context, targetNamespace, logicalTopic string, payload json.RawMessage) (string, error) {
-    // ... publish to targetNamespace.logicalTopic (sanitized)
-}
+reply, _ := brainkit.Call[sdk.CustomMsg, json.RawMessage](
+    caller, ctx,
+    sdk.CustomMsg{Topic: "ts.report-svc.quarterly", Payload: q4},
+    brainkit.WithCallTo("analytics"),
+    brainkit.WithCallTimeout(10*time.Second),
+)
 ```
 
-See [cross-kit.md](cross-kit.md) for the full cross-Kit communication model.
-
-## Middleware
-
-Three middleware functions run on every inbound command message:
-
-1. **DepthMiddleware** — reads the `depth` metadata field. If depth >= 16 (MaxDepth), returns `ErrCycleDetected`. This prevents infinite loops where handler A publishes to handler B which publishes back to handler A.
-
-2. **CallerIDMiddleware** — stamps a default `callerId` in message metadata if not already set. Callers can override this via `messaging.WithPublishMeta`.
-
-3. **MetricsMiddleware** — records processing time and error counts per topic. Available via `Metrics.Snapshot()`.
-
-## The Event Catalog
-
-Separate from the command catalog, the event catalog validates fire-and-forget events. It prevents publishing a known event type on a command topic (which would be silently ignored since no command handler would process it).
-
-```go
-// kit/events.go
-func (r *knownEventRegistry) Validate(topic string, payload json.RawMessage) error {
-    if commandCatalog().HasCommand(topic) {
-        return fmt.Errorf("%w: %s", ErrCommandTopic, topic)
-    }
-    // ...
-}
-```
-
-Known events: `kit.deployed`, `kit.teardown.done`, `plugin.registered`. User-defined events are not validated — they pass through freely.
+If the `topology` module is loaded, `analytics` is resolved against
+its peer table; otherwise, it is used as a raw namespace. The caller's
+runtime must implement `sdk.CrossNamespaceRuntime` — every
+`brainkit.Kit` does. See [cross-kit.md](cross-kit.md) and
+`examples/cross-kit/main.go`.
 
 ## The JS Bus API
 
-From deployed .ts code, the bus is accessed via the `bus` object (endowment from kit_runtime.js):
+Inside a deployed `.ts` package, `bus` is a global object endowed by
+the runtime. Six primary methods plus three helpers:
 
 ```typescript
-// Publish with replyTo (request/response pattern)
-const { replyTo, correlationId } = bus.publish("topic", data);
+// Publish typed, wait for reply
+const resp = await bus.call("tools.call",
+    { name: "weather", input: { city: "Paris" } },
+    { timeoutMs: 2000 });
 
-// Fire-and-forget
-bus.emit("topic", data);
-
-// Subscribe to any topic
-const subId = bus.subscribe("topic", (msg) => {
-    msg.reply(response);     // final response (done=true)
-    msg.send(chunk);         // intermediate chunk (done=false)
+// Mailbox subscribe — auto-prefixed ts.<package>.<topic>
+bus.on("demo", async (msg) => {
+    msg.reply({ greeting: "hi " + msg.payload.name });
 });
 
-// Mailbox subscribe (auto-prefixed with deployment namespace)
-bus.on("localTopic", handler);  // subscribes to ts.<source>.<localTopic>
+// Fire-and-forget
+bus.emit("app.ready", { at: Date.now() });
 
-// Send to another .ts service
+// Subscribe anywhere on the bus
+const id = bus.subscribe("orders.completed", (msg) => { /* … */ });
+bus.unsubscribe(id);
+
+// Cross-namespace call (peer name or raw namespace)
+await bus.callTo("analytics", "ts.report-svc.quarterly", { quarter: "Q4" },
+    { timeoutMs: 10000 });
+
+// Fire-and-forget to another service
 bus.sendTo("other-service.ts", "topic", data);
 
-// Unsubscribe
-bus.unsubscribe(subId);
+// Schedule a publish via the schedules module
+bus.schedule(cronSpec, topic, payload);
 ```
 
-Each of these calls a Go bridge function (`__go_brainkit_bus_publish`, `__go_brainkit_bus_emit`, etc.) which interacts with the Kit's RemoteClient and transport.
+Inside a handler callback, `msg` exposes both ends of a streaming
+reply:
 
+```typescript
+bus.on("count", (msg) => {
+    const n = msg.payload.n || 3;
+    for (let i = 1; i <= n; i++) msg.send({ tick: i });
+    msg.reply({ done: true, total: n });
+});
+```
+
+`msg.send` emits a chunk; `msg.reply` emits the terminal reply. See
+`examples/streaming/main.go` for the matched Go side.
+
+## The Topic Catalog
+
+`docs/bus-topics.md` is generated — it is the authoritative list of
+typed topics shipped by core. Topic names in this doc are
+cross-references, not duplicates. Run the generator after adding a new
+typed message:
+
+```bash
+go run scripts/gen-bus-topics.go
+```
+
+## Transport Sanitizers
+
+Different transports require different characters. `RemoteClient`
+applies a transport-specific sanitizer before sending:
+
+| Transport         | Kind         | Sanitizer          |
+| ----------------- | ------------ | ------------------ |
+| Memory (GoChannel)| `memory`     | none               |
+| Embedded NATS     | `embedded`   | dots → dashes      |
+| NATS JetStream    | `nats`       | dots → dashes      |
+| AMQP (RabbitMQ)   | `amqp`       | slashes → dashes   |
+| Redis Streams     | `redis`      | none               |
+
+User code only ever sees the logical topic. Wire names are an
+implementation detail — the sanitizer is symmetric on publish and
+subscribe.
+
+## Middleware
+
+Three middlewares run on every inbound message:
+
+- **DepthMiddleware** trips `CYCLE_DETECTED` at depth 16 (default). A
+  handler that publishes to a topic that re-enters itself is caught in
+  under 50ms.
+- **CallerIDMiddleware** stamps the calling Kit's `CallerID` (from
+  `Config.CallerID`, defaulting to `Namespace`) into message metadata
+  so audit + tracing can attribute traffic.
+- **MetricsMiddleware** records per-topic processing time and error
+  counts surfaced via `kit.Status()` and the audit module.
+
+Modules can register additional middlewares through
+`kit.RegisterMiddleware(mw)` during `Init`.
+
+## Topic Namespace: `ts.<pkg>.<topic>`
+
+Deployed packages live in their own mailbox namespace. When `greeter`
+calls `bus.on("hello", …)`, the bus subscription is at
+`ts.greeter.hello`. The deployment's own `bus.call("tools.call", …)`
+does not get the prefix — only `bus.on` mailboxes are rewritten. This
+lets a package call any typed topic by name while still receiving
+messages on its own dedicated prefix.
+
+## Summary
+
+- `brainkit.Call` is the Go front door for typed request/reply.
+- `brainkit.CallStream` adds chunked replies.
+- `sdk.Publish` / `sdk.Emit` + `sdk.SubscribeTo` give low-level access.
+- JS uses `bus.call`, `bus.on`, `bus.emit`, `bus.subscribe`,
+  `bus.callTo`, `bus.sendTo`, `bus.schedule`.
+- Every typed message carries its own topic via `BusTopic()`.
+- Envelopes carry typed errors across the wire.
+- Cross-Kit traffic flows through the same machinery with
+  `WithCallTo`.

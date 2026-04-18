@@ -1,100 +1,208 @@
-# Brainkit Documentation
+# brainkit
 
-Brainkit is an embeddable Go runtime for AI agents. A Kit is a self-contained environment — one QuickJS runtime with Mastra + AI SDK + polyfills loaded, plus Go services (bus, tool registry, storage, plugins, networking). All agents, AI calls, workflows, and `.ts` code run inside a Kit.
+Brainkit is an embeddable Go runtime for AI agent teams. A single `Kit` instance bundles an async pub/sub bus, a QuickJS JavaScript engine running SES-hardened `.ts` deployments, and a curated surface (AI SDK v5, Mastra, Node.js polyfills, storage and vector backends, MCP, observability, HTTP gateway, plugin hosting). Agents, tools, workflows and memories are authored once in TypeScript and deployed into isolated compartments on a running Kit.
 
-## Architecture
+This directory is the reference. The five files in `llm/` are dense, API-only pages intended for LLM ingestion and copy-paste. The narrative prose — concepts, design notes, walkthroughs — lives in `concepts/` and `guides/`.
 
-- **Bus**: Async message bus with Send/Ask/On primitives. Interceptor pipeline. Worker groups. Address routing for cross-Kit communication. InProcessTransport dispatches handlers concurrently.
-- **SES Compartments**: Each deployed `.ts` file runs in its own [SES](https://github.com/endojs/endo/tree/master/packages/ses) Compartment (220KB, bundled into agent-embed). `lockdown()` is called during Kit init to freeze all intrinsics. Compartments receive hardened endowments via `__kitEndowments(source)` with per-source wrappers. Agents and tools are created by deploying `.ts` code, not by sending bus messages.
-- **Deployment**: `Kit.Deploy(ctx, source, code)` deploys code in an isolated compartment. `Kit.Teardown(ctx, source)` removes the compartment and all its resources (bus subscriptions, registered agents/tools). `Kit.Redeploy(ctx, source, code)` does an atomic swap (teardown + deploy).
-- **Plugin SDK**: Registration-based (`sdk.New` + `sdk.Tool` + `sdk.On` + `sdk.Event`). Out-of-process gRPC. Auto-restart, backpressure, stream recovery, interceptors. Plugin manifest files deploy in Compartments.
-- **Tool Registry**: `owner/pkg@version/tool` naming with 5-level resolution (exact → no-owner → no-version → bare → short name).
-- **Workflows**: Mastra workflow engine with bus commands for lifecycle (start, resume, cancel, restart). Snapshots persist to configured storage. Crash recovery via `restartAllActiveWorkflowRuns()` on startup.
-- **Agent Registry**: Bus topics for agent lifecycle (list, discover, status). Agents auto-unregister and clean up bus subscriptions on teardown.
-- **Networking**: Kit-to-Kit over gRPC. Discovery (Static + Multicast LAN). NATS as alternative transport. On `Kit.Close()`, the network stops before the bridge closes to prevent in-flight message errors.
+---
 
-## Guides
+## Architecture at a glance
 
-Conceptual documentation — what things are, when to use them, how to choose.
+- **Kit**: a single `*Kit` value created via `brainkit.New(brainkit.Config{...})`. Implements `sdk.Runtime` (publish / subscribe / reply / stream), `sdk.CrossNamespaceRuntime` (routed `To:` targeting), and `sdk.Replier` (correlated replies). Zero-value defaults — `Transport: brainkit.Memory()` if unset, embedded AMQP / NATS / Redis helpers are opt-in.
+- **Bus**: async pub/sub with typed `Call[Req, Resp]` / `CallStream[Req, Chunk, Resp]` helpers that wrap `Publish → SubscribeTo(replyTo) → select { resp / timeout }`. 62 generated `CallXxx(kit, ctx, msg, opts...)` wrappers live in `call_gen.go` — one per shipped SDK message type.
+- **SES compartments**: every deployed `.ts` file runs in its own hardened compartment with a tamed global surface (frozen `Date`, per-source module namespace `ts.<source>.<topic>`, no network / child-process access). Endowments are injected per-source: `bus`, `kit`, `model`, `embeddingModel`, `provider`, `storage`, `vectorStore`, `registry`, `tools`, `tool`, `fs` (Node.js shape), `mcp`, `output`, `secrets`, `generateWithApproval`, the full `"ai"` module and the full `"agent"` (Mastra) module.
+- **Transports**: `brainkit.Memory()` (default, zero-value), `brainkit.EmbeddedNATS()`, `brainkit.NATS(url)`, `brainkit.AMQP(url)`, `brainkit.Redis(url)` — each returns a `TransportConfig`. Topic sanitisers vary per backend; the Go surface is uniform.
+- **Providers**: 12 built-in constructors (OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, XAI, Cohere, Perplexity, TogetherAI, Fireworks, Cerebras). `WithBaseURL(...)` / `WithHeaders(...)` options on every one.
+- **Storage & vectors**: 5 storage constructors (SQLite, Postgres, MongoDB, Upstash, InMemory) and 3 vector constructors (SQLite, PgVector, MongoDB). Registered as a named pool the runtime can look up by name.
+- **Modules**: 11 shippable modules composed via `Config.Modules`. Stable: `gateway`, `mcp`. Beta: `probes`, `topology`, `tracing`, `workflow`. WIP: `harness`. No declared `Status()`: `audit`, `discovery`, `plugins`, `schedules`.
+- **server**: thin HTTP wrapper (`server.New`, `server.QuickStart`) for bringing a Kit up behind an HTTP gateway. `server.LoadConfig` reads YAML with `$VAR` / `${VAR}` expansion. Not required — embed the Kit directly from Go in any long-running process.
 
-- [Agents](guides/agents.md) — Agent config, generate/stream, sub-agents, supervisor pattern, delegation, dynamic config, memory access.
-- [Storage](guides/storage.md) — Storage providers, embedded SQLite, memory backends, vector stores.
-- [Workspace](guides/workspace.md) — Filesystem, sandbox, search, skills, LSP, tool remapping, dynamic factories.
-- [Evals](guides/evals.md) — Scorers, batch evaluation with runEvals(), pre-built scorers (rule-based + LLM).
-- [Processors](guides/processors.md) — Built-in input/output middleware: security, PII, moderation, token limiting, tool search.
-- [Harness](guides/harness.md) — Orchestrator for agent execution, threads, modes, tool approval, events, display state.
-- [Storage](guides/storage-and-memory.md) — Storage backends, agent memory, vectors, workflow persistence.
+See `concepts/architecture.md` for the full diagram and `concepts/deployment-pipeline.md` for the transpile → strip-imports → SES-lockdown path.
 
-## API Reference
+---
 
-Technical reference — Go config structs, TypeScript constructors, method signatures, error cases.
+## Deployment model
 
-- [Storage API](api/storage/README.md) — `StorageConfig`, `LibSQLStore`, `LibSQLVector`, `AddStorage`/`RemoveStorage`
-- [Workspace API](api/workspace/README.md) — `Workspace`, `LocalFilesystem`, `LocalSandbox`, search, tools config, LSP
-- [Harness API](api/harness/README.md) — `HarnessConfig`, `InitHarness`, 48 methods, 41 events, display state, permissions
-
-## Deployment
-
-All `.ts` code (agents, tools, workflows) runs in SES Compartments. The Kit API:
-
-| Method | What it does |
-|--------|-------------|
-| `Kit.Deploy(ctx, source, code)` | Deploy code in a new isolated compartment |
-| `Kit.Teardown(ctx, source)` | Remove compartment + all resources (subscriptions, agents, tools) |
-| `Kit.Redeploy(ctx, source, code)` | Atomic swap — teardown then deploy |
-
-Bus topics for deployment lifecycle:
-
-| Topic | Direction |
-|-------|-----------|
-| `kit.deploy` | Request deployment |
-| `kit.teardown` | Request teardown |
-| `kit.redeploy` | Request atomic redeploy |
-| `kit.list` | List deployed sources |
-
-The SDK Client also exposes `Deploy()` and `Teardown()` methods, so plugins can trigger deployments.
-
-Resource cleanup is automatic. When a compartment is torn down, all bus subscriptions registered by that source are removed, agents are unregistered from the agent registry, and tools are deregistered. The runtime tracks resources via a cleanup registry (`_resourceRegistry`).
-
-### What was removed
-
-`AgentRegisterMsg`, `AgentUnregisterMsg`, `ToolRegisterMsg`, and `ToolRegisterResp` are removed from the SDK. Agents and tools are no longer created by sending bus messages directly. Instead, deploy a `.ts` file that calls `agent()` or `createTool()` — the compartment handles registration.
-
-## Plugin Development
-
-The Plugin SDK lets you build out-of-process plugins in any Go module:
+All agents, tools, workflows and memories are created by **deploying a `.ts` file**. Two Go entry points:
 
 ```go
-p := sdk.New("your-org", "plugin-name", "1.0.0")
-sdk.Tool(p, "my-tool", "Description", handleMyTool)
-sdk.Event[MyEvent](p, "Event description")
-p.Run()
+// Create a Kit
+kit, _ := brainkit.New(brainkit.Config{
+    Namespace: "myapp",
+    Transport: brainkit.EmbeddedNATS(),
+    FSRoot:    "/var/lib/myapp",
+    Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
+})
+defer kit.Close()
+
+// Deploy a .ts package
+_, _ = kit.Deploy(ctx, brainkit.PackageInline(
+    "researcher",
+    "researcher.ts",
+    researcherCode,
+))
 ```
 
-Plugin manifest files now deploy in SES Compartments. The Kit loads the manifest, deploys its `.ts` entry points into isolated compartments, and manages their lifecycle.
+Inside `researcher.ts`:
 
-Reference implementation: `../plugins/brainkit-plugin-cron/` (5 tools, 1 event, state persistence).
+```typescript
+import { Agent, createTool, z } from "agent";
+import { model, kit, bus } from "kit";
 
-## Bus Topics
+const search = createTool({
+    id: "search",
+    description: "Search the knowledge base",
+    inputSchema: z.object({ q: z.string() }),
+    execute: async (args) => {
+        const { q } = (args && args.context) || args;
+        return { hits: ["…results for " + q] };
+    },
+});
 
-All operations flow through the bus. Current handlers:
+const agent = new Agent({
+    name: "researcher",
+    model: model("openai", "gpt-4o-mini"),
+    instructions: "You research topics thoroughly.",
+    tools: { search },
+});
+kit.register("agent", "researcher", agent);
 
-| Namespace | Topics | Handler |
-|-----------|--------|---------|
-| `tools.*` | call, list, resolve | Tool registry |
-| `agents.*` | list, discover, get-status, set-status | Agent registry |
-| `kit.*` | deploy, teardown, redeploy, list, deploy.file | Compartment lifecycle |
-| `workflow.*` | start, startAsync, status, resume, cancel, list, runs, restart | Mastra workflows |
-| `mcp.*` | listTools, callTool | MCP manager |
-| `secrets.*` | set, get, delete, list, rotate | Secret management |
-| `registry.*` | has, list, resolve | Provider registry |
-| `packages.*` | search, install, remove, update, list, info | Package manager |
-| `package.*` | deploy, teardown, redeploy, list, info | Package deployment |
-| `plugin.*` | manifest, state.get/set, start, stop, restart, list, status | Plugin lifecycle |
-| `metrics.get` | | Kit metrics |
-| `trace.*` | get, list | Distributed tracing |
-| `test.run` | | Test framework |
-| `peers.*` | list, resolve | Peer discovery |
-| `gateway.http.*` | route.add/remove/list, status | HTTP gateway |
-| `workflows.*` | run, resume, cancel, status | Workflow execution |
-| `vectors.*` | upsert, query, createIndex, deleteIndex, listIndexes | Vector store operations |
+bus.on("ask", async (msg) => {
+    const r = await agent.generate(String(msg.payload?.prompt ?? ""));
+    msg.reply({ text: r.text, usage: r.usage });
+});
+```
+
+From Go, reach the deployment on its mailbox `ts.<source>.<topic>` — so `ts.researcher.ask` for the file above:
+
+```go
+reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.CustomMsg{
+    Topic:   "ts.researcher.ask",
+    Payload: json.RawMessage(`{"prompt":"what is rag?"}`),
+}, brainkit.WithCallTimeout(30*time.Second))
+```
+
+Teardown releases all bus subscriptions, unregisters agents / tools / workflows, and disposes the compartment:
+
+```go
+_, _ = kit.Teardown(ctx, "researcher")
+```
+
+`examples/agent-spawner/main.go` is the flagship walkthrough: a Go program deploys an architect agent, asks it to design and deploy a second agent at runtime, and then calls the newly-spawned agent directly over the bus.
+
+---
+
+## Reference files (`llm/`)
+
+Dense, API-only pages — each mirrors one source-of-truth and is kept in sync with the shipped code.
+
+| File | Covers |
+|------|--------|
+| [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, bus primitives (`Publish` / `Emit` / `SubscribeTo` / `Reply` / `SendChunk` / `SendToService` / `ResolveServiceTopic`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]` with all 62 generated `CallXxx` wrappers, `CallOption` surface, typed SDK messages, errors, context keys. |
+| [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the 11-module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` + `Span` types, retry / error / health types, `PluginConfig` + `ScheduleConfig`, `server.Config` + `server.Server` + `QuickStart` + `LoadConfig` YAML shape. |
+| [`llm/ts-runtime.md`](llm/ts-runtime.md) | SES compartment execution model, mailbox naming `ts.<source>.<topic>`, endowment map, `BrainkitError` + error codes (`VALIDATION_ERROR`, `NOT_FOUND`, `TIMEOUT`, `HANDLER_FAILED`, `TRANSPORT_ERROR`, `COMPARTMENT_ERROR`, `TOPIC_COLLISION`, `NOT_CONFIGURED`, `PLUGIN_*`), full `bus` API (`publish`/`emit`/`subscribe`/`on`/`sendTo`/`call`/`callTo`/`schedule`/`onCancel`/`withCancelController`), `BusMessage.reply`/`send`/`stream.text`/`progress`/`object`/`event`/`error`/`end` with `seq` semantics, `kit.register` valid types, `model` / `embeddingModel` / `provider` resolvers, `storage` / `vectorStore` named pools (LibSQL file-URL guards), `registry`, `tools` / `tool`, the Node.js-shaped `fs` endowment, `mcp`, `output`, `secrets.get`, `generateWithApproval`, tamed `Date` / `Math`, tagged `console`, deployment patterns, failure semantics. |
+| [`llm/ai-sdk.md`](llm/ai-sdk.md) | The `"ai"` module (AI SDK v5, no wrapping). `CallSettings` (`maxOutputTokens`, not `maxTokens`), `Usage` with v5 names (`inputTokens` / `outputTokens`) + deprecated v4 aliases, `generateText` + `GenerateTextParams` (with `stopWhen` and `@deprecated maxSteps`), `streamText` + `StreamPart` union, `generateObject`, `streamObject`, `embed`, `embedMany`, middleware (`defaultSettingsMiddleware`, `extractReasoningMiddleware`, `wrapLanguageModel`), `tool<T>`, `jsonSchema`, the Zod surface. |
+| [`llm/mastra.md`](llm/mastra.md) | The `"agent"` module (Mastra, no wrapping). `Agent` class + `AgentConfig` + `AgentCallOptions`, `AgentResult` with **v4 usage names** (`promptTokens` / `completionTokens`), `AgentStreamResult`, `createTool` + `ToolConfig`, `createWorkflow` + `createStep` + builder (`then` / `parallel` / `branch` / `foreach` / `dountil` / `sleep` / `commit`), `Memory` + `MemoryConfig` + `MemoryOptions` (semantic recall, working memory, observational memory), 5 storage classes (`InMemoryStore`, `LibSQLStore` — `opts.url` file-URL guard, `UpstashStore`, `PostgresStore`, `MongoDBStore`), 3 vector classes (`LibSQLVector` — `opts.connectionUrl` file-URL guard, `PgVector`, `MongoDBVector`), `ModelRouterEmbeddingModel`, `MDocument` / `GraphRAG` / `createVectorQueryTool` / `createDocumentChunkerTool` / `createGraphRAGTool` / `rerank` / `rerankWithScorer`, `Observability` + `DefaultExporter` + `SensitiveDataFilter`, `createScorer` builder + `runEvals`, `Workspace` + `LocalFilesystem` + `LocalSandbox`, `RequestContext`, HITL flow (tool `requireApproval`, workflow `ctx.suspend`, `generateWithApproval`). |
+
+---
+
+## Bus topic catalog
+
+The authoritative list of built-in bus topics (with request / response Go types and source file) is generated from `sdk/*_messages.go` and kept in [`bus-topics.md`](bus-topics.md). Do not edit by hand — run `go run scripts/gen-bus-topics.go` to regenerate.
+
+Everything in the shipped SDK — discovery, audit, gateway, MCP, plugins, schedules, secrets, storage pool, tracing, workflow control, vector pool, package lifecycle — flows through these typed topics.
+
+---
+
+## Guides (prose)
+
+Walkthroughs and concept-level docs under `guides/`:
+
+- [`guides/getting-started.md`](guides/getting-started.md) — first Kit, first deployment.
+- [`guides/go-sdk.md`](guides/go-sdk.md) — the Go-side SDK in narrative form.
+- [`guides/ts-services.md`](guides/ts-services.md) — writing `.ts` services against the endowments.
+- [`guides/ai-and-agents.md`](guides/ai-and-agents.md) — building Mastra agents, tools and memories.
+- [`guides/vectors-and-rag.md`](guides/vectors-and-rag.md) — embedding pipelines, `MDocument`, `GraphRAG`, `createVectorQueryTool`.
+- [`guides/storage-and-memory.md`](guides/storage-and-memory.md) — the storage pool, vector pool and Mastra `Memory`.
+- [`guides/transport-backends.md`](guides/transport-backends.md) — memory / embedded-NATS / NATS / AMQP / Redis trade-offs and topic sanitisers.
+- [`guides/mcp-integration.md`](guides/mcp-integration.md) — the MCP module + `mcp.listTools` / `mcp.callTool` bus surface.
+- [`guides/hitl-approval.md`](guides/hitl-approval.md) — `generateWithApproval`, Mastra tool `requireApproval`, workflow `ctx.suspend`.
+- [`guides/plugins.md`](guides/plugins.md) — out-of-process plugin SDK, `PluginConfig`, lifecycle events.
+- [`guides/observability.md`](guides/observability.md) — tracing, probes, topology, metrics.
+
+## Concepts (design notes)
+
+- [`concepts/architecture.md`](concepts/architecture.md) — Kit anatomy.
+- [`concepts/bus-and-messaging.md`](concepts/bus-and-messaging.md) — bus internals, interceptors, worker groups.
+- [`concepts/cross-kit.md`](concepts/cross-kit.md) — routing across namespaces and Kits.
+- [`concepts/deployment-pipeline.md`](concepts/deployment-pipeline.md) — transpile → strip imports → SES lockdown → endow.
+- [`concepts/bundle-and-bytecode.md`](concepts/bundle-and-bytecode.md) — how the embedded JS bundle / bytecode cache is built.
+- [`concepts/jsbridge-polyfills.md`](concepts/jsbridge-polyfills.md) — Node.js polyfill strategy (`fs`, `crypto`, `stream`, etc.).
+- [`concepts/provider-registry.md`](concepts/provider-registry.md) — provider resolution and lookup rules.
+- [`concepts/error-handling.md`](concepts/error-handling.md) — error envelopes, retry policy, handler events.
+- [`concepts/scaling.md`](concepts/scaling.md) — multi-Kit topologies, gateway fan-out.
+
+---
+
+## Quick examples
+
+Minimal in-process Kit with a Memory transport and a single deployment:
+
+```go
+kit, _ := brainkit.New(brainkit.Config{
+    Namespace: "demo",
+    Transport: brainkit.Memory(),        // default — zero value also works
+    FSRoot:    os.TempDir(),
+    Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
+})
+defer kit.Close()
+
+_, _ = kit.Deploy(ctx, brainkit.PackageInline("echo", "echo.ts", `
+    import { bus } from "kit";
+    bus.on("ping", (msg) => msg.reply({ pong: msg.payload }));
+`))
+
+reply, _ := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.CustomMsg{
+    Topic:   "ts.echo.ping",
+    Payload: json.RawMessage(`{"hello":"world"}`),
+}, brainkit.WithCallTimeout(2*time.Second))
+```
+
+Stand up an HTTP gateway in front of the same Kit with one call:
+
+```go
+srv, _ := server.QuickStart("demo", "/var/lib/demo")
+defer srv.Close()
+// HTTP gateway is live on :8080 via the embedded NATS transport.
+```
+
+Load a Kit from YAML with env-var expansion (`$VAR` and `${VAR}` are substituted at load time by `server.LoadConfig`):
+
+```yaml
+# config.yaml
+namespace: demo
+fsRoot: /var/lib/demo
+secret_key: ${SECRET_KEY}
+transport:
+  type: embedded
+providers:
+  - name: openai
+    apiKey: ${OPENAI_API_KEY}
+modules:
+  - name: tracing
+  - name: gateway
+    config:
+      addr: :8080
+```
+
+```go
+cfg, _ := server.LoadConfig("config.yaml")
+srv, _ := server.New(cfg)
+defer srv.Close()
+```
+
+---
+
+## Versioning
+
+This documentation tracks the `v1.0.0-rc.1` API surface. Breaking changes land on `main` — the `llm/*` reference is the contract surface and is regenerated whenever a shipped type changes. For internal, unexported types see the package comments in the Go source directly.

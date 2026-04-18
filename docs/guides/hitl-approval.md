@@ -1,266 +1,365 @@
 # HITL Approval
 
-Human-in-the-Loop (HITL) approval lets an agent suspend on a tool call and wait for external approval before executing it. The approval request is published to the bus — any surface (Go, .ts, plugin, gateway, Telegram bot) can approve or decline.
+Human-in-the-Loop (HITL) ships on two stable surfaces:
 
-## The Flow
+1. **Agent tool approval** — `generateWithApproval` suspends an
+   agent mid-run when it picks a tool with `requireApproval: true`,
+   routes the approval request through the bus, and resumes once a
+   reply arrives.
+2. **Workflow suspend/resume** — a workflow step calls `await
+   suspend(...)` to pause; any surface publishes
+   `workflow.resume` (or `brainkit.CallWorkflowResume`) with the
+   `resumeData` matching the step's `resumeSchema`, and the workflow
+   continues from where it stopped.
 
-```
-1. Agent calls tool with requireApproval: true
-2. agent.generate() returns with finishReason: "suspended"
-3. generateWithApproval publishes approval request to bus (Go bridge)
-4. Go bridge subscribes to replyTo and waits with context.WithTimeout
-5. Approver receives request, calls msg.reply({ approved: true/false })
-6. Go bridge returns response to JS
-7. JS calls agent.approveToolCallGenerate() or agent.declineToolCallGenerate()
-8. Agent resumes execution (or declines and returns)
-```
+A third surface — `modules/harness` — is **WIP**. It exposes a
+frozen `Instance` interface and six frozen event types today;
+everything else is subject to change. See the harness section at
+the bottom for scope.
 
-Steps 3-6 happen entirely in Go — no JS closures, no setTimeout, no GC risk during the wait. This was moved from JS to Go for reliability (see the codebase assessment).
+## Agent HITL — `generateWithApproval`
 
-## From .ts — generateWithApproval
+Any `.ts` tool declared with `requireApproval: true` flips the
+agent into suspend-on-call mode:
 
-```typescript
-// fixtures/ts/agent/hitl-bus-approval/index.ts
+```ts
+import { Agent, createTool, z } from "agent";
+import { model, generateWithApproval } from "kit";
+
 const deleteTool = createTool({
-    id: "delete-record",
-    description: "Delete a record — requires human approval",
-    inputSchema: z.object({ id: z.string() }),
+    id:           "delete-record",
+    description:  "Delete a record — requires human approval",
+    inputSchema:  z.object({ id: z.string() }),
     outputSchema: z.object({ deleted: z.boolean() }),
     requireApproval: true,
     execute: async ({ id }) => ({ deleted: true }),
 });
 
 const agent = new Agent({
-    name: "hitl-agent",
-    model: model("openai", "gpt-4o-mini"),
-    instructions: "Always use delete-record when asked to delete. Don't ask for confirmation.",
-    tools: { "delete-record": deleteTool },
-    maxSteps: 3,
+    name:         "hitl-agent",
+    model:        model("openai", "gpt-4o-mini"),
+    instructions: "Use delete-record when asked to delete. Don't confirm.",
+    tools:        { "delete-record": deleteTool },
+    maxSteps:     3,
 });
 
 const result = await generateWithApproval(agent, "Delete record xyz-789", {
-    approvalTopic: "approvals.pending",  // where to publish the request
-    timeout: 10000,                      // ms before auto-decline
+    approvalTopic: "approvals.pending", // bus topic approvers watch
+    timeout:       10000,               // ms before auto-decline
 });
-// result.text — agent's response after approval
+// result.text: the agent's answer after the tool approved and ran.
 ```
 
-### What generateWithApproval does
+Working fixture:
+[`fixtures/ts/agent/hitl/bus-approval/`](../../fixtures/ts/agent/hitl/bus-approval/).
 
-```typescript
-// kit/runtime/kit_runtime.js — simplified
-async function generateWithApproval(agent, prompt, options) {
-    // Phase 1: agent.generate with requireToolApproval — may suspend
-    var result = await agent.generate(prompt, { ...agentOptions, requireToolApproval: true });
+### Flow
 
-    if (result.finishReason !== "suspended" || !result.runId) {
-        return result; // Tool wasn't called or no approval needed
-    }
+1. Agent calls a tool with `requireApproval: true`.
+2. `agent.generate` returns `finishReason: "suspended"` with a
+   `runId` + `suspendPayload`.
+3. `generateWithApproval` publishes an approval request on
+   `approvalTopic` with `replyTo` metadata.
+4. The Go bridge (`__go_brainkit_await_approval` in
+   `internal/engine/bridges_approval.go`) subscribes to `replyTo`
+   *before* publishing and waits on a Go channel with
+   `context.WithTimeout`.
+5. The approver replies on the correlated subject with a JSON body.
+6. The bridge resolves the JS Promise with that response.
+7. `generateWithApproval` calls `agent.approveToolCallGenerate` or
+   `agent.declineToolCallGenerate` and returns the final result.
 
-    // Phase 2: Go bridge handles bus lifecycle
-    var approvalPayload = JSON.stringify({
-        runId: result.runId,
-        toolCallId: result.suspendPayload?.toolCallId,
-        toolName: result.suspendPayload?.toolName,
-        args: result.suspendPayload?.args,
-    });
+Steps 3–6 run entirely in Go — no JS `setTimeout`, no closure
+captured across the wait. `context.WithTimeout`, a `select` on
+channels, and `defer unsub()` handle cancellation and cleanup.
 
-    var responseJSON = await __go_brainkit_await_approval(
-        options.approvalTopic,
-        approvalPayload,
-        options.timeout || 30000,
-    );
-    var response = JSON.parse(responseJSON);
+### Approval request payload
 
-    // Phase 3: resume agent
-    if (response.approved !== false) {
-        return await agent.approveToolCallGenerate({
-            runId: result.runId,
-            toolCallId: result.suspendPayload?.toolCallId,
-        });
-    } else {
-        return await agent.declineToolCallGenerate({
-            runId: result.runId,
-            toolCallId: result.suspendPayload?.toolCallId,
-        });
-    }
+```json
+{
+    "runId":      "abc-123",
+    "toolCallId": "call-456",
+    "toolName":   "delete-record",
+    "args":       {"id": "xyz-789"}
 }
 ```
 
-## The Go Bridge
+Published to `approvalTopic` with a correlated `replyTo`.
 
-`__go_brainkit_await_approval(topic, payload, timeoutMs)` in `kit/bridges.go`:
+### Approval response
 
-1. Generates correlationID + replyTo
-2. Subscribes to replyTo BEFORE publishing (no race)
-3. Publishes approval request with replyTo metadata
-4. Waits with `context.WithTimeout` + `select` on response channel
-5. On response: resolves Promise with response JSON
-6. On timeout: resolves with `{"approved":false,"reason":"timeout"}`
-7. Cleanup via `defer unsub()` — guaranteed even on panic
+Reply with either shape:
 
-The bus lifecycle is entirely in Go: `context.WithTimeout` (reliable, not GC-dependent), `select` on channels (no closure risk), `defer` cleanup (no race between timeout and response).
-
-## Writing an Approver in Go
-
-```go
-// Pattern from test/fixtures/ts_test.go — auto-approver
-cancel, err := sdk.SubscribeTo[json.RawMessage](rt, ctx, "approvals.pending",
-    func(payload json.RawMessage, msg sdk.Message) {
-        // payload: {"runId":"...", "toolCallId":"...", "toolName":"delete-record", "args":{"id":"xyz-789"}}
-
-        var request struct {
-            RunID      string `json:"runId"`
-            ToolCallID string `json:"toolCallId"`
-            ToolName   string `json:"toolName"`
-            Args       any    `json:"args"`
-        }
-        json.Unmarshal(payload, &request)
-
-        // Decision logic
-        approved := request.ToolName != "drop-database" // approve everything except drops
-
-        // Reply — this unblocks the Go bridge's select
-        sdk.Reply(rt, ctx, msg, map[string]bool{"approved": approved})
-    })
-defer cancel()
+```json
+{"approved": true}
+{"approved": false, "reason": "policy: requires ticket"}
 ```
 
-## Writing an Approver in .ts
+Only an explicit `approved: false` declines. Any other value — or
+omitting the field — is treated as approve.
 
-```typescript
+### Approver in Go
+
+```go
+unsub, err := sdk.SubscribeTo[json.RawMessage](kit, ctx, "approvals.pending",
+    func(payload json.RawMessage, msg sdk.Message) {
+        var req struct {
+            RunID      string          `json:"runId"`
+            ToolCallID string          `json:"toolCallId"`
+            ToolName   string          `json:"toolName"`
+            Args       json.RawMessage `json:"args"`
+        }
+        _ = json.Unmarshal(payload, &req)
+
+        approved := req.ToolName != "drop-database"
+        _ = sdk.Reply(kit, ctx, msg, map[string]bool{"approved": approved})
+    })
+defer unsub()
+```
+
+Because the bridge owns the `replyTo` subject, a call to
+`sdk.Reply(kit, ctx, msg, ...)` routes straight back to the waiting
+Go select — no extra plumbing.
+
+### Approver in `.ts`
+
+```ts
 bus.subscribe("approvals.pending", (msg) => {
-    const request = msg.payload;
-    console.log(`Approval requested: ${request.toolName}(${JSON.stringify(request.args)})`);
-
-    // Auto-approve after inspection
+    const req = msg.payload;
+    console.log(`approval: ${req.toolName}(${JSON.stringify(req.args)})`);
     msg.reply({ approved: true });
 });
 ```
 
-## Timeout Behavior
+### Timeout
 
-If no approval arrives within the timeout:
+If no reply arrives within `timeout` ms:
 
-1. The Go bridge's `context.WithTimeout` expires
-2. Bridge resolves with `{"approved":false,"reason":"timeout"}`
-3. JS calls `agent.declineToolCallGenerate()`
-4. Agent returns with the decline result
+1. Go's `context.WithTimeout` expires.
+2. The bridge resolves with `{"approved":false,"reason":"timeout"}`.
+3. JS calls `agent.declineToolCallGenerate`.
+4. The agent returns a decline result — no tool execution.
 
-The timeout is a `context.WithTimeout` in Go — not a JS `setTimeout`. It's not affected by QuickJS GC pressure or reentrant Await loop interactions.
+### Multiple pending approvals
 
-## Approval Request Payload
+Every call generates its own UUID-derived `replyTo`, so concurrent
+`generateWithApproval` invocations don't interfere. The bus bridge
+holds one subscription per call; `defer unsub()` tears it down
+whether the call approves, declines, or times out.
 
-Published to the `approvalTopic`:
+## Workflow HITL — `suspend()` / `workflow.resume`
 
-```json
-{
-    "runId": "abc-123",
-    "toolCallId": "call-456",
-    "toolName": "delete-record",
-    "args": {"id": "xyz-789"}
-}
-```
+Workflows pause on any step that calls `await suspend(...)`. A
+resume message picks them back up. Because workflows persist their
+state through `storage("workflows")`, suspended runs survive a Kit
+restart.
 
-The approver sees exactly what tool is being called and with what arguments. It can make a decision based on the tool name, the arguments, external policies, or human input.
+### Suspending step
 
-## Approval Response
+```ts
+import { createStep, createWorkflow, z } from "agent";
+import { kit } from "kit";
 
-Reply with:
-
-```json
-{"approved": true}   // approve — agent executes the tool
-{"approved": false}  // decline — agent returns without executing
-```
-
-Any truthy value for `approved` (including omitting the field) is treated as approved. Only explicit `approved: false` declines.
-
-## Multiple Pending Approvals
-
-Each `generateWithApproval` call creates its own replyTo topic (UUID-based). Multiple agents can have pending approvals simultaneously without interference. The Go bridge waits on its specific replyTo — no global state, no race conditions.
-
-## Testing
-
-The HITL fixture (`fixtures/ts/agent/hitl-bus-approval/index.ts`) tests the full flow:
-
-1. Deploys a .ts service with a `requireApproval: true` tool
-2. Go test sets up an auto-approver on "test.approvals"
-3. `generateWithApproval` suspends → Go bridge publishes → auto-approver replies → agent resumes
-4. Verifies `hasText: true` and `approved: true` in output
-
-```bash
-go test ./test/fixtures/ -run 'TestTSFixturesE2E/agent/hitl-bus-approval' -v
-```
-
-## Workflow-Level HITL (Suspend/Resume)
-
-Separate from agent HITL, Mastra workflows support suspend/resume for human-in-the-loop patterns. A workflow step calls `await suspend()` to pause execution, and an external caller sends `workflow.resume` via the bus to continue.
-
-### From .ts — workflow with suspend
-
-```typescript
 const reviewStep = createStep({
-    id: "review",
-    inputSchema: z.object({ documentId: z.string() }),
-    resumeSchema: z.object({ approved: z.boolean(), reviewer: z.string() }),
+    id:            "review",
+    inputSchema:   z.object({ documentId: z.string() }),
     suspendSchema: z.object({ reason: z.string(), documentId: z.string() }),
-    outputSchema: z.object({ status: z.string(), reviewedBy: z.string() }),
+    resumeSchema:  z.object({ approved: z.boolean(), reviewer: z.string() }),
+    outputSchema:  z.object({ status: z.string(), reviewedBy: z.string() }),
     execute: async ({ inputData, resumeData, suspend }) => {
         if (!resumeData) {
-            // Notify external callers that approval is needed
+            // Notify listeners that a document needs review.
             bus.emit("approvals.needed", {
-                workflowName: "doc-review",
+                workflow:   "doc-review",
                 documentId: inputData.documentId,
             });
             return await suspend({
-                reason: "Document needs review",
+                reason:     "Document needs review",
                 documentId: inputData.documentId,
             });
         }
         return {
-            status: resumeData.approved ? "approved" : "rejected",
+            status:     resumeData.approved ? "approved" : "rejected",
             reviewedBy: resumeData.reviewer,
         };
     },
 });
 
 const wf = createWorkflow({
-    id: "doc-review",
-    inputSchema: z.object({ documentId: z.string() }),
+    id:           "doc-review",
+    inputSchema:  z.object({ documentId: z.string() }),
     outputSchema: z.object({ status: z.string(), reviewedBy: z.string() }),
 }).then(reviewStep).commit();
+
 kit.register("workflow", "doc-review", wf);
 ```
 
 ### Resuming from Go
 
 ```go
-sdk.Publish(k, ctx, sdk.WorkflowResumeMsg{
+resp, err := brainkit.CallWorkflowResume(kit, ctx, sdk.WorkflowResumeMsg{
     Name:       "doc-review",
-    RunID:      runId,
+    RunID:      runID,
     Step:       "review",
-    ResumeData: json.RawMessage(`{"approved": true, "reviewer": "alice@corp.com"}`),
-})
+    ResumeData: json.RawMessage(`{"approved":true,"reviewer":"alice@corp.com"}`),
+}, brainkit.WithCallTimeout(10*time.Second))
+// resp.Status: "success" | "failed" — full step tree in resp.Steps.
 ```
 
-### Resuming from .ts
+`WorkflowResumeMsg` (in `sdk/workflow_messages.go`):
 
-```typescript
-bus.publish("workflow.resume", {
-    name: "doc-review",
-    runId: runId,
-    step: "review",
+```go
+type WorkflowResumeMsg struct {
+    Name       string          `json:"name"`
+    RunID      string          `json:"runId"`
+    Step       string          `json:"step,omitempty"`
+    ResumeData json.RawMessage `json:"resumeData,omitempty"`
+}
+// BusTopic() == "workflow.resume"
+```
+
+### Resuming from `.ts`
+
+```ts
+await bus.call("workflow.resume", {
+    name:       "doc-review",
+    runId:      runId,
+    step:       "review",
     resumeData: { approved: true, reviewer: "alice@corp.com" },
 });
 ```
 
-### Key Differences from Agent HITL
+Working example: [`examples/workflows/`](../../examples/workflows/).
+
+## Agent HITL vs Workflow HITL
 
 | | Agent HITL | Workflow HITL |
 |---|---|---|
-| Mechanism | `generateWithApproval` | `suspend()` + `workflow.resume` |
-| What suspends | A single tool call | A workflow step |
-| Resume data | `{approved: bool}` | Any shape (per `resumeSchema`) |
-| Bus lifecycle | Go bridge handles publish/subscribe/timeout | Workflow author controls notification |
-| Timeout | Built-in (Go context.WithTimeout) | No built-in timeout — stays suspended until resumed |
-| Persistence | In-memory only | Snapshot persisted to storage — survives Kit restart |
+| Trigger | Tool with `requireApproval: true` | Step calls `await suspend(...)` |
+| Host call | `generateWithApproval(agent, prompt, opts)` | `agent.generate` / `workflow.start` finishes suspended |
+| Resume call | Handled internally by the Go bridge | `brainkit.CallWorkflowResume` / `workflow.resume` |
+| Bus lifecycle | Bridge subscribes + times out in Go | Author emits notifications; resume is pulled, not pushed |
+| Resume payload | `{ approved: bool, reason?: string }` | Any shape matching `resumeSchema` |
+| Timeout | `timeout` option; `context.WithTimeout` in Go | None — stays suspended until resumed or cancelled |
+| Persistence | In-memory — expires with the process | Snapshot persisted to `storage("workflows")` |
+| Per-run isolation | One UUID `replyTo` per call | Run ID + step ID uniquely identify the suspend |
+
+Pick agent HITL for per-tool policy gates, pick workflow HITL for
+multi-step business processes with long review cycles.
+
+## Harness Module — WIP
+
+`modules/harness` wraps an Agent + Memory + Modes config into a
+session-style surface for building IDE-, chat-, or agent-plane
+clients. Status: **WIP** — only the pieces below are frozen. See
+[`examples/harness-lite/`](../../examples/harness-lite/) for a
+minimal driver that exercises the frozen surface.
+
+### Frozen — safe to depend on
+
+`modules/harness.Instance`:
+
+```go
+type Instance interface {
+    SendMessage(content string, opts ...SendOption) error
+    Abort() error
+    Steer(content string, opts ...SendOption) error
+    FollowUp(content string, opts ...SendOption) error
+    Subscribe(fn func(Event)) func()
+    CurrentThread() string
+    CurrentMode() string
+    Close() error
+}
+```
+
+Six event types (`modules/harness/instance.go`):
+
+```go
+const (
+    EvAgentStart   EventType = "agent_start"
+    EvAgentEnd     EventType = "agent_end"
+    EvMessageDelta EventType = "message_update"
+    EvToolStart    EventType = "tool_start"
+    EvToolEnd      EventType = "tool_end"
+    EvError        EventType = "error"
+)
+```
+
+Every other event type a harness may emit is internal — treat the
+raw `EventType` string as opaque and ignore events outside this
+set.
+
+### Not frozen — may move without deprecation
+
+- `HarnessConfig` field layout
+- `DisplayState` and display-related events
+- Subagent wiring
+- Observational memory hooks
+- Module-level knobs beyond `harness.Config{ Harness: ... }`
+
+### Wiring the frozen surface
+
+```go
+import "github.com/brainlet/brainkit/modules/harness"
+
+mod := harness.NewModule(harness.Config{
+    Harness: harness.HarnessConfig{
+        ID: "my-harness",
+        Modes: []harness.ModeConfig{{
+            ID:        "build",
+            Name:      "Build",
+            Default:   true,
+            AgentName: "my-agent",
+        }},
+        Permissions: harness.DefaultPermissions(),
+    },
+})
+
+kit, _ := brainkit.New(brainkit.Config{
+    Namespace: "harness-demo",
+    Transport: brainkit.Memory(),
+    FSRoot:    "/tmp/harness",
+    Modules:   []brainkit.Module{mod},
+})
+
+inst := mod.Instance()
+unsub := inst.Subscribe(func(ev harness.Event) {
+    switch ev.Type {
+    case harness.EvAgentStart, harness.EvAgentEnd,
+         harness.EvMessageDelta,
+         harness.EvToolStart, harness.EvToolEnd,
+         harness.EvError:
+        // Frozen — safe to match on.
+    default:
+        // Non-frozen internal event; ignore or log.
+    }
+})
+defer unsub()
+
+_ = inst.SendMessage("hello world")
+```
+
+`Instance()` returns nil when the Kit has no JS runtime, or when
+the JS-side harness shim isn't wired in the current build. The
+`harness-lite` example shows the expected fallback — detect the
+boot error, print the frozen contract, and exit cleanly.
+
+## Testing
+
+The shipped HITL path is exercised end-to-end by
+`fixtures/ts/agent/hitl/bus-approval/`:
+
+```bash
+go test ./test/fixtures/ -run 'TestTSFixturesE2E/agent/hitl/bus-approval' -v
+```
+
+Workflow suspend/resume is covered by the workflow storage and
+commands suites under `test/suite/workflows/`.
+
+## Summary
+
+| Need | Surface | Stability |
+|---|---|---|
+| Approve / decline a single agent tool call | `generateWithApproval` + bus approver | Stable |
+| Long-running multi-step process with human step | Workflow `suspend()` + `CallWorkflowResume` | Stable |
+| Session wrapper for agent + modes + memory | `modules/harness` `Instance` | Frozen surface only — module is WIP |

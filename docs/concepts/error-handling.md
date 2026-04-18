@@ -1,212 +1,219 @@
 # Error Handling
 
-brainkit uses typed errors for conditions that callers need to handle semantically — "tool not found" is different from "tool execution failed" and should trigger different recovery logic. Internal plumbing errors (transport setup, marshal failures, JS bridge exceptions) stay as `fmt.Errorf` wrappers.
+brainkit treats errors as first-class wire data. Every typed error has
+a stable string code, carries structured details, and round-trips
+through the bus envelope without losing its shape. Callers use
+`errors.As` to inspect specific conditions and recover programmatically
+instead of parsing messages.
 
-## Error Types
+## Two Layers
 
-15 error types in `sdk/errors.go` (backed by `internal/sdkerrors/errors.go` to avoid import cycles). All implement `BrainkitError` interface with `Code() string` and `Details() map[string]any`:
+### Typed errors (`sdk/sdkerrors/`)
 
-### NotFoundError
-
-Returned when a named resource doesn't exist.
+14 concrete types, each implementing `sdk.BrainkitError`:
 
 ```go
-type NotFoundError struct {
-    Resource string  // "tool", "agent", "shard", "module", "storage", "pool", "peer", "mcp-server"
-    Name     string  // the name that was looked up
+type BrainkitError interface {
+    error
+    Code() string
+    Details() map[string]any
 }
 ```
 
-```go
-pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: "nonexistent"})
-// ...
-var notFound *sdk.NotFoundError
-if errors.As(err, &notFound) {
-    fmt.Printf("%s %q not found\n", notFound.Resource, notFound.Name)
-    // → "tool "nonexistent" not found"
+Every type is re-exported from `github.com/brainlet/brainkit/sdk` as a
+type alias so callers only need one import:
+
+| Type                   | Code                  | Emitted when                                          |
+| ---------------------- | --------------------- | ----------------------------------------------------- |
+| `*NotFoundError`       | `NOT_FOUND`           | A named resource does not exist.                      |
+| `*AlreadyExistsError`  | `ALREADY_EXISTS`      | A resource with that name already exists.             |
+| `*ValidationError`     | `VALIDATION_ERROR`    | Input fails validation (missing field, bad value).    |
+| `*TimeoutError`        | `TIMEOUT`             | A discrete operation exceeded its deadline.           |
+| `*WorkspaceEscapeError`| `WORKSPACE_ESCAPE`    | An fs path tries to escape `FSRoot`.                  |
+| `*NotConfiguredError`  | `NOT_CONFIGURED`      | A feature was invoked without its required config.    |
+| `*TransportError`      | `TRANSPORT_ERROR`     | Watermill/NATS/Redis/AMQP/embedded backend failed.    |
+| `*PersistenceError`    | `PERSISTENCE_ERROR`   | `KitStore` (SQLite/libsql/…) operation failed.        |
+| `*DeployError`         | `DEPLOY_ERROR`        | A deploy stage (transpile/eval/compartment) failed.   |
+| `*BridgeError`         | `BRIDGE_ERROR`        | A Go↔JS bridge function returned an error.           |
+| `*CompilerError`       | `COMPILER_ERROR`      | An inline compiler (future) fails.                    |
+| `*CycleDetectedError`  | `CYCLE_DETECTED`      | Depth middleware trips at MaxDepth (default 16).      |
+| `*DecodeError`         | `DECODE_ERROR`        | Reply payload cannot decode into the expected type.   |
+| `*BusError`            | arbitrary code        | Fallback when code does not match a typed error.      |
+
+### Sentinels (`sdk/errors.go`)
+
+Three classic sentinels for boolean checks with `errors.Is`:
+
+| Sentinel                    | When                                                  |
+| --------------------------- | ----------------------------------------------------- |
+| `sdk.ErrNoReplyTo`          | `Reply`/`SendChunk` on an emitted (fire-and-forget) message. |
+| `sdk.ErrNotReplier`         | Runtime does not implement `sdk.Replier`.             |
+| `sdk.ErrNotCrossNamespace`  | `PublishTo` on a runtime without cross-Kit support.   |
+
+## The Envelope
+
+Every typed bus reply is serialized as:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "tool \"weather\" not found",
+    "details": { "resource": "tool", "name": "weather" }
+  }
 }
 ```
 
-Used in: tool registry resolution (5 levels), agent get-status/unregister, shard invoke/undeploy, WASM module run/deploy, storage remove, pool scale/kill/info, discovery resolve, MCP server call.
+`sdk.EnvelopeOK(data)` and `sdk.EnvelopeErr(code, msg, details)` build
+the envelope. `sdk.ToEnvelope(data, err)` is the usual helper — if
+`err` is a `BrainkitError` it preserves the code + details; any other
+error collapses to `INTERNAL_ERROR`.
 
-### AlreadyExistsError
+On the caller side, `sdk.DecodeEnvelope(payload)` + `sdk.FromEnvelope`
+reconstruct the typed Go error. `brainkit.Call` does this for you:
+envelope unwrapping happens before the response is decoded into the
+requested generic type.
 
-Returned when creating a resource that already exists.
-
-```go
-type AlreadyExistsError struct {
-    Resource string  // "deployment", "shard", "storage", "pool"
-    Name     string
-    Hint     string  // optional, e.g. "use Redeploy"
-}
-```
+## Using `errors.As`
 
 ```go
-_, err := k.Deploy(ctx, "service.ts", code)
-// err if already deployed:
-var exists *sdk.AlreadyExistsError
-if errors.As(err, &exists) {
-    if exists.Hint == "use Redeploy" {
-        k.Redeploy(ctx, exists.Name, code) // follow the hint
-    }
-}
-```
-
-Used in: Deploy (already deployed), wasm.deploy (shard already deployed), AddStorage (name taken), SpawnPool (name taken), wasm.remove (shard still deployed — hint: "undeploy first").
-
-### ValidationError
-
-Returned when input fails validation.
-
-```go
-type ValidationError struct {
-    Field   string  // field name, e.g. "name", "status", "mode", "transport"
-    Message string  // human-readable reason
-}
-```
-
-```go
-var valErr *sdk.ValidationError
-if errors.As(err, &valErr) {
-    fmt.Printf("invalid %s: %s\n", valErr.Field, valErr.Message)
-    // → "invalid status: invalid value "unknown" (must be idle|busy|error)"
-}
-```
-
-Used in: agent register/set-status (name/status required, invalid status value), shard descriptor validation (invalid mode, handler not in exports), plugin state transport (unsupported), plugin config (requires nats), registry registration (name required), agent Generate/Stream (prompt or messages required).
-
-### TimeoutError
-
-Returned when an operation exceeds its deadline.
-
-```go
-type TimeoutError struct {
-    Operation string  // what timed out
-}
-```
-
-```go
-var timeout *sdk.TimeoutError
-if errors.As(err, &timeout) {
-    fmt.Printf("timeout: %s\n", timeout.Operation)
-    // → "timeout: plugin manifest registration"
-    // → "timeout: plugin READY"
-    // → "timeout: router start (NATS JetStream provisioning)"
-}
-```
-
-Used in: plugin manifest registration (30s), plugin READY line (StartTimeout), transport-connected Kit router start (2 minutes for NATS JetStream auto-provisioning).
-
-### WorkspaceEscapeError
-
-Returned when a filesystem path escapes the workspace boundary.
-
-```go
-type WorkspaceEscapeError struct {
-    Path string  // the path that was attempted
-}
-```
-
-```go
-var escape *sdk.WorkspaceEscapeError
-if errors.As(err, &escape) {
-    fmt.Printf("blocked path traversal: %s\n", escape.Path)
-    // → "blocked path traversal: ../../etc/passwd"
-}
-```
-
-Used in: all fs.* operations when the resolved path is outside `Config.FSRoot`.
-
-## Sentinel Errors
-
-Nine sentinel errors for fixed conditions. Check with `errors.Is(err, sentinel)`:
-
-### SDK sentinels (sdk/errors.go)
-
-| Sentinel | When | Where |
-|----------|------|-------|
-| `sdk.ErrNoReplyTo` | Message has no replyTo metadata | `sdk.Reply`, `sdk.SendChunk` — the message was fire-and-forget (emitted, not published) |
-| `sdk.ErrNotReplier` | Runtime doesn't implement Replier | `sdk.Reply`, `sdk.SendChunk` — the runtime can't send responses (shouldn't happen with Kit) |
-| `sdk.ErrNotCrossNamespace` | Runtime doesn't support cross-Kit | `sdk.PublishTo` — plugin clients don't implement CrossNamespaceRuntime |
-
-### Kit sentinels (kit/errors.go)
-
-| Sentinel | When | Where |
-|----------|------|-------|
-| `kit.ErrNoWorkspace` | FSRoot not configured | All fs.* operations — set `Config.FSRoot` |
-| `kit.ErrMCPNotConfigured` | No MCP servers registered | `mcp.listTools`, `mcp.callTool` — set `Config.MCPServers` |
-| `kit.ErrCommandTopic` | Event emitted on command topic | `bus.emit` called with a catalog command topic like "tools.call" — use `bus.publish` instead |
-
-### Internal sentinels
-
-| Sentinel | Package | When |
-|----------|---------|------|
-| `agentembed.ErrSandboxClosed` | `internal/embed/agent` | Eval/CreateAgent called on a closed sandbox |
-| `agentembed.ErrAgentClosed` | `internal/embed/agent` | Generate/Stream called on a closed agent |
-| `messaging.ErrCycleDetected` | `internal/messaging` | Message cascade exceeded depth 16 — prevents infinite loops |
-
-## Usage Patterns
-
-### Handling tool calls
-
-```go
-pr, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{Name: name, Input: input})
+reply, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
+    kit, ctx, sdk.ToolCallMsg{Name: "weather", Input: weatherInput},
+    brainkit.WithCallTimeout(2*time.Second),
+)
 if err != nil {
-    var notFound *sdk.NotFoundError
-    var valErr *sdk.ValidationError
+    var nf *sdk.NotFoundError
+    var ve *sdk.ValidationError
+    var te *sdk.TimeoutError
     switch {
-    case errors.As(err, &notFound):
-        return fmt.Errorf("tool %q does not exist", notFound.Name)
-    case errors.As(err, &valErr):
-        return fmt.Errorf("invalid input: %s", valErr.Message)
+    case errors.As(err, &nf):
+        return fmt.Errorf("missing tool %q", nf.Name)
+    case errors.As(err, &ve):
+        return fmt.Errorf("bad input: %s (%s)", ve.Message, ve.Field)
+    case errors.As(err, &te):
+        return fmt.Errorf("timed out: %s", te.Operation)
     default:
-        return fmt.Errorf("tool call failed: %w", err)
+        return err
     }
 }
 ```
 
-### Handling deployments
+`errors.As` works transparently across the envelope round-trip —
+the caller does not need to know whether the error originated in the
+same process or came back over NATS.
+
+## Caller-Side Errors
+
+`brainkit.Call` / `brainkit.CallStream` surface several caller-only
+errors from `internal/bus/caller`:
+
+| Error                      | Code                  | When                                                  |
+| -------------------------- | --------------------- | ----------------------------------------------------- |
+| `*caller.NoDeadlineError`  | `VALIDATION_ERROR`    | No `WithCallTimeout` and no ctx deadline.             |
+| `*caller.CallTimeoutError` | `CALL_TIMEOUT`        | Deadline elapsed before the terminal reply.          |
+| `*caller.CallCancelledError` | `CALL_CANCELLED`    | `ctx.Done()` fired for reasons other than timeout.    |
+| `*caller.DecodeError`      | `DECODE_ERROR`        | Reply payload cannot decode into `Resp`.              |
+| `*caller.BufferOverflowError` | `CALL_BUFFER_OVERFLOW` | `CallStream` buffer overflows with `BufferError`. |
+
+These behave like any typed error — they implement `BrainkitError`, so
+`errors.As` works and the code surfaces in logs/audit.
+
+## Propagation Patterns
+
+### Handler returns a typed error
+
+In a Go module or tool implementation, return a typed error and let
+the framework envelope it:
 
 ```go
-_, err := k.Deploy(ctx, source, code)
-if err != nil {
-    var exists *sdk.AlreadyExistsError
-    if errors.As(err, &exists) {
-        // Already deployed — redeploy instead
-        _, err = k.Redeploy(ctx, source, code)
-    }
-    return err
-}
+brainkit.RegisterTool(kit, "weather", brainkit.TypedTool[WeatherInput]{
+    Description: "Fetch weather.",
+    Execute: func(ctx context.Context, in WeatherInput) (any, error) {
+        if in.City == "" {
+            return nil, &sdk.ValidationError{Field: "city", Message: "city is required"}
+        }
+        if _, ok := lookup(in.City); !ok {
+            return nil, &sdk.NotFoundError{Resource: "city", Name: in.City}
+        }
+        return WeatherOutput{...}, nil
+    },
+})
 ```
 
-### Handling replies
+The caller sees `*sdk.ValidationError` or `*sdk.NotFoundError` on the
+other end of a `brainkit.CallToolCall` or a `bus.call("tools.call", …)`
+from JS.
+
+### Handler throws in JS
+
+In a `.ts` handler, a thrown `Error` becomes a `BRIDGE_ERROR` by
+default. To surface a semantic code, attach a `code` field:
+
+```typescript
+bus.on("lookup", (msg) => {
+    const city = msg.payload.city;
+    if (!city) {
+        const e = new Error("city is required");
+        (e as any).code = "VALIDATION_ERROR";
+        (e as any).details = { field: "city", message: "city is required" };
+        throw e;
+    }
+    msg.reply({ city, tempC: 18 });
+});
+```
+
+The bus serializer reads `err.code` + `err.details` and builds a
+proper error envelope.
+
+### `Reply` vs fire-and-forget
 
 ```go
-err := sdk.Reply(rt, ctx, msg, response)
-if err != nil {
-    switch {
-    case errors.Is(err, sdk.ErrNoReplyTo):
-        // Message was fire-and-forget — no one is waiting for a reply
-        log.Printf("no reply destination for message on %s", msg.Topic)
-    case errors.Is(err, sdk.ErrNotReplier):
-        // Bug — this runtime should support replies
-        panic("runtime does not support Reply")
-    default:
-        return err // transport error
-    }
+err := sdk.Reply(rt, ctx, inbound, response)
+switch {
+case errors.Is(err, sdk.ErrNoReplyTo):
+    // Caller used sdk.Emit — no reply was expected.
+case errors.Is(err, sdk.ErrNotReplier):
+    // Programming error — this runtime cannot reply.
+case err != nil:
+    return err // transport issue
 }
 ```
 
-## What Stays as fmt.Errorf
+## What Stays as `fmt.Errorf`
 
-Not every error needs a type. These stay as wrapped string errors:
+Not every error deserves a type. These stay as wrapped strings:
 
-- **Marshal failures** (`"marshal %T: %w"`) — programming error, the type isn't JSON-serializable
-- **Transport setup** (`"brainkit: transport: %w"`) — wraps Watermill/NATS/Redis driver errors
-- **QuickJS evaluation** (`"deploy %s: %w"`) — wraps JS exceptions, the error message IS the diagnostic
-- **WASM compile/instantiate** (`"wasm.compile: %w"`) — wraps wazero errors
-- **Store operations** (`"kitstore: %w"`) — wraps SQLite errors
-- **MCP protocol** (`"mcp: initialize %q: %w"`) — wraps mcp-go errors
-- **JS bridge exceptions** — `ThrowError` in bridges.go delivers errors as JS exceptions, not Go errors
+- **Marshal failures.** `json.Marshal` errors on caller types.
+- **Transport init.** Dialing NATS/Redis/AMQP at startup.
+- **Config validation in `brainkit.New`.** Invalid provider ID, bad
+  FSRoot — surfaced once at boot, not something the bus serializes.
+- **Low-level store errors** where the typed `PersistenceError` would
+  obscure the underlying driver message.
 
-The rule: if a caller would handle this error differently from other errors of the same operation, it needs a type. If the caller just logs and returns, `fmt.Errorf` is fine.
+The rule: if a caller would act differently on this error than on
+"something failed", give it a type. If the caller just logs it, a
+wrapped error is fine.
+
+## Error Propagation at Scale
+
+- **Cycles** — if a package publishes to a topic it is subscribed to,
+  the depth middleware returns `CycleDetectedError` within ~50 ms at
+  depth 16. Adjust via custom middleware if needed.
+- **Timeouts** — `brainkit.Call` requires a deadline. If you pass a
+  `ctx` without a deadline and no `WithCallTimeout`, you get
+  `*caller.NoDeadlineError` immediately rather than waiting forever.
+- **Cross-namespace** — typed errors round-trip unchanged across
+  namespaces. `*sdk.NotFoundError` on Kit A looks identical on Kit B.
+- **Plugin errors** — bridged through the WebSocket control plane. A
+  plugin tool that returns a typed error is enveloped on the plugin
+  side and unwrapped on the host side before being re-enveloped for
+  the original caller.
+
+## See Also
+
+- `sdk/sdkerrors/errors.go` — concrete implementations.
+- `sdk/envelope.go` — envelope encoding/decoding and code mapping.
+- `internal/bus/caller/errors.go` — caller-side typed errors.
+- [bus-and-messaging.md](bus-and-messaging.md) — where envelopes live
+  on the wire.
