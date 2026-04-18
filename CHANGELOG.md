@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### plans-01 session 04 — Example: AI providers + agents
+
+New runnable `examples/ai-chat/` demonstrates the library-mode AI
+surface end-to-end: register a provider, deploy a `.ts` that calls
+`generateText`, print the model's reply. Smoke-tested against a
+real OpenAI key.
+
+Added:
+- `examples/ai-chat/main.go` — flags: `--provider`, `--model`,
+  `--prompt`, `--api-key`. Covers all 12 shipped providers
+  (`OpenAI`, `Anthropic`, `Google`, `Mistral`, `Groq`, `DeepSeek`,
+  `XAI`, `Cohere`, `Perplexity`, `TogetherAI`, `Fireworks`,
+  `Cerebras`).
+- `examples/ai-chat/README.md` — run instructions, flag docs,
+  Anthropic swap cookbook, pointer to the forthcoming streaming
+  example.
+
+Changed:
+- `examples/README.md` — add ai-chat row.
+- `Makefile` `examples` target builds `./examples/ai-chat`.
+
 ### plans-01 session 03 — Plugin example runnable + integration test
 
 The plugin example is now driven end-to-end by a real host binary.
