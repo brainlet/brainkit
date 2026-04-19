@@ -1301,6 +1301,12 @@ declare module "agent" {
     static fromMarkdown(markdown: string, metadata?: Record<string, unknown>): MDocument;
     static fromHTML(html: string, metadata?: Record<string, unknown>): MDocument;
     static fromJSON(jsonString: string, metadata?: Record<string, unknown>): MDocument;
+    /**
+     * Parse CSV text (papaparse) into an MDocument whose text
+     * concatenates each row with `|` separators. Added by the
+     * brainkit bundle; not part of upstream Mastra.
+     */
+    static fromCSV(csv: string, metadata?: Record<string, unknown>): MDocument;
 
     chunk(options?: ChunkingConfig): Promise<DocumentChunk[]>;
     getText(): string[];

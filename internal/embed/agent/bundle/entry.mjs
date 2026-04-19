@@ -76,6 +76,24 @@ import {
 import { MDocument, GraphRAG } from '@mastra/rag';
 import { createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool } from '@mastra/rag';
 import { rerank, rerankWithScorer } from '@mastra/rag';
+// MDocument.fromCSV extension — pure-JS, no SES surprises.
+import Papa from 'papaparse';
+MDocument.fromCSV = function fromCSV(csv, metadata) {
+  const parsed = Papa.parse(String(csv || ''), {
+    skipEmptyLines: true,
+    header: false,
+  });
+  const rows = Array.isArray(parsed.data) ? parsed.data : [];
+  const text = rows
+    .map((row) => (Array.isArray(row) ? row.join(' | ') : String(row)))
+    .join('\n');
+  return MDocument.fromText(text, metadata || {});
+};
+// MDocument.fromDocx + fromPDF NOT exposed — mammoth's browser build
+// and every tried PDF parser (pdfjs-dist, pdf-parse) trip SES-hardened
+// intrinsics at bundle init ("object is not extensible" /
+// "'constructor' is read-only"). Tracked alongside the vector-package
+// blocker in brainkit-maps/knowledge/ses-extends-error.md.
 
 // Observability — tracing, spans, exporters
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
