@@ -1,3 +1,4 @@
+/// <reference path="./assemblyscript.d.ts" />
 /**
  * "brainkit" module — AssemblyScript WASM runtime library.
  *

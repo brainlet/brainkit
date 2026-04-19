@@ -160,6 +160,12 @@ declare module "ai" {
   /** Message content — either a simple string or multi-modal parts. */
   type MessageContent = string | ContentPart[];
 
+  /** A complete LLM message — role + content. */
+  export interface Message {
+    role: "system" | "user" | "assistant" | "tool";
+    content: MessageContent;
+  }
+
   /** Generated file from the model (images, audio, etc). */
   export interface GeneratedFile {
     data: Uint8Array;

@@ -186,6 +186,152 @@ declare var child_process: {
   };
 };
 
+// ── Core web globals not covered by es2022 lib ─────────────────
+// When a .ts deployment's tsconfig doesn't include `dom`, these
+// are still needed — brainkit polyfills ship them all, so we
+// declare enough of each for IDE completion. Shapes deliberately
+// loose — real usage leans on DOM types when `lib: ["dom"]`.
+
+/** AbortController / AbortSignal — provided by jsbridge/abort.go. */
+declare class AbortController {
+  constructor();
+  readonly signal: AbortSignal;
+  abort(reason?: unknown): void;
+}
+declare class AbortSignal {
+  readonly aborted: boolean;
+  readonly reason: unknown;
+  throwIfAborted(): void;
+  addEventListener(event: "abort", listener: (ev: any) => void): void;
+  removeEventListener(event: "abort", listener: (ev: any) => void): void;
+  static abort(reason?: unknown): AbortSignal;
+  static timeout(ms: number): AbortSignal;
+  onabort?: ((ev: any) => void) | null;
+}
+
+/** Web Streams — provided by jsbridge/streams.go. */
+declare class ReadableStream<T = any> {
+  constructor(source?: any, strategy?: any);
+  readonly locked: boolean;
+  cancel(reason?: any): Promise<void>;
+  getReader(): any;
+  pipeThrough(transform: any, options?: any): ReadableStream<T>;
+  pipeTo(destination: any, options?: any): Promise<void>;
+  tee(): [ReadableStream<T>, ReadableStream<T>];
+  [Symbol.asyncIterator](): AsyncIterableIterator<T>;
+}
+declare class WritableStream<T = any> {
+  constructor(sink?: any, strategy?: any);
+  readonly locked: boolean;
+  abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
+  getWriter(): any;
+}
+declare class TransformStream<I = any, O = any> {
+  constructor(transformer?: any, writableStrategy?: any, readableStrategy?: any);
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+/** fetch Response + Request — provided by jsbridge/fetch.go. */
+declare class Response {
+  constructor(body?: any, init?: { status?: number; statusText?: string; headers?: any });
+  readonly status: number;
+  readonly statusText: string;
+  readonly ok: boolean;
+  readonly headers: any;
+  readonly url: string;
+  readonly body: ReadableStream | null;
+  readonly bodyUsed: boolean;
+  text(): Promise<string>;
+  json(): Promise<any>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  clone(): Response;
+  static json(data: any, init?: any): Response;
+}
+declare class Request {
+  constructor(input: string | Request, init?: any);
+  readonly url: string;
+  readonly method: string;
+  readonly headers: any;
+  text(): Promise<string>;
+  json(): Promise<any>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+declare class Headers {
+  constructor(init?: Record<string, string> | [string, string][] | Headers);
+  get(name: string): string | null;
+  set(name: string, value: string): void;
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  has(name: string): boolean;
+  forEach(cb: (value: string, key: string, parent: Headers) => void): void;
+  entries(): IterableIterator<[string, string]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string>;
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+/** fetch — provided by jsbridge/fetch.go. */
+declare const fetch: (input: string | Request, init?: any) => Promise<Response>;
+
+/** URL + URLSearchParams — provided by jsbridge/url.go. */
+declare class URL {
+  constructor(url: string, base?: string | URL);
+  href: string;
+  origin: string;
+  protocol: string;
+  username: string;
+  password: string;
+  host: string;
+  hostname: string;
+  port: string;
+  pathname: string;
+  search: string;
+  searchParams: URLSearchParams;
+  hash: string;
+  toString(): string;
+  toJSON(): string;
+  static createObjectURL(blob: Blob): string;
+  static revokeObjectURL(id: string): void;
+}
+declare class URLSearchParams {
+  constructor(init?: string | Record<string, string> | [string, string][] | URLSearchParams);
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  set(name: string, value: string): void;
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  has(name: string): boolean;
+  toString(): string;
+  forEach(cb: (value: string, key: string, parent: URLSearchParams) => void): void;
+  entries(): IterableIterator<[string, string]>;
+  keys(): IterableIterator<string>;
+  values(): IterableIterator<string>;
+  [Symbol.iterator](): IterableIterator<[string, string]>;
+}
+
+/** TextEncoder / TextDecoder — provided by jsbridge/encoding.go. */
+declare class TextEncoder {
+  readonly encoding: "utf-8";
+  encode(s?: string): Uint8Array;
+  encodeInto(s: string, dest: Uint8Array): { read: number; written: number };
+}
+declare class TextDecoder {
+  constructor(label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean });
+  readonly encoding: string;
+  readonly fatal: boolean;
+  readonly ignoreBOM: boolean;
+  decode(input?: ArrayBuffer | ArrayBufferView, options?: { stream?: boolean }): string;
+}
+
+/** Base64 helpers — provided by jsbridge/encoding.go. */
+declare const btoa: (s: string) => string;
+declare const atob: (s: string) => string;
+
+/** structuredClone — provided by jsbridge/structured_clone.go. */
+declare const structuredClone: <T>(value: T) => T;
+
 // ── Web-standard audio + media polyfills ───────────────────────
 // All live on globalThis via internal/jsbridge/audio.go,
 // websocket.go, and fetch.go. Shapes are broader than the

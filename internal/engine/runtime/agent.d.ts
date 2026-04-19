@@ -1420,13 +1420,6 @@ declare module "agent" {
     position?: number;
   }
 
-  export interface QueryResult {
-    id: string;
-    score: number;
-    metadata?: Record<string, any>;
-    vector?: number[];
-  }
-
   export interface RerankResult {
     result: QueryResult;
     score: number;
@@ -1441,23 +1434,6 @@ declare module "agent" {
   /** Relevance score provider — Mastra's shipped scorers (Cohere, etc.). */
   export interface RelevanceScoreProvider {
     score(query: string, text: string): Promise<number> | number;
-  }
-
-  // ── Observability ─────────────────────────────────────────────
-
-  export class Observability {
-    constructor(config: ObservabilityConfig);
-  }
-
-  export interface ObservabilityConfig {
-    configs: Record<string, {
-      serviceName: string;
-      exporters: DefaultExporter[];
-    }>;
-  }
-
-  export class DefaultExporter {
-    constructor(config: { storage: StorageInstance; strategy?: "realtime" | "batch" });
   }
 
   // ── Evals ─────────────────────────────────────────────────────
