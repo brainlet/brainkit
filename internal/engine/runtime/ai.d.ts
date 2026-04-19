@@ -457,4 +457,47 @@ declare module "ai" {
 
   /** Convert a JSON Schema object to an AI SDK schema. */
   export function jsonSchema(schema: Record<string, unknown>): ZodType;
+
+  // ── Stop conditions (v5) ──────────────────────────────────────
+  //
+  // Composable predicates that halt a multi-step generate/stream
+  // loop. Pass them to `stopWhen` on Agent / generateText /
+  // streamText calls.
+
+  export type StopCondition = (step: unknown) => boolean | Promise<boolean>;
+
+  /** Stop once the loop has run N steps. */
+  export function stepCountIs(n: number): StopCondition;
+
+  /** Stop when a specific tool is called. */
+  export function hasToolCall(toolName: string): StopCondition;
+
+  // ── Message + provider type re-exports ────────────────────────
+
+  /** Shared v5 provider options bag. */
+  export type SharedV2ProviderOptions = Record<string, Record<string, unknown>>;
+
+  /** Canonical message type accepted by generate / stream. */
+  export type ModelMessage = Message;
+
+  /** Tool choice shape used by AgentCallOptions + generate params. */
+  export type ToolChoice =
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "tool"; toolName: string };
+
+  /** V2 tool-result part shape (used by tool.toModelOutput hooks). */
+  export interface LanguageModelV2ToolResultPart {
+    type: "tool-result";
+    toolCallId: string;
+    toolName: string;
+    output: {
+      type: "text" | "json" | "error-text" | "error-json" | "content";
+      value: unknown;
+    };
+  }
+
+  /** V2 language model interface — alias of v4 LanguageModel for now. */
+  export type LanguageModelV2 = LanguageModel;
 }

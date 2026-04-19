@@ -22,16 +22,131 @@ declare module "agent" {
 
   export const z: import("ai").Zod;
 
+  // ── Foundational schema + argument types ──────────────────────
+  //
+  // Types that permeate the Mastra API. Kept loose here because
+  // brainkit doesn't distinguish Standard Schema / Zod / JSON
+  // Schema at the type level — Mastra does, but the distinction
+  // rarely matters at `.ts` call sites inside a deployment.
+
+  /**
+   * Mastra's internal "standard schema" envelope — either a Zod
+   * schema, a JSON-schema shape, or anything that validates via
+   * `.parse`. Used on Tool / Workflow / Agent inputSchema +
+   * outputSchema + structuredOutput slots.
+   */
+  export type StandardSchemaWithJSON<TIn = any, TOut = TIn> = import("ai").ZodType | {
+    parse?: (input: unknown) => TOut;
+    safeParse?: (input: unknown) => { success: boolean; data?: TOut; error?: unknown };
+    jsonSchema?: Record<string, unknown>;
+    _type?: TOut;
+    _input?: TIn;
+    [key: string]: unknown;
+  };
+
+  /** Extract the validated input type from a StandardSchema. */
+  export type InferStandardSchemaInput<T> =
+    T extends { _input: infer I } ? I :
+    T extends { parse: (input: unknown) => infer O } ? O :
+    unknown;
+
+  /** Extract the output type from a StandardSchema. */
+  export type InferStandardSchemaOutput<T> =
+    T extends { _type: infer O } ? O :
+    T extends { parse: (input: unknown) => infer O } ? O :
+    unknown;
+
+  /** User-facing schema — accepts StandardSchema or inline shape. */
+  export type PublicSchema<T = unknown> = StandardSchemaWithJSON<T, T>;
+  export type InferPublicSchema<T> = InferStandardSchemaOutput<T>;
+
+  /**
+   * `DynamicArgument` covers the pattern of "either a value or a
+   * function that takes a RequestContext and returns the value".
+   * Appears on every AgentConfig slot that resolves at call time.
+   */
+  export type DynamicArgument<T, TRequestContext = unknown> =
+    | T
+    | ((ctx: { requestContext?: RequestContext<TRequestContext extends Record<string, any> ? TRequestContext : Record<string, any>> }) => T | Promise<T>);
+
+  // ── MCP + Vercel tool types ───────────────────────────────────
+
+  /** Annotations attached to an MCP-sourced tool. */
+  export interface ToolAnnotations {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  }
+
+  /** Properties carried by a tool that came from an MCP server. */
+  export interface MCPToolProperties {
+    toolType: "mcp";
+    annotations: ToolAnnotations;
+    /** Server-supplied metadata. */
+    _meta?: Record<string, unknown>;
+  }
+
+  /** AI SDK v4 tool shape. */
+  export interface VercelTool {
+    description?: string;
+    parameters: import("ai").ZodType | Record<string, unknown>;
+    execute?: (args: any, options?: any) => any | Promise<any>;
+  }
+
+  /** AI SDK v5 tool shape — the ESM + newer-return-type variant. */
+  export interface VercelToolV5 {
+    description?: string;
+    inputSchema: import("ai").ZodType | Record<string, unknown>;
+    execute?: (args: any, options?: any) => any | Promise<any>;
+  }
+
+  /** Provider-defined tool (Anthropic computer-use, OpenAI image, etc.). */
+  export interface ProviderDefinedTool {
+    type: "provider-defined";
+    id: string;
+    args: Record<string, unknown>;
+    execute?: (args: any) => any | Promise<any>;
+  }
+
   // ── Agent ─────────────────────────────────────────────────────
 
-  export class Agent {
+  /**
+   * Mastra-shaped Agent class. Generics mirror the upstream
+   * definition so IDE inference on `agent.id` / tool maps
+   * works the same way.
+   *
+   * - `TAgentId` — narrows `agent.id` to the literal name.
+   * - `TTools` — preserves the tool bag shape for type-safe
+   *   `listTools()` returns.
+   * - `TOutput` — the structured output type when configured.
+   * - `TRequestContext` — the RequestContext value shape.
+   *
+   * All four default to loose types so existing `new Agent({...})`
+   * call sites keep compiling.
+   */
+  export class Agent<
+    TAgentId extends string = string,
+    TTools extends Record<string, Tool> = Record<string, Tool>,
+    TOutput = undefined,
+    TRequestContext extends Record<string, any> = Record<string, any>,
+  > {
     constructor(config: AgentConfig);
+    readonly id: TAgentId;
+    readonly name: string;
 
     /** Generate a response (non-streaming). */
     generate(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
 
+    /** Legacy generate path — pre-`maxSteps` option shape. */
+    generateLegacy(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
+
     /** Stream a response with real-time tokens. */
     stream(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentStreamResult>;
+
+    /** Legacy stream path — kept for pre-v0.20 callers. */
+    streamLegacy(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentStreamResult>;
 
     /** Supervisor mode — delegates to sub-agents. */
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
@@ -513,12 +628,25 @@ declare module "agent" {
     requireApproval?: boolean;
     /** Provider-specific tool options (OpenAI, Anthropic, etc.). */
     providerOptions?: Record<string, Record<string, unknown>>;
+    /** Present when this tool was sourced from an MCP server. */
+    mcp?: MCPToolProperties;
+    /** User-supplied MCP metadata. */
+    mcpMetadata?: Record<string, unknown>;
+    /** Few-shot input examples. */
+    inputExamples?: unknown[];
+    /** Normalize the tool output before it reaches the model. */
+    toModelOutput?: (result: unknown) => unknown;
     execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
   }
 
-  /** Broader alias — Mastra accepts AI SDK tools alongside Mastra ones. */
-  export type ToolAction = Tool;
-  export type ToolsInput = Record<string, Tool>;
+  /**
+   * Broader alias — Mastra accepts AI SDK v4 / v5 tools and
+   * provider-defined tools alongside native Mastra tools. The
+   * agent's tool resolver picks the right execution path.
+   */
+  export type ToolAction = Tool | VercelTool | VercelToolV5 | ProviderDefinedTool;
+  /** Tool bag shape accepted by `AgentConfig.tools`. */
+  export type ToolsInput = Record<string, ToolAction>;
 
   // ── Workflows ─────────────────────────────────────────────────
 
@@ -574,10 +702,20 @@ declare module "agent" {
     parallel(steps: Step[]): WorkflowBuilder;
     branch(config: BranchConfig | Step[][]): WorkflowBuilder;
     foreach(config: ForEachConfig): WorkflowBuilder;
-    /** Loop until condition is met. */
+    /** Loop while condition is true (check runs before each step). */
+    dowhile(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
+    /** Loop until condition is met (check runs after each step). */
     dountil(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
     /** Pause execution for a duration (ms). */
-    sleep(ms: number): WorkflowBuilder;
+    sleep(ms: number | { duration: number }): WorkflowBuilder;
+    /** Pause execution until a specific date/time. */
+    sleepUntil(config: { date: Date | string }): WorkflowBuilder;
+    /**
+     * Remap inputs / outputs between steps — useful when the
+     * previous step emits a different shape than the next step
+     * expects.
+     */
+    map(config: Record<string, unknown> | ((data: unknown) => unknown)): WorkflowBuilder;
     commit(): Workflow;
   }
 
@@ -592,32 +730,129 @@ declare module "agent" {
     step: Step;
   }
 
-  export interface Step {}
-
-  export interface Workflow {
-    createRun(opts?: { runId?: string }): Promise<WorkflowRun>;
+  /**
+   * Step definition — each step is a typed IO node in a
+   * workflow. Mastra parameterizes with 8 generics; brainkit
+   * keeps the public `Step` alias loose + provides
+   * `StepDefinition` for authors who need the full shape.
+   */
+  export interface Step {
+    readonly id?: string;
+    readonly description?: string;
+    readonly inputSchema?: import("ai").ZodType;
+    readonly outputSchema?: import("ai").ZodType;
+    readonly suspendSchema?: import("ai").ZodType;
+    readonly resumeSchema?: import("ai").ZodType;
+    readonly retries?: number;
   }
 
-  export interface WorkflowRun {
+  /** Concrete step shape returned by createStep(...). */
+  export interface StepDefinition<TInput = unknown, TOutput = unknown> extends Step {
+    execute(context: StepExecutionContext & { inputData: TInput }): Promise<TOutput>;
+  }
+
+  /**
+   * A completed workflow. Mastra parameterizes this class with
+   * 8 generics; brainkit keeps the public alias loose because
+   * most deployments rarely touch the generics — use
+   * `WorkflowBuilder` chaining for compile-time type inference.
+   */
+  export interface Workflow<
+    TInput = unknown,
+    TOutput = unknown,
+    TState = unknown,
+    TRequestContext = unknown,
+  > {
+    readonly id?: string;
+    readonly inputSchema?: import("ai").ZodType;
+    readonly outputSchema?: import("ai").ZodType;
+    readonly stateSchema?: import("ai").ZodType;
+    readonly steps?: Record<string, Step>;
+    /** True once `.commit()` has been called. */
+    readonly committed?: boolean;
+    createRun(opts?: { runId?: string }): Promise<WorkflowRun<TInput, TOutput>>;
+    /** Shortcut — createRun + start. */
+    execute?(input: TInput, opts?: { runId?: string; requestContext?: RequestContext<TRequestContext extends Record<string, any> ? TRequestContext : Record<string, any>> }): Promise<WorkflowRunResult<TOutput>>;
+    /** List historical runs (when a persistence store is wired). */
+    listWorkflowRuns?(opts?: { limit?: number; offset?: number }): Promise<WorkflowRunResult<TOutput>[]>;
+    /** List active (in-flight) runs. */
+    listActiveWorkflowRuns?(): Promise<WorkflowRun<TInput, TOutput>[]>;
+    /** Delete one persisted run. */
+    deleteWorkflowRunById?(runId: string): Promise<void>;
+    /** Fetch one persisted run. */
+    getWorkflowRunById?(runId: string): Promise<WorkflowRunResult<TOutput> | null>;
+    /** Restart every active run. */
+    restartAllActiveWorkflowRuns?(): Promise<void>;
+    /** Scorers attached to this workflow. */
+    listScorers?(): Promise<Record<string, Scorer>>;
+    // Phantom markers — not runtime-accessible.
+    readonly _input?: TInput;
+    readonly _output?: TOutput;
+    readonly _state?: TState;
+    readonly _requestContext?: TRequestContext;
+  }
+
+  export interface WorkflowRun<TInput = unknown, TOutput = unknown> {
     runId: string;
-    start(params: { inputData: Record<string, unknown> }): Promise<WorkflowRunResult>;
-    resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string }, resumeData?: Record<string, unknown>): Promise<WorkflowRunResult>;
+    start(params: { inputData: TInput; requestContext?: RequestContext }): Promise<WorkflowRunResult<TOutput>>;
+    /** Async variant — kick off + return a handle. */
+    startAsync?(params: { inputData: TInput; requestContext?: RequestContext }): Promise<WorkflowRun<TInput, TOutput>>;
+    /** Streaming run — emits each step as it completes. */
+    stream?(params: { inputData: TInput; requestContext?: RequestContext }): AsyncIterable<unknown>;
+    /** Observe another run's stream. */
+    observeStream?(runId: string): AsyncIterable<unknown>;
+    /** Legacy streaming path. */
+    observeStreamLegacy?(runId: string): AsyncIterable<unknown>;
+    resume(stepOrParams: string | { resumeData: Record<string, unknown>; step?: string }, resumeData?: Record<string, unknown>): Promise<WorkflowRunResult<TOutput>>;
+    /** Resume + stream rather than resolve. */
+    resumeStream?(opts: { step?: string; resumeData: Record<string, unknown> }): AsyncIterable<unknown>;
+    /** Legacy stream path for resumed runs. */
+    streamLegacy?(params: { inputData: TInput }): AsyncIterable<unknown>;
+    /** Re-run this run from scratch with the original input. */
+    restart?(): Promise<WorkflowRunResult<TOutput>>;
+    /** Branch from a prior step + try an alternative path. */
+    timeTravel?(opts: { stepId: string; inputData?: Record<string, unknown> }): Promise<WorkflowRunResult<TOutput>>;
+    timeTravelStream?(opts: { stepId: string; inputData?: Record<string, unknown> }): AsyncIterable<unknown>;
+    /** Attach a handler that fires on every step completion. */
+    watch?(handler: (event: { stepId: string; status: string; result?: unknown }) => void | Promise<void>): () => void;
+    watchAsync?(handler: (event: { stepId: string; status: string; result?: unknown }) => void | Promise<void>): () => void;
     cancel(): void;
     readonly status: string;
     readonly currentStep: string;
   }
 
-  export interface WorkflowRunResult {
+  /**
+   * Workflow run result. Shape matches Mastra's discriminated
+   * status set — consumers can narrow on `.status` to inspect
+   * the success payload / suspend payload / failure reason.
+   */
+  export interface WorkflowRunResult<TOutput = unknown> {
     status: "completed" | "suspended" | "failed" | "success";
-    result?: Record<string, unknown>;
+    /** Final output (on success/completed). */
+    result?: TOutput;
     runId?: string;
     steps?: Record<string, StepRunResult>;
+    /** Populated when status === "suspended". */
+    suspended?: { stepId: string; payload?: unknown };
+    /** Populated when status === "failed". */
+    error?: { message: string; cause?: unknown };
   }
 
-  export interface StepRunResult {
-    status: string;
-    output?: unknown;
+  export interface StepRunResult<TOutput = unknown> {
+    status: "completed" | "suspended" | "failed" | "skipped";
+    output?: TOutput;
+    /** Populated when status === "suspended". */
+    suspended?: unknown;
+    /** Populated when status === "failed". */
+    error?: { message: string };
   }
+
+  /** Discriminated union matching Mastra's StepResult export. */
+  export type StepResult<TOutput = unknown> =
+    | { status: "completed"; output: TOutput }
+    | { status: "suspended"; suspended: unknown }
+    | { status: "failed"; error: { message: string } }
+    | { status: "skipped" };
 
   // ── Memory ────────────────────────────────────────────────────
 
