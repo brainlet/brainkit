@@ -36,20 +36,38 @@ var vectorServerBackends = map[string]bool{
 
 // aiCategories are top-level categories where every fixture needs AI.
 var aiCategories = map[string]bool{
-	"agent":        true,
-	"ai":           true,
+	"agent":         true,
+	"ai":            true,
 	"observability": true,
-	"composition":  true,
+	"composition":   true,
+	// Voice fixtures need at least OPENAI_API_KEY (the default
+	// provider) for most tests; construct-only fixtures for
+	// non-OpenAI providers skip gracefully when the provider's
+	// own key isn't set.
+	"voice": true,
+	// Processor fixtures: most useful ones are LLM-gated
+	// (moderation / PII / injection / structured-output /
+	// language / system-prompt-scrubber / tool-search /
+	// skill-search). The model-free variants pay no cost when
+	// AI is configured.
+	"processors": true,
 }
 
 // aiSegments trigger AI need when found anywhere in the path.
 var aiSegments = map[string]bool{
-	"with-agent-step":  true,
+	"with-agent-step":   true,
 	"vector-query-tool": true,
-	"with-llm-judge":   true,
-	"semantic-recall":  true,
-	"generate-title":   true,
-	"working-memory":   true,
+	"with-llm-judge":    true,
+	"semantic-recall":   true,
+	"generate-title":    true,
+	"working-memory":    true,
+	// RAG rerank / graph-rag use embedding or judge models.
+	"rerank":    true,
+	"graph-rag": true,
+	// Prebuilt scorers under evals/prebuilt/ — every LLM-judge
+	// scorer needs AI; a few code scorers don't, but they still
+	// resolve a judge model when one is set.
+	"prebuilt": true,
 }
 
 // ClassifyFixture determines what infrastructure a fixture needs based on its

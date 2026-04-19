@@ -1,0 +1,6 @@
+{
+  "sendToDidNotThrow": true,
+  "hasSendTo": true,
+  "errorNameShape": true,
+  "errorCodeIsString": true
+}
