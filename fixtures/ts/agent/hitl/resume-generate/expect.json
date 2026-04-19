@@ -1,0 +1,6 @@
+{
+  "hasResumeGenerate": "*",
+  "hasResumeStream": "*",
+  "hasApproveToolCallGenerate": "*",
+  "hasDeclineToolCallGenerate": "*"
+}

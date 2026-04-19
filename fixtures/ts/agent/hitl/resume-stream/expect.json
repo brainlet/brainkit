@@ -1,0 +1,5 @@
+{
+  "hasResumeStream": "*",
+  "hasApproveToolCall": "*",
+  "hasDeclineToolCall": "*"
+}
