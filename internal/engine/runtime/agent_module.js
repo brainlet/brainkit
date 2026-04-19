@@ -3,6 +3,7 @@
 
 // Core
 export const Agent = globalThis.__agent_embed.Agent;
+export const Mastra = globalThis.__agent_embed.Mastra;
 export const createTool = globalThis.__agent_embed.createTool;
 export const createWorkflow = globalThis.__agent_embed.createWorkflow;
 export const createStep = globalThis.__agent_embed.createStep;
@@ -41,6 +42,17 @@ export const rerankWithScorer = globalThis.__agent_embed.rerankWithScorer;
 export const Observability = globalThis.__agent_embed.Observability;
 export const DefaultExporter = globalThis.__agent_embed.DefaultExporter;
 export const SensitiveDataFilter = globalThis.__agent_embed.SensitiveDataFilter;
+// OpenTelemetry span processors + exporters
+export const BatchSpanProcessor = globalThis.__agent_embed.BatchSpanProcessor;
+export const SimpleSpanProcessor = globalThis.__agent_embed.SimpleSpanProcessor;
+export const NoopSpanProcessor = globalThis.__agent_embed.NoopSpanProcessor;
+export const ConsoleSpanExporter = globalThis.__agent_embed.ConsoleSpanExporter;
+export const InMemorySpanExporter = globalThis.__agent_embed.InMemorySpanExporter;
+export const BasicTracerProvider = globalThis.__agent_embed.BasicTracerProvider;
+export const AlwaysOnSampler = globalThis.__agent_embed.AlwaysOnSampler;
+export const AlwaysOffSampler = globalThis.__agent_embed.AlwaysOffSampler;
+export const ParentBasedSampler = globalThis.__agent_embed.ParentBasedSampler;
+export const TraceIdRatioBasedSampler = globalThis.__agent_embed.TraceIdRatioBasedSampler;
 
 // Voice
 export const MastraVoice = globalThis.__agent_embed.MastraVoice;

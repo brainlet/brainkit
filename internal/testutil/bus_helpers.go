@@ -84,7 +84,10 @@ func DeployWithOpts(rt sdk.Runtime, source, code, packageName string) error {
 		Manifest: inlineManifest(name, source),
 		Files:    map[string]string{source: code},
 	}
-	payload, err := roundTrip(rt, msg, 15*time.Second)
+	// AI-backed fixtures run top-level awaits inside the deploy
+	// (Agent.generate, embedder probe, semantic recall). Budget
+	// 60s to cover chained OpenAI calls + vector index creation.
+	payload, err := roundTrip(rt, msg, 60*time.Second)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,13 @@ bus.subscribe("test.stream-svc", (msg: BusMessage) => {
 
 const result = bus.publish("test.stream-svc", { start: true });
 bus.subscribe(result.replyTo, (msg: BusMessage) => {
-  chunks.push(msg.payload);
+  // msg.send chunks arrive raw; msg.reply arrives wrapped as
+  // {ok:true, data:...} envelope. Unwrap the terminal reply so the
+  // done flag surfaces.
+  const p: any = msg.payload;
+  chunks.push(
+    p && typeof p === "object" && "ok" in p && "data" in p ? p.data : p,
+  );
 });
 
 await new Promise(r => setTimeout(r, 300));

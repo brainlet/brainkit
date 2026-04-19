@@ -13,9 +13,12 @@ bus.on("ask", (msg: BusMessage) => {
 // Publish to the deployment namespace directly
 const result = bus.publish("ts.mailbox-on.ask", { question: "meaning of life" });
 
-// Subscribe to reply
+// Subscribe to reply — unwrap the {ok, data} envelope produced by msg.reply.
 let reply: any = null;
-bus.subscribe(result.replyTo, (msg: BusMessage) => { reply = msg.payload; });
+bus.subscribe(result.replyTo, (msg: BusMessage) => {
+  const p: any = msg.payload;
+  reply = p && typeof p === "object" && "ok" in p && "data" in p ? p.data : p;
+});
 
 await new Promise(r => setTimeout(r, 200));
 

@@ -10,7 +10,6 @@ Tests the platform message bus: pub/sub, request/reply, streaming, mailbox routi
 | mailbox-on | no | none | `bus.on()` subscribes to deployment-namespaced mailbox topic (`ts.<source>.<local>`), handler receives payload and `msg.reply()` delivers response |
 | publish-reply | no | none | `bus.publish()` returns `replyTo` + `correlationId`, subscriber uses `msg.reply()` to send response back |
 | send-to-service | no | none | `bus.sendTo()` routes to a deployed .ts service by name, resolving `<name>.ts` + topic to `ts.<name>.<topic>` |
-| send-to-shard | no | none | `bus.sendToShard()` addresses a shard's handler topic directly (non-namespaced), verifies reply routing |
 | streaming-send-reply | no | none | `msg.send()` delivers 3 intermediate streaming chunks then `msg.reply()` delivers final, subscriber collects all 4 messages |
 | subscribe-basic | no | none | `bus.subscribe()` receives published messages, `bus.unsubscribe()` stops delivery, confirms post-unsubscribe messages are dropped |
 

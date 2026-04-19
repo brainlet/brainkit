@@ -1,4 +1,4 @@
-// Test: agent uses a platform-registered tool (e.g., from a plugin)
+// Test: agent uses a platform-registered tool (e.g., from a plugin).
 // The "multiply" tool is registered in Go before this runs.
 import { Agent } from "agent";
 import { model, tool, output } from "kit";
@@ -8,19 +8,25 @@ const multiplyTool = tool("multiply");
 const a = new Agent({
   name: "fixture",
   model: model("openai", "gpt-4o-mini"),
-  instructions: "Always use the multiply tool. Return only the number.",
+  instructions:
+    "You help with arithmetic. Always call the multiply tool to compute products.",
   tools: { multiply: multiplyTool },
+  maxSteps: 5,
 });
 
-const result = await a.generate("What is 6 times 7? Use the multiply tool.", { maxSteps: 3 });
+const result = await a.generate("Use multiply to compute 6 × 7.");
 
-// Check tool results (deterministic) rather than text (AI-dependent)
-const toolResult = result.steps?.find(
-  (s: any) => s.toolResults && s.toolResults.length > 0
-)?.toolResults?.[0]?.result;
+// Mastra 1.x returns each tool event as
+// `{ type: "tool-result", payload: { args, toolName, result: {...}, ... } }`
+// so reach through `payload.result` for the Go executor's return value.
+const toolResults = (result.steps || []).flatMap((s: any) => s.toolResults || []);
+const multiplyEvent = toolResults.find(
+  (tr: any) => (tr.payload?.toolName || tr.toolName || tr.name) === "multiply",
+);
+const toolResult = multiplyEvent?.payload?.result?.result ?? multiplyEvent?.result?.result ?? null;
 
 output({
-  usedTool: (result.steps || []).some((s: any) => s.toolCalls && s.toolCalls.length > 0),
-  toolResult: toolResult,
-  hasText: result.text.length > 0,
+  usedTool: (result.steps || []).some((s: any) => (s.toolCalls || []).length > 0),
+  toolResult,
+  resultIs42: toolResult === 42,
 });

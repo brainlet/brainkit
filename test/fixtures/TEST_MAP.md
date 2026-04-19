@@ -83,7 +83,6 @@
 | bus/mailbox-on | no | no | Mailbox on/reply pattern (question/answer) |
 | bus/publish-reply | no | no | Publish with replyTo, correlationId, and reply |
 | bus/send-to-service | no | no | SendToService with reply (greeting) |
-| bus/send-to-shard | no | no | SendToShard with stateful increment |
 | bus/streaming-send-reply | no | no | Streaming send/reply (4 chunks + final) |
 | bus/subscribe-basic | no | no | Basic subscribe (subscription ID, 2 messages) |
 

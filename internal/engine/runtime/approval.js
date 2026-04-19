@@ -8,6 +8,15 @@
   // generateWithApproval: thin layer over Agent.generate that routes
   // tool approval through the bus. Any surface (Go, .ts, plugin, gateway)
   // can approve or decline by replying to the approval topic.
+  //
+  // The agent passed in MUST be reachable through a Mastra instance (either
+  // created with `new Mastra({ agents: { name: agent }, storage })` and
+  // fetched via `mastra.getAgent(name)`, or otherwise attached). Without
+  // that, the agentic-loop workflow cannot persist a resume snapshot, so
+  // approveToolCallGenerate / declineToolCallGenerate silently return the
+  // same suspended state and the agent never advances past the pending
+  // tool call. See fixtures/ts/agent/hitl/bus-approval for the reference
+  // wiring.
   globalThis.__kit_generateWithApproval = async function(agent, promptOrMessages, options) {
     if (!options || !options.approvalTopic) {
       throw new Error("generateWithApproval: approvalTopic is required");

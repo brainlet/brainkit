@@ -12,7 +12,10 @@ bus.subscribe("test.greet", (msg: BusMessage) => {
 // Publish and subscribe to the replyTo topic
 const result = bus.publish("test.greet", { name: "brainkit" });
 bus.subscribe(result.replyTo, (msg: BusMessage) => {
-  replyData = msg.payload;
+  // msg.reply wraps payloads in a wire envelope {ok:true, data:...};
+  // unwrap here so the test asserts against the inner value.
+  const p: any = msg.payload;
+  replyData = p && typeof p === "object" && "ok" in p && "data" in p ? p.data : p;
 });
 
 await new Promise(r => setTimeout(r, 200));

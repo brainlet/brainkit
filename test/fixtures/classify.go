@@ -28,10 +28,26 @@ var credentialBackends = map[string]string{
 	"upstash": "UPSTASH_REDIS_REST_URL",
 }
 
-// vectorServerBackends need a libsql-server container (for vector extensions).
-// "libsql" under vector/ needs the server; under memory/storage/ it's in-process.
-var vectorServerBackends = map[string]bool{
-	"libsql": true,
+// libsqlServerSegments flag fixtures that need a libsql-server
+// container. Any fixture whose source reads `process.env.LIBSQL_URL`
+// must be covered here — the test runner starts the container and
+// injects LIBSQL_URL only when needs.LibSQLServer is true.
+var libsqlServerSegments = map[string]bool{
+	"libsql":             true,
+	"libsql-local":       true,
+	"libsql-local-debug": true,
+	// memory/semantic-recall/basic + memory/working-memory/basic
+	// construct LibSQLStore+LibSQLVector directly; their variant
+	// leaves are listed below in classifyLibSQLLeaves.
+}
+
+// libsqlLeafPaths are individual fixtures that need libsql-server
+// but whose leaf path doesn't include a libsql segment (so the
+// segment map above can't catch them).
+var libsqlLeafPaths = map[string]bool{
+	"memory/semantic-recall/basic": true,
+	"memory/working-memory/basic":  true,
+	"rag/vector-query-tool":        true,
 }
 
 // aiCategories are top-level categories where every fixture needs AI.
@@ -107,9 +123,10 @@ func ClassifyFixture(relPath string) FixtureNeeds {
 			needs.Credential = envVar
 		}
 
-		// LibSQL server detection: only under vector/ category
-		// (memory/storage/libsql is in-process, no container needed)
-		if vectorServerBackends[seg] && category == "vector" {
+		// LibSQL server detection: memory + agent + vector fixtures
+		// that construct LibSQLStore / LibSQLVector against an
+		// injected LIBSQL_URL all need the container.
+		if libsqlServerSegments[seg] {
 			needs.LibSQLServer = true
 		}
 
@@ -117,6 +134,13 @@ func ClassifyFixture(relPath string) FixtureNeeds {
 		if aiSegments[seg] {
 			needs.AI = true
 		}
+	}
+
+	// Leaf-path overrides for fixtures whose libsql usage can't be
+	// inferred from any single segment (semantic-recall/basic,
+	// working-memory/basic, rag/vector-query-tool).
+	if libsqlLeafPaths[relPath] {
+		needs.LibSQLServer = true
 	}
 
 	// memory/storage/* all need AI (they use Agent conversation)

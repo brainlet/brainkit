@@ -13,6 +13,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -103,6 +104,9 @@ func NewTestKitFull(t *testing.T) *TestKit {
 		Vectors: map[string]brainkit.VectorConfig{
 			"default": brainkit.SQLiteVector(filepath.Join(tmpDir, "brainkit.db")),
 		},
+		// In-memory schedules module so fixtures can exercise
+		// bus.schedule / bus.unschedule without a persistence backend.
+		Modules: []brainkit.Module{schedules.NewModule(schedules.Config{})},
 		EnvVars: envVars,
 	})
 	if err != nil {

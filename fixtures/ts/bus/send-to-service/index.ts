@@ -12,7 +12,8 @@ const result = bus.sendTo("send-to-service.ts", "greet", { name: "brainkit" });
 
 let reply: any = null;
 bus.subscribe(result.replyTo, (msg: any) => {
-  reply = msg.payload;
+  const p: any = msg.payload;
+  reply = p && typeof p === "object" && "ok" in p && "data" in p ? p.data : p;
 });
 
 await new Promise(r => setTimeout(r, 300));

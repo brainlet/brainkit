@@ -23,8 +23,6 @@ declare module "kit" {
     /** Send to a deployed .ts service by name.
      *  Resolves "my-agent.ts" + "ask" → publishes to ts.my-agent.ask */
     sendTo(service: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
-    /** Send to a deployed WASM shard's handler topic. */
-    sendToShard(shard: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
     /**
      * Send a request-reply command and await the terminal envelope.
      * Throws BrainkitError on the remote handler's ok=false reply;

@@ -407,7 +407,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 				return map[string]string{"text": strings.ToUpper(input.Text)}, nil
 			},
 		})
-	case "agent/with-registered-tool":
+	case "agent/tools/with-registered-tool":
 		brainkit.RegisterTool(k, "multiply", brainkit.TypedTool[struct {
 			A float64 `json:"a"`
 			B float64 `json:"b"`
@@ -420,7 +420,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 				return map[string]float64{"result": input.A * input.B}, nil
 			},
 		})
-	case "agent/hitl-bus-approval":
+	case "agent/hitl/bus-approval":
 		// Go-side auto-approver: subscribes to the approval topic and auto-approves.
 		// Uses sdk.Reply — the clean Go equivalent of JS msg.reply().
 		cancel, subErr := sdk.SubscribeTo[json.RawMessage](k, context.Background(), "test.approvals",
@@ -433,7 +433,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 		} else {
 			t.Cleanup(func() { cancel() })
 		}
-	case "composition/full-agent-workflow-memory":
+	case "composition/agent-workflow-memory":
 		brainkit.RegisterTool(k, "reverse", brainkit.TypedTool[struct {
 			Text string `json:"text"`
 		}]{

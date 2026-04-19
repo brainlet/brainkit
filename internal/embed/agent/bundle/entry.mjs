@@ -162,6 +162,18 @@ MDocument.fromPDF = async function fromPDF(source, metadata) {
 
 // Observability — tracing, spans, exporters
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  AlwaysOnSampler,
+  AlwaysOffSampler,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+  NoopSpanProcessor,
+  ConsoleSpanExporter,
+  InMemorySpanExporter,
+  BasicTracerProvider,
+  SimpleSpanProcessor,
+  BatchSpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
 
 // Workspace — filesystem, sandbox, skills, search
 import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
@@ -371,6 +383,17 @@ globalThis.__agent_embed = {
   Observability,
   DefaultExporter,
   SensitiveDataFilter,
+  // OpenTelemetry span processors + exporters
+  AlwaysOnSampler,
+  AlwaysOffSampler,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
+  NoopSpanProcessor,
+  ConsoleSpanExporter,
+  InMemorySpanExporter,
+  BasicTracerProvider,
+  SimpleSpanProcessor,
+  BatchSpanProcessor,
 
   // Workspace
   Workspace,

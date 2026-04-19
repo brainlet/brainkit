@@ -614,7 +614,9 @@ export default Big;
     "better-sqlite3",
     "@ast-grep/napi",
     "fastembed",
-    "@opentelemetry/api",
+    // `@opentelemetry/api` is now bundled in — the OTel span
+    // processors we expose (Batch/Simple/Noop + samplers) need it at
+    // runtime, and there's no host-side injection path in brainkit.
     "hono",
   ],
   banner: {

@@ -168,12 +168,31 @@
       tool: function(name) {
         var info = _kitObj.tools.resolve(name);
         if (!info) throw new Error("tool '" + name + "' not found");
+        // info.inputSchema arrives as a JSON-schema STRING (from Go's
+        // json.RawMessage serialization). Parse it into a proper schema
+        // object, then convert via z.toJSONSchema's inverse — Mastra's
+        // createTool accepts a raw JSON-schema Record<string, unknown>
+        // or a ZodType, so the parsed object is the safe path. Without
+        // this, the LLM only sees an empty schema and calls the tool
+        // with no arguments.
+        var parsedSchema = null;
+        if (info.inputSchema) {
+          if (typeof info.inputSchema === "string") {
+            try { parsedSchema = JSON.parse(info.inputSchema); } catch(e) { parsedSchema = null; }
+          } else if (typeof info.inputSchema === "object") {
+            parsedSchema = info.inputSchema;
+          }
+        }
         return embed.createTool({
           id: info.shortName || name,
           description: info.description || "",
-          inputSchema: info.inputSchema ? embed.z.object(info.inputSchema) : embed.z.any(),
+          inputSchema: parsedSchema || embed.z.any(),
           execute: async function(input) {
-            return await _kitObj.tools.call(name, input);
+            // Mastra v1 passes { context: <args>, runtimeContext } in v5
+            // execute surface. Unwrap if present so the Go bridge gets
+            // the raw user args.
+            var args = (input && input.context !== undefined) ? input.context : input;
+            return await _kitObj.tools.call(name, args);
           },
         });
       },
@@ -213,6 +232,7 @@
       z: embed.z,
       // Mastra
       Agent: embed.Agent,
+      Mastra: embed.Mastra,
       createTool: ws(embed.createTool),
       createWorkflow: ws(embed.createWorkflow),
       createStep: embed.createStep,
@@ -295,6 +315,19 @@
       Observability: embed.Observability,
       DefaultExporter: embed.DefaultExporter,
       SensitiveDataFilter: embed.SensitiveDataFilter,
+      // OpenTelemetry sdk-trace-base primitives. Needed so deployed
+      // fixtures can wire BasicTracerProvider + InMemorySpanExporter
+      // + BatchSpanProcessor / SimpleSpanProcessor end-to-end.
+      BatchSpanProcessor: embed.BatchSpanProcessor,
+      SimpleSpanProcessor: embed.SimpleSpanProcessor,
+      NoopSpanProcessor: embed.NoopSpanProcessor,
+      ConsoleSpanExporter: embed.ConsoleSpanExporter,
+      InMemorySpanExporter: embed.InMemorySpanExporter,
+      BasicTracerProvider: embed.BasicTracerProvider,
+      AlwaysOnSampler: embed.AlwaysOnSampler,
+      AlwaysOffSampler: embed.AlwaysOffSampler,
+      ParentBasedSampler: embed.ParentBasedSampler,
+      TraceIdRatioBasedSampler: embed.TraceIdRatioBasedSampler,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
       // Prebuilt scorer factories (`@mastra/evals/scorers/prebuilt`).
