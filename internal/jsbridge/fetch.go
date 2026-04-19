@@ -445,6 +445,7 @@ globalThis.Headers = class Headers {
 
 globalThis.Response = class Response {
   constructor(body, init) {
+    this._formData = null;
     if (body && typeof body === 'object' && body.body) {
       // Streaming response from Go — body is {status, headers, url, body: ReadableStream}
       this._body = null;
@@ -455,6 +456,23 @@ globalThis.Response = class Response {
       this.statusText = body.statusText || '';
       this.headers = new Headers(body.headers);
       this.url = body.url || '';
+    } else if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      // FormData body — serialize lazily in text()/arrayBuffer(). The
+      // OpenAI SDK probes FormData support with
+      //   data.toString() === (await new Response(data).text())
+      // so text() MUST differ from "[object Object]". Using String(body)
+      // at construction time would collapse the two to the same value
+      // and trick the SDK into thinking file uploads are unsupported.
+      this._body = null;
+      this._bodyStream = null;
+      this._bodyEncoding = '';
+      this._formData = body;
+      init = init || {};
+      this.status = init.status || 200;
+      this.ok = this.status >= 200 && this.status < 300;
+      this.statusText = init.statusText || '';
+      this.headers = new Headers(init.headers);
+      this.url = '';
     } else {
       this._body = body != null ? String(body) : '';
       this._bodyStream = null;
@@ -472,6 +490,45 @@ globalThis.Response = class Response {
     this.type = 'basic';
     this.redirected = false;
     this.bodyUsed = false;
+  }
+  async _materializeFormData() {
+    if (!this._formData) return;
+    const fd = this._formData;
+    this._formData = null;
+    const boundary = '----brainkitResponseBoundary' + Math.random().toString(16).slice(2);
+    const enc = new TextEncoder();
+    const parts = [];
+    for (const [name, value] of fd.entries()) {
+      let header;
+      let bytes;
+      if (value && typeof value === 'object' && typeof value.arrayBuffer === 'function') {
+        const fname = value.name || name;
+        const ctype = value.type || 'application/octet-stream';
+        header = 'Content-Disposition: form-data; name="' + name +
+                 '"; filename="' + fname + '"\r\n' +
+                 'Content-Type: ' + ctype + '\r\n\r\n';
+        bytes = new Uint8Array(await value.arrayBuffer());
+      } else {
+        header = 'Content-Disposition: form-data; name="' + name + '"\r\n\r\n';
+        bytes = enc.encode(String(value));
+      }
+      parts.push(enc.encode('--' + boundary + '\r\n' + header));
+      parts.push(bytes);
+      parts.push(enc.encode('\r\n'));
+    }
+    parts.push(enc.encode('--' + boundary + '--\r\n'));
+    const total = parts.reduce((n, b) => n + b.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const b of parts) { out.set(b, off); off += b.byteLength; }
+    // Store as base64 so _bytes() can round-trip without re-encoding.
+    let bin = '';
+    for (let i = 0; i < out.byteLength; i++) bin += String.fromCharCode(out[i]);
+    this._body = btoa(bin);
+    this._bodyEncoding = 'base64';
+    if (!this.headers.get('content-type')) {
+      this.headers.set('content-type', 'multipart/form-data; boundary=' + boundary);
+    }
   }
   _bytes() {
     // Return the body as a Uint8Array. Handles both base64-encoded
@@ -497,6 +554,7 @@ globalThis.Response = class Response {
   }
   async text() {
     this.bodyUsed = true;
+    if (this._formData) await this._materializeFormData();
     if (this._bodyStream) {
       const reader = this._bodyStream.getReader();
       const chunks = [];
@@ -521,6 +579,7 @@ globalThis.Response = class Response {
   async json() { return JSON.parse(await this.text()); }
   async arrayBuffer() {
     this.bodyUsed = true;
+    if (this._formData) await this._materializeFormData();
     if (this._bodyStream) {
       const reader = this._bodyStream.getReader();
       const chunks = [];

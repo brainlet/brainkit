@@ -13,11 +13,7 @@ try {
   errorMsg = String(e?.message || e).substring(0, 200);
 }
 
-// The Whisper upload needs multipart FormData with file support; the
-// brainkit polyfill exposes FormData but not file uploads today, so the
-// listen call errors with a clean FormData message instead of crashing.
-// We accept either outcome — this fixture locks in the call shape so a
-// future polyfill upgrade is a one-line expect flip.
 output({
-  callShape: typeof transcript === "string" || errorMsg.toLowerCase().includes("formdata"),
+  hasTranscript: typeof transcript === "string" && transcript.length > 0,
+  errorMsg,
 });
