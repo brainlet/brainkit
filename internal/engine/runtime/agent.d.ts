@@ -1986,17 +1986,20 @@ declare module "agent" {
     processInput(args: ProcessInputArgs): Promise<void>;
   }
 
-  /** Coerce output into a schema (post-generation). */
-  export class StructuredOutputProcessor implements Processor {
+  /** Coerce output into a schema during streaming. */
+  export class StructuredOutputProcessor<OUTPUT extends {} = any> implements Processor {
     constructor(opts: {
       schema: import("ai").ZodType;
       model?: any;
       instructions?: string;
-      maxRetries?: number;
+      errorStrategy?: "strict" | "warn" | "fallback";
+      fallbackValue?: OUTPUT;
+      jsonPromptInjection?: string;
+      providerOptions?: Record<string, unknown>;
     });
     readonly id: "structured-output";
     readonly name: string;
-    processOutputResult(args: ProcessOutputResultArgs): Promise<void>;
+    processOutputStream(args: ProcessOutputStreamArgs): Promise<any>;
   }
 
   /** Batch stream parts together to cut per-part overhead. */
@@ -2032,47 +2035,56 @@ declare module "agent" {
     });
     readonly id: "tool-call-filter";
     readonly name: string;
-    processOutputStream(args: ProcessOutputStreamArgs): AsyncIterable<any>;
+    processInput(args: ProcessInputArgs): Promise<void>;
   }
 
-  /** Inject AGENTS.md content as system context. */
+  /** Inject AGENTS.md / instruction-file reminders. */
   export class AgentsMDInjector implements Processor {
-    constructor(opts?: {
-      path?: string;
+    constructor(opts: {
+      reminderText?: string;
       maxTokens?: number;
-      position?: "system" | "prepend" | "append";
+      pathExists?: (path: string) => boolean;
+      isDirectory?: (path: string) => boolean;
+      readFile?: (path: string) => string;
+      getIgnoredInstructionPaths?: (args: any) => string[];
     });
     readonly id: "agents-md-injector";
     readonly name: string;
-    processInput(args: ProcessInputArgs): Promise<void>;
+    processInputStep(args: any): Promise<any>;
   }
 
   /** Semantic tool search — activate a subset of tools per turn. */
   export class ToolSearchProcessor implements Processor {
     constructor(opts: {
-      topK?: number;
-      model?: any;
-      threshold?: number;
+      tools: Record<string, any>;
+      search?: { topK?: number; minScore?: number };
+      ttl?: number;
     });
     readonly id: "tool-search";
     readonly name: string;
-    processInput(args: ProcessInputArgs): Promise<void>;
+    processInputStep(args: any): Promise<{ tools: Record<string, any> }>;
   }
 
-  /** Inject skills as part of system context. */
+  /** Inject skills metadata into the system message. */
   export class SkillsProcessor implements Processor {
-    constructor(opts?: { format?: "xml" | "json"; [key: string]: any });
-    readonly id: "skills";
+    constructor(opts: { workspace: any; format?: "xml" | "json" });
+    readonly id: "skills-processor";
     readonly name: string;
-    processInput(args: ProcessInputArgs): Promise<void>;
+    listSkills(): Promise<Array<{ name: string; description: string; license?: string }>>;
+    processInputStep(args: any): Promise<void>;
   }
 
-  /** Semantic search over skills — activate per turn. */
+  /** On-demand skill discovery + loading. */
   export class SkillSearchProcessor implements Processor {
-    constructor(opts: { topK?: number; model?: any; threshold?: number });
+    constructor(opts: {
+      workspace: any;
+      search?: { topK?: number; minScore?: number };
+      ttl?: number;
+    });
     readonly id: "skill-search";
     readonly name: string;
-    processInput(args: ProcessInputArgs): Promise<void>;
+    dispose(): void;
+    processInputStep(args: any): Promise<{ tools: Record<string, unknown> | undefined }>;
   }
 
   /** Inject workspace filesystem / sandbox instructions. */
@@ -2080,7 +2092,7 @@ declare module "agent" {
     constructor(opts?: { position?: "system" | "prepend" | "append" });
     readonly id: "workspace-instructions";
     readonly name: string;
-    processInput(args: ProcessInputArgs): Promise<void>;
+    processInputStep(args: any): Promise<void>;
   }
 
   // ── Storage + Vector abstract bases ────────────────────────────
