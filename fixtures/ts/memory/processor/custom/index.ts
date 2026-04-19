@@ -1,30 +1,60 @@
-// Test: Memory `processors` is deprecated + removed in Mastra. We
-// assert the construction throws a clear deprecation error pointing
-// users to the Agent-level Input/Output processor system.
-import { Memory, InMemoryStore } from "agent";
-import { output } from "kit";
+// Test: Agent-level custom Input + Output processor replacing the
+// deprecated Memory.processors option. Input processor tags the last
+// user message; output processor counts invocations; fixture asserts
+// both ran and the agent saw the tagged input.
+import { Agent, Memory, InMemoryStore } from "agent";
+import { model, output } from "kit";
 
-const dummyProcessor = {
-  name: "dummy",
-  process(messages: any[]) {
-    return messages;
+let inputRuns = 0;
+let outputRuns = 0;
+
+const taggingInput = {
+  id: "tagging-input",
+  name: "Tagging Input",
+  async processInput(args: any) {
+    inputRuns += 1;
+    const msgs = args.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m?.role !== "user") continue;
+      if (typeof m.content === "string") {
+        m.content = `[tagged] ${m.content}`;
+      } else if (Array.isArray(m.content)) {
+        for (const part of m.content) {
+          if (part?.type === "text" && typeof part.text === "string") {
+            part.text = `[tagged] ${part.text}`;
+          }
+        }
+      }
+      break;
+    }
   },
 };
 
-let errorMsg = "";
-try {
-  new Memory({
-    storage: new InMemoryStore(),
-    options: { lastMessages: 5 },
-    processors: [dummyProcessor],
-  } as any);
-} catch (e: any) {
-  errorMsg = String(e?.message || e).substring(0, 200);
-}
+const countingOutput = {
+  id: "counting-output",
+  name: "Counting Output",
+  async processOutputResult(_args: any) {
+    outputRuns += 1;
+  },
+};
+
+const agent = new Agent({
+  name: "proc-agent",
+  model: model("openai", "gpt-4o-mini"),
+  instructions:
+    "Repeat the user's message back exactly, including any prefixes they include.",
+  memory: new Memory({ storage: new InMemoryStore(), options: { lastMessages: 5 } }),
+  inputProcessors: [taggingInput],
+  outputProcessors: [countingOutput],
+});
+
+const result = await agent.generate("Hello world", {
+  memory: { thread: { id: "proc-agent-" + Date.now() }, resource: "test" },
+});
 
 output({
-  rejected: errorMsg.length > 0,
-  deprecationExplained: errorMsg.toLowerCase().includes("deprecat")
-    || errorMsg.toLowerCase().includes("removed")
-    || errorMsg.toLowerCase().includes("input/output processor"),
+  inputRan: inputRuns > 0,
+  outputRan: outputRuns > 0,
+  gotReply: typeof result.text === "string" && result.text.length > 0,
 });
