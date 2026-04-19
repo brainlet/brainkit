@@ -3,6 +3,7 @@
   "// why-ESNext-module": "Fixtures use top-level `await` when calling generate / scorer.run etc. module: ESNext unlocks that.",
   "// why-no-dom": "Fixtures run inside brainkit's SES compartment — jsbridge polyfills provide Audio / WebSocket / FormData / fetch / etc. globals.d.ts declares all of them; including the default DOM lib would double-declare.",
   "// why-skipLibCheck": "Users who opt into `lib: [\"dom\"]` at their own config layer get duplicate-identifier warnings; skipLibCheck suppresses those. brainkit's own d.ts set is clean without DOM.",
+  "// why-no-baseUrl": "TypeScript 7.0 removes baseUrl. Since TS 5.0, `paths` keys are resolved relative to the tsconfig file that declares them — no baseUrl needed. Values here resolve relative to `fixtures/` (the directory containing this file).",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -15,7 +16,6 @@
     "esModuleInterop": true,
     "allowJs": true,
     "types": [],
-    "baseUrl": ".",
     "paths": {
       "kit":    ["../internal/engine/runtime/kit.d.ts"],
       "ai":     ["../internal/engine/runtime/ai.d.ts"],
