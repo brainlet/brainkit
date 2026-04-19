@@ -83,5 +83,49 @@ bin/**.go binary
 # committed reference.
 /test/bench/latest.json
 
-# Audio captured by `examples/voice-agent` runs.
-voice-agent-out/*.mp3
+# Audio captured by example runs — the whole directory, not
+# just the .mp3 payloads, so the dir itself doesn't show up as
+# untracked on the first `go run` of each example.
+/voice-agent-out/
+/voice-broadcast-out/
+/voice-realtime-out/
+/examples/*/voice-agent-out/
+/examples/*/voice-broadcast-out/
+/examples/*/voice-realtime-out/
+
+# Stray binaries produced when someone runs `go build ./examples/<x>`
+# from the repo root without `-o bin/<x>`. `make examples` puts
+# them in /bin/ (already gitignored above); anything that leaks
+# out here should never land in a commit.
+/evals
+/rag-pipeline
+/voice-agent
+/voice-broadcast
+/voice-chat
+/voice-realtime
+/workspace-agent
+/working-memory
+/hitl-tool-approval
+/hitl-workflow
+/agent-stream
+/custom-scorer
+/guardrails
+/ai-chat
+/cross-kit
+/gateway-routes
+/go-tools
+/harness-lite
+/hello-embedded
+/hello-server
+/mcp
+/multi-kit
+/observability
+/package-workflow
+/plugin-host
+/schedules
+/secrets
+/storage-vectors
+/streaming
+/workflows
+/agent-forge
+/agent-spawner
