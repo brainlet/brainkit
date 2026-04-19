@@ -58,6 +58,10 @@ import {
   StructuredOutputProcessor,
   ToolCallFilter,
   ToolSearchProcessor,
+  AgentsMDInjector,
+  SkillsProcessor,
+  SkillSearchProcessor,
+  WorkspaceInstructionsProcessor,
 } from '@mastra/core/processors';
 
 // RAG — document chunking, vector query tools, graph RAG, reranking
@@ -255,6 +259,10 @@ globalThis.__agent_embed = {
   StructuredOutputProcessor,
   ToolCallFilter,
   ToolSearchProcessor,
+  AgentsMDInjector,
+  SkillsProcessor,
+  SkillSearchProcessor,
+  WorkspaceInstructionsProcessor,
 
   // RAG
   MDocument,

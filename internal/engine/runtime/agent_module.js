@@ -78,3 +78,23 @@ export const createContextRelevanceScorerLLM = globalThis.__agent_embed.createCo
 export const createNoiseSensitivityScorerLLM = globalThis.__agent_embed.createNoiseSensitivityScorerLLM;
 export const createPromptAlignmentScorerLLM = globalThis.__agent_embed.createPromptAlignmentScorerLLM;
 export const createToolCallAccuracyScorerLLM = globalThis.__agent_embed.createToolCallAccuracyScorerLLM;
+
+// Processors (@mastra/core/processors).
+export const ModerationProcessor = globalThis.__agent_embed.ModerationProcessor;
+export const PromptInjectionDetector = globalThis.__agent_embed.PromptInjectionDetector;
+export const PIIDetector = globalThis.__agent_embed.PIIDetector;
+export const SystemPromptScrubber = globalThis.__agent_embed.SystemPromptScrubber;
+export const UnicodeNormalizer = globalThis.__agent_embed.UnicodeNormalizer;
+export const LanguageDetector = globalThis.__agent_embed.LanguageDetector;
+export const TokenLimiterProcessor = globalThis.__agent_embed.TokenLimiterProcessor;
+export const BatchPartsProcessor = globalThis.__agent_embed.BatchPartsProcessor;
+export const StructuredOutputProcessor = globalThis.__agent_embed.StructuredOutputProcessor;
+export const ToolCallFilter = globalThis.__agent_embed.ToolCallFilter;
+export const ToolSearchProcessor = globalThis.__agent_embed.ToolSearchProcessor;
+export const AgentsMDInjector = globalThis.__agent_embed.AgentsMDInjector;
+export const SkillsProcessor = globalThis.__agent_embed.SkillsProcessor;
+export const SkillSearchProcessor = globalThis.__agent_embed.SkillSearchProcessor;
+export const WorkspaceInstructionsProcessor = globalThis.__agent_embed.WorkspaceInstructionsProcessor;
+
+// Observability (@mastra/observability) — already exported above, so keep this section for the new
+// primitives that landed in the recent gap fill; the three original exports are above.

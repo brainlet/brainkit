@@ -294,6 +294,7 @@
       rerankWithScorer: embed.rerankWithScorer,
       Observability: embed.Observability,
       DefaultExporter: embed.DefaultExporter,
+      SensitiveDataFilter: embed.SensitiveDataFilter,
       createScorer: embed.createScorer,
       runEvals: embed.runEvals,
       // Prebuilt scorer factories (`@mastra/evals/scorers/prebuilt`).
@@ -327,6 +328,12 @@
       TokenLimiterProcessor: embed.TokenLimiterProcessor,
       BatchPartsProcessor: embed.BatchPartsProcessor,
       StructuredOutputProcessor: embed.StructuredOutputProcessor,
+      ToolCallFilter: embed.ToolCallFilter,
+      ToolSearchProcessor: embed.ToolSearchProcessor,
+      AgentsMDInjector: embed.AgentsMDInjector,
+      SkillsProcessor: embed.SkillsProcessor,
+      SkillSearchProcessor: embed.SkillSearchProcessor,
+      WorkspaceInstructionsProcessor: embed.WorkspaceInstructionsProcessor,
       // JS built-ins
       console: {
         log:   function() { __go_console_log_tagged(source, "log", __util_format(Array.prototype.slice.call(arguments))); },

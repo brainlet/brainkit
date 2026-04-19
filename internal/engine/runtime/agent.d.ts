@@ -206,24 +206,138 @@ declare module "agent" {
     structuredOutput?: {
       schema: import("ai").ZodType;
     };
+    /**
+     * Stop condition(s) — halt generation when met. Accepts a
+     * single condition or an array evaluated in order. Common
+     * helpers: `stepCountIs(n)`, `hasToolCall("name")`.
+     */
+    stopWhen?: any | any[];
+    /**
+     * Tools provided by the client (separate from server tools).
+     * Used when the model runs on a client and the Kit mediates.
+     */
+    clientTools?: Record<string, Tool>;
+    /**
+     * Per-step modifier — called before each LLM step with the
+     * step's model / tools / messages and returns overrides.
+     */
+    prepareStep?: (step: any) => any | Promise<any>;
+    /**
+     * Task-completion scorer — stops the loop when the scorer
+     * says the task is done (LLM-judge or code-based).
+     */
+    isTaskComplete?: any;
+    /** Include provider raw chunks in the stream. */
+    includeRawChunks?: boolean;
+    /** Fired after each outer iteration completes. */
+    onIterationComplete?: (event: any) => void | Promise<void>;
+    /**
+     * Sub-agent delegation lifecycle hooks
+     * (onDelegationStart / onDelegationComplete / messageFilter).
+     */
+    delegation?: {
+      onDelegationStart?: (ctx: any) => any | Promise<any>;
+      onDelegationComplete?: (ctx: any) => any | Promise<any>;
+      messageFilter?: (ctx: any) => any | Promise<any>;
+    };
+    /** Per-call tracing overrides. */
+    tracingOptions?: {
+      enabled?: boolean;
+      serviceName?: string;
+      attributes?: Record<string, unknown>;
+      [key: string]: any;
+    };
+    /** Called when the run is aborted (distinct from onError). */
+    onAbort?: (event: any) => void | Promise<void>;
+    /**
+     * Network-mode routing configuration.
+     * Controls how a supervisor agent picks between sub-agents.
+     */
+    routing?: {
+      strategy?: "round-robin" | "model" | "first-match";
+      [key: string]: any;
+    };
+    /**
+     * Completion scorer chain for network mode — decides when
+     * the whole multi-agent task is done.
+     */
+    completion?: any;
     /** Extra options passthrough. */
     [key: string]: any;
   }
 
+  /** Alias — Mastra's formal name for the options shape. */
+  export type AgentExecutionOptionsBase<OUTPUT = unknown> = AgentCallOptions & {
+    structuredOutput?: { schema: import("ai").ZodType };
+    _output?: OUTPUT;
+  };
+
+  /** Network-mode call options. */
+  export type NetworkOptions<OUTPUT = unknown> = AgentCallOptions & {
+    routing?: AgentCallOptions["routing"];
+    completion?: AgentCallOptions["completion"];
+    _output?: OUTPUT;
+  };
+
+  /**
+   * Shape returned by `agent.generate(...)`. Mastra's internal
+   * name is `FullOutput<OUTPUT>`; brainkit exports both names.
+   */
   export interface AgentResult {
+    /** Final reply text. */
     text: string;
+    /** Reasoning traces if the model emitted any. */
+    reasoning?: string;
     reasoningText?: string;
+    /** Parsed structured output when `structuredOutput.schema` was set. */
     object?: unknown;
+    /** Every tool call across every step. */
     toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    /** Results for each toolCall. */
     toolResults: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>;
     finishReason: string;
-    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    usage: Usage;
     steps: AgentStepResult[];
-    response: { id: string; modelId: string; timestamp: string };
+    /** Model response metadata. */
+    response: {
+      id: string;
+      modelId: string;
+      timestamp: string;
+      messages?: Message[];
+    };
+    request?: { body?: unknown };
     runId?: string;
     traceId?: string;
+    /** Populated when a tool required approval and the run suspended. */
     suspendPayload?: unknown;
+    /** Sources (citations) when the provider returns them. */
+    sources?: Array<{ id: string; url?: string; title?: string; [key: string]: unknown }>;
+    /** Files produced by the model (image generation, etc). */
+    files?: Array<{ mediaType: string; data: Uint8Array | string; [key: string]: unknown }>;
+    /** Provider warnings for unsupported features. */
+    warnings?: Array<{ type: string; message: string; [key: string]: unknown }>;
     providerMetadata?: Record<string, unknown>;
+    /** True if a moderation / PII / injection processor tripwired. */
+    tripwire?: boolean;
+    tripwireReason?: string;
+    /** Data the scorer ran on, if `returnScorerData: true`. */
+    scoringData?: unknown;
+  }
+
+  /** Alias matching Mastra's public type name. */
+  export type FullOutput<OUTPUT = unknown> = AgentResult & { object?: OUTPUT };
+
+  /** Token usage across a run. */
+  export interface Usage {
+    /** Legacy field — equivalent to `inputTokens`. */
+    promptTokens: number;
+    /** Legacy field — equivalent to `outputTokens`. */
+    completionTokens: number;
+    totalTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    reasoningTokens?: number;
+    cachedInputTokens?: number;
   }
 
   export interface AgentStepResult {
@@ -237,34 +351,78 @@ declare module "agent" {
     isContinued: boolean;
   }
 
+  /**
+   * Shape returned by `agent.stream(...)`. Mastra's internal
+   * name is `MastraModelOutput<OUTPUT>`; brainkit exports both
+   * names. Same fields are available as promises for the
+   * awaitable-final variant or as async iterables for the
+   * streaming variant — consumers pick whichever matches
+   * their loop.
+   */
   export interface AgentStreamResult<OUTPUT = unknown> {
-    /** Async iterable of text chunks. */
+    // ── Async iterables ────────────────────────────────────
+    /** Text chunks, one per LLM token emission. */
     textStream: AsyncIterable<string>;
-    /** Async iterable of typed stream parts. */
+    /** Typed stream parts (`text-delta`, `tool-call`, `object-result`, `finish`, etc.). */
     fullStream: AsyncIterable<import("ai").StreamPart>;
+    /** Individual tool calls as they happen. */
+    toolCallsStream?: AsyncIterable<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>;
+    /** Tool results as they resolve. */
+    toolResultsStream?: AsyncIterable<{ toolCallId: string; toolName: string; result: unknown }>;
+    /** Reasoning trace deltas. */
+    reasoningStream?: AsyncIterable<string>;
+    /** Source citations as they surface. */
+    sourcesStream?: AsyncIterable<{ id: string; url?: string; title?: string }>;
+    /** Files the model produces (image generation etc). */
+    filesStream?: AsyncIterable<{ mediaType: string; data: Uint8Array | string }>;
     /**
      * Progressive partials of the structured output. Only populated
      * when `structuredOutput.schema` was set on the call.
      */
     objectStream?: AsyncIterable<Partial<OUTPUT>>;
-    /** Promise: final complete text. */
+
+    // ── Promises (resolve after stream finishes) ───────────
     text: Promise<string>;
-    /**
-     * Promise: final parsed structured object. Only populated when
-     * `structuredOutput.schema` was set on the call.
-     */
+    reasoning?: Promise<string>;
+    /** Final parsed structured object. Set when `structuredOutput.schema` was provided. */
     object?: Promise<OUTPUT>;
-    /** Promise: token usage. */
-    usage: Promise<{ promptTokens: number; completionTokens: number; totalTokens: number }>;
-    /** Promise: finish reason. */
+    usage: Promise<Usage>;
     finishReason: Promise<string>;
-    /** Promise: all tool calls. */
     toolCalls: Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>>;
-    /** Promise: all tool results. */
     toolResults: Promise<Array<{ toolCallId: string; toolName: string; args: Record<string, unknown>; result: unknown }>>;
-    /** Promise: all steps. */
     steps: Promise<AgentStepResult[]>;
+    sources?: Promise<Array<{ id: string; url?: string; title?: string }>>;
+    files?: Promise<Array<{ mediaType: string; data: Uint8Array | string }>>;
+    warnings?: Promise<Array<{ type: string; message: string }>>;
+    response?: Promise<{ id: string; modelId: string; timestamp: string; messages?: Message[] }>;
+    request?: Promise<{ body?: unknown }>;
+    providerMetadata?: Promise<Record<string, unknown>>;
+    tripwire?: Promise<boolean>;
+    tripwireReason?: Promise<string>;
+    scoringData?: Promise<unknown>;
+
+    // ── Methods ────────────────────────────────────────────
+    /** Await + collect every field into a FullOutput-shaped object. */
+    getFullOutput(): Promise<FullOutput<OUTPUT>>;
+    /** Drain the stream without observing; resolves when finished. */
+    consumeStream(): Promise<void>;
+
+    // ── HTTP / framework adapters (mirror Mastra's API so
+    // users can opt into chunked-transfer responses without
+    // reaching outside "agent"). brainkit's gateway wraps
+    // these; .ts code on the Kit side rarely needs them. ──
+    toDataStream?(): ReadableStream;
+    toDataStreamResponse?(): Response;
+    toTextStreamResponse?(): Response;
+    pipeDataStreamToResponse?(response: any): Promise<void>;
+    pipeTextStreamToResponse?(response: any): Promise<void>;
   }
+
+  /** Alias matching Mastra's public type name. */
+  export type MastraModelOutput<OUTPUT = unknown> = AgentStreamResult<OUTPUT>;
+
+  /** Network-mode streaming result. */
+  export type MastraAgentNetworkStream<OUTPUT = unknown> = AgentStreamResult<OUTPUT>;
 
   export interface Message {
     role: "system" | "user" | "assistant" | "tool";
@@ -1490,4 +1648,419 @@ declare module "agent" {
   // not ship. Users needing Google TTS/STT can use Gemini Live
   // (not currently bundled — tracked separately) or reach OpenAI
   // / Deepgram / ElevenLabs for comparable capabilities.
+
+  // ── Processors ─────────────────────────────────────────────────
+  //
+  // Prebuilt input/output processors from @mastra/core/processors.
+  // Each implements the Processor contract; most are model-gated
+  // (pass a `model: LanguageModel`). TripWire-style processors
+  // (moderation, injection, PII) can abort the run with a
+  // TripwireResult.
+
+  /** Base Processor interface shared by input + output processors. */
+  export interface Processor<TId extends string = string> {
+    readonly id: TId;
+    readonly name: string;
+    readonly version?: string;
+    processInput?(args: ProcessInputArgs): Promise<void> | void;
+    processInputStep?(args: ProcessInputStepArgs): Promise<void> | void;
+    processOutputStream?(args: ProcessOutputStreamArgs): AsyncIterable<any>;
+    processOutputResult?(args: ProcessOutputResultArgs): Promise<void> | void;
+    processOutputStep?(args: ProcessOutputStepArgs): Promise<void> | void;
+  }
+  export type InputProcessor = Processor;
+  export type OutputProcessor = Processor;
+  /** Either a processor or a processor-typed Workflow. */
+  export type InputProcessorOrWorkflow = Processor | Workflow;
+  export type OutputProcessorOrWorkflow = Processor | Workflow;
+
+  export interface ProcessInputArgs { messages: Message[]; requestContext: RequestContext; abort(reason?: string, metadata?: Record<string, unknown>): never; [key: string]: any }
+  export interface ProcessInputStepArgs extends ProcessInputArgs { step: any }
+  export interface ProcessOutputStreamArgs { part: any; requestContext: RequestContext; abort(reason?: string, metadata?: Record<string, unknown>): never; [key: string]: any }
+  export interface ProcessOutputResultArgs { result: AgentResult; requestContext: RequestContext; abort(reason?: string, metadata?: Record<string, unknown>): never; [key: string]: any }
+  export interface ProcessOutputStepArgs extends ProcessOutputResultArgs { step: AgentStepResult }
+
+  /** Tripwire shape raised when a processor aborts. */
+  export interface TripwireResult<TMetadata = Record<string, unknown>> {
+    reason: string;
+    metadata?: TMetadata;
+  }
+
+  /** Normalize unicode in input; strip control chars. */
+  export class UnicodeNormalizer implements Processor {
+    constructor(opts?: { stripControlChars?: boolean; form?: "NFC" | "NFD" | "NFKC" | "NFKD" });
+    readonly id: "unicode-normalizer";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** LLM-based moderation gate. Tripwires on violations. */
+  export class ModerationProcessor implements Processor {
+    constructor(opts: {
+      model: any;
+      categories?: string[];
+      strategy?: "block" | "warn" | "filter";
+      threshold?: number;
+      instructions?: string;
+    });
+    readonly id: "moderation";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Detect prompt-injection attempts. */
+  export class PromptInjectionDetector implements Processor {
+    constructor(opts: {
+      model: any;
+      strategy?: "block" | "rewrite" | "warn";
+      threshold?: number;
+      instructions?: string;
+    });
+    readonly id: "prompt-injection-detector";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Detect PII; redact / block / warn. */
+  export class PIIDetector implements Processor {
+    constructor(opts: {
+      model: any;
+      strategy?: "block" | "redact" | "warn";
+      detectionTypes?: Array<"email" | "phone" | "name" | "address" | "ssn" | "creditcard" | string>;
+      threshold?: number;
+      instructions?: string;
+    });
+    readonly id: "pii-detector";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+    processOutputResult(args: ProcessOutputResultArgs): Promise<void>;
+  }
+
+  /** Enforce language constraints on input. */
+  export class LanguageDetector implements Processor {
+    constructor(opts: {
+      model: any;
+      allowedLanguages?: string[];
+      blockedLanguages?: string[];
+      strategy?: "block" | "warn" | "translate";
+      threshold?: number;
+    });
+    readonly id: "language-detector";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Coerce output into a schema (post-generation). */
+  export class StructuredOutputProcessor implements Processor {
+    constructor(opts: {
+      schema: import("ai").ZodType;
+      model?: any;
+      instructions?: string;
+      maxRetries?: number;
+    });
+    readonly id: "structured-output";
+    readonly name: string;
+    processOutputResult(args: ProcessOutputResultArgs): Promise<void>;
+  }
+
+  /** Batch stream parts together to cut per-part overhead. */
+  export class BatchPartsProcessor implements Processor {
+    constructor(opts?: { batchSize?: number; flushIntervalMs?: number });
+    readonly id: "batch-parts";
+    readonly name: string;
+    processOutputStream(args: ProcessOutputStreamArgs): AsyncIterable<any>;
+  }
+
+  /** Enforce an output token budget. */
+  export class TokenLimiterProcessor implements Processor {
+    constructor(opts: { maxTokens: number; strategy?: "truncate" | "error" });
+    readonly id: "token-limiter";
+    readonly name: string;
+    processOutputStream(args: ProcessOutputStreamArgs): AsyncIterable<any>;
+  }
+
+  /** Scrub system-prompt leakage from output. */
+  export class SystemPromptScrubber implements Processor {
+    constructor(opts?: { model?: any; strategy?: "redact" | "rewrite" });
+    readonly id: "system-prompt-scrubber";
+    readonly name: string;
+    processOutputResult(args: ProcessOutputResultArgs): Promise<void>;
+  }
+
+  /** Filter / rename tool calls at inference time. */
+  export class ToolCallFilter implements Processor {
+    constructor(opts: {
+      allow?: string[];
+      deny?: string[];
+      rename?: Record<string, string>;
+    });
+    readonly id: "tool-call-filter";
+    readonly name: string;
+    processOutputStream(args: ProcessOutputStreamArgs): AsyncIterable<any>;
+  }
+
+  /** Inject AGENTS.md content as system context. */
+  export class AgentsMDInjector implements Processor {
+    constructor(opts?: {
+      path?: string;
+      maxTokens?: number;
+      position?: "system" | "prepend" | "append";
+    });
+    readonly id: "agents-md-injector";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Semantic tool search — activate a subset of tools per turn. */
+  export class ToolSearchProcessor implements Processor {
+    constructor(opts: {
+      topK?: number;
+      model?: any;
+      threshold?: number;
+    });
+    readonly id: "tool-search";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Inject skills as part of system context. */
+  export class SkillsProcessor implements Processor {
+    constructor(opts?: { format?: "xml" | "json"; [key: string]: any });
+    readonly id: "skills";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Semantic search over skills — activate per turn. */
+  export class SkillSearchProcessor implements Processor {
+    constructor(opts: { topK?: number; model?: any; threshold?: number });
+    readonly id: "skill-search";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  /** Inject workspace filesystem / sandbox instructions. */
+  export class WorkspaceInstructionsProcessor implements Processor {
+    constructor(opts?: { position?: "system" | "prepend" | "append" });
+    readonly id: "workspace-instructions";
+    readonly name: string;
+    processInput(args: ProcessInputArgs): Promise<void>;
+  }
+
+  // ── Storage + Vector abstract bases ────────────────────────────
+
+  /**
+   * Abstract base every Mastra storage backend extends. brainkit
+   * users typically don't implement this — reach for one of the
+   * concrete classes (`LibSQLStore`, `PostgresStore`, …). Declared
+   * here so `StorageInstance` users can narrow against real methods
+   * when they need to.
+   */
+  export abstract class MastraStorage implements StorageInstance {
+    readonly __storageType: string;
+    abstract getThreadById(opts: { threadId: string }): Promise<Thread | null>;
+    abstract saveThread(opts: { thread: Thread }): Promise<Thread>;
+    abstract saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    abstract getMessagesByThreadId(opts: { threadId: string; limit?: number }): Promise<Message[]>;
+    abstract deleteThread(threadId: string): Promise<void>;
+    abstract listThreads(opts?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
+    abstract close?(): Promise<void>;
+  }
+
+  /**
+   * Abstract base every Mastra vector backend extends.
+   * `LibSQLVector`, `PgVector`, `MongoDBVector` implement this.
+   */
+  export abstract class MastraVector implements VectorStoreInstance {
+    readonly __vectorType: string;
+    abstract createIndex(opts: { indexName: string; dimension: number; metric?: "cosine" | "euclidean" | "dotproduct" }): Promise<void>;
+    abstract listIndexes(): Promise<string[]>;
+    abstract describeIndex(indexName: string): Promise<any>;
+    abstract deleteIndex(indexName: string): Promise<void>;
+    abstract upsert(opts: { indexName: string; vectors: VectorEntry[]; ids?: string[]; metadata?: Record<string, unknown> }): Promise<string[]>;
+    abstract query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: VectorFilter; includeVector?: boolean }): Promise<QueryResult[]>;
+    abstract updateIndexById?(indexName: string, id: string, update: { vector?: number[]; metadata?: Record<string, unknown> }): Promise<void>;
+    abstract deleteIndexById?(indexName: string, id: string): Promise<void>;
+  }
+
+  // ── Observability ──────────────────────────────────────────────
+  //
+  // Mastra's observability stack. brainkit's own `modules/tracing`
+  // + `modules/audit` sit alongside; these types declare the
+  // Mastra-side surface so deployments can wire Mastra-native
+  // exporters (Langfuse / Braintrust / etc.) when the host kit
+  // doesn't own tracing.
+
+  /** Core observability coordinator. */
+  export class Observability {
+    constructor(config?: ObservabilityConfig);
+    readonly spans: any;
+    readonly metrics: any;
+    readonly exporters: any[];
+    recordSpan?(span: Span): void;
+    flush?(): Promise<void>;
+    shutdown?(): Promise<void>;
+  }
+
+  export interface ObservabilityConfig {
+    serviceName?: string;
+    exporters?: any[];
+    processors?: any[];
+    sampler?: { type: "always-on" | "always-off" | "ratio"; ratio?: number };
+    attributes?: Record<string, unknown>;
+  }
+
+  /** Span primitive — lifecycle is start → events → end. */
+  export interface Span {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: SpanKind;
+    readonly startTime: number;
+    readonly endTime?: number;
+    readonly attributes: Record<string, unknown>;
+    readonly status: SpanStatus;
+    readonly parentSpanId?: string;
+    readonly traceId: string;
+    setAttribute(key: string, value: unknown): void;
+    setStatus(status: SpanStatus): void;
+    addEvent(name: string, attributes?: Record<string, unknown>): void;
+    end(error?: unknown): void;
+  }
+
+  export type SpanKind = "internal" | "server" | "client" | "producer" | "consumer";
+  export interface SpanStatus {
+    code: "unset" | "ok" | "error";
+    message?: string;
+  }
+
+  export interface StartSpanOptions {
+    kind?: SpanKind;
+    attributes?: Record<string, unknown>;
+    parentSpanId?: string;
+  }
+
+  /** Default exporter — prints spans to stdout / a Logger. */
+  export class DefaultExporter {
+    constructor(opts?: { logger?: any; format?: "json" | "pretty" });
+    export(spans: Span[]): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  /** Batch spans then export; reduces per-span overhead. */
+  export class BatchSpanProcessor {
+    constructor(exporter: DefaultExporter | any, opts?: { maxBatchSize?: number; scheduledDelayMs?: number });
+    onStart(span: Span): void;
+    onEnd(span: Span): void;
+    shutdown(): Promise<void>;
+  }
+
+  /** Simple synchronous exporter — one span at a time. */
+  export class SimpleSpanProcessor {
+    constructor(exporter: DefaultExporter | any);
+    onStart(span: Span): void;
+    onEnd(span: Span): void;
+    shutdown(): Promise<void>;
+  }
+
+  /** Per-call tracing overrides (kept loose — providers vary). */
+  export interface TracingOptions {
+    enabled?: boolean;
+    serviceName?: string;
+    attributes?: Record<string, unknown>;
+    sampler?: ObservabilityConfig["sampler"];
+  }
+
+  /** Counter metric primitive. */
+  export interface Counter {
+    add(value: number, attributes?: Record<string, unknown>): void;
+  }
+  /** Gauge metric primitive. */
+  export interface Gauge {
+    set(value: number, attributes?: Record<string, unknown>): void;
+  }
+  /** Histogram metric primitive. */
+  export interface Histogram {
+    record(value: number, attributes?: Record<string, unknown>): void;
+  }
+
+  // ── Workspace (deeper) ─────────────────────────────────────────
+  //
+  // The Workspace class above wraps a filesystem + sandbox; the
+  // types below cover the individual components so users can
+  // compose their own (composite FS, mounted subtree, custom
+  // sandbox).
+
+  export abstract class MastraFilesystem {
+    abstract readFile(path: string): Promise<Uint8Array | string>;
+    abstract writeFile(path: string, data: Uint8Array | string): Promise<void>;
+    abstract listFiles(path: string): Promise<string[]>;
+    abstract stat(path: string): Promise<{ size: number; mtime: Date; isFile: boolean; isDirectory: boolean }>;
+    abstract deleteFile(path: string): Promise<void>;
+    abstract mkdir(path: string, opts?: { recursive?: boolean }): Promise<void>;
+    abstract exists(path: string): Promise<boolean>;
+  }
+
+  /** Filesystem that routes paths to different backends by prefix. */
+  export class CompositeFilesystem extends MastraFilesystem {
+    constructor(mounts: Record<string, MastraFilesystem>);
+    readFile(path: string): Promise<Uint8Array | string>;
+    writeFile(path: string, data: Uint8Array | string): Promise<void>;
+    listFiles(path: string): Promise<string[]>;
+    stat(path: string): Promise<{ size: number; mtime: Date; isFile: boolean; isDirectory: boolean }>;
+    deleteFile(path: string): Promise<void>;
+    mkdir(path: string, opts?: { recursive?: boolean }): Promise<void>;
+    exists(path: string): Promise<boolean>;
+  }
+
+  /** Abstract sandbox that exec'd commands run in. */
+  export abstract class MastraSandbox {
+    abstract spawn(command: string, args?: string[], options?: { cwd?: string; env?: Record<string, string> }): Promise<ProcessHandle>;
+    abstract exec(command: string, options?: { cwd?: string; timeout?: number }): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+    abstract shutdown(): Promise<void>;
+  }
+
+  /** Handle for an in-flight sandboxed process. */
+  export interface ProcessHandle {
+    readonly pid: number;
+    wait(): Promise<number>;
+    kill(signal?: string | number): void;
+    write(data: string | Uint8Array): Promise<void>;
+    readLine(): Promise<string | null>;
+    readonly stdout: AsyncIterable<Uint8Array>;
+    readonly stderr: AsyncIterable<Uint8Array>;
+  }
+
+  /** Workspace tool factories — reach for these instead of hand-rolling. */
+  export function createWorkspaceTools(config?: {
+    filesystem?: MastraFilesystem;
+    sandbox?: MastraSandbox;
+    readOnly?: boolean;
+  }): Record<string, Tool>;
+  export function readFileTool(opts?: any): Tool;
+  export function writeFileTool(opts?: any): Tool;
+  export function editFileTool(opts?: any): Tool;
+  export function listFilesTool(opts?: any): Tool;
+  export function deleteFileTool(opts?: any): Tool;
+  export function fileStatTool(opts?: any): Tool;
+  export function mkdirTool(opts?: any): Tool;
+  export function searchTool(opts?: any): Tool;
+  export function indexContentTool(opts?: any): Tool;
+  export function executeCommandTool(opts?: any): Tool;
+
+  // ── AI-SDK voice bridge ────────────────────────────────────────
+
+  /**
+   * Adapt an AI-SDK voice-capable model into a MastraVoice.
+   * Useful when a provider isn't shipped as a dedicated
+   * `@mastra/voice-*` package but exposes speak/listen via the
+   * AI SDK interface.
+   */
+  export function aisdkVoice(model: any, options?: { speaker?: string; [key: string]: any }): MastraVoice;
+
+  /** No-op voice used when none is configured. */
+  export class DefaultVoice implements MastraVoice {
+    constructor();
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
 }
