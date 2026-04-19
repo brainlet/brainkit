@@ -1692,8 +1692,20 @@ declare module "agent" {
 
   // ── Observability extras ────────────────────────────────────────
 
+  /**
+   * SpanOutputProcessor that redacts sensitive fields (api keys,
+   * tokens, passwords, …) from span attributes, input, output,
+   * metadata, and errorInfo before export.
+   */
   export class SensitiveDataFilter {
-    constructor(config?: { patterns?: RegExp[]; replacement?: string });
+    name: string;
+    constructor(options?: {
+      sensitiveFields?: string[];
+      redactionToken?: string;
+      redactionStyle?: "full" | "partial";
+    });
+    process(span: any): any;
+    shutdown(): Promise<void>;
   }
 
   // ── Voice providers ────────────────────────────────────────────
@@ -2239,26 +2251,20 @@ declare module "agent" {
     parentSpanId?: string;
   }
 
-  /** Default exporter — prints spans to stdout / a Logger. */
+  /**
+   * Storage-backed exporter. Buffers observability events and flushes
+   * them to the configured ObservabilityStorage backend in batches.
+   */
   export class DefaultExporter {
-    constructor(opts?: { logger?: any; format?: "json" | "pretty" });
-    export(spans: Span[]): Promise<void>;
-    shutdown(): Promise<void>;
-  }
-
-  /** Batch spans then export; reduces per-span overhead. */
-  export class BatchSpanProcessor {
-    constructor(exporter: DefaultExporter | any, opts?: { maxBatchSize?: number; scheduledDelayMs?: number });
-    onStart(span: Span): void;
-    onEnd(span: Span): void;
-    shutdown(): Promise<void>;
-  }
-
-  /** Simple synchronous exporter — one span at a time. */
-  export class SimpleSpanProcessor {
-    constructor(exporter: DefaultExporter | any);
-    onStart(span: Span): void;
-    onEnd(span: Span): void;
+    constructor(config?: {
+      maxBatchSize?: number;
+      maxBufferSize?: number;
+      maxBatchWaitMs?: number;
+      maxRetries?: number;
+      retryDelayMs?: number;
+      strategy?: "auto" | "sync" | "async";
+    });
+    flush(): Promise<void>;
     shutdown(): Promise<void>;
   }
 
