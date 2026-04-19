@@ -1,7 +1,7 @@
 // Package voicerealtime hosts suite tests for the WebSocket-backed
-// realtime voice path. Today the domain is a stub; future tests will
-// boot an httptest WebSocket echo server and drive the OpenAIRealtime
-// client fixture against it.
+// realtime voice path. Boots a local WebSocket echo server and drives
+// OpenAIRealtimeVoice.connect() at it to validate the full TCP →
+// WebSocket upgrade path from .ts through jsbridge.
 package voicerealtime
 
 import (
@@ -12,6 +12,6 @@ import (
 
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("voice-realtime", func(t *testing.T) {
-		t.Run("scaffold_placeholder", func(t *testing.T) { testScaffoldPlaceholder(t, env) })
+		t.Run("ws_echo_connect", func(t *testing.T) { testWSEchoConnect(t, env) })
 	})
 }

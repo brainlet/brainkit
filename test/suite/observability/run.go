@@ -1,7 +1,7 @@
-// Package observability hosts suite tests that capture exported spans
-// from the .ts fixtures via a test-harness ObservabilityStorage. Today
-// the domain is a stub; it anchors the contract so the captured-span
-// graph assertions can land here.
+// Package observability hosts suite tests that exercise the Mastra
+// Observability surface end-to-end from .ts: start a span, add
+// attributes, end it, then retrieve the recorded trace through the
+// public Observability API.
 package observability
 
 import (
@@ -12,6 +12,6 @@ import (
 
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("observability", func(t *testing.T) {
-		t.Run("scaffold_placeholder", func(t *testing.T) { testScaffoldPlaceholder(t, env) })
+		t.Run("span_lifecycle", func(t *testing.T) { testSpanLifecycle(t, env) })
 	})
 }
