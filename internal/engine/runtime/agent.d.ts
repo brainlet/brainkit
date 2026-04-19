@@ -1617,26 +1617,72 @@ declare module "agent" {
   }
 
   export function createAnswerRelevancyScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createAnswerSimilarityScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createFaithfulnessScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createBiasScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createHallucinationScorer(opts: LLMJudgeScorerOptions): Scorer;
+  export function createAnswerSimilarityScorer(opts: {
+    model: any;
+    options?: {
+      requireGroundTruth?: boolean;
+      semanticThreshold?: number;
+      exactMatchBonus?: number;
+      missingPenalty?: number;
+      contradictionPenalty?: number;
+      extraInfoPenalty?: number;
+      scale?: number;
+    };
+  }): Scorer;
+  export function createFaithfulnessScorer(opts: {
+    model: any;
+    options?: { scale?: number; context?: string[] };
+  }): Scorer;
+  export function createBiasScorer(opts: { model: any; options?: { scale?: number } }): Scorer;
+  export function createHallucinationScorer(opts: {
+    model: any;
+    options?: { scale?: number; context?: string[]; getContext?: (p: any) => string[] | Promise<string[]> };
+  }): Scorer;
   export function createToxicityScorer(opts: LLMJudgeScorerOptions): Scorer;
-  export function createContextPrecisionScorer(opts: LLMJudgeScorerOptions): Scorer;
-  // The prebuilt LLM-judge scorers Mastra exports suffixed with
-  // `LLM`; brainkit re-exports them under the same name so
-  // consumers can tell the judge variant apart from the
-  // code-only scorers above at a glance.
-  export function createContextRelevanceScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
-  export function createNoiseSensitivityScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
-  export function createPromptAlignmentScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
-  export function createToolCallAccuracyScorerLLM(opts: LLMJudgeScorerOptions): Scorer;
+  export function createContextPrecisionScorer(opts: {
+    model: any;
+    options: { scale?: number; context?: string[]; contextExtractor?: (input: any, output: any) => string[] };
+  }): Scorer;
+  // Mastra suffixes the LLM-judge variants with `LLM`; brainkit
+  // mirrors that so consumers can tell the judge variant apart
+  // from the code-only scorers at a glance.
+  export function createContextRelevanceScorerLLM(opts: {
+    model: any;
+    options: {
+      scale?: number;
+      context?: string[];
+      contextExtractor?: (input: any, output: any) => string[];
+      penalties?: {
+        unusedHighRelevanceContext?: number;
+        missingContextPerItem?: number;
+        maxMissingContextPenalty?: number;
+      };
+    };
+  }): Scorer;
+  export function createNoiseSensitivityScorerLLM(opts: {
+    model: any;
+    options: {
+      baselineResponse: string;
+      noisyQuery: string;
+      noiseType?: string;
+      scoring?: {
+        impactWeights?: Record<string, number>;
+        penalties?: { majorIssuePerItem?: number; maxMajorIssuePenalty?: number };
+        discrepancyThreshold?: number;
+      };
+    };
+  }): Scorer;
+  export function createPromptAlignmentScorerLLM(opts: {
+    model: any;
+    options?: { scale?: number; evaluationMode?: "user" | "system" | "both" };
+  }): Scorer;
+  export function createToolCallAccuracyScorerLLM(opts: { model: any; availableTools: any[] }): Scorer;
 
   export function createCompletenessScorer(): Scorer;
-  export function createContentSimilarityScorer(): Scorer;
+  export function createContentSimilarityScorer(opts?: { ignoreCase?: boolean; ignoreWhitespace?: boolean }): Scorer;
   export function createKeywordCoverageScorer(): Scorer;
   export function createTextualDifferenceScorer(): Scorer;
-  export function createToneScorer(): Scorer;
+  export function createToneScorer(opts?: { referenceTone?: string }): Scorer;
 
   // ── Observability extras ────────────────────────────────────────
 
