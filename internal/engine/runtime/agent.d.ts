@@ -1300,17 +1300,12 @@ declare module "agent" {
     static fromText(text: string, metadata?: Record<string, unknown>): MDocument;
     static fromMarkdown(markdown: string, metadata?: Record<string, unknown>): MDocument;
     static fromHTML(html: string, metadata?: Record<string, unknown>): MDocument;
-    static fromJSON(json: string | Record<string, unknown>, metadata?: Record<string, unknown>): MDocument;
-    /** PDF extraction is provider-dependent; source is a path or Buffer. */
-    static fromPDF(source: string | Uint8Array, metadata?: Record<string, unknown>): MDocument;
-    /** Docx extraction; source is a path or Buffer. */
-    static fromDocx(source: string | Uint8Array, metadata?: Record<string, unknown>): MDocument;
-    static fromCSV(csv: string, metadata?: Record<string, unknown>): MDocument;
+    static fromJSON(jsonString: string, metadata?: Record<string, unknown>): MDocument;
 
     chunk(options?: ChunkingConfig): Promise<DocumentChunk[]>;
-    getText(): string;
+    getText(): string[];
     getDocs(): DocumentChunk[];
-    getMetadata(): Record<string, unknown>;
+    getMetadata(): Record<string, unknown>[];
   }
 
   /**
@@ -1325,7 +1320,18 @@ declare module "agent" {
     | { strategy: "markdown"; headers?: [string, string][] | Record<string, string>; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
     | { strategy: "html"; headers?: [string, string][] | Record<string, string>; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
     | { strategy: "sentence"; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig }
-    | { strategy: "semantic"; threshold?: number; embeddingModel?: any; extract?: ChunkExtractConfig }
+    | {
+        strategy: "semantic-markdown";
+        size?: number;
+        maxSize?: number;
+        overlap?: number;
+        joinThreshold?: number;
+        encodingName?: string;
+        modelName?: string;
+        allowedSpecial?: "all" | Set<string>;
+        disallowedSpecial?: "all" | Set<string>;
+        extract?: ChunkExtractConfig;
+      }
     | { strategy: "json"; size?: number; maxSize?: number; overlap?: number; convertLists?: boolean; extract?: ChunkExtractConfig }
     | { strategy: "latex"; size?: number; maxSize?: number; overlap?: number; extract?: ChunkExtractConfig };
 
