@@ -13,6 +13,14 @@ import { UpstashStore } from '@mastra/upstash';
 // TCP-based stores — require jsbridge/net.go polyfill at runtime
 import { PostgresStore, PgVector } from '@mastra/pg';
 import { MongoDBStore, MongoDBVector } from '@mastra/mongodb';
+// PineconeVector / ChromaVector / QdrantVector not exposed — their
+// bundles use TypeScript's `__extends` downlevel helper on classes
+// extending `Error`. At bytecode init the `this.constructor = d`
+// line throws "TypeError: 'constructor' is read-only" against the
+// SES-hardened `%Error%.prototype`. Exposing them needs either an
+// upstream switch to native `class X extends Error` or a bundle-wide
+// post-process patch to wrap the assignment in try/catch — both
+// tracked in brainkit-maps/knowledge/ses-extends-error.md.
 // With the zod-unify esbuild plugin, 'zod' resolves to 'zod/v4'.
 // ONE Zod version everywhere — z.toJSONSchema exists because v4 includes it.
 import { z, toJSONSchema } from 'zod';
