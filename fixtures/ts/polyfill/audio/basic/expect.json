@@ -1,0 +1,8 @@
+{
+  "hasAudioClass": true,
+  "initiallyPaused": true,
+  "endedBeforePlay": true,
+  "endedAfterPlay": true,
+  "endedEventFired": true,
+  "pausedAfterPlay": true
+}
