@@ -40,8 +40,18 @@ const sesLockdownJS = `(function() {
 })();`
 
 // LoadBundle evaluates the agent-embed bundle in the given bridge.
-// Loading order: globals → SES polyfills → SES → lockdown → Mastra bundle.
-// After loading, globalThis.__agent_embed is available with Agent, createTool, and Mastra.
+// Loading order: globals → SES polyfills → SES UMD → Mastra bundle → lockdown.
+//
+// Ordering note: the Mastra bundle evaluates BEFORE lockdown so classes
+// that extend Error (Pinecone, Chroma, Qdrant) and libraries that mutate
+// intrinsics during init (mammoth's browser build) can complete their
+// prototype-chain setup against writable intrinsics. After the bundle
+// finishes registering its exports on globalThis, lockdown freezes every
+// intrinsic — fixtures deployed later into Compartments see the
+// hardened view, exactly as before.
+//
+// After loading, globalThis exposes Agent, createTool, Mastra + every
+// vector backend and RAG parser.
 func LoadBundle(b *jsbridge.Bridge) error {
 	// 1. Node.js/browser global polyfills (process, Buffer, etc.)
 	setup, err := b.Eval("agent-embed-setup.js", runtimeGlobalsJS)
@@ -57,35 +67,36 @@ func LoadBundle(b *jsbridge.Bridge) error {
 	}
 	sp.Free()
 
-	// 3. SES UMD (provides Compartment, harden, lockdown)
+	// 3. SES UMD (provides Compartment, harden, lockdown — but don't lock down yet)
 	sv, err := b.Eval("ses.umd.js", sesSource)
 	if err != nil {
 		return fmt.Errorf("agent-embed: SES load: %w", err)
 	}
 	sv.Free()
 
-	// 4. Call lockdown() — freezes intrinsics, enables Compartment isolation
-	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
-	if err != nil {
-		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
-	}
-	lv.Free()
-
-	// 5. Mastra bundle (Agent, createTool, AI SDK, etc.)
+	// 4. Mastra bundle (Agent, createTool, AI SDK, vector backends, RAG parsers).
+	//    Evaluated BEFORE lockdown so __extends-style prototype writes on
+	//    Error subclasses succeed. See knowledge/ses-extends-error.md.
 	if len(bundleBytecode) > 0 {
 		val, err := b.EvalBytecode(bundleBytecode)
 		if err != nil {
 			return fmt.Errorf("agent-embed: load bytecode: %w", err)
 		}
 		val.Free()
-		return nil
+	} else {
+		val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
+		if err != nil {
+			return fmt.Errorf("agent-embed: load bundle: %w", err)
+		}
+		val.Free()
 	}
 
-	val, err := b.EvalAsync("agent-embed-bundle.js", bundleSource)
+	// 5. Call lockdown() — freezes intrinsics now that bundle init is done.
+	lv, err := b.Eval("ses-lockdown.js", sesLockdownJS)
 	if err != nil {
-		return fmt.Errorf("agent-embed: load bundle: %w", err)
+		return fmt.Errorf("agent-embed: SES lockdown: %w", err)
 	}
-	val.Free()
+	lv.Free()
 	return nil
 }
 

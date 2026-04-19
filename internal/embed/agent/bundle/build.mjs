@@ -659,12 +659,17 @@ import { readFileSync } from "node:fs";
     console.log(`Patched getExeca: uses __execa_polyfill`);
   }
 
-  // Patch @mastra/rag validation: z.function() → z.any() (Zod v4 compat)
-  const funcPattern = 'lengthFunction:s.optional(s.function())';
-  if (bundle.includes(funcPattern)) {
-    bundle = bundle.replace(funcPattern, 'lengthFunction:s.optional(s.any())');
+  // Patch @mastra/rag validation: z.function() → z.any() (Zod v4 compat).
+  // The minifier picks a different short identifier per rebuild, so match
+  // whatever name it used this pass.
+  const funcPattern = /lengthFunction:([a-zA-Z_$][a-zA-Z_$0-9]*)\.optional\(\1\.function\(\)\)/;
+  const funcMatch = bundle.match(funcPattern);
+  if (funcMatch) {
+    const v = funcMatch[1];
+    const replacement = `lengthFunction:${v}.optional(${v}.any())`;
+    bundle = bundle.replace(funcPattern, replacement);
     writeFileSync("../agent_embed_bundle.js", bundle);
-    console.log('Patched: z.function() → z.any() for RAG validation (Zod v4 compat)');
+    console.log(`Patched: z.function() → z.any() for RAG validation (Zod v4 compat, minifier used '${v}')`);
   }
 
   // Patch getTiktoken() to use getEncoding('o200k_base') with fallback

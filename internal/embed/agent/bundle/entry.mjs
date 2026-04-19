@@ -13,14 +13,11 @@ import { UpstashStore } from '@mastra/upstash';
 // TCP-based stores — require jsbridge/net.go polyfill at runtime
 import { PostgresStore, PgVector } from '@mastra/pg';
 import { MongoDBStore, MongoDBVector } from '@mastra/mongodb';
-// PineconeVector / ChromaVector / QdrantVector not exposed — their
-// bundles use TypeScript's `__extends` downlevel helper on classes
-// extending `Error`. At bytecode init the `this.constructor = d`
-// line throws "TypeError: 'constructor' is read-only" against the
-// SES-hardened `%Error%.prototype`. Exposing them needs either an
-// upstream switch to native `class X extends Error` or a bundle-wide
-// post-process patch to wrap the assignment in try/catch — both
-// tracked in brainkit-maps/knowledge/ses-extends-error.md.
+// Managed vector backends. Each extends Error via older TS __extends —
+// safe now because the bundle eval precedes SES lockdown.
+import { PineconeVector } from '@mastra/pinecone';
+import { ChromaVector } from '@mastra/chroma';
+import { QdrantVector } from '@mastra/qdrant';
 // With the zod-unify esbuild plugin, 'zod' resolves to 'zod/v4'.
 // ONE Zod version everywhere — z.toJSONSchema exists because v4 includes it.
 import { z, toJSONSchema } from 'zod';
@@ -89,11 +86,35 @@ MDocument.fromCSV = function fromCSV(csv, metadata) {
     .join('\n');
   return MDocument.fromText(text, metadata || {});
 };
-// MDocument.fromDocx + fromPDF NOT exposed — mammoth's browser build
-// and every tried PDF parser (pdfjs-dist, pdf-parse) trip SES-hardened
-// intrinsics at bundle init ("object is not extensible" /
-// "'constructor' is read-only"). Tracked alongside the vector-package
-// blocker in brainkit-maps/knowledge/ses-extends-error.md.
+// MDocument.fromDocx extension — mammoth's browser build needs writable
+// intrinsics during init, which the reorder now allows.
+import mammoth from 'mammoth/mammoth.browser.js';
+MDocument.fromDocx = async function fromDocx(source, metadata) {
+  let arrayBuffer;
+  if (source instanceof ArrayBuffer) {
+    arrayBuffer = source;
+  } else if (source && typeof source === 'object' && source.buffer instanceof ArrayBuffer) {
+    arrayBuffer = source.buffer.slice(
+      source.byteOffset || 0,
+      (source.byteOffset || 0) + source.byteLength,
+    );
+  } else if (typeof source === 'string') {
+    const bin = atob(source);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    arrayBuffer = u8.buffer;
+  } else {
+    throw new TypeError('MDocument.fromDocx: source must be ArrayBuffer, Uint8Array, or base64 string');
+  }
+  const { value } = await mammoth.extractRawText({ arrayBuffer });
+  return MDocument.fromText(value || '', metadata || {});
+};
+// MDocument.fromPDF stays unimplemented — pdfjs-dist needs a Worker
+// and DOM canvas that brainkit's jsbridge doesn't polyfill yet.
+// MDocument.fromPDF stays unimplemented — every PDF library ships
+// either worker-thread requirements (pdfjs-dist) or DOM canvas calls
+// that brainkit's jsbridge doesn't cover. Tracked in
+// brainkit-maps/knowledge/ses-extends-error.md.
 
 // Observability — tracing, spans, exporters
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
@@ -243,6 +264,9 @@ globalThis.__agent_embed = {
   PgVector,
   MongoDBStore,
   MongoDBVector,
+  PineconeVector,
+  ChromaVector,
+  QdrantVector,
   z,
   embed,
   embedMany,

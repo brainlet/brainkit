@@ -1168,6 +1168,42 @@ declare module "agent" {
     query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
   }
 
+  /** Pinecone serverless / pod-based vector store. */
+  export class PineconeVector implements VectorStoreInstance {
+    readonly __vectorType: "pinecone";
+    constructor(config: { apiKey: string; environment?: string; controllerHostUrl?: string });
+    createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown>; namespace?: string }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any; namespace?: string }): Promise<VectorQueryResult[]>;
+  }
+
+  /** Chroma — open-source vector DB. */
+  export class ChromaVector implements VectorStoreInstance {
+    readonly __vectorType: "chroma";
+    constructor(config: { path?: string; auth?: { provider?: string; credentials?: string } });
+    createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown>; documents?: string[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any }): Promise<VectorQueryResult[]>;
+  }
+
+  /** Qdrant — open-source vector DB. */
+  export class QdrantVector implements VectorStoreInstance {
+    readonly __vectorType: "qdrant";
+    constructor(config: { url: string; apiKey?: string; https?: boolean });
+    createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
+    listIndexes(): Promise<string[]>;
+    describeIndex(indexName: string): Promise<any>;
+    deleteIndex(indexName: string): Promise<void>;
+    upsert(opts: { indexName: string; vectors: VectorEntry[]; metadata?: Record<string, unknown>; ids?: string[] }): Promise<string[]>;
+    query(opts: { indexName: string; queryVector: number[]; topK?: number; filter?: any; includeVector?: boolean }): Promise<VectorQueryResult[]>;
+  }
+
   // ── Embedding model router ────────────────────────────────────
 
   /** Routes "provider/model-id" strings to embedding model instances. */
@@ -1307,6 +1343,13 @@ declare module "agent" {
      * brainkit bundle; not part of upstream Mastra.
      */
     static fromCSV(csv: string, metadata?: Record<string, unknown>): MDocument;
+    /**
+     * Parse a .docx file (zip + xml) via mammoth's browser build and
+     * return an MDocument over the extracted plain text. Source is an
+     * ArrayBuffer, Uint8Array, or base64 string. Added by the brainkit
+     * bundle; not part of upstream Mastra.
+     */
+    static fromDocx(source: ArrayBuffer | Uint8Array | string, metadata?: Record<string, unknown>): Promise<MDocument>;
 
     chunk(options?: ChunkingConfig): Promise<DocumentChunk[]>;
     getText(): string[];
