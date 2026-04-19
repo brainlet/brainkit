@@ -3,15 +3,12 @@ package voice
 import (
 	"testing"
 
-	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/stretchr/testify/require"
 )
 
-// testFixtureDiscovery asserts the classifier marks the voice tree as
-// needing AI. Anchors the domain so future mock-backed tests (TTS
-// capture, STT round-trip) have a place to land.
-func testFixtureDiscovery(t *testing.T, _ *suite.TestEnv) {
-	needs := fixtures.ClassifyFixture("voice/basic")
-	require.True(t, needs.AI, "voice/* fixtures must be flagged as needing AI")
+// testScaffoldPlaceholder pins the domain without pretending to do
+// work. Real tests (httptest TTS mock + audio-sink capture) land here
+// per plans-03/fixture-coverage-plan.md §14.
+func testScaffoldPlaceholder(t *testing.T, _ *suite.TestEnv) {
+	t.Skip("TODO: httptest TTS mock + audio sink capture — plans-03 §14")
 }

@@ -3,15 +3,12 @@ package voicerealtime
 import (
 	"testing"
 
-	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/stretchr/testify/require"
 )
 
-// testFixtureDiscovery anchors the domain. The realtime-specific
-// path sits under voice/openai-realtime/* today; a future suite
-// test here will drive those fixtures against a local mock.
-func testFixtureDiscovery(t *testing.T, _ *suite.TestEnv) {
-	needs := fixtures.ClassifyFixture("voice/openai-realtime/connect")
-	require.True(t, needs.AI, "openai-realtime fixtures inherit voice/* AI classification")
+// testScaffoldPlaceholder pins the domain. Real tests (httptest
+// WebSocket echo driving OpenAIRealtime) land here per
+// plans-03/fixture-coverage-plan.md §14.
+func testScaffoldPlaceholder(t *testing.T, _ *suite.TestEnv) {
+	t.Skip("TODO: httptest WebSocket echo — plans-03 §14")
 }

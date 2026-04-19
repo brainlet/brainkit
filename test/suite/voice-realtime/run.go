@@ -12,6 +12,6 @@ import (
 
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("voice-realtime", func(t *testing.T) {
-		t.Run("fixture_discovery", func(t *testing.T) { testFixtureDiscovery(t, env) })
+		t.Run("scaffold_placeholder", func(t *testing.T) { testScaffoldPlaceholder(t, env) })
 	})
 }

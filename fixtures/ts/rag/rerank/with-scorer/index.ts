@@ -1,7 +1,8 @@
 // Test: rerankWithScorer() surface with a custom RelevanceScoreProvider.
 // Full execution (executeRerank -> big.js weight math -> Promise.all)
-// triggers a native SIGBUS in QuickJS today; shipping the surface
-// contract so a fix is a one-line deepening.
+// triggers a native SIGBUS in QuickJS today — see
+// brainkit-maps/knowledge/rerank-sigbus-bigjs.md for repro.
+// TODO(bug): restore end-to-end reranking once the SIGBUS is resolved.
 import { rerankWithScorer } from "agent";
 import { output } from "kit";
 
