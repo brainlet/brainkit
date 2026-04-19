@@ -5,6 +5,8 @@ Zero legacy
 100% greenfield
 Only final state code
 
+**I need your assistance to think**, you need to be smarter than me therefore more pro-active.
+
 # Superpower
 
 The folder is on `internal/docs/superpowers` 
