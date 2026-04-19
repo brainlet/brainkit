@@ -109,12 +109,56 @@ MDocument.fromDocx = async function fromDocx(source, metadata) {
   const { value } = await mammoth.extractRawText({ arrayBuffer });
   return MDocument.fromText(value || '', metadata || {});
 };
-// MDocument.fromPDF stays unimplemented — pdfjs-dist needs a Worker
-// and DOM canvas that brainkit's jsbridge doesn't polyfill yet.
-// MDocument.fromPDF stays unimplemented — every PDF library ships
-// either worker-thread requirements (pdfjs-dist) or DOM canvas calls
-// that brainkit's jsbridge doesn't cover. Tracked in
-// brainkit-maps/knowledge/ses-extends-error.md.
+// MDocument.fromPDF via pdfjs-dist legacy build. Worker disabled —
+// brainkit's QuickJS runtime is single-threaded so pdfjs runs inline.
+// dom-stubs must import BEFORE pdfjs so DOMMatrix/Path2D/ImageData are
+// in place when pdfjs evaluates its top-level references.
+import './dom-stubs.mjs';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+// pdfjs picks the main-thread fake-worker path when
+// globalThis.pdfjsWorker.WorkerMessageHandler is available — skipping
+// the dynamic import of a worker script that our single-threaded
+// QuickJS runtime can't execute.
+globalThis.pdfjsWorker = { WorkerMessageHandler: pdfjsWorker.WorkerMessageHandler };
+MDocument.fromPDF = async function fromPDF(source, metadata) {
+  let data;
+  if (source instanceof Uint8Array) {
+    data = source;
+  } else if (source instanceof ArrayBuffer) {
+    data = new Uint8Array(source);
+  } else if (source && typeof source === 'object' && source.buffer instanceof ArrayBuffer) {
+    data = new Uint8Array(source.buffer, source.byteOffset || 0, source.byteLength);
+  } else if (typeof source === 'string') {
+    const bin = atob(source);
+    data = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+  } else {
+    throw new TypeError('MDocument.fromPDF: source must be ArrayBuffer, Uint8Array, or base64 string');
+  }
+  // pdfjs transfers ArrayBuffer ownership on its inbound fetch path —
+  // pass a detached copy so callers' buffer (and our checks) stay
+  // intact, and so pdfjs's size check sees the true byteLength.
+  const dataCopy = new Uint8Array(data.byteLength);
+  dataCopy.set(data);
+  const doc = await pdfjs.getDocument({
+    data: dataCopy,
+    disableWorker: true,
+    disableFontFace: true,
+    useSystemFonts: false,
+    isEvalSupported: false,
+    useWorkerFetch: false,
+    verbosity: 0,
+  }).promise;
+  const pages = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    pages.push(tc.items.map((it) => it.str || '').join(' '));
+  }
+  await doc.destroy();
+  return MDocument.fromText(pages.join('\n\n'), metadata || {});
+};
 
 // Observability — tracing, spans, exporters
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';

@@ -1350,6 +1350,14 @@ declare module "agent" {
      * bundle; not part of upstream Mastra.
      */
     static fromDocx(source: ArrayBuffer | Uint8Array | string, metadata?: Record<string, unknown>): Promise<MDocument>;
+    /**
+     * Parse a .pdf file via pdfjs-dist legacy with workers disabled
+     * (brainkit's QuickJS runtime is single-threaded). Extracts text
+     * from every page and returns an MDocument over the concatenation.
+     * Source is an ArrayBuffer, Uint8Array, or base64 string. Added
+     * by the brainkit bundle; not part of upstream Mastra.
+     */
+    static fromPDF(source: ArrayBuffer | Uint8Array | string, metadata?: Record<string, unknown>): Promise<MDocument>;
 
     chunk(options?: ChunkingConfig): Promise<DocumentChunk[]>;
     getText(): string[];
