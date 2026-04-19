@@ -721,8 +721,8 @@ declare module "agent" {
     dountil(step: StepLike, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
     /** Pause execution for a duration (ms). */
     sleep(ms: number | { duration: number }): WorkflowBuilder;
-    /** Pause execution until a specific date/time. */
-    sleepUntil(config: { date: Date | string }): WorkflowBuilder;
+    /** Pause execution until a specific date/time. Mastra passes the Date directly. */
+    sleepUntil(date: Date | ((ctx: any) => Date | Promise<Date>)): WorkflowBuilder;
     /**
      * Remap inputs / outputs between steps — useful when the
      * previous step emits a different shape than the next step
