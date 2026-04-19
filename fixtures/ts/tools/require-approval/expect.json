@@ -1,0 +1,5 @@
+{
+  "id": "guarded-op",
+  "requiresApproval": true,
+  "hasExecute": true
+}
