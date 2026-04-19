@@ -697,15 +697,28 @@ declare module "agent" {
     resumeData?: Record<string, any>;
   }
 
+  /**
+   * Anything step-shaped Mastra's builder accepts — a formal
+   * `Step`, an inline `async ({inputData}) => ...` executor,
+   * or a wrapped tool / agent. Loose on purpose — Mastra's
+   * runtime resolves the callable at execution time.
+   */
+  export type StepLike = Step | ((context: StepExecutionContext & { inputData: any }) => any | Promise<any>);
+
   export interface WorkflowBuilder {
-    then(step: Step): WorkflowBuilder;
-    parallel(steps: Step[]): WorkflowBuilder;
-    branch(config: BranchConfig | Step[][]): WorkflowBuilder;
-    foreach(config: ForEachConfig): WorkflowBuilder;
+    then(step: StepLike): WorkflowBuilder;
+    parallel(steps: StepLike[]): WorkflowBuilder;
+    /**
+     * Branch on a predicate or a pair list of
+     * `[condition, step]`. Accepts loose shapes — the runtime
+     * does the discrimination.
+     */
+    branch(config: BranchConfig | Array<[StepLike, StepLike]> | StepLike[][]): WorkflowBuilder;
+    foreach(config: ForEachConfig | StepLike): WorkflowBuilder;
     /** Loop while condition is true (check runs before each step). */
-    dowhile(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
+    dowhile(step: StepLike, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
     /** Loop until condition is met (check runs after each step). */
-    dountil(step: Step, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
+    dountil(step: StepLike, condition?: (context: StepExecutionContext) => boolean | Promise<boolean>): WorkflowBuilder;
     /** Pause execution for a duration (ms). */
     sleep(ms: number | { duration: number }): WorkflowBuilder;
     /** Pause execution until a specific date/time. */
@@ -758,10 +771,10 @@ declare module "agent" {
    * `WorkflowBuilder` chaining for compile-time type inference.
    */
   export interface Workflow<
-    TInput = unknown,
-    TOutput = unknown,
-    TState = unknown,
-    TRequestContext = unknown,
+    TInput = any,
+    TOutput = any,
+    TState = any,
+    TRequestContext = any,
   > {
     readonly id?: string;
     readonly inputSchema?: import("ai").ZodType;
@@ -838,7 +851,7 @@ declare module "agent" {
     error?: { message: string; cause?: unknown };
   }
 
-  export interface StepRunResult<TOutput = unknown> {
+  export interface StepRunResult<TOutput = any> {
     status: "completed" | "suspended" | "failed" | "skipped";
     output?: TOutput;
     /** Populated when status === "suspended". */
@@ -887,8 +900,10 @@ declare module "agent" {
     id: string;
     resourceId: string;
     title?: string;
-    createdAt: Date;
-    updatedAt: Date;
+    /** Set by the storage layer on save; optional on construction. */
+    createdAt?: Date;
+    /** Set by the storage layer on save; optional on construction. */
+    updatedAt?: Date;
     metadata?: Record<string, unknown>;
   }
 
@@ -975,13 +990,10 @@ declare module "agent" {
     | { enabled: false }
     | {
         enabled: true;
-        template: string;
-        scope?: "thread" | "resource";
-        version?: "vnext";
-      }
-    | {
-        enabled: true;
-        schema: import("ai").ZodType;
+        /** Optional freeform markdown template. */
+        template?: string;
+        /** Optional typed schema (Mastra narrows extracted data). */
+        schema?: import("ai").ZodType;
         scope?: "thread" | "resource";
         version?: "vnext";
       };
@@ -1021,11 +1033,20 @@ declare module "agent" {
   /** Marker type for resolved storage instances. */
   export interface StorageInstance {
     /** @internal */ readonly __storageType: string;
+    /** Friendly name — set by kit.Storage() on resolution. */
+    readonly name?: string;
   }
 
   export class InMemoryStore implements StorageInstance {
     readonly __storageType: "memory";
+    readonly name?: string;
     constructor(config?: { id?: string });
+    /**
+     * Access a domain-specific sub-store — `memory`,
+     * `workflow`, `evals`, `scores`, `audit`, etc. Matches
+     * Mastra's `MastraStorage.getStore` contract.
+     */
+    getStore(storeName: string): Promise<any | undefined>;
   }
 
   export class LibSQLStore implements StorageInstance {
@@ -1135,6 +1156,10 @@ declare module "agent" {
   export class MongoDBVector implements VectorStoreInstance {
     readonly __vectorType: "mongodb";
     constructor(config: { id?: string; uri: string; dbName?: string });
+    /** Opens the underlying MongoDB driver connection. */
+    connect(): Promise<void>;
+    /** Closes the underlying connection. */
+    disconnect(): Promise<void>;
     createIndex(opts: { indexName: string; dimension: number; metric?: string }): Promise<void>;
     listIndexes(): Promise<string[]>;
     describeIndex(indexName: string): Promise<any>;
@@ -1166,7 +1191,7 @@ declare module "agent" {
    * const id = rc.get("userId");     // typed: string | undefined
    * ```
    */
-  export class RequestContext<Values extends Record<string, any> = Record<string, any>> {
+  export class RequestContext<Values extends Record<string, any> = any> {
     constructor(initial?: Iterable<[keyof Values, Values[keyof Values]]> | RequestContext<Values>);
 
     set<K extends keyof Values>(key: K, value: Values[K]): this;
@@ -1221,7 +1246,7 @@ declare module "agent" {
   // ── Workspace ─────────────────────────────────────────────────
 
   export class Workspace {
-    constructor(config: WorkspaceConfig);
+    constructor(config?: WorkspaceConfig);
     init(): Promise<void>;
     destroy(): Promise<void>;
     search(query: string, options?: { limit?: number }): Promise<WorkspaceSearchResult[]>;
@@ -1243,7 +1268,7 @@ declare module "agent" {
   }
 
   export class LocalFilesystem {
-    constructor(config: { basePath: string; allowedPaths?: string[]; contained?: boolean });
+    constructor(config?: { basePath?: string; allowedPaths?: string[]; contained?: boolean });
   }
 
   export class LocalSandbox {

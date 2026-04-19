@@ -66,8 +66,10 @@ declare module "ai" {
   // ── CallSettings (shared across all functions) ────────────────
 
   export interface CallSettings {
-    /** Maximum number of tokens to generate. */
+    /** Maximum number of tokens to generate (AI SDK v5 name). */
     maxOutputTokens?: number;
+    /** Maximum number of tokens to generate (AI SDK v4 name — alias). */
+    maxTokens?: number;
     /** Temperature setting. Range depends on provider/model. */
     temperature?: number;
     /** Nucleus sampling (0-1). */
@@ -191,10 +193,18 @@ declare module "ai" {
     /** @internal */ readonly __brand: "EmbeddingModel";
   }
 
-  /** Tool definition for AI SDK. */
+  /**
+   * Tool definition for AI SDK. Either the v4 `parameters`
+   * field or the v5 `inputSchema` field carries the schema —
+   * both are optional because callers sometimes construct
+   * tools incrementally.
+   */
   export interface ToolDefinition {
     description?: string;
-    parameters: ZodType;
+    /** v4 AI SDK name. */
+    parameters?: ZodType;
+    /** v5 AI SDK name. */
+    inputSchema?: ZodType;
     execute?: (args: Record<string, unknown>, options?: { abortSignal?: AbortSignal }) => Promise<unknown>;
   }
 
@@ -272,10 +282,14 @@ declare module "ai" {
   // ── streamText ────────────────────────────────────────────────
 
   export interface StreamTextParams extends GenerateTextParams {
-    /** Callback per stream chunk. */
+    /** Callback per stream chunk (v5 name). */
     onChunk?: (event: { chunk: StreamPart }) => void;
+    /** Experimental / v4 alias for onChunk. */
+    experimental_onChunk?: (event: { chunk: StreamPart }) => void;
     /** Error callback. */
     onError?: (event: { error: unknown }) => void;
+    /** Allow provider-specific extensions without killing completion. */
+    [key: string]: any;
   }
 
   export interface StreamTextResult {
@@ -341,7 +355,7 @@ declare module "ai" {
     providerOptions?: ProviderOptions;
   }
 
-  export interface GenerateObjectResult<T = unknown> {
+  export interface GenerateObjectResult<T = any> {
     /** The generated object. */
     object: T;
     /** Why generation stopped. */
@@ -356,7 +370,7 @@ declare module "ai" {
     providerMetadata?: ProviderMetadata;
   }
 
-  export function generateObject<T = unknown>(params: GenerateObjectParams): Promise<GenerateObjectResult<T>>;
+  export function generateObject<T = any>(params: GenerateObjectParams): Promise<GenerateObjectResult<T>>;
 
   // ── streamObject ──────────────────────────────────────────────
 
@@ -367,7 +381,7 @@ declare module "ai" {
     onFinish?: (event: { object: unknown; usage: Usage }) => void;
   }
 
-  export interface StreamObjectResult<T = unknown> {
+  export interface StreamObjectResult<T = any> {
     /** Async iterable of partial objects as they build. */
     partialObjectStream: AsyncIterable<Partial<T>>;
     /** Async iterable of elements (for output: "array"). */
@@ -380,7 +394,7 @@ declare module "ai" {
     response: Promise<ResponseMeta>;
   }
 
-  export function streamObject<T = unknown>(params: StreamObjectParams): StreamObjectResult<T>;
+  export function streamObject<T = any>(params: StreamObjectParams): StreamObjectResult<T>;
 
   // ── embed ─────────────────────────────────────────────────────
 

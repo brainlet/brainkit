@@ -486,6 +486,164 @@ declare class BrainkitError extends Error {
   readonly details: Record<string, unknown>;
 }
 
+// ── Timers + console (jsbridge/timers.go + console.go) ────────
+
+declare const setTimeout: (cb: (...args: any[]) => void, ms?: number, ...args: any[]) => number;
+declare const setInterval: (cb: (...args: any[]) => void, ms?: number, ...args: any[]) => number;
+declare const clearTimeout: (id?: number) => void;
+declare const clearInterval: (id?: number) => void;
+declare const setImmediate: (cb: (...args: any[]) => void, ...args: any[]) => number;
+declare const clearImmediate: (id?: number) => void;
+declare const queueMicrotask: (cb: () => void) => void;
+
+declare const console: {
+  log(...args: any[]): void;
+  info(...args: any[]): void;
+  warn(...args: any[]): void;
+  error(...args: any[]): void;
+  debug(...args: any[]): void;
+  trace(...args: any[]): void;
+  dir(obj: any, options?: any): void;
+  time(label?: string): void;
+  timeEnd(label?: string): void;
+  table(data: any, columns?: string[]): void;
+  group(...args: any[]): void;
+  groupEnd(): void;
+  clear(): void;
+  count(label?: string): void;
+};
+
+// ── Ambient endowments (Compartment-scope, no import needed) ──
+//
+// kit_runtime.js endows these on every `.ts` deployment's
+// Compartment scope alongside the module-style `import`s. Tests
+// + fixtures frequently reference them as bare identifiers —
+// the declarations below make IDE completion match the real
+// runtime. Every name here is also available via
+// `import { X } from "kit" | "agent" | "ai"` — type shapes are
+// authoritative over there and these are aliases.
+
+// "kit" module — the brainkit-specific surface.
+declare const bus: typeof import("kit").bus;
+declare const kit: typeof import("kit").kit;
+declare const model: typeof import("kit").model;
+declare const embeddingModel: typeof import("kit").embeddingModel;
+declare const provider: typeof import("kit").provider;
+declare const storage: typeof import("kit").storage;
+declare const vectorStore: typeof import("kit").vectorStore;
+declare const registry: typeof import("kit").registry;
+declare const tools: typeof import("kit").tools;
+declare const tool: typeof import("kit").tool;
+declare const mcp: typeof import("kit").mcp;
+declare const output: typeof import("kit").output;
+declare const secrets: typeof import("kit").secrets;
+declare const generateWithApproval: typeof import("kit").generateWithApproval;
+declare const fs: typeof import("kit").fs;
+
+// "agent" (Mastra) — classes + helpers endowed as bare names.
+declare const Agent: typeof import("agent").Agent;
+declare const createTool: typeof import("agent").createTool;
+declare const createWorkflow: typeof import("agent").createWorkflow;
+declare const createStep: typeof import("agent").createStep;
+declare const Mastra: typeof import("agent").Mastra;
+declare const Memory: typeof import("agent").Memory;
+declare const MockMemory: typeof import("agent").MockMemory;
+declare const InMemoryStore: typeof import("agent").InMemoryStore;
+declare const LibSQLStore: typeof import("agent").LibSQLStore;
+declare const LibSQLVector: typeof import("agent").LibSQLVector;
+declare const UpstashStore: typeof import("agent").UpstashStore;
+declare const PostgresStore: typeof import("agent").PostgresStore;
+declare const PgVector: typeof import("agent").PgVector;
+declare const MongoDBStore: typeof import("agent").MongoDBStore;
+declare const MongoDBVector: typeof import("agent").MongoDBVector;
+declare const RequestContext: typeof import("agent").RequestContext;
+declare const MASTRA_RESOURCE_ID_KEY: typeof import("agent").MASTRA_RESOURCE_ID_KEY;
+declare const MASTRA_THREAD_ID_KEY: typeof import("agent").MASTRA_THREAD_ID_KEY;
+declare const Workspace: typeof import("agent").Workspace;
+declare const LocalFilesystem: typeof import("agent").LocalFilesystem;
+declare const LocalSandbox: typeof import("agent").LocalSandbox;
+
+// RAG
+declare const MDocument: typeof import("agent").MDocument;
+declare const GraphRAG: typeof import("agent").GraphRAG;
+declare const createVectorQueryTool: typeof import("agent").createVectorQueryTool;
+declare const createDocumentChunkerTool: typeof import("agent").createDocumentChunkerTool;
+declare const createGraphRAGTool: typeof import("agent").createGraphRAGTool;
+declare const rerank: typeof import("agent").rerank;
+declare const rerankWithScorer: typeof import("agent").rerankWithScorer;
+
+// Observability
+declare const Observability: typeof import("agent").Observability;
+declare const DefaultExporter: typeof import("agent").DefaultExporter;
+declare const SensitiveDataFilter: typeof import("agent").SensitiveDataFilter;
+
+// Evals / Scorers
+declare const createScorer: typeof import("agent").createScorer;
+declare const runEvals: typeof import("agent").runEvals;
+declare const createCompletenessScorer: typeof import("agent").createCompletenessScorer;
+declare const createTextualDifferenceScorer: typeof import("agent").createTextualDifferenceScorer;
+declare const createKeywordCoverageScorer: typeof import("agent").createKeywordCoverageScorer;
+declare const createContentSimilarityScorer: typeof import("agent").createContentSimilarityScorer;
+declare const createToneScorer: typeof import("agent").createToneScorer;
+declare const createAnswerRelevancyScorer: typeof import("agent").createAnswerRelevancyScorer;
+declare const createAnswerSimilarityScorer: typeof import("agent").createAnswerSimilarityScorer;
+declare const createFaithfulnessScorer: typeof import("agent").createFaithfulnessScorer;
+declare const createHallucinationScorer: typeof import("agent").createHallucinationScorer;
+declare const createBiasScorer: typeof import("agent").createBiasScorer;
+declare const createToxicityScorer: typeof import("agent").createToxicityScorer;
+declare const createContextPrecisionScorer: typeof import("agent").createContextPrecisionScorer;
+declare const createContextRelevanceScorerLLM: typeof import("agent").createContextRelevanceScorerLLM;
+declare const createNoiseSensitivityScorerLLM: typeof import("agent").createNoiseSensitivityScorerLLM;
+declare const createPromptAlignmentScorerLLM: typeof import("agent").createPromptAlignmentScorerLLM;
+declare const createToolCallAccuracyScorerLLM: typeof import("agent").createToolCallAccuracyScorerLLM;
+
+// Processors
+declare const ModerationProcessor: typeof import("agent").ModerationProcessor;
+declare const PromptInjectionDetector: typeof import("agent").PromptInjectionDetector;
+declare const PIIDetector: typeof import("agent").PIIDetector;
+declare const SystemPromptScrubber: typeof import("agent").SystemPromptScrubber;
+declare const UnicodeNormalizer: typeof import("agent").UnicodeNormalizer;
+declare const LanguageDetector: typeof import("agent").LanguageDetector;
+declare const TokenLimiterProcessor: typeof import("agent").TokenLimiterProcessor;
+declare const BatchPartsProcessor: typeof import("agent").BatchPartsProcessor;
+declare const StructuredOutputProcessor: typeof import("agent").StructuredOutputProcessor;
+declare const ToolCallFilter: typeof import("agent").ToolCallFilter;
+declare const ToolSearchProcessor: typeof import("agent").ToolSearchProcessor;
+declare const AgentsMDInjector: typeof import("agent").AgentsMDInjector;
+declare const SkillsProcessor: typeof import("agent").SkillsProcessor;
+declare const SkillSearchProcessor: typeof import("agent").SkillSearchProcessor;
+declare const WorkspaceInstructionsProcessor: typeof import("agent").WorkspaceInstructionsProcessor;
+
+// Voice providers
+declare const MastraVoice: typeof import("agent").MastraVoice;
+declare const CompositeVoice: typeof import("agent").CompositeVoice;
+declare const OpenAIVoice: typeof import("agent").OpenAIVoice;
+declare const OpenAIRealtimeVoice: typeof import("agent").OpenAIRealtimeVoice;
+declare const AzureVoice: typeof import("agent").AzureVoice;
+declare const ElevenLabsVoice: typeof import("agent").ElevenLabsVoice;
+declare const CloudflareVoice: typeof import("agent").CloudflareVoice;
+declare const DeepgramVoice: typeof import("agent").DeepgramVoice;
+declare const PlayAIVoice: typeof import("agent").PlayAIVoice;
+declare const SpeechifyVoice: typeof import("agent").SpeechifyVoice;
+declare const SarvamVoice: typeof import("agent").SarvamVoice;
+declare const MurfVoice: typeof import("agent").MurfVoice;
+declare const DefaultVoice: typeof import("agent").DefaultVoice;
+
+// "ai" module — AI SDK helpers as bare identifiers.
+declare const generateText: typeof import("ai").generateText;
+declare const streamText: typeof import("ai").streamText;
+declare const generateObject: typeof import("ai").generateObject;
+declare const streamObject: typeof import("ai").streamObject;
+declare const embed: typeof import("ai").embed;
+declare const embedMany: typeof import("ai").embedMany;
+declare const z: typeof import("ai").z;
+declare const jsonSchema: typeof import("ai").jsonSchema;
+declare const wrapLanguageModel: typeof import("ai").wrapLanguageModel;
+declare const extractReasoningMiddleware: typeof import("ai").extractReasoningMiddleware;
+declare const defaultSettingsMiddleware: typeof import("ai").defaultSettingsMiddleware;
+declare const stepCountIs: typeof import("ai").stepCountIs;
+declare const hasToolCall: typeof import("ai").hasToolCall;
+
 declare class GoSocket {
   connect(portOrOpts: number | { host?: string; port?: number; tls?: boolean }, host?: string): this;
   write(data: any, encoding?: string, cb?: (err?: Error) => void): boolean;

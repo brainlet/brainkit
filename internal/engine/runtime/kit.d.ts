@@ -66,6 +66,20 @@ declare module "kit" {
      *   });
      */
     withCancelController(msg: BusMessage): { signal: AbortSignal; cleanup: () => void };
+    /**
+     * Schedule a message. `expression` is a cron spec
+     * ("*\/5 * * * *"), a human-readable delay ("in 1h",
+     * "every day at 9am"), or any string the scheduler
+     * module recognizes. Returns the schedule id
+     * synchronously — cancel via `bus.unschedule(id)`.
+     *
+     * @example
+     *     const id = bus.schedule("in 1h", "my.topic", { payload: "x" });
+     *     bus.unschedule(id);
+     */
+    schedule(expression: string, topic: string, data?: unknown): string;
+    /** Cancel a scheduled publish by id. */
+    unschedule(scheduleId: string): void;
   };
 
   export interface BusMessage {
@@ -187,6 +201,19 @@ declare module "kit" {
     stat(path: string): Promise<{ size: number; isDir: boolean; modTime: string }>;
     delete(path: string): Promise<{ ok: boolean }>;
     mkdir(path: string): Promise<{ ok: boolean }>;
+    // Node.js-style sync variants — kit.fs delegates to the
+    // jsbridge fs polyfill for these, so the full Node surface
+    // is reachable without importing "fs".
+    readFileSync(path: string, encoding?: string): string | Uint8Array;
+    writeFileSync(path: string, data: string | Uint8Array, options?: { encoding?: string; mode?: number }): void;
+    readdirSync(path: string, options?: { withFileTypes?: boolean }): string[] | any[];
+    statSync(path: string): { size: number; mtime: Date; isFile(): boolean; isDirectory(): boolean };
+    lstatSync(path: string): { size: number; mtime: Date; isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean };
+    existsSync(path: string): boolean;
+    mkdirSync(path: string, options?: { recursive?: boolean }): void;
+    unlinkSync(path: string): void;
+    rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+    [key: string]: any;
   };
 
   export interface FileInfo {
@@ -217,6 +244,18 @@ declare module "kit" {
 
   /** Set the module's output value. Passes results back to Go. */
   export function output(value: unknown): void;
+
+  // ── Secrets ─────────────────────────────────────────────────
+
+  /**
+   * Secret vault — encrypted key/value store backed by
+   * `Kit.Secrets()` on the Go side. Names must be registered
+   * via `kit.Secrets().Set(...)` or pre-seeded at deploy time.
+   * Returns empty string when the name isn't set.
+   */
+  export const secrets: {
+    get(name: string): string;
+  };
 
   // ── HITL (bus-based approval) ───────────────────────────────
 

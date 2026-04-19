@@ -1,20 +1,30 @@
 {
+  "// purpose": "Shared TypeScript config for every fixture under fixtures/ts/**. Per-fixture tsconfig.json files extend this + add nothing else.",
+  "// why-ESNext-module": "Fixtures use top-level `await` when calling generate / scorer.run etc. module: ESNext unlocks that.",
+  "// why-no-dom": "Fixtures run inside brainkit's SES compartment — jsbridge polyfills provide Audio / WebSocket / FormData / fetch / etc. globals.d.ts declares all of them; including the default DOM lib would double-declare.",
+  "// why-skipLibCheck": "Users who opt into `lib: [\"dom\"]` at their own config layer get duplicate-identifier warnings; skipLibCheck suppresses those. brainkit's own d.ts set is clean without DOM.",
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "strict": false,
     "noImplicitAny": false,
     "noEmit": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowJs": true,
+    "types": [],
     "baseUrl": ".",
     "paths": {
-      "kit": ["../kit/runtime/kit.d.ts"],
-      "ai": ["../kit/runtime/ai.d.ts"],
-      "agent": ["../kit/runtime/agent.d.ts"],
-      "compiler": ["../kit/runtime/compiler.d.ts"]
+      "kit":    ["../internal/engine/runtime/kit.d.ts"],
+      "ai":     ["../internal/engine/runtime/ai.d.ts"],
+      "agent":  ["../internal/engine/runtime/agent.d.ts"]
     }
-  }
+  },
+  "include": [
+    "ts/**/*.ts",
+    "../internal/engine/runtime/globals.d.ts"
+  ]
 }
+

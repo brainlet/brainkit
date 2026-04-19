@@ -1,13 +1,3 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "kit": ["../../../../kit/runtime/kit.d.ts"],
-      "ai": ["../../../../kit/runtime/ai.d.ts"],
-      "agent": ["../../../../kit/runtime/agent.d.ts"],
-      "compiler": ["../../../../kit/runtime/compiler.d.ts"]
-    }
-  },
-  "include": ["index.ts", "../../../../kit/runtime/globals.d.ts"]
+  "extends": "../../../../tsconfig.base.json"
 }
