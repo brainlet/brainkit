@@ -1,1 +1,1 @@
-{ "hasRerankWithScorer": true, "scorerShape": true }
+{ "count": 2, "topMatchesQuery": true, "topHasScore": true, "topHasDetails": true }

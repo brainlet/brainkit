@@ -1,1 +1,1 @@
-{ "hasRerank": true, "modelResolves": true }
+{ "called": true, "topHasScore": true, "topHasDetails": true }

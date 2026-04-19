@@ -519,6 +519,72 @@ export default WS;
         });
       },
     },
+    // Replace big.js with a Number-backed shim. The real library
+    // triggers a native SIGBUS inside QuickJS when rerank/* call
+    // `new Big(0).plus(...)` — see
+    // ../../brainkit-maps/knowledge/rerank-sigbus-bigjs.md.
+    // Mastra only uses Big for rerank weight validation (3 default
+    // weights summing to 1.0), so Number precision is sufficient.
+    {
+      name: "big-js-shim",
+      setup(build) {
+        build.onResolve({ filter: /^big\.js$/ }, () => ({
+          path: "big-js-shim",
+          namespace: "big-js-shim-ns",
+        }));
+        build.onLoad({ filter: /.*/, namespace: "big-js-shim-ns" }, () => ({
+          contents: `
+function Big(n) {
+  if (!(this instanceof Big)) return new Big(n);
+  if (n instanceof Big) { this.v = n.v; return; }
+  this.v = typeof n === "number" ? n : parseFloat(String(n));
+}
+Big.prototype.plus = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  return new Big(this.v + o);
+};
+Big.prototype.minus = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  return new Big(this.v - o);
+};
+Big.prototype.times = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  return new Big(this.v * o);
+};
+Big.prototype.div = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  return new Big(this.v / o);
+};
+Big.prototype.eq = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  return Math.abs(this.v - o) < 1e-9;
+};
+Big.prototype.cmp = function(w) {
+  var o = w instanceof Big ? w.v : (typeof w === "number" ? w : parseFloat(String(w)));
+  if (Math.abs(this.v - o) < 1e-9) return 0;
+  return this.v < o ? -1 : 1;
+};
+Big.prototype.gt = function(w) { return this.cmp(w) > 0; };
+Big.prototype.gte = function(w) { return this.cmp(w) >= 0; };
+Big.prototype.lt = function(w) { return this.cmp(w) < 0; };
+Big.prototype.lte = function(w) { return this.cmp(w) <= 0; };
+Big.prototype.toString = function() { return String(this.v); };
+Big.prototype.valueOf = function() { return this.v; };
+Big.prototype.toNumber = function() { return this.v; };
+Big.prototype.toFixed = function(dp) { return this.v.toFixed(dp); };
+Big.DP = 20;
+Big.RM = 1;
+Big.roundDown = 0;
+Big.roundHalfUp = 1;
+Big.roundHalfEven = 2;
+Big.roundUp = 3;
+export { Big };
+export default Big;
+`,
+          loader: "js",
+        }));
+      },
+    },
     // Redirect EXACT 'zod' imports to 'zod/v4' so all code uses ONE Zod version.
     {
       name: "zod-unify",
