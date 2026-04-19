@@ -153,7 +153,13 @@ const r = await generateText({
 
 ## Agents — Mastra
 
-### Create + register
+Mastra exposes two primitives that solve different problems: **`Agent`** is
+the executor, **`Mastra`** is the container. Pick the right one based on
+whether your flow needs to suspend and resume.
+
+### Simple path — bare `Agent`
+
+For one-shot `.generate()` and `.stream()` calls that never suspend:
 
 ```ts
 const researcher = new Agent({
@@ -171,6 +177,40 @@ msg.reply({ text: r.text, usage: r.usage });
 ref)` makes it visible to `agents.list`, `agents.discover`, and the
 Mastra tool-registry pipeline. Unregistered agents work locally but
 aren't discoverable over the bus.
+
+### Durable path — `Mastra` container
+
+For HITL tool approval, resumable workflows, or sub-agent networks that share
+memory, wrap the agent in a `Mastra` instance with a storage backend:
+
+```ts
+import { Agent, Mastra, InMemoryStore } from "agent";
+
+const mastra = new Mastra({
+    agents:  { assistant: new Agent({ name: "assistant", model: model(...), ... }) },
+    storage: new InMemoryStore(),
+});
+const assistant = mastra.getAgent("assistant");
+```
+
+The Mastra instance carries the workflow-snapshot store used by
+`approveToolCallGenerate`, `declineToolCallGenerate`, `resumeGenerate`, and
+`resumeStream`. Without it, those methods silently return the original
+`{finishReason: "suspended"}` shape — the snapshot lookup short-circuits
+because `this.#mastra` is undefined.
+
+Use the durable path for:
+
+| Flow                                    | Why Mastra is required                                       |
+|-----------------------------------------|--------------------------------------------------------------|
+| `generateWithApproval` / HITL           | Resume after approval loads the agent-loop snapshot.         |
+| `resumeGenerate` / `resumeStream`       | Snapshot-driven continuation of a paused run.                |
+| Workflows with agents as steps          | `agent` step resolves via `mastra.getAgent(name)`.           |
+| Sub-agent networks with shared memory   | Shared storage + run context live on the Mastra instance.    |
+
+See [`examples/hitl-tool-approval/`](../../examples/hitl-tool-approval/) and
+[`fixtures/ts/agent/hitl/bus-approval/`](../../fixtures/ts/agent/hitl/bus-approval/)
+for the end-to-end wiring.
 
 ### Tools on agents
 

@@ -22,8 +22,16 @@ the bottom for scope.
 Any `.ts` tool declared with `requireApproval: true` flips the
 agent into suspend-on-call mode:
 
+> ⚠️ **Mastra wrapper required.** `generateWithApproval` relies on
+> `agent.approveToolCallGenerate` / `declineToolCallGenerate`, which load the
+> suspended run's snapshot from `this.#mastra.getStorage().getStore("workflows")`.
+> A bare `new Agent({...})` has `#mastra` undefined — the snapshot lookup
+> short-circuits and the resume silently returns the same
+> `{finishReason: "suspended"}` shape. **Always wrap the agent in a `Mastra`
+> instance with a storage backend** before handing it to `generateWithApproval`.
+
 ```ts
-import { Agent, createTool, z } from "agent";
+import { Agent, Mastra, createTool, z, InMemoryStore } from "agent";
 import { model, generateWithApproval } from "kit";
 
 const deleteTool = createTool({
@@ -35,13 +43,21 @@ const deleteTool = createTool({
     execute: async ({ id }) => ({ deleted: true }),
 });
 
-const agent = new Agent({
+const hitlAgent = new Agent({
     name:         "hitl-agent",
     model:        model("openai", "gpt-4o-mini"),
     instructions: "Use delete-record when asked to delete. Don't confirm.",
     tools:        { "delete-record": deleteTool },
     maxSteps:     3,
 });
+
+// The Mastra instance carries the workflow-snapshot store used by the
+// approve/decline resume path.
+const mastra = new Mastra({
+    agents:  { "hitl-agent": hitlAgent },
+    storage: new InMemoryStore(),
+});
+const agent = mastra.getAgent("hitl-agent");
 
 const result = await generateWithApproval(agent, "Delete record xyz-789", {
     approvalTopic: "approvals.pending", // bus topic approvers watch
@@ -51,7 +67,8 @@ const result = await generateWithApproval(agent, "Delete record xyz-789", {
 ```
 
 Working fixture:
-[`fixtures/ts/agent/hitl/bus-approval/`](../../fixtures/ts/agent/hitl/bus-approval/).
+[`fixtures/ts/agent/hitl/bus-approval/`](../../fixtures/ts/agent/hitl/bus-approval/)
+— the canonical wiring of Mastra + InMemoryStore + `generateWithApproval`.
 
 ### Flow
 

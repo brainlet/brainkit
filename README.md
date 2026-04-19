@@ -60,7 +60,8 @@ Every deployed `.ts` gets the full Mastra surface without npm installs:
 
 | Surface                | Included                                                                                                                                                  |
 |------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Agents**             | `Agent`, `Mastra`, `RequestContext`, `createTool`, `createWorkflow`, `createStep`, sub-agents, HITL approval                                              |
+| **Agent**              | `Agent` — executor. `new Agent({...}).generate() / .stream()`. Sub-agent networks via `agents` config. Simple one-shot flows.                              |
+| **Mastra**             | `Mastra` — container that binds agents + storage + workflow registry. Required for HITL `approveToolCallGenerate`, resumable workflows, shared sub-agent memory. Bare `Agent` silently returns `{finishReason: "suspended"}` on resume paths without it. |
 | **AI SDK**             | `generateText`, `streamText`, `generateObject`, `streamObject`, `embed`, `embedMany` across 12 providers (OpenAI, Anthropic, Google, Mistral, xAI, …)      |
 | **Memory**             | `Memory` + `InMemoryStore`, `LibSQLStore`, `PostgresStore`, `MongoDBStore`, `UpstashStore` + working memory, semantic recall, generate-title              |
 | **Vector**             | `LibSQLVector`, `PgVector`, `MongoDBVector`, `PineconeVector`, `ChromaVector`, `QdrantVector`                                                              |

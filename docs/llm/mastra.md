@@ -178,6 +178,69 @@ bus.on("ask", async (msg) => {
 
 ---
 
+## Mastra (container)
+
+```typescript
+class Mastra {
+    constructor(config: MastraConfig);
+    getAgent(name: string): Agent;
+    getWorkflow(name: string): Workflow;
+    getStorage(): MastraStorage | undefined;
+}
+
+interface MastraConfig {
+    agents?: Record<string, Agent>;
+    workflows?: Record<string, Workflow>;
+    storage?: MastraStorage;           // InMemoryStore, LibSQLStore, PostgresStore, …
+    vectors?: Record<string, MastraVector>;
+    observability?: ObservabilityConfig;
+}
+```
+
+`Mastra` is the container that binds a set of agents + their storage + their
+workflow registry. Use it — not a bare `Agent` — whenever the flow needs
+persistent run state.
+
+### When to wrap an Agent in Mastra — required for:
+
+| Flow                                  | Why                                                                                 |
+|---------------------------------------|-------------------------------------------------------------------------------------|
+| `approveToolCallGenerate`             | Loads workflow snapshot from `this.#mastra.getStorage().getStore("workflows")`.     |
+| `declineToolCallGenerate`             | Same resume path.                                                                   |
+| `resumeGenerate` / `resumeStream`     | Same resume path.                                                                   |
+| Workflows with agents as steps        | `agent` step resolves via `mastra.getAgent(name)`.                                  |
+| Sub-agent networks with shared memory | Shared storage + run context live on the Mastra instance.                           |
+
+Bare `Agent` silently returns the original `{finishReason: "suspended"}` if
+any of the above are called without a Mastra-attached agent — the snapshot
+lookup short-circuits and no error is thrown.
+
+### Two patterns
+
+```typescript
+// Simple — one-shot generate, no suspend/resume
+const a = new Agent({ name: "simple", model: model(...), ... });
+const r = await a.generate("hi");
+
+// Durable — HITL, workflows, resumable runs
+const mastra = new Mastra({
+    agents: { assistant: new Agent({ name: "assistant", model: model(...), ... }) },
+    storage: new InMemoryStore(),
+});
+const a = mastra.getAgent("assistant");
+const r = await a.generate("hi", { requireToolApproval: true });
+if (r.finishReason === "suspended") {
+    const final = await a.approveToolCallGenerate({
+        runId: r.runId,
+        toolCallId: r.suspendPayload!.toolCallId,
+    });
+}
+```
+
+See `fixtures/ts/agent/hitl/bus-approval/index.ts` for the full HITL wiring.
+
+---
+
 ## Tools: `createTool`
 
 ```typescript
