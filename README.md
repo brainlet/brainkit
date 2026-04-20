@@ -52,17 +52,16 @@ kit.Deploy(ctx, brainkit.PackageInline("math", "math.ts", `
     });
 `))
 
-// Call the agent from Go. Request/reply with a deadline — no manual
-// subscribe/timeout ceremony.
-payload := json.RawMessage(`{"q":"what is 6 + 7?"}`)
-reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
-    sdk.CustomMsg{Topic: "ts.math.ask", Payload: payload},
-    brainkit.WithCallTimeout(30*time.Second),
-)
+// Call the agent from Go. CallKitSend is the typed request/reply helper
+// for sending to a deployed .ts topic.
+resp, err := brainkit.CallKitSend(kit, ctx, sdk.KitSendMsg{
+    Topic:   "ts.math.ask",
+    Payload: json.RawMessage(`{"q":"what is 6 + 7?"}`),
+}, brainkit.WithCallTimeout(30*time.Second))
 if err != nil {
     log.Fatal(err)
 }
-fmt.Println(string(reply)) // {"answer":"13"}
+fmt.Println(string(resp.Payload)) // {"answer":"13"}
 ```
 
 That's it — hot-reload an agent, reach a Go tool from `.ts`, reply on the
