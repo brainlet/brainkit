@@ -1,0 +1,7 @@
+{
+  "hasTwoIds": true,
+  "prefixedStartsWithPrefix": true,
+  "prefixedUnique": true,
+  "hexMatchesAlphabet": true,
+  "hexLength": 16
+}

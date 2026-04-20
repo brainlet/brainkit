@@ -1,0 +1,8 @@
+{
+  "instanceResolved": true,
+  "eventsCount": true,
+  "allSpansCount": true,
+  "completedCount": true,
+  "foundOurSpan": true,
+  "spanName": "brainkit.test.span"
+}

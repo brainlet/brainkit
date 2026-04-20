@@ -1,0 +1,8 @@
+{
+  "zodSchemaIsObject": true,
+  "jsonSchemaIsObject": true,
+  "asSchemaFromZodReturnsObject": true,
+  "asSchemaFromJsonReturnsObject": true,
+  "jsonSchemaHasJsonSchema": true,
+  "zodSchemaHasJsonSchema": true
+}

@@ -1,0 +1,8 @@
+{
+  "completeState": "successful-parse",
+  "completeName": "brainkit",
+  "partialState": "repaired-parse",
+  "partialName": "brainkit",
+  "emptyState": "failed-parse",
+  "brokenState": "failed-parse"
+}

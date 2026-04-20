@@ -1257,16 +1257,35 @@ declare module "agent" {
 
   // ── Mastra top-level class ─────────────────────────────────────
 
+  export interface MastraConfig {
+    agents?: Record<string, Agent>;
+    workflows?: Record<string, Workflow>;
+    storage?: any;
+    vectors?: Record<string, any>;
+    memory?: Memory;
+    logger?: any;
+    observability?: any;
+  }
+
   /**
-   * Mastra coordinator. brainkit deployments don't construct
-   * this directly (the Kit owns agent / workflow / storage
-   * registration), but several AgentConfig fields declare
-   * `mastra?: Mastra` — the type alias keeps those slots
-   * structured instead of `any`.
+   * Mastra coordinator. Wrap one or more Agents in a Mastra
+   * instance whenever the flow needs persistent run state:
+   * `approveToolCallGenerate`, `declineToolCallGenerate`,
+   * `resumeGenerate`, `resumeStream`, workflows with agents as
+   * steps, or sub-agent networks with shared memory. Without a
+   * Mastra instance the agentic-loop workflow cannot persist a
+   * resume snapshot, so suspend → approve silently returns the
+   * same `{finishReason: "suspended"}` shape.
    *
-   * Not runtime-instantiable inside a brainkit deployment.
+   * @example
+   *   const mastra = new Mastra({
+   *     agents: { assistant: new Agent({ name: "assistant", model, ... }) },
+   *     storage: new InMemoryStore(),
+   *   });
+   *   const agent = mastra.getAgent("assistant")!;
    */
   export class Mastra {
+    constructor(config: MastraConfig);
     readonly agents: Record<string, Agent>;
     readonly workflows: Record<string, Workflow>;
     getAgent(name: string): Agent | undefined;
@@ -2413,12 +2432,24 @@ declare module "agent" {
   // ── AI-SDK voice bridge ────────────────────────────────────────
 
   /**
-   * Adapt an AI-SDK voice-capable model into a MastraVoice.
-   * Useful when a provider isn't shipped as a dedicated
-   * `@mastra/voice-*` package but exposes speak/listen via the
-   * AI SDK interface.
+   * AI-SDK speech adapter — wraps an AI SDK speech model as a
+   * MastraVoice for speak-only usage.
    */
-  export function aisdkVoice(model: any, options?: { speaker?: string; [key: string]: any }): MastraVoice;
+  export class AISDKSpeech implements MastraVoice {
+    constructor(model: any, options?: Record<string, any>);
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  /**
+   * AI-SDK transcription adapter — wraps an AI SDK transcription
+   * model as a MastraVoice for listen-only usage.
+   */
+  export class AISDKTranscription implements MastraVoice {
+    constructor(model: any, options?: Record<string, any>);
+    speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
+    listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
 
   /** No-op voice used when none is configured. */
   export class DefaultVoice implements MastraVoice {

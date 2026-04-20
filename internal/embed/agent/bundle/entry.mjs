@@ -1,10 +1,11 @@
 // agent-embed entry point
 // Mastra framework + AI SDK providers for QuickJS embedding
 
-import { Agent } from '@mastra/core/agent';
+import { Agent, TripWire, MessageList, convertMessages, TypeDetector } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
-import { createWorkflow, createStep } from '@mastra/core/workflows';
+import { createWorkflow, createStep, Workflow, cloneWorkflow, cloneStep, mapVariable } from '@mastra/core/workflows';
 import { Mastra } from '@mastra/core/mastra';
+import { ConsoleLogger, MultiLogger, DualLogger } from '@mastra/core/logger';
 import { Memory } from '@mastra/memory';
 import { MockMemory } from '@mastra/core/memory';
 import { InMemoryStore } from '@mastra/core/storage';
@@ -23,12 +24,93 @@ import { QdrantVector } from '@mastra/qdrant';
 import { z, toJSONSchema } from 'zod';
 // Register for the dynamic require("zod/v4") resolution via createRequire stub.
 globalThis.__zod_v4_module = { z, toJSONSchema };
-import { embed, embedMany, generateText, streamText, generateObject, streamObject } from 'ai';
+import {
+  // core generation
+  embed,
+  embedMany,
+  generateText,
+  streamText,
+  generateObject,
+  streamObject,
+  // tool authoring
+  tool,
+  dynamicTool,
+  jsonSchema,
+  zodSchema,
+  asSchema,
+  generateId,
+  createIdGenerator,
+  hasToolCall,
+  stepCountIs,
+  isLoopFinished,
+  // middleware
+  wrapLanguageModel,
+  wrapEmbeddingModel,
+  wrapImageModel,
+  wrapProvider,
+  extractReasoningMiddleware,
+  extractJsonMiddleware,
+  defaultSettingsMiddleware,
+  defaultEmbeddingSettingsMiddleware,
+  simulateStreamingMiddleware,
+  smoothStream,
+  addToolInputExamplesMiddleware,
+  // provider registry
+  createProviderRegistry,
+  customProvider,
+  experimental_createProviderRegistry,
+  experimental_customProvider,
+  // message utils
+  convertToModelMessages,
+  pruneMessages,
+  validateUIMessages,
+  safeValidateUIMessages,
+  readUIMessageStream,
+  consumeStream,
+  convertFileListToFileUIParts,
+  // media
+  generateImage,
+  experimental_generateImage,
+  experimental_generateVideo,
+  experimental_transcribe,
+  experimental_generateSpeech,
+  // misc
+  cosineSimilarity,
+  simulateReadableStream,
+  parsePartialJson,
+  parseJsonEventStream,
+  // gateway
+  gateway,
+  createGateway,
+  // errors
+  AISDKError,
+  APICallError,
+  NoObjectGeneratedError,
+  NoSuchModelError,
+  NoSuchToolError,
+  InvalidArgumentError,
+  InvalidDataContentError,
+  InvalidPromptError,
+  InvalidToolInputError,
+  NoContentGeneratedError,
+  NoSpeechGeneratedError,
+  NoTranscriptGeneratedError,
+  NoVideoGeneratedError,
+  RetryError,
+  ToolCallRepairError,
+  TypeValidationError,
+  MessageConversionError,
+  MissingToolResultsError,
+  LoadAPIKeyError,
+  InvalidToolApprovalError,
+  ToolCallNotFoundForApprovalError,
+} from 'ai';
 import { ModelRouterEmbeddingModel } from '@mastra/core/llm';
 import { RequestContext } from '@mastra/core/request-context';
 
 // Evals — scorer infrastructure from core + pre-built rule-based scorers
-import { createScorer, runEvals } from '@mastra/core/evals';
+import { createScorer, runEvals, MastraScorer } from '@mastra/core/evals';
+import { registerHook, executeHook, AvailableHooks } from '@mastra/core/hooks';
 import {
   // Rule-based (no LLM)
   createCompletenessScorer,
@@ -36,6 +118,9 @@ import {
   createKeywordCoverageScorer,
   createContentSimilarityScorer,
   createToneScorer,
+  createToolCallAccuracyScorerCode,
+  createTrajectoryAccuracyScorerCode,
+  createTrajectoryScorerCode,
   // LLM-based (require judge model)
   createHallucinationScorer,
   createFaithfulnessScorer,
@@ -48,6 +133,7 @@ import {
   createNoiseSensitivityScorerLLM,
   createPromptAlignmentScorerLLM,
   createToolCallAccuracyScorerLLM,
+  createTrajectoryAccuracyScorerLLM,
 } from '@mastra/evals/scorers/prebuilt';
 
 // Processors — built-in input/output middleware
@@ -73,6 +159,9 @@ import {
 import { MDocument, GraphRAG } from '@mastra/rag';
 import { createVectorQueryTool, createDocumentChunkerTool, createGraphRAGTool } from '@mastra/rag';
 import { rerank, rerankWithScorer } from '@mastra/rag';
+import { CohereRelevanceScorer } from '@mastra/rag';
+import { MastraAgentRelevanceScorer } from '@mastra/rag';
+import { ZeroEntropyRelevanceScorer } from '@mastra/rag';
 // MDocument.fromCSV extension — pure-JS, no SES surprises.
 import Papa from 'papaparse';
 MDocument.fromCSV = function fromCSV(csv, metadata) {
@@ -161,7 +250,17 @@ MDocument.fromPDF = async function fromPDF(source, metadata) {
 };
 
 // Observability — tracing, spans, exporters
-import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
+import {
+  Observability,
+  DefaultExporter,
+  SensitiveDataFilter,
+  BaseExporter,
+  CloudExporter,
+  ConsoleExporter,
+  TestExporter,
+  TrackingExporter,
+  chainFormatters,
+} from '@mastra/observability';
 import {
   AlwaysOnSampler,
   AlwaysOffSampler,
@@ -176,14 +275,30 @@ import {
 } from '@opentelemetry/sdk-trace-base';
 
 // Workspace — filesystem, sandbox, skills, search
-import { Workspace, LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
+import {
+  Workspace,
+  LocalFilesystem,
+  LocalSandbox,
+  CompositeFilesystem,
+  createWorkspaceTools,
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  listFilesTool,
+  deleteFileTool,
+  fileStatTool,
+  mkdirTool,
+  searchTool,
+  indexContentTool,
+  executeCommandTool,
+} from '@mastra/core/workspace';
 
 // Voice — STT/TTS. CompositeVoice lives in @mastra/core, the
 // OpenAI provider lives in its own package.
 // MastraVoice is the abstract base every provider extends.
 // Exposing it lets .ts code type-check custom voice provider
 // subclasses without leaving the "agent" module.
-import { CompositeVoice, MastraVoice } from '@mastra/core/voice';
+import { CompositeVoice, MastraVoice, DefaultVoice, AISDKSpeech, AISDKTranscription } from '@mastra/core/voice';
 import { OpenAIVoice } from '@mastra/voice-openai';
 import { OpenAIRealtimeVoice } from '@mastra/voice-openai-realtime';
 import { AzureVoice } from '@mastra/voice-azure';
@@ -306,10 +421,21 @@ import { createCohere } from '@ai-sdk/cohere';
 globalThis.__agent_embed = {
   // Mastra core
   Agent,
+  TripWire,
+  MessageList,
+  convertMessages,
+  TypeDetector,
   createTool,
   createWorkflow,
   createStep,
+  Workflow,
+  cloneWorkflow,
+  cloneStep,
+  mapVariable,
   Mastra,
+  ConsoleLogger,
+  MultiLogger,
+  DualLogger,
   Memory,
   MockMemory,
   InMemoryStore,
@@ -336,11 +462,18 @@ globalThis.__agent_embed = {
   // Evals
   createScorer,
   runEvals,
+  MastraScorer,
+  registerHook,
+  executeHook,
+  AvailableHooks,
   createCompletenessScorer,
   createTextualDifferenceScorer,
   createKeywordCoverageScorer,
   createContentSimilarityScorer,
   createToneScorer,
+  createToolCallAccuracyScorerCode,
+  createTrajectoryAccuracyScorerCode,
+  createTrajectoryScorerCode,
   createHallucinationScorer,
   createFaithfulnessScorer,
   createAnswerRelevancyScorer,
@@ -352,6 +485,7 @@ globalThis.__agent_embed = {
   createNoiseSensitivityScorerLLM,
   createPromptAlignmentScorerLLM,
   createToolCallAccuracyScorerLLM,
+  createTrajectoryAccuracyScorerLLM,
 
   // Processors
   ModerationProcessor,
@@ -378,11 +512,20 @@ globalThis.__agent_embed = {
   createGraphRAGTool,
   rerank,
   rerankWithScorer,
+  CohereRelevanceScorer,
+  MastraAgentRelevanceScorer,
+  ZeroEntropyRelevanceScorer,
 
   // Observability
   Observability,
   DefaultExporter,
   SensitiveDataFilter,
+  BaseExporter,
+  CloudExporter,
+  ConsoleExporter,
+  TestExporter,
+  TrackingExporter,
+  chainFormatters,
   // OpenTelemetry span processors + exporters
   AlwaysOnSampler,
   AlwaysOffSampler,
@@ -399,8 +542,25 @@ globalThis.__agent_embed = {
   Workspace,
   LocalFilesystem,
   LocalSandbox,
+  CompositeFilesystem,
+  createWorkspaceTools,
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  listFilesTool,
+  deleteFileTool,
+  fileStatTool,
+  mkdirTool,
+  searchTool,
+  indexContentTool,
+  executeCommandTool,
+
+  // Voice
   MastraVoice,
   CompositeVoice,
+  DefaultVoice,
+  AISDKSpeech,
+  AISDKTranscription,
   OpenAIVoice,
   OpenAIRealtimeVoice,
   AzureVoice,
@@ -433,4 +593,84 @@ globalThis.__agent_embed = {
   createTogetherAI,
   createFireworks,
   createCohere,
+
+  // AI SDK — tool authoring
+  tool,
+  dynamicTool,
+  jsonSchema,
+  zodSchema,
+  asSchema,
+  generateId,
+  createIdGenerator,
+  hasToolCall,
+  stepCountIs,
+  isLoopFinished,
+
+  // AI SDK — middleware
+  wrapLanguageModel,
+  wrapEmbeddingModel,
+  wrapImageModel,
+  wrapProvider,
+  extractReasoningMiddleware,
+  extractJsonMiddleware,
+  defaultSettingsMiddleware,
+  defaultEmbeddingSettingsMiddleware,
+  simulateStreamingMiddleware,
+  smoothStream,
+  addToolInputExamplesMiddleware,
+
+  // AI SDK — provider registry
+  createProviderRegistry,
+  customProvider,
+  experimental_createProviderRegistry,
+  experimental_customProvider,
+
+  // AI SDK — message utilities
+  convertToModelMessages,
+  pruneMessages,
+  validateUIMessages,
+  safeValidateUIMessages,
+  readUIMessageStream,
+  consumeStream,
+  convertFileListToFileUIParts,
+
+  // AI SDK — media
+  generateImage,
+  experimental_generateImage,
+  experimental_generateVideo,
+  experimental_transcribe,
+  experimental_generateSpeech,
+
+  // AI SDK — misc
+  cosineSimilarity,
+  simulateReadableStream,
+  parsePartialJson,
+  parseJsonEventStream,
+
+  // AI SDK — gateway
+  gateway,
+  createGateway,
+
+  // AI SDK — error classes (needed for instanceof in catch blocks)
+  AISDKError,
+  APICallError,
+  NoObjectGeneratedError,
+  NoSuchModelError,
+  NoSuchToolError,
+  InvalidArgumentError,
+  InvalidDataContentError,
+  InvalidPromptError,
+  InvalidToolInputError,
+  NoContentGeneratedError,
+  NoSpeechGeneratedError,
+  NoTranscriptGeneratedError,
+  NoVideoGeneratedError,
+  RetryError,
+  ToolCallRepairError,
+  TypeValidationError,
+  MessageConversionError,
+  MissingToolResultsError,
+  LoadAPIKeyError,
+  InvalidToolApprovalError,
+  ToolCallNotFoundForApprovalError,
 };

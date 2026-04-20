@@ -1,0 +1,12 @@
+{
+  "apiCallIsAi": true,
+  "apiCallIsInstance": true,
+  "noObjectIsInstance": true,
+  "noModelIsInstance": true,
+  "noToolIsInstance": true,
+  "invalidPromptIsInstance": true,
+  "invalidToolInputIsInstance": true,
+  "retryIsInstance": true,
+  "typeValidationIsInstance": true,
+  "loadKeyIsInstance": true
+}

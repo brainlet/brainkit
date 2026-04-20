@@ -1,0 +1,9 @@
+{
+  "originalId": "addition",
+  "clonedId": "addition-v2",
+  "idsDiffer": true,
+  "bothAreWorkflows": true,
+  "stepOriginalId": "add",
+  "stepClonedId": "add-v2",
+  "stepIdsDiffer": true
+}

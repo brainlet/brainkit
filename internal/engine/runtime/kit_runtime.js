@@ -445,6 +445,152 @@
       dns: globalThis.dns,
       zlib: globalThis.zlib,
       child_process: globalThis.child_process,
+
+      // ── Gap 12: Mastra + AI SDK surface completion ───────────────
+      // These landed after the initial endowment pass to close surface
+      // gaps flagged in the brainkit-maps/brainkit/plans-03 audit.
+
+      // Mastra core — agent internals
+      Mastra: embed.Mastra,
+      TripWire: embed.TripWire,
+      MessageList: embed.MessageList,
+      convertMessages: embed.convertMessages,
+      TypeDetector: embed.TypeDetector,
+
+      // Mastra core — workflow class + helpers
+      Workflow: embed.Workflow,
+      cloneWorkflow: embed.cloneWorkflow,
+      cloneStep: embed.cloneStep,
+      mapVariable: embed.mapVariable,
+
+      // Mastra core — logger
+      ConsoleLogger: embed.ConsoleLogger,
+      MultiLogger: embed.MultiLogger,
+      DualLogger: embed.DualLogger,
+
+      // Mastra core — evals infrastructure
+      MastraScorer: embed.MastraScorer,
+      registerHook: embed.registerHook,
+      executeHook: embed.executeHook,
+      AvailableHooks: embed.AvailableHooks,
+
+      // Mastra evals — trajectory + tool-call-accuracy code variants
+      createTrajectoryAccuracyScorerLLM: embed.createTrajectoryAccuracyScorerLLM,
+      createToolCallAccuracyScorerCode: embed.createToolCallAccuracyScorerCode,
+      createTrajectoryAccuracyScorerCode: embed.createTrajectoryAccuracyScorerCode,
+      createTrajectoryScorerCode: embed.createTrajectoryScorerCode,
+
+      // Mastra rag — relevance scorers for rerankWithScorer
+      CohereRelevanceScorer: embed.CohereRelevanceScorer,
+      MastraAgentRelevanceScorer: embed.MastraAgentRelevanceScorer,
+      ZeroEntropyRelevanceScorer: embed.ZeroEntropyRelevanceScorer,
+
+      // Mastra workspace — extended filesystem + tool factory + individual tools
+      CompositeFilesystem: embed.CompositeFilesystem,
+      createWorkspaceTools: embed.createWorkspaceTools,
+      readFileTool: embed.readFileTool,
+      writeFileTool: embed.writeFileTool,
+      editFileTool: embed.editFileTool,
+      listFilesTool: embed.listFilesTool,
+      deleteFileTool: embed.deleteFileTool,
+      fileStatTool: embed.fileStatTool,
+      mkdirTool: embed.mkdirTool,
+      searchTool: embed.searchTool,
+      indexContentTool: embed.indexContentTool,
+      executeCommandTool: embed.executeCommandTool,
+
+      // Mastra voice — extended defaults
+      DefaultVoice: embed.DefaultVoice,
+      AISDKSpeech: embed.AISDKSpeech,
+      AISDKTranscription: embed.AISDKTranscription,
+
+      // Mastra observability — extended exporters
+      BaseExporter: embed.BaseExporter,
+      CloudExporter: embed.CloudExporter,
+      ConsoleExporter: embed.ConsoleExporter,
+      TestExporter: embed.TestExporter,
+      TrackingExporter: embed.TrackingExporter,
+      chainFormatters: embed.chainFormatters,
+
+      // AI SDK — tool authoring
+      tool: embed.tool,
+      dynamicTool: embed.dynamicTool,
+      jsonSchema: embed.jsonSchema,
+      zodSchema: embed.zodSchema,
+      asSchema: embed.asSchema,
+      generateId: embed.generateId,
+      createIdGenerator: embed.createIdGenerator,
+      hasToolCall: embed.hasToolCall,
+      stepCountIs: embed.stepCountIs,
+      isLoopFinished: embed.isLoopFinished,
+
+      // AI SDK — middleware
+      wrapLanguageModel: embed.wrapLanguageModel,
+      wrapEmbeddingModel: embed.wrapEmbeddingModel,
+      wrapImageModel: embed.wrapImageModel,
+      wrapProvider: embed.wrapProvider,
+      extractReasoningMiddleware: embed.extractReasoningMiddleware,
+      extractJsonMiddleware: embed.extractJsonMiddleware,
+      defaultSettingsMiddleware: embed.defaultSettingsMiddleware,
+      defaultEmbeddingSettingsMiddleware: embed.defaultEmbeddingSettingsMiddleware,
+      simulateStreamingMiddleware: embed.simulateStreamingMiddleware,
+      smoothStream: embed.smoothStream,
+      addToolInputExamplesMiddleware: embed.addToolInputExamplesMiddleware,
+
+      // AI SDK — provider registry
+      createProviderRegistry: embed.createProviderRegistry,
+      customProvider: embed.customProvider,
+      experimental_createProviderRegistry: embed.experimental_createProviderRegistry,
+      experimental_customProvider: embed.experimental_customProvider,
+
+      // AI SDK — message utilities
+      convertToModelMessages: embed.convertToModelMessages,
+      pruneMessages: embed.pruneMessages,
+      validateUIMessages: embed.validateUIMessages,
+      safeValidateUIMessages: embed.safeValidateUIMessages,
+      readUIMessageStream: embed.readUIMessageStream,
+      consumeStream: embed.consumeStream,
+      convertFileListToFileUIParts: embed.convertFileListToFileUIParts,
+
+      // AI SDK — media
+      generateImage: embed.generateImage,
+      experimental_generateImage: embed.experimental_generateImage,
+      experimental_generateVideo: embed.experimental_generateVideo,
+      experimental_transcribe: embed.experimental_transcribe,
+      experimental_generateSpeech: embed.experimental_generateSpeech,
+
+      // AI SDK — misc
+      cosineSimilarity: embed.cosineSimilarity,
+      simulateReadableStream: embed.simulateReadableStream,
+      parsePartialJson: embed.parsePartialJson,
+      parseJsonEventStream: embed.parseJsonEventStream,
+
+      // AI SDK — gateway
+      gateway: embed.gateway,
+      createGateway: embed.createGateway,
+
+      // AI SDK — error classes (for instanceof in catch blocks)
+      AISDKError: embed.AISDKError,
+      APICallError: embed.APICallError,
+      NoObjectGeneratedError: embed.NoObjectGeneratedError,
+      NoSuchModelError: embed.NoSuchModelError,
+      NoSuchToolError: embed.NoSuchToolError,
+      InvalidArgumentError: embed.InvalidArgumentError,
+      InvalidDataContentError: embed.InvalidDataContentError,
+      InvalidPromptError: embed.InvalidPromptError,
+      InvalidToolInputError: embed.InvalidToolInputError,
+      NoContentGeneratedError: embed.NoContentGeneratedError,
+      NoSpeechGeneratedError: embed.NoSpeechGeneratedError,
+      NoTranscriptGeneratedError: embed.NoTranscriptGeneratedError,
+      NoVideoGeneratedError: embed.NoVideoGeneratedError,
+      RetryError: embed.RetryError,
+      ToolCallRepairError: embed.ToolCallRepairError,
+      TypeValidationError: embed.TypeValidationError,
+      MessageConversionError: embed.MessageConversionError,
+      MissingToolResultsError: embed.MissingToolResultsError,
+      LoadAPIKeyError: embed.LoadAPIKeyError,
+      InvalidToolApprovalError: embed.InvalidToolApprovalError,
+      ToolCallNotFoundForApprovalError: embed.ToolCallNotFoundForApprovalError,
     };
     return typeof globalThis.harden === "function" ? globalThis.harden(endowments) : endowments;
   };

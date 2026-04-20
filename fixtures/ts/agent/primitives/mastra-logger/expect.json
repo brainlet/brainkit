@@ -1,0 +1,10 @@
+{
+  "consoleLoggerHasInfo": true,
+  "consoleLoggerHasWarn": true,
+  "consoleLoggerHasError": true,
+  "consoleLoggerHasDebug": true,
+  "multiLoggerFanout": true,
+  "logError": null,
+  "mastraError": null,
+  "loggerAccepted": true
+}
