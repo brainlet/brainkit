@@ -90,6 +90,20 @@ declare module "kit" {
     reply(data: any): void;
     /** Publish intermediate chunk to replyTo (done=false). For streaming. */
     send(data: any): void;
+    /** Register a cancel callback on this message's correlationId.
+     *  Fires when the caller signals cancellation via the bus; returns
+     *  an unsubscribe function. Only present on the per-deployment
+     *  wrapped message (not raw SubscribeRaw messages). */
+    onCancel?(handler: (evt: any) => void): () => void;
+    /** Stream helpers for partial responses. */
+    stream?: {
+      text(chunk: string): void;
+      progress(value: number, message?: string): void;
+      object(partial: any): void;
+      event(name: string, data?: any): void;
+      error(message: string): void;
+      end(): void;
+    };
   }
 
   // ── Resource Registration ────────────────────────────────────

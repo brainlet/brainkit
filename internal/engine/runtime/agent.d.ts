@@ -1538,9 +1538,12 @@ declare module "agent" {
     };
   }
 
-  /** Relevance score provider — Mastra's shipped scorers (Cohere, etc.). */
+  /** Relevance score provider — Mastra's shipped scorers
+   *  (Cohere, MastraAgent, ZeroEntropy) all expose `getRelevanceScore`.
+   *  User-defined scorers passed into `rerankWithScorer` need the
+   *  same shape. */
   export interface RelevanceScoreProvider {
-    score(query: string, text: string): Promise<number> | number;
+    getRelevanceScore(query: string, text: string): Promise<number> | number;
   }
 
   // ── Evals ─────────────────────────────────────────────────────
@@ -2279,15 +2282,31 @@ declare module "agent" {
   // exporters (Langfuse / Braintrust / etc.) when the host kit
   // doesn't own tracing.
 
-  /** Core observability coordinator. */
+  /** Core observability coordinator.
+   *
+   *  Observability is a registry of named instances. Each instance
+   *  owns the `startSpan(...)` / `createRootSpan(...)` calls — the
+   *  coordinator itself just routes. Call
+   *  `obs.getDefaultInstance().startSpan({name, type, attributes})`
+   *  to produce a span. */
   export class Observability {
-    constructor(config?: ObservabilityConfig);
+    constructor(config: ObservabilityRegistryConfig | ObservabilityConfig);
     readonly spans: any;
     readonly metrics: any;
     readonly exporters: any[];
+    registerInstance(name: string, instance: any, isDefault?: boolean): void;
+    getInstance(name: string): any | undefined;
+    getDefaultInstance(): any | undefined;
+    hasInstance(name: string): boolean;
+    listInstances(): ReadonlyMap<string, any>;
+    unregisterInstance(name: string): boolean;
     recordSpan?(span: Span): void;
     flush?(): Promise<void>;
-    shutdown?(): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  export interface ObservabilityRegistryConfig {
+    configs: Record<string, ObservabilityConfig>;
   }
 
   export interface ObservabilityConfig {
@@ -2456,5 +2475,295 @@ declare module "agent" {
     constructor();
     speak(input: string | VoiceAudioStream, options?: VoiceSpeakOptions): Promise<VoiceAudioStream>;
     listen(audio: VoiceAudioStream, options?: VoiceListenOptions): Promise<string>;
+  }
+
+  // ── Agent internals (gap 12) ────────────────────────────────────
+
+  /** Exception thrown when a processor or user code aborts a run. */
+  export class TripWire extends Error {
+    constructor(message?: string);
+  }
+
+  /** Structured message list for agent transcripts. */
+  export class MessageList {
+    constructor(options?: any);
+    add(messages: any, source?: string): this;
+    get: any;
+  }
+
+  /** Fluent converter returned by `convertMessages(input)`. */
+  export class MessageConverter {
+    constructor(messages: any);
+    to(format: "Mastra.V2" | "AIV4.UI" | "AIV4.Core" | "AIV5.UI" | "AIV5.Model"): any[];
+  }
+
+  /** Translate between AI SDK v4 / v5 / Mastra message shapes. */
+  export function convertMessages(messages: any): MessageConverter;
+
+  /** Detect whether an object is a known message / content part shape. */
+  export class TypeDetector {
+    static isUIMessage(obj: any): boolean;
+    static isModelMessage(obj: any): boolean;
+    static isCoreMessage(obj: any): boolean;
+  }
+
+  // ── Workflow class + clone helpers (gap 12) ─────────────────────
+
+  /** Runnable workflow class. Produced by `createWorkflow(...).commit()`. */
+  export class Workflow {
+    readonly id: string;
+    createRun(options?: any): Promise<any>;
+    execute(input: any, options?: any): Promise<any>;
+  }
+
+  /** Clone a workflow under a fresh ID for independent runs / tracing. */
+  export function cloneWorkflow<W extends Workflow>(wf: W, opts: { id: string }): W;
+
+  /** Clone a step under a fresh ID. */
+  export function cloneStep<S>(step: S, opts: { id: string }): S;
+
+  /** Step-input mapper used inside workflows to wire upstream outputs. */
+  export function mapVariable(spec: any): any;
+
+  // ── Logger (gap 12) ────────────────────────────────────────────
+
+  export interface IMastraLogger {
+    debug(message: string, ...args: any[]): void;
+    info(message: string, ...args: any[]): void;
+    warn(message: string, ...args: any[]): void;
+    error(message: string, ...args: any[]): void;
+  }
+
+  export interface ConsoleLoggerOptions {
+    name?: string;
+    level?: "DEBUG" | "INFO" | "WARN" | "ERROR";
+  }
+
+  /** Structured stdout logger. Satisfies IMastraLogger. */
+  export class ConsoleLogger implements IMastraLogger {
+    constructor(options?: ConsoleLoggerOptions);
+    debug(message: string, ...args: any[]): void;
+    info(message: string, ...args: any[]): void;
+    warn(message: string, ...args: any[]): void;
+    error(message: string, ...args: any[]): void;
+    child(component: string): ConsoleLogger;
+  }
+
+  /** Fans log calls out to multiple underlying loggers. */
+  export class MultiLogger implements IMastraLogger {
+    constructor(loggers: IMastraLogger[]);
+    debug(message: string, ...args: any[]): void;
+    info(message: string, ...args: any[]): void;
+    warn(message: string, ...args: any[]): void;
+    error(message: string, ...args: any[]): void;
+  }
+
+  /** Wraps a legacy logger with a v-next bridge for observability. */
+  export class DualLogger implements IMastraLogger {
+    constructor(inner: IMastraLogger, getLoggerVNext?: () => any);
+    debug(message: string, ...args: any[]): void;
+    info(message: string, ...args: any[]): void;
+    warn(message: string, ...args: any[]): void;
+    error(message: string, ...args: any[]): void;
+  }
+
+  // ── Evals internals (gap 12) ────────────────────────────────────
+
+  /** Scorer produced by `createScorer(...)`. */
+  export class MastraScorer {
+    readonly name: string;
+    readonly description?: string;
+    run(input: any): Promise<{ score: number; reason?: string; [key: string]: any }>;
+  }
+
+  /** Enum of hook names scorers / evals can subscribe to. */
+  export const AvailableHooks: Record<string, string>;
+
+  /** Register a handler for a Mastra lifecycle hook. */
+  export function registerHook(hook: string, action: (event: any) => void | Promise<void>): void;
+
+  /** Fire the registered handlers for a hook. */
+  export function executeHook(hook: string, payload: any): void | Promise<void>;
+
+  // ── Prebuilt scorer factories (gap 12) ──────────────────────────
+
+  /** Code-only trajectory-accuracy scorer — no LLM judge. */
+  export function createTrajectoryAccuracyScorerCode(options: {
+    expectedTrajectory: {
+      steps: Array<{
+        stepType: "tool_call" | "workflow_step";
+        name: string;
+        toolArgs?: Record<string, unknown>;
+        toolResult?: unknown;
+        output?: unknown;
+      }>;
+    };
+    [key: string]: any;
+  }): MastraScorer;
+
+  /** Code-only trajectory scorer with configurable weights. */
+  export function createTrajectoryScorerCode(options?: any): MastraScorer;
+
+  /** LLM-judge trajectory accuracy scorer. */
+  export function createTrajectoryAccuracyScorerLLM(options: { model: any; expectedTrajectory?: any }): MastraScorer;
+
+  /** Code-only tool-call accuracy scorer. */
+  export function createToolCallAccuracyScorerCode(options: any): MastraScorer;
+
+  // ── RAG rerank scorers (gap 12) ─────────────────────────────────
+  // Hand these to `rerankWithScorer(vectorStore, scorer)` to control
+  // the relevance-scoring backend.
+
+  export class CohereRelevanceScorer {
+    constructor(options: { apiKey: string; model?: string });
+  }
+  export class MastraAgentRelevanceScorer {
+    constructor(options: { model: any; [key: string]: any });
+  }
+  export class ZeroEntropyRelevanceScorer {
+    constructor(options: { apiKey: string; model?: string });
+  }
+
+  // ── Workspace (gap 12) ──────────────────────────────────────────
+
+  /** Compose multiple filesystems behind one interface. */
+  export class CompositeFilesystem {
+    constructor(config: { filesystems: any[]; [key: string]: any });
+  }
+
+  /** Build the ten built-in workspace tools off a Workspace instance. */
+  export function createWorkspaceTools(workspace: Workspace): Record<string, any>;
+  export const readFileTool: any;
+  export const writeFileTool: any;
+  export const editFileTool: any;
+  export const listFilesTool: any;
+  export const deleteFileTool: any;
+  export const fileStatTool: any;
+  export const mkdirTool: any;
+  export const searchTool: any;
+  export const indexContentTool: any;
+  export const executeCommandTool: any;
+
+  // ── Observability exporters (gap 12) ────────────────────────────
+
+  export abstract class BaseExporter {
+    constructor(config?: any);
+    name: string;
+    flush(): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  /** Ships spans to Mastra Cloud. Requires MASTRA_CLOUD_ACCESS_TOKEN. */
+  export class CloudExporter extends BaseExporter {
+    constructor(config?: any);
+  }
+
+  /** Dev-time exporter that prints span events to stdout. */
+  export class ConsoleExporter extends BaseExporter {
+    constructor(config?: any);
+  }
+
+  /** In-memory exporter for test assertions. Captures tracing events,
+   *  logs, scores, and feedback so tests can inspect shape after a run. */
+  export class TestExporter extends BaseExporter {
+    constructor(config?: any);
+    readonly events: any[];
+    getAllSpans(): any[];
+    getCompletedSpans(): any[];
+    getRootSpans(): any[];
+    getIncompleteSpans(): any[];
+    getSpansByType(type: string): any[];
+    getByEventType(type: string): any[];
+    getByTraceId(traceId: string): {
+      events: any[];
+      spans: any[];
+      logs: any[];
+      scores: any[];
+      feedback: any[];
+    };
+    getBySpanId(spanId: string): { events: any[]; span: any; state: any };
+  }
+
+  export abstract class TrackingExporter<
+    TRootData = unknown,
+    TSpanData = unknown,
+    TEventData = unknown,
+    TMetadata = unknown,
+    TConfig = unknown,
+  > extends BaseExporter {
+    constructor(config?: TConfig);
+  }
+
+  /** Compose multiple span formatters into a single pipeline. */
+  export function chainFormatters(...formatters: any[]): any;
+
+  // ── OpenTelemetry sdk-trace-base (gap 8 / 12) ───────────────────
+  // Re-exported so deployments can wire their own OTel pipelines
+  // (BasicTracerProvider → BatchSpanProcessor → exporter).
+
+  export class BasicTracerProvider {
+    constructor(config?: any);
+    getTracer(name: string, version?: string): any;
+    addSpanProcessor(processor: any): void;
+    shutdown(): Promise<void>;
+    forceFlush(): Promise<void>;
+  }
+
+  export class BatchSpanProcessor {
+    constructor(exporter: any, config?: any);
+    onStart(span: any, parentContext?: any): void;
+    onEnd(span: any): void;
+    forceFlush(): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  export class SimpleSpanProcessor {
+    constructor(exporter: any);
+    onStart(span: any, parentContext?: any): void;
+    onEnd(span: any): void;
+    forceFlush(): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  export class NoopSpanProcessor {
+    constructor();
+    onStart(span: any, parentContext?: any): void;
+    onEnd(span: any): void;
+    forceFlush(): Promise<void>;
+    shutdown(): Promise<void>;
+  }
+
+  export class ConsoleSpanExporter {
+    constructor();
+    export(spans: any[], resultCallback: (result: any) => void): void;
+    shutdown(): Promise<void>;
+  }
+
+  export class InMemorySpanExporter {
+    constructor();
+    export(spans: any[], resultCallback: (result: any) => void): void;
+    getFinishedSpans(): any[];
+    reset(): void;
+    shutdown(): Promise<void>;
+  }
+
+  export class AlwaysOnSampler {
+    constructor();
+    shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
+  }
+
+  export class AlwaysOffSampler {
+    constructor();
+    shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
+  }
+
+  export class ParentBasedSampler {
+    constructor(options: { root: any; [key: string]: any });
+    shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
+  }
+
+  export class TraceIdRatioBasedSampler {
+    constructor(ratio: number);
+    shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
   }
 }

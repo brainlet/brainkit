@@ -520,4 +520,187 @@ declare module "ai" {
 
   /** V2 language model interface — alias of v4 LanguageModel for now. */
   export type LanguageModelV2 = LanguageModel;
+
+  // ── Tool authoring (gap 12) ─────────────────────────────────────
+
+  /** Build a typed tool with a Zod or JSON schema. See Vercel AI SDK docs. */
+  export function tool(config: any): any;
+  /** Dynamic tool — input schema resolved at execute time. */
+  export function dynamicTool(config: any): any;
+  /** Wrap a JSON Schema object so it can be passed as an `inputSchema`. */
+  export function jsonSchema(schema: any, options?: any): any;
+  /** Wrap a Zod schema so it can be passed as an `inputSchema`. */
+  export function zodSchema(schema: any, options?: any): any;
+  /** Normalize any schema (Zod / JSON / FlexibleSchema) to the internal Schema. */
+  export function asSchema(schema: any): any;
+
+  /** Generate a random id. */
+  export function generateId(): string;
+  /** Build a configurable id factory. */
+  export function createIdGenerator(options?: { prefix?: string; size?: number; alphabet?: string; separator?: string }): () => string;
+
+  /** Stop condition: true after N steps. Use with `stopWhen`. */
+  export function stepCountIs(n: number): (args: any) => boolean;
+  /** Stop condition: true when a tool with the given name fires. */
+  export function hasToolCall(name: string): (args: any) => boolean;
+  /** Stop condition: end of the loop sentinel. */
+  export function isLoopFinished(args: any): boolean;
+
+  // ── Middleware (gap 12) ─────────────────────────────────────────
+
+  export function wrapLanguageModel(options: { model: any; middleware: any | any[] }): any;
+  export function wrapEmbeddingModel(options: { model: any; middleware: any | any[] }): any;
+  export function wrapImageModel(options: { model: any; middleware: any | any[] }): any;
+  export function wrapProvider(options: { provider: any; middleware: any | any[] }): any;
+  export function extractReasoningMiddleware(options: { tagName: string }): any;
+  export function extractJsonMiddleware(options?: any): any;
+  export function defaultSettingsMiddleware(options: any): any;
+  export function defaultEmbeddingSettingsMiddleware(options: any): any;
+  export function simulateStreamingMiddleware(): any;
+  export function smoothStream(options?: any): any;
+  export function addToolInputExamplesMiddleware(options?: any): any;
+
+  // ── Provider registry (gap 12) ──────────────────────────────────
+
+  export function createProviderRegistry(providers: Record<string, any>, options?: any): any;
+  export function customProvider(options: {
+    languageModels?: Record<string, any>;
+    textEmbeddingModels?: Record<string, any>;
+    imageModels?: Record<string, any>;
+    fallbackProvider?: any;
+  }): any;
+  /** @deprecated Use createProviderRegistry. */
+  export function experimental_createProviderRegistry(providers: Record<string, any>, options?: any): any;
+  /** @deprecated Use customProvider. */
+  export function experimental_customProvider(options: any): any;
+
+  // ── Message utilities (gap 12) ──────────────────────────────────
+
+  /** Converts UI-shaped messages into ModelMessages (async). */
+  export function convertToModelMessages(messages: any[], options?: any): Promise<any[]>;
+  export function pruneMessages(messages: any[], options?: any): any[];
+  export function validateUIMessages(messages: any[], options?: any): Promise<any[]>;
+  export function safeValidateUIMessages(messages: any[], options?: any): Promise<any>;
+  export function readUIMessageStream(options: any): AsyncIterable<any>;
+  export function consumeStream(stream: any): Promise<void>;
+  export function convertFileListToFileUIParts(fileList: any, options?: any): Promise<any[]>;
+
+  // ── Media (gap 12) ──────────────────────────────────────────────
+
+  export function generateImage(options: any): Promise<any>;
+  /** @deprecated Use generateImage. */
+  export function experimental_generateImage(options: any): Promise<any>;
+  export function experimental_generateVideo(options: any): Promise<any>;
+  export function experimental_transcribe(options: any): Promise<any>;
+  export function experimental_generateSpeech(options: any): Promise<any>;
+
+  // ── Misc (gap 12) ───────────────────────────────────────────────
+
+  /** Cosine similarity in [-1, 1]. 1 = identical direction. */
+  export function cosineSimilarity(a: number[], b: number[]): number;
+  /** Build a ReadableStream from chunks for unit-testing stream consumers. */
+  export function simulateReadableStream<T>(options: {
+    chunks: T[];
+    initialDelayInMs?: number | null;
+    chunkDelayInMs?: number | null;
+  }): ReadableStream<T>;
+  /** Attempt to parse JSON that may still be mid-stream. */
+  export function parsePartialJson(raw: string | undefined | null): Promise<{
+    value: unknown;
+    state: "successful-parse" | "repaired-parse" | "failed-parse" | "undefined-input";
+  }>;
+  /** Parse an SSE-style JSON event stream. */
+  export function parseJsonEventStream(options: any): any;
+
+  // ── Gateway (re-exported from @ai-sdk/gateway) ──────────────────
+
+  export const gateway: any;
+  export function createGateway(options?: any): any;
+
+  // ── Error classes (gap 12) ──────────────────────────────────────
+  // Every subclass ships an `isInstance(error)` static guard — use it
+  // inside catch blocks to discriminate between failure modes.
+
+  export class AISDKError extends Error {
+    static isInstance(error: unknown): error is AISDKError;
+    readonly cause?: unknown;
+  }
+  export class APICallError extends AISDKError {
+    static isInstance(error: unknown): error is APICallError;
+    readonly url?: string;
+    readonly requestBodyValues?: unknown;
+    readonly statusCode?: number;
+    readonly responseBody?: string;
+    readonly isRetryable?: boolean;
+  }
+  export class NoObjectGeneratedError extends AISDKError {
+    static isInstance(error: unknown): error is NoObjectGeneratedError;
+    readonly text?: string;
+    readonly response?: any;
+    readonly usage?: any;
+    readonly finishReason?: string;
+  }
+  export class NoSuchModelError extends AISDKError {
+    static isInstance(error: unknown): error is NoSuchModelError;
+    readonly modelId?: string;
+    readonly modelType?: string;
+  }
+  export class NoSuchToolError extends AISDKError {
+    static isInstance(error: unknown): error is NoSuchToolError;
+    readonly toolName?: string;
+  }
+  export class InvalidArgumentError extends AISDKError {
+    static isInstance(error: unknown): error is InvalidArgumentError;
+  }
+  export class InvalidDataContentError extends AISDKError {
+    static isInstance(error: unknown): error is InvalidDataContentError;
+  }
+  export class InvalidPromptError extends AISDKError {
+    static isInstance(error: unknown): error is InvalidPromptError;
+    readonly prompt?: unknown;
+  }
+  export class InvalidToolInputError extends AISDKError {
+    static isInstance(error: unknown): error is InvalidToolInputError;
+    readonly toolName?: string;
+    readonly toolInput?: string;
+  }
+  export class NoContentGeneratedError extends AISDKError {
+    static isInstance(error: unknown): error is NoContentGeneratedError;
+  }
+  export class NoSpeechGeneratedError extends AISDKError {
+    static isInstance(error: unknown): error is NoSpeechGeneratedError;
+  }
+  export class NoTranscriptGeneratedError extends AISDKError {
+    static isInstance(error: unknown): error is NoTranscriptGeneratedError;
+  }
+  export class NoVideoGeneratedError extends AISDKError {
+    static isInstance(error: unknown): error is NoVideoGeneratedError;
+  }
+  export class RetryError extends AISDKError {
+    static isInstance(error: unknown): error is RetryError;
+    readonly reason?: string;
+    readonly errors?: unknown[];
+  }
+  export class ToolCallRepairError extends AISDKError {
+    static isInstance(error: unknown): error is ToolCallRepairError;
+  }
+  export class TypeValidationError extends AISDKError {
+    static isInstance(error: unknown): error is TypeValidationError;
+    readonly value?: unknown;
+  }
+  export class MessageConversionError extends AISDKError {
+    static isInstance(error: unknown): error is MessageConversionError;
+  }
+  export class MissingToolResultsError extends AISDKError {
+    static isInstance(error: unknown): error is MissingToolResultsError;
+  }
+  export class LoadAPIKeyError extends AISDKError {
+    static isInstance(error: unknown): error is LoadAPIKeyError;
+  }
+  export class InvalidToolApprovalError extends AISDKError {
+    static isInstance(error: unknown): error is InvalidToolApprovalError;
+  }
+  export class ToolCallNotFoundForApprovalError extends AISDKError {
+    static isInstance(error: unknown): error is ToolCallNotFoundForApprovalError;
+  }
 }
