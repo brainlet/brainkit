@@ -18,15 +18,15 @@ type busClient struct {
 	http     *http.Client
 }
 
-// newBusClient returns a busClient pointed at the configured
-// endpoint. Empty endpoint defaults to http://127.0.0.1:8080 —
-// the gateway's default listen address.
+// newBusClient returns a busClient pointed at the resolved endpoint.
+// resolveEndpoint picks, in priority order: the explicit --endpoint
+// flag, $BRAINKIT_ENDPOINT, gateway.listen from ./brainkit.yaml, and
+// finally the 127.0.0.1:8080 default — so running `brainkit start`
+// with a non-default `gateway.listen:` and then `brainkit deploy`
+// from the same directory targets the right port without a flag.
 func newBusClient(endpoint string) *busClient {
-	if endpoint == "" {
-		endpoint = "http://127.0.0.1:8080"
-	}
 	return &busClient{
-		endpoint: endpoint,
+		endpoint: resolveEndpoint(endpoint),
 		http:     &http.Client{Timeout: 0}, // caller owns the deadline
 	}
 }

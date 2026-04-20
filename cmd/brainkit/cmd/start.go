@@ -26,6 +26,12 @@ probes, tracing, audit) and registers POST /api/bus +
 POST /api/stream on the gateway — the canonical entry points
 used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load `./.env` into the process environment so the yaml's
+			// `$VAR` references (OPENAI_API_KEY, etc.) resolve without
+			// the user having to `export` each one by hand. Existing
+			// env vars always win; missing file is a silent no-op.
+			loadDotEnv(".env")
+
 			cfg, err := server.LoadConfig(configPath)
 			if err != nil {
 				return fmt.Errorf("load config %q: %w", configPath, err)
