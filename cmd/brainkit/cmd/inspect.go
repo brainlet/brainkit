@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,10 +25,13 @@ func newInspectCmd() *cobra.Command {
 prints the result. Subjects:
 
   health     — overall health status (kit.health)
-  packages   — deployed packages (package.list-deployed)
+  packages   — deployed packages (package.list)
   plugins    — running plugins (plugin.list)
-  schedules  — active schedules (schedule.list)
+  schedules  — active schedules (schedules.list)
   agents     — registered agents (agents.list)
+  tools      — registered tools (tools.list)
+  workflows  — registered workflows (workflow.list)
+  resources  — every registered tool + agent + workflow, grouped
   audit      — recent audit events (audit.query)
   traces     — recent traces (trace.list)
   routes     — HTTP gateway routes (gateway.http.route.list)
@@ -37,25 +41,29 @@ rendering.`,
 		Args: cobra.ExactArgs(1),
 		ValidArgs: []string{
 			"health", "packages", "plugins", "schedules",
-			"agents", "audit", "traces", "routes",
+			"agents", "tools", "workflows", "resources",
+			"audit", "traces", "routes",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			subject := args[0]
-
-			spec, ok := inspectSubjects[subject]
-			if !ok {
-				return fmt.Errorf("unknown subject %q — see `brainkit inspect -h`", subject)
-			}
 
 			ctx, cancel := withTimeout(cmd.Context())
 			defer cancel()
 
 			client := newBusClient(endpoint)
+
+			if subject == "resources" {
+				return renderResources(ctx, cmd, client)
+			}
+
+			spec, ok := inspectSubjects[subject]
+			if !ok {
+				return fmt.Errorf("unknown subject %q — see `brainkit inspect -h`", subject)
+			}
 			payload, err := client.call(ctx, spec.topic, json.RawMessage(spec.payload))
 			if err != nil {
 				return err
 			}
-
 			if jsonOutput {
 				return writeJSONPretty(cmd.OutOrStdout(), payload)
 			}
@@ -80,6 +88,8 @@ var inspectSubjects = map[string]inspectSubject{
 	"plugins":   {topic: "plugin.list", payload: "{}", render: renderPlugins},
 	"schedules": {topic: "schedules.list", payload: "{}", render: renderSchedules},
 	"agents":    {topic: "agents.list", payload: "{}", render: renderAgents},
+	"tools":     {topic: "tools.list", payload: "{}", render: renderTools},
+	"workflows": {topic: "workflow.list", payload: "{}", render: renderWorkflows},
 	"audit":     {topic: "audit.query", payload: `{"limit":20}`, render: renderAudit},
 	"traces":    {topic: "trace.list", payload: `{"limit":20}`, render: renderTraces},
 	"routes":    {topic: "gateway.http.route.list", payload: "{}", render: renderRoutes},
@@ -291,4 +301,104 @@ func nonEmpty(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func renderTools(w io.Writer, payload json.RawMessage) error {
+	var resp struct {
+		Tools []struct {
+			Name        string `json:"name"`
+			ShortName   string `json:"shortName"`
+			Description string `json:"description"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return writeJSONPretty(w, payload)
+	}
+	sort.Slice(resp.Tools, func(i, j int) bool {
+		return resp.Tools[i].Name < resp.Tools[j].Name
+	})
+	tw := newTW(w)
+	fmt.Fprintln(tw, "NAME\tSHORT\tDESCRIPTION")
+	for _, t := range resp.Tools {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n",
+			nonEmpty(t.Name, "-"),
+			nonEmpty(t.ShortName, "-"),
+			truncate(nonEmpty(t.Description, "-"), 60))
+	}
+	return tw.Flush()
+}
+
+func renderWorkflows(w io.Writer, payload json.RawMessage) error {
+	var resp struct {
+		Workflows []struct {
+			Name        string `json:"name"`
+			Source      string `json:"source"`
+			Description string `json:"description"`
+		} `json:"workflows"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return writeJSONPretty(w, payload)
+	}
+	sort.Slice(resp.Workflows, func(i, j int) bool {
+		return resp.Workflows[i].Name < resp.Workflows[j].Name
+	})
+	tw := newTW(w)
+	fmt.Fprintln(tw, "NAME\tSOURCE\tDESCRIPTION")
+	for _, wf := range resp.Workflows {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n",
+			nonEmpty(wf.Name, "-"),
+			nonEmpty(wf.Source, "-"),
+			truncate(nonEmpty(wf.Description, "-"), 60))
+	}
+	return tw.Flush()
+}
+
+// renderResources fans out to tools.list + agents.list + workflow.list
+// and prints each section under its own heading. The old CLI's
+// `brainkit resources` verb.
+func renderResources(ctx context.Context, cmd *cobra.Command, client *busClient) error {
+	out := cmd.OutOrStdout()
+
+	sections := []struct {
+		heading string
+		topic   string
+		render  func(io.Writer, json.RawMessage) error
+	}{
+		{"Tools", "tools.list", renderTools},
+		{"Agents", "agents.list", renderAgents},
+		{"Workflows", "workflow.list", renderWorkflows},
+	}
+
+	for i, s := range sections {
+		payload, err := client.call(ctx, s.topic, json.RawMessage("{}"))
+		if err != nil {
+			fmt.Fprintf(out, "%s: error — %v\n", s.heading, err)
+			continue
+		}
+		if jsonOutput {
+			fmt.Fprintf(out, "%s:\n", s.heading)
+			if err := writeJSONPretty(out, payload); err != nil {
+				return err
+			}
+			continue
+		}
+		fmt.Fprintf(out, "%s\n", s.heading)
+		if err := s.render(out, payload); err != nil {
+			return err
+		}
+		if i < len(sections)-1 {
+			fmt.Fprintln(out)
+		}
+	}
+	return nil
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 1 {
+		return s[:max]
+	}
+	return s[:max-1] + "…"
 }
