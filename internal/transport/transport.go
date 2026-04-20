@@ -13,6 +13,7 @@ import (
 	wmamqp "github.com/ThreeDotsLabs/watermill-amqp/v3/pkg/amqp"
 	wmnats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	wmredis "github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
+	"github.com/nats-io/nats.go"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -176,6 +177,21 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		return nil, fmt.Errorf("nats publisher: %w", err)
 	}
 
+	// `nats.DeliverNew()` is critical: watermill-nats deletes the
+	// JetStream consumer on Subscriber.Close (sub.Unsubscribe in
+	// pkg/nats/subscriber.go). On the next process start the fresh
+	// consumer would inherit the default `DeliverPolicy: DeliverAll`
+	// and replay every persisted message in the stream — including
+	// every previous send that already ran. DeliverNew anchors the
+	// consumer to the head of the stream at subscribe time, so
+	// re-attaching after restart only sees messages published from
+	// that point forward.
+	//
+	// This pairs with the LimitsPolicy retention watermill provisions
+	// streams with: the messages stay on disk for inspection /
+	// debugging, but no live subscriber sees them as fresh deliveries.
+	deliverNew := []nats.SubOpt{nats.DeliverNew()}
+
 	// Command subscriber — consumer group for competing consumers
 	subscriber, err := wmnats.NewSubscriber(wmnats.SubscriberConfig{
 		URL:               url,
@@ -187,9 +203,10 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		Unmarshaler:       wmnats.JSONMarshaler{},
 		SubjectCalculator: natsSubjectCalc,
 		JetStream: wmnats.JetStreamConfig{
-			AutoProvision: true,
-			DurablePrefix: consumerGroup,
-			TrackMsgId:    true,
+			AutoProvision:    true,
+			DurablePrefix:    consumerGroup,
+			TrackMsgId:       true,
+			SubscribeOptions: deliverNew,
 		},
 	}, logger)
 	if err != nil {
@@ -210,9 +227,10 @@ func newNATSTransport(cfg TransportConfig, logger watermill.LoggerAdapter) (*Tra
 		Unmarshaler:       wmnats.JSONMarshaler{},
 		SubjectCalculator: natsSubjectCalc,
 		JetStream: wmnats.JetStreamConfig{
-			AutoProvision: true,
-			DurablePrefix: fanOutID,
-			TrackMsgId:    true,
+			AutoProvision:    true,
+			DurablePrefix:    fanOutID,
+			TrackMsgId:       true,
+			SubscribeOptions: deliverNew,
 		},
 	}, logger)
 	if err != nil {
