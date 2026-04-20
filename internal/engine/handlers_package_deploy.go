@@ -181,8 +181,7 @@ func (d *PackageDeployDomain) deployInline(ctx context.Context, req sdk.PackageD
 	if manifest.Entry == "" {
 		return nil, &sdkerrors.ValidationError{Field: "manifest.entry", Message: "is required"}
 	}
-	code, ok := req.Files[manifest.Entry]
-	if !ok {
+	if _, ok := req.Files[manifest.Entry]; !ok {
 		return nil, &sdkerrors.ValidationError{Field: "files", Message: fmt.Sprintf("entry %q not found", manifest.Entry)}
 	}
 
@@ -194,6 +193,15 @@ func (d *PackageDeployDomain) deployInline(ctx context.Context, req sdk.PackageD
 		if err := deploy.ValidateDeps(pm, pc, d.newSecretChecker()); err != nil {
 			return nil, err
 		}
+	}
+
+	// Bundle through esbuild so relative imports (`./greeter`, etc.)
+	// resolve against the sibling files the client sent. Single-file
+	// packages still bundle — bundling a standalone .ts is a no-op
+	// import-wise but cleanly strips TypeScript annotations.
+	code, err := deploy.BundleInMemory(req.Files, manifest.Entry)
+	if err != nil {
+		return nil, fmt.Errorf("package.deploy: bundle: %w", err)
 	}
 
 	// Runtime source is derived from the package name to align with the

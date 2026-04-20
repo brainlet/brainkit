@@ -104,7 +104,14 @@ type typedStreamEvent struct {
 // renderEventAuto inspects each event for a `type` field and
 // formats it accordingly. Mirrors the wire format defined in
 // internal/engine/runtime/bus.js.
+//
+// `msg.reply(data)` wraps its argument in a `{ok:true, data:<...>}`
+// wire envelope rather than a typed stream event, so unwrap that
+// before anything else — users want to see the reply payload they
+// wrote, not the envelope boilerplate.
 func renderEventAuto(cmd *cobra.Command, raw json.RawMessage) {
+	raw = unwrapEnvelope(raw)
+
 	var evt typedStreamEvent
 	if err := json.Unmarshal(raw, &evt); err == nil && evt.Type != "" {
 		switch evt.Type {
