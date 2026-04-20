@@ -7,19 +7,28 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/audit"
 	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+	"github.com/brainlet/brainkit/modules/discovery"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/mcp"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/modules/probes"
+	"github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/modules/tracing"
+	"github.com/brainlet/brainkit/modules/workflow"
+	_ "modernc.org/sqlite" // required for tracing sql.DB
 )
 
 // Config configures a Server. All required fields must be set; New
@@ -59,15 +68,35 @@ type Config struct {
 	// Plugins, when non-empty, wires the plugins module.
 	Plugins []brainkit.PluginConfig
 
-	// Audit configures the audit store. Nil = SQLite at <FSRoot>/audit.db.
-	// Set to an explicit AuditStore pointer to override.
+	// Audit — non-nil enables the audit module. Empty Path falls
+	// back to `<FSRoot>/audit.db`.
 	Audit *AuditConfig
 
-	// Tracing toggles the tracing module. Defaults to on.
-	Tracing *bool
+	// Tracing — non-nil enables the tracing module. Empty Path falls
+	// back to `<FSRoot>/tracing.db`.
+	Tracing *TracingConfig
 
-	// Probes toggles the health probes module. Defaults to on.
-	Probes *bool
+	// Probes — non-nil enables the health-probes module.
+	Probes *ProbesConfig
+
+	// Schedules — non-nil enables persisted cron-style scheduling.
+	// Empty Path runs the scheduler in memory (no restart survival).
+	Schedules *SchedulesConfig
+
+	// MCP — non-nil enables the MCP client module. Requires at
+	// least one entry in Servers.
+	MCP *MCPConfig
+
+	// Discovery — non-nil enables peer discovery.
+	Discovery *DiscoveryConfig
+
+	// Topology — non-nil enables cross-kit routing. When UseDiscovery
+	// is true and Discovery is also set, the discovery module feeds
+	// topology as a ProviderSource.
+	Topology *TopologyConfig
+
+	// Workflow — non-nil enables the workflow module.
+	Workflow *WorkflowConfig
 
 	// Packages are deployed after the Kit boots.
 	Packages []brainkit.Package
@@ -77,12 +106,72 @@ type Config struct {
 	Extra []brainkit.Module
 }
 
-// AuditConfig selects the audit store backing. Callers typically
-// leave Path empty to use the default <FSRoot>/audit.db.
+// AuditConfig selects the audit store backing. Empty Path falls
+// back to `<FSRoot>/audit.db`.
 type AuditConfig struct {
 	Path    string
 	Verbose bool
 }
+
+// TracingConfig configures the tracing module. Empty Path falls
+// back to `<FSRoot>/tracing.db`. Zero Retention disables cleanup.
+type TracingConfig struct {
+	Path      string
+	Retention time.Duration
+}
+
+// ProbesConfig configures periodic health probing. Zero Interval
+// disables the periodic sweep; the one-shot probe on register still
+// runs unless ProbeOnRegister is explicitly false.
+type ProbesConfig struct {
+	Interval        time.Duration
+	ProbeOnRegister bool
+}
+
+// SchedulesConfig configures the scheduling module. Empty Path
+// yields an in-memory scheduler that doesn't survive restart (the
+// module logs a warning at boot).
+type SchedulesConfig struct {
+	Path string
+}
+
+// MCPConfig configures the MCP-client module. Servers is a map of
+// server name → connection config.
+type MCPConfig struct {
+	Servers map[string]brainkit.MCPServerConfig
+}
+
+// DiscoveryConfig configures peer discovery.
+//
+//	Type: "static" (peers only) | "bus" (broadcast presence) | ""
+//
+// Heartbeat and TTL are bus-mode tunables (both default when zero).
+type DiscoveryConfig struct {
+	Type      string
+	Name      string
+	Heartbeat time.Duration
+	TTL       time.Duration
+	Peers     []DiscoveryPeer
+}
+
+// DiscoveryPeer names a peer Kit reachable on the transport.
+type DiscoveryPeer struct {
+	Name      string
+	Namespace string
+	Address   string
+	Meta      map[string]string
+}
+
+// TopologyConfig configures cross-kit routing. UseDiscovery, when
+// true, wires the Discovery module as a dynamic ProviderSource.
+type TopologyConfig struct {
+	Peers        []DiscoveryPeer
+	UseDiscovery bool
+}
+
+// WorkflowConfig — currently a presence toggle; type exists so the
+// shape can grow without breaking opt-in semantics.
+type WorkflowConfig struct{}
 
 // Server is a composed runtime — Kit + standard modules + HTTP
 // gateway, managed as a single lifecycle.
@@ -107,38 +196,110 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("server: open kit store %q: %w", storePath, err)
 	}
 
-	modules := make([]brainkit.Module, 0, 8)
+	modules := make([]brainkit.Module, 0, 12)
 
 	// Gateway — required.
 	gw := gateway.New(cfg.Gateway)
 	modules = append(modules, gw)
 
-	// Tracing + Probes on by default.
-	if cfg.Tracing == nil || *cfg.Tracing {
-		modules = append(modules, tracing.New(tracing.Config{}))
-	}
-	if cfg.Probes == nil || *cfg.Probes {
-		modules = append(modules, probes.New(probes.Config{}))
-	}
-
-	// Audit — SQLite by default at <FSRoot>/audit.db.
-	auditStore, err := resolveAuditStore(cfg)
-	if err != nil {
-		return nil, err
-	}
-	if auditStore != nil {
+	// Audit — opt-in. Empty path falls back to <FSRoot>/audit.db.
+	if cfg.Audit != nil {
+		auditStore, err := resolveAuditStore(cfg)
+		if err != nil {
+			return nil, err
+		}
 		modules = append(modules, audit.NewModule(audit.Config{
-			Store:   auditStore,
-			Verbose: cfg.Audit != nil && cfg.Audit.Verbose,
+			Store:    auditStore,
+			Verbose:  cfg.Audit.Verbose,
+			OwnStore: true,
 		}))
 	}
 
-	// Plugins — only when configured.
+	// Tracing — opt-in. Empty path falls back to <FSRoot>/tracing.db.
+	if cfg.Tracing != nil {
+		tstore, err := resolveTraceStore(cfg)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, tracing.New(tracing.Config{Store: tstore}))
+	}
+
+	// Probes — opt-in.
+	if cfg.Probes != nil {
+		modules = append(modules, probes.New(probes.Config{
+			Interval:        cfg.Probes.Interval,
+			ProbeOnRegister: cfg.Probes.ProbeOnRegister,
+		}))
+	}
+
+	// Schedules — opt-in. Empty path = in-memory (warn).
+	if cfg.Schedules != nil {
+		schedStore, err := resolveScheduleStore(cfg)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, schedules.NewModule(schedules.Config{Store: schedStore}))
+	}
+
+	// Plugins — opt-in (legacy: Plugins slice, not a Config pointer).
 	if len(cfg.Plugins) > 0 {
 		modules = append(modules, pluginsmod.NewModule(pluginsmod.Config{
 			Plugins: cfg.Plugins,
 			Store:   store,
 		}))
+	}
+
+	// MCP — opt-in.
+	if cfg.MCP != nil {
+		modules = append(modules, mcp.New(cfg.MCP.Servers))
+	}
+
+	// Discovery + Topology. Discovery is built first so topology
+	// can optionally wire it as a ProviderSource without caring
+	// about init order.
+	var discoveryModule *discovery.Module
+	if cfg.Discovery != nil {
+		dpeers := make([]discovery.PeerConfig, 0, len(cfg.Discovery.Peers))
+		for _, p := range cfg.Discovery.Peers {
+			dpeers = append(dpeers, discovery.PeerConfig{
+				Name:      p.Name,
+				Namespace: p.Namespace,
+				Address:   p.Address,
+				Meta:      p.Meta,
+			})
+		}
+		discoveryModule = discovery.NewModule(discovery.ModuleConfig{
+			Type:        cfg.Discovery.Type,
+			Name:        cfg.Discovery.Name,
+			Heartbeat:   cfg.Discovery.Heartbeat,
+			TTL:         cfg.Discovery.TTL,
+			StaticPeers: dpeers,
+		})
+		modules = append(modules, discoveryModule)
+	}
+	if cfg.Topology != nil {
+		tpeers := make([]topology.Peer, 0, len(cfg.Topology.Peers))
+		for _, p := range cfg.Topology.Peers {
+			tpeers = append(tpeers, topology.Peer{
+				Name:      p.Name,
+				Namespace: p.Namespace,
+				Address:   p.Address,
+				Meta:      p.Meta,
+			})
+		}
+		topoCfg := topology.Config{Peers: tpeers}
+		if cfg.Topology.UseDiscovery {
+			if discoveryModule == nil {
+				return nil, fmt.Errorf("server: topology: use_discovery is true but no discovery module is configured")
+			}
+			topoCfg.Discovery = discoveryModule
+		}
+		modules = append(modules, topology.NewModule(topoCfg))
+	}
+
+	// Workflow — opt-in toggle.
+	if cfg.Workflow != nil {
+		modules = append(modules, workflow.New())
 	}
 
 	// Caller-supplied extras round out the set.
@@ -212,16 +373,51 @@ func validate(cfg Config) error {
 }
 
 func resolveAuditStore(cfg Config) (audit.Store, error) {
-	// Explicit Audit config → use its Path (SQLite).
-	var path string
-	if cfg.Audit != nil && cfg.Audit.Path != "" {
-		path = cfg.Audit.Path
-	} else {
+	path := cfg.Audit.Path
+	if path == "" {
 		path = filepath.Join(cfg.FSRoot, "audit.db")
 	}
 	store, err := auditstores.NewSQLite(path)
 	if err != nil {
 		return nil, fmt.Errorf("server: open audit store %q: %w", path, err)
+	}
+	return store, nil
+}
+
+// resolveTraceStore opens the SQLite database backing the tracing
+// module. Empty Path falls back to `<FSRoot>/tracing.db`. Zero
+// Retention disables cleanup.
+func resolveTraceStore(cfg Config) (tracing.TraceStore, error) {
+	path := cfg.Tracing.Path
+	if path == "" {
+		path = filepath.Join(cfg.FSRoot, "tracing.db")
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("server: open trace db %q: %w", path, err)
+	}
+	opts := make([]tracing.SQLiteTraceStoreOption, 0, 1)
+	if cfg.Tracing.Retention > 0 {
+		opts = append(opts, tracing.WithRetention(cfg.Tracing.Retention))
+	}
+	store, err := tracing.NewSQLiteTraceStore(db, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("server: init trace store %q: %w", path, err)
+	}
+	return store, nil
+}
+
+// resolveScheduleStore returns the persistence backend for the
+// scheduling module. Empty Path means in-memory — the module logs a
+// warning at boot so operators know schedules won't survive restart.
+func resolveScheduleStore(cfg Config) (schedules.Store, error) {
+	if cfg.Schedules.Path == "" {
+		slog.Warn("schedules: no path configured; using in-memory store (schedules will not survive restart)")
+		return nil, nil
+	}
+	store, err := brainkit.NewSQLiteStore(cfg.Schedules.Path)
+	if err != nil {
+		return nil, fmt.Errorf("server: open schedules store %q: %w", cfg.Schedules.Path, err)
 	}
 	return store, nil
 }

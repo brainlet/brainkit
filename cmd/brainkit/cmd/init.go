@@ -19,32 +19,75 @@ const brainkitYAMLTemplate = `# brainkit server config.
 namespace: %s
 fs_root: ./data
 
+# secret_key: $BRAINKIT_SECRET_KEY   # enables at-rest encryption for secrets.
+
 transport:
-  type: embedded
+  type: embedded                     # memory | embedded | nats | amqp | redis
 
 gateway:
   listen: :8080
+  # timeout: 30s
 
-# Providers, storages, vectors, plugins, audit, tracing, probes —
-# uncomment and populate as needed.
-#
+# ── AI providers ───────────────────────────────────────────────────
 # providers:
-#   - name: openai
-#     type: openai
-#     api_key: $OPENAI_API_KEY
-#
+#   - { name: openai,    type: openai,    api_key: $OPENAI_API_KEY }
+#   - { name: anthropic, type: anthropic, api_key: $ANTHROPIC_API_KEY }
+
+# ── Mastra storages + vectors ─────────────────────────────────────
 # storages:
-#   default:
-#     type: sqlite
-#     path: ./data/default.db
+#   default: { type: sqlite,  path: ./data/default.db }
+#   # type: postgres | mongodb | upstash | memory — see docs/guides/storage-and-memory.md
 #
 # vectors:
-#   default:
-#     type: sqlite
-#     path: ./data/default.db
-#
+#   default: { type: sqlite,  path: ./data/default.db }
+#   # type: pgvector | mongodb — see docs/guides/vectors-and-rag.md
+
+# ── Optional modules ──────────────────────────────────────────────
+# Each section below is opt-in: presence of the key enables the
+# module, absence leaves it off.
+
+# audit:
+#   # path: ./data/audit.db   # default: <fs_root>/audit.db
+#   verbose: false
+
+# tracing:
+#   # path: ./data/tracing.db # default: <fs_root>/tracing.db
+#   retention: 168h           # zero = keep forever
+
+# probes:
+#   interval: 60s
+#   # probe_on_register: true
+
+# schedules:
+#   # path: ./data/brainkit.db   # omit for in-memory (won't survive restart)
+
+# mcp:
+#   servers:
+#     weather: { command: npx, args: ["-y", "mcp-weather"], env: { API_KEY: $WEATHER_KEY } }
+#     remote:  { url: "https://mcp.example.com" }
+
+# discovery:
+#   type: bus                 # static | bus | "" (disabled)
+#   heartbeat: 10s
+#   ttl: 30s
+#   # name: my-instance       # default: per-run UUID
+#   # peers:
+#   #   - { name: analytics, namespace: analytics, address: "nats://..." }
+
+# topology:
+#   # peers:
+#   #   - { name: ingest, namespace: ingest, address: "nats://..." }
+#   # use_discovery: true     # feeds discovery module as live ProviderSource
+
+# workflow: {}                # presence enables the workflow module
+
+# ── Subprocess plugins ────────────────────────────────────────────
+# plugins:
+#   - { name: my-plugin, binary: ./bin/my-plugin, env: { LOG_LEVEL: info } }
+
+# ── Auto-deployed packages ────────────────────────────────────────
 # packages:
-#   - ./packages/hello
+#   - { path: ./packages/hello }
 `
 
 const brainkitGitignoreBlock = `# brainkit runtime state
