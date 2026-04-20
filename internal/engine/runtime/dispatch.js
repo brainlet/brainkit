@@ -16,6 +16,30 @@
     return entry.ref;
   }
 
+  function workflowStatus(runState) {
+    return (runState && runState.status) || "unknown";
+  }
+
+  function isTerminalWorkflowStatus(status) {
+    return status === "success" || status === "failed" || status === "canceled" || status === "cancelled";
+  }
+
+  async function getWorkflowRunState(wf, runId) {
+    var runState = await wf.getWorkflowRunById(runId);
+    if (!runState) {
+      throw new BrainkitError("workflow run not found: " + runId, "NOT_FOUND", { runId: runId });
+    }
+    return runState;
+  }
+
+  function wrapWorkflowError(op, err, code) {
+    if (typeof BrainkitError === "function" && err instanceof BrainkitError) {
+      throw err;
+    }
+    var message = err && err.message ? err.message : String(err);
+    throw new BrainkitError("workflow." + op + " failed: " + message, code || "INTERNAL_ERROR");
+  }
+
   globalThis.__brainkit = {
 
     // ── Workflow ──────────────────────────────────────────────────
@@ -51,31 +75,61 @@
 
       status: async function(args) {
         var wf = getWorkflow(args.name);
-        var runState = await wf.getWorkflowRunById(args.runId);
-        if (!runState) throw new BrainkitError("workflow run not found: " + args.runId, "NOT_FOUND");
+        var runState = await getWorkflowRunState(wf, args.runId);
         return {
           runId: args.runId,
-          status: runState.status || "unknown",
+          status: workflowStatus(runState),
           steps: runState.steps || null,
         };
       },
 
       resume: async function(args) {
         var wf = getWorkflow(args.name);
+        var runState = await getWorkflowRunState(wf, args.runId);
+        var status = workflowStatus(runState);
+        if (isTerminalWorkflowStatus(status)) {
+          throw new BrainkitError("workflow run is already complete: " + args.runId, "VALIDATION_ERROR", {
+            runId: args.runId,
+            status: status,
+          });
+        }
+        if (status !== "suspended") {
+          throw new BrainkitError("workflow run is not suspended: " + args.runId, "VALIDATION_ERROR", {
+            runId: args.runId,
+            status: status,
+          });
+        }
         var run = await wf.createRun({ runId: args.runId });
         var opts = { resumeData: args.resumeData || null };
         if (args.step) opts.step = args.step;
-        var result = await run.resume(opts);
+        var result;
+        try {
+          result = await run.resume(opts);
+        } catch (err) {
+          wrapWorkflowError("resume", err, "VALIDATION_ERROR");
+        }
         return {
-          status: result.status || "unknown",
+          status: workflowStatus(result),
           steps: result.steps || null,
         };
       },
 
       cancel: async function(args) {
         var wf = getWorkflow(args.name);
+        var runState = await getWorkflowRunState(wf, args.runId);
+        var status = workflowStatus(runState);
+        if (isTerminalWorkflowStatus(status)) {
+          throw new BrainkitError("workflow run is already complete: " + args.runId, "VALIDATION_ERROR", {
+            runId: args.runId,
+            status: status,
+          });
+        }
         var run = await wf.createRun({ runId: args.runId });
-        await run.cancel();
+        try {
+          await run.cancel();
+        } catch (err) {
+          wrapWorkflowError("cancel", err);
+        }
         return { cancelled: true };
       },
 
@@ -108,10 +162,16 @@
 
       restart: async function(args) {
         var wf = getWorkflow(args.name);
+        await getWorkflowRunState(wf, args.runId);
         var run = await wf.createRun({ runId: args.runId });
-        var result = await run.restart();
+        var result;
+        try {
+          result = await run.restart();
+        } catch (err) {
+          wrapWorkflowError("restart", err);
+        }
         return {
-          status: result.status || "unknown",
+          status: workflowStatus(result),
           steps: result.steps || null,
         };
       },

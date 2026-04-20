@@ -18,7 +18,10 @@ import (
 // Run executes all workflow domain tests against the given environment.
 func Run(t *testing.T, env *suite.TestEnv) {
 	t.Run("workflows", func(t *testing.T) {
+		t.Run("no_module_commands_absent", func(t *testing.T) { testNoModuleCommandsAbsent(t, env) })
+
 		// commands.go — happy path + error paths (from infra/workflow_bus_test.go)
+		t.Run("list_empty", func(t *testing.T) { testListEmpty(t, env) })
 		t.Run("start_sequential", func(t *testing.T) { testStartSequential(t, env) })
 		t.Run("start_parallel", func(t *testing.T) { testStartParallel(t, env) })
 		t.Run("list", func(t *testing.T) { testList(t, env) })
@@ -29,14 +32,24 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("resume_nonexistent_run", func(t *testing.T) { testResumeNonexistentRun(t, env) })
 		t.Run("status_nonexistent_run", func(t *testing.T) { testStatusNonexistentRun(t, env) })
 		t.Run("cancel_nonexistent_run", func(t *testing.T) { testCancelNonexistentRun(t, env) })
+		t.Run("resume_completed_run", func(t *testing.T) { testResumeCompletedRun(t, env) })
+		t.Run("cancel_completed_run", func(t *testing.T) { testCancelCompletedRun(t, env) })
+		t.Run("resume_wrong_step", func(t *testing.T) { testResumeWrongStep(t, env) })
+		t.Run("restart_nonexistent_run", func(t *testing.T) { testRestartNonexistentRun(t, env) })
+		t.Run("restart_completed_run", func(t *testing.T) { testRestartCompletedRun(t, env) })
 		t.Run("step_with_error", func(t *testing.T) { testStepWithError(t, env) })
 
 		// storage.go — persistence + storage tests
 		t.Run("storage_upgrade", func(t *testing.T) { testStorageUpgrade(t, env) })
 		t.Run("status_from_storage", func(t *testing.T) { testStatusFromStorage(t, env) })
 		t.Run("runs", func(t *testing.T) { testRuns(t, env) })
-		t.Run("start_async_event", func(t *testing.T) { testStartAsyncEvent(t, env) })
+		t.Run("start_async_event_shape", func(t *testing.T) { testStartAsyncEventShape(t, env) })
 		t.Run("crash_recovery_suspended", func(t *testing.T) { testCrashRecoverySuspended(t, env) })
+		t.Run("resume_after_restart", func(t *testing.T) { testResumeAfterRestart(t, env) })
+		t.Run("cancel_after_restart", func(t *testing.T) { testCancelAfterRestart(t, env) })
+		t.Run("restart_after_restart", func(t *testing.T) { testRestartAfterRestart(t, env) })
+		t.Run("runs_after_restart", func(t *testing.T) { testRunsAfterRestart(t, env) })
+		t.Run("corrupt_snapshot_fails_cleanly", func(t *testing.T) { testCorruptSnapshotFailsCleanly(t, env) })
 
 		// concurrent.go — concurrency + stress
 		t.Run("concurrent_starts", func(t *testing.T) { testConcurrentStarts(t, env) })
@@ -45,8 +58,10 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// developer.go — developer scenario tests
 		t.Run("tool_call_inside_step", func(t *testing.T) { testToolCallInsideStep(t, env) })
+		t.Run("tool_failure_inside_step", func(t *testing.T) { testToolFailureInsideStep(t, env) })
 		t.Run("bus_emit_from_step", func(t *testing.T) { testBusEmitFromStep(t, env) })
 		t.Run("conditional_branch", func(t *testing.T) { testConditionalBranch(t, env) })
+		t.Run("branch_fallback_path", func(t *testing.T) { testBranchFallbackPath(t, env) })
 		t.Run("step_state", func(t *testing.T) { testStepState(t, env) })
 		t.Run("suspend_with_context_data", func(t *testing.T) { testSuspendWithContextData(t, env) })
 	})

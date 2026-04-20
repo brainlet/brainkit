@@ -2,7 +2,9 @@ package workflows
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,6 +16,8 @@ import (
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	_ "modernc.org/sqlite"
 )
 
 // Tests migrated from test/infra/workflow_bus_test.go — persistence + storage paths.
@@ -187,7 +191,7 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 	assert.Equal(t, 1, suspResp.Total, "should have exactly 1 suspended run")
 }
 
-func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
+func testStartAsyncEventShape(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -205,7 +209,10 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 			id: "compute",
 			inputSchema: z.object({ n: z.number() }),
 			outputSchema: z.object({ result: z.number() }),
-			execute: async ({ inputData }) => ({ result: inputData.n * 10 }),
+			execute: async ({ inputData }) => {
+				await new Promise(r => setTimeout(r, 100));
+				return { result: inputData.n * 10 };
+			},
 		});
 		const wf = createWorkflow({
 			id: "async-test",
@@ -240,26 +247,253 @@ func testStartAsyncEvent(t *testing.T, _ *suite.TestEnv) {
 
 	select {
 	case payload := <-ch:
-		var event struct {
-			RunID  string `json:"runId"`
-			Name   string `json:"name"`
-			Status string `json:"status"`
-		}
+		var event map[string]any
 		require.NoError(t, json.Unmarshal(payload, &event))
-		assert.Equal(t, asyncResp.RunID, event.RunID)
-		assert.Equal(t, "async-test", event.Name)
-		assert.Equal(t, "success", event.Status)
+		assert.Equal(t, asyncResp.RunID, event["runId"])
+		assert.Equal(t, "async-test", event["name"])
+		assert.Equal(t, "success", event["status"])
+		_, hasSteps := event["steps"]
+		assert.True(t, hasSteps, "completion event should carry a steps field")
+		_, hasError := event["error"]
+		assert.False(t, hasError, "success completion event should not carry an error field")
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for workflow.completed event")
 	}
 }
 
 func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
-	tmpDir := t.TempDir()
-	storePath := filepath.Join(tmpDir, "kit.db")
-	mastraDBPath := filepath.Join(tmpDir, "mastra.db")
+	fixture := createSuspendedPersistedRun(t, "memory", "crash-suspend")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
 
-	suspendCode := `
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		t, k2,
+		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
+	require.Empty(t, statusErr, "status on k2: %s", statusErr)
+	assert.Equal(t, "suspended", statusResp.Status)
+}
+
+func testResumeAfterRestart(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "resume-after-restart")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		t, k2,
+		sdk.WorkflowResumeMsg{
+			Name:       fixture.WorkflowName,
+			RunID:      fixture.RunID,
+			Step:       "gate",
+			ResumeData: json.RawMessage(`{"approved":true}`),
+		},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(resumeMsg.Payload))
+	assert.Equal(t, "success", resumeResp.Status)
+}
+
+func testCancelAfterRestart(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "cancel-after-restart")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	cancelResp, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+		t, k2,
+		sdk.WorkflowCancelMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(cancelMsg.Payload))
+	require.True(t, cancelResp.Cancelled)
+
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		t, k2,
+		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(statusMsg.Payload))
+	assert.Equal(t, "canceled", statusResp.Status)
+}
+
+func testRestartAfterRestart(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "restart-after-restart")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	restartResp, restartMsg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+		t, k2,
+		sdk.WorkflowRestartMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(restartMsg.Payload))
+	assert.Empty(t, restartResp.Status)
+	assert.Contains(t, suite.ResponseErrorMessage(restartMsg.Payload), "not active")
+}
+
+func testRunsAfterRestart(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "runs-after-restart")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+		t, k2,
+		sdk.WorkflowRunsMsg{Name: fixture.WorkflowName},
+		5*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(allMsg.Payload))
+	assert.GreaterOrEqual(t, allResp.Total, 1)
+
+	suspendedResp, suspendedMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+		t, k2,
+		sdk.WorkflowRunsMsg{Name: fixture.WorkflowName, Status: "suspended"},
+		5*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(suspendedMsg.Payload))
+	assert.Equal(t, 1, suspendedResp.Total)
+}
+
+func testCorruptSnapshotFailsCleanly(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "corrupt-snapshot")
+	corruptWorkflowSnapshots(t, fixture.MastraDBPath)
+
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	_, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		t, k2,
+		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	errMsg := suite.ResponseErrorMessage(statusMsg.Payload)
+	require.NotEmpty(t, errMsg)
+	assert.True(t, suite.ResponseCode(statusMsg.Payload) != "", "corrupt snapshot should return a typed envelope")
+}
+
+func testRunsOnTransport(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "runs-on-transport.ts", `
+		const step = createStep({
+			id: "gate",
+			inputSchema: z.object({ x: z.number() }),
+			resumeSchema: z.object({ ok: z.boolean() }),
+			outputSchema: z.object({ done: z.boolean() }),
+			execute: async ({ inputData, resumeData, suspend }) => {
+				if (inputData.x > 0 && !resumeData) return await suspend({});
+				return { done: true };
+			},
+		});
+		const wf = createWorkflow({
+			id: "runs-on-transport",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ done: z.boolean() }),
+		}).then(step).commit();
+		kit.register("workflow", "runs-on-transport", wf);
+	`)
+
+	r1, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":0}`)},
+		10*time.Second,
+	)
+	require.Equal(t, "success", r1.Status)
+
+	r2, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":1}`)},
+		10*time.Second,
+	)
+	require.Equal(t, "suspended", r2.Status)
+
+	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+		t, k,
+		sdk.WorkflowRunsMsg{Name: "runs-on-transport"},
+		5*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(allMsg.Payload))
+	assert.GreaterOrEqual(t, allResp.Total, 2)
+
+	suspendedResp, suspendedMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+		t, k,
+		sdk.WorkflowRunsMsg{Name: "runs-on-transport", Status: "suspended"},
+		5*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(suspendedMsg.Payload))
+	assert.Equal(t, 1, suspendedResp.Total)
+}
+
+func testCrashRecoverySuspendedOnTransport(t *testing.T, env *suite.TestEnv) {
+	fixture := createSuspendedPersistedRun(t, env.Config.Transport, "crash-suspend-transport")
+	k2 := reopenPersistedWorkflowKit(t, fixture)
+	defer k2.Close()
+
+	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		t, k2,
+		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(statusMsg.Payload))
+	assert.Equal(t, "suspended", statusResp.Status)
+}
+
+type workflowPersistenceFixture struct {
+	Transport    brainkit.TransportConfig
+	TmpDir       string
+	StorePath    string
+	MastraDBPath string
+	WorkflowName string
+	RunID        string
+}
+
+func workflowTransportForBackend(t *testing.T, backend string) brainkit.TransportConfig {
+	t.Helper()
+	switch backend {
+	case "", "memory":
+		return brainkit.Memory()
+	default:
+		tcfg := testutil.TransportConfigForBackend(t, backend)
+		if backend != "embedded" {
+			probe := testutil.MustCreateTransport(t, tcfg)
+			testutil.WaitForBackendReady(t, probe)
+			probe.Close()
+		}
+		return testutil.BrainkitTransport(tcfg)
+	}
+}
+
+func newPersistentWorkflowKit(t *testing.T, transportCfg brainkit.TransportConfig, tmpDir, storePath, mastraDBPath string) *brainkit.Kit {
+	t.Helper()
+	store, err := brainkit.NewSQLiteStore(storePath)
+	require.NoError(t, err)
+	k, err := brainkit.New(brainkit.Config{
+		Transport: transportCfg,
+		Namespace: "test",
+		CallerID:  "test-workflow-storage",
+		FSRoot:    tmpDir,
+		Store:     store,
+		Storages: map[string]brainkit.StorageConfig{
+			"default": brainkit.SQLiteStorage(mastraDBPath),
+		},
+		Modules: []brainkit.Module{workflow.New()},
+	})
+	require.NoError(t, err)
+	return k
+}
+
+func createSuspendedPersistedRun(t *testing.T, backend, workflowName string) workflowPersistenceFixture {
+	t.Helper()
+	tmpDir := t.TempDir()
+	fixture := workflowPersistenceFixture{
+		Transport:    workflowTransportForBackend(t, backend),
+		TmpDir:       tmpDir,
+		StorePath:    filepath.Join(tmpDir, "kit.db"),
+		MastraDBPath: filepath.Join(tmpDir, "mastra.db"),
+		WorkflowName: workflowName,
+	}
+
+	k1 := newPersistentWorkflowKit(t, fixture.Transport, fixture.TmpDir, fixture.StorePath, fixture.MastraDBPath)
+	wfDeploy(t, k1, workflowName+".ts", fmt.Sprintf(`
 		const step = createStep({
 			id: "gate",
 			inputSchema: z.object({ x: z.number() }),
@@ -271,69 +505,116 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 			},
 		});
 		const wf = createWorkflow({
-			id: "crash-suspend",
+			id: %q,
 			inputSchema: z.object({ x: z.number() }),
 			outputSchema: z.object({ result: z.string() }),
 		}).then(step).commit();
-		kit.register("workflow", "crash-suspend", wf);
-	`
-
-	store1, err := brainkit.NewSQLiteStore(storePath)
-	require.NoError(t, err)
-	k1, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test-crash", FSRoot: tmpDir,
-		Store: store1,
-		Storages: map[string]brainkit.StorageConfig{
-			"default": brainkit.SQLiteStorage(mastraDBPath),
-		},
-		Modules: []brainkit.Module{workflow.New()},
-	})
-	require.NoError(t, err)
-
-	wfDeploy(t, k1, "crash-suspend.ts", suspendCode)
+		kit.register("workflow", %q, wf);
+	`, workflowName, workflowName))
 
 	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
 		t, k1,
-		sdk.WorkflowStartMsg{Name: "crash-suspend", InputData: json.RawMessage(`{"x":1}`)},
+		sdk.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
-	runID := startResp.RunID
-	k1.Close()
+	fixture.RunID = startResp.RunID
+	require.NoError(t, k1.Close())
+	return fixture
+}
 
-	store2, err := brainkit.NewSQLiteStore(storePath)
-	require.NoError(t, err)
-	k2, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
-		Namespace: "test", CallerID: "test-crash", FSRoot: tmpDir,
-		Store: store2,
-		Storages: map[string]brainkit.StorageConfig{
-			"default": brainkit.SQLiteStorage(mastraDBPath),
-		},
-		Modules: []brainkit.Module{workflow.New()},
-	})
-	require.NoError(t, err)
-	defer k2.Close()
+func createCompletedPersistedRun(t *testing.T, backend, workflowName string) workflowPersistenceFixture {
+	t.Helper()
+	tmpDir := t.TempDir()
+	fixture := workflowPersistenceFixture{
+		Transport:    workflowTransportForBackend(t, backend),
+		TmpDir:       tmpDir,
+		StorePath:    filepath.Join(tmpDir, "kit.db"),
+		MastraDBPath: filepath.Join(tmpDir, "mastra.db"),
+		WorkflowName: workflowName,
+	}
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
-		t, k2,
-		sdk.WorkflowStatusMsg{Name: "crash-suspend", RunID: runID},
+	k1 := newPersistentWorkflowKit(t, fixture.Transport, fixture.TmpDir, fixture.StorePath, fixture.MastraDBPath)
+	wfDeploy(t, k1, workflowName+".ts", fmt.Sprintf(`
+		const step = createStep({
+			id: "done",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+			execute: async ({ inputData }) => ({ y: inputData.x + 1 }),
+		});
+		const wf = createWorkflow({
+			id: %q,
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+		}).then(step).commit();
+		kit.register("workflow", %q, wf);
+	`, workflowName, workflowName))
+
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k1,
+		sdk.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
-	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
-	require.Empty(t, statusErr, "status on k2: %s", statusErr)
-	assert.Equal(t, "suspended", statusResp.Status)
+	require.Equal(t, "success", startResp.Status)
+	fixture.RunID = startResp.RunID
+	require.NoError(t, k1.Close())
+	return fixture
+}
 
-	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
-		t, k2,
-		sdk.WorkflowResumeMsg{
-			Name: "crash-suspend", RunID: runID,
-			Step: "gate", ResumeData: json.RawMessage(`{"approved":true}`),
-		},
-		10*time.Second,
-	)
-	resumeErr := suite.ResponseErrorMessage(resumeMsg.Payload)
-	require.Empty(t, resumeErr, "resume on k2: %s", resumeErr)
-	assert.Equal(t, "success", resumeResp.Status)
+func reopenPersistedWorkflowKit(t *testing.T, fixture workflowPersistenceFixture) *brainkit.Kit {
+	t.Helper()
+	return newPersistentWorkflowKit(t, fixture.Transport, fixture.TmpDir, fixture.StorePath, fixture.MastraDBPath)
+}
+
+func corruptWorkflowSnapshots(t *testing.T, dbPath string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND lower(name) LIKE '%workflow%snapshot%'`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NotEmpty(t, tables, "expected at least one workflow snapshot table")
+
+	mutated := false
+	for _, table := range tables {
+		colRows, err := db.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, table))
+		require.NoError(t, err)
+
+		var candidateCols []string
+		for colRows.Next() {
+			var cid, notNull, pk int
+			var name, colType string
+			var dflt sql.NullString
+			require.NoError(t, colRows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk))
+			switch name {
+			case "snapshot", "state", "data", "payload", "value":
+				candidateCols = append(candidateCols, name)
+			}
+		}
+		colRows.Close()
+
+		for _, col := range candidateCols {
+			if _, err := db.Exec(fmt.Sprintf(`UPDATE "%s" SET "%s" = '{'`, table, col)); err == nil {
+				mutated = true
+				break
+			}
+		}
+		if mutated {
+			break
+		}
+		if _, err := db.Exec(fmt.Sprintf(`DELETE FROM "%s"`, table)); err == nil {
+			mutated = true
+			break
+		}
+	}
+	require.True(t, mutated, "expected to corrupt or delete persisted workflow snapshot data")
 }

@@ -13,15 +13,14 @@ type Module struct {
 	kit *brainkit.Kit
 }
 
-// New creates a workflow module. It has no configuration today; the
-// constructor is kept for forward-compatibility.
+// New creates a workflow module. It has no configuration today.
 func New() *Module { return &Module{} }
 
 // Name reports the module identifier.
 func (m *Module) Name() string { return "workflow" }
 
 // Status reports maturity.
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusBeta }
+func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusStable }
 
 // Init registers the workflow bus commands.
 func (m *Module) Init(k *brainkit.Kit) error {

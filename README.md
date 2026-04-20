@@ -35,7 +35,8 @@ brainkit.RegisterTool(kit, "add", tools.TypedTool[struct{ A, B int }]{
     },
 })
 
-// Deploy an agent. No restart, no build step.
+// Deploy an agent. No restart, no build step. bus.on("ask", ...) listens
+// on `ts.math.ask` — deployment-namespaced automatically.
 kit.Deploy(ctx, brainkit.PackageInline("math", "math.ts", `
     import { Agent } from "agent";
     import { model, tool, bus } from "kit";
@@ -50,9 +51,22 @@ kit.Deploy(ctx, brainkit.PackageInline("math", "math.ts", `
         msg.reply({ answer: r.text });
     });
 `))
+
+// Call the agent from Go. Request/reply with a deadline — no manual
+// subscribe/timeout ceremony.
+payload := json.RawMessage(`{"q":"what is 6 + 7?"}`)
+reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
+    sdk.CustomMsg{Topic: "ts.math.ask", Payload: payload},
+    brainkit.WithCallTimeout(30*time.Second),
+)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(string(reply)) // {"answer":"13"}
 ```
 
-That's it — hot-reload an agent, reach a Go tool, reply on the bus.
+That's it — hot-reload an agent, reach a Go tool from `.ts`, reply on the
+bus, call from Go with a typed request/reply.
 
 ## What's in the box
 

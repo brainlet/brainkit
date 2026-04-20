@@ -65,6 +65,35 @@ func testToolCallInsideStep(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, steps, "PROCESSED-HELLO WORLD", "transform should uppercase")
 }
 
+func testToolFailureInsideStep(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "tool-failure-step.ts", `
+		const fail = createStep({
+			id: "fail-tool",
+			inputSchema: z.object({ msg: z.string() }),
+			outputSchema: z.object({ echoed: z.string() }),
+			execute: async ({ inputData }) => {
+				const result = await tools.call("ghost-tool-workflow", { message: inputData.msg });
+				return { echoed: result.echoed };
+			},
+		});
+		const wf = createWorkflow({
+			id: "tool-failure-step",
+			inputSchema: z.object({ msg: z.string() }),
+			outputSchema: z.object({ echoed: z.string() }),
+		}).then(fail).commit();
+		kit.register("workflow", "tool-failure-step", wf);
+	`)
+
+	resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "tool-failure-step", InputData: json.RawMessage(`{"msg":"boom"}`)},
+		15*time.Second,
+	)
+	require.NotEmpty(t, resp.RunID)
+	assert.Equal(t, "failed", resp.Status)
+}
+
 func testBusEmitFromStep(t *testing.T, env *suite.TestEnv) {
 	k := env.Kit
 	wfDeploy(t, k, "bus-emit-step.ts", `
@@ -188,6 +217,54 @@ func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
 		5*time.Second,
 	)
 	assert.Contains(t, string(stdStatus.Steps), "standard-50", "should take standard branch")
+}
+
+func testBranchFallbackPath(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "branch-fallback.ts", `
+		const classify = createStep({
+			id: "classify",
+			inputSchema: z.object({ tier: z.string() }),
+			outputSchema: z.object({ tier: z.string() }),
+			execute: async ({ inputData }) => ({ tier: inputData.tier }),
+		});
+		const fallback = createStep({
+			id: "fallback",
+			inputSchema: z.object({ tier: z.string() }),
+			outputSchema: z.object({ result: z.string() }),
+			execute: async ({ inputData }) => ({ result: "fallback-" + inputData.tier }),
+		});
+		const premium = createStep({
+			id: "premium",
+			inputSchema: z.object({ tier: z.string() }),
+			outputSchema: z.object({ result: z.string() }),
+			execute: async ({ inputData }) => ({ result: "premium-" + inputData.tier }),
+		});
+		const wf = createWorkflow({
+			id: "branch-fallback",
+			inputSchema: z.object({ tier: z.string() }),
+			outputSchema: z.object({ result: z.string() }),
+		}).then(classify).branch([
+			[async ({ inputData }) => inputData.tier === "premium", premium],
+			[async () => true, fallback],
+		]).commit();
+		kit.register("workflow", "branch-fallback", wf);
+	`)
+
+	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "branch-fallback", InputData: json.RawMessage(`{"tier":"unknown"}`)},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
+	require.Equal(t, "success", resp.Status)
+
+	statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		t, k,
+		sdk.WorkflowStatusMsg{Name: "branch-fallback", RunID: resp.RunID},
+		5*time.Second,
+	)
+	assert.Contains(t, string(statusResp.Steps), "fallback-unknown", "should take explicit fallback branch")
 }
 
 func testStepState(t *testing.T, env *suite.TestEnv) {

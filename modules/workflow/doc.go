@@ -3,5 +3,5 @@
 // module exposes workflow.* bus commands to start / cancel / inspect
 // live instances and persists run state through the Kit's store.
 //
-// Status: beta.
+// Status: stable.
 package workflow

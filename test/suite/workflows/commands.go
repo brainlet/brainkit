@@ -14,6 +14,14 @@ import (
 // Tests migrated from test/infra/workflow_bus_test.go — happy path + error paths.
 // These use env.Kit (shared Full kernel with tools+storage).
 
+func testListEmpty(t *testing.T, env *suite.TestEnv) {
+	resp, msg := wfPublishAndWait[sdk.WorkflowListMsg, sdk.WorkflowListResp](
+		t, env.Kit, sdk.WorkflowListMsg{}, 5*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
+	assert.Len(t, resp.Workflows, 0)
+}
+
 func testStartSequential(t *testing.T, env *suite.TestEnv) {
 	k := env.Kit
 	wfDeploy(t, k, "seq-wf.ts", `
@@ -45,7 +53,7 @@ func testStartSequential(t *testing.T, env *suite.TestEnv) {
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.Empty(t, errMsg, "should not error: %s", errMsg)
 	require.NotEmpty(t, resp.RunID)
-	assert.Contains(t, resp.Status, "success")
+	assert.Equal(t, "success", resp.Status)
 }
 
 func testStartParallel(t *testing.T, env *suite.TestEnv) {
@@ -75,7 +83,7 @@ func testStartParallel(t *testing.T, env *suite.TestEnv) {
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
-	assert.Contains(t, resp.Status, "success")
+	assert.Equal(t, "success", resp.Status)
 }
 
 func testList(t *testing.T, env *suite.TestEnv) {
@@ -138,7 +146,7 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 	require.Equal(t, "suspended", startResp.Status)
 	require.NotEmpty(t, startResp.RunID)
 
-	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
 		t, k,
 		sdk.WorkflowResumeMsg{
 			Name: "approval-flow", RunID: startResp.RunID,
@@ -148,6 +156,7 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 	)
 	resumeErr := suite.ResponseErrorMessage(resumeMsg.Payload)
 	require.Empty(t, resumeErr, "resume should not error: %s", resumeErr)
+	assert.Equal(t, "success", resumeResp.Status)
 }
 
 func testCancel(t *testing.T, env *suite.TestEnv) {
@@ -223,7 +232,7 @@ func testWithToolCall(t *testing.T, env *suite.TestEnv) {
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.Empty(t, errMsg, "tool workflow should not error: %s", errMsg)
-	assert.Contains(t, resp.Status, "success")
+	assert.Equal(t, "success", resp.Status)
 }
 
 func testNotFound(t *testing.T, env *suite.TestEnv) {
@@ -234,6 +243,7 @@ func testNotFound(t *testing.T, env *suite.TestEnv) {
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.NotEmpty(t, errMsg)
+	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
 	assert.Contains(t, errMsg, "not found")
 }
 
@@ -245,6 +255,7 @@ func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.NotEmpty(t, errMsg)
+	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
 	assert.Contains(t, errMsg, "not found")
 }
 
@@ -256,6 +267,7 @@ func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.NotEmpty(t, errMsg)
+	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
 	assert.Contains(t, errMsg, "not found")
 }
 
@@ -267,6 +279,7 @@ func testCancelNonexistentRun(t *testing.T, env *suite.TestEnv) {
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
 	require.NotEmpty(t, errMsg)
+	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
 	assert.Contains(t, errMsg, "not found")
 }
 
@@ -294,4 +307,159 @@ func testStepWithError(t *testing.T, env *suite.TestEnv) {
 	)
 	require.NotEmpty(t, resp.RunID)
 	assert.Equal(t, "failed", resp.Status)
+}
+
+func testResumeCompletedRun(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "resume-completed.ts", `
+		const done = createStep({
+			id: "done",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+			execute: async ({ inputData }) => ({ y: inputData.x + 1 }),
+		});
+		const wf = createWorkflow({
+			id: "resume-completed",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+		}).then(done).commit();
+		kit.register("workflow", "resume-completed", wf);
+	`)
+
+	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "resume-completed", InputData: json.RawMessage(`{"x":1}`)},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
+	require.Equal(t, "success", startResp.Status)
+
+	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		t, k,
+		sdk.WorkflowResumeMsg{Name: "resume-completed", RunID: startResp.RunID, ResumeData: json.RawMessage(`{"approved":true}`)},
+		5*time.Second,
+	)
+	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(resumeMsg.Payload))
+	assert.Contains(t, suite.ResponseErrorMessage(resumeMsg.Payload), "already complete")
+}
+
+func testCancelCompletedRun(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "cancel-completed.ts", `
+		const done = createStep({
+			id: "done",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+			execute: async ({ inputData }) => ({ y: inputData.x + 1 }),
+		});
+		const wf = createWorkflow({
+			id: "cancel-completed",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+		}).then(done).commit();
+		kit.register("workflow", "cancel-completed", wf);
+	`)
+
+	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "cancel-completed", InputData: json.RawMessage(`{"x":1}`)},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
+	require.Equal(t, "success", startResp.Status)
+
+	_, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+		t, k,
+		sdk.WorkflowCancelMsg{Name: "cancel-completed", RunID: startResp.RunID},
+		5*time.Second,
+	)
+	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(cancelMsg.Payload))
+	assert.Contains(t, suite.ResponseErrorMessage(cancelMsg.Payload), "already complete")
+}
+
+func testResumeWrongStep(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "resume-wrong-step.ts", `
+		const approval = createStep({
+			id: "approval",
+			inputSchema: z.object({ item: z.string() }),
+			resumeSchema: z.object({ approved: z.boolean() }),
+			outputSchema: z.object({ result: z.string() }),
+			execute: async ({ inputData, resumeData, suspend }) => {
+				if (!resumeData) return await suspend({ reason: "needs approval" });
+				return { result: resumeData.approved ? "approved: " + inputData.item : "denied" };
+			},
+		});
+		const wf = createWorkflow({
+			id: "resume-wrong-step",
+			inputSchema: z.object({ item: z.string() }),
+			outputSchema: z.object({ result: z.string() }),
+		}).then(approval).commit();
+		kit.register("workflow", "resume-wrong-step", wf);
+	`)
+
+	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "resume-wrong-step", InputData: json.RawMessage(`{"item":"widget"}`)},
+		10*time.Second,
+	)
+	require.Equal(t, "suspended", startResp.Status)
+
+	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		t, k,
+		sdk.WorkflowResumeMsg{
+			Name:       "resume-wrong-step",
+			RunID:      startResp.RunID,
+			Step:       "ghost-step",
+			ResumeData: json.RawMessage(`{"approved":true}`),
+		},
+		5*time.Second,
+	)
+	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(resumeMsg.Payload))
+	assert.Contains(t, suite.ResponseErrorMessage(resumeMsg.Payload), "workflow.resume failed")
+}
+
+func testRestartNonexistentRun(t *testing.T, env *suite.TestEnv) {
+	_, msg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+		t, env.Kit,
+		sdk.WorkflowRestartMsg{Name: "any", RunID: "fake-run-id"},
+		5*time.Second,
+	)
+	require.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
+	assert.Contains(t, suite.ResponseErrorMessage(msg.Payload), "not found")
+}
+
+func testRestartCompletedRun(t *testing.T, env *suite.TestEnv) {
+	k := env.Kit
+	wfDeploy(t, k, "restart-completed.ts", `
+		const done = createStep({
+			id: "done",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+			execute: async ({ inputData }) => ({ y: inputData.x + 10 }),
+		});
+		const wf = createWorkflow({
+			id: "restart-completed",
+			inputSchema: z.object({ x: z.number() }),
+			outputSchema: z.object({ y: z.number() }),
+		}).then(done).commit();
+		kit.register("workflow", "restart-completed", wf);
+	`)
+
+	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		t, k,
+		sdk.WorkflowStartMsg{Name: "restart-completed", InputData: json.RawMessage(`{"x":2}`)},
+		10*time.Second,
+	)
+	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
+	require.Equal(t, "success", startResp.Status)
+
+	restartResp, restartMsg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+		t, k,
+		sdk.WorkflowRestartMsg{Name: "restart-completed", RunID: startResp.RunID},
+		10*time.Second,
+	)
+	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(restartMsg.Payload))
+	assert.Empty(t, restartResp.Status)
+	assert.Contains(t, suite.ResponseErrorMessage(restartMsg.Payload), "not active")
 }
