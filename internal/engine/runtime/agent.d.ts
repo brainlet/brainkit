@@ -2479,28 +2479,67 @@ declare module "agent" {
 
   // ── Agent internals (gap 12) ────────────────────────────────────
 
-  /** Exception thrown when a processor or user code aborts a run. */
+  /**
+   * Exception thrown when a processor (or user code) aborts an
+   * in-flight run — for example, a `PIIDetector` with
+   * `strategy: "block"` calls `abort()` mid-stream. User code that
+   * wants to differentiate "agent bailed intentionally" from "real
+   * error" catches `TripWire`.
+   */
   export class TripWire extends Error {
     constructor(message?: string);
   }
 
-  /** Structured message list for agent transcripts. */
+  /**
+   * Structured message list used inside Mastra agents. Normalizes
+   * messages from many sources (AI SDK v4/v5 UI/Core/Model, Mastra
+   * V1/V2, memory rows) into a common internal shape and exposes
+   * conversion helpers via `.get`.
+   *
+   * @example
+   *   const list = new MessageList();
+   *   list.add(uiMessages, "user");
+   *   const modelMessages = list.get.all.aiV5.model();
+   */
   export class MessageList {
     constructor(options?: any);
     add(messages: any, source?: string): this;
     get: any;
   }
 
-  /** Fluent converter returned by `convertMessages(input)`. */
+  /**
+   * Fluent converter returned by `convertMessages(input)`. Call
+   * `.to(format)` with one of the five accepted strings to get the
+   * messages back in that shape.
+   */
   export class MessageConverter {
     constructor(messages: any);
+    /**
+     * Convert the loaded messages to the requested output format.
+     *
+     * Accepted formats:
+     * - `"Mastra.V2"` — database/memory shape.
+     * - `"AIV4.UI"` — AI SDK v4 UI messages.
+     * - `"AIV4.Core"` — AI SDK v4 Core messages.
+     * - `"AIV5.UI"` — AI SDK v5 UI messages.
+     * - `"AIV5.Model"` — AI SDK v5 ModelMessage (what
+     *   `generateText` / `streamText` expect).
+     */
     to(format: "Mastra.V2" | "AIV4.UI" | "AIV4.Core" | "AIV5.UI" | "AIV5.Model"): any[];
   }
 
-  /** Translate between AI SDK v4 / v5 / Mastra message shapes. */
+  /**
+   * Translate between AI SDK v4 / v5 and Mastra message shapes.
+   * Use `convertMessages(input).to("<format>")` when pulling messages
+   * out of Memory storage (Mastra.V2) to hand back to the AI SDK.
+   */
   export function convertMessages(messages: any): MessageConverter;
 
-  /** Detect whether an object is a known message / content part shape. */
+  /**
+   * Static helpers for detecting the shape of an incoming message /
+   * content part at runtime. Used inside MessageList adapters and by
+   * user code that receives heterogeneous input.
+   */
   export class TypeDetector {
     static isUIMessage(obj: any): boolean;
     static isModelMessage(obj: any): boolean;
@@ -2509,47 +2548,89 @@ declare module "agent" {
 
   // ── Workflow class + clone helpers (gap 12) ─────────────────────
 
-  /** Runnable workflow class. Produced by `createWorkflow(...).commit()`. */
+  /**
+   * Runnable workflow class. Produced by
+   * `createWorkflow(...).commit()`. Call `.createRun()` to get a
+   * fresh Run object, then `.start(inputData)` / `.watch()` / etc.
+   */
   export class Workflow {
     readonly id: string;
     createRun(options?: any): Promise<any>;
     execute(input: any, options?: any): Promise<any>;
   }
 
-  /** Clone a workflow under a fresh ID for independent runs / tracing. */
+  /**
+   * Clone a workflow under a fresh ID to reuse the same pipeline
+   * under a different tracing context or config. Both workflows
+   * execute independently — separate runs, separate logs.
+   *
+   * @example
+   *   const parent = createWorkflow({ id: "main" })...commit();
+   *   const variant = cloneWorkflow(parent, { id: "variant" });
+   */
   export function cloneWorkflow<W extends Workflow>(wf: W, opts: { id: string }): W;
 
-  /** Clone a step under a fresh ID. */
+  /**
+   * Clone a step under a fresh ID. The underlying execute function is
+   * shared; only identity, observability, and log grouping change.
+   */
   export function cloneStep<S>(step: S, opts: { id: string }): S;
 
-  /** Step-input mapper used inside workflows to wire upstream outputs. */
+  /**
+   * Step-input mapper used inside workflow definitions to wire an
+   * upstream step's output (or the workflow input) into the next
+   * step's input. Accepts either `{ step, path }` or
+   * `{ initData, path }`.
+   */
   export function mapVariable(spec: any): any;
 
   // ── Logger (gap 12) ────────────────────────────────────────────
 
+  /**
+   * The minimal logger contract Mastra expects. Every logger shipped
+   * by Mastra satisfies this interface; pass any one to
+   * `new Mastra({ logger })`.
+   */
   export interface IMastraLogger {
+    /** Fine-grained internal state. Off unless `level: "DEBUG"`. */
     debug(message: string, ...args: any[]): void;
+    /** Normal operational messages. */
     info(message: string, ...args: any[]): void;
+    /** Degraded but recoverable conditions. */
     warn(message: string, ...args: any[]): void;
+    /** Failures requiring attention. */
     error(message: string, ...args: any[]): void;
   }
 
   export interface ConsoleLoggerOptions {
+    /** Optional name prepended to every line — useful when multiple
+     *  loggers share stdout. */
     name?: string;
+    /** Minimum level that gets emitted. Default `"INFO"`. */
     level?: "DEBUG" | "INFO" | "WARN" | "ERROR";
   }
 
-  /** Structured stdout logger. Satisfies IMastraLogger. */
+  /**
+   * Structured stdout logger. Prints one JSON-ish line per call with
+   * the level, name, and provided args. Default logger when
+   * `Mastra` is constructed without a custom one.
+   */
   export class ConsoleLogger implements IMastraLogger {
     constructor(options?: ConsoleLoggerOptions);
     debug(message: string, ...args: any[]): void;
     info(message: string, ...args: any[]): void;
     warn(message: string, ...args: any[]): void;
     error(message: string, ...args: any[]): void;
+    /** Scoped child logger that prefixes every message with the
+     *  component name. */
     child(component: string): ConsoleLogger;
   }
 
-  /** Fans log calls out to multiple underlying loggers. */
+  /**
+   * Fans log calls out to multiple underlying loggers. Use when you
+   * want both a ConsoleLogger for dev and a remote transport (Pino,
+   * file, HTTP) in the same run.
+   */
   export class MultiLogger implements IMastraLogger {
     constructor(loggers: IMastraLogger[]);
     debug(message: string, ...args: any[]): void;
@@ -2558,7 +2639,12 @@ declare module "agent" {
     error(message: string, ...args: any[]): void;
   }
 
-  /** Wraps a legacy logger with a v-next bridge for observability. */
+  /**
+   * Wraps a legacy (v1) logger plus a v-next logger getter so writes
+   * land on both surfaces during the transition. Typical usage is
+   * internal; set one up only when migrating your observability
+   * stack across Mastra versions.
+   */
   export class DualLogger implements IMastraLogger {
     constructor(inner: IMastraLogger, getLoggerVNext?: () => any);
     debug(message: string, ...args: any[]): void;
@@ -2569,25 +2655,57 @@ declare module "agent" {
 
   // ── Evals internals (gap 12) ────────────────────────────────────
 
-  /** Scorer produced by `createScorer(...)`. */
+  /**
+   * Scorer produced by `createScorer(...)`. Instances expose
+   * `.run(input)` returning a numeric score plus optional reasoning.
+   * `instanceof MastraScorer` is the way to verify a value
+   * returned by a user-defined factory really is a scorer.
+   */
   export class MastraScorer {
     readonly name: string;
     readonly description?: string;
     run(input: any): Promise<{ score: number; reason?: string; [key: string]: any }>;
   }
 
-  /** Enum of hook names scorers / evals can subscribe to. */
+  /**
+   * Enum of hook names scorers / evals / processors subscribe to.
+   * Currently ships `ON_SCORER_RUN`; Mastra adds more as the
+   * observability pipeline grows. Use the constant rather than a
+   * string literal to stay forward-compatible.
+   */
   export const AvailableHooks: Record<string, string>;
 
-  /** Register a handler for a Mastra lifecycle hook. */
+  /**
+   * Register a handler for a Mastra lifecycle hook. Multiple handlers
+   * can be registered for the same hook — all fire when the hook
+   * executes.
+   */
   export function registerHook(hook: string, action: (event: any) => void | Promise<void>): void;
 
-  /** Fire the registered handlers for a hook. */
+  /**
+   * Fire every handler registered for the given hook, in registration
+   * order. Awaits each handler before calling the next.
+   */
   export function executeHook(hook: string, payload: any): void | Promise<void>;
 
   // ── Prebuilt scorer factories (gap 12) ──────────────────────────
 
-  /** Code-only trajectory-accuracy scorer — no LLM judge. */
+  /**
+   * Validates that an agent run followed an expected step sequence —
+   * purely by code comparison, no LLM judge. Useful for regression
+   * testing multi-step tool pipelines (router → search → synthesis)
+   * where step order + optionally per-step data is the contract.
+   *
+   * @example
+   *   createTrajectoryAccuracyScorerCode({
+   *     expectedTrajectory: {
+   *       steps: [
+   *         { stepType: "tool_call", name: "search-tool", toolArgs: { query: "weather in NYC" } },
+   *         { stepType: "tool_call", name: "format-tool" },
+   *       ],
+   *     },
+   *   });
+   */
   export function createTrajectoryAccuracyScorerCode(options: {
     expectedTrajectory: {
       steps: Array<{
@@ -2601,51 +2719,117 @@ declare module "agent" {
     [key: string]: any;
   }): MastraScorer;
 
-  /** Code-only trajectory scorer with configurable weights. */
+  /**
+   * Code-only trajectory scorer with configurable per-dimension
+   * weights (step-order, step-count, args accuracy). Lower-level than
+   * {@link createTrajectoryAccuracyScorerCode} — pass it raw weights
+   * when you want custom trade-offs.
+   */
   export function createTrajectoryScorerCode(options?: any): MastraScorer;
 
-  /** LLM-judge trajectory accuracy scorer. */
+  /**
+   * LLM-judge trajectory accuracy scorer. A judge model compares the
+   * actual run against the expected trajectory and scores based on
+   * semantic similarity — handy when tool args vary naturally (paraphrased
+   * queries, numeric noise) but the decision structure must match.
+   */
   export function createTrajectoryAccuracyScorerLLM(options: { model: any; expectedTrajectory?: any }): MastraScorer;
 
-  /** Code-only tool-call accuracy scorer. */
+  /**
+   * Code-only tool-call accuracy scorer. Asserts that the expected
+   * tools were called with compatible arguments — no LLM needed.
+   */
   export function createToolCallAccuracyScorerCode(options: any): MastraScorer;
 
   // ── RAG rerank scorers (gap 12) ─────────────────────────────────
-  // Hand these to `rerankWithScorer(vectorStore, scorer)` to control
-  // the relevance-scoring backend.
+  // Hand these to `rerankWithScorer({ results, query, scorer })` to
+  // control the relevance-scoring backend. Each scorer returns a
+  // `getRelevanceScore(query, text) => Promise<number>` surface so
+  // `rerankWithScorer` stays provider-agnostic.
 
+  /**
+   * Cohere's `rerank-english-v3.0` (and peers) backs this scorer.
+   * High accuracy, paid API — requires a Cohere key.
+   */
   export class CohereRelevanceScorer {
     constructor(options: { apiKey: string; model?: string });
   }
+
+  /**
+   * Uses a Mastra Agent as the relevance judge — route any language
+   * model you already have configured, no third-party provider
+   * needed. Slowest of the three but most customizable.
+   */
   export class MastraAgentRelevanceScorer {
     constructor(options: { model: any; [key: string]: any });
   }
+
+  /**
+   * ZeroEntropy's hosted reranker. Fast, cheap, opinionated — good
+   * fit when Cohere isn't available but quality matters more than
+   * the Mastra-agent fallback.
+   */
   export class ZeroEntropyRelevanceScorer {
     constructor(options: { apiKey: string; model?: string });
   }
 
   // ── Workspace (gap 12) ──────────────────────────────────────────
 
-  /** Compose multiple filesystems behind one interface. */
+  /**
+   * Composes multiple `MastraFilesystem` instances behind one
+   * interface — e.g. a read-only project skeleton layered under a
+   * writable temp directory. Calls route to the first filesystem
+   * that serves the path.
+   */
   export class CompositeFilesystem {
     constructor(config: { filesystems: any[]; [key: string]: any });
   }
 
-  /** Build the ten built-in workspace tools off a Workspace instance. */
+  /**
+   * Builds the ten built-in workspace tools off a `Workspace`
+   * instance and returns them keyed by tool id. Pass the result
+   * directly to an `Agent({ tools })` config.
+   *
+   * @example
+   *   const workspace = new Workspace({
+   *     filesystem: new LocalFilesystem({ root: "/tmp/sandbox" }),
+   *   });
+   *   const agent = new Agent({
+   *     name: "coder",
+   *     model: model("openai", "gpt-4o-mini"),
+   *     tools: createWorkspaceTools(workspace),
+   *   });
+   */
   export function createWorkspaceTools(workspace: Workspace): Record<string, any>;
+
+  /** Reads a file from the workspace. Pre-built Tool instance. */
   export const readFileTool: any;
+  /** Writes or overwrites a file. Pre-built Tool instance. */
   export const writeFileTool: any;
+  /** Applies a structured edit (search + replace) to a file. */
   export const editFileTool: any;
+  /** Lists a directory's contents. */
   export const listFilesTool: any;
+  /** Deletes a file or directory. */
   export const deleteFileTool: any;
+  /** Returns stat metadata (size, mtime, etc.) for a path. */
   export const fileStatTool: any;
+  /** Creates a directory, recursive by default. */
   export const mkdirTool: any;
+  /** Fuzzy / substring search across files. */
   export const searchTool: any;
+  /** Indexes file content for later search / retrieval. */
   export const indexContentTool: any;
+  /** Executes a shell command inside the workspace's sandbox. */
   export const executeCommandTool: any;
 
   // ── Observability exporters (gap 12) ────────────────────────────
 
+  /**
+   * Abstract base class every Mastra observability exporter extends.
+   * Subclass it to ship spans / events to your own collector. The
+   * default implementation handles queuing, batching, and lifecycle.
+   */
   export abstract class BaseExporter {
     constructor(config?: any);
     name: string;
@@ -2653,27 +2837,58 @@ declare module "agent" {
     shutdown(): Promise<void>;
   }
 
-  /** Ships spans to Mastra Cloud. Requires MASTRA_CLOUD_ACCESS_TOKEN. */
+  /**
+   * Ships traces to Mastra Cloud. Requires the
+   * `MASTRA_CLOUD_ACCESS_TOKEN` environment variable; gracefully
+   * disables itself when the token is missing so dev runs don't
+   * fail.
+   */
   export class CloudExporter extends BaseExporter {
     constructor(config?: any);
   }
 
-  /** Dev-time exporter that prints span events to stdout. */
+  /**
+   * Dev-time exporter that prints span events to stdout as they land.
+   * Not meant for production; useful alongside TestExporter when
+   * debugging why a span didn't materialize.
+   */
   export class ConsoleExporter extends BaseExporter {
     constructor(config?: any);
   }
 
-  /** In-memory exporter for test assertions. Captures tracing events,
-   *  logs, scores, and feedback so tests can inspect shape after a run. */
+  /**
+   * In-memory exporter for test assertions. Captures tracing events,
+   * logs, scores, and feedback so tests can inspect shape after a
+   * run. This is the right exporter for verifying "did the agent
+   * emit a tool_call span?" without a real OTLP collector.
+   *
+   * @example
+   *   const exporter = new TestExporter();
+   *   const obs = new Observability({
+   *     configs: { default: { serviceName: "test", exporters: [exporter] } },
+   *   });
+   *   // ... run an agent ...
+   *   await obs.shutdown();
+   *   const spans = exporter.getCompletedSpans();
+   *   expect(spans.some(s => s.name === "agent_run")).toBe(true);
+   */
   export class TestExporter extends BaseExporter {
     constructor(config?: any);
+    /** Raw TracingEvents collected, including SPAN_STARTED / UPDATED / ENDED. */
     readonly events: any[];
+    /** All unique spans (final state of each — includes incomplete). */
     getAllSpans(): any[];
+    /** Spans that have received SPAN_ENDED. */
     getCompletedSpans(): any[];
+    /** Spans with no parent — run entry points. */
     getRootSpans(): any[];
+    /** Started but not ended — useful to diagnose flush timing. */
     getIncompleteSpans(): any[];
+    /** Filter completed spans by SpanType (e.g. `"agent_run"`). */
     getSpansByType(type: string): any[];
+    /** Filter events by TracingEventType. */
     getByEventType(type: string): any[];
+    /** Everything for a specific trace: events, spans, logs, scores, feedback. */
     getByTraceId(traceId: string): {
       events: any[];
       spans: any[];
@@ -2681,9 +2896,16 @@ declare module "agent" {
       scores: any[];
       feedback: any[];
     };
+    /** Everything for a specific span. */
     getBySpanId(spanId: string): { events: any[]; span: any; state: any };
   }
 
+  /**
+   * Abstract tracking exporter — base class for user-defined
+   * exporters that need to correlate spans across a run. Subclass it
+   * to build stateful exporters (batching + per-trace aggregation)
+   * without rewriting the event routing.
+   */
   export abstract class TrackingExporter<
     TRootData = unknown,
     TSpanData = unknown,
@@ -2694,29 +2916,63 @@ declare module "agent" {
     constructor(config?: TConfig);
   }
 
-  /** Compose multiple span formatters into a single pipeline. */
+  /**
+   * Compose multiple span formatters into a single pipeline. Useful
+   * when you want to apply `SensitiveDataFilter` → custom attribute
+   * rewriter → cardinality limiter in sequence before export.
+   */
   export function chainFormatters(...formatters: any[]): any;
 
   // ── OpenTelemetry sdk-trace-base (gap 8 / 12) ───────────────────
   // Re-exported so deployments can wire their own OTel pipelines
-  // (BasicTracerProvider → BatchSpanProcessor → exporter).
+  // independently of Mastra's observability:
+  //   BasicTracerProvider → BatchSpanProcessor → exporter.
+  // Use these when you want to ship OpenInference / OTLP / Jaeger
+  // traces from a .ts without leaving the embedded runtime.
 
+  /**
+   * The default OpenTelemetry `TracerProvider`. Owns the trace
+   * context, span processors, and sampler. Call `getTracer(name)`
+   * for an instrumented tracer, `addSpanProcessor(processor)` to
+   * attach a processor → exporter chain, and `shutdown()` to drain
+   * on exit.
+   */
   export class BasicTracerProvider {
     constructor(config?: any);
+    /** Returns a Tracer for the given instrumentation library name. */
     getTracer(name: string, version?: string): any;
+    /** Registers a span processor. Order matters — processors run in
+     *  registration order. */
     addSpanProcessor(processor: any): void;
+    /** Flushes pending spans and closes all processors. */
     shutdown(): Promise<void>;
+    /** Flushes without closing. Useful in serverless lifecycles. */
     forceFlush(): Promise<void>;
   }
 
+  /**
+   * Batches finished spans and exports them in groups — the
+   * production default. Trades a bit of latency for dramatically
+   * lower exporter overhead. Configure `maxExportBatchSize`,
+   * `scheduledDelayMillis`, and `exportTimeoutMillis` on construction.
+   */
   export class BatchSpanProcessor {
     constructor(exporter: any, config?: any);
+    /** Called when a span starts. */
     onStart(span: any, parentContext?: any): void;
+    /** Called when a span ends — enqueues for batch export. */
     onEnd(span: any): void;
+    /** Immediately exports every enqueued span. */
     forceFlush(): Promise<void>;
+    /** Exports then stops accepting new spans. */
     shutdown(): Promise<void>;
   }
 
+  /**
+   * Exports every span the moment it finishes — no batching. Use in
+   * tests or when you want spans on stdout in real time; never in
+   * production.
+   */
   export class SimpleSpanProcessor {
     constructor(exporter: any);
     onStart(span: any, parentContext?: any): void;
@@ -2725,6 +2981,11 @@ declare module "agent" {
     shutdown(): Promise<void>;
   }
 
+  /**
+   * Processor that discards every span. Useful to silence a branch
+   * of your trace graph (e.g., under a feature flag) without
+   * removing instrumentation.
+   */
   export class NoopSpanProcessor {
     constructor();
     onStart(span: any, parentContext?: any): void;
@@ -2733,35 +2994,70 @@ declare module "agent" {
     shutdown(): Promise<void>;
   }
 
+  /**
+   * Exporter that prints ended spans to stdout in JSON form. Pair
+   * with `SimpleSpanProcessor` for dev-time observability without a
+   * collector.
+   */
   export class ConsoleSpanExporter {
     constructor();
     export(spans: any[], resultCallback: (result: any) => void): void;
     shutdown(): Promise<void>;
   }
 
+  /**
+   * In-memory exporter — the OTel-level counterpart to
+   * {@link TestExporter}. Collects finished spans into an array;
+   * call `getFinishedSpans()` after a run to assert shape.
+   *
+   * @example
+   *   const exporter = new InMemorySpanExporter();
+   *   const provider = new BasicTracerProvider({
+   *     spanProcessors: [new BatchSpanProcessor(exporter, { maxExportBatchSize: 1 })],
+   *   });
+   *   const tracer = provider.getTracer("fixture");
+   *   tracer.startSpan("my-span").end();
+   *   await provider.shutdown();
+   *   expect(exporter.getFinishedSpans()).toHaveLength(1);
+   */
   export class InMemorySpanExporter {
     constructor();
     export(spans: any[], resultCallback: (result: any) => void): void;
+    /** Returns every span the exporter has received, ordered by end time. */
     getFinishedSpans(): any[];
+    /** Clears the in-memory buffer between tests. */
     reset(): void;
     shutdown(): Promise<void>;
   }
 
+  /** Sampler that samples every span. Default for dev / tests. */
   export class AlwaysOnSampler {
     constructor();
     shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
   }
 
+  /** Sampler that drops every span. Pair with a FeatureFlag. */
   export class AlwaysOffSampler {
     constructor();
     shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
   }
 
+  /**
+   * Parent-based sampler — delegates to the `root` sampler for new
+   * traces and inherits the parent's sampling decision for child
+   * spans. The correct default for distributed traces.
+   */
   export class ParentBasedSampler {
     constructor(options: { root: any; [key: string]: any });
     shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;
   }
 
+  /**
+   * Deterministic ratio-based sampler: samples `ratio` fraction of
+   * traces (0 = off, 1 = all). Uses the traceId hash so a given
+   * trace is either fully sampled or fully dropped — no partial
+   * traces.
+   */
   export class TraceIdRatioBasedSampler {
     constructor(ratio: number);
     shouldSample(context: any, traceId: string, spanName: string, spanKind: any): any;

@@ -523,108 +523,406 @@ declare module "ai" {
 
   // ── Tool authoring (gap 12) ─────────────────────────────────────
 
-  /** Build a typed tool with a Zod or JSON schema. See Vercel AI SDK docs. */
+  /**
+   * Helper function for inferring the execute args of a tool. Defines a
+   * typed tool with an `inputSchema` (Zod or JSON Schema), a
+   * `description`, and an `execute` handler. The LLM calls the tool by
+   * name during `generateText` / `streamText` when `tools: { name:
+   * tool(...) }` is supplied.
+   *
+   * @example
+   *   const weather = tool({
+   *     description: "Gets current weather for a city",
+   *     inputSchema: z.object({ city: z.string() }),
+   *     execute: async ({ city }) => ({ city, tempC: 18 }),
+   *   });
+   */
   export function tool(config: any): any;
-  /** Dynamic tool — input schema resolved at execute time. */
+
+  /**
+   * Defines a dynamic tool — one whose input schema is resolved at
+   * execute time. Useful when the schema depends on runtime state
+   * (capabilities, permissions, user tenant).
+   */
   export function dynamicTool(config: any): any;
-  /** Wrap a JSON Schema object so it can be passed as an `inputSchema`. */
+
+  /**
+   * Create a schema using a JSON Schema. Pass the result to a tool's
+   * `inputSchema` or to `generateObject({ schema })`.
+   *
+   * @param jsonSchema The JSON Schema for the schema.
+   * @param options.validate Optional validation function for the schema.
+   */
   export function jsonSchema(schema: any, options?: any): any;
-  /** Wrap a Zod schema so it can be passed as an `inputSchema`. */
+
+  /**
+   * Create a schema from a Zod v3 or v4 schema. Same role as
+   * {@link jsonSchema} but retains Zod's richer type inference.
+   */
   export function zodSchema(schema: any, options?: any): any;
-  /** Normalize any schema (Zod / JSON / FlexibleSchema) to the internal Schema. */
+
+  /**
+   * Normalize any FlexibleSchema (Zod / JSON / raw Schema) into the
+   * internal `Schema` type. Useful when code receives schemas from
+   * multiple sources and has to treat them uniformly.
+   */
   export function asSchema(schema: any): any;
 
-  /** Generate a random id. */
+  /**
+   * Generates a 16-character random string to use for IDs.
+   * Not cryptographically secure.
+   */
   export function generateId(): string;
-  /** Build a configurable id factory. */
+
+  /**
+   * Creates an ID generator. The total length of the ID is the sum of
+   * the prefix, separator, and random part length. Not cryptographically
+   * secure.
+   *
+   * @param alphabet - The alphabet to use for the ID.
+   *   Default `'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'`.
+   * @param prefix - Optional prefix prepended to every generated id.
+   * @param separator - Separator between the prefix and the random
+   *   part. Default `'-'`.
+   * @param size - Size of the random part. Default `16`.
+   */
   export function createIdGenerator(options?: { prefix?: string; size?: number; alphabet?: string; separator?: string }): () => string;
 
-  /** Stop condition: true after N steps. Use with `stopWhen`. */
+  /**
+   * Stop condition: true once the agent has executed N steps. Pass to
+   * `generateText({ stopWhen: stepCountIs(5) })` to bound a tool loop.
+   */
   export function stepCountIs(n: number): (args: any) => boolean;
-  /** Stop condition: true when a tool with the given name fires. */
+
+  /**
+   * Stop condition: true as soon as a tool with the given name fires.
+   * Use with `stopWhen` to short-circuit once a terminal tool is
+   * reached.
+   */
   export function hasToolCall(name: string): (args: any) => boolean;
-  /** Stop condition: end of the loop sentinel. */
+
+  /**
+   * Stop condition that fires at the end of the loop. Internal
+   * sentinel — prefer {@link stepCountIs} or {@link hasToolCall} in
+   * user code.
+   */
   export function isLoopFinished(args: any): boolean;
 
   // ── Middleware (gap 12) ─────────────────────────────────────────
 
-  export function wrapLanguageModel(options: { model: any; middleware: any | any[] }): any;
-  export function wrapEmbeddingModel(options: { model: any; middleware: any | any[] }): any;
-  export function wrapImageModel(options: { model: any; middleware: any | any[] }): any;
-  export function wrapProvider(options: { provider: any; middleware: any | any[] }): any;
-  export function extractReasoningMiddleware(options: { tagName: string }): any;
-  export function extractJsonMiddleware(options?: any): any;
+  /**
+   * Wraps a language model with middleware that transforms parameters,
+   * wraps generate operations, and wraps stream operations. When
+   * multiple middlewares are provided, the first middleware transforms
+   * the input first, and the last is wrapped directly around the model.
+   *
+   * @example
+   *   const enhanced = wrapLanguageModel({
+   *     model: openai("gpt-4.1"),
+   *     middleware: extractReasoningMiddleware({ tagName: "think" }),
+   *   });
+   *   const { text, reasoning } = await generateText({ model: enhanced, prompt: "..." });
+   */
+  export function wrapLanguageModel(options: { model: any; middleware: any | any[]; modelId?: string; providerId?: string }): any;
+
+  /**
+   * Wraps an embedding model with middleware that transforms parameters
+   * and wraps embed operations.
+   */
+  export function wrapEmbeddingModel(options: { model: any; middleware: any | any[]; modelId?: string; providerId?: string }): any;
+
+  /**
+   * Wraps an image model with middleware that transforms parameters
+   * and wraps image-generation operations.
+   */
+  export function wrapImageModel(options: { model: any; middleware: any | any[]; modelId?: string; providerId?: string }): any;
+
+  /**
+   * Wraps a provider instance so middleware applies to every language
+   * (and optionally image) model resolved through it.
+   */
+  export function wrapProvider(options: {
+    provider: any;
+    languageModelMiddleware?: any | any[];
+    imageModelMiddleware?: any | any[];
+  }): any;
+
+  /**
+   * Extracts an XML-tagged reasoning section from the generated text
+   * and exposes it as a `reasoning` property on the result. Built for
+   * models that emit chain-of-thought in `<think>…</think>` blocks
+   * (DeepSeek-R1, friendli, etc).
+   *
+   * @param tagName The XML tag name to extract reasoning from.
+   * @param separator Separator between reasoning and text sections.
+   * @param startWithReasoning Whether the model starts with reasoning tokens.
+   */
+  export function extractReasoningMiddleware(options: { tagName: string; separator?: string; startWithReasoning?: boolean }): any;
+
+  /**
+   * Middleware that extracts JSON content from the generated text.
+   * Strips markdown code fences by default; customize via the
+   * `transform` option.
+   */
+  export function extractJsonMiddleware(options?: { transform?: (text: string) => string }): any;
+
+  /**
+   * Middleware that applies default call settings to every
+   * `generateText` / `streamText` call, unless overridden at the call
+   * site.
+   */
   export function defaultSettingsMiddleware(options: any): any;
+
+  /**
+   * Middleware that applies default settings to every `embed` /
+   * `embedMany` call.
+   */
   export function defaultEmbeddingSettingsMiddleware(options: any): any;
+
+  /**
+   * Upgrades a non-streaming model into a streaming one: the generate
+   * call runs, the full text is captured, then replayed through the
+   * stream interface. Useful when a downstream consumer expects a
+   * stream but the provider doesn't support one.
+   */
   export function simulateStreamingMiddleware(): any;
-  export function smoothStream(options?: any): any;
+
+  /**
+   * Smooths text and reasoning streaming output.
+   *
+   * @param delayInMs Delay in milliseconds between each chunk.
+   *   Defaults to 10ms. Set to `null` to skip.
+   * @param chunking Controls how the text is chunked for streaming —
+   *   `"word"` (default), `"line"`, a custom RegExp, an Intl.Segmenter
+   *   (recommended for CJK languages), or a custom ChunkDetector.
+   */
+  export function smoothStream(options?: { delayInMs?: number | null; chunking?: any }): any;
+
+  /**
+   * Middleware that injects example inputs into the tool descriptions
+   * visible to the model. Helps when a tool's schema alone doesn't
+   * convey the expected shape.
+   */
   export function addToolInputExamplesMiddleware(options?: any): any;
 
   // ── Provider registry (gap 12) ──────────────────────────────────
 
+  /**
+   * Creates a registry for multiple providers with optional middleware.
+   * Resolve models via `registry.languageModel("<providerKey>:<modelId>")`.
+   *
+   * @example
+   *   const registry = createProviderRegistry({
+   *     openai,
+   *     anthropic,
+   *   });
+   *   const model = registry.languageModel("openai:gpt-4o-mini");
+   */
   export function createProviderRegistry(providers: Record<string, any>, options?: any): any;
+
+  /**
+   * Creates a custom provider with pre-wired models — useful for
+   * project-internal aliasing (`"fast"` → gpt-4o-mini, `"safe"` →
+   * claude-sonnet) without exposing provider ids at call sites.
+   *
+   * @throws {NoSuchModelError} when a requested model is not found and
+   *   no `fallbackProvider` is set.
+   */
   export function customProvider(options: {
     languageModels?: Record<string, any>;
-    textEmbeddingModels?: Record<string, any>;
+    embeddingModels?: Record<string, any>;
     imageModels?: Record<string, any>;
+    transcriptionModels?: Record<string, any>;
+    speechModels?: Record<string, any>;
     fallbackProvider?: any;
   }): any;
-  /** @deprecated Use createProviderRegistry. */
+
+  /** @deprecated Use {@link createProviderRegistry}. */
   export function experimental_createProviderRegistry(providers: Record<string, any>, options?: any): any;
-  /** @deprecated Use customProvider. */
+  /** @deprecated Use {@link customProvider}. */
   export function experimental_customProvider(options: any): any;
 
   // ── Message utilities (gap 12) ──────────────────────────────────
 
-  /** Converts UI-shaped messages into ModelMessages (async). */
-  export function convertToModelMessages(messages: any[], options?: any): Promise<any[]>;
+  /**
+   * Converts an array of UI messages from `useChat` into an array of
+   * ModelMessages that can be used with the AI functions (e.g.
+   * `streamText`, `generateText`).
+   *
+   * @param messages The UI messages to convert.
+   * @param options.tools The tools to use.
+   * @param options.ignoreIncompleteToolCalls Whether to ignore
+   *   incomplete tool calls. Default `false`.
+   * @param options.convertDataPart Optional function to convert data
+   *   parts to text or file model-message parts. Return `undefined` to
+   *   drop the part.
+   * @returns Promise resolving to the ModelMessage array.
+   */
+  export function convertToModelMessages(messages: any[], options?: {
+    tools?: any;
+    ignoreIncompleteToolCalls?: boolean;
+    convertDataPart?: (part: any) => any;
+  }): Promise<any[]>;
+
+  /**
+   * Prunes messages according to a budget (token limit, message count,
+   * or a custom predicate) while preserving conversation coherence.
+   */
   export function pruneMessages(messages: any[], options?: any): any[];
+
+  /**
+   * Validates that an array of UI messages conforms to the expected
+   * shape. Throws on the first invalid message.
+   */
   export function validateUIMessages(messages: any[], options?: any): Promise<any[]>;
+
+  /**
+   * Non-throwing counterpart to {@link validateUIMessages}. Returns a
+   * `SafeValidateUIMessagesResult` describing success + values or the
+   * failure cause.
+   */
   export function safeValidateUIMessages(messages: any[], options?: any): Promise<any>;
+
+  /**
+   * Reads a UI-message stream and yields each message delta as it
+   * arrives. Typical consumer of the server-side UI message stream.
+   */
   export function readUIMessageStream(options: any): AsyncIterable<any>;
+
+  /**
+   * Drains a stream to completion, discarding chunks. Use when you
+   * need the side effects of streaming (callbacks, token accounting)
+   * but don't want to wire up a reader.
+   */
   export function consumeStream(stream: any): Promise<void>;
+
+  /**
+   * Converts a browser `FileList` into an array of `FileUIPart`s
+   * suitable for attaching to a UI message.
+   */
   export function convertFileListToFileUIParts(fileList: any, options?: any): Promise<any[]>;
 
   // ── Media (gap 12) ──────────────────────────────────────────────
 
+  /**
+   * Generates images using an image model.
+   *
+   * @param model The image model to use.
+   * @param prompt The prompt used to generate the image.
+   * @param n Number of images to generate. Default `1`.
+   * @param size Size of the images — `"{width}x{height}"`.
+   * @param aspectRatio Aspect ratio — `"{width}:{height}"`.
+   * @param seed Seed for reproducible generation.
+   * @param maxRetries Maximum retries. `0` disables. Default `2`.
+   */
   export function generateImage(options: any): Promise<any>;
-  /** @deprecated Use generateImage. */
+
+  /** @deprecated Use {@link generateImage}. */
   export function experimental_generateImage(options: any): Promise<any>;
+
+  /** Generates a video using a video model. */
   export function experimental_generateVideo(options: any): Promise<any>;
+
+  /** Transcribes audio into text using a transcription model. */
   export function experimental_transcribe(options: any): Promise<any>;
+
+  /**
+   * Generates speech audio using a speech model.
+   *
+   * @param model The speech model to use.
+   * @param text The text to convert to speech.
+   * @param voice The voice to use.
+   * @param outputFormat Output format: `"mp3"`, `"wav"`, etc.
+   * @param instructions Delivery instructions (e.g. `"slow and steady"`).
+   * @param speed Speech speed multiplier.
+   * @param language ISO 639-1 code or `"auto"`.
+   */
   export function experimental_generateSpeech(options: any): Promise<any>;
 
   // ── Misc (gap 12) ───────────────────────────────────────────────
 
-  /** Cosine similarity in [-1, 1]. 1 = identical direction. */
+  /**
+   * Calculates the cosine similarity between two vectors. Useful for
+   * comparing embeddings.
+   *
+   * @param vector1 The first vector.
+   * @param vector2 The second vector.
+   * @returns Cosine similarity in `[-1, 1]`, or `0` if either vector
+   *   is the zero vector.
+   * @throws {InvalidArgumentError} when the vectors differ in length.
+   */
   export function cosineSimilarity(a: number[], b: number[]): number;
-  /** Build a ReadableStream from chunks for unit-testing stream consumers. */
+
+  /**
+   * Creates a ReadableStream that emits the provided values with an
+   * optional delay between each value.
+   *
+   * @param chunks Array of values emitted by the stream.
+   * @param initialDelayInMs Initial delay before the first value.
+   *   `null` skips the delay entirely; `0` waits 0ms.
+   * @param chunkDelayInMs Delay between each chunk. Same `null` vs
+   *   `0` semantics as `initialDelayInMs`.
+   */
   export function simulateReadableStream<T>(options: {
     chunks: T[];
     initialDelayInMs?: number | null;
     chunkDelayInMs?: number | null;
   }): ReadableStream<T>;
-  /** Attempt to parse JSON that may still be mid-stream. */
+
+  /**
+   * Attempts to parse JSON that may still be mid-stream. Returns a
+   * discriminated union on `state`:
+   * - `"successful-parse"` — the input was complete JSON.
+   * - `"repaired-parse"` — the parser recovered a partial object by
+   *   closing unbalanced braces/brackets.
+   * - `"failed-parse"` — the input couldn't be recovered.
+   * - `"undefined-input"` — the caller passed `undefined` / `null`.
+   */
   export function parsePartialJson(raw: string | undefined | null): Promise<{
     value: unknown;
     state: "successful-parse" | "repaired-parse" | "failed-parse" | "undefined-input";
   }>;
-  /** Parse an SSE-style JSON event stream. */
+
+  /**
+   * Parses an SSE-style JSON event stream into a stream of parsed JSON
+   * objects. Validates each event against the optional schema.
+   */
   export function parseJsonEventStream(options: any): any;
 
   // ── Gateway (re-exported from @ai-sdk/gateway) ──────────────────
 
+  /**
+   * Default singleton gateway instance. Resolves models by
+   * `"<provider>/<modelId>"` against the AI SDK Gateway.
+   */
   export const gateway: any;
+
+  /**
+   * Builds a gateway provider — typically used to pin the gateway URL
+   * or inject custom headers / middleware.
+   */
   export function createGateway(options?: any): any;
 
   // ── Error classes (gap 12) ──────────────────────────────────────
   // Every subclass ships an `isInstance(error)` static guard — use it
-  // inside catch blocks to discriminate between failure modes.
+  // inside catch blocks to discriminate between failure modes, since
+  // cross-realm `instanceof` can be unreliable.
 
+  /**
+   * Base class for every AI SDK error. Catch this to treat all AI SDK
+   * failures uniformly; narrow via a subclass `isInstance` check to
+   * handle specific cases.
+   */
   export class AISDKError extends Error {
     static isInstance(error: unknown): error is AISDKError;
     readonly cause?: unknown;
   }
+
+  /**
+   * Thrown when an API call to a provider fails — rate limiting, auth,
+   * invalid payload, server errors. Carries the HTTP status code and
+   * the offending request body for debugging.
+   */
   export class APICallError extends AISDKError {
     static isInstance(error: unknown): error is APICallError;
     readonly url?: string;
@@ -633,6 +931,12 @@ declare module "ai" {
     readonly responseBody?: string;
     readonly isRetryable?: boolean;
   }
+
+  /**
+   * Thrown by `generateObject` / `streamObject` when the model fails
+   * to produce an object that conforms to the schema. Includes the
+   * raw text, response, usage, and finish reason for diagnostics.
+   */
   export class NoObjectGeneratedError extends AISDKError {
     static isInstance(error: unknown): error is NoObjectGeneratedError;
     readonly text?: string;
@@ -640,66 +944,124 @@ declare module "ai" {
     readonly usage?: any;
     readonly finishReason?: string;
   }
+
+  /** Thrown when a requested model (by id / alias) isn't registered. */
   export class NoSuchModelError extends AISDKError {
     static isInstance(error: unknown): error is NoSuchModelError;
     readonly modelId?: string;
     readonly modelType?: string;
   }
+
+  /** Thrown when the model calls a tool name that isn't in the ToolSet. */
   export class NoSuchToolError extends AISDKError {
     static isInstance(error: unknown): error is NoSuchToolError;
     readonly toolName?: string;
   }
+
+  /** Thrown when a function is called with an argument violating its contract. */
   export class InvalidArgumentError extends AISDKError {
     static isInstance(error: unknown): error is InvalidArgumentError;
   }
+
+  /**
+   * Thrown when data content (blob / base64 / URL) isn't in a valid
+   * shape for the AI SDK's content-part types.
+   */
   export class InvalidDataContentError extends AISDKError {
     static isInstance(error: unknown): error is InvalidDataContentError;
   }
+
+  /** Thrown when a prompt fails structural validation before hitting the provider. */
   export class InvalidPromptError extends AISDKError {
     static isInstance(error: unknown): error is InvalidPromptError;
     readonly prompt?: unknown;
   }
+
+  /**
+   * Thrown when the model's tool call has arguments that don't match
+   * the tool's `inputSchema`. Includes the raw toolInput for repair
+   * strategies.
+   */
   export class InvalidToolInputError extends AISDKError {
     static isInstance(error: unknown): error is InvalidToolInputError;
     readonly toolName?: string;
     readonly toolInput?: string;
   }
+
+  /** Thrown when the model returns no content (empty completion). */
   export class NoContentGeneratedError extends AISDKError {
     static isInstance(error: unknown): error is NoContentGeneratedError;
   }
+
+  /** Thrown when `experimental_generateSpeech` receives no audio data. */
   export class NoSpeechGeneratedError extends AISDKError {
     static isInstance(error: unknown): error is NoSpeechGeneratedError;
   }
+
+  /** Thrown when `experimental_transcribe` produces no transcript text. */
   export class NoTranscriptGeneratedError extends AISDKError {
     static isInstance(error: unknown): error is NoTranscriptGeneratedError;
   }
+
+  /** Thrown when `experimental_generateVideo` produces no video data. */
   export class NoVideoGeneratedError extends AISDKError {
     static isInstance(error: unknown): error is NoVideoGeneratedError;
   }
+
+  /**
+   * Thrown after the retry budget is exhausted. `.errors` holds the
+   * chain of underlying failures; `.reason` distinguishes timeout,
+   * max-retries, or non-retryable.
+   */
   export class RetryError extends AISDKError {
     static isInstance(error: unknown): error is RetryError;
     readonly reason?: string;
     readonly errors?: unknown[];
   }
+
+  /**
+   * Thrown from a `toolCallRepair` hook when repair itself fails.
+   */
   export class ToolCallRepairError extends AISDKError {
     static isInstance(error: unknown): error is ToolCallRepairError;
   }
+
+  /** Thrown when a value fails schema-based type validation. */
   export class TypeValidationError extends AISDKError {
     static isInstance(error: unknown): error is TypeValidationError;
     readonly value?: unknown;
   }
+
+  /** Thrown when message shape conversion (UI ↔ Model / v4 ↔ v5) fails. */
   export class MessageConversionError extends AISDKError {
     static isInstance(error: unknown): error is MessageConversionError;
   }
+
+  /**
+   * Thrown when a message references tool results that never arrived.
+   * Often indicates a dropped tool call / response pair.
+   */
   export class MissingToolResultsError extends AISDKError {
     static isInstance(error: unknown): error is MissingToolResultsError;
   }
+
+  /**
+   * Thrown when the provider can't resolve an API key from env / config.
+   */
   export class LoadAPIKeyError extends AISDKError {
     static isInstance(error: unknown): error is LoadAPIKeyError;
   }
+
+  /** Thrown when a tool-approval response is malformed. */
   export class InvalidToolApprovalError extends AISDKError {
     static isInstance(error: unknown): error is InvalidToolApprovalError;
   }
+
+  /**
+   * Thrown when a tool-approval response references a toolCallId that
+   * no longer exists on the run — common after a suspend/resume cycle
+   * with mismatched ids.
+   */
   export class ToolCallNotFoundForApprovalError extends AISDKError {
     static isInstance(error: unknown): error is ToolCallNotFoundForApprovalError;
   }
