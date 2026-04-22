@@ -74,3 +74,11 @@ For shell-probe assertions, capture:
 - The exact command from the assertion's Evidence field.
 - Full stdout + stderr.
 - Exit code.
+
+## Flow Validator Guidance: shell-cli
+
+- Scope: run only shell-based validation commands for assigned assertion IDs.
+- Isolation boundary: read/write only under `.factory/validation/m0-foundation/user-testing/` and mission evidence paths; do not modify source code or off-limits files.
+- Use absolute paths and run commands with `USER_TYPE=ant`.
+- For `go test` output, redirect to a temp log file first (do not pipe to grep), then inspect the file.
+- If a command fails due to missing tooling/environment, report it as `blocked` with the exact failing command and stderr.

@@ -1,0 +1,137 @@
+{
+  "flowId": "foundation-shell",
+  "surface": "shell-cli",
+  "assertions": [
+    {
+      "id": "VAL-FOUNDATION-001",
+      "status": "pass",
+      "reason": "Mastra clone reports core version 1.13.1 and commit is recorded.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; cat /Users/davidroman/Documents/code/clones/mastra/packages/core/package.json | jq -r .version; git -C /Users/davidroman/Documents/code/clones/mastra rev-parse HEAD; rg -n 'mastra.*commit|clones/mastra|@mastra/core|1.13.1' /Users/davidroman/Documents/code/brainlet/brainkit/.factory/library/architecture.md",
+          "exitCode": 0,
+          "observation": "Version output was 1.13.1; mastra HEAD was 512a786a0cccc6ea3b36f2f33723570584235383; architecture.md includes the pinned row."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-002",
+      "status": "pass",
+      "reason": "AI clone is pinned to ai 6.0.x and commit is recorded.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; node -p \"require('/Users/davidroman/Documents/code/clones/ai/packages/ai/package.json').version\"; git -C /Users/davidroman/Documents/code/clones/ai rev-parse HEAD; rg -n 'clones/ai|ai@6|ai clone|commit' /Users/davidroman/Documents/code/brainlet/brainkit/.factory/library/architecture.md",
+          "exitCode": 0,
+          "observation": "Version output was 6.0.168 (matches 6.0.x); ai HEAD was c38119a2e3df201a95a9979580f2c7a3c1b319ab; architecture.md includes the ai pin row."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-003",
+      "status": "pass",
+      "reason": "Required bundle node_modules packages are present with dist directories and package.json files.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; for pkg in '@mastra/libsql' '@mastra/pg' '@mastra/mongodb' '@mastra/upstash' '@mastra/voice-openai' '@mastra/chroma' '@mastra/pinecone' '@mastra/qdrant' '@mastra/observability' '@ai-sdk/openai'; do test -d /Users/davidroman/Documents/code/brainlet/brainkit/internal/embed/agent/bundle/node_modules/$pkg/dist && test -f /Users/davidroman/Documents/code/brainlet/brainkit/internal/embed/agent/bundle/node_modules/$pkg/package.json && echo OK $pkg || { echo MISSING $pkg; exit 1; }; done",
+          "exitCode": 0,
+          "observation": "All 10 package checks returned OK."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-004",
+      "status": "pass",
+      "reason": "Root package.json pins TypeScript at 5.9.x.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; jq -r .devDependencies.typescript /Users/davidroman/Documents/code/brainlet/brainkit/package.json",
+          "exitCode": 0,
+          "observation": "devDependencies.typescript resolved to 5.9.3."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-005",
+      "status": "pass",
+      "reason": "Makefile type-check target resolves to a single tsc command against fixtures/tsconfig.base.json.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; make -C /Users/davidroman/Documents/code/brainlet/brainkit -n type-check",
+          "exitCode": 0,
+          "observation": "Dry-run printed one command: node_modules/.bin/tsc --noEmit -p fixtures/tsconfig.base.json."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-006",
+      "status": "pass",
+      "reason": "Type-check is not green, but baseline error count and capture metadata are present in architecture.md as allowed by the assertion.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; make -C /Users/davidroman/Documents/code/brainlet/brainkit type-check; echo exit=$?; rg -n 'baseline type-check errors:|Captured at mission commit|typescript@|tsc --noEmit' /Users/davidroman/Documents/code/brainlet/brainkit/.factory/library/architecture.md",
+          "exitCode": 0,
+          "observation": "make type-check reported 5 TS2353 errors and exit=2; architecture.md contains 'baseline type-check errors: 5' plus capture commit c0d046cc72a0a0fdcf77a733c4a7e481c5a5409b and TypeScript/tsc details."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-007",
+      "status": "pass",
+      "reason": "ai.d.ts header explicitly states ai-sdk v6 target.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; head -n 30 /Users/davidroman/Documents/code/brainlet/brainkit/internal/engine/runtime/ai.d.ts | rg -n 'ai-sdk v6|ai@6|@ai-sdk.*v?6'",
+          "exitCode": 0,
+          "observation": "Line 1 matched: 'This module targets ai-sdk v6 (package `ai` ^6.0.x)'."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-008",
+      "status": "fail",
+      "reason": "Off-limits set is not byte-identical to the baseline commit.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; git -C /Users/davidroman/Documents/code/brainlet/brainkit diff --stat c0d046cc72a0a0fdcf77a733c4a7e481c5a5409b -- internal/embed/ai/bundle internal/engine/runtime/kit.d.ts internal/engine/runtime/globals.d.ts internal/engine/runtime/brainkit.d.ts vendor_quickjs vendor_typescript",
+          "exitCode": 0,
+          "observation": "Diff is non-empty: internal/engine/runtime/kit.d.ts changed (56 insertions, 9 deletions)."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-009",
+      "status": "pass",
+      "reason": "A probe importing both 'agent' and 'ai' type-checks under fixtures/tsconfig.base.json.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; tsc --noEmit -p /Users/davidroman/.factory/missions/f30ed46f-02d4-416d-9c44-b5867735ef98/evidence/m0-foundation/foundation-shell/VAL-FOUNDATION-009.probe.tsconfig.json",
+          "exitCode": 0,
+          "observation": "Probe file with imports from 'agent' and 'ai' compiled with exit code 0."
+        }
+      ]
+    },
+    {
+      "id": "VAL-FOUNDATION-010",
+      "status": "pass",
+      "reason": "architecture.md contains exactly one baseline type-error count entry with commit and tool-version metadata nearby.",
+      "evidence": [
+        {
+          "command": "export USER_TYPE=ant; rg -n 'baseline type-check errors:' /Users/davidroman/Documents/code/brainlet/brainkit/.factory/library/architecture.md; rg -n 'Captured at mission commit|typescript@|tsc --noEmit' /Users/davidroman/Documents/code/brainlet/brainkit/.factory/library/architecture.md",
+          "exitCode": 0,
+          "observation": "Found one baseline line at 105; nearby lines include captured commit c0d046cc72a0a0fdcf77a733c4a7e481c5a5409b and typescript/tsc details."
+        }
+      ]
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": [
+    "shell",
+    "jq",
+    "make",
+    "go",
+    "git",
+    "node",
+    "rg"
+  ]
+}
