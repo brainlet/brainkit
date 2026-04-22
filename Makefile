@@ -136,3 +136,9 @@ clean:
 	rm -rf bin/
 	rm -rf internal/embed/ai/bundle/node_modules internal/embed/agent/bundle/node_modules internal/embed/compiler/bundle/node_modules
 	rm -f internal/embed/ai/bundle/meta.json internal/embed/agent/bundle/meta.json internal/embed/compiler/bundle/meta.json
+
+# Type-check gate for fixtures under fixtures/ts/** against internal/engine/runtime/*.d.ts.
+# Uses the typescript@5.9.x pinned by the repo-root package.json (node_modules/.bin/tsc).
+.PHONY: type-check
+type-check: ## Run tsc --noEmit on all fixtures
+	node_modules/.bin/tsc --noEmit -p fixtures/tsconfig.base.json

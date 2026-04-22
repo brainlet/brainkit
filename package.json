@@ -1,0 +1,11 @@
+{
+  "name": "brainkit-type-gate",
+  "private": true,
+  "description": "Root package.json for the brainkit type-check gate. Do not add runtime deps here.",
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit -p fixtures/tsconfig.base.json"
+  }
+}
