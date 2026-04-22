@@ -15,6 +15,7 @@ type WorkflowStartResp struct {
 	RunID  string          `json:"runId"`
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 type WorkflowStartAsyncMsg struct {
@@ -39,6 +40,7 @@ type WorkflowStatusResp struct {
 	RunID  string          `json:"runId"`
 	Status string          `json:"status"`
 	Steps  json.RawMessage `json:"steps,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 type WorkflowResumeMsg struct {

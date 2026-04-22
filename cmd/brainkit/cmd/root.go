@@ -43,6 +43,7 @@ func NewRootCmd() *cobra.Command {
 		newSecretsCmd(),
 		newPluginCmd(),
 		newTestCmd(),
+		newModulesCmd(),
 		newNewCmd(),
 	)
 

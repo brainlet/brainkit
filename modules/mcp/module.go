@@ -113,3 +113,50 @@ func (m *Module) callTool(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.Mcp
 	}
 	return &sdk.McpCallToolResp{Result: result}, nil
 }
+
+// ServerYAML is one entry in the YAML `servers:` map. Exactly one of
+// Command or URL must be set (subprocess vs. remote HTTP).
+type ServerYAML struct {
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Env     map[string]string `yaml:"env"`
+	URL     string            `yaml:"url"`
+}
+
+// YAML is the config shape decoded by the registry factory.
+type YAML struct {
+	Servers map[string]ServerYAML `yaml:"servers"`
+}
+
+// Factory is the registered ModuleFactory for mcp.
+type Factory struct{}
+
+// Build decodes YAML and returns an MCP module that will connect to
+// every listed server during Init.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	servers := make(map[string]ServerConfig, len(y.Servers))
+	for name, s := range y.Servers {
+		servers[name] = ServerConfig{
+			Command: s.Command,
+			Args:    s.Args,
+			Env:     s.Env,
+			URL:     s.URL,
+		}
+	}
+	return New(servers), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "mcp",
+		Status:  brainkit.ModuleStatusStable,
+		Summary: "Model Context Protocol client: discovers + proxies external tools.",
+	}
+}
+
+func init() { brainkit.RegisterModule("mcp", Factory{}) }

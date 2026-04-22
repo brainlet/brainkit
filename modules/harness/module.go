@@ -66,3 +66,44 @@ func (m *Module) Instance() Instance {
 	}
 	return (*instanceAdapter)(m.instance)
 }
+
+// YAML is the config shape decoded by the registry factory. The
+// harness surface is rich (Modes, Subagents, StateSchema, …) — the
+// YAML shape exposes only the simple scalar knobs and leaves richer
+// configuration to code via `brainkit.Config.Modules`. The factory is
+// primarily useful as a "include harness, use defaults" switch.
+type YAML struct {
+	ID         string   `yaml:"id"`
+	ResourceID string   `yaml:"resource_id"`
+	Tools      []string `yaml:"tools"`
+}
+
+// Factory is the registered ModuleFactory for harness.
+type Factory struct{}
+
+// Build decodes YAML and returns a harness module with minimal
+// config. Advanced configuration (Modes, Subagents, StateSchema,
+// etc.) remains programmatic — wire those via code in a custom
+// binary instead of YAML.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	return NewModule(Config{Harness: HarnessConfig{
+		ID:         y.ID,
+		ResourceID: y.ResourceID,
+		Tools:      y.Tools,
+	}}), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "harness",
+		Status:  brainkit.ModuleStatusWIP,
+		Summary: "Experimental multi-mode JS harness (tools, subagents, state).",
+	}
+}
+
+func init() { brainkit.RegisterModule("harness", Factory{}) }

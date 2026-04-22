@@ -66,6 +66,32 @@
 
   var _kitObj = globalThis.__kit;
 
+  // Wrap detector processors (PromptInjectionDetector, PIIDetector) so
+  // their internal detection agent uses an InMemoryStore-backed Mastra
+  // parent instead of inheriting the kit's LibSQLStore via patches.js.
+  // Without this, both the outer agent's agentic-loop workflow AND the
+  // detection agent's workflow compete for the same SQLite write lock,
+  // causing deadlock → timeout → InternalError: interrupted → fail-open.
+  function _wrapDetectorProcessor(Base, detectorId) {
+    if (!Base) return undefined;
+    function Wrapped(opts) {
+      var instance = new Base(opts);
+      if (instance.detectionAgent && typeof instance.detectionAgent.getMastraInstance === "function" && !instance.detectionAgent.getMastraInstance()) {
+        var agents = {};
+        agents[detectorId] = instance.detectionAgent;
+        var wrapper = new embed.Mastra({
+          agents: agents,
+          storage: new embed.InMemoryStore(),
+        });
+        instance.detectionAgent = wrapper.getAgent(detectorId);
+      }
+      return instance;
+    }
+    Wrapped.prototype = Base.prototype;
+    Wrapped.DEFAULT_DETECTION_TYPES = Base.DEFAULT_DETECTION_TYPES;
+    return Wrapped;
+  }
+
   globalThis.__kitEndowments = function(source) {
     var ns = "ts." + source.replace(/\.ts$/, "").replace(/\//g, ".");
     var ws = function(fn) { return __withSource(fn, source); };
@@ -98,6 +124,8 @@
         return _kitObj.bus.schedule(expression, ns + "." + topic, data);
       }),
       unschedule: _kitObj.bus.unschedule,
+      onCancel: _kitObj.bus.onCancel,
+      withCancelController: _kitObj.bus.withCancelController,
     };
 
     var scopedKit = {
@@ -152,6 +180,8 @@
         callTo: rewrapErrorsAsync(scopedBus.callTo),
         schedule: rewrapErrors(scopedBus.schedule),
         unschedule: scopedBus.unschedule,
+        onCancel: scopedBus.onCancel,
+        withCancelController: scopedBus.withCancelController,
       },
       kit: scopedKit,
       model: _kitObj.model,
@@ -353,8 +383,8 @@
       // Used inside an Agent config as `inputProcessors` /
       // `outputProcessors` for safety and shaping.
       ModerationProcessor: embed.ModerationProcessor,
-      PromptInjectionDetector: embed.PromptInjectionDetector,
-      PIIDetector: embed.PIIDetector,
+      PromptInjectionDetector: _wrapDetectorProcessor(embed.PromptInjectionDetector, "prompt-injection-detector"),
+      PIIDetector: _wrapDetectorProcessor(embed.PIIDetector, "pii-detector"),
       SystemPromptScrubber: embed.SystemPromptScrubber,
       UnicodeNormalizer: embed.UnicodeNormalizer,
       LanguageDetector: embed.LanguageDetector,
@@ -382,6 +412,8 @@
       clearTimeout: globalThis.clearTimeout,
       clearInterval: globalThis.clearInterval,
       queueMicrotask: globalThis.queueMicrotask,
+      setImmediate: globalThis.setImmediate,
+      clearImmediate: globalThis.clearImmediate,
       // Web APIs
       fetch: globalThis.fetch,
       Request: globalThis.Request,
@@ -405,6 +437,7 @@
       atob: globalThis.atob,
       btoa: globalThis.btoa,
       crypto: globalThis.crypto,
+      WebSocket: globalThis.WebSocket,
       structuredClone: globalThis.structuredClone,
       // Date — SES tamed
       Date: (function() {

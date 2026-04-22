@@ -8,11 +8,16 @@ package tracing
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/sdk"
+
+	_ "modernc.org/sqlite"
 )
 
 // Config configures the tracing module.
@@ -86,3 +91,50 @@ func (m *Module) handleList(_ context.Context, req sdk.TraceListMsg) (*sdk.Trace
 	data, _ := json.Marshal(traces)
 	return &sdk.TraceListResp{Traces: data}, nil
 }
+
+// YAML is the config shape decoded by the registry factory. Empty
+// Path falls back to `<FSRoot>/tracing.db`. Zero Retention disables
+// cleanup.
+type YAML struct {
+	Path      string        `yaml:"path"`
+	Retention time.Duration `yaml:"retention"`
+}
+
+// Factory is the registered ModuleFactory for tracing.
+type Factory struct{}
+
+// Build opens the SQLite-backed trace store and returns the module.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	path := y.Path
+	if path == "" {
+		path = filepath.Join(ctx.FSRoot, "tracing.db")
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("tracing: open db %q: %w", path, err)
+	}
+	var opts []SQLiteTraceStoreOption
+	if y.Retention > 0 {
+		opts = append(opts, WithRetention(y.Retention))
+	}
+	store, err := NewSQLiteTraceStore(db, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("tracing: init store %q: %w", path, err)
+	}
+	return New(Config{Store: store}), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "tracing",
+		Status:  brainkit.ModuleStatusBeta,
+		Summary: "Persistent span store with trace.get / trace.list.",
+	}
+}
+
+func init() { brainkit.RegisterModule("tracing", Factory{}) }

@@ -71,6 +71,12 @@ declare module "kit" {
      * module recognizes. Returns the schedule id
      * synchronously — cancel via `bus.unschedule(id)`.
      *
+     * Inside a deployed `.ts`, `topic` is auto-prefixed with the
+     * deployment's namespace (`ts.<source>.<topic>`). Pass a topic
+     * that matches a `bus.on(...)` handler in the same deployment —
+     * NOT the full namespaced topic. Passing the full topic
+     * double-prefixes and the scheduled message silently misses.
+     *
      * @example
      *     const id = bus.schedule("in 1h", "my.topic", { payload: "x" });
      *     bus.unschedule(id);
@@ -98,6 +104,7 @@ declare module "kit" {
     /** Stream helpers for partial responses. */
     stream?: {
       text(chunk: string): void;
+      /** @param value Progress fraction in `[0, 1]`. The gateway/CLI renders it as a percentage — passing `10` renders as `[1000%]`. */
       progress(value: number, message?: string): void;
       object(partial: any): void;
       event(name: string, data?: any): void;
@@ -207,15 +214,18 @@ declare module "kit" {
   // ── Filesystem ───────────────────────────────────────────────
 
   export const fs: {
-    read(path: string): Promise<{ data: string }>;
-    write(path: string, data: string): Promise<{ ok: boolean }>;
-    list(path?: string, pattern?: string): Promise<{ files: FileInfo[] }>;
-    stat(path: string): Promise<{ size: number; isDir: boolean; modTime: string }>;
-    delete(path: string): Promise<{ ok: boolean }>;
-    mkdir(path: string): Promise<{ ok: boolean }>;
-    // Node.js-style sync variants — kit.fs delegates to the
-    // jsbridge fs polyfill for these, so the full Node surface
-    // is reachable without importing "fs".
+    readFile(path: string, encoding?: string): Promise<string | Uint8Array>;
+    writeFile(path: string, data: string | Uint8Array, options?: { encoding?: string; mode?: number }): Promise<void>;
+    appendFile(path: string, data: string | Uint8Array, options?: { encoding?: string }): Promise<void>;
+    readdir(path: string, options?: { withFileTypes?: boolean }): Promise<string[] | any[]>;
+    stat(path: string): Promise<{ size: number; mtime: Date; isFile(): boolean; isDirectory(): boolean }>;
+    lstat(path: string): Promise<{ size: number; mtime: Date; isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean }>;
+    access(path: string, mode?: number): Promise<void>;
+    mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+    rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
+    unlink(path: string): Promise<void>;
+    rename(oldPath: string, newPath: string): Promise<void>;
+    copyFile(src: string, dest: string, flags?: number): Promise<void>;
     readFileSync(path: string, encoding?: string): string | Uint8Array;
     writeFileSync(path: string, data: string | Uint8Array, options?: { encoding?: string; mode?: number }): void;
     readdirSync(path: string, options?: { withFileTypes?: boolean }): string[] | any[];
@@ -225,6 +235,19 @@ declare module "kit" {
     mkdirSync(path: string, options?: { recursive?: boolean }): void;
     unlinkSync(path: string): void;
     rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+    promises: {
+      readFile(path: string, encoding?: string): Promise<string | Uint8Array>;
+      writeFile(path: string, data: string | Uint8Array, options?: { encoding?: string; mode?: number }): Promise<void>;
+      readdir(path: string, options?: { withFileTypes?: boolean }): Promise<string[] | any[]>;
+      stat(path: string): Promise<{ size: number; mtime: Date; isFile(): boolean; isDirectory(): boolean }>;
+      mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+      unlink(path: string): Promise<void>;
+      rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
+      rename(oldPath: string, newPath: string): Promise<void>;
+      copyFile(src: string, dest: string, flags?: number): Promise<void>;
+      access(path: string, mode?: number): Promise<void>;
+      [key: string]: any;
+    };
     [key: string]: any;
   };
 
@@ -301,10 +324,34 @@ declare module "kit" {
       approvalTopic: string;
       /** Timeout in ms before auto-declining. @default 30000 */
       timeout?: number;
+      /** Max suspend/resume cycles before throwing. Models that retry after a decline chain multiple approval cycles within one call. @default 8 */
+      maxApprovalCycles?: number;
       /** Memory options (thread, resource). */
       memory?: { thread?: string | { id: string }; resource?: string };
       /** Any other AgentCallOptions. */
       [key: string]: any;
     },
   ): Promise<import("agent").AgentResult>;
+
+  // ── Gateway Route Topics (when gateway module is enabled) ────
+  //
+  // Deployed packages can register HTTP routes dynamically via bus:
+  //
+  //   bus.publish("gateway.http.route.add", {
+  //     method: "POST",
+  //     path: "/api/my-endpoint",
+  //     topic: "ts.my-pkg.handle-request",
+  //     type: "handle",            // "handle" or "webhook"
+  //   });
+  //
+  //   bus.publish("gateway.http.route.remove", {
+  //     method: "POST",
+  //     path: "/api/my-endpoint",
+  //   });
+  //
+  //   bus.call("gateway.http.route.list", null, { timeoutMs: 5000 });
+  //
+  // Supported route types: "handle" (request → bus → response),
+  // "webhook" (fire-and-forget, returns 202). SSE/WS route types
+  // are Go-only via gw.HandleStream() / gw.HandleWebSocket().
 }

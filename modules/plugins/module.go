@@ -49,6 +49,17 @@ func (m *Module) Init(k *brainkit.Kit) error {
 		return &sdkerrors.ValidationError{Field: "transport", Message: "plugins module requires a non-memory transport"}
 	}
 
+	// Registry-path factories build without a Store (the KitStore is
+	// owned by the Kit, which doesn't exist at Build time). Fall back
+	// to k.Store() here — types.KitStore satisfies the narrow Store
+	// interface structurally. nil is still allowed for callers that
+	// explicitly want ephemeral plugins.
+	if m.cfg.Store == nil {
+		if ks := k.Store(); ks != nil {
+			m.cfg.Store = ks
+		}
+	}
+
 	m.manager = newPluginManager(m)
 	m.lifecycle = newLifecycleDomain(m)
 
@@ -344,6 +355,57 @@ func (m *Module) processPluginManifest(ctx context.Context, manifest sdk.PluginM
 
 	return &sdk.PluginManifestResp{Registered: true}, nil
 }
+
+// PluginYAML is one entry in the plugins list.
+type PluginYAML struct {
+	Name   string            `yaml:"name"`
+	Binary string            `yaml:"binary"`
+	Env    map[string]string `yaml:"env"`
+}
+
+// YAML is the config shape decoded by the registry factory.
+//
+//	modules:
+//	  plugins:
+//	    - name: foo
+//	      binary: ./bin/foo
+//	      env: { LOG_LEVEL: debug }
+//
+// A sequence (not a map) because plugin order can matter for
+// deterministic start-up and the set is inherently a list.
+type YAML []PluginYAML
+
+// Factory is the registered ModuleFactory for plugins.
+type Factory struct{}
+
+// Build decodes the plugin list and returns a module whose Store
+// field is left nil — Init fills it from k.Store() at Init time.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	cfg := Config{}
+	for _, p := range y {
+		cfg.Plugins = append(cfg.Plugins, types.PluginConfig{
+			Name:   p.Name,
+			Binary: p.Binary,
+			Env:    p.Env,
+		})
+	}
+	return NewModule(cfg), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "plugins",
+		Status:  brainkit.ModuleStatusStable,
+		Summary: "Subprocess plugin manager with WS control plane.",
+	}
+}
+
+func init() { brainkit.RegisterModule("plugins", Factory{}) }
 
 // pluginToolTopic is the wire topic for a plugin tool call. Moved from
 // node.go as unexported.

@@ -36,6 +36,12 @@ type Config struct {
 	// *discovery.Module returned by discovery.NewModule(...); pass
 	// the module directly (topology calls Provider() lazily).
 	Discovery ProviderSource
+
+	// UseDiscovery, when true, tells Init to resolve the discovery
+	// module via k.Module("discovery") and use it as the provider
+	// source. Required for the registry path, where a sibling module
+	// isn't available at Build time.
+	UseDiscovery bool
 }
 
 // Module is the brainkit.Module form of cross-kit topology. It owns
@@ -65,6 +71,21 @@ func (m *Module) Name() string              { return "topology" }
 func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusBeta }
 
 func (m *Module) Init(k *brainkit.Kit) error {
+	// Registry path: resolve the discovery module via the Kit at
+	// Init time (Build time is too early — sibling modules exist as
+	// registered factories then, but no Module instance exists yet).
+	if m.cfg.UseDiscovery && m.cfg.Discovery == nil {
+		mod, ok := k.Module("discovery")
+		if !ok {
+			return fmt.Errorf("topology: use_discovery is true but no discovery module is configured")
+		}
+		src, ok := mod.(ProviderSource)
+		if !ok {
+			return fmt.Errorf("topology: discovery module %T does not expose Provider()", mod)
+		}
+		m.cfg.Discovery = src
+	}
+
 	k.RegisterCommand(brainkit.Command(m.handleList))
 	k.RegisterCommand(brainkit.Command(m.handleResolve))
 	return nil
@@ -165,3 +186,54 @@ func (m *Module) handleResolve(_ context.Context, req sdk.PeersResolveMsg) (*sdk
 	}
 	return &sdk.PeersResolveResp{Namespace: ns}, nil
 }
+
+// PeerYAML is a single static peer entry.
+type PeerYAML struct {
+	Name      string            `yaml:"name"`
+	Namespace string            `yaml:"namespace"`
+	Address   string            `yaml:"address"`
+	Meta      map[string]string `yaml:"meta"`
+}
+
+// YAML is the config shape decoded by the registry factory.
+//
+// `use_discovery: true` wires the discovery module (required in YAML
+// alongside) as the live peer source.
+type YAML struct {
+	Peers        []PeerYAML `yaml:"peers"`
+	UseDiscovery bool       `yaml:"use_discovery"`
+}
+
+// Factory is the registered ModuleFactory for topology.
+type Factory struct{}
+
+// Build decodes YAML into a topology.Config. Discovery wiring (when
+// requested) is deferred to Init, where the Kit can resolve the
+// sibling module.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	cfg := Config{UseDiscovery: y.UseDiscovery}
+	for _, p := range y.Peers {
+		cfg.Peers = append(cfg.Peers, Peer{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Address:   p.Address,
+			Meta:      p.Meta,
+		})
+	}
+	return NewModule(cfg), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "topology",
+		Status:  brainkit.ModuleStatusBeta,
+		Summary: "Cross-kit routing — static peers + optional discovery feed.",
+	}
+}
+
+func init() { brainkit.RegisterModule("topology", Factory{}) }

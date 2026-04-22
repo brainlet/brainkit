@@ -858,14 +858,11 @@ defer kit.Close()
 ### 14.2 Standalone service with plugins, tracing, audit
 
 ```go
-ptrue := true
 srv, err := server.New(server.Config{
     Namespace: "prod",
     Transport: brainkit.NATS("nats://nats:4222", brainkit.WithNATSName("prod")),
     FSRoot:    "/var/lib/brainkit",
     SecretKey: os.Getenv("BRAINKIT_SECRET_KEY"),
-
-    Gateway: gateway.Config{Listen: ":8080"},
 
     Providers: []brainkit.ProviderConfig{
         brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
@@ -877,13 +874,38 @@ srv, err := server.New(server.Config{
         "docs": brainkit.PgVectorStore(os.Getenv("PG_DSN")),
     },
 
-    Plugins: []brainkit.PluginConfig{
-        {Name: "pg-mcp", Binary: "/usr/local/bin/pg-mcp",
-         Env: map[string]string{"PGURL": "$secret:PG_DSN"}},
-    },
+    // Every module is constructed explicitly and passed via Modules.
+    // The server validates that a "gateway" module is present.
+    Modules: []brainkit.Module{
+        gateway.New(gateway.Config{Listen: ":8080"}),
 
-    Tracing: &ptrue, Probes: &ptrue,
-    Audit: &server.AuditConfig{Path: "/var/lib/brainkit/audit.db"},
+        // Audit: open the SQLite store via the module's own stores
+        // sub-package. Pass OwnStore:true so the module closes it at
+        // shutdown.
+        audit.NewModule(audit.Config{
+            Store:    mustAuditStore("/var/lib/brainkit/audit.db"),
+            OwnStore: true,
+        }),
+
+        // Tracing: open the SQLite-backed span store via the module's
+        // NewSQLiteTraceStore + an *sql.DB you own. See the
+        // module's Factory for an end-to-end example.
+        tracing.New(tracing.Config{Store: mustTraceStore("/var/lib/brainkit/tracing.db")}),
+
+        probes.New(probes.Config{Interval: 60 * time.Second, ProbeOnRegister: true}),
+
+        // Plugins: pass the subprocess list; the module picks up the
+        // KitStore from the Kit at Init time for persistence.
+        plugins.NewModule(plugins.Config{Plugins: []types.PluginConfig{
+            {Name: "pg-mcp", Binary: "/usr/local/bin/pg-mcp",
+             Env: map[string]string{"PGURL": "$secret:PG_DSN"}},
+        }}),
+    },
+    // mustAuditStore / mustTraceStore above are your helpers —
+    // typically one-liners that call stores.NewSQLite / sql.Open +
+    // tracing.NewSQLiteTraceStore and log.Fatal on error. For the
+    // YAML-driven path, the registry factories construct these
+    // stores for you from `modules.audit.path` / `modules.tracing.path`.
 
     Packages: []brainkit.Package{must(brainkit.PackageFromDir("./packages/api"))},
 })
@@ -909,14 +931,13 @@ log.Fatal(srv.Start(ctx))
 ### 14.4 Custom module mix
 
 ```go
-ptrue := true
 srv, err := server.New(server.Config{
     Namespace: "svc",
     Transport: brainkit.EmbeddedNATS(),
     FSRoot:    tmp,
-    Gateway:   gateway.Config{Listen: ":8080"},
-    Tracing:   &ptrue,
-    Extra: []brainkit.Module{
+    Modules: []brainkit.Module{
+        gateway.New(gateway.Config{Listen: ":8080"}),
+        tracing.New(tracing.Config{Store: mustTraceStore(tmp + "/tracing.db")}),
         workflow.New(),
         schedules.NewModule(schedules.Config{Store: srvStore}),
         mcp.New(map[string]mcp.ServerConfig{

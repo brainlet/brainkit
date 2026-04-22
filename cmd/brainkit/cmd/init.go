@@ -24,10 +24,6 @@ fs_root: ./data
 transport:
   type: embedded                     # memory | embedded | nats | amqp | redis
 
-gateway:
-  listen: :8080
-  # timeout: 30s
-
 # ── AI providers ───────────────────────────────────────────────────
 # providers:
 #   - { name: openai,    type: openai,    api_key: $OPENAI_API_KEY }
@@ -42,48 +38,53 @@ gateway:
 #   default: { type: sqlite,  path: ./data/default.db }
 #   # type: pgvector | mongodb — see docs/guides/vectors-and-rag.md
 
-# ── Optional modules ──────────────────────────────────────────────
-# Each section below is opt-in: presence of the key enables the
-# module, absence leaves it off.
+# ── Modules ───────────────────────────────────────────────────────
+# Every key under modules: must be a module registered in the binary.
+# gateway is required (server mode exists to serve HTTP); the rest are
+# opt-in. Unknown keys fail at load with a "did you mean" hint.
 
-# audit:
-#   # path: ./data/audit.db   # default: <fs_root>/audit.db
-#   verbose: false
+modules:
+  gateway:
+    listen: :8080
+    # timeout: 30s
 
-# tracing:
-#   # path: ./data/tracing.db # default: <fs_root>/tracing.db
-#   retention: 168h           # zero = keep forever
+  # audit:
+  #   # path: ./data/audit.db   # default: <fs_root>/audit.db
+  #   verbose: false
 
-# probes:
-#   interval: 60s
-#   # probe_on_register: true
+  # tracing:
+  #   # path: ./data/tracing.db # default: <fs_root>/tracing.db
+  #   retention: 168h           # zero = keep forever
 
-# schedules:
-#   # path: ./data/brainkit.db   # omit for in-memory (won't survive restart)
+  # probes:
+  #   interval: 60s
+  #   # probe_on_register: true
 
-# mcp:
-#   servers:
-#     weather: { command: npx, args: ["-y", "mcp-weather"], env: { API_KEY: $WEATHER_KEY } }
-#     remote:  { url: "https://mcp.example.com" }
+  # schedules:
+  #   # path: ./data/schedules.db  # omit to share the main kit.db
 
-# discovery:
-#   type: bus                 # static | bus | "" (disabled)
-#   heartbeat: 10s
-#   ttl: 30s
-#   # name: my-instance       # default: per-run UUID
-#   # peers:
-#   #   - { name: analytics, namespace: analytics, address: "nats://..." }
+  # mcp:
+  #   servers:
+  #     weather: { command: npx, args: ["-y", "mcp-weather"], env: { API_KEY: $WEATHER_KEY } }
+  #     remote:  { url: "https://mcp.example.com" }
 
-# topology:
-#   # peers:
-#   #   - { name: ingest, namespace: ingest, address: "nats://..." }
-#   # use_discovery: true     # feeds discovery module as live ProviderSource
+  # discovery:
+  #   type: bus                 # static | bus | "" (disabled)
+  #   heartbeat: 10s
+  #   ttl: 30s
+  #   # name: my-instance       # default: per-run UUID
+  #   # peers:
+  #   #   - { name: analytics, namespace: analytics, address: "nats://..." }
 
-# workflow: {}                # presence enables the workflow module
+  # topology:
+  #   # peers:
+  #   #   - { name: ingest, namespace: ingest, address: "nats://..." }
+  #   # use_discovery: true     # feeds discovery module as live ProviderSource
 
-# ── Subprocess plugins ────────────────────────────────────────────
-# plugins:
-#   - { name: my-plugin, binary: ./bin/my-plugin, env: { LOG_LEVEL: info } }
+  # workflow: {}                # presence enables the workflow module
+
+  # plugins:
+  #   - { name: my-plugin, binary: ./bin/my-plugin, env: { LOG_LEVEL: info } }
 
 # ── Auto-deployed packages ────────────────────────────────────────
 # packages:

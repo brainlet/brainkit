@@ -46,6 +46,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("deploy_partial_cleanup", func(t *testing.T) { testDeployPartialCleanup(t, env) })
 		t.Run("deploy_redeploy_different_tools", func(t *testing.T) { testDeployRedeployDifferentTools(t, env) })
 		t.Run("deploy_dotted_source_name", func(t *testing.T) { testDeployDottedSourceName(t, env) })
+		t.Run("deploy_namespace_import_stripped", func(t *testing.T) { testDeployNamespaceImportStripped(t, env) })
 
 		// state_corruption.go — deploy state corruption tests
 		t.Run("state_corruption_bad_transpile", func(t *testing.T) { testStateCorruptionBadTranspile(t, env) })
@@ -68,6 +69,12 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("registry_mixed_resource_types", func(t *testing.T) { testRegistryMixedResourceTypes(t, env) })
 		t.Run("registry_concurrent_deploy_teardown", func(t *testing.T) { testRegistryConcurrentDeployTeardown(t, env) })
 		t.Run("registry_deploy_returned_resources", func(t *testing.T) { testRegistryDeployReturnedResources(t, env) })
+
+		// endowments.go — verify declared APIs reach the Compartment
+		t.Run("endowment_tools_available", func(t *testing.T) { testEndowmentToolsAvailable(t, env) })
+		t.Run("endowment_bus_cancel_surface", func(t *testing.T) { testEndowmentBusCancelSurface(t, env) })
+		t.Run("endowment_websocket_and_setimmediate", func(t *testing.T) { testEndowmentWebSocketAndSetImmediate(t, env) })
+		t.Run("endowment_msg_on_cancel", func(t *testing.T) { testEndowmentMsgOnCancel(t, env) })
 
 		// surface.go — TS surface deploy tests
 		t.Run("ts_namespace_isolation", func(t *testing.T) { testTSNamespaceIsolation(t, env) })

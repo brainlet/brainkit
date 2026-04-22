@@ -1,7 +1,7 @@
 # Deploy Test Map
 
 **Purpose:** Verifies the .ts deployment lifecycle: deploy, teardown, redeploy, error handling, edge cases, input abuse, state corruption recovery, and TS surface capabilities
-**Tests:** 51 functions across 6 files
+**Tests:** 55 functions across 7 files
 **Entry point:** `deploy_test.go` → `Run(t, env)`
 **Campaigns:** transport (all 5), fullstack (all 3)
 
@@ -72,6 +72,15 @@
 | testDeployLifecycle | Full cycle: deploy v1 with tool, call it, teardown, verify tool gone (NOT_FOUND), redeploy v2, call v2 |
 | testE2EDeployWithErrorRecovery | Deploys bad code (throws), then deploys good code to same source, verifies tool works |
 | testE2EDeployListRedeployTeardown | Deploys, lists (asserts present), redeploys, tears down, lists (asserts absent) |
+
+### endowments.go — Compartment endowment gap verification
+
+| Function | Purpose |
+|----------|---------|
+| testEndowmentToolsAvailable | Deploys .ts with `import { tools } from "kit"`, verifies tools.list/call/resolve + tool() are functions, calls tools.list() and tool("echo") to confirm runtime behavior |
+| testEndowmentBusCancelSurface | Deploys .ts checking typeof bus.onCancel and bus.withCancelController, asserts both are functions |
+| testEndowmentWebSocketAndSetImmediate | Deploys .ts checking typeof WebSocket and setImmediate, asserts both are functions |
+| testEndowmentMsgOnCancel | Deploys bus.on handler, sends a message, checks typeof msg.onCancel in the handler reply |
 
 ### surface.go — TS surface deploy capabilities
 

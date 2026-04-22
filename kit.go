@@ -94,16 +94,43 @@ func New(cfg Config) (*Kit, error) {
 	// but before the transport router starts — modules that register bus
 	// commands must be able to add them to the catalog before bindings are
 	// installed on the host.
+	//
+	// Two-pass: attach every module to kit.modules FIRST, then Init in
+	// order. This lets a module's Init resolve a sibling module via
+	// kit.Module("name") regardless of slice position (topology, for
+	// example, reaches for the discovery module). Single-pass init
+	// would force callers to order dependencies by hand.
+	//
+	// Note: kit.Module("x") during Init returns the sibling's Module
+	// *value*, but x's Init may not have run yet. Store a reference
+	// and dereference it later (at request time, inside a handler,
+	// etc.) — never call into peer state during your own Init
+	// unless you know that peer has already initialized. Topology
+	// for instance stores the discovery module reference but calls
+	// Provider() lazily at request time, by which point discovery
+	// has populated its internal state.
 	for _, m := range cfg.Modules {
 		pkgMod, ok := m.(Module)
 		if !ok {
 			continue
 		}
+		kit.modules = append(kit.modules, pkgMod)
+	}
+	// Track how many modules initialized so a failure mid-loop only
+	// Closes the ones whose Init actually ran.
+	initialized := 0
+	for _, pkgMod := range kit.modules {
 		if err := pkgMod.Init(kit); err != nil {
-			kit.Close()
+			for i := initialized - 1; i >= 0; i-- {
+				_ = kit.modules[i].Close()
+			}
+			// Drop the un-initialized tail so a subsequent Close on
+			// kit doesn't touch modules that never saw Init.
+			kit.modules = kit.modules[:initialized]
+			_ = kit.runtime().Close()
 			return nil, fmt.Errorf("brainkit: module %q init: %w", pkgMod.Name(), err)
 		}
-		kit.modules = append(kit.modules, pkgMod)
+		initialized++
 	}
 
 	// Finalize transport bindings + start the router.

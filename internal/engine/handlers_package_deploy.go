@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/deploy"
@@ -202,6 +203,15 @@ func (d *PackageDeployDomain) deployInline(ctx context.Context, req sdk.PackageD
 	code, err := deploy.BundleInMemory(req.Files, manifest.Entry)
 	if err != nil {
 		return nil, fmt.Errorf("package.deploy: bundle: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(code)
+	if len(trimmed) == 0 || trimmed == ";" {
+		return nil, &sdkerrors.DeployError{
+			Source: manifest.Entry,
+			Phase:  "bundle",
+			Cause:  fmt.Errorf("bundle produced empty output — check for unsupported import patterns (e.g. `import * as X from \"module\"` on external modules)"),
+		}
 	}
 
 	// Runtime source is derived from the package name to align with the

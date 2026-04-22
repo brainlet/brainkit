@@ -47,9 +47,12 @@ used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 				syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
+			// The gateway module logs its own "gateway listening"
+			// line at Init time; this supervisor log stays high-level
+			// with namespace + fs_root so operators have a single
+			// anchor for correlation.
 			slog.Info("brainkit started",
 				slog.String("namespace", cfg.Namespace),
-				slog.String("listen", cfg.Gateway.Listen),
 				slog.String("fs_root", cfg.FSRoot),
 			)
 			return srv.Start(ctx)

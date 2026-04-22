@@ -251,15 +251,18 @@ func main() {
         syscall.SIGINT, syscall.SIGTERM)
     defer stop()
 
-    log.Printf("listening on %s", cfg.Gateway.Listen)
+    // The gateway module logs "gateway listening" at Init time.
+    log.Printf("brainkit %s up", cfg.Namespace)
     if err := srv.Start(ctx); err != nil {
         log.Fatalf("server start: %v", err)
     }
 }
 ```
 
-The server composes the gateway, tracing, probes, audit, and
-optional plugins out of the config file. Run it:
+The server composes whatever modules you list under `modules:` in the
+config file — gateway, tracing, probes, audit, plugins, discovery,
+topology, workflow, schedules, mcp, harness — via the brainkit module
+registry. Run it:
 
 ```bash
 go run ./examples/hello-server -config ./examples/hello-server/brainkit.yaml

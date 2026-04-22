@@ -4,44 +4,31 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"time"
+	"sort"
+	"strings"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/modules/gateway"
 	"gopkg.in/yaml.v3"
 )
 
 // FileConfig is the YAML shape for a server config file. LoadConfig
 // unmarshals into this, substitutes environment variables, then
-// projects onto the runtime Config.
+// projects onto the runtime Config by walking the module registry.
 //
-// Module sections (audit, tracing, probes, schedules, mcp, discovery,
-// topology, workflow) are opt-in — presence of the key enables the
-// module, absence leaves it off. The single exception is `gateway`,
-// which remains required because server mode exists to serve HTTP
-// traffic.
+// Every module is driven via the `modules:` map. Keys not registered
+// at binary-link time produce an error at load — typos surface
+// loudly instead of silently disabling the module.
 type FileConfig struct {
-	Namespace    string                 `yaml:"namespace"`
-	Transport    TransportYAML          `yaml:"transport"`
-	FSRoot       string                 `yaml:"fs_root"`
-	KitStorePath string                 `yaml:"kit_store_path"`
-	SecretKey    string                 `yaml:"secret_key"`
-	Gateway      GatewayYAML            `yaml:"gateway"`
-	Providers    []ProviderYAML         `yaml:"providers"`
-	Storages     map[string]StorageYAML `yaml:"storages"`
-	Vectors      map[string]VectorYAML  `yaml:"vectors"`
-	Plugins      []PluginYAML           `yaml:"plugins"`
-	Packages     []PackageYAML          `yaml:"packages"`
-
-	// Optional module sections — presence = module enabled.
-	Audit     *AuditYAML     `yaml:"audit,omitempty"`
-	Tracing   *TracingYAML   `yaml:"tracing,omitempty"`
-	Probes    *ProbesYAML    `yaml:"probes,omitempty"`
-	Schedules *SchedulesYAML `yaml:"schedules,omitempty"`
-	MCP       *MCPYAML       `yaml:"mcp,omitempty"`
-	Discovery *DiscoveryYAML `yaml:"discovery,omitempty"`
-	Topology  *TopologyYAML  `yaml:"topology,omitempty"`
-	Workflow  *WorkflowYAML  `yaml:"workflow,omitempty"`
+	Namespace    string                    `yaml:"namespace"`
+	Transport    TransportYAML             `yaml:"transport"`
+	FSRoot       string                    `yaml:"fs_root"`
+	KitStorePath string                    `yaml:"kit_store_path"`
+	SecretKey    string                    `yaml:"secret_key"`
+	Providers    []ProviderYAML            `yaml:"providers"`
+	Storages     map[string]StorageYAML    `yaml:"storages"`
+	Vectors      map[string]VectorYAML     `yaml:"vectors"`
+	Packages     []PackageYAML             `yaml:"packages"`
+	Modules      map[string]yaml.Node      `yaml:"modules"`
 }
 
 // TransportYAML selects a transport backend from config.
@@ -51,16 +38,10 @@ type TransportYAML struct {
 	NATSName string `yaml:"nats_name"`
 }
 
-// GatewayYAML configures the HTTP gateway.
-type GatewayYAML struct {
-	Listen  string        `yaml:"listen"`
-	Timeout time.Duration `yaml:"timeout"`
-}
-
 // ProviderYAML configures a single AI provider.
 type ProviderYAML struct {
 	Name   string `yaml:"name"`
-	Type   string `yaml:"type"` // openai, anthropic, ...
+	Type   string `yaml:"type"`
 	APIKey string `yaml:"api_key"`
 }
 
@@ -84,99 +65,22 @@ type VectorYAML struct {
 	DBName           string `yaml:"db_name"`
 }
 
-// PluginYAML configures a subprocess plugin.
-type PluginYAML struct {
-	Name   string            `yaml:"name"`
-	Binary string            `yaml:"binary"`
-	Env    map[string]string `yaml:"env"`
-}
-
-// AuditYAML configures the audit module. Presence enables the
-// module; empty path falls back to `<FSRoot>/audit.db`.
-type AuditYAML struct {
-	Path    string `yaml:"path"`
-	Verbose bool   `yaml:"verbose"`
-}
-
-// TracingYAML configures the tracing module. Presence enables the
-// module; empty path falls back to `<FSRoot>/tracing.db`.
-type TracingYAML struct {
-	Path      string        `yaml:"path"`
-	Retention time.Duration `yaml:"retention"`
-}
-
-// ProbesYAML configures periodic health probing. Presence enables
-// the module; zero Interval means "run probes only on register".
-type ProbesYAML struct {
-	Interval        time.Duration `yaml:"interval"`
-	ProbeOnRegister *bool         `yaml:"probe_on_register"`
-}
-
-// SchedulesYAML configures the scheduling module. Presence enables
-// the module; empty path = in-memory only (no persistence).
-type SchedulesYAML struct {
-	Path string `yaml:"path"`
-}
-
-// MCPYAML configures the MCP-client module. The `servers` map keys
-// name each server; at least one server entry is required.
-type MCPYAML struct {
-	Servers map[string]MCPServerYAML `yaml:"servers"`
-}
-
-// MCPServerYAML configures a single MCP server connection — either
-// a local subprocess (Command/Args/Env) or a remote HTTP endpoint
-// (URL). Exactly one mode must be set.
-type MCPServerYAML struct {
-	Command string            `yaml:"command"`
-	Args    []string          `yaml:"args"`
-	Env     map[string]string `yaml:"env"`
-	URL     string            `yaml:"url"`
-}
-
-// DiscoveryYAML configures peer discovery. `type` selects the
-// backend: "static" (hand-rolled peer list), "bus" (broadcast
-// presence on the kit's transport), or "" (disabled; skip including
-// the discovery: key to disable).
-type DiscoveryYAML struct {
-	Type      string            `yaml:"type"`
-	Name      string            `yaml:"name"`
-	Heartbeat time.Duration     `yaml:"heartbeat"`
-	TTL       time.Duration     `yaml:"ttl"`
-	Peers     []DiscoveryPeerYAML `yaml:"peers"`
-}
-
-// DiscoveryPeerYAML is a static peer entry used when type == "static"
-// or when supplementing the dynamic list in bus mode.
-type DiscoveryPeerYAML struct {
-	Name      string            `yaml:"name"`
-	Namespace string            `yaml:"namespace"`
-	Address   string            `yaml:"address"`
-	Meta      map[string]string `yaml:"meta"`
-}
-
-// TopologyYAML configures cross-kit routing. `peers` is the static
-// fallback list; `use_discovery: true` wires the discovery module
-// as a dynamic ProviderSource (requires a `discovery:` section).
-type TopologyYAML struct {
-	Peers        []DiscoveryPeerYAML `yaml:"peers"`
-	UseDiscovery bool                `yaml:"use_discovery"`
-}
-
-// WorkflowYAML configures the workflow module. Today it's a pure
-// toggle — the module takes no options — but the type exists so
-// future options can be added without breaking presence-based
-// enablement.
-type WorkflowYAML struct{}
-
 // PackageYAML configures a package to auto-deploy at startup.
 type PackageYAML struct {
 	Path string `yaml:"path"`
 }
 
 // LoadConfig reads a YAML file, substitutes `$VAR` and `${VAR}`
-// references against the process environment, and validates the
-// projected runtime Config.
+// references against the process environment, and projects it onto
+// the runtime Config. Unknown module keys return an error with a
+// "did you mean" hint listing registered modules.
+//
+// Strict decoding is enabled: unknown top-level keys (including the
+// old pre-registry shape where modules lived at the root — `gateway:`,
+// `audit:`, `plugins:`, etc.) fail the load with a pointer to the
+// `modules:` map they now belong under. This is the second half of
+// the unknown-key guard: the modules map catches typos under
+// `modules.<name>`, strict decode catches mis-nested keys at the root.
 func LoadConfig(path string) (Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -184,22 +88,55 @@ func LoadConfig(path string) (Config, error) {
 	}
 	expanded := expandEnv(string(raw))
 
+	dec := yaml.NewDecoder(strings.NewReader(expanded))
+	dec.KnownFields(true)
 	var fc FileConfig
-	if err := yaml.Unmarshal([]byte(expanded), &fc); err != nil {
-		return Config{}, fmt.Errorf("server: parse config %q: %w", path, err)
+	if err := dec.Decode(&fc); err != nil {
+		return Config{}, translateTopLevelYAMLError(err, path)
 	}
 	return fc.toConfig()
 }
 
-// envVarPattern matches $VAR and ${VAR} forms.
+// topLevelModuleKeys is the set of YAML keys that used to live at
+// the root of the FileConfig and now belong under `modules:`. When
+// a user's old config trips strict decoding on one of these, we add
+// the concrete fix hint instead of just "unknown field".
+var topLevelModuleKeys = map[string]bool{
+	"gateway":   true,
+	"audit":     true,
+	"tracing":   true,
+	"probes":    true,
+	"schedules": true,
+	"mcp":       true,
+	"discovery": true,
+	"topology":  true,
+	"workflow":  true,
+	"plugins":   true,
+	"harness":   true,
+}
+
+// translateTopLevelYAMLError wraps a strict-decode error with a
+// pointer to the modules: map when the offending key is a legacy
+// top-level module section. Falls back to the raw parse error
+// otherwise.
+func translateTopLevelYAMLError(err error, path string) error {
+	msg := err.Error()
+	for key := range topLevelModuleKeys {
+		needle := "field " + key + " not found"
+		if strings.Contains(msg, needle) {
+			return fmt.Errorf("server: parse config %q: top-level %q is no longer accepted — move it under `modules:` as `modules.%s`", path, key, key)
+		}
+	}
+	return fmt.Errorf("server: parse config %q: %w", path, err)
+}
+
 var envVarPattern = regexp.MustCompile(`\$\{?([A-Z_][A-Z0-9_]*)\}?`)
 
 // expandEnv replaces $VAR and ${VAR} with os.Getenv lookups. Missing
 // variables expand to empty strings, matching envsubst semantics.
 func expandEnv(s string) string {
 	return envVarPattern.ReplaceAllStringFunc(s, func(match string) string {
-		name := match
-		name = envVarPattern.FindStringSubmatch(match)[1]
+		name := envVarPattern.FindStringSubmatch(match)[1]
 		return os.Getenv(name)
 	})
 }
@@ -210,10 +147,6 @@ func (fc FileConfig) toConfig() (Config, error) {
 		FSRoot:       fc.FSRoot,
 		KitStorePath: fc.KitStorePath,
 		SecretKey:    fc.SecretKey,
-		Gateway: gateway.Config{
-			Listen:  fc.Gateway.Listen,
-			Timeout: fc.Gateway.Timeout,
-		},
 	}
 
 	transport, err := fc.Transport.build()
@@ -243,82 +176,40 @@ func (fc FileConfig) toConfig() (Config, error) {
 		}
 	}
 
-	for _, p := range fc.Plugins {
-		cfg.Plugins = append(cfg.Plugins, brainkit.PluginConfig{
-			Name:   p.Name,
-			Binary: p.Binary,
-			Env:    p.Env,
-		})
+	// Walk `modules:` in a stable order (map iteration is randomized
+	// otherwise) so startup logs and failure paths stay deterministic
+	// across runs.
+	names := make([]string, 0, len(fc.Modules))
+	for k := range fc.Modules {
+		names = append(names, k)
 	}
+	sort.Strings(names)
 
-	if fc.Audit != nil {
-		cfg.Audit = &AuditConfig{Path: fc.Audit.Path, Verbose: fc.Audit.Verbose}
-	}
-	if fc.Tracing != nil {
-		cfg.Tracing = &TracingConfig{
-			Path:      fc.Tracing.Path,
-			Retention: fc.Tracing.Retention,
+	for _, name := range names {
+		factory, ok := brainkit.LookupModuleFactory(name)
+		if !ok {
+			return Config{}, unknownModuleError(name)
 		}
-	}
-	if fc.Probes != nil {
-		probeOnRegister := true
-		if fc.Probes.ProbeOnRegister != nil {
-			probeOnRegister = *fc.Probes.ProbeOnRegister
-		}
-		cfg.Probes = &ProbesConfig{
-			Interval:        fc.Probes.Interval,
-			ProbeOnRegister: probeOnRegister,
-		}
-	}
-	if fc.Schedules != nil {
-		cfg.Schedules = &SchedulesConfig{Path: fc.Schedules.Path}
-	}
-	if fc.MCP != nil {
-		if len(fc.MCP.Servers) == 0 {
-			return Config{}, fmt.Errorf("server: mcp: at least one server entry required")
-		}
-		servers := make(map[string]brainkit.MCPServerConfig, len(fc.MCP.Servers))
-		for name, s := range fc.MCP.Servers {
-			servers[name] = brainkit.MCPServerConfig{
-				Command: s.Command,
-				Args:    s.Args,
-				Env:     s.Env,
-				URL:     s.URL,
+		node := fc.Modules[name]
+		decode := func(v any) error {
+			if node.Kind == 0 {
+				// Empty section (`modules.audit:` with no body) is
+				// legal — the factory gets a zero decode and uses
+				// its defaults.
+				return nil
 			}
+			return node.Decode(v)
 		}
-		cfg.MCP = &MCPConfig{Servers: servers}
-	}
-	if fc.Discovery != nil {
-		dcfg := &DiscoveryConfig{
-			Type:      fc.Discovery.Type,
-			Name:      fc.Discovery.Name,
-			Heartbeat: fc.Discovery.Heartbeat,
-			TTL:       fc.Discovery.TTL,
+		mod, err := factory.Build(brainkit.ModuleContext{
+			FSRoot: cfg.FSRoot,
+			Decode: decode,
+		})
+		if err != nil {
+			return Config{}, fmt.Errorf("server: module %q: %w", name, err)
 		}
-		for _, p := range fc.Discovery.Peers {
-			dcfg.Peers = append(dcfg.Peers, DiscoveryPeer{
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Address:   p.Address,
-				Meta:      p.Meta,
-			})
+		if mod != nil {
+			cfg.Modules = append(cfg.Modules, mod)
 		}
-		cfg.Discovery = dcfg
-	}
-	if fc.Topology != nil {
-		tcfg := &TopologyConfig{UseDiscovery: fc.Topology.UseDiscovery}
-		for _, p := range fc.Topology.Peers {
-			tcfg.Peers = append(tcfg.Peers, DiscoveryPeer{
-				Name:      p.Name,
-				Namespace: p.Namespace,
-				Address:   p.Address,
-				Meta:      p.Meta,
-			})
-		}
-		cfg.Topology = tcfg
-	}
-	if fc.Workflow != nil {
-		cfg.Workflow = &WorkflowConfig{}
 	}
 
 	for _, pkg := range fc.Packages {
@@ -330,6 +221,17 @@ func (fc FileConfig) toConfig() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// unknownModuleError builds a "did you mean" error for a module key
+// that isn't in the registry. Lists every registered name so users
+// can see what's available in their binary.
+func unknownModuleError(name string) error {
+	registered := brainkit.RegisteredModuleNames()
+	if len(registered) == 0 {
+		return fmt.Errorf("server: unknown module %q (no modules registered — did the binary import them?)", name)
+	}
+	return fmt.Errorf("server: unknown module %q (registered: %v)", name, registered)
 }
 
 func (t TransportYAML) build() (brainkit.TransportConfig, error) {

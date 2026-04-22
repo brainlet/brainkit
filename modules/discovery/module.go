@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/google/uuid"
@@ -62,3 +63,64 @@ func (m *Module) Close() error {
 // other downstream consumer) can read the live peer set. Returns nil
 // when Type is empty.
 func (m *Module) Provider() Provider { return m.provider }
+
+// PeerYAML is a static peer entry (static mode or as a supplement to
+// bus mode).
+type PeerYAML struct {
+	Name      string            `yaml:"name"`
+	Namespace string            `yaml:"namespace"`
+	Address   string            `yaml:"address"`
+	Meta      map[string]string `yaml:"meta"`
+}
+
+// YAML is the config shape decoded by the registry factory.
+//
+// type: "static" | "bus" | "" (disabled — omit the section to
+// disable; presence in YAML with type="" is still accepted but is a
+// no-op and logs at boot).
+type YAML struct {
+	Type      string        `yaml:"type"`
+	Name      string        `yaml:"name"`
+	Heartbeat time.Duration `yaml:"heartbeat"`
+	TTL       time.Duration `yaml:"ttl"`
+	Peers     []PeerYAML    `yaml:"peers"`
+}
+
+// Factory is the registered ModuleFactory for discovery.
+type Factory struct{}
+
+// Build decodes YAML into a discovery.ModuleConfig and returns the
+// module. The provider itself is wired in Init when PresenceTransport
+// is live.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	cfg := ModuleConfig{
+		Type:      y.Type,
+		Name:      y.Name,
+		Heartbeat: y.Heartbeat,
+		TTL:       y.TTL,
+	}
+	for _, p := range y.Peers {
+		cfg.StaticPeers = append(cfg.StaticPeers, PeerConfig{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Address:   p.Address,
+			Meta:      p.Meta,
+		})
+	}
+	return NewModule(cfg), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "discovery",
+		Status:  brainkit.ModuleStatusBeta,
+		Summary: "Peer discovery: static list or bus-announced presence.",
+	}
+}
+
+func init() { brainkit.RegisterModule("discovery", Factory{}) }

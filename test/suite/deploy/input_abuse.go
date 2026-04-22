@@ -191,3 +191,17 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 
 	testutil.Teardown(t, env.Kit, "evolving-deploy-adv.ts")
 }
+
+// testDeployNamespaceImportStripped — `import * as X from "agent"` must
+// deploy without error. The stripESImports regex must handle the `* as`
+// form alongside named/default imports so QuickJS doesn't choke on the
+// ES module syntax left behind by esbuild's external-module pass.
+func testDeployNamespaceImportStripped(t *testing.T, env *suite.TestEnv) {
+	code := `
+		import * as agentMod from "agent";
+		output({ deployed: true, agentModType: typeof agentMod });
+	`
+	err := testutil.DeployErr(env.Kit, "ns-import-deploy-adv.ts", code)
+	require.NoError(t, err, "namespace import should deploy without error")
+	testutil.Teardown(t, env.Kit, "ns-import-deploy-adv.ts")
+}

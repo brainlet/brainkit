@@ -36,6 +36,44 @@ func New(cfg Config) *Module {
 	return &Module{cfg: cfg, stop: make(chan struct{})}
 }
 
+// YAML is the config shape decoded by the registry factory.
+// ProbeOnRegister is a pointer so "absent" differs from "explicit
+// false" — the factory defaults absent to true.
+type YAML struct {
+	Interval        time.Duration `yaml:"interval"`
+	ProbeOnRegister *bool         `yaml:"probe_on_register"`
+}
+
+// Factory is the registered ModuleFactory for probes.
+type Factory struct{}
+
+// Build decodes YAML and returns the module.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	probeOnRegister := true
+	if y.ProbeOnRegister != nil {
+		probeOnRegister = *y.ProbeOnRegister
+	}
+	return New(Config{
+		Interval:        y.Interval,
+		ProbeOnRegister: probeOnRegister,
+	}), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "probes",
+		Status:  brainkit.ModuleStatusBeta,
+		Summary: "Periodic health probes of providers, vector stores, and storages.",
+	}
+}
+
+func init() { brainkit.RegisterModule("probes", Factory{}) }
+
 // Name reports the module identifier.
 func (m *Module) Name() string { return "probes" }
 

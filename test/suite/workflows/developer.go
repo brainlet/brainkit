@@ -193,6 +193,8 @@ func testConditionalBranch(t *testing.T, env *suite.TestEnv) {
 	premErr := suite.ResponseErrorMessage(premMsg.Payload)
 	require.Empty(t, premErr, "premium branch: %s", premErr)
 	require.Equal(t, "success", premResp.Status)
+	assert.NotEmpty(t, premResp.Result, "branch result must be non-empty")
+	assert.Contains(t, string(premResp.Result), "premium-250", "branch result should contain step output")
 
 	premStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
 		t, k,

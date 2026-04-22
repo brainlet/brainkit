@@ -42,7 +42,7 @@ func TestNewRejectsMissingFields(t *testing.T) {
 		Transport: brainkit.EmbeddedNATS(),
 		FSRoot:    t.TempDir(),
 	})
-	require.Error(t, err, "Gateway.Listen required")
+	require.Error(t, err, "gateway module required")
 }
 
 // TestStartStopLifecycle boots a server and tears it down. No
@@ -56,7 +56,9 @@ func TestStartStopLifecycle(t *testing.T) {
 		Namespace: "server-lifecycle",
 		Transport: brainkit.EmbeddedNATS(),
 		FSRoot:    tmp,
-		Gateway:   gateway.Config{Listen: addr},
+		Modules: []brainkit.Module{
+			gateway.New(gateway.Config{Listen: addr}),
+		},
 	})
 	require.NoError(t, err)
 	defer srv.Close()
@@ -91,7 +93,9 @@ func TestKitAccessors(t *testing.T) {
 		Namespace: "server-accessors",
 		Transport: brainkit.EmbeddedNATS(),
 		FSRoot:    tmp,
-		Gateway:   gateway.Config{Listen: addr},
+		Modules: []brainkit.Module{
+			gateway.New(gateway.Config{Listen: addr}),
+		},
 	})
 	require.NoError(t, err)
 	defer srv.Close()
@@ -103,8 +107,10 @@ func TestKitAccessors(t *testing.T) {
 	assert.Equal(t, "server-accessors", kit.Namespace())
 }
 
-// TestLoadConfig round-trips the example YAML + verifies env
-// substitution pulls a value out of the process environment.
+// TestLoadConfig round-trips a minimal YAML + verifies env
+// substitution pulls a value out of the process environment and that
+// the registry-driven module path produces a gateway module from
+// `modules.gateway:`.
 func TestLoadConfig(t *testing.T) {
 	tmp := t.TempDir()
 	yamlPath := filepath.Join(tmp, "config.yaml")
@@ -112,9 +118,10 @@ func TestLoadConfig(t *testing.T) {
 fs_root: ` + tmp + `
 transport:
   type: embedded
-gateway:
-  listen: ` + freePort(t) + `
 secret_key: $TEST_SECRET
+modules:
+  gateway:
+    listen: ` + freePort(t) + `
 `
 	require.NoError(t, os.WriteFile(yamlPath, []byte(content), 0644))
 
@@ -126,4 +133,57 @@ secret_key: $TEST_SECRET
 	assert.Equal(t, "opened-sesame", cfg.SecretKey)
 	assert.Equal(t, tmp, cfg.FSRoot)
 	assert.NotEqual(t, brainkit.TransportConfig{}, cfg.Transport)
+
+	var haveGateway bool
+	for _, m := range cfg.Modules {
+		if m != nil && m.Name() == "gateway" {
+			haveGateway = true
+		}
+	}
+	assert.True(t, haveGateway, "modules.gateway should produce a gateway module")
+}
+
+// TestLoadConfigLegacyTopLevelGateway refuses the pre-registry YAML
+// shape loudly. Silently ignoring `gateway:` at the root would make
+// a user's old config boot with an empty module list and fail
+// validation with a confusing "gateway is required" error even
+// though the key is visibly in the file.
+func TestLoadConfigLegacyTopLevelGateway(t *testing.T) {
+	tmp := t.TempDir()
+	yamlPath := filepath.Join(tmp, "config.yaml")
+	content := `namespace: legacy
+fs_root: ` + tmp + `
+transport:
+  type: embedded
+gateway:
+  listen: ` + freePort(t) + `
+`
+	require.NoError(t, os.WriteFile(yamlPath, []byte(content), 0644))
+
+	_, err := server.LoadConfig(yamlPath)
+	require.Error(t, err, "legacy top-level gateway must be rejected")
+	assert.Contains(t, err.Error(), "modules.gateway")
+}
+
+// TestLoadConfigUnknownModule surfaces typos loudly — the whole
+// point of the registry is that `modules.billig:` (for billing)
+// fails at load rather than silently skipping the module.
+func TestLoadConfigUnknownModule(t *testing.T) {
+	tmp := t.TempDir()
+	yamlPath := filepath.Join(tmp, "config.yaml")
+	content := `namespace: oops
+fs_root: ` + tmp + `
+transport:
+  type: embedded
+modules:
+  gateway:
+    listen: ` + freePort(t) + `
+  billig: {}
+`
+	require.NoError(t, os.WriteFile(yamlPath, []byte(content), 0644))
+
+	_, err := server.LoadConfig(yamlPath)
+	require.Error(t, err, "expected unknown-module error")
+	assert.Contains(t, err.Error(), "billig")
+	assert.Contains(t, err.Error(), "registered")
 }

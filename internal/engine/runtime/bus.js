@@ -158,6 +158,10 @@
             }
           },
         },
+      onCancel: function(handler) {
+        if (!msg.correlationId) return function() {};
+        return globalThis.__kit_bus.onCancel(msg.correlationId, handler);
+      },
     };
     return msg;
   }

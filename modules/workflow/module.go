@@ -16,6 +16,36 @@ type Module struct {
 // New creates a workflow module. It has no configuration today.
 func New() *Module { return &Module{} }
 
+// Factory is the registered ModuleFactory for workflow.
+type Factory struct{}
+
+// YAML is the config shape decoded by the registry factory. The
+// module has no options today, but a named type means future fields
+// can land without breaking existing configs.
+type YAML struct{}
+
+// Build returns a fresh workflow module. A non-nil decode error
+// propagates so typos like `workflow: true` (scalar instead of map)
+// surface at startup instead of being swallowed.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	return New(), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "workflow",
+		Status:  brainkit.ModuleStatusStable,
+		Summary: "Mastra-style workflow bus commands (start, status, resume, …).",
+	}
+}
+
+func init() { brainkit.RegisterModule("workflow", Factory{}) }
+
 // Name reports the module identifier.
 func (m *Module) Name() string { return "workflow" }
 

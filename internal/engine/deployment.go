@@ -453,7 +453,7 @@ func entriesToResourceInfos(entries []ResourceEntry) []types.ResourceInfo {
 	return infos
 }
 
-var esImportRe = regexp.MustCompile(`(?m)^import\s+(type\s+)?(\{[^}]*\}|[^\s]+)\s+from\s+"[^"]+";\s*\n?`)
+var esImportRe = regexp.MustCompile(`(?m)^import\s+(type\s+)?(\{[^}]*\}|\*\s+as\s+\w+|[^\s]+)\s+from\s+"[^"]+";\s*\n?`)
 
 func stripESImports(js string) string {
 	return esImportRe.ReplaceAllString(js, "")

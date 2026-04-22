@@ -53,6 +53,7 @@
           runId: run.runId || "",
           status: result.status || "unknown",
           steps: result.steps || null,
+          result: result.result !== undefined ? result.result : null,
         };
       },
 
@@ -64,6 +65,7 @@
         run.start({ inputData: args.inputData || null }).then(function(result) {
           __go_brainkit_bus_emit("workflow.completed." + runId, JSON.stringify({
             runId: runId, name: name, status: result.status || "unknown", steps: result.steps || null,
+            result: result.result !== undefined ? result.result : null,
           }));
         }).catch(function(err) {
           __go_brainkit_bus_emit("workflow.completed." + runId, JSON.stringify({

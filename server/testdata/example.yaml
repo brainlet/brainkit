@@ -1,5 +1,9 @@
 # Example brainkit server configuration. Environment variables
 # referenced as $NAME or ${NAME} are substituted at load time.
+#
+# Modules are declarative: every module named under `modules:` must
+# be registered in the binary (see server/server.go for the standard
+# set). Unknown module keys fail at load with a "did you mean" hint.
 
 namespace: my-app
 fs_root: /var/brainkit
@@ -10,10 +14,6 @@ transport:
   nats_name: brainkit-prod
 
 secret_key: $SECRET_KEY
-
-gateway:
-  listen: :8080
-  timeout: 30s
 
 providers:
   - name: openai
@@ -30,11 +30,18 @@ vectors:
     type: sqlite
     path: /var/brainkit/vector.db
 
-plugins: []
-
-audit:
-  path: /var/brainkit/audit.db
-  verbose: false
+modules:
+  gateway:
+    listen: :8080
+    timeout: 30s
+  audit:
+    path: /var/brainkit/audit.db
+    verbose: false
+  tracing:
+    path: /var/brainkit/tracing.db
+  probes:
+    interval: 60s
+  workflow: {}
 
 packages:
   - path: ./agents/support

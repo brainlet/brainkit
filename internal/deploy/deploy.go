@@ -69,6 +69,9 @@ func DeployFile(ctx context.Context, deployer Deployer, path string) (*Package, 
 	if err != nil {
 		return nil, fmt.Errorf("package.deploy: bundle %s: %w", path, err)
 	}
+	if len(strings.TrimSpace(bundled)) == 0 {
+		return nil, fmt.Errorf("package.deploy: bundle %s: produced empty output — check for unsupported import patterns", path)
+	}
 
 	source := name + ".ts"
 	if err := deployer.Deploy(ctx, source, bundled); err != nil {

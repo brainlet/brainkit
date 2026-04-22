@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
@@ -126,6 +127,43 @@ type Gateway struct {
 	sessions    map[string]*streamSession
 	sweepCancel context.CancelFunc
 }
+
+// YAML is the config shape decoded by the registry factory.
+// Advanced options (CORS, RateLimit, Middleware) aren't expressed in
+// YAML today — plug those in via code in a custom binary.
+type YAML struct {
+	Listen   string        `yaml:"listen"`
+	Timeout  time.Duration `yaml:"timeout"`
+	NoHealth bool          `yaml:"no_health"`
+}
+
+// Factory is the registered ModuleFactory for gateway.
+type Factory struct{}
+
+// Build decodes YAML into a Gateway Config and returns a new gateway.
+// Gateway.Init binds the HTTP listener.
+func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+	var y YAML
+	if err := ctx.Decode(&y); err != nil {
+		return nil, err
+	}
+	return New(Config{
+		Listen:   y.Listen,
+		Timeout:  y.Timeout,
+		NoHealth: y.NoHealth,
+	}), nil
+}
+
+// Describe surfaces module metadata for `brainkit modules list`.
+func (Factory) Describe() brainkit.ModuleDescriptor {
+	return brainkit.ModuleDescriptor{
+		Name:    "gateway",
+		Status:  brainkit.ModuleStatusStable,
+		Summary: "HTTP gateway: POST /api/bus + POST /api/stream + health.",
+	}
+}
+
+func init() { brainkit.RegisterModule("gateway", Factory{}) }
 
 // New creates an HTTP gateway module. Pass the returned *Gateway to
 // brainkit.Config.Modules; Init captures the Kit as the runtime and calls

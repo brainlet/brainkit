@@ -148,7 +148,7 @@ declare module "agent" {
     /** Legacy stream path — kept for pre-v0.20 callers. */
     streamLegacy(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentStreamResult>;
 
-    /** Supervisor mode — delegates to sub-agents. */
+    /** Supervisor mode — delegates to sub-agents. Requires `memory` on AgentConfig. */
     network(promptOrMessages: string | Message[], options?: AgentCallOptions): Promise<AgentResult>;
 
     /** Resume a suspended generate run with fresh input. HITL pattern. */
@@ -676,9 +676,16 @@ declare module "agent" {
 
   export interface StepConfig {
     id: string;
+    description?: string;
     inputSchema?: import("ai").ZodType;
     outputSchema?: import("ai").ZodType;
     stateSchema?: import("ai").ZodType;
+    resumeSchema?: import("ai").ZodType;
+    suspendSchema?: import("ai").ZodType;
+    requestContextSchema?: import("ai").ZodType;
+    retries?: number;
+    scorers?: Record<string, { scorer: Scorer; sampling?: any }>;
+    metadata?: Record<string, any>;
     execute?: (context: StepExecutionContext) => Promise<unknown>;
   }
 
@@ -882,10 +889,10 @@ declare module "agent" {
     updateThread(opts: { threadId: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
     /** List threads with optional filter. */
     listThreads(filter?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
-    /** Save messages to a thread. */
-    saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
-    /** Delete messages from a thread. */
-    deleteMessages(opts: { threadId: string }): Promise<void>;
+    /** Save messages. Each message carries its own threadId. */
+    saveMessages(opts: { messages: Message[] }): Promise<void>;
+    /** Delete messages by IDs. */
+    deleteMessages(messageIds: string | string[] | { id: string }[]): Promise<void>;
     /** Recall messages from a thread with optional semantic search. */
     recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
     /** Delete a thread and its messages. */
@@ -1857,9 +1864,9 @@ declare module "agent" {
    */
   export class CompositeVoice implements MastraVoice {
     constructor(config: {
-      speakProvider?: MastraVoice;
-      listenProvider?: MastraVoice;
-      realtimeProvider?: MastraVoice;
+      input?: MastraVoice;
+      output?: MastraVoice;
+      realtime?: MastraVoice;
     });
     speak(input: string | VoiceAudioStream, options?: any): Promise<VoiceAudioStream>;
     listen(audio: VoiceAudioStream, options?: any): Promise<string>;
@@ -2251,7 +2258,7 @@ declare module "agent" {
     readonly __storageType: string;
     abstract getThreadById(opts: { threadId: string }): Promise<Thread | null>;
     abstract saveThread(opts: { thread: Thread }): Promise<Thread>;
-    abstract saveMessages(opts: { threadId: string; messages: Message[] }): Promise<void>;
+    abstract saveMessages(opts: { messages: Message[] }): Promise<void>;
     abstract getMessagesByThreadId(opts: { threadId: string; limit?: number }): Promise<Message[]>;
     abstract deleteThread(threadId: string): Promise<void>;
     abstract listThreads(opts?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
