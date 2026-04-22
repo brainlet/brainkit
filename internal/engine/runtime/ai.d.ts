@@ -1,3 +1,5 @@
+// This module targets ai-sdk v6 (package `ai` ^6.0.x). The legacy v4 bundle at
+// internal/embed/ai/bundle is out of scope and must not be referenced here.
 /**
  * "ai" module — direct re-exports of AI SDK.
  * No wrapping. Users get the real AI SDK functions.

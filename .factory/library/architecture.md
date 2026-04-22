@@ -84,6 +84,37 @@ Validation (`scrutiny-validator` + `user-testing-validator`) is auto-injected by
 - `Agent` generic constraint currently `TTools extends Record<string, Tool>`; canonical is `TTools extends ToolsInput` (heterogeneous). Fix at M2.
 - `ConsoleLogger` declared `implements IMastraLogger`; canonical is `extends MastraLogger`. Fix at M8.
 
+## Pinned versions (M0)
+
+The two canonical clones are pinned at the following refs for the lifetime of this mission:
+
+| Clone | Tag / ref | Commit SHA | `package.json` version |
+| --- | --- | --- | --- |
+| `/Users/davidroman/Documents/code/clones/mastra` | `@mastra/core@1.13.1` (monorepo batch tag) | `512a786a0cccc6ea3b36f2f33723570584235383` | `packages/core/package.json` → `1.13.1` |
+| `/Users/davidroman/Documents/code/clones/ai` | `ai@6.0.168` (newest 6.0.x at M0 time) | `c38119a2e3df201a95a9979580f2c7a3c1b319ab` | `packages/ai/package.json` → `6.0.168` |
+
+The repo-root `package.json` pins `typescript@5.9.3` as a devDependency. `node_modules/.bin/tsc --version` reports `Version 5.9.3`.
+
+The bundle at `internal/embed/agent/bundle` was populated with `pnpm install --prefer-offline`; peer-dep warnings for `zod@^3` vs resolved `zod@4.1.12` and for voice packages pinning `@mastra/core@">=0.18.1-0 <0.25.0-0"` vs resolved `@mastra/core@1.26.0` are expected (the bundle uses caret ranges against `^1.13.1` that naturally float forward — the clones remain the canonical-shape source of truth at the pinned tags above).
+
 ## Baseline error snapshot
 
-(To be filled in by the M0 worker after `make type-check` runs for the first time.)
+Captured at mission commit `c0d046cc72a0a0fdcf77a733c4a7e481c5a5409b` (HEAD prior to M0 implementation), with `typescript@5.9.3`, `tsc --noEmit -p fixtures/tsconfig.base.json`.
+
+```
+baseline type-check errors: 5
+```
+
+### Grouped listing
+
+All 5 baseline errors match the pre-existing drift enumerated in the "Known pre-existing drift" section above. They are scheduled for resolution in M3 (memory) and M7 (voice).
+
+- **M7 — voice (`CompositeVoice.speakProvider` / `listenProvider` drift)** — 2 errors
+  - `fixtures/ts/agent/voice/composite/index.ts(7,3): error TS2353: Object literal may only specify known properties, and 'speakProvider' does not exist in type '{ input?: MastraVoice; output?: MastraVoice; realtime?: MastraVoice; }'.`
+  - `fixtures/ts/voice/composite/basic/index.ts(9,40): error TS2353: Object literal may only specify known properties, and 'speakProvider' does not exist in type '{ input?: MastraVoice; output?: MastraVoice; realtime?: MastraVoice; }'.`
+- **M3 — memory (`saveMessages` / `deleteMessages` extraneous `threadId`)** — 3 errors
+  - `fixtures/ts/memory/messages/save-and-recall/index.ts(7,3): error TS2353: Object literal may only specify known properties, and 'threadId' does not exist in type '{ messages: Message[]; }'.`
+  - `fixtures/ts/memory/threads/management/index.ts(40,28): error TS2353: Object literal may only specify known properties, and 'threadId' does not exist in type '{ messages: Message[]; }'.`
+  - `fixtures/ts/memory/threads/management/index.ts(55,30): error TS2353: Object literal may only specify known properties, and 'threadId' does not exist in type 'string[] | { id: string; }[]'.`
+
+Raw log retained at `/tmp/m0-baseline.log` for the duration of M0 validation.
