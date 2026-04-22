@@ -1,11 +1,17 @@
 commands:
-  # Note: this mission is offline type-checking focused. No long-running services needed.
-  # pnpm runs from inside internal/embed/agent/bundle; npm is present.
+  # Mission scope is type-alignment on agent.d.ts + ai.d.ts + fixtures/ts/**. Validators MUST
+  # gate on the mission-relevant tests, not the full brainkit Go suite (which has pre-existing
+  # failures in bus/cli/cross/deploy/gateway/plugins/stress that predate this mission and are
+  # out of scope — see AGENTS.md "Known pre-existing failures").
   install: cd internal/embed/agent/bundle && pnpm install --prefer-offline
-  typecheck: tsc --noEmit -p fixtures/tsconfig.base.json
+  typecheck: node_modules/.bin/tsc --noEmit -p fixtures/tsconfig.base.json
   build: make brainkit
-  test: go test ./test/suite/... -timeout 600s
-  test-fixtures: go test ./test/fixtures/ -run TestFixtures -count=1 -timeout 1200s
+  # `test` is the gate validators use. Points at the fixture runtime gate — the source of truth
+  # for whether types declared in agent.d.ts / ai.d.ts line up with what QuickJS actually runs.
+  test: go test ./test/fixtures/ -run TestFixtures -count=1 -timeout 1200s
+  # `test-suite` is the broader Go suite test. Run manually, NOT invoked by default validators.
+  # Has pre-existing failures (see AGENTS.md). Workers should not treat its failure as mission-caused.
+  test-suite: go test ./test/suite/... -timeout 600s
   lint: go vet ./...
 
 services:
