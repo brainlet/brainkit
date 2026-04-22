@@ -1,0 +1,22 @@
+commands:
+  # Note: this mission is offline type-checking focused. No long-running services needed.
+  # pnpm runs from inside internal/embed/agent/bundle; npm is present.
+  install: cd internal/embed/agent/bundle && pnpm install --prefer-offline
+  typecheck: tsc --noEmit -p fixtures/tsconfig.base.json
+  build: make brainkit
+  test: go test ./test/suite/... -timeout 600s
+  test-fixtures: go test ./test/fixtures/ -run TestFixtures -count=1 -timeout 1200s
+  lint: go vet ./...
+
+services:
+  # Podman is a user-managed VM; the Go fixture runner lazy-starts pgvector, mongodb, and libsql
+  # containers itself via testcontainers-go. Workers do not start or stop these; they are
+  # implicit dependencies of `go test ./test/fixtures/`.
+  #
+  # Declared here only for observability and health verification.
+  podman-machine:
+    start: podman machine start podman-machine-default
+    stop: podman machine stop podman-machine-default
+    healthcheck: podman machine list --format '{{.Name}} {{.Running}}' | grep -q 'podman-machine-default.*true'
+    port: 0
+    depends_on: []
