@@ -1,5 +1,9 @@
 {
   "id": "guarded-op",
   "requiresApproval": true,
-  "hasExecute": true
+  "hasExecute": true,
+  "suspended": true,
+  "suspendReason": "~approval needed for",
+  "approved": true,
+  "phase2Action": "delete-record"
 }

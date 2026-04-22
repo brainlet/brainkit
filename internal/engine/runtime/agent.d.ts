@@ -545,108 +545,279 @@ declare module "agent" {
   }
 
   // ── Tools ─────────────────────────────────────────────────────
+  //
+  // Canonical source of truth: @mastra/core/tools/{tool.ts,types.ts}
+  // (mastra clone pinned at @mastra/core@1.13.1). The 7-generic
+  // `createTool` / `Tool` / `ToolAction` shapes mirror the upstream
+  // API 1:1; defaults are relaxed to `any` in two slots (TSchemaIn,
+  // TSchemaOut) because brainkit's ai.d.ts `z` stub is structural
+  // (doesn't carry `z.ZodType<T>` inference). Behavior is otherwise
+  // identical: assigning a concrete `createTool<...>(...)` result to
+  // a canonical-typed slot (e.g. `ToolAction<TIn,TOut>`) resolves
+  // with no coercion.
 
   /**
-   * Create a Mastra tool definition.
+   * ValidationError — returned by a tool's `execute` when input /
+   * output validation fails. Shape mirrors Mastra's internal
+   * `tools/validation.ts` error envelope.
+   */
+  export interface ValidationError {
+    error: true;
+    message: string;
+    issues?: unknown;
+    [key: string]: unknown;
+  }
+
+  /**
+   * Agent-specific execution-context slice passed into a tool when
+   * Mastra invokes it from an Agent run. Matches canonical
+   * `@mastra/core/tools/types.ts` `AgentToolExecutionContext` 1:1.
+   */
+  export interface AgentToolExecutionContext<TSuspend = unknown, TResume = unknown> {
+    toolCallId: string;
+    messages: any[];
+    suspend: (suspendPayload: TSuspend, suspendOptions?: Record<string, any>) => Promise<void>;
+    threadId?: string;
+    resourceId?: string;
+    resumeData?: TResume;
+    /** Original WritableStream passed from the AI SDK (unwrapped). */
+    writableStream?: any;
+  }
+
+  /**
+   * Workflow-specific execution-context slice. Matches canonical
+   * `WorkflowToolExecutionContext` 1:1.
+   */
+  export interface WorkflowToolExecutionContext<TSuspend = unknown, TResume = unknown> {
+    runId: string;
+    workflowId: string;
+    state: any;
+    setState: (state: any) => void;
+    suspend: (suspendPayload: TSuspend, suspendOptions?: Record<string, any>) => Promise<void>;
+    resumeData?: TResume;
+  }
+
+  /**
+   * MCP-specific execution-context slice — populated when a tool
+   * is invoked through Model Context Protocol. Matches canonical
+   * `MCPToolExecutionContext`.
+   */
+  export interface MCPToolExecutionContext {
+    /** MCP protocol context passed by the server. */
+    extra: any;
+    /** Elicitation channel — interactive user-input prompts. */
+    elicitation: {
+      sendRequest: (request: any) => Promise<any>;
+    };
+  }
+
+  /**
+   * ToolStream — writer injected into a tool's execution context
+   * when the surrounding agent is streaming. Wraps chunks with
+   * metadata (toolCallId, toolName, runId) before forwarding to
+   * the underlying writer. Matches canonical
+   * `@mastra/core/tools/stream.ts` 1:1.
+   */
+  export class ToolStream {
+    /** Write a payload through the wrapped writer. */
+    write(data: any): Promise<void>;
+    /** Write a custom typed chunk (e.g. `data-*` events) through. */
+    custom<T extends { type: string }>(data: T): Promise<void>;
+  }
+
+  /**
+   * Unified tool execution context. Matches canonical
+   * `@mastra/core/tools/types.ts` `ToolExecutionContext`: three
+   * generics (suspend, resume, request-context), nested
+   * `agent` / `workflow` / `mcp` slices, and a single `writer`
+   * slot typed to ToolStream.
+   */
+  export interface ToolExecutionContext<
+    TSuspend = unknown,
+    TResume = unknown,
+    TRequestContext extends Record<string, any> | unknown = unknown,
+  > {
+    // ── Common properties (available in every context) ──────────
+    mastra?: Mastra;
+    requestContext?: RequestContext<TRequestContext extends Record<string, any> ? TRequestContext : Record<string, any>>;
+    abortSignal?: AbortSignal;
+    /** Workspace binding (when the agent / workflow has one). */
+    workspace?: Workspace;
+    /** Stream writer injected when the surrounding run is streaming. */
+    writer?: ToolStream;
+
+    // ── Context-specific nested slices ──────────────────────────
+    agent?: AgentToolExecutionContext<TSuspend, TResume>;
+    workflow?: WorkflowToolExecutionContext<TSuspend, TResume>;
+    mcp?: MCPToolExecutionContext;
+  }
+
+  /**
+   * Structural contract implemented by every Mastra tool — a
+   * direct port of canonical `@mastra/core/tools/types.ts`
+   * `ToolAction`. Used as both the input to `createTool` /
+   * `new Tool(...)` and as a first-class type for typed tool
+   * maps.
+   */
+  export interface ToolAction<
+    TSchemaIn = any,
+    TSchemaOut = any,
+    TSuspend = unknown,
+    TResume = unknown,
+    TContext extends ToolExecutionContext<TSuspend, TResume, any> = ToolExecutionContext<TSuspend, TResume>,
+    TId extends string = string,
+    TRequestContext extends Record<string, any> | unknown = unknown,
+  > {
+    id: TId;
+    description: string;
+    inputSchema?: PublicSchema<TSchemaIn>;
+    outputSchema?: PublicSchema<TSchemaOut>;
+    suspendSchema?: PublicSchema<TSuspend>;
+    resumeSchema?: PublicSchema<TResume>;
+    /**
+     * Optional schema for the RequestContext payload. When set,
+     * Mastra validates the incoming context before dispatching.
+     */
+    requestContextSchema?: PublicSchema<TRequestContext>;
+    /** MCP-specific annotations + metadata. */
+    mcp?: MCPToolProperties;
+    /** Transform the tool output before the model sees it. */
+    toModelOutput?: (output: TSchemaOut) => unknown;
+    /**
+     * Execute the tool. First argument is the validated input,
+     * second is the unified execution context. The context slot
+     * is marked optional at the brainkit boundary so a tool
+     * instance remains assignable to the looser AI-SDK-shaped
+     * `ToolDefinition.execute` (`(args, options?) => ...`) — the
+     * runtime always supplies it.
+     */
+    execute?: (inputData: TSchemaIn, context?: TContext) => Promise<TSchemaOut | ValidationError>;
+    mastra?: Mastra;
+    /** HITL gate — suspend for approval before execution. */
+    requireApproval?: boolean;
+    /** Provider-specific tool options (Anthropic, OpenAI, ...). */
+    providerOptions?: Record<string, Record<string, unknown>>;
+    /** Metadata identifying this tool as originating from an MCP server. */
+    mcpMetadata?: Record<string, unknown>;
+    /** Few-shot input examples forwarded to the AI SDK. */
+    inputExamples?: Array<{ input: Record<string, unknown> }>;
+    onInputStart?: (options: any) => void | PromiseLike<void>;
+    onInputDelta?: (options: { inputTextDelta: string } & any) => void | PromiseLike<void>;
+    onInputAvailable?: (options: { input: TSchemaIn } & any) => void | PromiseLike<void>;
+    onOutput?: (options: { output: TSchemaOut; toolName: string } & any) => void | PromiseLike<void>;
+  }
+
+  /**
+   * Mastra `Tool` class — a concrete, instance-of-checkable tool.
+   * Implements `ToolAction` 1:1 and matches canonical
+   * `@mastra/core/tools/tool.ts` (7 generics, field-for-field).
+   *
+   * Authors should prefer `createTool({...})` which wraps
+   * `new Tool(...)` with inference-friendly schema typing.
+   */
+  export class Tool<
+    TSchemaIn = any,
+    TSchemaOut = any,
+    TSuspendSchema = unknown,
+    TResumeSchema = unknown,
+    TContext extends ToolExecutionContext<TSuspendSchema, TResumeSchema, any> = ToolExecutionContext<TSuspendSchema, TResumeSchema>,
+    TId extends string = string,
+    TRequestContext extends Record<string, any> | unknown = unknown,
+  > implements ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext> {
+    /** Unique identifier for the tool. */
+    id: TId;
+    /** Human-readable description. */
+    description: string;
+    /**
+     * Schema for validating input parameters. Narrowed to
+     * `import("ai").ZodType` at the class surface — preserves
+     * structural compatibility with AI SDK's `ToolDefinition`
+     * (which expects a ZodType) while `ToolAction` above keeps
+     * the canonical `PublicSchema` union for authoring.
+     */
+    inputSchema?: import("ai").ZodType;
+    /** Schema for validating output structure. */
+    outputSchema?: import("ai").ZodType;
+    /** Schema for suspend-operation data. */
+    suspendSchema?: import("ai").ZodType;
+    /** Schema for resume-operation data. */
+    resumeSchema?: import("ai").ZodType;
+    /** Schema for request-context validation. */
+    requestContextSchema?: import("ai").ZodType;
+    execute?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['execute'];
+    mastra?: Mastra;
+    requireApproval?: boolean;
+    providerOptions?: Record<string, Record<string, unknown>>;
+    /** Normalize the tool output before the model reads it. */
+    toModelOutput?: (output: TSchemaOut) => unknown;
+    /** MCP-specific annotations + metadata. */
+    mcp?: MCPToolProperties;
+    onInputStart?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['onInputStart'];
+    onInputDelta?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['onInputDelta'];
+    onInputAvailable?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['onInputAvailable'];
+    onOutput?: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>['onOutput'];
+    /** Few-shot input examples forwarded to the AI SDK. */
+    inputExamples?: Array<{ input: Record<string, unknown> }>;
+    /** Metadata identifying this tool as originating from an MCP server. */
+    mcpMetadata?: Record<string, unknown>;
+
+    constructor(opts: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>);
+  }
+
+  /**
+   * Creates a type-safe tool instance. Matches canonical
+   * `@mastra/core/tools/tool.ts` `createTool` signature:
+   * 7 generics (`TId`, `TInputSchema`, `TOutputSchema`,
+   * `TSuspendSchema`, `TResumeSchema`, `TRequestContext`,
+   * `TContext`) and an options object typed via
+   * `CreateToolOpts<...>`, returning a `Tool<...>` with the
+   * inferred schema types.
    *
    * @example
    * ```ts
-   * const calculator = createTool({
+   * // Explicit generics — narrows execute's args.
+   * const add = createTool<"add", { a: number; b: number }, { sum: number }>({
    *   id: "add",
    *   description: "Add two numbers",
    *   inputSchema: z.object({ a: z.number(), b: z.number() }),
-   *   execute: async ({ a, b }) => ({ result: a + b }),
+   *   outputSchema: z.object({ sum: z.number() }),
+   *   execute: async ({ a, b }) => ({ sum: a + b }),
    * });
-   * kit.register("tool", "add", calculator);
+   *
+   * // Or let the schema drive inference (brainkit's z stub
+   * // resolves to `any` — destructuring still works).
+   * const echo = createTool({
+   *   id: "echo",
+   *   description: "Echo input",
+   *   inputSchema: z.object({ message: z.string() }),
+   *   execute: async ({ message }) => ({ echoed: message }),
+   * });
    * ```
    */
-  export function createTool(config: ToolConfig): Tool;
-
-  export interface ToolConfig {
-    /** Tool ID / name. */
-    id: string;
-    /** Human-readable description. */
-    description?: string;
-    /** Input schema (Zod). */
-    inputSchema?: import("ai").ZodType;
-    /** Output schema (Zod). */
-    outputSchema?: import("ai").ZodType;
-    /** Execute function. Input is the Zod-validated data. */
-    execute?: (input: any, context?: ToolExecutionContext) => Promise<unknown>;
-    /** Suspend schema (for tool approval workflows). */
-    suspendSchema?: import("ai").ZodType;
-    /** Resume schema. */
-    resumeSchema?: import("ai").ZodType;
-    /** When true, tool calls suspend for human approval before execution. */
-    requireApproval?: boolean;
-  }
+  export function createTool<
+    TId extends string = string,
+    TSchemaIn = any,
+    TSchemaOut = any,
+    TSuspendSchema = unknown,
+    TResumeSchema = unknown,
+    TRequestContext extends Record<string, any> | unknown = unknown,
+    TContext extends ToolExecutionContext<TSuspendSchema, TResumeSchema, TRequestContext> =
+      ToolExecutionContext<TSuspendSchema, TResumeSchema, TRequestContext>,
+  >(
+    opts: ToolAction<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>,
+  ): Tool<TSchemaIn, TSchemaOut, TSuspendSchema, TResumeSchema, TContext, TId, TRequestContext>;
 
   /**
-   * Context handed to a tool's `execute` function. Covers every
-   * shape Mastra passes at runtime — HITL suspend/resume, the
-   * streaming writer slot, and the back-references to agent /
-   * workflow / MCP contexts.
+   * Tool bag shape accepted by `AgentConfig.tools` and
+   * `AgentConfig.clientTools`. Heterogeneous: native Mastra
+   * tools (ToolAction), AI SDK v4 tools, AI SDK v5 tools, and
+   * provider-defined tools all coexist. Matches canonical
+   * `@mastra/core/agent/types.ts` `ToolsInput` 1:1.
    */
-  export interface ToolExecutionContext {
-    requestContext?: RequestContext;
-    abortSignal?: AbortSignal;
-    mastra?: Mastra;
-    /** Writable stream a tool can pipe progress updates into. */
-    writer?: any;
-    /** Workspace binding (when the agent has a workspace). */
-    workspace?: Workspace;
-    /** Present when invoked from an Agent execution. */
-    agent?: {
-      toolCallId: string;
-      threadId?: string;
-      resourceId?: string;
-      suspend?: (payload: unknown) => Promise<never>;
-      resumeData?: unknown;
-      writableStream?: any;
-    };
-    /** Present when invoked from a Workflow step. */
-    workflow?: {
-      runId: string;
-      stepId: string;
-      suspend?: (payload: unknown) => Promise<never>;
-    };
-    /** Present when invoked through MCP. */
-    mcp?: {
-      toolCallId: string;
-      [key: string]: unknown;
-    };
-  }
-
-  export interface Tool {
-    id: string;
-    description?: string;
-    inputSchema?: import("ai").ZodType;
-    outputSchema?: import("ai").ZodType;
-    suspendSchema?: import("ai").ZodType;
-    resumeSchema?: import("ai").ZodType;
-    /** HITL gate — when true, calls suspend for human approval. */
-    requireApproval?: boolean;
-    /** Provider-specific tool options (OpenAI, Anthropic, etc.). */
-    providerOptions?: Record<string, Record<string, unknown>>;
-    /** Present when this tool was sourced from an MCP server. */
-    mcp?: MCPToolProperties;
-    /** User-supplied MCP metadata. */
-    mcpMetadata?: Record<string, unknown>;
-    /** Few-shot input examples. */
-    inputExamples?: unknown[];
-    /** Normalize the tool output before it reaches the model. */
-    toModelOutput?: (result: unknown) => unknown;
-    execute?: (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<unknown>;
-  }
-
-  /**
-   * Broader alias — Mastra accepts AI SDK v4 / v5 tools and
-   * provider-defined tools alongside native Mastra tools. The
-   * agent's tool resolver picks the right execution path.
-   */
-  export type ToolAction = Tool | VercelTool | VercelToolV5 | ProviderDefinedTool;
-  /** Tool bag shape accepted by `AgentConfig.tools`. */
-  export type ToolsInput = Record<string, ToolAction>;
+  export type ToolsInput = Record<
+    string,
+    ToolAction<any, any, any, any, any> | VercelTool | VercelToolV5 | ProviderDefinedTool
+  >;
 
   // ── Workflows ─────────────────────────────────────────────────
 

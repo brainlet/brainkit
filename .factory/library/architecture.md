@@ -118,3 +118,23 @@ All 5 baseline errors match the pre-existing drift enumerated in the "Known pre-
   - `fixtures/ts/memory/threads/management/index.ts(55,30): error TS2353: Object literal may only specify known properties, and 'threadId' does not exist in type 'string[] | { id: string; }[]'.`
 
 Raw log retained at `/tmp/m0-baseline.log` for the duration of M0 validation.
+
+## M1 — tools alignment
+
+The tools block in `internal/engine/runtime/agent.d.ts` now mirrors `@mastra/core/tools/{tool.ts,types.ts}` 1:1:
+
+- `createTool` — 7 generics (`TId`, `TSchemaIn`, `TSchemaOut`, `TSuspendSchema`, `TResumeSchema`, `TRequestContext`, `TContext`) returning `Tool<...>`. Defaults on `TSchemaIn` / `TSchemaOut` are `any` (canonical uses `unknown`); this is a deliberate narrow deviation because brainkit's `ai.d.ts` `z` stub is structural and does not carry `z.ZodType<T>` inference, so `unknown` would break the long-standing `async ({a,b}) => …` destructuring pattern in every fixture without explicit generics. Explicit generics on `createTool<Id, In, Out>` still narrow exactly as canonical does.
+- `Tool` — 7-generic class implementing `ToolAction` with every canonical field (`id`, `description`, `inputSchema`, `outputSchema`, `suspendSchema`, `resumeSchema`, `requestContextSchema`, `execute`, `mastra`, `requireApproval`, `providerOptions`, `toModelOutput`, `mcp`, `onInputStart`, `onInputDelta`, `onInputAvailable`, `onOutput`, `inputExamples`, `mcpMetadata`). Schema slots use `import("ai").ZodType` (narrower than canonical `StandardSchemaWithJSON<T>` — preserves assignability to `ai.d.ts` `ToolDefinition.inputSchema`).
+- `ToolAction` — structural interface with the canonical 7 generics. `ToolAction.execute` context is marked `context?` (deviation from canonical's `context: TContext`) to preserve assignment into the looser `ToolDefinition.execute?: (args, options?) => ...` used by `generateText({ tools })` in ai-sdk-v6. Runtime always passes context, so the optional marker is purely a type-surface accommodation.
+- `ToolExecutionContext` — 3-generic (`TSuspend`, `TResume`, `TRequestContext`) with the canonical `agent?`, `workflow?`, `mcp?` nested slices and `writer?: ToolStream`.
+- New ambient types surfaced for fixture coverage: `ToolStream` (class), `AgentToolExecutionContext`, `WorkflowToolExecutionContext`, `MCPToolExecutionContext`, `ValidationError`.
+- `ToolsInput` is `Record<string, ToolAction<any,any,any,any,any> | VercelTool | VercelToolV5 | ProviderDefinedTool>`.
+
+All 9 `fixtures/ts/tools/*` fixtures pass both gates after M1:
+
+```
+make type-check 2>&1 | grep -c 'fixtures/ts/tools.*error TS' → 0
+go test ./test/fixtures/ -run 'TestFixtures/tools' -count=1 -timeout 600s → ok  (9 PASS)
+```
+
+Baseline is still 5 (pre-existing drift in memory + voice — unchanged, to be fixed at M3 / M7).
