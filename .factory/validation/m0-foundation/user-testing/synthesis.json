@@ -1,37 +1,18 @@
 {
   "milestone": "m0-foundation",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
-    "total": 10,
-    "passed": 9,
-    "failed": 1,
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
     "blocked": 0
   },
   "passedAssertions": [
-    "VAL-FOUNDATION-001",
-    "VAL-FOUNDATION-002",
-    "VAL-FOUNDATION-003",
-    "VAL-FOUNDATION-004",
-    "VAL-FOUNDATION-005",
-    "VAL-FOUNDATION-006",
-    "VAL-FOUNDATION-007",
-    "VAL-FOUNDATION-009",
-    "VAL-FOUNDATION-010"
+    "VAL-FOUNDATION-008"
   ],
-  "failedAssertions": [
-    {
-      "id": "VAL-FOUNDATION-008",
-      "reason": "Off-limits files are not byte-identical to baseline commit c0d046cc72a0a0fdcf77a733c4a7e481c5a5409b; git diff reports internal/engine/runtime/kit.d.ts changed (56 insertions, 9 deletions)."
-    }
-  ],
+  "failedAssertions": [],
   "blockedAssertions": [],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added Flow Validator Guidance: shell-cli section to define shell validation isolation and evidence rules.",
-      "source": "setup"
-    }
-  ],
-  "previousRound": null
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/m0-foundation/user-testing/synthesis.round1.json"
 }

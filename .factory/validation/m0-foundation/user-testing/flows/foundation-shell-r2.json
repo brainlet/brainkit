@@ -1,0 +1,28 @@
+{
+  "groupId": "foundation-shell-r2",
+  "testedAt": "2026-04-22T22:00:35Z",
+  "isolation": {
+    "surface": "shell-cli",
+    "userType": "ant",
+    "repoRoot": "/Users/davidroman/Documents/code/brainlet/brainkit",
+    "missionDir": "/Users/davidroman/.factory/missions/f30ed46f-02d4-416d-9c44-b5867735ef98"
+  },
+  "toolsUsed": ["shell-cli", "git"],
+  "assertions": [
+    {
+      "id": "VAL-FOUNDATION-008",
+      "status": "pass",
+      "reason": "Off-limits diff against baseline commit 830257a returned no changed files.",
+      "evidence": [
+        {
+          "command": "git -C /Users/davidroman/Documents/code/brainlet/brainkit diff --stat 830257a -- internal/embed/ai/bundle internal/engine/runtime/kit.d.ts internal/engine/runtime/globals.d.ts internal/engine/runtime/brainkit.d.ts internal/engine/runtime/assemblyscript.d.ts vendor_quickjs vendor_typescript",
+          "exitCode": 0,
+          "observation": "No output from git diff --stat (empty diff), indicating no mission-worker changes in off-limits paths since 830257a."
+        }
+      ]
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "VAL-FOUNDATION-008 passed: off-limits paths are unchanged relative to baseline 830257a."
+}
