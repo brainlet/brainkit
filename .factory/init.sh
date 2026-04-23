@@ -54,10 +54,11 @@ else
 fi
 
 # 6. Quick Podman sanity check so AI/container fixture runs don't surprise us later.
-if podman machine list --format '{{.Name}} {{.Running}}' 2>/dev/null | grep -q 'true'; then
-  log "Podman machine: running"
+#    Per user directive: keep this WARN-only (non-fatal).
+if podman machine list --format '{{.Name}} {{.Running}}' 2>/dev/null | grep -q '^brainkit.*true'; then
+  log "brainkit podman machine: running"
 else
-  log "WARN: Podman machine not running; container-gated fixtures will skip"
+  log "WARN: brainkit podman machine not running; run make podman-ensure"
 fi
 
 log "init complete"

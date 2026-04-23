@@ -20,9 +20,9 @@ services:
   # implicit dependencies of `go test ./test/fixtures/`.
   #
   # Declared here only for observability and health verification.
-  podman-machine:
-    start: podman machine start podman-machine-default
-    stop: podman machine stop podman-machine-default
-    healthcheck: podman machine list --format '{{.Name}} {{.Running}}' | grep -q 'podman-machine-default.*true'
+  brainkit-podman:
+    start: make podman-ensure
+    stop: make podman-down
+    healthcheck: podman --connection brainkit info >/dev/null 2>&1
     port: 0
     depends_on: []

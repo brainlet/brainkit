@@ -1,4 +1,4 @@
-.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean
+.PHONY: all brainkit install deps deps-go deps-npm build generate test test-v bench bench-stable bench-runtime bench-save bench-check evals-save evals-check docs-bus-topics examples clean podman-init podman-up podman-down podman-status podman-reset podman-ensure
 
 # Default: build the CLI binary
 all: brainkit
@@ -39,7 +39,7 @@ generate:
 	go run ./cmd/sdkgen -messages ./sdk -out ./sdk/typed_gen.go -call-out ./call_gen.go
 
 # Run all tests
-test:
+test: podman-ensure
 	go test ./test/suite/... -timeout 600s
 
 # Run tests with verbose output
@@ -136,6 +136,67 @@ clean:
 	rm -rf bin/
 	rm -rf internal/embed/ai/bundle/node_modules internal/embed/agent/bundle/node_modules internal/embed/compiler/bundle/node_modules
 	rm -f internal/embed/ai/bundle/meta.json internal/embed/agent/bundle/meta.json internal/embed/compiler/bundle/meta.json
+
+# ---------------------------------------------------------------------------
+# Podman machine lifecycle — dedicated brainkit VM (4 CPU / 8 GiB / 60 GB)
+# ---------------------------------------------------------------------------
+
+podman-init:
+	@command -v podman >/dev/null 2>&1 || { echo "ERROR: podman binary not found"; exit 1; }
+	@if podman machine list --format '{{.Name}}' | sed 's/\*$$//' | grep -q '^brainkit$$'; then \
+		echo "brainkit machine already exists (skipping init)"; \
+	else \
+		echo "Initializing brainkit podman machine (4 CPU / 8 GiB / 60 GB)..."; \
+		podman machine init --cpus 4 --memory 8192 --disk-size 60 brainkit; \
+		echo "brainkit machine initialized."; \
+	fi
+
+podman-up:
+	@command -v podman >/dev/null 2>&1 || { echo "ERROR: podman binary not found"; exit 1; }
+	@state=$$(podman machine list --format '{{.Name}} {{.Running}}' | sed 's/\*//' | awk '$$1 == "brainkit" {print $$2}'); \
+	if [ "$$state" = "true" ]; then \
+		echo "brainkit machine already Running."; \
+	else \
+		other=$$(podman machine list --format '{{.Name}} {{.Running}}' | awk '$$2 == "true" {print $$1}' | sed 's/\*$$//'); \
+		if [ -n "$$other" ]; then \
+			echo "Stopping currently running machine '$$other' so brainkit can start..."; \
+			podman machine stop "$$other"; \
+		fi; \
+		echo "Starting brainkit machine..."; \
+		podman machine start brainkit; \
+	fi
+	podman system connection default brainkit
+	@podman --connection brainkit info >/dev/null 2>&1 || { echo "ERROR: brainkit socket unreachable"; exit 1; }
+	@echo "brainkit machine ready (default connection = brainkit)."
+
+podman-down:
+	@command -v podman >/dev/null 2>&1 || { echo "ERROR: podman binary not found"; exit 1; }
+	@state=$$(podman machine list --format '{{.Name}} {{.Running}}' | sed 's/\*//' | awk '$$1 == "brainkit" {print $$2}'); \
+	if [ "$$state" = "true" ]; then \
+		echo "Stopping brainkit machine..."; \
+		podman machine stop brainkit; \
+	else \
+		echo "brainkit machine not running (no-op)."; \
+	fi
+
+podman-status:
+	@command -v podman >/dev/null 2>&1 || { echo "ERROR: podman binary not found"; exit 1; }
+	@echo "=== brainkit machine ==="
+	@podman machine ls | grep -E 'NAME|^brainkit' || true
+	@echo "=== default connection ==="
+	@podman system connection list --format '{{.Name}} {{.Default}}' | grep -E 'Name|brainkit' || true
+
+podman-reset:
+	@if [ "$${CONFIRM}" != "1" ]; then \
+		echo "ERROR: podman-reset requires CONFIRM=1 (this will destroy the brainkit machine)"; \
+		exit 1; \
+	fi
+	$(MAKE) podman-down
+	podman machine rm -f brainkit
+	$(MAKE) podman-init
+	$(MAKE) podman-up
+
+podman-ensure: podman-init podman-up
 
 # Type-check gate for fixtures under fixtures/ts/** against internal/engine/runtime/*.d.ts.
 # Uses the typescript@5.9.x pinned by the repo-root package.json (node_modules/.bin/tsc).
