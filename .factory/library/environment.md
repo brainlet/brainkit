@@ -17,6 +17,17 @@ brainkit uses a **dedicated Podman machine named `brainkit`** that is isolated f
 - `make podman-status` — show the `brainkit` machine state and current default connection.
 - `make podman-reset CONFIRM=1` — destroy and recreate the `brainkit` machine. Requires `CONFIRM=1` to prevent accidental data loss.
 
+### Test socket binding
+All Go test code that needs Podman containers binds to the brainkit socket automatically via `testutil.EnsurePodmanSocket(t)` (or `testutil.ResolvePodmanSocket()` for non-test callers). This helper:
+1. Respects `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` if set.
+2. Honors an already-set `DOCKER_HOST` unchanged.
+3. Falls back to `CONTAINER_HOST`.
+4. Uses `BRAINKIT_PODMAN_MACHINE` (default `"brainkit"`) as the target machine name.
+5. Validates the socket with `os.Stat` + a 2-second dial probe before exporting `DOCKER_HOST`.
+6. Sets both `DOCKER_HOST` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` for parity, and disables Ryuk (`TESTCONTAINERS_RYUK_DISABLED=true`).
+
+Set `BRAINKIT_PODMAN_MACHINE=<name>` as an escape hatch if you need to target a different podman machine for debugging.
+
 ### Container management
 - Workers **do NOT** manage pgvector, mongodb, or libsql containers manually.
 - `testcontainers-go` lazy-spawns these containers on top of the `brainkit` machine during `go test ./test/fixtures/...`.

@@ -111,13 +111,7 @@ func CleanupOrphanedContainers(t *testing.T) {
 func StartContainer(t *testing.T, image, port string, cmd []string, strategy wait.Strategy, envVars ...string) string {
 	t.Helper()
 
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	if os.Getenv("DOCKER_HOST") == "" {
-		if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
-			socketPath := string(out[:len(out)-1])
-			os.Setenv("DOCKER_HOST", "unix://"+socketPath)
-		}
-	}
+	EnsurePodmanSocket(t)
 
 	req := testcontainers.ContainerRequest{
 		Image:        image,

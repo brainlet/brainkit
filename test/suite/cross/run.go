@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
@@ -125,15 +122,7 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 // startNATSContainer starts a NATS JetStream container and returns the URL.
 func startNATSContainer(t *testing.T) string {
 	t.Helper()
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	if os.Getenv("DOCKER_HOST") == "" {
-		if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
-			sp := strings.TrimSpace(string(out))
-			if _, statErr := os.Stat(sp); statErr == nil {
-				os.Setenv("DOCKER_HOST", "unix://"+sp)
-			}
-		}
-	}
+	testutil.EnsurePodmanSocket(t)
 
 	natsContainer, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{

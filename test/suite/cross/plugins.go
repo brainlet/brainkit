@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
@@ -282,15 +281,8 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 
 	// Configure testcontainers for Podman
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	if os.Getenv("DOCKER_HOST") == "" {
-		if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
-			sp := strings.TrimSpace(string(out))
-			if _, statErr := os.Stat(sp); statErr == nil {
-				os.Setenv("DOCKER_HOST", "unix://"+sp)
-			}
-		}
-	}
+	testutil.EnsurePodmanSocket(t)
+
 	if os.Getenv("DOCKER_HOST") == "" {
 		cancel()
 		t.Skip("DOCKER_HOST not set and podman socket not found")

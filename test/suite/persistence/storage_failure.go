@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -32,12 +30,7 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 	testutil.LoadEnv(t)
 
 	// ── Start Postgres container ──
-	os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-	if os.Getenv("DOCKER_HOST") == "" {
-		if out, err := exec.Command("podman", "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}").Output(); err == nil {
-			os.Setenv("DOCKER_HOST", "unix://"+string(out[:len(out)-1]))
-		}
-	}
+	testutil.EnsurePodmanSocket(t)
 
 	ctx := context.Background()
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
