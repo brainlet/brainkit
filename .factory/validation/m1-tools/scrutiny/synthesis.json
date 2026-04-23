@@ -1,0 +1,66 @@
+{
+  "milestone": "m1-tools",
+  "round": 1,
+  "synthesizedAt": "2026-04-23T10:45:00Z",
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "USER_TYPE=ant go test ./test/fixtures/ -run TestFixtures -count=1 -timeout 1200s",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "USER_TYPE=ant node_modules/.bin/tsc --noEmit -p fixtures/tsconfig.base.json",
+      "exitCode": 2,
+      "note": "Known baseline drift only (5 TS2353 errors in memory/voice fixtures scheduled for m3 and m7), unchanged from M0 baseline documented in AGENTS.md and architecture.md."
+    },
+    "lint": {
+      "passed": true,
+      "command": "USER_TYPE=ant go vet ./...",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": [
+      "m1-tools"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m1-tools",
+      "severity": "blocking",
+      "description": "internal/engine/runtime/agent.d.ts:createTool declaration diverges from canonical schema-driven generic structure, so inference behavior does not match required M1 tools contract."
+    },
+    {
+      "featureId": "m1-tools",
+      "severity": "blocking",
+      "description": "fixtures/ts/tools/create-with-schema/index.ts uses explicit input/output generics instead of demonstrating schema-driven inference required by the feature expectations."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/types-worker/SKILL.md",
+      "suggestion": "Add a runtime-JS regression branch for mission-scoped fixes that require runtime endowment/debug workflows instead of canonical d.ts alignment steps.",
+      "evidence": "Feature m1-tools-fix-prepare-tools-regression deviated from the current types-worker procedure because the fix was in runtime JS (`kit_runtime.js`) rather than declaration files.",
+      "isSystemic": true
+    },
+    {
+      "target": ".factory/skills/types-worker/SKILL.md",
+      "suggestion": "Enforce explicit evidence capture for required pre-edit artifacts (`/tmp/<domain>-canonical-inventory.md`, `/tmp/<domain>-drift.md`) in handoff verification.",
+      "evidence": "Review for feature m1-tools found no transcript evidence that the required artifact files were produced despite being listed as mandatory skill steps.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Add duplicate-object-key JS linting to prevent runtime endowment key shadowing.",
+      "reason": "already-tracked: this is covered by pending implementation feature `misc-quality-eslint-dupe-keys`, so no direct scrutiny-side update was applied."
+    }
+  ],
+  "previousRound": null
+}

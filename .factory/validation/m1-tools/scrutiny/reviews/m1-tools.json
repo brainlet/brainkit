@@ -1,0 +1,34 @@
+{
+  "featureId": "m1-tools",
+  "reviewedAt": "2026-04-23T10:44:00Z",
+  "commitId": "2142c24e7c264e79346ab91cfcda522e3cfcfe53",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature lands broad tools-surface updates, but it does not meet the schema-driven createTool inference requirement: the declaration diverges from canonical schema-based generics and the create-with-schema fixture relies on explicit input/output generics instead of schema inference.",
+    "issues": [
+      {
+        "file": "internal/engine/runtime/agent.d.ts",
+        "line": 797,
+        "severity": "blocking",
+        "description": "createTool is declared with direct type generics (`TSchemaIn`, `TSchemaOut`) rather than canonical schema generics (`TInputSchema`, `TOutputSchema` with `InferSchema`/`CreateToolOpts`), so input/output types are not inferred from schema definitions. This misses the canonical signature requirement for M1 tools."
+      },
+      {
+        "file": "fixtures/ts/tools/create-with-schema/index.ts",
+        "line": 13,
+        "severity": "blocking",
+        "description": "The fixture uses explicit generic arguments for input/output (`createTool<\"calculator\", { a: number; b: number }, { result: number }>`), so it does not demonstrate schema-driven input inference as required by the feature's expected behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The types-worker procedure requires creating `/tmp/<domain>-canonical-inventory.md` and `/tmp/<domain>-drift.md` before edits, but this run's transcript skeleton has no evidence of either artifact.",
+      "evidence": ".factory/skills/types-worker/SKILL.md:43 and :54 define required artifacts; transcript skeleton search for `canonical-inventory|drift.md` under workerSessionId `834e42ea-2725-4506-92f8-7d6688d9a2e9` returns no matches."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, skill, and commit 2142c24 for m1-tools. Core objective is not fully met: createTool/fixture behavior is not schema-driven as required, so this review fails with two blocking issues."
+}
