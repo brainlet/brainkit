@@ -138,3 +138,63 @@ go test ./test/fixtures/ -run 'TestFixtures/tools' -count=1 -timeout 600s → ok
 ```
 
 Baseline is still 5 (pre-existing drift in memory + voice — unchanged, to be fixed at M3 / M7).
+
+### M1 follow-up — `tool` endowment collision in kit_runtime.js
+
+**Symptom:** `fixtures/ts/agent/tools/with-registered-tool/index.ts` failed at
+deploy time with `TypeError: invalid 'in' operand` inside the Mastra
+`prepare-tools-step` at `listAssignedTools` → `listTools` →
+`ensureToolProperties` → `isVercelTool`. The `'parameters' in tool` check
+was being applied to a string, which is invalid on primitives.
+
+**Root cause:** The Compartment endowments built in
+`internal/engine/runtime/kit_runtime.js` defined `tool` **twice** in the
+same object literal:
+
+1. Around line ~198: the kit surface `tool(name: string)` — resolves a
+   Go-registered tool, parses its JSON-schema, and wraps it in
+   `embed.createTool({...})` so downstream Mastra code receives a real
+   `Tool` instance (passes `isMastraTool` via the shared
+   `MASTRA_TOOL_MARKER` symbol).
+2. Around line ~549: `tool: embed.tool` — AI SDK v6 authoring helper
+   (literally `(x) => x`).
+
+Because imports are stripped at transpile time and free identifiers
+resolve against the single endowments object, the second `tool` key
+silently shadowed the first. Every `import { tool } from "kit"` call
+site therefore resolved to the AI SDK identity helper instead of the
+kit resolver; `tool("multiply")` returned the string `"multiply"`,
+which Mastra then tried to treat as a tool object — crashing as soon as
+`isVercelTool` reached `'parameters' in tool` on a primitive.
+
+The issue was pre-existing (the duplicate endowment predates M1), but
+only surfaced now because earlier milestones did not exercise the
+`agent/tools/with-registered-tool` fixture and M1's `-run TestFixtures/tools`
+filter does not match `agent/tools/*`.
+
+**Fix:** Consolidate the two endowments into a single discriminating
+function at the original `tool:` slot:
+
+```js
+tool: function(nameOrDefinition) {
+  if (typeof nameOrDefinition === "string") {
+    // kit surface: resolve Go-registered tool by name
+    // (parse info.inputSchema, wrap in embed.createTool)
+  }
+  // AI SDK surface: identity-ish pass-through via embed.tool
+  return typeof embed.tool === "function" ? embed.tool(nameOrDefinition) : nameOrDefinition;
+}
+```
+
+The later `tool: embed.tool` entry was removed and replaced with a
+comment explaining the naming collision so future refactors don't
+re-introduce it. Both call paths stay green:
+
+- `agent/tools/with-registered-tool` (kit path, string arg) — PASS
+- `ai/tool-authoring/tool-and-stops` (AI SDK path, object arg) — PASS
+
+**Scope note:** this fix does not touch the M1 Tool / ToolAction type
+shapes nor any off-limits file. It is a runtime-only
+endowment-collision fix; the M1 canonical alignment remains intact.
+`make type-check` reports the same 5 baseline errors (M3 memory + M7
+voice drift) before and after.

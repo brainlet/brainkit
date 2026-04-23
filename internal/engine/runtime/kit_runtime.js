@@ -195,36 +195,66 @@
         list: rewrapErrors(_kitObj.tools.list),
         resolve: rewrapErrors(_kitObj.tools.resolve),
       },
-      tool: function(name) {
-        var info = _kitObj.tools.resolve(name);
-        if (!info) throw new Error("tool '" + name + "' not found");
-        // info.inputSchema arrives as a JSON-schema STRING (from Go's
-        // json.RawMessage serialization). Parse it into a proper schema
-        // object, then convert via z.toJSONSchema's inverse — Mastra's
-        // createTool accepts a raw JSON-schema Record<string, unknown>
-        // or a ZodType, so the parsed object is the safe path. Without
-        // this, the LLM only sees an empty schema and calls the tool
-        // with no arguments.
-        var parsedSchema = null;
-        if (info.inputSchema) {
-          if (typeof info.inputSchema === "string") {
-            try { parsedSchema = JSON.parse(info.inputSchema); } catch(e) { parsedSchema = null; }
-          } else if (typeof info.inputSchema === "object") {
-            parsedSchema = info.inputSchema;
+      // Unified `tool` endowment — single identifier serving both surfaces.
+      //
+      // Because free identifiers in the deployed .ts resolve through the
+      // Compartment's endowments (imports are stripped at transpile time),
+      // the `kit` module's `tool(name: string)` and the AI SDK's
+      // `tool(definition: object)` share a name. Discriminate by argument
+      // shape:
+      //
+      //   • string → kit surface: resolve a Go-registered tool by name and
+      //     wrap it in `embed.createTool(...)` so Agents / generateText
+      //     receive a real Mastra Tool instance (passes isMastraTool,
+      //     avoids the `'parameters' in tool` TypeError in
+      //     ensureToolProperties → isVercelTool).
+      //   • anything else → AI SDK surface: identity-ish pass-through via
+      //     the bundle's `embed.tool(config)` helper, which is typed to
+      //     aid AI SDK tool-config inference.
+      //
+      // Without this discrimination, the literal `tool: embed.tool`
+      // endowment below would silently shadow the kit resolver and
+      // `tool("multiply")` would just return the string "multiply",
+      // producing a non-object tool reference that ensureToolProperties
+      // then crashed on inside `prepare-tools-step`.
+      tool: function(nameOrDefinition) {
+        if (typeof nameOrDefinition === "string") {
+          var name = nameOrDefinition;
+          var info = _kitObj.tools.resolve(name);
+          if (!info) throw new Error("tool '" + name + "' not found");
+          // info.inputSchema arrives as a JSON-schema STRING (from Go's
+          // json.RawMessage serialization). Parse it into a proper schema
+          // object, then convert via z.toJSONSchema's inverse — Mastra's
+          // createTool accepts a raw JSON-schema Record<string, unknown>
+          // or a ZodType, so the parsed object is the safe path. Without
+          // this, the LLM only sees an empty schema and calls the tool
+          // with no arguments.
+          var parsedSchema = null;
+          if (info.inputSchema) {
+            if (typeof info.inputSchema === "string") {
+              try { parsedSchema = JSON.parse(info.inputSchema); } catch(e) { parsedSchema = null; }
+            } else if (typeof info.inputSchema === "object") {
+              parsedSchema = info.inputSchema;
+            }
           }
+          return embed.createTool({
+            id: info.shortName || name,
+            description: info.description || "",
+            inputSchema: parsedSchema || embed.z.any(),
+            execute: async function(input) {
+              // Mastra v1 passes { context: <args>, runtimeContext } in v5
+              // execute surface. Unwrap if present so the Go bridge gets
+              // the raw user args.
+              var args = (input && input.context !== undefined) ? input.context : input;
+              return await _kitObj.tools.call(name, args);
+            },
+          });
         }
-        return embed.createTool({
-          id: info.shortName || name,
-          description: info.description || "",
-          inputSchema: parsedSchema || embed.z.any(),
-          execute: async function(input) {
-            // Mastra v1 passes { context: <args>, runtimeContext } in v5
-            // execute surface. Unwrap if present so the Go bridge gets
-            // the raw user args.
-            var args = (input && input.context !== undefined) ? input.context : input;
-            return await _kitObj.tools.call(name, args);
-          },
-        });
+        // AI SDK authoring surface: `tool({ description, inputSchema, execute, ... })`.
+        // `embed.tool` in ai-sdk v6 is the identity function used purely for
+        // compile-time inference. Fall back to identity if the bundle's
+        // helper is missing.
+        return typeof embed.tool === "function" ? embed.tool(nameOrDefinition) : nameOrDefinition;
       },
       fs: globalThis.fs,
       mcp: _kitObj.mcp,
@@ -546,7 +576,15 @@
       chainFormatters: embed.chainFormatters,
 
       // AI SDK — tool authoring
-      tool: embed.tool,
+      //
+      // NOTE: `tool` is intentionally NOT re-endowed here. The unified
+      // `tool` entry above (paired with the kit surface) already
+      // forwards object-shaped calls to `embed.tool` so AI SDK fixtures
+      // (e.g. `tool({ description, inputSchema, execute })`) keep
+      // compiling and running unchanged. A second `tool: embed.tool`
+      // entry at this position would shadow that dispatcher and
+      // silently break the `kit`-side `tool("name")` resolver — the
+      // original regression surfaced by `agent/tools/with-registered-tool`.
       dynamicTool: embed.dynamicTool,
       jsonSchema: embed.jsonSchema,
       zodSchema: embed.zodSchema,
