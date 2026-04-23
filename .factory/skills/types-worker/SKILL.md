@@ -42,6 +42,8 @@ For each symbol, capture:
 
 Write this inventory to a scratch file at `/tmp/<domain>-canonical-inventory.md` before editing anything.
 
+**MANDATORY EVIDENCE:** This file MUST exist by the end of the session and its path MUST appear in the handoff's `verification.commandsRun` (e.g. `test -f /tmp/<domain>-canonical-inventory.md && wc -l`). Scrutiny will fail the feature if this artifact is missing — skipping it means you shortcut the canonical inventory step.
+
 ### Step 2: Inventory current brainkit declarations
 
 For each symbol, grep the relevant section of `agent.d.ts` or `ai.d.ts`:
@@ -51,7 +53,7 @@ grep -n "class <Symbol>\|interface <Symbol>\|type <Symbol>\|function <Symbol>\|c
   /Users/davidroman/Documents/code/brainlet/brainkit/internal/engine/runtime/agent.d.ts
 ```
 
-Read the declaration plus 40 lines of surrounding context. Compare against canonical and list every DIFFERENCE in `/tmp/<domain>-drift.md`:
+Read the declaration plus 40 lines of surrounding context. Compare against canonical and list every DIFFERENCE in `/tmp/<domain>-drift.md` (also MANDATORY — must exist by end of session and appear in handoff evidence):
 - Missing methods / properties
 - Extra methods / properties that are not in canonical (candidates for removal)
 - Wrong generic constraints
@@ -113,6 +115,15 @@ Commit in logical groups. At minimum:
 ### Step 8: Handoff
 
 Structure the handoff precisely. See Example Handoff below. Every contract assertion in scope must have a concrete evidence entry in `verification.commandsRun`.
+
+**HARD REQUIREMENTS for handoff verification.commandsRun (scrutiny checks these):**
+1. A line asserting `/tmp/<domain>-canonical-inventory.md` exists (e.g. `test -f /tmp/<domain>-canonical-inventory.md && wc -l`)
+2. A line asserting `/tmp/<domain>-drift.md` exists
+3. The type-gate invocation filtered to the domain (error count = 0)
+4. The runtime-gate invocation filtered to the domain (all PASS)
+5. If this feature touched a cross-domain regression area (e.g. kit_runtime.js, agent/* fixtures), run the cross-domain subtree too and include its result
+
+A handoff missing any of these 5 entries will be rejected at scrutiny time.
 
 ## Example Handoff
 
