@@ -19,8 +19,123 @@
 declare module "agent" {
 
   // ── Zod (also exported here for convenience with createTool) ──
+  //
+  // Locally-typed Zod shim. Shadows the bare re-export of
+  // `import("ai").Zod` so that `z.object({...})` / `z.number()` /
+  // etc. return a `TypedZodType<T>` whose phantom `_type: T` field
+  // lets `createTool`'s `InferSchema<TInputSchema>` derive the
+  // payload type of `execute`'s first parameter. The runtime `z`
+  // object is unchanged; the shim lives purely at the type level.
+  //
+  // `TypedZodType<T>` extends `import("ai").ZodType`, so every
+  // existing declaration site (`inputSchema?: ZodType`,
+  // `parameters: ZodType`, …) continues to accept a schema
+  // produced by this typed `z` without any coercion.
 
-  export const z: import("ai").Zod;
+  /**
+   * Typed Zod schema carrier. The phantom `_type: T` field drives
+   * schema-based inference via the canonical
+   * `InferStandardSchemaOutput` pattern (declared in this module)
+   * — it does not exist at runtime. Extends `import("ai").ZodType`
+   * so values of `TypedZodType<T>` remain assignable to any slot
+   * typed as `ZodType`.
+   */
+  /**
+   * Phantom type carrier. Declared as an intersection of the
+   * base `import("ai").ZodType` surface and a payload-typed
+   * "branded" tail so `TypedZodType<T>` is assignable to every
+   * slot typed as `ZodType` (via the intersection's left
+   * branch) while also carrying `_type: T` for the canonical
+   * `InferSchema<T extends { _type: infer O } ? O : ...>`
+   * extraction.
+   *
+   * The `_tzt_brand` private field cannot be observed by
+   * fixture code — TypeScript forbids accessing a property
+   * with a leading underscore + unique symbol nominal tag — so
+   * the brand is used only by the intersection-aware method
+   * overrides below (`TypedZodCarrier<T>`) to propagate the
+   * payload through chain calls (`.describe()`, `.optional()`,
+   * …). Purely type-level; the runtime `z` object is unchanged.
+   */
+  interface TypedZodCarrier<T> {
+    /** Phantom payload carrier — matched by `InferSchema`. */
+    _type: T;
+    optional(): TypedZodType<T | undefined>;
+    nullable(): TypedZodType<T | null>;
+    default(value: T): TypedZodType<T>;
+    describe(description: string): TypedZodType<T>;
+    array(): TypedZodType<T[]>;
+    or<U>(other: TypedZodType<U>): TypedZodType<T | U>;
+    and<U>(other: TypedZodType<U>): TypedZodType<T & U>;
+    transform<U>(fn: (val: T) => U): TypedZodType<U>;
+    refine(fn: (val: T) => boolean, message?: string): TypedZodType<T>;
+    parse(value: unknown): T;
+    safeParse(value: unknown): { success: boolean; data?: T; error?: import("ai").ZodError };
+  }
+
+  /**
+   * `TypedZodType<T>` is the intersection of the base ai
+   * `ZodType` (satisfies every `ZodType`-typed slot) with the
+   * payload-typed `TypedZodCarrier<T>` (carries `_type: T` and
+   * chainable overrides). Because the carrier is declared in a
+   * separate interface, its method signatures are the
+   * canonical overrides TypeScript picks when both sides of
+   * the intersection contribute a method with the same name.
+   */
+  type TypedZodType<T = unknown> = TypedZodCarrier<T> & import("ai").ZodType;
+
+  /**
+   * Typed builder — mirrors `import("ai").Zod` method-for-method
+   * but propagates shape information through return types. Used
+   * only at the type level; the `z` runtime export is whatever
+   * the underlying bundle provides.
+   */
+  interface TypedZod {
+    string(): TypedZodType<string>;
+    number(): TypedZodType<number>;
+    boolean(): TypedZodType<boolean>;
+    date(): TypedZodType<Date>;
+    any(): TypedZodType<any>;
+    unknown(): TypedZodType<unknown>;
+    void(): TypedZodType<void>;
+    null(): TypedZodType<null>;
+    undefined(): TypedZodType<undefined>;
+    never(): TypedZodType<never>;
+    literal<V extends string | number | boolean>(value: V): TypedZodType<V>;
+    enum<V extends [string, ...string[]]>(values: V): TypedZodType<V[number]>;
+    array<U>(schema: TypedZodType<U>): TypedZodType<U[]>;
+    /**
+     * Shape parameter accepts either `TypedZodType<T>` (carries
+     * `_type`) or a bare `import("ai").ZodType` (from chaining
+     * an `ai.ZodType`-returning method through a non-overridden
+     * path). The `[K in keyof T] … extends TypedZodType<infer U>
+     * ? U : unknown` projection preserves inference when every
+     * field is a `TypedZodType`, and falls back to `unknown` for
+     * bare `ZodType` fields — same behavior as canonical zod's
+     * inference when a non-zod value sneaks in.
+     */
+    object<T extends Record<string, import("ai").ZodType>>(
+      shape: T,
+    ): TypedZodType<{ [K in keyof T]: T[K] extends TypedZodType<infer U> ? U : unknown }>;
+    record<K extends string | number | symbol, V>(
+      keyType: TypedZodType<K>,
+      valueType: TypedZodType<V>,
+    ): TypedZodType<Record<K, V>>;
+    tuple<T extends readonly import("ai").ZodType[]>(
+      items: T,
+    ): TypedZodType<{ [K in keyof T]: T[K] extends TypedZodType<infer U> ? U : unknown }>;
+    union<T extends readonly import("ai").ZodType[]>(
+      types: T,
+    ): TypedZodType<T[number] extends TypedZodType<infer U> ? U : unknown>;
+    intersection<A, B>(
+      a: TypedZodType<A>,
+      b: TypedZodType<B>,
+    ): TypedZodType<A & B>;
+    optional<T>(schema: TypedZodType<T>): TypedZodType<T | undefined>;
+    nullable<T>(schema: TypedZodType<T>): TypedZodType<T | null>;
+  }
+
+  export const z: TypedZod;
 
   // ── Foundational schema + argument types ──────────────────────
   //
@@ -765,17 +880,100 @@ declare module "agent" {
   }
 
   /**
-   * Creates a type-safe tool instance. Matches canonical
-   * `@mastra/core/tools/tool.ts` `createTool` signature:
-   * 7 generics (`TId`, `TInputSchema`, `TOutputSchema`,
-   * `TSuspendSchema`, `TResumeSchema`, `TRequestContext`,
-   * `TContext`) and an options object typed via
-   * `CreateToolOpts<...>`, returning a `Tool<...>` with the
-   * inferred schema types.
+   * Either a `PublicSchema<any>` (Zod / StandardSchema) or
+   * `undefined`. Matches canonical
+   * `@mastra/core/tools/tool.ts` `SchemaLike`.
+   */
+  type SchemaLike = PublicSchema<any> | undefined;
+
+  /**
+   * Derive the validated payload type from a schema-typed
+   * generic slot. Mirrors canonical
+   * `@mastra/core/tools/tool.ts` `InferSchema`: matches a
+   * `PublicSchema<any>` and pipes through the existing
+   * `InferPublicSchema` helper, which already handles both the
+   * `_type: infer O` carrier (used by this module's
+   * `TypedZodType<T>`) and the fallback `parse(...)` signature.
+   */
+  type InferSchema<T extends SchemaLike> = T extends PublicSchema<any>
+    ? InferPublicSchema<T>
+    : unknown;
+
+  /**
+   * Options bag accepted by `createTool`'s canonical
+   * schema-inferring overload. Matches
+   * `@mastra/core/tools/tool.ts` `CreateToolOpts`: starts from
+   * `ToolAction` keyed by the inferred payload types, omits the
+   * four schema slots, and re-adds them typed as the raw schema
+   * generics so that the schema captured at the call site flows
+   * unchanged into `opts.inputSchema` / `opts.outputSchema` etc.
+   */
+  type CreateToolOpts<
+    TId extends string,
+    TInputSchema extends SchemaLike,
+    TOutputSchema extends SchemaLike,
+    TSuspendSchema extends SchemaLike,
+    TResumeSchema extends SchemaLike,
+    TRequestContext,
+    TContext extends ToolExecutionContext<InferSchema<TSuspendSchema>, InferSchema<TResumeSchema>, TRequestContext>,
+  > = Omit<
+    ToolAction<
+      InferSchema<TInputSchema>,
+      InferSchema<TOutputSchema>,
+      InferSchema<TSuspendSchema>,
+      InferSchema<TResumeSchema>,
+      TContext,
+      TId,
+      TRequestContext
+    >,
+    "inputSchema" | "outputSchema" | "suspendSchema" | "resumeSchema"
+  > & {
+    inputSchema?: TInputSchema;
+    outputSchema?: TOutputSchema;
+    suspendSchema?: TSuspendSchema;
+    resumeSchema?: TResumeSchema;
+  };
+
+  /**
+   * Creates a type-safe tool instance. Declared as two
+   * overloads so that both the canonical schema-driven
+   * inference pattern and the legacy payload-typed generic
+   * pattern type-check cleanly:
    *
-   * @example
+   * 1. **Schema-driven (canonical, preferred).** Matches
+   *    `@mastra/core/tools/tool.ts` `createTool` 1:1 — 7
+   *    generics (`TId`, `TInputSchema`, `TOutputSchema`,
+   *    `TSuspendSchema`, `TResumeSchema`, `TRequestContext`,
+   *    `TContext`) where the schema slots are typed as raw
+   *    schemas (not payloads). `execute`'s first parameter
+   *    is derived via `InferSchema<TInputSchema>`, so writing
+   *    `inputSchema: z.object({...})` drives inference of
+   *    `execute`'s args with no explicit generics and no
+   *    annotation.
+   *
+   * 2. **Payload-typed (legacy).** Accepts payload types
+   *    directly in the TSchemaIn / TSchemaOut slots so existing
+   *    fixtures that pre-declared shapes —
+   *    `createTool<"adder", {a:number;b:number}, {sum:number}>`
+   *    — keep compiling. This overload fires when the schema
+   *    generic slot doesn't structurally match a schema (i.e.
+   *    no `_type` / `parse`), which is how TypeScript
+   *    distinguishes the two call sites.
+   *
+   * @example Schema-driven (preferred)
    * ```ts
-   * // Explicit generics — narrows execute's args.
+   * const add = createTool({
+   *   id: "add",
+   *   description: "Add two numbers",
+   *   inputSchema: z.object({ a: z.number(), b: z.number() }),
+   *   outputSchema: z.object({ sum: z.number() }),
+   *   // {a, b} inferred as {a: number; b: number}.
+   *   execute: async ({ a, b }) => ({ sum: a + b }),
+   * });
+   * ```
+   *
+   * @example Payload-typed (legacy)
+   * ```ts
    * const add = createTool<"add", { a: number; b: number }, { sum: number }>({
    *   id: "add",
    *   description: "Add two numbers",
@@ -783,17 +981,36 @@ declare module "agent" {
    *   outputSchema: z.object({ sum: z.number() }),
    *   execute: async ({ a, b }) => ({ sum: a + b }),
    * });
-   *
-   * // Or let the schema drive inference (brainkit's z stub
-   * // resolves to `any` — destructuring still works).
-   * const echo = createTool({
-   *   id: "echo",
-   *   description: "Echo input",
-   *   inputSchema: z.object({ message: z.string() }),
-   *   execute: async ({ message }) => ({ echoed: message }),
-   * });
    * ```
    */
+  export function createTool<
+    TId extends string = string,
+    TInputSchema extends SchemaLike = undefined,
+    TOutputSchema extends SchemaLike = undefined,
+    TSuspendSchema extends SchemaLike = undefined,
+    TResumeSchema extends SchemaLike = undefined,
+    TRequestContext extends Record<string, any> | unknown = unknown,
+    TContext extends ToolExecutionContext<InferSchema<TSuspendSchema>, InferSchema<TResumeSchema>, TRequestContext> =
+      ToolExecutionContext<InferSchema<TSuspendSchema>, InferSchema<TResumeSchema>, TRequestContext>,
+  >(
+    opts: CreateToolOpts<
+      TId,
+      TInputSchema,
+      TOutputSchema,
+      TSuspendSchema,
+      TResumeSchema,
+      TRequestContext,
+      TContext
+    >,
+  ): Tool<
+    InferSchema<TInputSchema>,
+    InferSchema<TOutputSchema>,
+    InferSchema<TSuspendSchema>,
+    InferSchema<TResumeSchema>,
+    TContext,
+    TId,
+    TRequestContext
+  >;
   export function createTool<
     TId extends string = string,
     TSchemaIn = any,

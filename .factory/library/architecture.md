@@ -198,3 +198,98 @@ shapes nor any off-limits file. It is a runtime-only
 endowment-collision fix; the M1 canonical alignment remains intact.
 `make type-check` reports the same 5 baseline errors (M3 memory + M7
 voice drift) before and after.
+
+### M1 follow-up — schema-driven `createTool` inference
+
+**Symptom:** M1 scrutiny flagged the `createTool` signature as
+non-canonical: generics were payload-typed (`TSchemaIn`,
+`TSchemaOut`) instead of canonical schema-typed
+(`TInputSchema extends SchemaLike = undefined`, …) with an
+`InferSchema<...>` helper that derives the payload. The
+`fixtures/ts/tools/create-with-schema` fixture then relied on
+explicit generics instead of demonstrating schema-driven
+inference — violating the feature's VAL-TOOLS-006 spirit
+("inferred execute param is exactly `{ a: number; b: number }`").
+
+**Fix:** Two additive changes, both scoped to `agent.d.ts` +
+the one fixture (no `ai.d.ts`, no `kit_runtime.js`):
+
+1. **Typed Zod shim in `agent.d.ts`.** Replaced
+   `export const z: import("ai").Zod;` with a payload-carrying
+   `TypedZod` / `TypedZodType<T>` pair. `TypedZodType<T>` is
+   declared as `TypedZodCarrier<T> & import("ai").ZodType` — the
+   intersection preserves assignability to every slot typed as
+   plain `ZodType` (`StepConfig.inputSchema`, `Tool.inputSchema`,
+   …) while the carrier contributes `_type: T` and payload-
+   propagating chain overrides (`.optional`, `.describe`,
+   `.default`, `.transform`, `.refine`, `.or`, `.and`, `.array`,
+   etc.) so `z.number().describe("…")` still yields
+   `TypedZodType<number>`. Splitting the carrier into its own
+   named interface (not inline in the intersection) is what
+   makes TypeScript pick the carrier's signatures over
+   `ai.ZodType`'s — inline intersections collapse to the
+   less-specific `ai.ZodType` signatures.
+
+2. **Overloaded `createTool` in the tools block.** Two
+   overloads, declared in this order:
+
+   - **Overload 1 (canonical, schema-driven).** 7 generics with
+     schema-typed defaults (`TInputSchema extends SchemaLike =
+     undefined`, …). Opts use a new `CreateToolOpts<…>` alias
+     that `Omit`s the schema slots from `ToolAction` and re-adds
+     them typed as raw schemas. Return type passes the payload
+     through `InferSchema<TInputSchema>` to `Tool<…>`. Mirrors
+     `@mastra/core/tools/tool.ts` 1:1.
+   - **Overload 2 (legacy, payload-typed).** Preserves the
+     pre-fix signature (`TSchemaIn = any`, `TSchemaOut = any`)
+     so existing fixtures with explicit payload generics —
+     `createTool<"adder", {a:number;b:number}, {sum:number}>` —
+     keep compiling without edits. Falls through only when
+     overload 1's arg-shape check fails (which is exactly when
+     the caller handed TypeScript a payload, not a schema).
+
+   Both new helper aliases (`SchemaLike`, `InferSchema`,
+   `CreateToolOpts`) are declared in the tools section right
+   before `createTool`, matching canonical layout.
+
+**Fixture change.** `fixtures/ts/tools/create-with-schema/index.ts`
+drops all explicit generics and its execute annotation. Two
+compile-time probes enforce the inference:
+
+```ts
+const _checkInput: (input: { a: number; b: number }) => Promise<…> = calculator.execute!;
+type ExecuteArg = Parameters<NonNullable<typeof calculator.execute>>[0];
+const _exactShape: Equals<ExecuteArg, { a: number; b: number }> = true;
+```
+
+The `Equals<A, B>` helper uses the standard "thunk assignability
+both ways" pattern and fails (`true` not assignable to `false`)
+whenever the inferred argument diverges from the exact expected
+shape.
+
+**Ancillary fix.** Tighter inference surfaced a latent bug in
+`fixtures/ts/cross-feature/agent-with-bus/index.ts`: the tool's
+`execute` was destructuring `{ context }` from the validated
+input payload (which contains only `{ name: string }`). The
+fixture never actually invoked `execute` at runtime, so this
+was pure type debt. Corrected to destructure `{ name }` to
+match the actual `inputSchema` shape.
+
+**Verification.**
+
+- `make type-check` still reports the 5 baseline errors (M3
+  memory + M7 voice drift). No new errors; tools area = 0.
+- `go test ./test/fixtures/ -run 'TestFixtures/tools' -count=1
+  -timeout 600s` — all 9 tools fixtures PASS (total ~12 s).
+- `go test ./test/fixtures/ -run
+  'TestFixtures/agent/tools/with-registered-tool' -count=1` —
+  still PASS (cross-domain regression preserved).
+- `go test ./test/fixtures/ -run
+  'TestFixtures/cross-feature/agent-with-bus' -count=1` —
+  still PASS (ancillary fixture fix is runtime-neutral).
+
+**Scope note.** This follow-up touches only `agent.d.ts`, the
+one targeted fixture (`tools/create-with-schema/index.ts`), and
+the latent bug in `cross-feature/agent-with-bus/index.ts`
+(one-line destructuring fix). `ai.d.ts`, `kit_runtime.js`, and
+all other off-limits files are untouched.
