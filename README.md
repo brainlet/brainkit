@@ -52,12 +52,12 @@ kit.Deploy(ctx, brainkit.PackageInline("math", "math.ts", `
     });
 `))
 
-// Call the agent from Go. CallKitSend is the typed request/reply helper
-// for sending to a deployed .ts topic.
-resp, err := brainkit.CallKitSend(kit, ctx, sdk.KitSendMsg{
+// Call the agent from Go. messaging.CallKitSend is the typed request/reply
+// helper for sending to a deployed .ts topic.
+resp, err := messaging.CallKitSend(kit, ctx, messaging.KitSendMsg{
     Topic:   "ts.math.ask",
     Payload: json.RawMessage(`{"q":"what is 6 + 7?"}`),
-}, brainkit.WithCallTimeout(30*time.Second))
+}, sdk.WithCallTimeout(30*time.Second))
 if err != nil {
     log.Fatal(err)
 }

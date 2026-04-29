@@ -3,7 +3,7 @@
 Out-of-band human-in-the-loop via Mastra workflows: a step calls
 `suspend({reason})`, the workflow snapshot persists to SQLite,
 and a separate Go-side decision resumes the run with
-`CallWorkflowResume`.
+`workflowmsg.CallWorkflowResume`.
 
 This is the counterpart to tool approval (session 06): tool
 approval pauses mid-generation and must resolve inside the same
@@ -95,7 +95,7 @@ createStep({
 ```
 
 The first call into the step has `resumeData === undefined` — it
-calls `suspend()` and returns. On `CallWorkflowResume`, the
+calls `suspend()` and returns. On `workflowmsg.CallWorkflowResume`, the
 same step executes again with `resumeData` populated from the
 Go call's `ResumeData` payload.
 
@@ -103,7 +103,7 @@ Go call's `ResumeData` payload.
 
 ```go
 // Start.
-start, _ := brainkit.CallWorkflowStart(kit, ctx, sdk.WorkflowStartMsg{
+start, _ := workflowmsg.CallWorkflowStart(kit, ctx, workflowmsg.WorkflowStartMsg{
     Name:      "deploy-pipeline",
     InputData: json.RawMessage(`{"component":"brainkit","env":"staging"}`),
 })
@@ -111,7 +111,7 @@ start, _ := brainkit.CallWorkflowStart(kit, ctx, sdk.WorkflowStartMsg{
 // start.Steps contains { steps: { approve: { suspendedPayload: {...} } } }
 
 // Resume (later — could be a different process).
-resume, _ := brainkit.CallWorkflowResume(kit, ctx, sdk.WorkflowResumeMsg{
+resume, _ := workflowmsg.CallWorkflowResume(kit, ctx, workflowmsg.WorkflowResumeMsg{
     Name:       "deploy-pipeline",
     RunID:      start.RunID,
     Step:       "approve",
@@ -120,7 +120,7 @@ resume, _ := brainkit.CallWorkflowResume(kit, ctx, sdk.WorkflowResumeMsg{
 // resume.Status == "success"
 ```
 
-`CallWorkflowStatus` with the same `{Name, RunID}` polls the
+`workflowmsg.CallWorkflowStatus` with the same `{Name, RunID}` polls the
 current state without advancing it. Useful for dashboards +
 watchers.
 
@@ -134,8 +134,8 @@ watchers.
   from the suspend step so a Slack bot / webhook can pick it up.
 - **Real-world HITL UI** — the `runId` is stable across processes
   when storage is durable, so a separate operator UI can
-  `CallWorkflowStatus` + display the `suspendedPayload.reason` +
-  collect a decision + `CallWorkflowResume`.
+  `workflowmsg.CallWorkflowStatus` + display the `suspendedPayload.reason` +
+  collect a decision + `workflowmsg.CallWorkflowResume`.
 
 ## Tool HITL vs workflow HITL — one-line diff
 
@@ -144,7 +144,7 @@ watchers.
 | Granularity | one tool call inside a generate | one step inside a workflow |
 | Scope | mid-generation | between steps |
 | Durability | in-memory — dies with the agent | persisted to `Storage` — survives a restart |
-| Resume API | `agent.approveToolCallGenerate({runId, toolCallId})` | `run.resume({step, resumeData})` / `CallWorkflowResume` |
+| Resume API | `agent.approveToolCallGenerate({runId, toolCallId})` | `run.resume({step, resumeData})` / `workflowmsg.CallWorkflowResume` |
 
 ## Under the hood
 

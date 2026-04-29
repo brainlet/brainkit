@@ -22,7 +22,7 @@ import (
 
 func TestTransport_Redis(t *testing.T) {
 	campaigns.RequirePodman(t)
-	infra := campaigns.NewInfra(t, campaigns.Transport("redis"))
+	infra := campaigns.NewInfra(t, campaigns.Transport("redis"), campaigns.MCP())
 	env := infra.Env(t)
 
 	bus.Run(t, env)

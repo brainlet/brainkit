@@ -19,21 +19,37 @@ import (
 	"syscall"
 
 	"github.com/brainlet/brainkit"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/stores"
 
 	// Blank-import the standard module set. Each package's init()
 	// registers a factory into the global brainkit module registry,
 	// making `modules.<name>:` in YAML work out of the box.
+	_ "github.com/brainlet/brainkit/modules/agents"
 	_ "github.com/brainlet/brainkit/modules/audit"
+	_ "github.com/brainlet/brainkit/modules/control"
 	_ "github.com/brainlet/brainkit/modules/discovery"
+	_ "github.com/brainlet/brainkit/modules/eval"
 	_ "github.com/brainlet/brainkit/modules/gateway"
 	_ "github.com/brainlet/brainkit/modules/harness"
+	_ "github.com/brainlet/brainkit/modules/health"
+	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	_ "github.com/brainlet/brainkit/modules/mcp"
+	_ "github.com/brainlet/brainkit/modules/messaging"
+	_ "github.com/brainlet/brainkit/modules/metrics"
 	_ "github.com/brainlet/brainkit/modules/plugins"
 	_ "github.com/brainlet/brainkit/modules/probes"
+	_ "github.com/brainlet/brainkit/modules/reference"
+	_ "github.com/brainlet/brainkit/modules/registry"
 	_ "github.com/brainlet/brainkit/modules/schedules"
+	_ "github.com/brainlet/brainkit/modules/secrets"
+	_ "github.com/brainlet/brainkit/modules/testing"
+	_ "github.com/brainlet/brainkit/modules/tools"
 	_ "github.com/brainlet/brainkit/modules/topology"
 	_ "github.com/brainlet/brainkit/modules/tracing"
 	_ "github.com/brainlet/brainkit/modules/workflow"
+	_ "github.com/brainlet/brainkit/storagebridges"
+	_ "github.com/brainlet/brainkit/transports"
 )
 
 // Config configures a Server. Required: Namespace, Transport, FSRoot.
@@ -92,12 +108,15 @@ func New(cfg Config) (*Server, error) {
 	if err := validate(cfg); err != nil {
 		return nil, err
 	}
+	if len(cfg.Packages) > 0 && !hasModule(cfg.Modules, "packages") {
+		cfg.Modules = append(cfg.Modules, packagesmod.New())
+	}
 
 	storePath := cfg.KitStorePath
 	if storePath == "" {
 		storePath = filepath.Join(cfg.FSRoot, "kit.db")
 	}
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	if err != nil {
 		return nil, fmt.Errorf("server: open kit store %q: %w", storePath, err)
 	}
@@ -165,7 +184,7 @@ func validate(cfg Config) error {
 	}
 	gatewayPresent := false
 	for _, m := range cfg.Modules {
-		if m != nil && m.Name() == "gateway" {
+		if m != nil && m.ID() == "gateway" {
 			gatewayPresent = true
 			break
 		}
@@ -174,4 +193,13 @@ func validate(cfg Config) error {
 		return fmt.Errorf("server: a gateway module is required (add `modules.gateway:` to the YAML or append `gateway.New(...)` to Config.Modules)")
 	}
 	return nil
+}
+
+func hasModule(mods []brainkit.Module, id string) bool {
+	for _, m := range mods {
+		if m != nil && m.ID() == id {
+			return true
+		}
+	}
+	return false
 }

@@ -5,12 +5,17 @@
 package workflow
 
 import (
-	"github.com/brainlet/brainkit"
+	"context"
+	"encoding/json"
+	"fmt"
+
+	bkmodule "github.com/brainlet/brainkit/module"
+	_ "github.com/brainlet/brainkit/modules/jsruntime"
 )
 
 // Module wraps the workflow bus commands.
 type Module struct {
-	kit *brainkit.Kit
+	callJS func(context.Context, string, any) (json.RawMessage, error)
 }
 
 // New creates a workflow module. It has no configuration today.
@@ -27,7 +32,7 @@ type YAML struct{}
 // Build returns a fresh workflow module. A non-nil decode error
 // propagates so typos like `workflow: true` (scalar instead of map)
 // surface at startup instead of being swallowed.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -36,35 +41,64 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "workflow",
-		Status:  brainkit.ModuleStatusStable,
+		Status:  bkmodule.StatusStable,
 		Summary: "Mastra-style workflow bus commands (start, status, resume, …).",
+		Requires: []string{
+			"jsruntime",
+		},
 	}
 }
 
-func init() { brainkit.RegisterModule("workflow", Factory{}) }
+func init() { bkmodule.Register("workflow", Factory{}) }
 
-// Name reports the module identifier.
-func (m *Module) Name() string { return "workflow" }
+// ID reports the hot-mount module identifier.
+func (m *Module) ID() string { return "workflow" }
+
+// Dependencies reports modules that must mount before workflow commands.
+func (m *Module) Dependencies() []string { return []string{"jsruntime"} }
 
 // Status reports maturity.
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusStable }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
-// Init registers the workflow bus commands.
-func (m *Module) Init(k *brainkit.Kit) error {
-	m.kit = k
-	k.RegisterCommand(brainkit.Command(m.handleStart))
-	k.RegisterCommand(brainkit.Command(m.handleStartAsync))
-	k.RegisterCommand(brainkit.Command(m.handleStatus))
-	k.RegisterCommand(brainkit.Command(m.handleResume))
-	k.RegisterCommand(brainkit.Command(m.handleCancel))
-	k.RegisterCommand(brainkit.Command(m.handleList))
-	k.RegisterCommand(brainkit.Command(m.handleRuns))
-	k.RegisterCommand(brainkit.Command(m.handleRestart))
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	callJS, err := bkmodule.RequireCapability[func(context.Context, string, any) (json.RawMessage, error)](host, bkmodule.CapabilityCallJS)
+	if err != nil {
+		return fmt.Errorf("workflow: %w", err)
+	}
+	host.Scope().Defer(func(context.Context) error {
+		m.callJS = nil
+		return nil
+	})
+	m.callJS = callJS
+	for _, spec := range []bkmodule.CommandSpec{
+		bkmodule.Command(m.handleStart),
+		bkmodule.Command(m.handleStartAsync),
+		bkmodule.Command(m.handleStatus),
+		bkmodule.Command(m.handleResume),
+		bkmodule.Command(m.handleCancel),
+		bkmodule.Command(m.handleList),
+		bkmodule.Command(m.handleRuns),
+		bkmodule.Command(m.handleRestart),
+	} {
+		if _, err := host.Commands().Handle(spec); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // Close is a no-op; workflow state lives in the Mastra runtime.
-func (m *Module) Close() error { return nil }
+func (m *Module) Close() error {
+	m.callJS = nil
+	return nil
+}
+
+func (m *Module) call(ctx context.Context, fn string, args any) (json.RawMessage, error) {
+	if m.callJS == nil {
+		return nil, fmt.Errorf("workflow: module is not mounted")
+	}
+	return m.callJS(ctx, fn, args)
+}

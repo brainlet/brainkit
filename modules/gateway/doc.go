@@ -4,8 +4,9 @@
 //
 // Routes are registered via Handle / HandleStream / HandleWebSocket /
 // HandleWebhook on *Gateway, or over the gateway.routes.* bus
-// commands (installed at module init). Built-in health endpoints
-// publish KitHealthMsg on /health unless disabled via Config.NoHealth.
+// commands (installed at module mount). Built-in health endpoints
+// publish the module-owned kit.health command on /health unless disabled via
+// Config.NoHealth.
 //
 // Status: stable.
 package gateway

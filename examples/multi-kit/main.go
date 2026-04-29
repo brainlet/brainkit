@@ -15,7 +15,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/topology"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 	// serves its own mailbox.
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: "analytics-prod",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    ".",
 	})
 	if err != nil {
@@ -37,7 +37,7 @@ func main() {
 	// through WithCallTo("analytics") resolve to that namespace.
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "orchestrator",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    ".",
 		Modules: []brainkit.Module{
 			topology.NewModule(topology.Config{
@@ -57,8 +57,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	resp, err := brainkit.Call[sdk.PeersResolveMsg, sdk.PeersResolveResp](
-		caller, ctx, sdk.PeersResolveMsg{Name: "analytics"},
+	resp, err := brainkit.Call[topology.PeersResolveMsg, topology.PeersResolveResp](
+		caller, ctx, topology.PeersResolveMsg{Name: "analytics"},
 	)
 	if err != nil {
 		log.Fatalf("resolve: %v", err)

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
@@ -31,8 +32,9 @@ func findProjectRoot(t *testing.T) string {
 // fixture hits api.openai.com directly through jsbridge fetch and
 // drains the returned audio stream inside QuickJS.
 func testTTSReal(t *testing.T, _ *suite.TestEnv) {
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		t.Skip("real OpenAI TTS test requires OPENAI_API_KEY")
+	testutil.LoadEnv(t)
+	if !testutil.HasAIKey() {
+		t.Skip("real OpenAI TTS test requires OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 
 	// OPENAI_BASE_URL leaks from earlier sibling tests would redirect

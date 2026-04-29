@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +26,7 @@ func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-deploy-adv.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "bad-deploy-adv.ts", Code: "const x: = {{{;;;", Order: 1,
@@ -39,11 +41,12 @@ func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 	var mu sync.Mutex
 	var received []error
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -81,7 +84,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-deploy-adv2.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "dup-persist-deploy-adv.ts", Code: `output("v1");`, Order: 1, DeployedAt: time.Now(),
@@ -91,11 +94,12 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -113,12 +117,13 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 // testStateCorruptionStoreWipedMidlife — store wiped mid-life, in-memory state survives (D07).
 func testStateCorruptionStoreWipedMidlife(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-deploy-adv3.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmpDir, "store-deploy-adv3.db"))
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
+		Modules: []brainkit.Module{packagesmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -145,7 +150,7 @@ func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "store-empty-deploy-adv.db")
 
 	// Create store, save a deployment with empty code
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "empty-deploy-adv.ts", Code: "", Order: 1,
@@ -156,11 +161,12 @@ func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 	var mu sync.Mutex
 	var received []error
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -179,7 +185,7 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-zerodur-deploy-adv.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "zero-dur-deploy-adv",
@@ -193,11 +199,12 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -210,7 +217,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-past-deploy-adv.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "past-sched-deploy-adv",
@@ -224,11 +231,12 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -253,20 +261,21 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) 
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-ghostrole-deploy-adv.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "ghost-role-deploy-adv.ts", Code: `output("hi");`,
-		Order: 1,
+		Order:      1,
 		DeployedAt: time.Now(),
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()

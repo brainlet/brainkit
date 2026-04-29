@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
-func (m *Module) handleCreate(ctx context.Context, req sdk.ScheduleCreateMsg) (*sdk.ScheduleCreateResp, error) {
+func (m *Module) handleCreate(ctx context.Context, req schedulemsg.ScheduleCreateMsg) (*schedulemsg.ScheduleCreateResp, error) {
 	id, err := m.scheduler.Schedule(ctx, types.ScheduleConfig{
 		Expression: req.Expression,
 		Topic:      req.Topic,
@@ -17,24 +17,24 @@ func (m *Module) handleCreate(ctx context.Context, req sdk.ScheduleCreateMsg) (*
 	if err != nil {
 		return nil, err
 	}
-	return &sdk.ScheduleCreateResp{ID: id}, nil
+	return &schedulemsg.ScheduleCreateResp{ID: id}, nil
 }
 
-func (m *Module) handleCancel(ctx context.Context, req sdk.ScheduleCancelMsg) (*sdk.ScheduleCancelResp, error) {
+func (m *Module) handleCancel(ctx context.Context, req schedulemsg.ScheduleCancelMsg) (*schedulemsg.ScheduleCancelResp, error) {
 	if req.ID == "" {
 		return nil, &sdkerrors.ValidationError{Field: "id", Message: "is required"}
 	}
 	if err := m.scheduler.Unschedule(ctx, req.ID); err != nil {
 		return nil, err
 	}
-	return &sdk.ScheduleCancelResp{Cancelled: true}, nil
+	return &schedulemsg.ScheduleCancelResp{Cancelled: true}, nil
 }
 
-func (m *Module) handleList(ctx context.Context, req sdk.ScheduleListMsg) (*sdk.ScheduleListResp, error) {
+func (m *Module) handleList(ctx context.Context, req schedulemsg.ScheduleListMsg) (*schedulemsg.ScheduleListResp, error) {
 	schedules := m.scheduler.List()
-	infos := make([]sdk.ScheduleInfo, 0, len(schedules))
+	infos := make([]schedulemsg.ScheduleInfo, 0, len(schedules))
 	for _, s := range schedules {
-		infos = append(infos, sdk.ScheduleInfo{
+		infos = append(infos, schedulemsg.ScheduleInfo{
 			ID:         s.ID,
 			Expression: s.Expression,
 			Topic:      s.Topic,
@@ -43,5 +43,5 @@ func (m *Module) handleList(ctx context.Context, req sdk.ScheduleListMsg) (*sdk.
 			Source:     s.Source,
 		})
 	}
-	return &sdk.ScheduleListResp{Schedules: infos}, nil
+	return &schedulemsg.ScheduleListResp{Schedules: infos}, nil
 }

@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
+	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -30,7 +33,7 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 
 			// TS surface: deploy .ts that creates a tool
 			m1, _ := json.Marshal(map[string]string{"name": "cross-ts-tool-cross", "entry": "cross-ts-tool-cross.ts"})
-			pr1, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+			_, err := sdk.Call[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](rt, ctx, packagemsg.PackageDeployMsg{
 				Manifest: m1,
 				Files: map[string]string{"cross-ts-tool-cross.ts": `
 					const myTool = createTool({
@@ -41,49 +44,24 @@ func testTSDeploysToolGoCallsIt(t *testing.T, env *suite.TestEnv) {
 						}
 					});
 					kit.register("tool", "ts-greeter", myTool);
-				`},
+					`},
 			})
 			require.NoError(t, err)
-			ch1 := make(chan sdk.PackageDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch1 <- r })
-			defer us1()
-			select {
-			case <-ch1:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
-			// Go surface: call the TS-created tool via Publish
-			pr2, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
+			// Go surface: call the TS-created tool via the shared reply inbox.
+			resp, err := sdk.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](rt, ctx, toolmsg.ToolCallMsg{
 				Name:  "ts-greeter",
 				Input: map[string]any{"name": "Go"},
 			})
 			require.NoError(t, err)
-			ch2 := make(chan sdk.ToolCallResp, 1)
-			us2, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
-			require.NoError(t, err)
-			defer us2()
-			var resp sdk.ToolCallResp
-			select {
-			case resp = <-ch2:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			var result map[string]string
 			json.Unmarshal(resp.Result, &result)
 			assert.Equal(t, "hello from TS, Go", result["greeting"])
 
 			// Cleanup
-			spr1, _ := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "cross-ts-tool-cross"})
-			sch1 := make(chan sdk.PackageTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, spr1.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch1 <- r })
-			defer sun1()
-			select {
-			case <-sch1:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			_, err = sdk.Call[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](rt, ctx, packagemsg.PackageTeardownMsg{Name: "cross-ts-tool-cross"})
+			require.NoError(t, err)
 		})
 	}
 }
@@ -99,7 +77,7 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 
 			// TS surface: deploy .ts that calls the Go-registered "echo" tool
 			m3, _ := json.Marshal(map[string]string{"name": "cross-go-call-cross", "entry": "cross-go-call-cross.ts"})
-			pr3, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+			_, err := sdk.Call[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](rt, ctx, packagemsg.PackageDeployMsg{
 				Manifest: m3,
 				Files: map[string]string{"cross-go-call-cross.ts": `
 					const wrapper = createTool({
@@ -111,34 +89,16 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 						}
 					});
 					kit.register("tool", "echo-wrapper", wrapper);
-				`},
+					`},
 			})
 			require.NoError(t, err)
-			ch3 := make(chan sdk.PackageDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr3.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch3 <- r })
-			defer us3()
-			select {
-			case <-ch3:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			// Go surface: call the TS wrapper which internally calls the Go echo tool
-			pr4, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
+			resp, err := sdk.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](rt, ctx, toolmsg.ToolCallMsg{
 				Name:  "echo-wrapper",
 				Input: map[string]any{"msg": "from TS to Go"},
 			})
 			require.NoError(t, err)
-			ch4 := make(chan sdk.ToolCallResp, 1)
-			us4, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr4.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch4 <- r })
-			require.NoError(t, err)
-			defer us4()
-			var resp sdk.ToolCallResp
-			select {
-			case resp = <-ch4:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			var result map[string]any
 			json.Unmarshal(resp.Result, &result)
@@ -146,15 +106,8 @@ func testGoRegistersToolTSCallsViaDeploy(t *testing.T, env *suite.TestEnv) {
 			inner, _ := result["inner"].(map[string]any)
 			assert.Equal(t, "from TS to Go", inner["echoed"])
 
-			spr2, _ := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "cross-go-call-cross"})
-			sch2 := make(chan sdk.PackageTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, spr2.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch2 <- r })
-			defer sun2()
-			select {
-			case <-sch2:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			_, err = sdk.Call[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](rt, ctx, packagemsg.PackageTeardownMsg{Name: "cross-go-call-cross"})
+			require.NoError(t, err)
 		})
 	}
 }
@@ -187,8 +140,8 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				Namespace: "plugin-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin")),
-				Modules: []brainkit.Module{
+				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-cross-plugin")),
+				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
 						Plugins: []brainkit.PluginConfig{
 							{
@@ -198,7 +151,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 							},
 						},
 					}),
-				},
+				),
 			})
 			require.NoError(t, err)
 			defer kit.Close()
@@ -221,21 +174,10 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 			toolCtx, toolCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer toolCancel()
 
-			pr1, err := sdk.Publish(kit, toolCtx, sdk.ToolCallMsg{
+			resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, kit, toolCtx, toolmsg.ToolCallMsg{
 				Name:  "echo",
 				Input: map[string]any{"message": "plugin->go test"},
 			})
-			require.NoError(t, err)
-			ch1 := make(chan sdk.ToolCallResp, 1)
-			us1, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch1 <- r })
-			require.NoError(t, err)
-			defer us1()
-			var resp sdk.ToolCallResp
-			select {
-			case resp = <-ch1:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			var result map[string]string
 			json.Unmarshal(resp.Result, &result)
@@ -271,8 +213,8 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				Namespace: "plugin-cross-list",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-cross-plugin-list")),
-				Modules: []brainkit.Module{
+				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-cross-plugin-list")),
+				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
 						Plugins: []brainkit.PluginConfig{
 							{
@@ -282,7 +224,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 							},
 						},
 					}),
-				},
+				),
 			})
 			require.NoError(t, err)
 			defer kit.Close()
@@ -305,18 +247,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr2, err := sdk.Publish(kit, listCtx, sdk.ToolListMsg{})
-			require.NoError(t, err)
-			ch2 := make(chan sdk.ToolListResp, 1)
-			us2, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch2 <- r })
-			require.NoError(t, err)
-			defer us2()
-			var resp sdk.ToolListResp
-			select {
-			case resp = <-ch2:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			resp := callAndWait[toolmsg.ToolListMsg, toolmsg.ToolListResp](t, kit, listCtx, toolmsg.ToolListMsg{})
 
 			names := make(map[string]bool)
 			for _, tool := range resp.Tools {
@@ -355,8 +286,8 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				Namespace: "ts-plugin-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin")),
-				Modules: []brainkit.Module{
+				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-ts-plugin")),
+				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
 						Plugins: []brainkit.PluginConfig{
 							{
@@ -366,7 +297,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 							},
 						},
 					}),
-				},
+				),
 			})
 			require.NoError(t, err)
 			defer kit.Close()
@@ -375,7 +306,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 
 			// Deploy .ts that calls the plugin's "concat" tool
 			mfst1, _ := json.Marshal(map[string]string{"name": "ts-calls-plugin-cross", "entry": "ts-calls-plugin-cross.ts"})
-			pr1, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+			callAndWait[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](t, kit, ctx, packagemsg.PackageDeployMsg{
 				Manifest: mfst1,
 				Files: map[string]string{"ts-calls-plugin-cross.ts": `
 					const pluginCaller = createTool({
@@ -389,49 +320,21 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 					kit.register("tool", "plugin-caller", pluginCaller);
 				`},
 			})
-			require.NoError(t, err)
-			ch1 := make(chan sdk.PackageDeployResp, 1)
-			us1, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr1.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch1 <- r })
-			defer us1()
-			select {
-			case <-ch1:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			callCtx, callCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer callCancel()
 
-			pr2, err := sdk.Publish(kit, callCtx, sdk.ToolCallMsg{
+			resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, kit, callCtx, toolmsg.ToolCallMsg{
 				Name:  "plugin-caller",
 				Input: map[string]any{"x": "foo", "y": "bar"},
 			})
-			require.NoError(t, err)
-			ch2 := make(chan sdk.ToolCallResp, 1)
-			us2, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
-			require.NoError(t, err)
-			defer us2()
-			var resp sdk.ToolCallResp
-			select {
-			case resp = <-ch2:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			var result map[string]any
 			json.Unmarshal(resp.Result, &result)
 			inner, _ := result["fromPlugin"].(map[string]any)
 			assert.Equal(t, "foobar", inner["result"])
 
-			spr1, _ := sdk.Publish(kit, ctx, sdk.PackageTeardownMsg{Name: "ts-calls-plugin-cross"})
-			sch1 := make(chan sdk.PackageTeardownResp, 1)
-			sun1, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](kit, ctx, spr1.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch1 <- r })
-			defer sun1()
-			select {
-			case <-sch1:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			callAndWait[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](t, kit, ctx, packagemsg.PackageTeardownMsg{Name: "ts-calls-plugin-cross"})
 		})
 	}
 }
@@ -460,8 +363,8 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				Namespace: "ts-plugin-alongside-cross",
 				CallerID:  "host",
 				FSRoot:    tmpDir,
-				Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-ts-plugin-alongside")),
-				Modules: []brainkit.Module{
+				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-ts-plugin-alongside")),
+				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
 						Plugins: []brainkit.PluginConfig{
 							{
@@ -471,7 +374,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 							},
 						},
 					}),
-				},
+				),
 			})
 			require.NoError(t, err)
 			defer kit.Close()
@@ -480,7 +383,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 
 			// Deploy .ts tool
 			mfst3, _ := json.Marshal(map[string]string{"name": "ts-alongside-cross", "entry": "ts-alongside-cross.ts"})
-			pr3, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+			callAndWait[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](t, kit, ctx, packagemsg.PackageDeployMsg{
 				Manifest: mfst3,
 				Files: map[string]string{"ts-alongside-cross.ts": `
 					const tsTool = createTool({
@@ -491,31 +394,11 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 					kit.register("tool", "ts-side-tool", tsTool);
 				`},
 			})
-			require.NoError(t, err)
-			ch3 := make(chan sdk.PackageDeployResp, 1)
-			us3, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr3.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch3 <- r })
-			defer us3()
-			select {
-			case <-ch3:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
 
 			listCtx, listCancel := context.WithTimeout(ctx, 10*time.Second)
 			defer listCancel()
 
-			pr4, err := sdk.Publish(kit, listCtx, sdk.ToolListMsg{})
-			require.NoError(t, err)
-			ch4 := make(chan sdk.ToolListResp, 1)
-			us4, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr4.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch4 <- r })
-			require.NoError(t, err)
-			defer us4()
-			var resp sdk.ToolListResp
-			select {
-			case resp = <-ch4:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			resp := callAndWait[toolmsg.ToolListMsg, toolmsg.ToolListResp](t, kit, listCtx, toolmsg.ToolListMsg{})
 
 			names := make(map[string]bool)
 			for _, tool := range resp.Tools {
@@ -525,15 +408,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 			assert.True(t, names["concat"], "plugin concat tool")
 			assert.True(t, names["ts-side-tool"], "TS-deployed tool")
 
-			spr2, _ := sdk.Publish(kit, ctx, sdk.PackageTeardownMsg{Name: "ts-alongside-cross"})
-			sch2 := make(chan sdk.PackageTeardownResp, 1)
-			sun2, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](kit, ctx, spr2.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { sch2 <- r })
-			defer sun2()
-			select {
-			case <-sch2:
-			case <-ctx.Done():
-				t.Fatal("timeout")
-			}
+			callAndWait[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](t, kit, ctx, packagemsg.PackageTeardownMsg{Name: "ts-alongside-cross"})
 		})
 	}
 }

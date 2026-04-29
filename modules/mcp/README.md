@@ -33,4 +33,4 @@ brainkit.New(brainkit.Config{
 - `mcp.status` — server connection state snapshot.
 
 Tools registered by MCP servers are addressable the same way as
-in-process or plugin tools: `sdk.ToolCallMsg{Name: "filesystem/read-file", ...}`.
+in-process or plugin tools: `toolmsg.ToolCallMsg{Name: "filesystem/read-file", ...}`.

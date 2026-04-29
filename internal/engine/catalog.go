@@ -7,11 +7,9 @@ import (
 	"strings"
 	"time"
 
-	provreg "github.com/brainlet/brainkit/internal/providers"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/transport"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/google/uuid"
 )
 
 type commandSpec struct {
@@ -22,7 +20,7 @@ type commandSpec struct {
 }
 
 // CommandSpec is the opaque registration handle produced by MakeCommand.
-// Modules build one via brainkit.Command and register it through Kit.RegisterCommand.
+// Modules build one via module.Command and mount it through module.Host.Commands.
 type CommandSpec = commandSpec
 
 // MakeCommand builds a CommandSpec from a handler that only sees context + Req.
@@ -62,6 +60,21 @@ func MakeCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context
 	}
 }
 
+func moduleCommand(spec bkmodule.CommandSpec) commandSpec {
+	topic := spec.Topic
+	if topic == "" {
+		topic = spec.Name
+	}
+	return commandSpec{
+		topic: topic,
+		invokeKernel: func(ctx context.Context, _ *Kernel, payload json.RawMessage) (json.RawMessage, error) {
+			return spec.Handle(ctx, payload)
+		},
+		invokeNode: func(ctx context.Context, _ *Node, payload json.RawMessage) (json.RawMessage, error) {
+			return spec.Handle(ctx, payload)
+		},
+	}
+}
 
 func kernelCommand[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, *Kernel, Req) (*Resp, error)) commandSpec {
 	var req Req
@@ -129,8 +142,6 @@ func decodeCommand[T any](payload json.RawMessage, topic string) (T, error) {
 	return out, nil
 }
 
-
-
 type commandRegistry struct {
 	ordered []commandSpec
 	byTopic map[string]commandSpec
@@ -152,6 +163,29 @@ func (r *commandRegistry) Validate(topic string, payload json.RawMessage) error 
 		return nil
 	}
 	return spec.validate(payload)
+}
+
+func (r *commandRegistry) Add(spec commandSpec) error {
+	if spec.topic == "" {
+		return fmt.Errorf("command topic is required")
+	}
+	if _, exists := r.byTopic[spec.topic]; exists {
+		return fmt.Errorf("duplicate command topic registered: %s", spec.topic)
+	}
+	r.byTopic[spec.topic] = spec
+	r.ordered = append(r.ordered, spec)
+	return nil
+}
+
+func (r *commandRegistry) Remove(topic string) {
+	delete(r.byTopic, topic)
+	for i, spec := range r.ordered {
+		if spec.topic == topic {
+			copy(r.ordered[i:], r.ordered[i+1:])
+			r.ordered = r.ordered[:len(r.ordered)-1]
+			return
+		}
+	}
 }
 
 func (r *commandRegistry) BindingsForNode(node *Node) []transport.RawCommandBinding {
@@ -176,257 +210,21 @@ func (r *commandRegistry) BindingsForNode(node *Node) []transport.RawCommandBind
 }
 
 func buildCommandCatalog() *commandRegistry {
-	specs := []commandSpec{
-			// ── Tools ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolCallMsg) (*sdk.ToolCallResp, error) {
-				return kernel.toolsDomain.Call(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolResolveMsg) (*sdk.ToolResolveResp, error) {
-				return kernel.toolsDomain.Resolve(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ToolListMsg) (*sdk.ToolListResp, error) {
-				return kernel.toolsDomain.List(ctx, req)
-			}),
-			// ── Agents (registry ops only) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentListMsg) (*sdk.AgentListResp, error) {
-				filter := (*agentFilter)(nil)
-				if req.Filter != nil {
-					filter = &agentFilter{
-						Capability: req.Filter.Capability,
-						Model:      req.Filter.Model,
-						Status:     req.Filter.Status,
-					}
-				}
-				return kernel.agentsDomain.List(ctx, filter)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentDiscoverMsg) (*sdk.AgentDiscoverResp, error) {
-				return kernel.agentsDomain.Discover(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentGetStatusMsg) (*sdk.AgentGetStatusResp, error) {
-				return kernel.agentsDomain.GetStatus(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.AgentSetStatusMsg) (*sdk.AgentSetStatusResp, error) {
-				return kernel.agentsDomain.SetStatus(ctx, req)
-			}),
-			// ── SetDraining ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSetDrainingMsg) (*sdk.KitSetDrainingResp, error) {
-				kernel.SetDraining(req.Draining)
-				return &sdk.KitSetDrainingResp{Draining: req.Draining}, nil
-			}),
-			// ── Eval (unified; dispatch on Mode: script | ts | module) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitEvalMsg) (*sdk.KitEvalResp, error) {
-				mode := req.Mode
-				if mode == "" {
-					// Infer from source extension; empty source means script.
-					if strings.HasSuffix(req.Source, ".ts") {
-						mode = "ts"
-					} else {
-						mode = "script"
-					}
-				}
-				switch mode {
-				case "ts":
-					source := req.Source
-					if source == "" {
-						source = "__eval_ts.ts"
-					}
-					result, err := kernel.EvalTS(ctx, source, req.Code)
-					if err != nil {
-						return nil, err
-					}
-					return &sdk.KitEvalResp{Result: result}, nil
-				case "module":
-					source := req.Source
-					if source == "" {
-						source = "__eval_module.ts"
-					}
-					result, err := kernel.EvalModule(ctx, source, req.Code)
-					if err != nil {
-						return nil, err
-					}
-					return &sdk.KitEvalResp{Result: result}, nil
-				case "script":
-					source := "__cli_eval_" + uuid.NewString() + ".ts"
-					if _, err := kernel.Deploy(ctx, source, req.Code); err != nil {
-						return nil, err
-					}
-					defer kernel.Teardown(ctx, source)
-					result, _ := kernel.EvalTS(ctx, "__read_eval.ts", `return globalThis.__module_result || "null";`)
-					return &sdk.KitEvalResp{Result: result}, nil
-				default:
-					return nil, &sdkerrors.ValidationError{Field: "mode", Message: "unknown eval mode: " + mode + " (want script|ts|module)"}
-				}
-			}),
-			// ── Send (Go-side request-reply — no JS thread involvement) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitSendMsg) (*sdk.KitSendResp, error) {
-				correlationID := uuid.NewString()
-				replyTo := req.Topic + ".reply." + correlationID
+	// The core boot catalog is intentionally empty. Built-in bus command
+	// surfaces are owned by hot-mountable modules; root reference commands are
+	// registered separately from brainkit.New before module mounting.
+	specs := []commandSpec{}
 
-				replyCh := make(chan sdk.Message, 1)
-				unsub, err := kernel.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-					select {
-					case replyCh <- msg:
-					default:
-					}
-				})
-				if err != nil {
-					return nil, err
-				}
-				defer unsub()
-
-				pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-				if _, err := kernel.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
-					return nil, err
-				}
-
-				select {
-				case msg := <-replyCh:
-					return &sdk.KitSendResp{Payload: msg.Payload}, nil
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				}
-			}),
-			// ── Cluster identity ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ClusterPeersMsg) (*sdk.ClusterPeersResp, error) {
-				return &sdk.ClusterPeersResp{
-					Peers: []sdk.ClusterPeerInfo{{
-						ClusterID: kernel.config.ClusterID,
-						RuntimeID: kernel.config.RuntimeID,
-						Namespace: kernel.config.Namespace,
-						CallerID:  kernel.config.CallerID,
-						StartedAt: kernel.startedAt.Format("2006-01-02T15:04:05Z07:00"),
-					}},
-				}, nil
-			}),
-			// ── Health (bus) ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.KitHealthMsg) (*sdk.KitHealthResp, error) {
-				data, _ := json.Marshal(kernel.Health(ctx))
-				return &sdk.KitHealthResp{Health: data}, nil
-			}),
-			// ── Registry ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryHasMsg) (*sdk.RegistryHasResp, error) {
-				return kernel.registryDomain.Has(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryListMsg) (*sdk.RegistryListResp, error) {
-				return kernel.registryDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.RegistryResolveMsg) (*sdk.RegistryResolveResp, error) {
-				return kernel.registryDomain.Resolve(ctx, req)
-			}),
-			// ── Workflows (moved to modules/workflow) ──
-			// ── Metrics ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.MetricsGetMsg) (*sdk.MetricsGetResp, error) {
-				return kernel.metricsDomain.Get(ctx, req)
-			}),
-			// ── Tracing (moved to modules/tracing) ──
-			// ── Audit (moved to modules/audit) ──
-			// ── Secrets ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsSetMsg) (*sdk.SecretsSetResp, error) {
-				return kernel.secretsDomain.Set(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsGetMsg) (*sdk.SecretsGetResp, error) {
-				return kernel.secretsDomain.Get(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsDeleteMsg) (*sdk.SecretsDeleteResp, error) {
-				return kernel.secretsDomain.Delete(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsListMsg) (*sdk.SecretsListResp, error) {
-				return kernel.secretsDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.SecretsRotateMsg) (*sdk.SecretsRotateResp, error) {
-				return kernel.secretsDomain.Rotate(ctx, req)
-			}),
-			// ── Package Deployment ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployMsg) (*sdk.PackageDeployResp, error) {
-				return kernel.packageDeployDomain.Deploy(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageTeardownMsg) (*sdk.PackageTeardownResp, error) {
-				return kernel.packageDeployDomain.Teardown(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageListDeployedMsg) (*sdk.PackageListDeployedResp, error) {
-				return kernel.packageDeployDomain.List(ctx, req)
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.PackageDeployInfoMsg) (*sdk.PackageDeployInfoResp, error) {
-				return kernel.packageDeployDomain.Info(ctx, req)
-			}),
-			// ── Plugin Lifecycle (moved to modules/plugins) ──
-			// ── Testing ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.TestRunMsg) (*sdk.TestRunResp, error) {
-				return kernel.testingDomain.Run(ctx, req)
-			}),
-			// ── Provider Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ProviderAddMsg) (*sdk.ProviderAddResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				config, err := deserializeProviderConfig(req.Type, req.Config)
-				if err != nil {
-					return nil, err
-				}
-				if err := kernel.RegisterAIProvider(req.Name, provreg.AIProviderType(req.Type), config); err != nil {
-					return nil, err
-				}
-				return &sdk.ProviderAddResp{Added: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.ProviderRemoveMsg) (*sdk.ProviderRemoveResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				kernel.UnregisterAIProvider(req.Name)
-				return &sdk.ProviderRemoveResp{Removed: true}, nil
-			}),
-			// ── Storage Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.StorageAddMsg) (*sdk.StorageAddResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				cfg, err := deserializeStorageConfig(req.Type, req.Config)
-				if err != nil {
-					return nil, err
-				}
-				if err := kernel.AddStorage(req.Name, cfg); err != nil {
-					return nil, err
-				}
-				return &sdk.StorageAddResp{Added: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.StorageRemoveMsg) (*sdk.StorageRemoveResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				if err := kernel.RemoveStorage(req.Name); err != nil {
-					return nil, err
-				}
-				return &sdk.StorageRemoveResp{Removed: true}, nil
-			}),
-			// ── Vector Store Management ──
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.VectorAddMsg) (*sdk.VectorAddResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				if err := kernel.RegisterVectorStore(req.Name, provreg.VectorStoreType(req.Type), nil); err != nil {
-					return nil, err
-				}
-				return &sdk.VectorAddResp{Added: true}, nil
-			}),
-			kernelCommand(func(ctx context.Context, kernel *Kernel, req sdk.VectorRemoveMsg) (*sdk.VectorRemoveResp, error) {
-				if req.Name == "" {
-					return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
-				}
-				kernel.UnregisterVectorStore(req.Name)
-				return &sdk.VectorRemoveResp{Removed: true}, nil
-			}),
+	byTopic := make(map[string]commandSpec, len(specs))
+	for _, spec := range specs {
+		if strings.HasSuffix(spec.topic, ".result") {
+			panic(fmt.Sprintf("invalid command topic registered: %s", spec.topic))
 		}
-
-		byTopic := make(map[string]commandSpec, len(specs))
-		for _, spec := range specs {
-			if strings.HasSuffix(spec.topic, ".result") {
-				panic(fmt.Sprintf("invalid command topic registered: %s", spec.topic))
-			}
-			if _, exists := byTopic[spec.topic]; exists {
-				panic(fmt.Sprintf("duplicate command topic registered: %s", spec.topic))
-			}
-			byTopic[spec.topic] = spec
+		if _, exists := byTopic[spec.topic]; exists {
+			panic(fmt.Sprintf("duplicate command topic registered: %s", spec.topic))
 		}
+		byTopic[spec.topic] = spec
+	}
 
 	return &commandRegistry{
 		ordered: specs,
@@ -461,12 +259,10 @@ func commandBindingsForNode(node *Node) []transport.RawCommandBinding {
 }
 
 // RegisterCommand adds a command to the per-instance catalog.
-// Called by modules during Init to register their bus commands.
+// Called by modules during mount to register their bus commands.
 // Panics on duplicate topic (same as core catalog construction).
 func (k *Kernel) RegisterCommand(spec commandSpec) {
-	if _, exists := k.catalog.byTopic[spec.topic]; exists {
-		panic(fmt.Sprintf("duplicate command topic registered: %s", spec.topic))
+	if err := k.catalog.Add(spec); err != nil {
+		panic(err.Error())
 	}
-	k.catalog.byTopic[spec.topic] = spec
-	k.catalog.ordered = append(k.catalog.ordered, spec)
 }

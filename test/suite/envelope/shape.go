@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	healthmod "github.com/brainlet/brainkit/modules/health"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +20,7 @@ func testSuccessReplyIsEnvelope(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitHealthMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, healthmod.KitHealthMsg{})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
@@ -50,7 +52,7 @@ func testErrorReplyIsEnvelope(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "ghost-tool-env-shape"})
+	pr, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-tool-env-shape"})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
@@ -77,7 +79,7 @@ func testEnvelopeMetadataFlagPresent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.KitHealthMsg{})
+	pr, err := sdk.Publish(env.Kit, ctx, healthmod.KitHealthMsg{})
 	require.NoError(t, err)
 
 	flagCh := make(chan string, 1)

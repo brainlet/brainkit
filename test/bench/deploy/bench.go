@@ -11,7 +11,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/bench"
 )
 
@@ -28,7 +30,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			cancel()
 		}
 	})
@@ -42,7 +44,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			cancel()
 		}
 	})
@@ -53,7 +55,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				for i := 0; i < b.N; i++ {
 					b.StopTimer()
 					storePath := filepath.Join(b.TempDir(), "restart-bench.db")
-					store, err := brainkit.NewSQLiteStore(storePath)
+					store, err := stores.NewSQLite(storePath)
 					if err != nil {
 						b.Fatalf("open store: %v", err)
 					}
@@ -70,7 +72,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 					k2.Close()
 
 					b.StartTimer()
-					store2, err := brainkit.NewSQLiteStore(storePath)
+					store2, err := stores.NewSQLite(storePath)
 					if err != nil {
 						b.Fatalf("open store2: %v", err)
 					}

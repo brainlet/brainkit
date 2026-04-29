@@ -49,7 +49,7 @@ func NewTracer(store TraceStore, sampleRate float64) *Tracer {
 }
 
 // SetStore swaps the tracer's underlying store. Intended for module-driven
-// late wiring (e.g. the tracing module attaches a SQLite store at Init time);
+// late wiring (e.g. the tracing module attaches a SQLite store at mount time);
 // single-shot at boot — not safe to call during active span recording.
 func (t *Tracer) SetStore(store TraceStore) {
 	t.store = store

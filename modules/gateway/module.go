@@ -1,20 +1,24 @@
 package gateway
 
-import "github.com/brainlet/brainkit"
+import (
+	"context"
 
-// Name reports the module identifier.
-func (gw *Gateway) Name() string { return "gateway" }
+	bkmodule "github.com/brainlet/brainkit/module"
+)
+
+// ID reports the hot-mount module identifier.
+func (gw *Gateway) ID() string { return "gateway" }
 
 // Status reports maturity (stable).
-func (gw *Gateway) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusStable }
+func (gw *Gateway) Status() bkmodule.Status { return bkmodule.StatusStable }
 
-// Init captures the Kit as the gateway's runtime and starts the HTTP server.
-// Routes registered via Handle / HandleStream / HandleWebSocket / HandleWebhook
-// before Init are installed at startup; routes added after Init update the
-// live route table.
-func (gw *Gateway) Init(k *brainkit.Kit) error {
-	gw.SetRuntime(k)
-	return gw.Start()
+func (gw *Gateway) Mount(_ context.Context, host bkmodule.Host) error {
+	gw.SetRuntime(host.Runtime())
+	if err := gw.Start(); err != nil {
+		return err
+	}
+	host.Scope().Defer(func(context.Context) error { return gw.Close() })
+	return nil
 }
 
 // Close stops the HTTP server and unsubscribes bus route commands.

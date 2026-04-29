@@ -13,6 +13,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -230,6 +231,12 @@ func (inf *Infra) Env(t *testing.T, extra ...suite.EnvOption) *suite.TestEnv {
 	}
 	if inf.cfg.ai {
 		opts = append(opts, suite.WithAI())
+	}
+	if inf.cfg.mcp {
+		binary := testutil.BuildTestMCP(t)
+		opts = append(opts, suite.WithMCP(map[string]mcppkg.ServerConfig{
+			"testmcp": {Command: binary},
+		}))
 	}
 	if inf.cfg.nodeCount > 0 {
 		opts = append(opts, suite.WithNodes(inf.cfg.nodeCount))

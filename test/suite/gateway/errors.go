@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,8 +120,7 @@ func testErrCORS(t *testing.T, env *suite.TestEnv) {
 			AllowHeaders: []string{"Content-Type"},
 		},
 	})
-	require.NoError(t, gw.Init(k))
-	defer gw.Stop()
+	gwMount(t, k, gw)
 
 	gw.Handle("GET", "/cors-test", "test.topic")
 

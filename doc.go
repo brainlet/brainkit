@@ -1,6 +1,5 @@
 // Package brainkit is an embeddable runtime for AI agent teams. It
-// combines an in-process JS/TS compartment (QuickJS + SES) with a
-// typed pub/sub bus (Watermill), exposes the result as [Kit], and
+// provides a light control-plane [Kit] with a typed pub/sub bus, and
 // lets you compose opt-in subsystems through [Module].
 //
 // # Two entry points
@@ -9,7 +8,7 @@
 //
 //	kit, err := brainkit.New(brainkit.Config{
 //	    Namespace: "myapp",
-//	    Transport: brainkit.EmbeddedNATS(),
+//	    Transport: transports.EmbeddedNATS(),
 //	    Providers: []brainkit.ProviderConfig{
 //	        brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
 //	    },
@@ -27,18 +26,18 @@
 //
 // # Interaction model
 //
-// Every feature is a typed bus command. Deploy packages, schedule
+// Features are exposed as typed bus commands. Deploy packages, schedule
 // messages, manage secrets, call AI providers, talk to plugins —
 // each goes through [sdk.Publish] / [sdk.SubscribeTo] or the
-// generated synchronous wrappers (one per Msg/Resp pair):
+// SDK's generated synchronous wrappers (one per Msg/Resp pair):
 //
-//	resp, err := brainkit.CallPackageDeploy(kit, ctx,
-//	    sdk.PackageDeployMsg{Path: "./agents/support"},
+//	resp, err := packagemsg.CallPackageDeploy(kit, ctx,
+//	    packagemsg.PackageDeployMsg{Path: "./agents/support"},
 //	)
 //
-// The generic [Call] / [CallStream] helpers stay exported for
-// advanced uses; the wrappers just saturate the type parameters
-// so the call site doesn't guess.
+// The generic [Call] / [CallStream] helpers stay exported for Kit-specific
+// behavior, such as topology-aware [WithCallTo]. The SDK wrappers saturate
+// type parameters without adding module command names to the root API.
 //
 // # Accessors
 //

@@ -9,7 +9,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 	dbPath := tmpDir + "/backend-test.db"
 
 	// Kit 1: deploy with explicit SQLiteStore
-	store1, err := brainkit.NewSQLiteStore(dbPath)
+	store1, err := stores.NewSQLite(dbPath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -31,6 +33,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 		CallerID:  "test",
 		FSRoot:    tmpDir,
 		Store:     store1,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -40,7 +43,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Kit 2: restart with same store — deployment should survive
-	store2, err := brainkit.NewSQLiteStore(dbPath)
+	store2, err := stores.NewSQLite(dbPath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -48,6 +51,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 		CallerID:  "test",
 		FSRoot:    tmpDir,
 		Store:     store2,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -70,7 +74,7 @@ func testStoreBackendSQLiteViaConfig(t *testing.T, _ *suite.TestEnv) {
 func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	t.Skip("audit module wiring pending — session 05")
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(tmpDir + "/audit-backend-test.db")
+	store, err := stores.NewSQLite(tmpDir + "/audit-backend-test.db")
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
@@ -79,6 +83,7 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 		CallerID:  "test",
 		FSRoot:    tmpDir,
 		Store:     store,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -99,11 +104,11 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer unsub()
 
-	sdk.Publish(k, ctx, sdk.AuditQueryMsg{Category: "deploy"}, sdk.WithReplyTo(replyTo))
+	sdk.Publish(k, ctx, auditmsg.AuditQueryMsg{Category: "deploy"}, sdk.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-ch:
-		var result sdk.AuditQueryResp
+		var result auditmsg.AuditQueryResp
 		json.Unmarshal(suite.ResponseData(resp), &result)
 		assert.GreaterOrEqual(t, len(result.Events), 1, "audit should have deploy events")
 		t.Logf("audit events: %d", len(result.Events))
@@ -124,7 +129,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 	pgURL := fmt.Sprintf("postgres://test:test@%s/brainkit?sslmode=disable", pgAddr)
 
 	// Kit 1: deploy with explicit Postgres-backed store
-	store1, err := brainkit.NewPostgresStore(pgURL)
+	store1, err := stores.NewPostgres(pgURL)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -132,6 +137,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
 		Store:     store1,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -141,7 +147,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 	k1.Close()
 
 	// Kit 2: restart with same Postgres — deployment should survive
-	store2, err := brainkit.NewPostgresStore(pgURL)
+	store2, err := stores.NewPostgres(pgURL)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -149,6 +155,7 @@ func testStoreBackendPostgresViaConfig(t *testing.T, env *suite.TestEnv) {
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
 		Store:     store2,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()

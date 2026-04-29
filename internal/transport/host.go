@@ -59,6 +59,65 @@ func (h *Host) resolvedTopic(logicalTopic string) string {
 	return topic
 }
 
+// CommandHandle stops a mounted command handler.
+type CommandHandle struct {
+	handler *message.Handler
+}
+
+// Stop stops the command handler and waits for it to stop or ctx to expire.
+func (h *CommandHandle) Stop(ctx context.Context) error {
+	if h == nil || h.handler == nil {
+		return nil
+	}
+	select {
+	case <-h.handler.Started():
+	default:
+		return nil
+	}
+	h.handler.Stop()
+	select {
+	case <-h.handler.Stopped():
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// RegisterCommand installs one command binding onto the router and returns a
+// handle that can stop it. If the router is already running, the handler is
+// started before RegisterCommand returns.
+func (h *Host) RegisterCommand(ctx context.Context, binding RawCommandBinding) (*CommandHandle, error) {
+	commandTopic := h.resolvedTopic(binding.Topic)
+	handlerName := rawHandlerName(binding.Name, binding.Topic)
+	if isRouterRunning(h.router) {
+		handlerName = handlerName + "." + watermill.NewUUID()
+	}
+
+	handler := h.router.AddConsumerHandler(
+		handlerName,
+		commandTopic,
+		h.sub,
+		func(wmsg *message.Message) error {
+			return h.handleCommandMessage(binding, wmsg)
+		},
+	)
+
+	if isRouterRunning(h.router) {
+		if err := h.router.RunHandlers(ctx); err != nil {
+			handler.Stop()
+			return nil, err
+		}
+		select {
+		case <-handler.Started():
+		case <-ctx.Done():
+			handler.Stop()
+			return nil, ctx.Err()
+		}
+	}
+
+	return &CommandHandle{handler: handler}, nil
+}
+
 // RegisterCommands installs all command bindings onto the router.
 // Handlers read replyTo from inbound message metadata and publish responses there.
 func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
@@ -66,56 +125,63 @@ func (h *Host) RegisterCommands(bindings []RawCommandBinding) {
 		binding := binding
 		commandTopic := h.resolvedTopic(binding.Topic)
 		handlerName := rawHandlerName(binding.Name, binding.Topic)
-
 		h.router.AddConsumerHandler(
 			handlerName,
 			commandTopic,
 			h.sub,
 			func(wmsg *message.Message) error {
-				cmdCtx := withInboundMetadata(wmsg.Context(), wmsg, binding.Topic)
-				payload, err := binding.Handle(cmdCtx, json.RawMessage(wmsg.Payload))
-
-				replyTo := wmsg.Metadata.Get("replyTo")
-				if replyTo == "" {
-					if err != nil {
-						slog.Error("command failed with no replyTo", slog.String("topic", binding.Topic), slog.String("error", err.Error()))
-					}
-					return nil
-				}
-
-				// All command replies go out as wire envelopes. Success
-				// path wraps the handler's raw JSON as ok=true data;
-				// error path serializes the BrainkitError into ok=false.
-				if err != nil && IsDecodeFailure(err) {
-					return err
-				}
-				var envelope sdk.Envelope
-				if err != nil {
-					envelope = sdkErrorToEnvelope(err)
-				} else {
-					envelope = sdk.Envelope{Ok: true, Data: json.RawMessage(payload)}
-					if len(envelope.Data) == 0 {
-						envelope.Data = json.RawMessage("null")
-					}
-				}
-				responsePayload, _ := sdk.EncodeEnvelope(envelope)
-
-				result := message.NewMessage(watermill.NewUUID(), responsePayload)
-				correlationID := wmsg.Metadata.Get("correlationId")
-				if correlationID != "" {
-					result.Metadata.Set("correlationId", correlationID)
-				}
-				// Command replies are always terminal — mark done=true so
-				// the shared-inbox Caller finalizes immediately instead of
-				// treating the payload as a stream chunk. envelope=true
-				// signals the Caller to unwrap payload via sdk.FromEnvelope.
-				result.Metadata.Set("done", "true")
-				result.Metadata.Set("envelope", "true")
-
-				// replyTo is already namespaced+sanitized by the publisher
-				return h.pub.Publish(replyTo, result)
+				return h.handleCommandMessage(binding, wmsg)
 			},
 		)
+	}
+}
+
+func (h *Host) handleCommandMessage(binding RawCommandBinding, wmsg *message.Message) error {
+	cmdCtx := withInboundMetadata(wmsg.Context(), wmsg, binding.Topic)
+	payload, err := binding.Handle(cmdCtx, json.RawMessage(wmsg.Payload))
+	if err == nil && payload == nil {
+		return nil
+	}
+
+	replyTo := wmsg.Metadata.Get("replyTo")
+	if replyTo == "" {
+		if err != nil {
+			slog.Error("command failed with no replyTo", slog.String("topic", binding.Topic), slog.String("error", err.Error()))
+		}
+		return nil
+	}
+
+	if err != nil && IsDecodeFailure(err) {
+		return err
+	}
+	var envelope sdk.Envelope
+	if err != nil {
+		envelope = sdkErrorToEnvelope(err)
+	} else {
+		envelope = sdk.Envelope{Ok: true, Data: json.RawMessage(payload)}
+		if len(envelope.Data) == 0 {
+			envelope.Data = json.RawMessage("null")
+		}
+	}
+	responsePayload, _ := sdk.EncodeEnvelope(envelope)
+
+	result := message.NewMessage(watermill.NewUUID(), responsePayload)
+	correlationID := wmsg.Metadata.Get("correlationId")
+	if correlationID != "" {
+		result.Metadata.Set("correlationId", correlationID)
+	}
+	result.Metadata.Set("done", "true")
+	result.Metadata.Set("envelope", "true")
+
+	return h.pub.Publish(replyTo, result)
+}
+
+func isRouterRunning(router *message.Router) bool {
+	select {
+	case <-router.Running():
+		return true
+	default:
+		return false
 	}
 }
 

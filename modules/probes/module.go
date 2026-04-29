@@ -7,26 +7,27 @@
 package probes
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
 )
 
 // Config configures periodic probing.
 type Config struct {
 	// Interval between probe sweeps. Zero disables the periodic probe; the
-	// module's Init becomes a no-op. 60s is a reasonable default.
+	// module's Mount becomes a no-op. 60s is a reasonable default.
 	Interval time.Duration
 	// ProbeOnRegister, when true, runs an initial probe sweep as soon as
-	// Init returns. Default: true.
+	// Mount returns. Default: true.
 	ProbeOnRegister bool
 }
 
 // Module runs the periodic probe loop.
 type Module struct {
 	cfg    Config
-	kit    *brainkit.Kit
+	probe  func()
 	closed atomic.Bool
 	stop   chan struct{}
 }
@@ -48,7 +49,7 @@ type YAML struct {
 type Factory struct{}
 
 // Build decodes YAML and returns the module.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -64,27 +65,36 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "probes",
-		Status:  brainkit.ModuleStatusBeta,
+		Status:  bkmodule.StatusBeta,
 		Summary: "Periodic health probes of providers, vector stores, and storages.",
 	}
 }
 
-func init() { brainkit.RegisterModule("probes", Factory{}) }
+func init() { bkmodule.Register("probes", Factory{}) }
 
-// Name reports the module identifier.
-func (m *Module) Name() string { return "probes" }
+// ID reports the hot-mount module identifier.
+func (m *Module) ID() string { return "probes" }
 
 // Status reports maturity.
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusBeta }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
-// Init kicks off the periodic probe loop (if Interval > 0) and optionally
-// runs an initial sweep.
-func (m *Module) Init(k *brainkit.Kit) error {
-	m.kit = k
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	probe, ok := bkmodule.Capability[func()](host, bkmodule.CapabilityProbeAll)
+	if !ok {
+		return nil
+	}
+	m.start(probe)
+	host.Scope().Defer(func(context.Context) error { return m.Close() })
+	return nil
+}
 
+func (m *Module) start(probe func()) {
+	m.probe = probe
+	m.stop = make(chan struct{})
+	m.closed.Store(false)
 	probeOnRegister := m.cfg.ProbeOnRegister
 	// Default to true when the user didn't explicitly pick a value.
 	if !probeOnRegister {
@@ -94,18 +104,17 @@ func (m *Module) Init(k *brainkit.Kit) error {
 		probeOnRegister = true
 	}
 	if probeOnRegister {
-		go k.ProbeAll()
+		go probe()
 	}
 
 	if m.cfg.Interval > 0 {
 		go m.loop()
 	}
-	return nil
 }
 
 // Close stops the periodic loop.
 func (m *Module) Close() error {
-	if m.closed.CompareAndSwap(false, true) {
+	if m.closed.CompareAndSwap(false, true) && m.stop != nil {
 		close(m.stop)
 	}
 	return nil
@@ -117,7 +126,9 @@ func (m *Module) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			m.kit.ProbeAll()
+			if m.probe != nil {
+				m.probe()
+			}
 		case <-m.stop:
 			return
 		}

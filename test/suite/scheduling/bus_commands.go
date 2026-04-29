@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
@@ -20,34 +21,17 @@ func testScheduleCreateViaBus(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	topic := "test.sched.create." + uuid.NewString()[:8]
-	pr, err := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	resp, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 10m",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"test":true}`),
 	})
 	if err != nil {
-		t.Fatalf("publish: %v", err)
+		t.Fatalf("call: %v", err)
 	}
 
-	type createResult struct {
-		resp sdk.ScheduleCreateResp
-		msg  sdk.Message
-	}
-	respCh := make(chan createResult, 1)
-	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
-	defer unsub()
-
-	select {
-	case r := <-respCh:
-		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
-			t.Fatalf("error: %s", errMsg)
-		}
-		if r.resp.ID == "" {
-			t.Fatal("expected non-empty schedule ID")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if resp.ID == "" {
+		t.Fatal("expected non-empty schedule ID")
 	}
 }
 
@@ -56,27 +40,12 @@ func testScheduleCreateInvalidExpression(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	_, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "bad expression",
 		Topic:      "test.sched.invalid",
 	})
-
-	type createResult struct {
-		resp sdk.ScheduleCreateResp
-		msg  sdk.Message
-	}
-	respCh := make(chan createResult, 1)
-	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
-	defer unsub()
-
-	select {
-	case r := <-respCh:
-		if suite.ResponseErrorMessage(r.msg.Payload) == "" {
-			t.Fatal("expected error for bad expression")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if err == nil {
+		t.Fatal("expected error for bad expression")
 	}
 }
 
@@ -87,31 +56,22 @@ func testScheduleListViaBus(t *testing.T, _ *suite.TestEnv) {
 
 	// Create 2 schedules
 	for i := 0; i < 2; i++ {
-		pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+		_, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 			Expression: "every 1h",
 			Topic:      "test.sched.list." + uuid.NewString()[:8],
 		})
-		ch := make(chan sdk.ScheduleCreateResp, 1)
-		unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-			func(resp sdk.ScheduleCreateResp, msg sdk.Message) { ch <- resp })
-		<-ch
-		unsub()
+		if err != nil {
+			t.Fatalf("create schedule %d: %v", i, err)
+		}
 	}
 
 	// List
-	pr, _ := sdk.PublishScheduleList(env.Kit, ctx, sdk.ScheduleListMsg{})
-	listCh := make(chan sdk.ScheduleListResp, 1)
-	unsub, _ := sdk.SubscribeScheduleListResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
-	defer unsub()
-
-	select {
-	case resp := <-listCh:
-		if len(resp.Schedules) < 2 {
-			t.Fatalf("expected ≥2 schedules, got %d", len(resp.Schedules))
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	resp, err := sdk.Call[schedulemsg.ScheduleListMsg, schedulemsg.ScheduleListResp](env.Kit, ctx, schedulemsg.ScheduleListMsg{})
+	if err != nil {
+		t.Fatalf("list schedules: %v", err)
+	}
+	if len(resp.Schedules) < 2 {
+		t.Fatalf("expected ≥2 schedules, got %d", len(resp.Schedules))
 	}
 }
 
@@ -121,30 +81,21 @@ func testScheduleCancelViaBus(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Create
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	createResp, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 1h",
 		Topic:      "test.sched.cancel." + uuid.NewString()[:8],
 	})
-	createCh := make(chan sdk.ScheduleCreateResp, 1)
-	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
-	createResp := <-createCh
-	unsub()
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
 
 	// Cancel
-	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
-	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
-	unsub2, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-cancelCh:
-		if !resp.Cancelled {
-			t.Fatal("expected Cancelled=true")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	cancelResp, err := sdk.Call[schedulemsg.ScheduleCancelMsg, schedulemsg.ScheduleCancelResp](env.Kit, ctx, schedulemsg.ScheduleCancelMsg{ID: createResp.ID})
+	if err != nil {
+		t.Fatalf("cancel schedule: %v", err)
+	}
+	if !cancelResp.Cancelled {
+		t.Fatal("expected Cancelled=true")
 	}
 }
 
@@ -153,30 +104,15 @@ func testScheduleCreateBlocksCommandTopic(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	_, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 1m",
 		Topic:      "tools.call", // command topic — should be blocked
 	})
-	type createResult struct {
-		resp sdk.ScheduleCreateResp
-		msg  sdk.Message
+	if err == nil {
+		t.Fatal("expected error for command topic")
 	}
-	respCh := make(chan createResult, 1)
-	unsub, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { respCh <- createResult{resp, msg} })
-	defer unsub()
-
-	select {
-	case r := <-respCh:
-		errMsg := suite.ResponseErrorMessage(r.msg.Payload)
-		if errMsg == "" {
-			t.Fatal("expected error for command topic")
-		}
-		if !strings.Contains(errMsg, "command topic") {
-			t.Fatalf("expected 'command topic' in error, got: %s", errMsg)
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if !strings.Contains(err.Error(), "command topic") {
+		t.Fatalf("expected 'command topic' in error, got: %s", err)
 	}
 }
 
@@ -200,24 +136,13 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 	defer unsub()
 
 	// Create fast schedule
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	createResp, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 300ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"tick":true}`),
 	})
-	type createResult struct {
-		resp sdk.ScheduleCreateResp
-		msg  sdk.Message
-	}
-	createCh := make(chan createResult, 1)
-	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- createResult{resp, msg} })
-	cr := <-createCh
-	createResp := cr.resp
-	unsubCreate()
-
-	if errMsg := suite.ResponseErrorMessage(cr.msg.Payload); errMsg != "" {
-		t.Fatalf("create error: %s", errMsg)
+	if err != nil {
+		t.Fatalf("create error: %v", err)
 	}
 
 	// Wait for at least 2 fires
@@ -233,7 +158,7 @@ func testScheduleCreateFiresOnTopic(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Cancel it
-	sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
+	_, _ = sdk.Call[schedulemsg.ScheduleCancelMsg, schedulemsg.ScheduleCancelResp](env.Kit, ctx, schedulemsg.ScheduleCancelMsg{ID: createResp.ID})
 }
 
 func testScheduleCreateOneTimeFires(t *testing.T, _ *suite.TestEnv) {
@@ -249,16 +174,14 @@ func testScheduleCreateOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 	})
 	defer unsub()
 
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	_, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "in 300ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(`{"once":true}`),
 	})
-	createCh := make(chan sdk.ScheduleCreateResp, 1)
-	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
-	<-createCh
-	unsubCreate()
+	if err != nil {
+		t.Fatalf("create one-time schedule: %v", err)
+	}
 
 	// Wait for exactly 1 fire
 	select {
@@ -293,16 +216,14 @@ func testScheduleCreateWithPayload(t *testing.T, _ *suite.TestEnv) {
 	defer unsub()
 
 	expectedPayload := `{"key":"value","num":42}`
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	_, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "in 200ms",
 		Topic:      topic,
 		Payload:    json.RawMessage(expectedPayload),
 	})
-	createCh := make(chan sdk.ScheduleCreateResp, 1)
-	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
-	<-createCh
-	unsubCreate()
+	if err != nil {
+		t.Fatalf("create payload schedule: %v", err)
+	}
 
 	select {
 	case payload := <-received:
@@ -330,15 +251,13 @@ func testScheduleCancelStopsFiring(t *testing.T, _ *suite.TestEnv) {
 	defer unsub()
 
 	// Create fast schedule
-	pr, _ := sdk.PublishScheduleCreate(env.Kit, ctx, sdk.ScheduleCreateMsg{
+	createResp, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](env.Kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 200ms",
 		Topic:      topic,
 	})
-	createCh := make(chan sdk.ScheduleCreateResp, 1)
-	unsubCreate, _ := sdk.SubscribeScheduleCreateResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCreateResp, msg sdk.Message) { createCh <- resp })
-	createResp := <-createCh
-	unsubCreate()
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
 
 	// Wait for 2 fires
 	for i := 0; i < 2; i++ {
@@ -350,12 +269,9 @@ func testScheduleCancelStopsFiring(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Cancel
-	pr2, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: createResp.ID})
-	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
-	unsubCancel, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
-	<-cancelCh
-	unsubCancel()
+	if _, err := sdk.Call[schedulemsg.ScheduleCancelMsg, schedulemsg.ScheduleCancelResp](env.Kit, ctx, schedulemsg.ScheduleCancelMsg{ID: createResp.ID}); err != nil {
+		t.Fatalf("cancel schedule: %v", err)
+	}
 
 	// Drain any in-flight fires
 	time.Sleep(300 * time.Millisecond)

@@ -11,7 +11,11 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/systemmsg"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,14 +25,15 @@ import (
 // ErrorHandler should be called for the persistence failure.
 func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(tmpDir + "/store-cascade.db")
+	store, err := stores.NewSQLite(tmpDir + "/store-cascade.db")
 	require.NoError(t, err)
 
 	var errorCalled bool
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store,
+		Store:   store,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			errorCalled = true
 		},
@@ -56,7 +61,7 @@ func testCascadeCorruptedStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, os.WriteFile(storePath, []byte("not a sqlite database"), 0644))
 
 	// NewSQLiteStore should fail on corrupt file
-	_, err := brainkit.NewSQLiteStore(storePath)
+	_, err := stores.NewSQLite(storePath)
 	assert.Error(t, err)
 }
 
@@ -67,7 +72,7 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set a secret, then rotate it — no plugins running, so restart is a no-op
-	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, sdk.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
+	pr1, _ := sdk.Publish(freshEnv.Kit, ctx, secretmsg.SecretsSetMsg{Name: "ROTATE_KEY_CASCADE", Value: "v1"})
 	ch1 := make(chan []byte, 1)
 	unsub1, _ := freshEnv.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
 	select {
@@ -78,7 +83,7 @@ func testCascadeSecretRotatePluginFails(t *testing.T, _ *suite.TestEnv) {
 	unsub1()
 
 	// Rotate
-	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, sdk.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
+	pr2, _ := sdk.Publish(freshEnv.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "ROTATE_KEY_CASCADE", NewValue: "v2", Restart: true})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := freshEnv.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
@@ -103,7 +108,7 @@ func testCascadeHandlerThrowNoReplyTo(t *testing.T, _ *suite.TestEnv) {
 
 	// Emit (no replyTo) — handler will throw but there's nowhere to send the error
 	failed := make(chan bool, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.HandlerFailedEvent](freshEnv.Kit, ctx, "bus.handler.failed", func(e sdk.HandlerFailedEvent, m sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[systemmsg.HandlerFailedEvent](freshEnv.Kit, ctx, systemmsg.TopicHandlerFailed, func(e systemmsg.HandlerFailedEvent, m sdk.Message) {
 		failed <- true
 	})
 	defer unsub()
@@ -159,7 +164,7 @@ func testCascadeConcurrentErrorHandler(t *testing.T, _ *suite.TestEnv) {
 	var count int
 
 	tmpDir := t.TempDir()
-	store, _ := brainkit.NewSQLiteStore(tmpDir + "/store-cascade-concurrent.db")
+	store, _ := stores.NewSQLite(tmpDir + "/store-cascade-concurrent.db")
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -239,6 +244,7 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Modules: []brainkit.Module{packagesmod.New()},
 		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},
 		},
@@ -252,7 +258,7 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 
 	// Subscribe to exhaustion events
 	exhausted := make(chan bool, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.HandlerExhaustedEvent](k, context.Background(), "bus.handler.exhausted", func(e sdk.HandlerExhaustedEvent, m sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[systemmsg.HandlerExhaustedEvent](k, context.Background(), systemmsg.TopicHandlerExhausted, func(e systemmsg.HandlerExhaustedEvent, m sdk.Message) {
 		exhausted <- true
 	})
 	defer unsub()

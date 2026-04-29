@@ -21,8 +21,10 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/audit"
+	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
 	"github.com/brainlet/brainkit/modules/tracing"
+	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
 	"github.com/brainlet/brainkit/sdk"
 
 	_ "modernc.org/sqlite"
@@ -95,8 +97,8 @@ func run() error {
 
 	// ── Audit ──
 	fmt.Println("audit.query (last 20 events):")
-	queryResp, err := brainkit.CallAuditQuery(kit, ctx, sdk.AuditQueryMsg{Limit: 20},
-		brainkit.WithCallTimeout(3*time.Second))
+	queryResp, err := auditmsg.CallAuditQuery(kit, ctx, auditmsg.AuditQueryMsg{Limit: 20},
+		sdk.WithCallTimeout(3*time.Second))
 	if err != nil {
 		return fmt.Errorf("audit.query: %w", err)
 	}
@@ -113,8 +115,8 @@ func run() error {
 
 	fmt.Println()
 	fmt.Println("audit.stats:")
-	statsResp, err := brainkit.CallAuditStats(kit, ctx, sdk.AuditStatsMsg{},
-		brainkit.WithCallTimeout(3*time.Second))
+	statsResp, err := auditmsg.CallAuditStats(kit, ctx, auditmsg.AuditStatsMsg{},
+		sdk.WithCallTimeout(3*time.Second))
 	if err != nil {
 		return fmt.Errorf("audit.stats: %w", err)
 	}
@@ -126,8 +128,8 @@ func run() error {
 	// ── Traces ──
 	fmt.Println()
 	fmt.Println("trace.list (last 20):")
-	traceResp, err := brainkit.CallTraceList(kit, ctx, sdk.TraceListMsg{Limit: 20},
-		brainkit.WithCallTimeout(3*time.Second))
+	traceResp, err := tracingmsg.CallTraceList(kit, ctx, tracingmsg.TraceListMsg{Limit: 20},
+		sdk.WithCallTimeout(3*time.Second))
 	if err != nil {
 		return fmt.Errorf("trace.list: %w", err)
 	}

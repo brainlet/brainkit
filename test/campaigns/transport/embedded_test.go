@@ -23,7 +23,7 @@ import (
 // TestTransport_Embedded tests all domains on the embedded NATS transport.
 // No Podman needed — embedded NATS runs in-process.
 func TestTransport_Embedded(t *testing.T) {
-	infra := campaigns.NewInfra(t, campaigns.Transport("embedded"))
+	infra := campaigns.NewInfra(t, campaigns.Transport("embedded"), campaigns.MCP())
 	env := infra.Env(t)
 
 	bus.Run(t, env)

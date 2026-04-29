@@ -1,9 +1,11 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
+	_ "github.com/brainlet/brainkit/modules/jsruntime"
 )
 
 // Module is the brainkit.Module wrapper around the harness Instance.
@@ -23,23 +25,32 @@ type Config struct {
 }
 
 // NewModule builds the harness Module. Pass it to brainkit.Config.Modules.
-// Init creates the inner Harness when the Kit boots.
+// Mount creates the inner Harness when the Kit boots.
 func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
-func (m *Module) Name() string                   { return "harness" }
-func (m *Module) Status() brainkit.ModuleStatus  { return brainkit.ModuleStatusWIP }
+func (m *Module) ID() string              { return "harness" }
+func (m *Module) Dependencies() []string  { return []string{"jsruntime"} }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusWIP }
 
-// Init constructs the underlying Harness from the Kit's JS runtime.
-// Harness needs a Runtime (BridgeEval access); the Kit's bridge
-// satisfies it via brainkit.HarnessRuntime.
-func (m *Module) Init(k *brainkit.Kit) error {
-	raw := k.HarnessRuntime()
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	harnessRuntime, err := bkmodule.RequireCapability[func() any](host, bkmodule.CapabilityHarnessRuntime)
+	if err != nil {
+		return fmt.Errorf("harness: %w", err)
+	}
+	if err := m.start(harnessRuntime()); err != nil {
+		return err
+	}
+	host.Scope().Defer(func(context.Context) error { return m.Close() })
+	return nil
+}
+
+func (m *Module) start(raw any) error {
 	if raw == nil {
 		return nil // Harness cannot run without a JS runtime.
 	}
 	rt, ok := raw.(Runtime)
 	if !ok {
-		return fmt.Errorf("harness: Kit.HarnessRuntime() returned %T which does not satisfy harness.Runtime", raw)
+		return fmt.Errorf("harness: HarnessRuntime() returned %T which does not satisfy harness.Runtime", raw)
 	}
 	h, err := Init(rt, m.cfg.Harness)
 	if err != nil {
@@ -54,7 +65,9 @@ func (m *Module) Close() error {
 	if m.instance == nil {
 		return nil
 	}
-	return m.instance.Close()
+	err := m.instance.Close()
+	m.instance = nil
+	return err
 }
 
 // Instance returns the Harness as the frozen Instance surface.
@@ -85,7 +98,7 @@ type Factory struct{}
 // config. Advanced configuration (Modes, Subagents, StateSchema,
 // etc.) remains programmatic — wire those via code in a custom
 // binary instead of YAML.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -98,12 +111,15 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "harness",
-		Status:  brainkit.ModuleStatusWIP,
+		Status:  bkmodule.StatusWIP,
 		Summary: "Experimental multi-mode JS harness (tools, subagents, state).",
+		Requires: []string{
+			"jsruntime",
+		},
 	}
 }
 
-func init() { brainkit.RegisterModule("harness", Factory{}) }
+func init() { bkmodule.Register("harness", Factory{}) }

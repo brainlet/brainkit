@@ -11,7 +11,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +22,7 @@ import (
 // testSecretPublishToBus — service reads a secret then publishes it to a public topic.
 func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
+	store, _ := stores.NewSQLite(filepath.Join(tmpDir, "secrets-sec.db"))
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -29,7 +31,9 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	type echoIn struct{ Message string `json:"message"` }
+	type echoIn struct {
+		Message string `json:"message"`
+	}
 	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes", Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
@@ -37,12 +41,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	})
 
 	ctx := context.Background()
-
-	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "DB_PASSWORD_SEC", Value: "super-secret-pw-123"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	secSetSecret(t, k, "DB_PASSWORD_SEC", "super-secret-pw-123")
 
 	require.NoError(t, secDeployErr(k, "exfil-service-sec.ts", `
 		var password = secrets.get("DB_PASSWORD_SEC");
@@ -76,7 +75,9 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		topic := topic
 		u, _ := k.SubscribeRaw(ctx, topic, func(m sdk.Message) {
 			if len(m.Payload) > 0 {
-				var data struct{ Stolen string `json:"stolen"` }
+				var data struct {
+					Stolen string `json:"stolen"`
+				}
 				json.Unmarshal(m.Payload, &data)
 				if data.Stolen == "super-secret-pw-123" {
 					exfilDetected.Add(1)
@@ -130,7 +131,7 @@ func testSecretEnvVarDump(t *testing.T, env *suite.TestEnv) {
 // testSecretEnumeration — secrets.list to enumerate all secret names.
 func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "secrets-sec.db"))
+	store, _ := stores.NewSQLite(filepath.Join(tmpDir, "secrets-sec.db"))
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -139,14 +140,8 @@ func testSecretEnumeration(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	ctx := context.Background()
-
 	for _, name := range []string{"DB_PASSWORD_SEC", "API_KEY_SEC", "STRIPE_SECRET_SEC", "ADMIN_TOKEN_SEC"} {
-		pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: name, Value: "secret-" + name})
-		ch := make(chan []byte, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-		<-ch
-		unsub()
+		secSetSecret(t, k, name, "secret-"+name)
 	}
 
 	secDeploy(t, k, "enum-secrets-sec.ts", `
@@ -170,11 +165,7 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "MONITORED_KEY_SEC", Value: "monitored-value"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	secSetSecret(t, k, "MONITORED_KEY_SEC", "monitored-value")
 
 	var auditMu sync.Mutex
 	var auditEvents []string
@@ -185,11 +176,7 @@ func testSecretAuditEventSnooping(t *testing.T, env *suite.TestEnv) {
 	})
 	defer auditUnsub()
 
-	pr2, _ := sdk.Publish(k, ctx, sdk.SecretsGetMsg{Name: "MONITORED_KEY_SEC"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	<-ch2
-	unsub2()
+	_ = secGetSecret(t, k, "MONITORED_KEY_SEC")
 
 	time.Sleep(300 * time.Millisecond)
 
@@ -209,11 +196,7 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "SHARED_KEY_SEC", Value: "original-value"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	secSetSecret(t, k, "SHARED_KEY_SEC", "original-value")
 
 	secDeploy(t, k, "victim-secret-sec.ts", `
 		var key = secrets.get("SHARED_KEY_SEC");
@@ -223,11 +206,7 @@ func testSecretRotateDOS(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 
-	pr2, _ := sdk.Publish(k, ctx, sdk.SecretsRotateMsg{Name: "SHARED_KEY_SEC", NewValue: "rotated-by-attacker"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := k.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	<-ch2
-	unsub2()
+	secRotateSecret(t, k, "SHARED_KEY_SEC", "rotated-by-attacker")
 
 	pr3, _ := sdk.Publish(k, ctx, sdk.CustomMsg{
 		Topic: "ts.victim-secret-sec.check", Payload: json.RawMessage(`{}`),
@@ -257,7 +236,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "oracle-sec.db")
 
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -265,12 +244,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	pr, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "encrypted-sec", Value: "sensitive-data"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	secSetSecret(t, k1, "encrypted-sec", "sensitive-data")
 	k1.Close()
 
 	wrongKeys := []string{
@@ -282,7 +256,7 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 
 	for _, wrongKey := range wrongKeys {
 		t.Run("key="+wrongKey[:secMin(10, len(wrongKey))], func(t *testing.T) {
-			store2, _ := brainkit.NewSQLiteStore(storePath)
+			store2, _ := stores.NewSQLite(storePath)
 			k2, err := brainkit.New(brainkit.Config{
 				Transport: brainkit.Memory(),
 				Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -290,22 +264,16 @@ func testSecretDecryptionOracle(t *testing.T, env *suite.TestEnv) {
 			})
 			require.NoError(t, err)
 			defer k2.Close()
+			secEnsureSecrets(t, k2)
 
-			pr2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "encrypted-sec"})
-			ch2 := make(chan []byte, 1)
-			unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-			defer unsub2()
-
-			select {
-			case p := <-ch2:
-				var resp struct {
-					Value string `json:"value"`
-				}
-				json.Unmarshal(p, &resp)
-				assert.NotEqual(t, "sensitive-data", resp.Value, "wrong key should not decrypt secret")
-			case <-time.After(5 * time.Second):
-				t.Fatal("timeout")
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			resp, err := sdk.Call[secretmsg.SecretsGetMsg, secretmsg.SecretsGetResp](k2, ctx, secretmsg.SecretsGetMsg{Name: "encrypted-sec"})
+			if err != nil {
+				t.Logf("wrong key rejected secret read: %v", err)
+				return
 			}
+			assert.NotEqual(t, "sensitive-data", resp.Value, "wrong key should not decrypt secret")
 		})
 	}
 }

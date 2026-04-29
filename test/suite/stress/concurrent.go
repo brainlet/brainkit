@@ -3,7 +3,6 @@ package stress
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +19,9 @@ func testParallelDeploy(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k := env.Kit
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
+
 	testutil.ConcurrentDo(t, 10, func(i int) {
 		source := fmt.Sprintf("svc-stress-%d.ts", i)
 		code := fmt.Sprintf(`bus.on("ping", (msg) => msg.reply({ id: %d }));`, i)
@@ -38,6 +40,8 @@ func testParallelPublish(t *testing.T, env *suite.TestEnv) {
 
 	k := env.Kit
 	ctx := context.Background()
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
 
 	testutil.Deploy(t, k, "echo-stress.ts", `
 		bus.on("echo", (msg) => {
@@ -95,6 +99,8 @@ func testDeployDuringHandler(t *testing.T, env *suite.TestEnv) {
 
 	k := env.Kit
 	ctx := context.Background()
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
 
 	testutil.Deploy(t, k, "slow-stress.ts", `
 		bus.on("slow", async (msg) => {
@@ -158,6 +164,8 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k := env.Kit
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
 
 	testutil.Deploy(t, k, "race-stress-target.ts", `bus.on("ping", (msg) => msg.reply({ ok: true }));`)
 	time.Sleep(200 * time.Millisecond)
@@ -165,31 +173,7 @@ func testDeployTeardownRaceOnSameSource(t *testing.T, env *suite.TestEnv) {
 	errs := make(chan error, 2)
 
 	go func() {
-		// Teardown via bus — non-fatal error handling
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		pr, err := sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix("race-stress-target.ts", ".ts")})
-		if err != nil {
-			errs <- err
-			return
-		}
-		ch := make(chan error, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
-			if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
-				ch <- fmt.Errorf("%s", errMsg)
-			} else {
-				ch <- nil
-			}
-		})
-		if unsub != nil {
-			defer unsub()
-		}
-		select {
-		case e := <-ch:
-			errs <- e
-		case <-ctx.Done():
-			errs <- ctx.Err()
-		}
+		errs <- stressTeardown(t, k, "race-stress-target.ts")
 	}()
 	go func() {
 		errs <- testutil.DeployErr(k, "race-stress-target.ts", `bus.on("ping", (msg) => msg.reply({ v: 2 }));`)
@@ -211,6 +195,8 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k := env.Kit
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
 
 	testutil.ConcurrentDo(t, 5, func(i int) {
 		for cycle := 0; cycle < 3; cycle++ {
@@ -224,33 +210,9 @@ func testStressDeployTeardownCycles(t *testing.T, env *suite.TestEnv) {
 
 			time.Sleep(50 * time.Millisecond)
 
-			// Teardown via bus — non-fatal
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			pr, err := sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
-			if err != nil {
-				cancel()
-				t.Errorf("goroutine %d cycle %d: teardown publish failed: %v", i, cycle, err)
-				continue
+			if err := stressTeardown(t, k, source); err != nil {
+				t.Errorf("goroutine %d cycle %d: teardown failed: %v", i, cycle, err)
 			}
-			ch := make(chan error, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](k, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
-				if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
-					ch <- fmt.Errorf("%s", errMsg)
-				} else {
-					ch <- nil
-				}
-			})
-			select {
-			case e := <-ch:
-				if e != nil {
-					t.Errorf("goroutine %d cycle %d: teardown failed: %v", i, cycle, e)
-				}
-			case <-ctx.Done():
-			}
-			if unsub != nil {
-				unsub()
-			}
-			cancel()
 		}
 	})
 
@@ -264,6 +226,8 @@ func testRedeployRace(t *testing.T, env *suite.TestEnv) {
 	}
 
 	k := env.Kit
+	cleanupStressDeployments(t, k)
+	t.Cleanup(func() { cleanupStressDeployments(t, k) })
 
 	testutil.Deploy(t, k, "redeploy-stress-race.ts", `bus.on("v", (msg) => msg.reply({ version: 0 }));`)
 	time.Sleep(200 * time.Millisecond)
@@ -296,6 +260,10 @@ func testDeployDuringDrain(t *testing.T, env *suite.TestEnv) {
 
 	k := env.Kit
 	ctx := context.Background()
+	t.Cleanup(func() {
+		testutil.SetDraining(t, k, false)
+		cleanupStressDeployments(t, k)
+	})
 
 	testutil.SetDraining(t, k, true)
 

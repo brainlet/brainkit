@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +54,7 @@ func testRegistryResourceTracking(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Tools should be unresolvable
-	payload, ok := env.SendAndReceive(t, sdk.ToolResolveMsg{Name: "reg-track-tool-1"}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: "reg-track-tool-1"}, 5*time.Second)
 	require.True(t, ok)
 	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload))
 }
@@ -76,12 +76,12 @@ func testRegistrySourceIsolation(t *testing.T, _ *suite.TestEnv) {
 	testutil.Teardown(t, env.Kit, "reg-iso-a.ts")
 
 	// A's tool gone
-	payload, ok := env.SendAndReceive(t, sdk.ToolResolveMsg{Name: "iso-tool-a"}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: "iso-tool-a"}, 5*time.Second)
 	require.True(t, ok)
 	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload))
 
 	// B's tool still works
-	payload2, ok2 := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "iso-tool-b", Input: map[string]any{}}, 5*time.Second)
+	payload2, ok2 := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "iso-tool-b", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok2)
 	assert.Contains(t, string(payload2), `"src":"b"`)
 
@@ -100,7 +100,7 @@ func testRegistryReRegisterAfterTeardown(t *testing.T, _ *suite.TestEnv) {
 	`)
 
 	// Call v1
-	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	var result1 map[string]any
 	json.Unmarshal([]byte(suite.ResponseData(payload)), &result1)
@@ -111,7 +111,7 @@ func testRegistryReRegisterAfterTeardown(t *testing.T, _ *suite.TestEnv) {
 	testutil.Teardown(t, env.Kit, "reg-reregister.ts")
 
 	// Tool should be gone
-	payload2, ok2 := env.SendAndReceive(t, sdk.ToolResolveMsg{Name: "rereg-tool"}, 5*time.Second)
+	payload2, ok2 := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: "rereg-tool"}, 5*time.Second)
 	require.True(t, ok2)
 	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload2))
 
@@ -122,7 +122,7 @@ func testRegistryReRegisterAfterTeardown(t *testing.T, _ *suite.TestEnv) {
 	`)
 
 	// Call v2 — must return version 2, not version 1
-	payload3, ok3 := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
+	payload3, ok3 := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "rereg-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok3)
 	var result3 map[string]any
 	json.Unmarshal([]byte(suite.ResponseData(payload3)), &result3)
@@ -151,7 +151,7 @@ func testRegistryMixedResourceTypes(t *testing.T, _ *suite.TestEnv) {
 	assert.GreaterOrEqual(t, len(resources), 3, "should track tool, agent, and subscription")
 
 	// Verify tool works
-	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "mixed-tool", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "mixed-tool", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	assert.Contains(t, string(payload), "ok")
 
@@ -159,7 +159,7 @@ func testRegistryMixedResourceTypes(t *testing.T, _ *suite.TestEnv) {
 	testutil.Teardown(t, env.Kit, "reg-mixed.ts")
 
 	// Tool gone
-	payload2, ok2 := env.SendAndReceive(t, sdk.ToolResolveMsg{Name: "mixed-tool"}, 5*time.Second)
+	payload2, ok2 := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: "mixed-tool"}, 5*time.Second)
 	require.True(t, ok2)
 	assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload2))
 }

@@ -9,6 +9,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -29,9 +32,9 @@ func testLeakageErrorMessageContent(t *testing.T, env *suite.TestEnv) {
 		name string
 		msg  sdk.BrainkitMessage
 	}{
-		{"tool-not-found", sdk.ToolCallMsg{Name: "secret-internal-tool-name"}},
-		{"agent-not-found", sdk.AgentGetStatusMsg{Name: "internal-agent"}},
-		{"deploy-bad", sdk.PackageDeployMsg{
+		{"tool-not-found", toolmsg.ToolCallMsg{Name: "secret-internal-tool-name"}},
+		{"agent-not-found", agentmsg.AgentGetStatusMsg{Name: "internal-agent"}},
+		{"deploy-bad", packagemsg.PackageDeployMsg{
 			Manifest: json.RawMessage(`{"name":"x","entry":"x.ts"}`),
 			Files:    map[string]string{"x.ts": "throw new Error('DB_PASSWORD=secret123');"},
 		}},
@@ -108,7 +111,9 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 	defer k.Close()
 
 	var lastInput string
-	type leakyIn struct{ Data string `json:"data"` }
+	type leakyIn struct {
+		Data string `json:"data"`
+	}
 	brainkit.RegisterTool(k, "leaky-sec", tools.TypedTool[leakyIn]{
 		Description: "returns previous caller's data",
 		Execute: func(ctx context.Context, in leakyIn) (any, error) {
@@ -118,13 +123,15 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 		},
 	})
 
-	payload1, _ := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_A_SECRET"}}, 5*time.Second)
+	payload1, _ := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_A_SECRET"}}, 5*time.Second)
 	_ = payload1
 
-	payload2, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_B"}}, 5*time.Second)
+	payload2, ok := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_B"}}, 5*time.Second)
 	require.True(t, ok)
 
-	var resp struct{ Previous string `json:"previous"` }
+	var resp struct {
+		Previous string `json:"previous"`
+	}
 	json.Unmarshal(payload2, &resp)
 	if resp.Previous == "CALLER_A_SECRET" {
 		t.Logf("FINDING: Go tool leaks previous caller's data (expected — Go state is shared)")
@@ -175,13 +182,8 @@ func testLeakageMetadataLeak(t *testing.T, env *suite.TestEnv) {
 // testLeakageSecretTimingSideChannel — timing side channel on secrets.get.
 func testLeakageSecretTimingSideChannel(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
-	ctx := context.Background()
 
-	pr, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{Name: "TIMING_KEY_SEC", Value: "secret-value"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	secSetSecret(t, k, "TIMING_KEY_SEC", "secret-value")
 
 	var existsTimes []time.Duration
 	for i := 0; i < 20; i++ {

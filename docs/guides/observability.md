@@ -71,9 +71,9 @@ Add the module to `Config.Modules`. From that point on:
 ### Query
 
 ```go
-resp, err := brainkit.CallAuditQuery(kit, ctx,
-    sdk.AuditQueryMsg{Limit: 20},
-    brainkit.WithCallTimeout(3*time.Second))
+resp, err := auditmsg.CallAuditQuery(kit, ctx,
+    auditmsg.AuditQueryMsg{Limit: 20},
+    sdk.WithCallTimeout(3*time.Second))
 
 for _, e := range resp.Events {
     fmt.Println(e.Timestamp, e.Category, e.Type, e.Source)
@@ -83,24 +83,23 @@ for _, e := range resp.Events {
 Filter with the full `AuditQueryMsg` shape:
 
 ```go
-sdk.AuditQueryMsg{
-    Category:   []string{"bus", "deploy"},
-    Type:       []string{"handler.ok"},
-    Source:     []string{"ts.my-service.ask"},
-    Since:      time.Now().Add(-1 * time.Hour),
-    Until:      time.Now(),
-    Limit:      500,
-    Offset:     0,
-    CorrelationID: "...",
+auditmsg.AuditQueryMsg{
+    Category:  "deploy",
+    Type:      "handler.ok",
+    Source:    "ts.my-service.ask",
+    Since:     time.Now().Add(-1 * time.Hour),
+    Until:     time.Now(),
+    Limit:     500,
+    RuntimeID: "runtime-1",
 }
 ```
 
 ### Stats
 
 ```go
-stats, err := brainkit.CallAuditStats(kit, ctx,
-    sdk.AuditStatsMsg{},
-    brainkit.WithCallTimeout(3*time.Second))
+stats, err := auditmsg.CallAuditStats(kit, ctx,
+    auditmsg.AuditStatsMsg{},
+    sdk.WithCallTimeout(3*time.Second))
 
 fmt.Printf("total=%d\n", stats.TotalEvents)
 for cat, n := range stats.EventsByCategory {
@@ -111,9 +110,9 @@ for cat, n := range stats.EventsByCategory {
 ### Prune
 
 ```go
-_, err = brainkit.CallAuditPrune(kit, ctx,
-    sdk.AuditPruneMsg{Before: time.Now().Add(-24 * time.Hour)},
-    brainkit.WithCallTimeout(3*time.Second))
+_, err = auditmsg.CallAuditPrune(kit, ctx,
+    auditmsg.AuditPruneMsg{OlderThanHours: 24},
+    sdk.WithCallTimeout(3*time.Second))
 ```
 
 ### Verbose tier
@@ -134,6 +133,7 @@ Tracing uses a separate module with its own store. For SQLite:
 import (
     "database/sql"
     "github.com/brainlet/brainkit/modules/tracing"
+    "github.com/brainlet/brainkit/modules/tracing/tracingmsg"
     _ "modernc.org/sqlite"
 )
 
@@ -152,9 +152,9 @@ controls sampling; default 1.0.
 ### List traces
 
 ```go
-resp, err := brainkit.CallTraceList(kit, ctx,
-    sdk.TraceListMsg{Limit: 20},
-    brainkit.WithCallTimeout(3*time.Second))
+resp, err := tracingmsg.CallTraceList(kit, ctx,
+    tracingmsg.TraceListMsg{Limit: 20},
+    sdk.WithCallTimeout(3*time.Second))
 
 var traces []struct {
     TraceID   string `json:"traceId"`
@@ -171,10 +171,10 @@ UI wants.
 ### Fetch a single trace
 
 ```go
-t, err := brainkit.CallTraceGet(kit, ctx,
-    sdk.TraceGetMsg{TraceID: "abc123..."},
-    brainkit.WithCallTimeout(3*time.Second))
-// t.Trace carries the span tree.
+t, err := tracingmsg.CallTraceGet(kit, ctx,
+    tracingmsg.TraceGetMsg{TraceID: "abc123..."},
+    sdk.WithCallTimeout(3*time.Second))
+// t.Spans carries the span tree JSON.
 ```
 
 ## Combined wiring
@@ -199,11 +199,11 @@ both before any module that should be observed.
 
 | Topic | Request | Response | Wrapper |
 |---|---|---|---|
-| `audit.query` | `AuditQueryMsg` | `AuditQueryResp` | `CallAuditQuery` |
-| `audit.stats` | `AuditStatsMsg` | `AuditStatsResp` | `CallAuditStats` |
-| `audit.prune` | `AuditPruneMsg` | `AuditPruneResp` | `CallAuditPrune` |
-| `trace.list` | `TraceListMsg` | `TraceListResp` | `CallTraceList` |
-| `trace.get` | `TraceGetMsg` | `TraceGetResp` | `CallTraceGet` |
+| `audit.query` | `auditmsg.AuditQueryMsg` | `auditmsg.AuditQueryResp` | `auditmsg.CallAuditQuery` |
+| `audit.stats` | `auditmsg.AuditStatsMsg` | `auditmsg.AuditStatsResp` | `auditmsg.CallAuditStats` |
+| `audit.prune` | `auditmsg.AuditPruneMsg` | `auditmsg.AuditPruneResp` | `auditmsg.CallAuditPrune` |
+| `trace.list` | `tracingmsg.TraceListMsg` | `tracingmsg.TraceListResp` | `tracingmsg.CallTraceList` |
+| `trace.get` | `tracingmsg.TraceGetMsg` | `tracingmsg.TraceGetResp` | `tracingmsg.CallTraceGet` |
 
 ## Probes
 
@@ -216,11 +216,10 @@ import probesmod "github.com/brainkit/brainkit/modules/probes"
 probesmod.NewModule(probesmod.Config{})
 ```
 
-The bus commands `kit.health`, `kit.alive`, `kit.ready`, and
-`kit.probe` are generated wrappers (`brainkit.CallKitHealth`, etc.)
-and work whether or not the probes module is wired — the module
-adds scheduled background probing of every provider / vector store
-/ storage backend.
+The `kit.health` bus command is module-owned by `modules/health`; its
+typed helpers live in that package (`health.CallKitHealth`, etc.).
+The probes module adds scheduled background probing of every provider /
+vector store / storage backend.
 
 ## What's not shipped
 

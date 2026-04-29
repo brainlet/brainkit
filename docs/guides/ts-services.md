@@ -294,7 +294,7 @@ const wf = createWorkflow({
 kit.register("workflow", "shout", wf);
 ```
 
-Run from Go with `brainkit.CallWorkflowStart`. See
+Run from Go with `workflowmsg.CallWorkflowStart`. See
 [`examples/workflows/`](../../examples/workflows/).
 
 ## output

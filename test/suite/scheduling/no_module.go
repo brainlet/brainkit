@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	evalmod "github.com/brainlet/brainkit/modules/eval"
+	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -17,13 +19,14 @@ import (
 // .ts bus.schedule(...) calls surface a NOT_CONFIGURED error (instead of
 // silently succeeding and then never firing).
 func testNoModuleThrowsNotConfigured(t *testing.T, _ *suite.TestEnv) {
-	// Build a Kit without the schedules module. We use Memory transport +
-	// no modules at all so the only relevant state is the absent scheduler.
+	// Build a Kit without the schedules module. Eval is mounted only so this
+	// test can execute TS that calls bus.schedule.
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{evalmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -34,7 +37,7 @@ func testNoModuleThrowsNotConfigured(t *testing.T, _ *suite.TestEnv) {
 	// Use kit.eval in "ts" mode to invoke bus.schedule in the runtime — the
 	// response envelope carries the bridge-thrown error when no handler is
 	// attached.
-	pr, err := sdk.Publish(k, ctx, sdk.KitEvalMsg{
+	pr, err := sdk.Publish(k, ctx, evalmsg.KitEvalMsg{
 		Source: "no-sched-module.ts",
 		Mode:   "ts",
 		Code:   `bus.schedule("every 100ms", "tick", {});`,

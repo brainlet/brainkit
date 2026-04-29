@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit"
-	_ "github.com/brainlet/brainkit/internal/providers"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 

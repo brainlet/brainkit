@@ -9,6 +9,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -21,28 +23,16 @@ func testStorageRuntimeAddRemove(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add via bus
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
+	addResp, err := sdk.Call[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](env.Kit, ctx, registrymsg.StorageAddMsg{
 		Name: "runtime-mem-reg-adv", Type: "memory", Config: json.RawMessage(`{}`),
 	})
-	addCh := make(chan sdk.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageAddResp, _ sdk.Message) { addCh <- resp })
-	<-addCh
-	unsub()
+	require.NoError(t, err)
+	require.True(t, addResp.Added)
 
 	// Remove via bus
-	pr2, _ := sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "runtime-mem-reg-adv"})
-	rmCh := make(chan sdk.StorageRemoveResp, 1)
-	unsub2, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.StorageRemoveResp, _ sdk.Message) { rmCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-rmCh:
-		assert.True(t, resp.Removed)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	rmResp, err := sdk.Call[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](env.Kit, ctx, registrymsg.StorageRemoveMsg{Name: "runtime-mem-reg-adv"})
+	require.NoError(t, err)
+	assert.True(t, rmResp.Removed)
 }
 
 // testStorageRuntimeAddDuplicate — adding same name twice returns error or replaces.
@@ -51,27 +41,19 @@ func testStorageRuntimeAddDuplicate(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// First add
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
+	resp, err := sdk.Call[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](env.Kit, ctx, registrymsg.StorageAddMsg{
 		Name: "dup-store-reg-adv", Type: "memory", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan sdk.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageAddResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	unsub()
+	require.NoError(t, err)
+	require.True(t, resp.Added)
 
 	// Second add — might succeed (replace) or error — no panic is the key
-	pr2, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
+	_, _ = sdk.Call[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](env.Kit, ctx, registrymsg.StorageAddMsg{
 		Name: "dup-store-reg-adv", Type: "memory", Config: json.RawMessage(`{}`),
 	})
-	ch2 := make(chan sdk.StorageAddResp, 1)
-	unsub2, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.StorageAddResp, _ sdk.Message) { ch2 <- resp })
-	<-ch2
-	unsub2()
 
 	// Cleanup
-	sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "dup-store-reg-adv"})
+	_, _ = sdk.Call[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](env.Kit, ctx, registrymsg.StorageRemoveMsg{Name: "dup-store-reg-adv"})
 }
 
 // testStorageRuntimeRemoveNonexistent — removing nonexistent storage doesn't crash.
@@ -79,18 +61,8 @@ func testStorageRuntimeRemoveNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "ghost-storage-reg-adv"})
-	rmCh := make(chan sdk.StorageRemoveResp, 1)
-	unsub, _ := sdk.SubscribeStorageRemoveResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageRemoveResp, _ sdk.Message) { rmCh <- resp })
-	defer unsub()
-
-	select {
-	case <-rmCh:
-		// Should succeed gracefully (no-op or removed=false)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	_, err := sdk.Call[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](env.Kit, ctx, registrymsg.StorageRemoveMsg{Name: "ghost-storage-reg-adv"})
+	require.NoError(t, err)
 }
 
 // testStorageRuntimeURLForNonexistent — resolving nonexistent storage returns empty via JS bridge.
@@ -108,16 +80,12 @@ func testStorageRuntimeSQLiteAdd(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishStorageAdd(env.Kit, ctx, sdk.StorageAddMsg{
+	resp, err := sdk.Call[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](env.Kit, ctx, registrymsg.StorageAddMsg{
 		Name:   "sqlite-runtime-reg-adv",
 		Type:   "sqlite",
 		Config: json.RawMessage(`{"path":"` + tmpDir + `/runtime.db"}`),
 	})
-	addCh := make(chan sdk.StorageAddResp, 1)
-	unsub, _ := sdk.SubscribeStorageAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.StorageAddResp, _ sdk.Message) { addCh <- resp })
-	resp := <-addCh
-	unsub()
+	require.NoError(t, err)
 	require.True(t, resp.Added, "SQLite storage should be added")
 
 	// Verify it's registered
@@ -127,7 +95,7 @@ func testStorageRuntimeSQLiteAdd(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, result, `"has":true`)
 
 	// Cleanup
-	sdk.PublishStorageRemove(env.Kit, ctx, sdk.StorageRemoveMsg{Name: "sqlite-runtime-reg-adv"})
+	_, _ = sdk.Call[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](env.Kit, ctx, registrymsg.StorageRemoveMsg{Name: "sqlite-runtime-reg-adv"})
 }
 
 // testStorageRuntimeListResources — verify registered tool appears in tool.list bus command.
@@ -139,8 +107,8 @@ func testStorageRuntimeListResources(t *testing.T, env *suite.TestEnv) {
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, "res-test-reg-adv.ts") })
 
 	// Verify tool appears via tool.list bus command
-	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
-	var resp sdk.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, toolmsg.ToolListMsg{}, 5*time.Second)
+	var resp toolmsg.ToolListResp
 	if err := json.Unmarshal(payload, &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -162,8 +130,8 @@ func testStorageRuntimeResourcesFromSource(t *testing.T, env *suite.TestEnv) {
 	t.Cleanup(func() { testutil.Teardown(t, env.Kit, "source-track-reg-adv.ts") })
 
 	// Verify the tool is registered via tool.list
-	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
-	var resp sdk.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, toolmsg.ToolListMsg{}, 5*time.Second)
+	var resp toolmsg.ToolListResp
 	if err := json.Unmarshal(payload, &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

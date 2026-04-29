@@ -74,7 +74,7 @@ func run() error {
 		if isHarnessJSMissing(err) {
 			fmt.Println("Harness JS backend is not wired in this build.")
 			fmt.Println("The frozen Go-side contract (Module / Instance / Event) still compiles:")
-			fmt.Printf("  module name        : %s\n", harnessMod.Name())
+			fmt.Printf("  module id          : %s\n", harnessMod.ID())
 			fmt.Printf("  module status      : %s (WIP)\n", harnessMod.Status())
 			fmt.Println("  Instance interface : SendMessage / Abort / Steer / FollowUp / Subscribe / CurrentThread / CurrentMode / Close")
 			fmt.Println("  frozen event types : agent_start, agent_end, message_update, tool_start, tool_end, error")

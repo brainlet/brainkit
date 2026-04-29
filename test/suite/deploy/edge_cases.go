@@ -1,14 +1,14 @@
 package deploy
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,7 +153,7 @@ func testToolWithComplexSchema(t *testing.T, env *suite.TestEnv) {
 		output({ registered: true });
 	`)
 
-	payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolCallMsg{
 		Name: "complex-edge",
 		Input: map[string]any{
 			"name": "test", "age": 25,
@@ -182,31 +182,23 @@ func testMultipleToolsOneDeployment(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	for i := 0; i < 5; i++ {
-		payload, ok := env.SendAndReceive(t, sdk.ToolResolveMsg{Name: fmt.Sprintf("batch-edge-%d", i)}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: fmt.Sprintf("batch-edge-%d", i)}, 5*time.Second)
 		require.True(t, ok, "batch-edge-%d should be resolvable", i)
 		assert.NotContains(t, string(payload), "not found")
 	}
 }
 
 func testAgentRegistration(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
 	testutil.Deploy(t, env.Kit, "agent-reg-edge.ts", `
 		import { kit, output } from "kit";
 		kit.register("agent", "test-bot-edge", {});
 		output({ registered: true });
 	`)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "test-bot-edge")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+	payload, ok := env.SendAndReceive(t, agentmsg.AgentListMsg{}, 3*time.Second)
+	require.True(t, ok)
+	assert.Contains(t, string(payload), "test-bot-edge")
+	testutil.Teardown(t, env.Kit, "agent-reg-edge.ts")
 }
 
 func testWorkflowRegistration(t *testing.T, env *suite.TestEnv) {

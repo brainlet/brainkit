@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 )
 
 // domain wraps the module's Store for the three bus commands. Each
@@ -16,9 +16,9 @@ type domain struct {
 
 func newDomain(store Store) *domain { return &domain{store: store} }
 
-func (d *domain) Query(_ context.Context, req sdk.AuditQueryMsg) (*sdk.AuditQueryResp, error) {
+func (d *domain) Query(_ context.Context, req auditmsg.AuditQueryMsg) (*auditmsg.AuditQueryResp, error) {
 	if d.store == nil {
-		return &sdk.AuditQueryResp{Events: []sdk.AuditEvent{}}, nil
+		return &auditmsg.AuditQueryResp{Events: []auditmsg.AuditEvent{}}, nil
 	}
 	events, err := d.store.Query(Query{
 		Category:  req.Category,
@@ -33,9 +33,9 @@ func (d *domain) Query(_ context.Context, req sdk.AuditQueryMsg) (*sdk.AuditQuer
 		return nil, err
 	}
 	total, _ := d.store.Count()
-	sdkEvents := make([]sdk.AuditEvent, len(events))
+	sdkEvents := make([]auditmsg.AuditEvent, len(events))
 	for i, e := range events {
-		sdkEvents[i] = sdk.AuditEvent{
+		sdkEvents[i] = auditmsg.AuditEvent{
 			ID:        e.ID,
 			Timestamp: e.Timestamp,
 			Category:  e.Category,
@@ -48,21 +48,21 @@ func (d *domain) Query(_ context.Context, req sdk.AuditQueryMsg) (*sdk.AuditQuer
 			Error:     e.Error,
 		}
 	}
-	return &sdk.AuditQueryResp{Events: sdkEvents, Total: total}, nil
+	return &auditmsg.AuditQueryResp{Events: sdkEvents, Total: total}, nil
 }
 
-func (d *domain) Stats(_ context.Context, _ sdk.AuditStatsMsg) (*sdk.AuditStatsResp, error) {
+func (d *domain) Stats(_ context.Context, _ auditmsg.AuditStatsMsg) (*auditmsg.AuditStatsResp, error) {
 	if d.store == nil {
-		return &sdk.AuditStatsResp{EventsByCategory: map[string]int64{}}, nil
+		return &auditmsg.AuditStatsResp{EventsByCategory: map[string]int64{}}, nil
 	}
 	total, _ := d.store.Count()
 	byCat, _ := d.store.CountByCategory()
-	return &sdk.AuditStatsResp{TotalEvents: total, EventsByCategory: byCat}, nil
+	return &auditmsg.AuditStatsResp{TotalEvents: total, EventsByCategory: byCat}, nil
 }
 
-func (d *domain) Prune(_ context.Context, req sdk.AuditPruneMsg) (*sdk.AuditPruneResp, error) {
+func (d *domain) Prune(_ context.Context, req auditmsg.AuditPruneMsg) (*auditmsg.AuditPruneResp, error) {
 	if d.store == nil {
-		return &sdk.AuditPruneResp{Pruned: false}, nil
+		return &auditmsg.AuditPruneResp{Pruned: false}, nil
 	}
 	hours := req.OlderThanHours
 	if hours <= 0 {
@@ -71,5 +71,5 @@ func (d *domain) Prune(_ context.Context, req sdk.AuditPruneMsg) (*sdk.AuditPrun
 	if err := d.store.Prune(time.Duration(hours) * time.Hour); err != nil {
 		return nil, err
 	}
-	return &sdk.AuditPruneResp{Pruned: true}, nil
+	return &auditmsg.AuditPruneResp{Pruned: true}, nil
 }

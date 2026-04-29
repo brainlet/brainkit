@@ -5,14 +5,17 @@ Dense reference for the `brainkit` Go surface. Canonical source: `github.com/bra
 ```go
 import (
     "github.com/brainlet/brainkit"
+    "github.com/brainlet/brainkit/modules/registry/registrymsg"
+    "github.com/brainlet/brainkit/modules/tools/toolmsg"
     "github.com/brainlet/brainkit/sdk"
     "github.com/brainlet/brainkit/sdk/sdkerrors"
+    "github.com/brainlet/brainkit/sdk/systemmsg"
 )
 ```
 
 Two packages form the public Go surface:
 
-- `brainkit` — runtime construction (`Kit`, `Config`, transports, providers, storages, vectors, modules, `Call`/`CallStream`, generated call wrappers).
+- `brainkit` — runtime construction (`Kit`, `Config`, transports, providers, storages, vectors, modules, generic `Call` / `CallStream`).
 - `sdk` — bus-level primitives that do not depend on a `Kit`: `Runtime` interfaces, typed-message contracts, `Publish`/`Emit`/`SubscribeTo`/`Reply`, envelopes, typed errors.
 
 A third package, `brainkit/server`, composes a `Kit` with the standard module set — documented in `go-config.md`.
@@ -321,9 +324,8 @@ func (k *Kit) RegisterRawTool(t RegisteredTool) error
 
 ```go
 type Module interface {
-    Name() string
-    Init(k *Kit) error
-    Close() error
+    ID() string
+    Mount(context.Context, module.Host) error
 }
 
 type ModuleStatus = string
@@ -342,7 +344,8 @@ type CommandSpec = engine.CommandSpec
 func Command[Req sdk.BrainkitMessage, Resp any](
     handler func(context.Context, Req) (*Resp, error),
 ) CommandSpec
-func (k *Kit) RegisterCommand(spec CommandSpec)
+func (k *Kit) Mount(ctx context.Context, mod Module) error
+func (k *Kit) Unmount(ctx context.Context, id string) error
 
 // Lookup / control
 func (k *Kit) Module(name string) (Module, bool)
@@ -360,7 +363,7 @@ func (k *Kit) SetPluginRestarter(r PluginRestarter)
 func (k *Kit) HarnessRuntime() any
 ```
 
-Modules extend a `Kit` by registering bus commands during `Init`. They are evaluated in order from `Config.Modules` and closed in reverse order on `Kit.Close`. See `go-config.md` for the bundled module constructors.
+Modules extend a `Kit` by mounting scoped commands, tools, subscriptions, and capabilities through `module.Host`. Configured modules mount in order after the router starts; later linked-code modules can mount through `Kit.Mount`. Mounted scopes close in reverse order on `Kit.Close` / `Kit.Shutdown`, or individually through `Kit.Unmount`. See `go-config.md` for the bundled module constructors.
 
 ---
 
@@ -376,16 +379,16 @@ func WithCallBuffer(n int) CallOption                // CallStream only
 func WithCallBufferPolicy(p BufferPolicy) CallOption // CallStream only
 func WithCallNoCancelSignal() CallOption             // disables _brainkit.cancel emission
 
-type BufferPolicy = caller.BufferPolicy
+type BufferPolicy = sdk.BufferPolicy
 const (
-    BufferBlock       = caller.BufferBlock
-    BufferDropNewest  = caller.BufferDropNewest
-    BufferDropOldest  = caller.BufferDropOldest
-    BufferError       = caller.BufferError
+    BufferBlock       = sdk.BufferBlock
+    BufferDropNewest  = sdk.BufferDropNewest
+    BufferDropOldest  = sdk.BufferDropOldest
+    BufferError       = sdk.BufferError
 )
 
 // Deadline rule: ctx must carry a deadline, or WithCallTimeout must be
-// set. Missing both → *caller.NoDeadlineError (Code "VALIDATION_ERROR").
+// set. Missing both → *sdk.NoDeadlineError (Code "VALIDATION_ERROR").
 func Call[Req sdk.BrainkitMessage, Resp any](
     k *Kit, ctx context.Context, req Req, opts ...CallOption,
 ) (Resp, error)
@@ -399,68 +402,89 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 ) (Resp, error)
 
 // Lower-level access to the shared-inbox reply router.
-func (k *Kit) Caller() *caller.Caller
+func (k *Kit) Caller() *sdk.Caller
 ```
 
 Resp types of `json.RawMessage` short-circuit the decode and return raw bytes.
 
 ### 5.1 Generated `CallXxx` wrappers
 
-For every request/response pair in `sdk/*_messages.go`, `cmd/sdkgen` emits a saturated wrapper at the package top level:
+For every request/response pair in a generated message package,
+`cmd/sdkgen` emits a saturated wrapper in that same package. SDK-owned
+system event messages generate into package `sdk/systemmsg`:
 
 ```go
-func CallToolCall(k *Kit, ctx context.Context, msg sdk.ToolCallMsg,
-    opts ...CallOption) (sdk.ToolCallResp, error) {
-    return Call[sdk.ToolCallMsg, sdk.ToolCallResp](k, ctx, msg, opts...)
+func EmitKitDeployed(rt sdk.Runtime, ctx context.Context, msg KitDeployedEvent) error {
+    return sdk.Emit(rt, ctx, msg)
 }
 ```
 
-All 62 wrappers (one per bus command in `docs/bus-topics.md`):
-
-```
-CallAgentDiscover         CallAgentGetStatus        CallAgentList             CallAgentSetStatus
-CallAuditPrune            CallAuditQuery            CallAuditStats
-CallClusterPeers
-CallGatewayRouteAdd       CallGatewayRouteList      CallGatewayRouteRemove    CallGatewayStatus
-CallKitEval               CallKitHealth             CallKitSend               CallKitSetDraining
-CallMcpCallTool           CallMcpListTools
-CallMetricsGet
-CallPackageDeploy         CallPackageDeployInfo     CallPackageListDeployed   CallPackageTeardown
-CallPeersList             CallPeersResolve
-CallPluginListRunning     CallPluginManifest        CallPluginRestart         CallPluginStart
-CallPluginStatus          CallPluginStop
-CallProviderAdd           CallProviderRemove
-CallRegistryHas           CallRegistryList          CallRegistryResolve
-CallScheduleCancel        CallScheduleCreate        CallScheduleList
-CallSecretsDelete         CallSecretsGet            CallSecretsList           CallSecretsRotate
-CallSecretsSet
-CallStorageAdd            CallStorageRemove
-CallTestRun
-CallToolCall              CallToolList              CallToolResolve
-CallTraceGet              CallTraceList
-CallVectorAdd             CallVectorRemove
-CallWorkflowCancel        CallWorkflowList          CallWorkflowRestart       CallWorkflowResume
-CallWorkflowRuns          CallWorkflowStart         CallWorkflowStartAsync    CallWorkflowStatus
-```
+Top-level `sdk` currently has no generated command call wrappers and no
+fixed-topic system-event wrappers. System-event wrappers live in
+`sdk/systemmsg`; module command wrappers live with their owning module
+packages.
 
 Regenerate with:
 
 ```
-go run ./cmd/sdkgen -messages ./sdk -out ./sdk/typed_gen.go -call-out ./call_gen.go
+make generate
 ```
+
+Module-owned messages generate wrappers in their module package. For
+example, `kit.health` is owned by `modules/health` and exposes
+`health.CallKitHealth(rt, ctx, health.KitHealthMsg{})`; `metrics.get`
+is owned by `modules/metrics` and exposes `metrics.CallMetricsGet`;
+`kit.send` is owned by `modules/messaging` and exposes
+`messaging.CallKitSend`; `cluster.peers` and `kit.set-draining` are
+owned by `modules/control` and expose `control.CallClusterPeers` and
+`control.CallKitSetDraining`; `peers.list` and `peers.resolve` are
+owned by `modules/topology` and expose `topology.CallPeersList` and
+`topology.CallPeersResolve`; `kit.eval` is owned by lightweight package
+`modules/eval/evalmsg` and exposes `evalmsg.CallKitEval`; `tools.call`,
+`tools.list`, and `tools.resolve` are owned by lightweight package
+`modules/tools/toolmsg` and expose `toolmsg.CallToolCall`,
+`toolmsg.CallToolList`, and `toolmsg.CallToolResolve`; `registry.*`,
+`providers.*`, `storages.*`, and `vectors.*` are owned by lightweight
+package `modules/registry/registrymsg` and expose `registrymsg.CallXxx`
+wrappers; `secrets.*` is owned by lightweight package
+`modules/secrets/secretmsg` and exposes `secretmsg.CallSecretsXxx`
+wrappers; `package.*` is owned by lightweight package
+`modules/packages/packagemsg` and exposes `packagemsg.CallPackageXxx`
+wrappers; `schedules.*` is owned by lightweight package
+`modules/schedules/schedulemsg` and exposes `schedulemsg.CallScheduleXxx`
+wrappers; `mcp.*` is owned by lightweight package `modules/mcp/mcpmsg`
+and exposes `mcpmsg.CallMcpXxx`; `agents.*` is owned by lightweight
+package `modules/agents/agentmsg` and exposes `agentmsg.CallAgentXxx`
+wrappers; `audit.*` is owned by lightweight package
+`modules/audit/auditmsg` and exposes `auditmsg.CallAuditXxx`
+wrappers; `trace.*` is owned by lightweight package
+`modules/tracing/tracingmsg` and exposes `tracingmsg.CallTraceXxx`
+wrappers; `gateway.http.*` is owned by lightweight package
+`modules/gateway/gatewaymsg` and exposes `gatewaymsg.CallGatewayXxx`
+wrappers; `workflow.*` is owned by lightweight package
+`modules/workflow/workflowmsg` and exposes `workflowmsg.CallWorkflowXxx`
+wrappers; `plugin.*` commands and plugin-owned events are owned by
+lightweight package `modules/plugins/pluginmsg` and expose
+`pluginmsg.CallPluginXxx`, `pluginmsg.EmitPluginXxx`, and
+`pluginmsg.SubscribePluginXxx`
+wrappers; `kit.reference*` is owned by lightweight package
+`modules/reference/referencemsg` and exposes
+`referencemsg.CallKitReferenceXxx` wrappers; `test.run` is owned by
+lightweight package `modules/testing/testingmsg` and exposes
+`testingmsg.CallTestRun` wrappers.
 
 ---
 
 ## 6. Typed messages
 
-Every `sdk.*Msg` type satisfies `BrainkitMessage` and declares its topic via `BusTopic()`. Responses are plain structs with no shared base type.
+Every typed `*Msg` type satisfies `BrainkitMessage` and declares its topic via `BusTopic()`. Responses are plain structs with no shared base type. SDK system-event messages live in `sdk/systemmsg`; module-owned messages live with the module package that owns the command.
 
-Catalog: see `docs/bus-topics.md` (generated from `sdk/*_messages.go`).
+Catalog: see `docs/bus-topics.md` (generated from `sdk/**/*_messages.go` and `modules/**/*_messages.go`).
 
 Representative subset:
 
 ```go
-// Package lifecycle
+// Package lifecycle lives in modules/packages/packagemsg.
 type PackageDeployMsg struct {
     Path     string            `json:"path,omitempty"`     // dir/file path (bundled via esbuild)
     Manifest json.RawMessage   `json:"manifest,omitempty"` // inline name+entry
@@ -475,18 +499,20 @@ type PackageDeployResp struct {
     Resources []sdk.ResourceInfo `json:"resources"`
 }
 
-// Runtime introspection
+// Module-owned eval command lives in modules/eval/evalmsg.
 type KitEvalMsg struct {
-    Code string `json:"code"`
-    Mode string `json:"mode,omitempty"` // "script" (default), "ts", "module"
+    Source string `json:"source,omitempty"`
+    Code   string `json:"code"`
+    Mode   string `json:"mode,omitempty"` // "script" (default), "ts", "module"
 }
 func (KitEvalMsg) BusTopic() string { return "kit.eval" }
 
+// Module-owned health command lives in modules/health.
 type KitHealthMsg struct{}
 func (KitHealthMsg) BusTopic() string { return "kit.health" }
 ```
 
-`KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` transpiles via esbuild before evaluation.
+`evalmsg.KitEvalMsg.Mode` is whitelisted to `script`, `ts`, `module`. `ts` transpiles via esbuild before evaluation.
 
 ---
 
@@ -541,17 +567,17 @@ All implement `sdkerrors.BrainkitError` (`error` + `Code() string` + `Details() 
 
 ### 8.3 `brainkit.Call` errors
 
-From `internal/bus/caller` (re-exported):
+From `sdk`:
 
 | Type | Code | Trigger |
 |---|---|---|
-| `*caller.NoDeadlineError` | `VALIDATION_ERROR` | ctx has no deadline and no `WithCallTimeout` |
-| `*caller.CallTimeoutError` | `CALL_TIMEOUT` | deadline elapsed before terminal reply |
-| `*caller.CallCancelledError` | `CALL_CANCELLED` | ctx cancelled (not deadline) |
-| `*caller.DecodeError` | `CALL_DECODE_ERROR` | reply payload won't unmarshal into Resp |
-| `*caller.BufferOverflowError` | `CALL_BUFFER_OVERFLOW` | stream buffer full, `BufferError` policy |
-| `*caller.HandlerFailedError` | `HANDLER_FAILED` | remote handler exhausted retries |
-| `caller.ErrCallerClosed` | — | call on a closed `Caller` |
+| `*sdk.NoDeadlineError` | `VALIDATION_ERROR` | ctx has no deadline and no `WithCallTimeout` |
+| `*sdk.CallTimeoutError` | `CALL_TIMEOUT` | deadline elapsed before terminal reply |
+| `*sdk.CallCancelledError` | `CALL_CANCELLED` | ctx cancelled (not deadline) |
+| `*sdk.CallDecodeError` | `CALL_DECODE_ERROR` | reply payload won't unmarshal into Resp |
+| `*sdk.BufferOverflowError` | `CALL_BUFFER_OVERFLOW` | stream buffer full, `BufferError` policy |
+| `*sdk.HandlerFailedError` | `HANDLER_FAILED` | remote handler exhausted retries |
+| `sdk.ErrCallerClosed` | — | call on a closed `Caller` |
 
 ---
 
@@ -571,7 +597,7 @@ Used internally by `Publish`/`PublishTo`. Callers rarely interact directly.
 ## 10. Error handling pattern
 
 ```go
-reply, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{Name: "echo"})
+reply, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{Name: "echo"})
 if err != nil {
     var nf *sdk.NotFoundError
     var vl *sdk.ValidationError
@@ -605,7 +631,7 @@ defer kit.Close()
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
-resp, err := brainkit.CallToolList(kit, ctx, sdk.ToolListMsg{})
+resp, err := toolmsg.CallToolList(kit, ctx, toolmsg.ToolListMsg{})
 ```
 
 ### Deploy a `.ts` package, call its mailbox
@@ -645,9 +671,10 @@ kit, _ := brainkit.New(brainkit.Config{
     Modules: []brainkit.Module{&mod},
 })
 
-// Inside myModule.Init(k *Kit):
-k.RegisterCommand(brainkit.Command(func(ctx context.Context,
+// Inside myModule.Mount(ctx context.Context, host module.Host):
+_, err := host.Commands().Handle(module.Command(func(ctx context.Context,
     req MyMsg) (*MyResp, error) {
     return &MyResp{Echo: req.Text}, nil
 }))
+return err
 ```

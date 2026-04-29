@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"log"
 	"time"
 
@@ -120,11 +121,11 @@ func run() error {
 	fmt.Println(string(reply))
 
 	// Show that the same tools are invokable directly from Go
-	// through the generated CallToolCall wrapper.
-	direct, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+	// through the generated toolmsg.CallToolCall wrapper.
+	direct, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "math.add",
 		Input: map[string]any{"a": 40, "b": 2},
-	}, brainkit.WithCallTimeout(2*time.Second))
+	}, sdk.WithCallTimeout(2*time.Second))
 	if err != nil {
 		return fmt.Errorf("call math.add directly: %w", err)
 	}

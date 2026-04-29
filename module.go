@@ -6,37 +6,27 @@ import (
 	"log/slog"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/deploy"
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// Module is an opt-in kernel extension. Modules register bus commands and
-// manage their own lifecycle; they run only when included in Config.Modules.
-//
-// This is the public contract — modules live outside internal/engine and
-// satisfy it without importing internal packages. Legacy internal modules
-// keep satisfying engine.Module; the module init loop dispatches to whichever
-// interface is present.
-type Module interface {
-	Name() string
-	Init(k *Kit) error
-	Close() error
-}
+// Module is Brainkit's hot-mountable module contract.
+type Module = bkmodule.Module
 
 // ModuleStatus reports a module's maturity. Modules can optionally report
 // their status for CLI listing / docs.
-type ModuleStatus = string
+type ModuleStatus = bkmodule.Status
 
 const (
-	ModuleStatusStable ModuleStatus = "stable"
-	ModuleStatusBeta   ModuleStatus = "beta"
-	ModuleStatusWIP    ModuleStatus = "wip"
+	ModuleStatusStable ModuleStatus = bkmodule.StatusStable
+	ModuleStatusBeta   ModuleStatus = bkmodule.StatusBeta
+	ModuleStatusWIP    ModuleStatus = bkmodule.StatusWIP
 )
 
 // StatusReporter is implemented by modules that expose a maturity tag.
@@ -52,7 +42,7 @@ type CommandSpec = engine.CommandSpec
 // the context and decoded request; capture any Kit / Module state via
 // closure.
 //
-//	k.RegisterCommand(brainkit.Command(func(ctx context.Context, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
+//	k.RegisterCommand(brainkit.Command(func(ctx context.Context, req mcpmsg.McpListToolsMsg) (*mcpmsg.McpListToolsResp, error) {
 //	    return m.domain.ListTools(ctx, req)
 //	}))
 func Command[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Req) (*Resp, error)) CommandSpec {
@@ -60,22 +50,20 @@ func Command[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Re
 }
 
 // RegisterCommand adds a bus command to the Kit's per-instance catalog.
-// Intended for Module.Init; panics on duplicate topic.
+// Prefer module.Host.Commands().Handle for hot-mounted modules.
 func (k *Kit) RegisterCommand(spec CommandSpec) {
 	k.kernel.RegisterCommand(spec)
 }
 
-// Module looks up a Kit-scoped module by Name. Used for cross-module
+// Module looks up a mounted Kit-scoped module by ID. Used for cross-module
 // coordination (e.g. WithCallTo consults the topology module when
 // present to resolve peer names). Returns (nil, false) when the
 // module is absent.
 func (k *Kit) Module(name string) (Module, bool) {
-	for _, m := range k.modules {
-		if m.Name() == name {
-			return m, true
-		}
-	}
-	return nil, false
+	k.mountMu.Lock()
+	defer k.mountMu.Unlock()
+	m, ok := k.modules[name]
+	return m, ok
 }
 
 // RegisterRawTool registers a pre-built RegisteredTool with the Kit's tool
@@ -105,7 +93,7 @@ func (k *Kit) ProbeAll() {
 }
 
 // SetTraceStore attaches a durable trace store to the Kit's tracer. The
-// tracing module uses this during Init to promote the default in-memory
+// tracing module uses this during mount to promote the default in-memory
 // ring buffer to persistent storage.
 func (k *Kit) SetTraceStore(store TraceStore) {
 	k.kernel.SetTraceStore(store)
@@ -128,7 +116,7 @@ func (k *Kit) PresenceTransport() transport.Presence { return k.kernel.Remote() 
 func (k *Kit) Logger() *slog.Logger { return k.kernel.Logger() }
 
 // SetScheduleHandler installs the scheduler. Owned by the schedules module:
-// during its Init, the module calls this to route the QuickJS
+// during mount, the module calls this to route the QuickJS
 // bus.schedule / bus.unschedule bridges and the schedule.* bus commands
 // into its own Scheduler. Nil detaches the handler (module Close).
 func (k *Kit) SetScheduleHandler(h types.ScheduleHandler) { k.kernel.SetScheduleHandler(h) }
@@ -140,7 +128,7 @@ func (k *Kit) HasCommand(topic string) bool { return k.kernel.HasCommand(topic) 
 
 // SetAuditStore attaches a store to the Kit's central audit Recorder. The
 // Recorder always exists; without a store, Record calls no-op. The audit
-// module calls this during Init so every subsystem's Record calls start
+// module calls this during mount so every subsystem's Record calls start
 // persisting. Pass nil to detach.
 func (k *Kit) SetAuditStore(s AuditStore) { k.kernel.SetAuditStore(s) }
 
@@ -199,7 +187,7 @@ func (k *Kit) HarnessRuntime() any {
 // by package deploys with `requires.plugins`. Owned by the plugins
 // module (nil when the module is absent → no plugin requirements can
 // be satisfied).
-func (k *Kit) SetPluginChecker(pc deploy.PluginChecker) { k.kernel.SetPluginChecker(pc) }
+func (k *Kit) SetPluginChecker(pc bkmodule.PluginChecker) { k.kernel.SetPluginChecker(pc) }
 
 // SetPluginRestarter installs the module-side plugin restarter used by
 // secrets rotation to restart plugins whose env refers to a rotated

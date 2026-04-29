@@ -33,7 +33,7 @@ value. `path` is set only by the `FromDir`/`FromFile` producers and
 tells the handler to bundle from disk; `Files` is set by `PackageInline`
 and carries the source verbatim.
 
-`Deploy` sends the package as a `sdk.PackageDeployMsg`:
+`Deploy` sends the package as a `packagemsg.PackageDeployMsg`:
 
 ```go
 resp, err := kit.Deploy(ctx, pkg)  // Call[PackageDeployMsg, PackageDeployResp]
@@ -43,7 +43,7 @@ resp, err := kit.Deploy(ctx, pkg)  // Call[PackageDeployMsg, PackageDeployResp]
 `PackageDeployMsg` carries either `Path` (filesystem-backed) or
 `Manifest + Files` (inline). The handler owns all bundling logic —
 the Go caller never runs esbuild. See
-`sdk/package_deploy_messages.go`.
+`modules/packages/packagemsg/package_messages.go`.
 
 ## Entry Points: Go, CLI, In-JS
 
@@ -259,7 +259,7 @@ stem as `name` and the basename as `entry`.
 - `examples/agent-spawner/main.go` — in-JS deploy via `bus.call`.
 - `examples/go-tools/main.go` — deploying a package that consumes
   Go-registered tools.
-- `sdk/package_deploy_messages.go` — typed message contracts.
+- `modules/packages/packagemsg/package_messages.go` — typed message contracts.
 - [bus-and-messaging.md](bus-and-messaging.md) — how `ts.<pkg>.<topic>`
   fits into the larger bus model.
 - [bundle-and-bytecode.md](bundle-and-bytecode.md) — how the runtime

@@ -33,10 +33,31 @@ build:
 	cd internal/embed/agent/bundle && node build.mjs
 	cd internal/embed/compiler/bundle && node build.mjs
 
-# Regenerate SDK wrappers (sdk/typed_gen.go + root call_gen.go).
-# Run after adding / renaming anything in sdk/*_messages.go.
+# Regenerate typed wrappers for SDK and module-owned message packages.
+# Run after adding / renaming anything in sdk/*_messages.go or module message files.
 generate:
-	go run ./cmd/sdkgen -messages ./sdk -out ./sdk/typed_gen.go -call-out ./call_gen.go
+	go run ./cmd/sdkgen -messages ./sdk -out ./sdk/typed_gen.go
+	go run ./cmd/sdkgen -messages ./sdk/systemmsg -out ./sdk/systemmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/agents/agentmsg -out ./modules/agents/agentmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/audit/auditmsg -out ./modules/audit/auditmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/control -out ./modules/control/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/eval/evalmsg -out ./modules/eval/evalmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/gateway/gatewaymsg -out ./modules/gateway/gatewaymsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/health -out ./modules/health/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/messaging -out ./modules/messaging/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/metrics -out ./modules/metrics/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/mcp/mcpmsg -out ./modules/mcp/mcpmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/packages/packagemsg -out ./modules/packages/packagemsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/plugins/pluginmsg -out ./modules/plugins/pluginmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/reference/referencemsg -out ./modules/reference/referencemsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/registry/registrymsg -out ./modules/registry/registrymsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/schedules/schedulemsg -out ./modules/schedules/schedulemsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/secrets/secretmsg -out ./modules/secrets/secretmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/testing/testingmsg -out ./modules/testing/testingmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/topology -out ./modules/topology/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/tools/toolmsg -out ./modules/tools/toolmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/tracing/tracingmsg -out ./modules/tracing/tracingmsg/typed_gen.go
+	go run ./cmd/sdkgen -messages ./modules/workflow/workflowmsg -out ./modules/workflow/workflowmsg/typed_gen.go
 
 # Run all tests
 test: podman-ensure

@@ -25,6 +25,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	workflowmod "github.com/brainlet/brainkit/modules/workflow"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -68,10 +69,10 @@ func run() error {
 
 	// Start the run.
 	fmt.Println("[2/4] starting run — build step fires, approve step will suspend")
-	start, err := brainkit.CallWorkflowStart(kit, ctx, sdk.WorkflowStartMsg{
+	start, err := workflowmsg.CallWorkflowStart(kit, ctx, workflowmsg.WorkflowStartMsg{
 		Name:      "deploy-pipeline",
 		InputData: json.RawMessage(`{"component":"brainkit","env":"staging"}`),
-	}, brainkit.WithCallTimeout(15*time.Second))
+	}, sdk.WithCallTimeout(15*time.Second))
 	if err != nil {
 		return fmt.Errorf("workflow.start: %w", err)
 	}
@@ -90,12 +91,12 @@ func run() error {
 	// Resume.
 	fmt.Println("[4/4] resuming with the decision")
 	resumeData, _ := json.Marshal(map[string]any{"approved": approved, "approver": "alice@example.com"})
-	resume, err := brainkit.CallWorkflowResume(kit, ctx, sdk.WorkflowResumeMsg{
+	resume, err := workflowmsg.CallWorkflowResume(kit, ctx, workflowmsg.WorkflowResumeMsg{
 		Name:       "deploy-pipeline",
 		RunID:      runID,
 		Step:       "approve",
 		ResumeData: resumeData,
-	}, brainkit.WithCallTimeout(15*time.Second))
+	}, sdk.WithCallTimeout(15*time.Second))
 	if err != nil {
 		return fmt.Errorf("workflow.resume: %w", err)
 	}

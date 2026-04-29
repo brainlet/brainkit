@@ -8,7 +8,7 @@ Human-in-the-Loop (HITL) ships on two stable surfaces:
    reply arrives.
 2. **Workflow suspend/resume** — a workflow step calls `await
    suspend(...)` to pause; any surface publishes
-   `workflow.resume` (or `brainkit.CallWorkflowResume`) with the
+   `workflow.resume` (or `workflowmsg.CallWorkflowResume`) with the
    `resumeData` matching the step's `resumeSchema`, and the workflow
    continues from where it stopped.
 
@@ -214,16 +214,16 @@ kit.register("workflow", "doc-review", wf);
 ### Resuming from Go
 
 ```go
-resp, err := brainkit.CallWorkflowResume(kit, ctx, sdk.WorkflowResumeMsg{
+resp, err := workflowmsg.CallWorkflowResume(kit, ctx, workflowmsg.WorkflowResumeMsg{
     Name:       "doc-review",
     RunID:      runID,
     Step:       "review",
     ResumeData: json.RawMessage(`{"approved":true,"reviewer":"alice@corp.com"}`),
-}, brainkit.WithCallTimeout(10*time.Second))
+}, sdk.WithCallTimeout(10*time.Second))
 // resp.Status: "success" | "failed" — full step tree in resp.Steps.
 ```
 
-`WorkflowResumeMsg` (in `sdk/workflow_messages.go`):
+`WorkflowResumeMsg` (in `modules/workflow/workflowmsg/workflow_messages.go`):
 
 ```go
 type WorkflowResumeMsg struct {
@@ -254,7 +254,7 @@ Working example: [`examples/workflows/`](../../examples/workflows/).
 |---|---|---|
 | Trigger | Tool with `requireApproval: true` | Step calls `await suspend(...)` |
 | Host call | `generateWithApproval(agent, prompt, opts)` | `agent.generate` / `workflow.start` finishes suspended |
-| Resume call | Handled internally by the Go bridge | `brainkit.CallWorkflowResume` / `workflow.resume` |
+| Resume call | Handled internally by the Go bridge | `workflowmsg.CallWorkflowResume` / `workflow.resume` |
 | Bus lifecycle | Bridge subscribes + times out in Go | Author emits notifications; resume is pulled, not pushed |
 | Resume payload | `{ approved: bool, reason?: string }` | Any shape matching `resumeSchema` |
 | Timeout | `timeout` option; `context.WithTimeout` in Go | None — stays suspended until resumed or cancelled |
@@ -378,5 +378,5 @@ commands suites under `test/suite/workflows/`.
 | Need | Surface | Stability |
 |---|---|---|
 | Approve / decline a single agent tool call | `generateWithApproval` + bus approver | Stable |
-| Long-running multi-step process with human step | Workflow `suspend()` + `CallWorkflowResume` | Stable |
+| Long-running multi-step process with human step | Workflow `suspend()` + `workflowmsg.CallWorkflowResume` | Stable |
 | Session wrapper for agent + modes + memory | `modules/harness` `Instance` | Frozen surface only — module is WIP |

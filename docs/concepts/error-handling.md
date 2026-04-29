@@ -78,8 +78,8 @@ requested generic type.
 ## Using `errors.As`
 
 ```go
-reply, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
-    kit, ctx, sdk.ToolCallMsg{Name: "weather", Input: weatherInput},
+reply, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](
+    kit, ctx, toolmsg.ToolCallMsg{Name: "weather", Input: weatherInput},
     brainkit.WithCallTimeout(2*time.Second),
 )
 if err != nil {
@@ -106,15 +106,15 @@ same process or came back over NATS.
 ## Caller-Side Errors
 
 `brainkit.Call` / `brainkit.CallStream` surface several caller-only
-errors from `internal/bus/caller`:
+errors from `sdk`:
 
-| Error                      | Code                  | When                                                  |
-| -------------------------- | --------------------- | ----------------------------------------------------- |
-| `*caller.NoDeadlineError`  | `VALIDATION_ERROR`    | No `WithCallTimeout` and no ctx deadline.             |
-| `*caller.CallTimeoutError` | `CALL_TIMEOUT`        | Deadline elapsed before the terminal reply.          |
-| `*caller.CallCancelledError` | `CALL_CANCELLED`    | `ctx.Done()` fired for reasons other than timeout.    |
-| `*caller.DecodeError`      | `DECODE_ERROR`        | Reply payload cannot decode into `Resp`.              |
-| `*caller.BufferOverflowError` | `CALL_BUFFER_OVERFLOW` | `CallStream` buffer overflows with `BufferError`. |
+| Error                         | Code                   | When                                                  |
+| ----------------------------- | ---------------------- | ----------------------------------------------------- |
+| `*sdk.NoDeadlineError`        | `VALIDATION_ERROR`     | No `WithCallTimeout` and no ctx deadline.             |
+| `*sdk.CallTimeoutError`       | `CALL_TIMEOUT`         | Deadline elapsed before the terminal reply.           |
+| `*sdk.CallCancelledError`     | `CALL_CANCELLED`       | `ctx.Done()` fired for reasons other than timeout.    |
+| `*sdk.CallDecodeError`        | `CALL_DECODE_ERROR`    | Reply payload cannot decode into `Resp`.              |
+| `*sdk.BufferOverflowError`    | `CALL_BUFFER_OVERFLOW` | `CallStream` buffer overflows with `BufferError`.     |
 
 These behave like any typed error — they implement `BrainkitError`, so
 `errors.As` works and the code surfaces in logs/audit.
@@ -142,7 +142,7 @@ brainkit.RegisterTool(kit, "weather", brainkit.TypedTool[WeatherInput]{
 ```
 
 The caller sees `*sdk.ValidationError` or `*sdk.NotFoundError` on the
-other end of a `brainkit.CallToolCall` or a `bus.call("tools.call", …)`
+other end of a `toolmsg.CallToolCall` or a `bus.call("tools.call", …)`
 from JS.
 
 ### Handler throws in JS
@@ -202,7 +202,7 @@ wrapped error is fine.
   depth 16. Adjust via custom middleware if needed.
 - **Timeouts** — `brainkit.Call` requires a deadline. If you pass a
   `ctx` without a deadline and no `WithCallTimeout`, you get
-  `*caller.NoDeadlineError` immediately rather than waiting forever.
+  `*sdk.NoDeadlineError` immediately rather than waiting forever.
 - **Cross-namespace** — typed errors round-trip unchanged across
   namespaces. `*sdk.NotFoundError` on Kit A looks identical on Kit B.
 - **Plugin errors** — bridged through the WebSocket control plane. A
@@ -213,7 +213,7 @@ wrapped error is fine.
 ## See Also
 
 - `sdk/sdkerrors/errors.go` — concrete implementations.
+- `sdk/caller_errors.go` — caller-side typed errors.
 - `sdk/envelope.go` — envelope encoding/decoding and code mapping.
-- `internal/bus/caller/errors.go` — caller-side typed errors.
 - [bus-and-messaging.md](bus-and-messaging.md) — where envelopes live
   on the wire.

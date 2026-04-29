@@ -4,6 +4,7 @@
 package gateway
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -11,8 +12,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/internal/testutil"
+	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
 )
@@ -102,8 +103,7 @@ func gwStart(t *testing.T, k *brainkit.Kit, opts ...func(*bkgw.Config)) (*bkgw.G
 		opt(&cfg)
 	}
 	gw := bkgw.New(cfg)
-	require.NoError(t, gw.Init(k))
-	t.Cleanup(func() { gw.Stop() })
+	gwMount(t, k, gw)
 	addr := "http://" + gw.Addr()
 	gwWaitReady(t, addr)
 	return gw, addr
@@ -117,8 +117,7 @@ func gwStartWithStream(t *testing.T, k *brainkit.Kit, streamCfg *bkgw.StreamConf
 		Timeout: 5 * time.Second,
 		Stream:  streamCfg,
 	})
-	require.NoError(t, gw.Init(k))
-	t.Cleanup(func() { gw.Stop() })
+	gwMount(t, k, gw)
 	addr := "http://" + gw.Addr()
 	gwWaitReady(t, addr)
 	return gw, addr
@@ -131,10 +130,17 @@ func gwSetup(t *testing.T, k *brainkit.Kit) *bkgw.Gateway {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(k))
-	t.Cleanup(func() { gw.Stop() })
+	gwMount(t, k, gw)
 	gwWaitReady(t, "http://"+gw.Addr())
 	return gw
+}
+
+func gwMount(t *testing.T, k *brainkit.Kit, gw *bkgw.Gateway) {
+	t.Helper()
+	require.NoError(t, k.Mount(context.Background(), gw))
+	t.Cleanup(func() {
+		_ = k.Unmount(context.Background(), gw.ID())
+	})
 }
 
 // ── Reliability helpers ──────────────────────────────────────────────────────

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -93,7 +92,7 @@ func testCallStreamBufferErrorPolicy(t *testing.T, _ *suite.TestEnv) {
 	)
 
 	require.Error(t, err)
-	var bo *caller.BufferOverflowError
+	var bo *sdk.BufferOverflowError
 	assert.True(t, errors.As(err, &bo), "want BufferOverflowError, got %T: %v", err, err)
 	mu.Lock()
 	t.Logf("chunks delivered before overflow: %d", count)

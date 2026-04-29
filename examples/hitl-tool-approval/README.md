@@ -105,7 +105,7 @@ destructive action needs approval; safe actions don't).
 | Scope | one tool call mid-agent-generate | one step mid-workflow |
 | Granularity | token-stream fidelity — approval only triggers when the model picks the tool | deterministic — the step runs on every pass |
 | Durability | in-memory — dies with the agent process | persisted to `Storage` when configured |
-| Resume API | `generateWithApproval` (handles internally) | `run.resume({step, resumeData})` via `CallWorkflowResume` |
+| Resume API | `generateWithApproval` (handles internally) | `run.resume({step, resumeData})` via `workflowmsg.CallWorkflowResume` |
 
 Tool approval is the right fit when a human needs to sign off on
 a specific destructive action the LLM might pick. Workflow

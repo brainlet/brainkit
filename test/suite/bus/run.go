@@ -21,6 +21,9 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("call_cancelled_error", func(t *testing.T) { testCallCancelledError(t, env) })
 		t.Run("call_concurrent_demux", func(t *testing.T) { testCallConcurrentDemux(t, env) })
 		t.Run("call_raw_payload", func(t *testing.T) { testCallRawPayload(t, env) })
+		t.Run("messaging_no_module_commands_absent", func(t *testing.T) { testMessagingNoModuleCommandsAbsent(t, env) })
+		t.Run("reference_commands", func(t *testing.T) { testReferenceCommands(t, env) })
+		t.Run("reference_no_module_commands_absent", func(t *testing.T) { testReferenceNoModuleCommandsAbsent(t, env) })
 
 		// ts_call.go — .ts bus.call / bus.callTo wire envelope
 		t.Run("ts_bus_call_happy_path", func(t *testing.T) { testTSBusCallHappyPath(t, env) })

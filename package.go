@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/deploy"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
-// DeployResult is returned by (*Kit).Deploy. Mirrors sdk.PackageDeployResp.
+// DeployResult is returned by (*Kit).Deploy. Mirrors packagemsg.PackageDeployResp.
 type DeployResult struct {
 	Name      string
 	Version   string
@@ -48,7 +49,11 @@ func PackageFromDir(dir string) (Package, error) {
 	if err != nil {
 		return Package{}, fmt.Errorf("brainkit.PackageFromDir: read manifest: %w", err)
 	}
-	var m deploy.PackageManifest
+	var m struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Entry   string `json:"entry"`
+	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return Package{}, fmt.Errorf("brainkit.PackageFromDir: parse manifest: %w", err)
 	}
@@ -80,11 +85,14 @@ func PackageFromFile(path string) (Package, error) {
 // Deploy deploys a package into the Kit. Hot-replaces an existing deployment
 // with the same name.
 func (k *Kit) Deploy(ctx context.Context, pkg Package) (DeployResult, error) {
+	if !k.HasCommand((packagemsg.PackageDeployMsg{}).BusTopic()) {
+		return DeployResult{}, &sdkerrors.NotConfiguredError{Feature: "packages"}
+	}
 	msg, err := pkg.toDeployMsg()
 	if err != nil {
 		return DeployResult{}, err
 	}
-	resp, err := Call[sdk.PackageDeployMsg, sdk.PackageDeployResp](k, ctx, msg, WithCallTimeout(30*time.Second))
+	resp, err := Call[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](k, ctx, msg, WithCallTimeout(30*time.Second))
 	if err != nil {
 		return DeployResult{}, err
 	}
@@ -98,15 +106,21 @@ func (k *Kit) Deploy(ctx context.Context, pkg Package) (DeployResult, error) {
 
 // Teardown removes a deployed package by name.
 func (k *Kit) Teardown(ctx context.Context, name string) error {
-	_, err := Call[sdk.PackageTeardownMsg, sdk.PackageTeardownResp](
-		k, ctx, sdk.PackageTeardownMsg{Name: name}, WithCallTimeout(15*time.Second))
+	if !k.HasCommand((packagemsg.PackageTeardownMsg{}).BusTopic()) {
+		return &sdkerrors.NotConfiguredError{Feature: "packages"}
+	}
+	_, err := Call[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](
+		k, ctx, packagemsg.PackageTeardownMsg{Name: name}, WithCallTimeout(15*time.Second))
 	return err
 }
 
 // Get returns info about a deployed package by name.
 func (k *Kit) Get(ctx context.Context, name string) (DeploymentInfo, bool, error) {
-	resp, err := Call[sdk.PackageDeployInfoMsg, sdk.PackageDeployInfoResp](
-		k, ctx, sdk.PackageDeployInfoMsg{Name: name}, WithCallTimeout(5*time.Second))
+	if !k.HasCommand((packagemsg.PackageDeployInfoMsg{}).BusTopic()) {
+		return DeploymentInfo{}, false, &sdkerrors.NotConfiguredError{Feature: "packages"}
+	}
+	resp, err := Call[packagemsg.PackageDeployInfoMsg, packagemsg.PackageDeployInfoResp](
+		k, ctx, packagemsg.PackageDeployInfoMsg{Name: name}, WithCallTimeout(5*time.Second))
 	if err != nil {
 		return DeploymentInfo{}, false, nil
 	}
@@ -120,8 +134,11 @@ func (k *Kit) Get(ctx context.Context, name string) (DeploymentInfo, bool, error
 
 // List returns all deployed packages.
 func (k *Kit) List(ctx context.Context) ([]DeploymentInfo, error) {
-	resp, err := Call[sdk.PackageListDeployedMsg, sdk.PackageListDeployedResp](
-		k, ctx, sdk.PackageListDeployedMsg{}, WithCallTimeout(5*time.Second))
+	if !k.HasCommand((packagemsg.PackageListDeployedMsg{}).BusTopic()) {
+		return nil, &sdkerrors.NotConfiguredError{Feature: "packages"}
+	}
+	resp, err := Call[packagemsg.PackageListDeployedMsg, packagemsg.PackageListDeployedResp](
+		k, ctx, packagemsg.PackageListDeployedMsg{}, WithCallTimeout(5*time.Second))
 	if err != nil {
 		return nil, err
 	}
@@ -134,20 +151,20 @@ func (k *Kit) List(ctx context.Context) ([]DeploymentInfo, error) {
 	return out, nil
 }
 
-func (p Package) toDeployMsg() (sdk.PackageDeployMsg, error) {
+func (p Package) toDeployMsg() (packagemsg.PackageDeployMsg, error) {
 	// Filesystem path: handler reads manifest.json + bundles.
 	if p.path != "" {
-		return sdk.PackageDeployMsg{Path: p.path}, nil
+		return packagemsg.PackageDeployMsg{Path: p.path}, nil
 	}
 	// Inline: name + entry + files.
 	if p.Name == "" {
-		return sdk.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Name is required for inline deploy")
+		return packagemsg.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Name is required for inline deploy")
 	}
 	if p.Entry == "" {
-		return sdk.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Entry is required for inline deploy")
+		return packagemsg.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Entry is required for inline deploy")
 	}
 	if len(p.Files) == 0 {
-		return sdk.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Files is required for inline deploy")
+		return packagemsg.PackageDeployMsg{}, fmt.Errorf("brainkit: Package.Files is required for inline deploy")
 	}
 	manifest := map[string]string{"name": p.Name, "entry": p.Entry}
 	if p.Version != "" {
@@ -155,7 +172,7 @@ func (p Package) toDeployMsg() (sdk.PackageDeployMsg, error) {
 	}
 	raw, err := json.Marshal(manifest)
 	if err != nil {
-		return sdk.PackageDeployMsg{}, err
+		return packagemsg.PackageDeployMsg{}, err
 	}
-	return sdk.PackageDeployMsg{Manifest: raw, Files: p.Files}, nil
+	return packagemsg.PackageDeployMsg{Manifest: raw, Files: p.Files}, nil
 }

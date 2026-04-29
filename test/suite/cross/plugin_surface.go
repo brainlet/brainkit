@@ -7,10 +7,16 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
+	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	secretsmod "github.com/brainlet/brainkit/modules/secrets"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,12 +30,15 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 		Namespace: "plugin-test-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
+		Modules:   []brainkit.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()
 
-	type echoIn struct{ Message string `json:"message"` }
+	type echoIn struct {
+		Message string `json:"message"`
+	}
 	brainkit.RegisterTool(kit, "host-echo", tools.TypedTool[echoIn]{
 		Description: "echoes from host",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
@@ -40,20 +49,11 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{Name: "host-echo", Input: map[string]any{"message": "from-plugin-surface"}})
+	resp, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](kit, ctx, toolmsg.ToolCallMsg{Name: "host-echo", Input: map[string]any{"message": "from-plugin-surface"}})
 	require.NoError(t, err)
 
-	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "from-plugin-surface")
-		assert.Contains(t, string(p), "host")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.Contains(t, string(resp.Result), "from-plugin-surface")
+	assert.Contains(t, string(resp.Result), "host")
 }
 
 func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
@@ -62,10 +62,11 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-ts-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
+		Namespace: "plugin-ts-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -79,22 +80,11 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Simulate plugin calling the .ts via bus
-	pr, err := sdk.Publish(kit, ctx, sdk.CustomMsg{
+	p := publishAndWaitRaw(t, kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.plugin-target-cross.ask",
 		Payload: json.RawMessage(`{"q":"hello?"}`),
 	})
-	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "from-ts")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.Contains(t, string(p), "from-ts")
 }
 
 func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
@@ -103,10 +93,11 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-list-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
+		Namespace: "plugin-list-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -125,19 +116,8 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(kit, ctx, sdk.ToolListMsg{})
-	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "add")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	p := publishAndWaitRaw(t, kit, ctx, toolmsg.ToolListMsg{})
+	assert.Contains(t, string(p), "add")
 }
 
 func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
@@ -146,10 +126,11 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-err-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
+		Namespace: "plugin-err-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -158,7 +139,7 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Call nonexistent tool
-	p := publishAndWaitJSON(t, kit, ctx, sdk.ToolCallMsg{Name: "ghost-plugin-tool"})
+	p := publishAndWaitJSON(t, kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-plugin-tool"})
 	code := suite.ResponseCode(p)
 	assert.Equal(t, "NOT_FOUND", code)
 }
@@ -169,10 +150,11 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-sec-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
+		Namespace: "plugin-sec-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		Modules:   []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -181,11 +163,11 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set secret
-	p1 := publishAndWaitRaw(t, kit, ctx, sdk.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
+	p1 := publishAndWaitRaw(t, kit, ctx, secretmsg.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
 	_ = p1
 
 	// Get secret
-	p2 := publishAndWaitRaw(t, kit, ctx, sdk.SecretsGetMsg{Name: "plugin-key"})
+	p2 := publishAndWaitRaw(t, kit, ctx, secretmsg.SecretsGetMsg{Name: "plugin-key"})
 	assert.Contains(t, string(p2), "plugin-val")
 }
 
@@ -195,10 +177,11 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "plugin-deploy-cross",
-		CallerID:    "host",
-		FSRoot:      tmpDir,
-		Transport:   tf.Transport,
+		Namespace: "plugin-deploy-cross",
+		CallerID:  "host",
+		FSRoot:    tmpDir,
+		Transport: tf.Transport,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer kit.Close()
@@ -208,33 +191,13 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 
 	// Deploy via bus command
 	nodeManifest, _ := json.Marshal(map[string]string{"name": "node-deploy-cross", "entry": "node-deploy-cross.ts"})
-	pr, err := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+	p := publishAndWaitRaw(t, kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: nodeManifest,
 		Files:    map[string]string{"node-deploy-cross.ts": `const t = createTool({id: "node-tool", description: "test", execute: async () => ({ok:true})}); kit.register("tool", "node-tool", t);`},
 	})
-	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "deployed")
-	case <-ctx.Done():
-		t.Fatal("timeout deploy")
-	}
+	assert.Contains(t, string(p), "deployed")
 
 	// Verify tool is registered
-	pr2, _ := sdk.Publish(kit, ctx, sdk.ToolResolveMsg{Name: "node-tool"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	defer unsub2()
-
-	select {
-	case p := <-ch2:
-		assert.Contains(t, string(p), "node-tool")
-	case <-ctx.Done():
-		t.Fatal("timeout resolve")
-	}
+	p = publishAndWaitRaw(t, kit, ctx, toolmsg.ToolResolveMsg{Name: "node-tool"})
+	assert.Contains(t, string(p), "node-tool")
 }

@@ -11,10 +11,11 @@ is exposed in Go, the SDK, and the JS runtime.
 A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
 `package.deploy`). Three kinds coexist:
 
-- **Generated topics.** Every typed message in `sdk/*_messages.go`
-  declares a `BusTopic()` string. The generator in
-  `scripts/gen-bus-topics.go` writes `docs/bus-topics.md` from those
-  declarations. 1.0-rc.1 ships ~75 topics covering
+- **Generated topics.** Typed messages in `sdk/**/*_messages.go` and
+  module-owned `modules/**/*_messages.go` files declare a `BusTopic()`
+  string. The generator in `scripts/gen-bus-topics.go` writes
+  `docs/bus-topics.md` from those declarations. 1.0-rc.1 ships ~75
+  topics covering
   `package.*`, `kit.*`, `plugin.*`, `workflow.*`, `audit.*`,
   `schedules.*`, `secrets.*`, `storages.*`, `vectors.*`,
   `providers.*`, `gateway.http.*`, `peers.*`, `cluster.peers`,
@@ -52,23 +53,26 @@ The generic takes a request type that implements `sdk.BrainkitMessage`
 be a concrete struct or `json.RawMessage` to skip decoding.
 
 `Call` requires a deadline. If `ctx` has no deadline and no
-`WithCallTimeout` is passed, it returns `*caller.NoDeadlineError`. This
+`WithCallTimeout` is passed, it returns `*sdk.NoDeadlineError`. This
 is deliberate — nobody should wait on the bus forever.
 
 ### Generated wrappers
 
-`call_gen.go` contains 62 type-safe shortcuts wired to the shipped
-topics. They exist so a caller doesn't have to spell the types twice.
+Generated `typed_gen.go` files contain type-safe call shortcuts wired
+to the shipped topics. They exist so a caller doesn't have to spell the
+types twice, and they work with any `sdk.CallerRuntime`. SDK-owned
+messages generate into `sdk/typed_gen.go`; module-owned messages
+generate into the module package that owns them.
 
 ```go
-resp, err := brainkit.CallKitHealth(kit, ctx, sdk.KitHealthMsg{})
-route, err := brainkit.CallGatewayRouteAdd(kit, ctx, sdk.GatewayRouteAddMsg{...})
-deployed, err := brainkit.CallPackageDeploy(kit, ctx, sdk.PackageDeployMsg{...})
+resp, err := healthmod.CallKitHealth(kit, ctx, healthmod.KitHealthMsg{})
+route, err := gatewaymsg.CallGatewayRouteAdd(kit, ctx, gatewaymsg.GatewayRouteAddMsg{...})
+deployed, err := packagemsg.CallPackageDeploy(kit, ctx, packagemsg.PackageDeployMsg{...})
 ```
 
-Regenerate after adding a typed message with `make generate`. The
-paired `sdk/typed_gen.go` file ships typed helpers usable from module
-code (no Kit handle).
+Regenerate after adding a typed message with `make generate`. Root
+`brainkit` keeps only generic `Call` / `CallStream`; module-specific
+typed shortcuts live with the package that owns the message types.
 
 ### Call options
 
@@ -76,6 +80,7 @@ code (no Kit handle).
 brainkit.WithCallTimeout(d time.Duration)        // absolute timeout
 brainkit.WithCallTo(name string)                  // cross-namespace; see topology module
 brainkit.WithCallMeta(map[string]string)          // extra message metadata
+sdk.WithCallTimeout(d time.Duration)              // SDK typed-call timeout
 brainkit.WithCallBuffer(n int)                    // stream buffer size (CallStream only)
 brainkit.WithCallBufferPolicy(BufferBlock|...)    // stream overflow policy
 brainkit.WithCallNoCancelSignal()                 // suppress _brainkit.cancel on ctx cancel
@@ -114,7 +119,7 @@ policies are exported:
 | `BufferBlock`      | Back-pressure the producer (default, 64 slots).  |
 | `BufferDropNewest` | Drop incoming chunks when the buffer is full.    |
 | `BufferDropOldest` | Evict the oldest queued chunk.                   |
-| `BufferError`      | Fail the call with `*caller.BufferOverflowError`.|
+| `BufferError`      | Fail the call with `*sdk.BufferOverflowError`.   |
 
 ## Fire-and-Forget: `sdk.Emit`
 
@@ -234,7 +239,7 @@ bus.on("count", (msg) => {
 ## The Topic Catalog
 
 `docs/bus-topics.md` is generated — it is the authoritative list of
-typed topics shipped by core. Topic names in this doc are
+typed topics shipped by SDK and modules. Topic names in this doc are
 cross-references, not duplicates. Run the generator after adding a new
 typed message:
 
@@ -272,8 +277,9 @@ Three middlewares run on every inbound message:
 - **MetricsMiddleware** records per-topic processing time and error
   counts surfaced via `kit.Status()` and the audit module.
 
-Modules can register additional middlewares through
-`kit.RegisterMiddleware(mw)` during `Init`.
+Module-owned bus behavior is added through scoped commands and
+subscriptions on `module.Host`; the core Watermill middleware stack is
+fixed at router startup.
 
 ## Topic Namespace: `ts.<pkg>.<topic>`
 

@@ -6,17 +6,19 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/google/uuid"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/google/uuid"
 )
 
-
-
-// Alive returns true if the QuickJS runtime can evaluate a trivial expression.
-// Used as a Kubernetes liveness probe — fast, checks only the critical path.
+// Alive returns true if the kernel's active runtime path is responsive.
+// With JS enabled, this evaluates a trivial expression; with JS disabled, the
+// control plane being started is the critical liveness path.
 func (k *Kernel) Alive(ctx context.Context) bool {
 	if k.startedAt.IsZero() {
 		return false
+	}
+	if !k.HasJSRuntime() {
+		return true
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -62,12 +64,10 @@ func (k *Kernel) Health(ctx context.Context) types.HealthStatus {
 	}
 
 	// Embedded storage bridges — HTTP health check
-	k.mu.Lock()
-	storageNames := make([]string, 0, len(k.storages))
-	for name := range k.storages {
-		storageNames = append(storageNames, name)
+	var storageNames []string
+	if k.storageHost != nil {
+		storageNames = k.storageHost.Names()
 	}
-	k.mu.Unlock()
 	for _, name := range storageNames {
 		checks = append(checks, k.checkStorage(ctx, name))
 	}
@@ -124,6 +124,9 @@ func (k *Kernel) Health(ctx context.Context) types.HealthStatus {
 
 func (k *Kernel) checkRuntime(ctx context.Context) types.HealthCheck {
 	start := time.Now()
+	if !k.HasJSRuntime() {
+		return types.HealthCheck{Name: "runtime", Healthy: true, Details: "js runtime disabled", Latency: time.Since(start)}
+	}
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -193,4 +196,3 @@ func criticalCheckFailed(checks []types.HealthCheck) bool {
 	}
 	return false
 }
-

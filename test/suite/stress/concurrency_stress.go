@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -23,6 +25,9 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 	}
 
 	tk := env.Kit
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
+
 	var wg sync.WaitGroup
 	var succeeded, failed atomic.Int64
 
@@ -47,11 +52,8 @@ func test100DeploysSimultaneously(t *testing.T, env *suite.TestEnv) {
 	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
 	assert.NoError(t, err)
 
-	ctx := context.Background()
 	for i := 0; i < 100; i++ {
-		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: fmt.Sprintf("stress-100-%d", i)})
-		cancel()
+		_ = stressTeardown(t, tk, fmt.Sprintf("stress-100-%d", i))
 	}
 }
 
@@ -100,7 +102,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set initial value
-	pr, _ := sdk.Publish(tk, ctx, sdk.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
+	pr, _ := sdk.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
 	ch := make(chan []byte, 1)
 	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	<-ch
@@ -130,7 +132,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 1; i <= 10; i++ {
-			pr, _ := sdk.Publish(tk, ctx, sdk.SecretsRotateMsg{
+			pr, _ := sdk.Publish(tk, ctx, secretmsg.SecretsRotateMsg{
 				Name: "stress-rotating", NewValue: fmt.Sprintf("v%d", i),
 			})
 			ch := make(chan []byte, 1)
@@ -156,6 +158,8 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 	}
 
 	tk := env.Kit
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	var wg sync.WaitGroup
 
@@ -170,13 +174,10 @@ func testDeployWhileEvalTS(t *testing.T, env *suite.TestEnv) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ctx := context.Background()
 		for i := 0; i < 20; i++ {
 			src := fmt.Sprintf("stress-parallel-deploy-%d.ts", i)
 			testutil.DeployErr(tk, src, `output("stress-parallel");`)
-			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
-			cancel()
+			_ = stressTeardown(t, tk, src)
 		}
 	}()
 
@@ -200,7 +201,7 @@ func testToolCallsUnderLoad(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			payload, ok := sendAndReceive(t, tk, sdk.ToolCallMsg{
+			payload, ok := sendAndReceive(t, tk, toolmsg.ToolCallMsg{
 				Name:  "echo",
 				Input: map[string]any{"message": fmt.Sprintf("stress-%d", n)},
 			}, 10*time.Second)
@@ -232,7 +233,7 @@ func testScheduleStorm(t *testing.T, env *suite.TestEnv) {
 
 	for i := 0; i < 50; i++ {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.ScheduleCreateMsg{
+		_, _ = sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](tk, sctx, schedulemsg.ScheduleCreateMsg{
 			Expression: "in 200ms",
 			Topic:      "stress.sched.storm",
 			Payload:    json.RawMessage(fmt.Sprintf(`{"i":%d}`, i)),
@@ -255,6 +256,8 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	tk := env.Kit
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	testutil.Deploy(t, tk, "multi-stress-surface.ts", `
 		bus.on("ts-ping", function(msg) { msg.reply({from: "ts"}); });
@@ -267,7 +270,7 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sendAndReceive(t, tk, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go"}}, 5*time.Second)
+			sendAndReceive(t, tk, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go"}}, 5*time.Second)
 		}
 	}()
 

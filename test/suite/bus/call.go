@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -45,7 +44,7 @@ func testCallRequiresDeadline(t *testing.T, _ *suite.TestEnv) {
 		Payload: []byte(`{}`),
 	})
 	require.Error(t, err)
-	var ndl *caller.NoDeadlineError
+	var ndl *sdk.NoDeadlineError
 	assert.True(t, errors.As(err, &ndl), "want NoDeadlineError, got %T", err)
 }
 
@@ -76,7 +75,7 @@ func testCallTimeoutError(t *testing.T, _ *suite.TestEnv) {
 		Payload: []byte(`{}`),
 	})
 	require.Error(t, err)
-	var te *caller.CallTimeoutError
+	var te *sdk.CallTimeoutError
 	assert.True(t, errors.As(err, &te), "want CallTimeoutError, got %T", err)
 }
 
@@ -99,7 +98,7 @@ func testCallCancelledError(t *testing.T, _ *suite.TestEnv) {
 		Payload: []byte(`{}`),
 	})
 	require.Error(t, err)
-	var ce *caller.CallCancelledError
+	var ce *sdk.CallCancelledError
 	assert.True(t, errors.As(err, &ce), "want CallCancelledError, got %T", err)
 }
 

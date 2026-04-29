@@ -1,10 +1,10 @@
 # Architecture
 
-brainkit 1.0 is a single Go package that boots an in-process AI runtime.
-One call — `brainkit.New(Config)` — returns a `*Kit` that owns a QuickJS
-sandbox, a Watermill message bus, a tool/provider/storage registry, and
-any modules you plug in. Everything runs in one OS process by default;
-transports (NATS, Redis, AMQP) are opt-in knobs on the same type.
+brainkit 1.0 boots an in-process runtime host. One call —
+`brainkit.New(Config)` — returns a `*Kit` that owns a Watermill message bus,
+a tool/provider/storage registry, optional QuickJS/TS execution, and any
+modules you plug in. Everything runs in one OS process by default; transports
+(NATS, Redis, AMQP) are opt-in knobs on the same type.
 
 ## The Kit
 
@@ -12,6 +12,7 @@ transports (NATS, Redis, AMQP) are opt-in knobs on the same type.
 kit, err := brainkit.New(brainkit.Config{
     Namespace: "hello",
     Transport: brainkit.Memory(),
+    JSRuntime: true,
     FSRoot:    ".",
 })
 defer kit.Close()
@@ -19,9 +20,11 @@ defer kit.Close()
 
 That Kit is the runtime. It is the only top-level object. A Kit:
 
-- Hosts **one QuickJS runtime** with SES locked down. All deployed `.ts`
-  services and every agent, tool, workflow, and MCP client share the
-  same JS heap. Isolation is per-Compartment, not per-OS-process.
+- Can host **one QuickJS runtime** with SES locked down when `JSRuntime` is
+  enabled or the `jsruntime` module is mounted ahead of JS-dependent modules.
+  Deployed `.ts` services, JS agents, JS tools, and workflows share the same
+  JS heap. Isolation is per-Compartment, not per-OS-process. A zero-value Kit
+  can run as a lighter control plane without starting QuickJS.
 - Owns **one Watermill router** (the bus). Every subsystem — Go, JS,
   plugins, gateway handlers — speaks to every other subsystem by
   publishing messages. There is no separate RPC layer.
@@ -30,7 +33,7 @@ That Kit is the runtime. It is the only top-level object. A Kit:
   `kit.Secrets()`).
 - Loads **zero or more Modules** (gateway, audit, tracing, probes,
   topology, discovery, plugins, MCP, schedules, workflow, harness)
-  which wire themselves into the bus during `Init`.
+  which hot-mount scoped resources into the running Kit.
 - Accepts **deployments** — `.ts` packages that register handlers via
   `bus.on` and become addressable at `ts.<pkg>.<topic>`.
 
@@ -52,11 +55,12 @@ is:
   `Call[Req, Resp any](kit, ctx, req, opts…) (Resp, error)` plus
   `CallStream[Req, Chunk, Resp any]` for servers that emit chunks
   before a terminal reply.
-- **62 generated wrappers** in `call_gen.go` that bind `Call` to every
-  typed bus topic shipped out of the box (`CallPackageDeploy`,
-  `CallKitHealth`, `CallAgentDiscover`, `CallAuditQuery`,
-  `CallPeersResolve`, …). Regenerate them with `make generate` after
-  adding new typed message types.
+- **Generated typed call wrappers** in package-owned `typed_gen.go`
+  files that bind `sdk.Call` to typed bus topics shipped out of the
+  box (`packagemsg.CallPackageDeploy`, `health.CallKitHealth`,
+  `agentmsg.CallAgentDiscover`, `auditmsg.CallAuditQuery`,
+  `topology.CallPeersResolve`, …). Regenerate them with `make generate`
+  after adding new typed message types.
 - **Typed tool registration.** `RegisterTool(kit, name, TypedTool[T])`
   registers a typed Go function as a first-class tool. See
   `examples/go-tools/main.go`.
@@ -69,25 +73,26 @@ consumed by both module authors and plugin authors.
 
 ## Modules
 
-Modules are the extension point. A module implements three methods:
+Modules are the extension point. A module implements the hot-mount
+contract:
 
 ```go
 type Module interface {
-    Name() string
-    Init(k *Kit) error
-    Close() error
+    ID() string
+    Mount(context.Context, module.Host) error
 }
 ```
 
 Optionally a module can implement `StatusReporter` to declare itself
 `ModuleStatusStable`, `ModuleStatusBeta`, or `ModuleStatusWIP`. The
-status surfaces through `kit.Status()` so a caller can refuse to boot
-when a WIP module is loaded in production.
+status surfaces through module descriptors and CLI listing so a caller
+can refuse to boot when a WIP module is loaded in production.
 
-`Init` runs in registration order before the router starts, so a module
-can freely subscribe to bus topics, register commands
-(`RegisterCommand`), or configure its own transport. The 11 modules
-that ship in 1.0-rc.1 are:
+Configured modules mount after the router starts, and `Kit.Mount` can
+mount additional linked-code modules later. Module-owned commands,
+tools, subscriptions, capabilities, goroutines, and HTTP servers are
+leased into the module's scope and released on `Kit.Unmount`,
+`Kit.Close`, or `Kit.Shutdown`. The 11 standard modules are:
 
 | Module     | Status | Purpose                                            |
 | ---------- | ------ | -------------------------------------------------- |
@@ -155,7 +160,7 @@ kit.Deploy(ctx, brainkit.PackageInline(
 ))
 ```
 
-Under the hood, `Deploy` publishes a `sdk.PackageDeployMsg` on the
+Under the hood, `Deploy` publishes a `packagemsg.PackageDeployMsg` on the
 `package.deploy` topic. The handler runs the package entry through the
 vendored microsoft/typescript-go transpiler, loads it into a fresh SES
 Compartment, and exposes every `bus.on(topic, …)` at

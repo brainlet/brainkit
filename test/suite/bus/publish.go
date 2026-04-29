@@ -7,16 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // pkgTeardown builds a PackageTeardownMsg from a ".ts" source filename.
-func pkgTeardown(source string) sdk.PackageTeardownMsg {
-	return sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}
+func pkgTeardown(source string) packagemsg.PackageTeardownMsg {
+	return packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}
 }
 
 // testJSPublishReturnsReplyTo verifies that __go_brainkit_bus_publish
@@ -83,18 +87,19 @@ func testJSReplyDoneFlag(t *testing.T, env *suite.TestEnv) {
 		return "ok";
 	`)
 
-	pubResult, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
-		Topic:   "test.reply.trigger",
-		Payload: json.RawMessage(`{"go":"true"}`),
-	})
-	require.NoError(t, err)
-
+	replyTo := "test.reply.trigger.reply." + uuid.NewString()
 	received := make(chan sdk.Message, 2)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg sdk.Message) {
+	unsub, err := env.Kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
 		received <- msg
 	})
 	require.NoError(t, err)
 	defer unsub()
+
+	pubResult, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+		Topic:   "test.reply.trigger",
+		Payload: json.RawMessage(`{"go":"true"}`),
+	}, sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
 
 	var msgs []sdk.Message
 	for i := 0; i < 2; i++ {
@@ -146,36 +151,24 @@ func testJSSubscribeReceivesMetadata(t *testing.T, env *suite.TestEnv) {
 		return "ok";
 	`)
 
-	pubResult, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.meta.topic",
 		Payload: json.RawMessage(`{"data":"test123"}`),
 	})
 	require.NoError(t, err)
 
-	done := make(chan json.RawMessage, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg sdk.Message) {
-		done <- json.RawMessage(msg.Payload)
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		var parsed struct {
-			HasPayload       bool `json:"hasPayload"`
-			HasReplyTo       bool `json:"hasReplyTo"`
-			HasCorrelationId bool `json:"hasCorrelationId"`
-			HasTopic         bool `json:"hasTopic"`
-			HasCallerId      bool `json:"hasCallerId"`
-		}
-		require.NoError(t, json.Unmarshal(resp, &parsed))
-		assert.True(t, parsed.HasPayload, "should have payload")
-		assert.True(t, parsed.HasReplyTo, "should have replyTo")
-		assert.True(t, parsed.HasCorrelationId, "should have correlationId")
-		assert.True(t, parsed.HasTopic, "should have topic")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for metadata reply")
+	var parsed struct {
+		HasPayload       bool `json:"hasPayload"`
+		HasReplyTo       bool `json:"hasReplyTo"`
+		HasCorrelationId bool `json:"hasCorrelationId"`
+		HasTopic         bool `json:"hasTopic"`
+		HasCallerId      bool `json:"hasCallerId"`
 	}
+	require.NoError(t, json.Unmarshal(resp, &parsed))
+	assert.True(t, parsed.HasPayload, "should have payload")
+	assert.True(t, parsed.HasReplyTo, "should have replyTo")
+	assert.True(t, parsed.HasCorrelationId, "should have correlationId")
+	assert.True(t, parsed.HasTopic, "should have topic")
 }
 
 // testGoToJSRoundTrip verifies Go can publish a CustomMsg to a JS handler
@@ -194,25 +187,13 @@ func testGoToJSRoundTrip(t *testing.T, env *suite.TestEnv) {
 		return "ok";
 	`)
 
-	pubResult, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.roundtrip.ask",
 		Payload: json.RawMessage(`{"question":"meaning of life"}`),
 	})
 	require.NoError(t, err)
 
-	done := make(chan json.RawMessage, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg sdk.Message) {
-		done <- json.RawMessage(msg.Payload)
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		assert.Contains(t, string(resp), "42")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for reply from JS handler")
-	}
+	assert.Contains(t, string(resp), "42")
 }
 
 // testDeployWithBusOn verifies the full deploy -> bus.on -> message -> reply flow.
@@ -225,36 +206,13 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ greeting: "hello " + msg.payload.name });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("greeter.ts", tsCode))
-	require.NoError(t, err)
-
-	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) {
-		deployCh <- m
+	testutil.Deploy(t, env.Kit, "greeter.ts", tsCode)
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic("greeter.ts", "greet"),
+		Payload: json.RawMessage(`{"name":"world"}`),
 	})
-	defer deployUnsub()
-	select {
-	case dm := <-deployCh:
-		require.Empty(t, suite.ResponseErrorMessage(dm.Payload), "deploy should succeed")
-	case <-ctx.Done():
-		t.Fatal("timeout deploying")
-	}
-
-	pubResult, err := sdk.SendToService(env.Kit, ctx, "greeter.ts", "greet", json.RawMessage(`{"name":"world"}`))
 	require.NoError(t, err)
-
-	replyCh := make(chan json.RawMessage, 1)
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, pubResult.ReplyTo, func(msg sdk.Message) {
-		replyCh <- json.RawMessage(msg.Payload)
-	})
-	defer replyUnsub()
-
-	select {
-	case resp := <-replyCh:
-		assert.Contains(t, string(resp), "hello world")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for reply from deployed .ts service")
-	}
+	assert.Contains(t, string(resp), "hello world")
 
 	sdk.Publish(env.Kit, ctx, pkgTeardown("greeter.ts"))
 }
@@ -270,17 +228,7 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 			msg.reply({ text: "final", done: true });
 		});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("streamer.ts", tsCode))
-	require.NoError(t, err)
-	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { deployCh <- m })
-	defer deployUnsub()
-	select {
-	case dm := <-deployCh:
-		require.Empty(t, suite.ResponseErrorMessage(dm.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying")
-	}
+	testutil.Deploy(t, env.Kit, "streamer.ts", tsCode)
 
 	replyTopic := "test.stream.reply"
 	received := make(chan sdk.Message, 10)
@@ -289,7 +237,7 @@ func testStreamingChunks(t *testing.T, env *suite.TestEnv) {
 	})
 	defer replyUnsub()
 
-	_, err = sdk.SendToService(env.Kit, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
+	_, err := sdk.SendToService(env.Kit, ctx, "streamer.ts", "stream", json.RawMessage(`{}`), sdk.WithReplyTo(replyTopic))
 	require.NoError(t, err)
 
 	var chunks []sdk.Message
@@ -322,50 +270,24 @@ func testKitRegisterAgentDiscovery(t *testing.T, env *suite.TestEnv) {
 	tsCode := `
 		kit.register("agent", "test-bot", {});
 	`
-	deployResult, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("bot.ts", tsCode))
-	require.NoError(t, err)
-	deployCh := make(chan sdk.Message, 1)
-	deployUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, deployResult.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { deployCh <- m })
-	defer deployUnsub()
-	select {
-	case dm := <-deployCh:
-		require.Empty(t, suite.ResponseErrorMessage(dm.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying")
-	}
+	testutil.Deploy(t, env.Kit, "bot.ts", tsCode)
 
-	listResult, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
+	lr, err := brainkit.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})
 	require.NoError(t, err)
-	listCh := make(chan sdk.AgentListResp, 1)
-	listUnsub, _ := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, listResult.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { listCh <- r })
-	defer listUnsub()
-	select {
-	case lr := <-listCh:
-		found := false
-		for _, a := range lr.Agents {
-			if a.Name == "test-bot" {
-				found = true
-			}
+	found := false
+	for _, a := range lr.Agents {
+		if a.Name == "test-bot" {
+			found = true
 		}
-		assert.True(t, found, "test-bot should be in agents.list")
-	case <-ctx.Done():
-		t.Fatal("timeout listing agents")
 	}
+	assert.True(t, found, "test-bot should be in agents.list")
 
 	sdk.Publish(env.Kit, ctx, pkgTeardown("bot.ts"))
 	time.Sleep(100 * time.Millisecond)
 
-	listResult2, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
+	lr, err = brainkit.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})
 	require.NoError(t, err)
-	listCh2 := make(chan sdk.AgentListResp, 1)
-	listUnsub2, _ := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, listResult2.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { listCh2 <- r })
-	defer listUnsub2()
-	select {
-	case lr := <-listCh2:
-		for _, a := range lr.Agents {
-			assert.NotEqual(t, "test-bot", a.Name, "test-bot should be removed after teardown")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout listing agents after teardown")
+	for _, a := range lr.Agents {
+		assert.NotEqual(t, "test-bot", a.Name, "test-bot should be removed after teardown")
 	}
 }

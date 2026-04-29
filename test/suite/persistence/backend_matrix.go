@@ -10,7 +10,11 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
+	secretsmod "github.com/brainlet/brainkit/modules/secrets"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +25,7 @@ import (
 func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-matrix.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	// Phase 1: Deploy
@@ -29,6 +33,7 @@ func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -36,13 +41,14 @@ func testDeployPersistRestart(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Phase 2: Reopen with same store — deployment should be restored
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
 		FSRoot: tmpDir, Store: store2,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -64,17 +70,18 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "store-secrets.db")
 
 	// Phase 1: Set secrets
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "test-master-key-1234567890",
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
+	pr, _ := sdk.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
 	ch := make(chan []byte, 1)
 	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	select {
@@ -86,23 +93,26 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Phase 2: Reopen — secret should be retrievable
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "test-master-key-1234567890",
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pr2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "persist-secret-matrix"})
+	pr2, _ := sdk.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "persist-secret-matrix"})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
 
 	select {
 	case p := <-ch2:
-		var resp struct{ Value string `json:"value"` }
+		var resp struct {
+			Value string `json:"value"`
+		}
 		json.Unmarshal(suite.ResponseData(p), &resp)
 		assert.Equal(t, "secret-value-123", resp.Value, "secret should survive restart")
 	case <-time.After(5 * time.Second):
@@ -116,11 +126,12 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-multi.db")
 
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -134,10 +145,11 @@ func testMultiDeployOrderAndMetadata(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Phase 2: Reopen
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -158,7 +170,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-sched.db")
 
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -173,7 +185,7 @@ func testMultipleSchedulesSurvive(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Reopen
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
@@ -193,10 +205,11 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "store-handler.db")
 
 	// Phase 1: Deploy with bus handler
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -206,10 +219,11 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Phase 2: Reopen — handler should be active again
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -235,25 +249,12 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 }
 
 // listSchedules queries the schedule list via bus command.
-func listSchedules(t *testing.T, k *brainkit.Kit) []sdk.ScheduleInfo {
+func listSchedules(t *testing.T, k *brainkit.Kit) []schedulemsg.ScheduleInfo {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, err := sdk.PublishScheduleList(k, ctx, sdk.ScheduleListMsg{})
+	resp, err := sdk.Call[schedulemsg.ScheduleListMsg, schedulemsg.ScheduleListResp](k, ctx, schedulemsg.ScheduleListMsg{})
 	require.NoError(t, err)
-
-	ch := make(chan sdk.ScheduleListResp, 1)
-	unsub, err := sdk.SubscribeScheduleListResp(k, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleListResp, _ sdk.Message) { ch <- resp })
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case resp := <-ch:
-		return resp.Schedules
-	case <-ctx.Done():
-		t.Fatal("timeout listing schedules")
-		return nil
-	}
+	return resp.Schedules
 }

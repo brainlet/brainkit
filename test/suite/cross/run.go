@@ -9,8 +9,11 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -101,7 +104,7 @@ func makeNode(t *testing.T, env *suite.TestEnv, namespace string) *brainkit.Kit 
 
 // makeNodeWithConfig creates a Kit with explicit transport fields.
 // Used by cross-Kit tests where multiple nodes must share the same transport.
-func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf transportFields) *brainkit.Kit {
+func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf transportFields, extra ...brainkit.Module) *brainkit.Kit {
 	t.Helper()
 	env.RequirePodman(t)
 	tmpDir := t.TempDir()
@@ -111,12 +114,21 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 		CallerID:  "host",
 		FSRoot:    tmpDir,
 		Transport: tf.Transport,
+		Modules:   packageModules(extra...),
 	})
 	if err != nil {
 		t.Fatalf("makeNode: %v", err)
 	}
 	t.Cleanup(func() { kit.Close() })
 	return kit
+}
+
+func packageModules(extra ...brainkit.Module) []brainkit.Module {
+	modules := make([]brainkit.Module, 0, 2+len(extra))
+	modules = append(modules, toolsmod.New())
+	modules = append(modules, packagesmod.New())
+	modules = append(modules, extra...)
+	return modules
 }
 
 // startNATSContainer starts a NATS JetStream container and returns the URL.
@@ -146,16 +158,17 @@ func startNATSContainer(t *testing.T) string {
 // publishAndWaitRaw publishes on a Kit and waits for raw payload.
 func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg sdk.BrainkitMessage) []byte {
 	t.Helper()
-	pr, err := sdk.Publish(kit, ctx, msg)
-	if err != nil {
-		t.Fatalf("publish: %v", err)
-	}
+	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
 	ch := make(chan []byte, 1)
-	unsub, err := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
+	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) { ch <- m.Payload })
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
 	defer unsub()
+
+	if _, err := sdk.Publish(kit, ctx, msg, sdk.WithReplyTo(replyTo)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
 
 	select {
 	case p := <-ch:
@@ -164,6 +177,42 @@ func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg
 		t.Fatal("timeout waiting for response")
 		return nil
 	}
+}
+
+func publishToAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, targetNamespace string, msg sdk.BrainkitMessage) []byte {
+	t.Helper()
+	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
+	ch := make(chan []byte, 1)
+	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) { ch <- m.Payload })
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+
+	if _, err := sdk.PublishTo(kit, ctx, targetNamespace, msg, sdk.WithReplyTo(replyTo)); err != nil {
+		t.Fatalf("publish to %s: %v", targetNamespace, err)
+	}
+
+	select {
+	case p := <-ch:
+		return p
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for response")
+		return nil
+	}
+}
+
+func callAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runtime, ctx context.Context, req Req) Resp {
+	t.Helper()
+	callerRT, ok := rt.(sdk.CallerRuntime)
+	if !ok {
+		t.Fatalf("runtime does not support sdk.Call for %s", req.BusTopic())
+	}
+	resp, err := sdk.Call[Req, Resp](callerRT, ctx, req)
+	if err != nil {
+		t.Fatalf("call %s: %v", req.BusTopic(), err)
+	}
+	return resp
 }
 
 // publishAndWaitJSON publishes on a Kit and returns the raw JSON payload.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,8 +15,17 @@ import (
 // These use env.Kit (shared Full kernel with tools+storage).
 
 func testListEmpty(t *testing.T, env *suite.TestEnv) {
-	resp, msg := wfPublishAndWait[sdk.WorkflowListMsg, sdk.WorkflowListResp](
-		t, env.Kit, sdk.WorkflowListMsg{}, 5*time.Second,
+	opts := []suite.EnvOption{}
+	switch env.Config.Transport {
+	case "embedded":
+		opts = append(opts, suite.WithTransport("embedded"))
+	case "", "memory":
+	default:
+		t.Logf("using a memory clean-env check; shared %s campaigns may already contain workflow definitions", env.Config.Transport)
+	}
+	emptyEnv := suite.Full(t, opts...)
+	resp, msg := wfPublishAndWait[workflowmsg.WorkflowListMsg, workflowmsg.WorkflowListResp](
+		t, emptyEnv.Kit, workflowmsg.WorkflowListMsg{}, 5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 	assert.Len(t, resp.Workflows, 0)
@@ -45,9 +54,9 @@ func testStartSequential(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "seq-test", wf);
 	`)
 
-	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "seq-test", InputData: json.RawMessage(`{"text":"hello"}`)},
+		workflowmsg.WorkflowStartMsg{Name: "seq-test", InputData: json.RawMessage(`{"text":"hello"}`)},
 		10*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -77,9 +86,9 @@ func testStartParallel(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "par-test", wf);
 	`)
 
-	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "par-test", InputData: json.RawMessage(`{"x":5}`)},
+		workflowmsg.WorkflowStartMsg{Name: "par-test", InputData: json.RawMessage(`{"x":5}`)},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
@@ -101,8 +110,8 @@ func testList(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "list-test", wf);
 	`)
 
-	resp, msg := wfPublishAndWait[sdk.WorkflowListMsg, sdk.WorkflowListResp](
-		t, k, sdk.WorkflowListMsg{}, 5*time.Second,
+	resp, msg := wfPublishAndWait[workflowmsg.WorkflowListMsg, workflowmsg.WorkflowListResp](
+		t, k, workflowmsg.WorkflowListMsg{}, 5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 	found := false
@@ -138,17 +147,17 @@ func testSuspendResume(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "approval-flow", wf);
 	`)
 
-	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "approval-flow", InputData: json.RawMessage(`{"item":"widget"}`)},
+		workflowmsg.WorkflowStartMsg{Name: "approval-flow", InputData: json.RawMessage(`{"item":"widget"}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
 	require.NotEmpty(t, startResp.RunID)
 
-	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	resumeResp, resumeMsg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 		t, k,
-		sdk.WorkflowResumeMsg{
+		workflowmsg.WorkflowResumeMsg{
 			Name: "approval-flow", RunID: startResp.RunID,
 			Step: "approval", ResumeData: json.RawMessage(`{"approved":true}`),
 		},
@@ -180,24 +189,24 @@ func testCancel(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "cancel-test", wf);
 	`)
 
-	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "cancel-test", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "cancel-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
 
-	cancelResp, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	cancelResp, cancelMsg := wfPublishAndWait[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](
 		t, k,
-		sdk.WorkflowCancelMsg{Name: "cancel-test", RunID: startResp.RunID},
+		workflowmsg.WorkflowCancelMsg{Name: "cancel-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(cancelMsg.Payload))
 	require.True(t, cancelResp.Cancelled)
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k,
-		sdk.WorkflowStatusMsg{Name: "cancel-test", RunID: startResp.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: "cancel-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
 	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
@@ -225,9 +234,9 @@ func testWithToolCall(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "tool-wf", wf);
 	`)
 
-	resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "tool-wf", InputData: json.RawMessage(`{"msg":"from-workflow"}`)},
+		workflowmsg.WorkflowStartMsg{Name: "tool-wf", InputData: json.RawMessage(`{"msg":"from-workflow"}`)},
 		10*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -236,9 +245,9 @@ func testWithToolCall(t *testing.T, env *suite.TestEnv) {
 }
 
 func testNotFound(t *testing.T, env *suite.TestEnv) {
-	_, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	_, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, env.Kit,
-		sdk.WorkflowStartMsg{Name: "ghost-workflow"},
+		workflowmsg.WorkflowStartMsg{Name: "ghost-workflow"},
 		5*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -248,9 +257,9 @@ func testNotFound(t *testing.T, env *suite.TestEnv) {
 }
 
 func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	_, msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	_, msg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 		t, env.Kit,
-		sdk.WorkflowResumeMsg{Name: "any", RunID: "fake-run-id", ResumeData: json.RawMessage(`{}`)},
+		workflowmsg.WorkflowResumeMsg{Name: "any", RunID: "fake-run-id", ResumeData: json.RawMessage(`{}`)},
 		5*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -260,9 +269,9 @@ func testResumeNonexistentRun(t *testing.T, env *suite.TestEnv) {
 }
 
 func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	_, msg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	_, msg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, env.Kit,
-		sdk.WorkflowStatusMsg{Name: "any", RunID: "fake-run-id"},
+		workflowmsg.WorkflowStatusMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -272,9 +281,9 @@ func testStatusNonexistentRun(t *testing.T, env *suite.TestEnv) {
 }
 
 func testCancelNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	_, msg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	_, msg := wfPublishAndWait[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](
 		t, env.Kit,
-		sdk.WorkflowCancelMsg{Name: "any", RunID: "fake-run-id"},
+		workflowmsg.WorkflowCancelMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -300,9 +309,9 @@ func testStepWithError(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "error-test", wf);
 	`)
 
-	resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "error-test", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "error-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.NotEmpty(t, resp.RunID)
@@ -326,17 +335,17 @@ func testResumeCompletedRun(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "resume-completed", wf);
 	`)
 
-	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, startMsg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "resume-completed", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "resume-completed", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
 	require.Equal(t, "success", startResp.Status)
 
-	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	_, resumeMsg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 		t, k,
-		sdk.WorkflowResumeMsg{Name: "resume-completed", RunID: startResp.RunID, ResumeData: json.RawMessage(`{"approved":true}`)},
+		workflowmsg.WorkflowResumeMsg{Name: "resume-completed", RunID: startResp.RunID, ResumeData: json.RawMessage(`{"approved":true}`)},
 		5*time.Second,
 	)
 	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(resumeMsg.Payload))
@@ -360,17 +369,17 @@ func testCancelCompletedRun(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "cancel-completed", wf);
 	`)
 
-	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, startMsg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "cancel-completed", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "cancel-completed", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
 	require.Equal(t, "success", startResp.Status)
 
-	_, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	_, cancelMsg := wfPublishAndWait[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](
 		t, k,
-		sdk.WorkflowCancelMsg{Name: "cancel-completed", RunID: startResp.RunID},
+		workflowmsg.WorkflowCancelMsg{Name: "cancel-completed", RunID: startResp.RunID},
 		5*time.Second,
 	)
 	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(cancelMsg.Payload))
@@ -398,16 +407,16 @@ func testResumeWrongStep(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "resume-wrong-step", wf);
 	`)
 
-	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "resume-wrong-step", InputData: json.RawMessage(`{"item":"widget"}`)},
+		workflowmsg.WorkflowStartMsg{Name: "resume-wrong-step", InputData: json.RawMessage(`{"item":"widget"}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
 
-	_, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	_, resumeMsg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 		t, k,
-		sdk.WorkflowResumeMsg{
+		workflowmsg.WorkflowResumeMsg{
 			Name:       "resume-wrong-step",
 			RunID:      startResp.RunID,
 			Step:       "ghost-step",
@@ -420,9 +429,9 @@ func testResumeWrongStep(t *testing.T, env *suite.TestEnv) {
 }
 
 func testRestartNonexistentRun(t *testing.T, env *suite.TestEnv) {
-	_, msg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+	_, msg := wfPublishAndWait[workflowmsg.WorkflowRestartMsg, workflowmsg.WorkflowRestartResp](
 		t, env.Kit,
-		sdk.WorkflowRestartMsg{Name: "any", RunID: "fake-run-id"},
+		workflowmsg.WorkflowRestartMsg{Name: "any", RunID: "fake-run-id"},
 		5*time.Second,
 	)
 	require.Equal(t, "NOT_FOUND", suite.ResponseCode(msg.Payload))
@@ -446,17 +455,17 @@ func testRestartCompletedRun(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "restart-completed", wf);
 	`)
 
-	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, startMsg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "restart-completed", InputData: json.RawMessage(`{"x":2}`)},
+		workflowmsg.WorkflowStartMsg{Name: "restart-completed", InputData: json.RawMessage(`{"x":2}`)},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
 	require.Equal(t, "success", startResp.Status)
 
-	restartResp, restartMsg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+	restartResp, restartMsg := wfPublishAndWait[workflowmsg.WorkflowRestartMsg, workflowmsg.WorkflowRestartResp](
 		t, k,
-		sdk.WorkflowRestartMsg{Name: "restart-completed", RunID: startResp.RunID},
+		workflowmsg.WorkflowRestartMsg{Name: "restart-completed", RunID: startResp.RunID},
 		10*time.Second,
 	)
 	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(restartMsg.Payload))

@@ -1,7 +1,6 @@
 package health
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -15,9 +14,9 @@ import (
 // testProbeAIProviderRealOpenAI probes the real OpenAI API with a real key.
 func testProbeAIProviderRealOpenAI(t *testing.T, _ *suite.TestEnv) {
 	testutil.LoadEnv(t)
-	key := os.Getenv("OPENAI_API_KEY")
-	if key == "" {
-		t.Skip("OPENAI_API_KEY required")
+	key, ok := testutil.OpenAIKey()
+	if !ok {
+		t.Skip("needs OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 
 	k, err := brainkit.New(brainkit.Config{
@@ -137,9 +136,9 @@ func testProbeVectorStoreRealPgVector(t *testing.T, _ *suite.TestEnv) {
 // testProbeAll runs probes for everything registered.
 func testProbeAll(t *testing.T, _ *suite.TestEnv) {
 	testutil.LoadEnv(t)
-	key := os.Getenv("OPENAI_API_KEY")
-	if key == "" {
-		t.Skip("OPENAI_API_KEY required")
+	key, ok := testutil.OpenAIKey()
+	if !ok {
+		t.Skip("needs OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 
 	k, err := brainkit.New(brainkit.Config{
@@ -162,9 +161,9 @@ func testProbeAll(t *testing.T, _ *suite.TestEnv) {
 // testProbePeriodicTicker verifies that periodic probing fires.
 func testProbePeriodicTicker(t *testing.T, _ *suite.TestEnv) {
 	testutil.LoadEnv(t)
-	key := os.Getenv("OPENAI_API_KEY")
-	if key == "" {
-		t.Skip("OPENAI_API_KEY required")
+	key, ok := testutil.OpenAIKey()
+	if !ok {
+		t.Skip("needs OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 
 	k, err := brainkit.New(brainkit.Config{

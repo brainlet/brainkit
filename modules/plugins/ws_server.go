@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/pluginws"
 	"github.com/coder/websocket"
@@ -150,13 +151,12 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		slog.Int("tools", len(manifest.Tools)))
 
 	// Emit plugin.registered event
-	_, _ = s.mod.kit.PublishRaw(ctx, sdk.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(sdk.PluginRegisteredEvent{
+	s.mod.announceRegistered(ctx, pluginmsg.PluginRegisteredEvent{
 		Owner:   manifest.Owner,
 		Name:    manifest.Name,
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
-	}))
-	s.mod.kit.Audit().PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
+	})
 
 	// Subscribe to topics declared in manifest
 	for _, topic := range manifest.Subscriptions {
@@ -242,7 +242,19 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 		case pluginws.TypeSubscribe:
 			var sub pluginws.SubscribeMsg
 			json.Unmarshal(respMsg.Data, &sub)
-			s.subscribeTopic(pc, sub.Topic)
+			err := s.subscribeTopic(pc, sub.Topic)
+			ack := pluginws.SubscribeAck{Topic: sub.Topic}
+			if err != nil {
+				ack.Error = err.Error()
+			}
+			ackData, _ := json.Marshal(ack)
+			pc.mu.Lock()
+			_ = wsjson.Write(ctx, conn, pluginws.Message{
+				Type: pluginws.TypeSubscribeAck,
+				ID:   respMsg.ID,
+				Data: ackData,
+			})
+			pc.mu.Unlock()
 		}
 	}
 
@@ -266,12 +278,13 @@ func (s *pluginWSServer) handleConnection(w http.ResponseWriter, r *http.Request
 // subscribeTopic creates a bus subscription and forwards events to the plugin over WS.
 // Uses fan-out subscriber so every plugin instance receives all events (not competing
 // with command handlers in the queue group).
-func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
+func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) error {
 	unsub, err := s.mod.kit.Remote().SubscribeRawFanOut(context.Background(), topic, func(msg sdk.Message) {
 		evtData, _ := json.Marshal(pluginws.EventMsg{
 			Topic:    msg.Topic,
 			Payload:  msg.Payload,
 			CallerID: msg.CallerID,
+			Metadata: msg.Metadata,
 		})
 		pc.mu.Lock()
 		defer pc.mu.Unlock()
@@ -285,7 +298,7 @@ func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
 			slog.String("plugin", pc.name),
 			slog.String("topic", topic),
 			slog.String("error", err.Error()))
-		return
+		return err
 	}
 	pc.mu.Lock()
 	pc.unsubs = append(pc.unsubs, unsub)
@@ -293,6 +306,7 @@ func (s *pluginWSServer) subscribeTopic(pc *pluginWSConn, topic string) {
 	slog.Info("plugin ws: subscribed",
 		slog.String("plugin", pc.name),
 		slog.String("topic", topic))
+	return nil
 }
 
 // callTool sends a tool call over WS and waits for the result.

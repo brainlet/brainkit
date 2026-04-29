@@ -7,22 +7,23 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	healthmod "github.com/brainlet/brainkit/modules/health"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestCallWrapperRoundTrip verifies that a generated synchronous
-// Call wrapper delegates correctly to the underlying generic and
-// returns a typed response. Uses kit.health because it's
-// always-on, requires no config, and returns a structurally
-// interesting response.
+// TestCallWrapperRoundTrip verifies that a generated SDK synchronous Call
+// wrapper delegates correctly to the underlying generic and returns a typed
+// response. Uses kit.health from its module because it returns a structurally
+// interesting response without external infrastructure.
 func TestCallWrapperRoundTrip(t *testing.T) {
 	kit, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "call-wrapper-test",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -30,8 +31,8 @@ func TestCallWrapperRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	resp, err := brainkit.CallKitHealth(kit, ctx, sdk.KitHealthMsg{})
-	require.NoError(t, err, "generated CallKitHealth wrapper must round-trip")
+	resp, err := healthmod.CallKitHealth(kit, ctx, healthmod.KitHealthMsg{})
+	require.NoError(t, err, "generated health.CallKitHealth wrapper must round-trip")
 	assert.NotEmpty(t, resp.Health, "health response should carry a Health payload")
 }
 
@@ -47,6 +48,7 @@ func TestCallWrapperParity(t *testing.T) {
 		Namespace: "call-wrapper-parity",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -54,11 +56,11 @@ func TestCallWrapperParity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	viaWrapper, err := brainkit.CallKitHealth(kit, ctx, sdk.KitHealthMsg{})
+	viaWrapper, err := healthmod.CallKitHealth(kit, ctx, healthmod.KitHealthMsg{})
 	require.NoError(t, err)
 
-	viaGeneric, err := brainkit.Call[sdk.KitHealthMsg, sdk.KitHealthResp](
-		kit, ctx, sdk.KitHealthMsg{},
+	viaGeneric, err := brainkit.Call[healthmod.KitHealthMsg, healthmod.KitHealthResp](
+		kit, ctx, healthmod.KitHealthMsg{},
 	)
 	require.NoError(t, err)
 
@@ -82,6 +84,7 @@ func TestCallWrapperRespectsOptions(t *testing.T) {
 		Namespace: "call-wrapper-opts",
 		CallerID:  "test",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{healthmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })
@@ -90,7 +93,7 @@ func TestCallWrapperRespectsOptions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	_, err = brainkit.CallKitHealth(kit, ctx, sdk.KitHealthMsg{},
-		brainkit.WithCallTimeout(1))
+	_, err = healthmod.CallKitHealth(kit, ctx, healthmod.KitHealthMsg{},
+		sdk.WithCallTimeout(1))
 	require.Error(t, err, "1ns timeout must surface an error")
 }

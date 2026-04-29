@@ -3,6 +3,8 @@ package server
 import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/standard"
+	"github.com/brainlet/brainkit/transports"
 )
 
 // QuickStart creates a Server with sensible defaults — EmbeddedNATS,
@@ -13,13 +15,13 @@ import (
 // Additional modules (audit, tracing, probes, …) can be wired via
 // WithExtraModules or by switching to the YAML-driven path.
 func QuickStart(namespace, fsRoot string, opts ...QuickStartOption) (*Server, error) {
+	mods := standard.CommandSet()
+	mods = append(mods, gateway.New(gateway.Config{Listen: ":8080"}))
 	cfg := Config{
 		Namespace: namespace,
 		FSRoot:    fsRoot,
-		Transport: brainkit.EmbeddedNATS(),
-		Modules: []brainkit.Module{
-			gateway.New(gateway.Config{Listen: ":8080"}),
-		},
+		Transport: transports.EmbeddedNATS(),
+		Modules:   mods,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -36,7 +38,7 @@ type QuickStartOption func(*Config)
 func WithListen(addr string) QuickStartOption {
 	return func(c *Config) {
 		for i, m := range c.Modules {
-			if m != nil && m.Name() == "gateway" {
+			if m != nil && m.ID() == "gateway" {
 				c.Modules[i] = gateway.New(gateway.Config{Listen: addr})
 				return
 			}

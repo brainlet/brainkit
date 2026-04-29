@@ -11,7 +11,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,6 +97,8 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 	}
 
 	tk := env.Kit
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -114,11 +118,8 @@ func testExhaustionDeployBomb(t *testing.T, env *suite.TestEnv) {
 	_, err := tk.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
 	assert.NoError(t, err, "kit should survive 50 simultaneous deploys")
 
-	ctx := context.Background()
 	for i := 0; i < 50; i++ {
-		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: fmt.Sprintf("deploy-stress-bomb-%d", i)})
-		cancel()
+		_ = stressTeardown(t, tk, fmt.Sprintf("deploy-stress-bomb-%d", i))
 	}
 }
 
@@ -152,6 +153,8 @@ func testExhaustionLifecycleChurn(t *testing.T, env *suite.TestEnv) {
 
 	tk := env.Kit
 	ctx := context.Background()
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	for i := 0; i < 100; i++ {
 		src := "churn-stress-test.ts"
@@ -160,9 +163,7 @@ func testExhaustionLifecycleChurn(t *testing.T, env *suite.TestEnv) {
 			kit.register("tool", "stress-churn-%d", t);
 			bus.on("ping-%d", function(msg) { msg.reply({i: %d}); });
 		`, i, i, i, i))
-		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
-		cancel()
+		_ = stressTeardown(t, tk, src)
 	}
 
 	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
@@ -267,7 +268,7 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	bigValue := strings.Repeat("s", 10*1024*1024)
-	pr, err := sdk.Publish(tk, ctx, sdk.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
+	pr, err := sdk.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
 	require.NoError(t, err)
 
 	ch := make(chan []byte, 1)
@@ -369,13 +370,14 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 	}
 
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(tmpDir + "/stress-bomb.db")
+	store, err := stores.NewSQLite(tmpDir + "/stress-bomb.db")
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
-		Store: store,
+		Store:   store,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -387,11 +389,12 @@ func testExhaustionPersistenceBomb(t *testing.T, env *suite.TestEnv) {
 
 	k.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(tmpDir + "/stress-bomb.db")
+	store2, _ := stores.NewSQLite(tmpDir + "/stress-bomb.db")
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -412,6 +415,7 @@ func testEvalTSInfiniteLoop(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-inf", CallerID: "stress-inf", FSRoot: t.TempDir(),
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 

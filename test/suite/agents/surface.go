@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -18,13 +19,7 @@ import (
 func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	env.RequireAI(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	manifest1, _ := json.Marshal(map[string]string{"name": "surface-ai-gen-adv", "entry": "surface-ai-gen-adv.ts"})
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
-		Manifest: manifest1,
-		Files: map[string]string{"surface-ai-gen-adv.ts": `
+	testutil.Deploy(t, env.Kit, "surface-ai-gen-adv.ts", `
 			const result = await generateText({
 				model: model("openai", "gpt-4o-mini"),
 				prompt: "What is 2+2? Reply with just the number.",
@@ -35,20 +30,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 				hasUsage: !!result.usage,
 				finishReason: result.finishReason,
 			});
-		`},
-	})
-	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		m := <-mch
-		require.True(t, resp.Deployed, "deploy should succeed: %s", suite.ResponseErrorMessage(m.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying AI generate")
-	}
+		`)
 
 	result := testutil.EvalTS(t, env.Kit, "__read_ai_gen_adv.ts", `return globalThis.__module_result || "null"`)
 
@@ -58,7 +40,7 @@ func testSurfaceGenerateTextReal(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, parsed["text"], "4", "should contain the answer 4")
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
-	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "surface-ai-gen-adv"})
+	testutil.Teardown(t, env.Kit, "surface-ai-gen-adv.ts")
 }
 
 // testSurfaceAgentGenerate — deploy agent, call generate, verify response.
@@ -69,10 +51,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	manifest2, _ := json.Marshal(map[string]string{"name": "surface-gen-agent-adv", "entry": "surface-gen-agent-adv.ts"})
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
-		Manifest: manifest2,
-		Files: map[string]string{"surface-gen-agent-adv.ts": `
+	testutil.Deploy(t, env.Kit, "surface-gen-agent-adv.ts", `
 			const myAgent = new Agent({
 				name: "surface-gen-agent-adv",
 				model: model("openai", "gpt-4o-mini"),
@@ -85,20 +64,7 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 				text: result.text,
 				hasUsage: !!result.usage,
 			});
-		`},
-	})
-	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		m := <-mch
-		require.True(t, resp.Deployed, "deploy should succeed: %s", suite.ResponseErrorMessage(m.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying surface agent")
-	}
+		`)
 
 	result := testutil.EvalTS(t, env.Kit, "__read_surface_gen_adv.ts", `return globalThis.__module_result || "null"`)
 
@@ -108,25 +74,17 @@ func testSurfaceAgentGenerate(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
 	// Verify agent was registered
-	pr2, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
+	listResp, err := sdk.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})
 	require.NoError(t, err)
-	ch2 := make(chan sdk.AgentListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { ch2 <- r })
-	defer unsub2()
-	select {
-	case listResp := <-ch2:
-		found := false
-		for _, a := range listResp.Agents {
-			if a.Name == "surface-gen-agent-adv" {
-				found = true
-			}
+	found := false
+	for _, a := range listResp.Agents {
+		if a.Name == "surface-gen-agent-adv" {
+			found = true
 		}
-		assert.True(t, found, "surface-gen-agent-adv should be in agents list")
-	case <-ctx.Done():
-		t.Fatal("timeout listing agents")
 	}
+	assert.True(t, found, "surface-gen-agent-adv should be in agents list")
 
-	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "surface-gen-agent-adv"})
+	testutil.Teardown(t, env.Kit, "surface-gen-agent-adv.ts")
 }
 
 // testSurfaceAgentWithTool — deploy agent with a tool, call generate, verify steps.
@@ -193,10 +151,7 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	manifest3, _ := json.Marshal(map[string]string{"name": "ai-svc-agent-adv", "entry": "ai-svc-agent-adv.ts"})
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
-		Manifest: manifest3,
-		Files: map[string]string{"ai-svc-agent-adv.ts": `
+	testutil.Deploy(t, env.Kit, "ai-svc-agent-adv.ts", `
 			bus.on("generate", async (msg) => {
 				try {
 					var prompt = (msg.payload && msg.payload.prompt) || "say hello";
@@ -210,51 +165,24 @@ func testSurfaceBusServiceAIProxy(t *testing.T, env *suite.TestEnv) {
 					msg.reply({ error: e.message || String(e) });
 				}
 			});
-		`},
-	})
-	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		m := <-mch
-		require.True(t, resp.Deployed, "deploy AI service: %s", suite.ResponseErrorMessage(m.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying AI service")
-	}
+		`)
 
 	time.Sleep(100 * time.Millisecond)
 
 	// Go sends to the .ts AI service
-	pr2, err := sdk.SendToService(env.Kit, ctx, "ai-svc-agent-adv.ts", "generate", json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`))
-	require.NoError(t, err)
-
-	replyCh := make(chan sdk.Message, 1)
-	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg sdk.Message) {
-		if msg.Metadata["done"] == "true" {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		}
+	reply, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic("ai-svc-agent-adv.ts", "generate"),
+		Payload: json.RawMessage(`{"prompt":"Reply with exactly: BUS_AI_WORKS"}`),
 	})
 	require.NoError(t, err)
-	defer unsub2()
 
-	select {
-	case msg := <-replyCh:
-		var result map[string]any
-		json.Unmarshal(suite.ResponseDataFromMsg(msg), &result)
-		if errMsg, hasErr := result["error"]; hasErr {
-			t.Fatalf("AI service returned error: %v", errMsg)
-		}
-		assert.NotEmpty(t, result["text"], "AI service should return text")
-		assert.NotNil(t, result["usage"], "AI service should return usage")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for AI service reply")
+	var result map[string]any
+	json.Unmarshal(reply, &result)
+	if errMsg, hasErr := result["error"]; hasErr {
+		t.Fatalf("AI service returned error: %v", errMsg)
 	}
+	assert.NotEmpty(t, result["text"], "AI service should return text")
+	assert.NotNil(t, result["usage"], "AI service should return usage")
 
-	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "ai-svc-agent-adv"})
+	testutil.Teardown(t, env.Kit, "ai-svc-agent-adv.ts")
 }

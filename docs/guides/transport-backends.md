@@ -22,13 +22,14 @@ Zero value for `Config.Transport` resolves to
 brainkit.New(brainkit.Config{
     Namespace: "my-test",
     Transport: brainkit.Memory(),
+    JSRuntime: true, // only needed for JS/TS deploy/eval tests
     FSRoot:    ".",
 })
 ```
 
-In-process GoChannel transport. Synchronous delivery, no disk, no
-goroutines beyond the QuickJS runtime itself. Use it for tests and
-single-process demos.
+In-process GoChannel transport. Synchronous delivery, no disk, and no external
+broker. A zero-value Kit does not start QuickJS; JS/TS tests opt into it with
+`JSRuntime` or by mounting `modules/jsruntime`.
 
 Limits: no cross-process communication, no plugins (the plugin
 supervisor refuses `"memory"`), no NATS JetStream durability.

@@ -22,9 +22,10 @@ type BusConfig struct {
 // Bus discovers peers via announcements on the transport bus.
 // All Kits on the same transport cluster see each other — cross-namespace.
 type Bus struct {
-	mu    syncx.RWMutex
-	self  *Peer
-	peers map[string]peerEntry
+	mu     syncx.RWMutex
+	self   *Peer
+	peers  map[string]peerEntry
+	closed bool
 
 	transport transport.Presence
 	unsub     func()
@@ -68,6 +69,7 @@ func NewBus(cfg BusConfig) *Bus {
 func (d *Bus) Register(self Peer) error {
 	d.mu.Lock()
 	d.self = &self
+	d.closed = false
 	d.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,21 +156,27 @@ func (d *Bus) BrowseNamespaces() ([]string, error) {
 }
 
 func (d *Bus) Close() error {
-	// 1. Best-effort leave announcement (before cancel so no heartbeat races re-announce)
-	d.mu.RLock()
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return nil
+	}
+	d.closed = true
 	self := d.self
-	d.mu.RUnlock()
+	d.mu.Unlock()
+
+	// Stop heartbeat + eviction goroutines before publishing leave. announce()
+	// also checks d.closed so a selected heartbeat cannot re-announce after
+	// close starts.
+	if d.cancel != nil {
+		d.cancel()
+	}
 	if self != nil {
 		msg, _ := json.Marshal(presenceMessage{Type: "leave", Name: self.Name})
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		d.transport.PublishRawGlobal(ctx, presenceTopic, msg)
 		cancel()
 	}
-	// 2. Cancel heartbeat + eviction goroutines
-	if d.cancel != nil {
-		d.cancel()
-	}
-	// 3. Unsubscribe
 	if d.unsub != nil {
 		d.unsub()
 	}
@@ -178,8 +186,9 @@ func (d *Bus) Close() error {
 func (d *Bus) announce() {
 	d.mu.RLock()
 	self := d.self
+	closed := d.closed
 	d.mu.RUnlock()
-	if self == nil {
+	if self == nil || closed {
 		return
 	}
 	msg, _ := json.Marshal(presenceMessage{

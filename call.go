@@ -6,23 +6,22 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
 )
 
 // BufferPolicy controls how a streaming Call handles chunks when its buffer
-// is full. Re-exported from the internal caller package.
-type BufferPolicy = caller.BufferPolicy
+// is full. Re-exported from the SDK caller package.
+type BufferPolicy = sdk.BufferPolicy
 
 const (
 	// BufferBlock applies back-pressure to the producer until a slot frees.
-	BufferBlock = caller.BufferBlock
+	BufferBlock = sdk.BufferBlock
 	// BufferDropNewest drops incoming chunks when the buffer is full.
-	BufferDropNewest = caller.BufferDropNewest
+	BufferDropNewest = sdk.BufferDropNewest
 	// BufferDropOldest evicts the oldest buffered chunk to make room.
-	BufferDropOldest = caller.BufferDropOldest
-	// BufferError finalizes the call with *caller.BufferOverflowError.
-	BufferError = caller.BufferError
+	BufferDropOldest = sdk.BufferDropOldest
+	// BufferError finalizes the call with *sdk.BufferOverflowError.
+	BufferError = sdk.BufferError
 )
 
 // CallOption configures a Call or CallStream invocation.
@@ -78,7 +77,7 @@ func WithCallMeta(meta map[string]string) CallOption {
 }
 
 // WithCallBuffer sets the per-pending stream channel capacity. Only meaningful
-// for CallStream. 0 (the default) uses caller.DefaultBufferSize.
+// for CallStream. 0 (the default) uses sdk.DefaultBufferSize.
 func WithCallBuffer(n int) CallOption {
 	return func(c *callConfig) { c.bufferSize = n }
 }
@@ -98,7 +97,7 @@ func WithCallNoCancelSignal() CallOption {
 
 // Caller returns the Kit's shared-inbox reply router.
 // Used by modules and advanced callers; most users should prefer Call.
-func (k *Kit) Caller() *caller.Caller {
+func (k *Kit) Caller() *sdk.Caller {
 	return k.kernel.Caller()
 }
 
@@ -111,9 +110,9 @@ func (k *Kit) Caller() *caller.Caller {
 //     shared inbox, publishes with replyTo=inbox.
 //   - Reply arrives on the inbox, is demultiplexed by correlationID, and
 //     unmarshalled into Resp.
-//   - If ctx expires via deadline → *caller.CallTimeoutError.
-//   - If ctx is cancelled for any other reason → *caller.CallCancelledError.
-//   - If the payload can't decode into Resp → *caller.DecodeError (with raw
+//   - If ctx expires via deadline → *sdk.CallTimeoutError.
+//   - If ctx is cancelled for any other reason → *sdk.CallCancelledError.
+//   - If the payload can't decode into Resp → *sdk.CallDecodeError (with raw
 //     payload preserved).
 //
 // Resp of json.RawMessage short-circuits the decode and returns raw bytes.
@@ -125,7 +124,7 @@ func Call[Req sdk.BrainkitMessage, Resp any](k *Kit, ctx context.Context, req Re
 	}
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && cfg.timeout <= 0 {
-		return zero, &caller.NoDeadlineError{}
+		return zero, &sdk.NoDeadlineError{}
 	}
 	if cfg.timeout > 0 {
 		var cancel context.CancelFunc
@@ -148,7 +147,7 @@ func Call[Req sdk.BrainkitMessage, Resp any](k *Kit, ctx context.Context, req Re
 		return zero, fmt.Errorf("brainkit.Call: resolve %q: %w", cfg.targetNS, err)
 	}
 
-	replyPayload, err := c.Call(ctx, req.BusTopic(), payload, caller.Config{
+	replyPayload, err := c.Call(ctx, req.BusTopic(), payload, sdk.CallerConfig{
 		TargetNamespace: targetNS,
 		Metadata:        cfg.meta,
 		NoCancelSignal:  cfg.noCancelSignal,
@@ -164,7 +163,7 @@ func Call[Req sdk.BrainkitMessage, Resp any](k *Kit, ctx context.Context, req Re
 
 	var resp Resp
 	if err := json.Unmarshal(replyPayload, &resp); err != nil {
-		return zero, &caller.DecodeError{Topic: req.BusTopic(), Payload: replyPayload, Cause: err}
+		return zero, &sdk.CallDecodeError{Topic: req.BusTopic(), Payload: replyPayload, Cause: err}
 	}
 	return resp, nil
 }
@@ -194,7 +193,7 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 	}
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && cfg.timeout <= 0 {
-		return zero, &caller.NoDeadlineError{}
+		return zero, &sdk.NoDeadlineError{}
 	}
 	if cfg.timeout > 0 {
 		var cancel context.CancelFunc
@@ -220,7 +219,7 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 			return onChunk(chunk)
 		}
 		if err := json.Unmarshal(msg.Payload, &chunk); err != nil {
-			return &caller.DecodeError{Topic: topic, Payload: msg.Payload, Cause: err}
+			return &sdk.CallDecodeError{Topic: topic, Payload: msg.Payload, Cause: err}
 		}
 		return onChunk(chunk)
 	}
@@ -230,7 +229,7 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 		return zero, fmt.Errorf("brainkit.CallStream: resolve %q: %w", cfg.targetNS, err)
 	}
 
-	replyPayload, err := c.Call(ctx, topic, payload, caller.Config{
+	replyPayload, err := c.Call(ctx, topic, payload, sdk.CallerConfig{
 		TargetNamespace: targetNS,
 		Metadata:        cfg.meta,
 		StreamHandler:   streamH,
@@ -249,7 +248,7 @@ func CallStream[Req sdk.BrainkitMessage, Chunk any, Resp any](
 
 	var resp Resp
 	if err := json.Unmarshal(replyPayload, &resp); err != nil {
-		return zero, &caller.DecodeError{Topic: topic, Payload: replyPayload, Cause: err}
+		return zero, &sdk.CallDecodeError{Topic: topic, Payload: replyPayload, Cause: err}
 	}
 	return resp, nil
 }

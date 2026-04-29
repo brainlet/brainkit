@@ -3,14 +3,12 @@ package plugin
 import (
 	"encoding/json"
 
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// Caller is the shared-inbox reply router used by brainkit.Call from
-// the plugin side. Type-aliased from the internal implementation so
-// plugin authors never reach into internal/.
-type Caller = caller.Caller
+// Caller is the shared-inbox reply router used by sdk.Call from the plugin
+// side.
+type Caller = sdk.Caller
 
 // BusCaller is the narrow surface a plugin's brainkit.Call path
 // exercises. It adds Caller() on top of sdk.Runtime so plugin handlers
@@ -78,7 +76,7 @@ type AgentDefinition struct {
 // FileDefinition declares a .ts file the plugin injects into the Kit.
 type FileDefinition struct {
 	Path    string `json:"path"`
-	Type    string `json:"type"`    // "agent" | "tool" | "module"
+	Type    string `json:"type"` // "agent" | "tool" | "module"
 	Content string `json:"content"`
 }
 

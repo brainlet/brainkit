@@ -12,7 +12,9 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/workflow"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +28,7 @@ import (
 func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -35,7 +37,7 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -59,9 +61,9 @@ func testStorageUpgrade(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "persist-test", wf);
 	`)
 
-	resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "persist-test", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "persist-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", resp.Status, "should suspend")
@@ -88,7 +90,7 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -108,17 +110,17 @@ func testStatusFromStorage(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "status-test", wf);
 	`)
 
-	startResp, startMsg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, startMsg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "status-test", InputData: json.RawMessage(`{"x":5}`)},
+		workflowmsg.WorkflowStartMsg{Name: "status-test", InputData: json.RawMessage(`{"x":5}`)},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(startMsg.Payload))
 	require.Equal(t, "success", startResp.Status)
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k,
-		sdk.WorkflowStatusMsg{Name: "status-test", RunID: startResp.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: "status-test", RunID: startResp.RunID},
 		5*time.Second,
 	)
 	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
@@ -134,7 +136,7 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -158,32 +160,32 @@ func testRuns(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "runs-test", wf);
 	`)
 
-	r1, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r1, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":0}`)},
+		workflowmsg.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":0}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "success", r1.Status)
 
-	r2, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r2, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "runs-test", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", r2.Status)
 
-	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	allResp, allMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k,
-		sdk.WorkflowRunsMsg{Name: "runs-test"},
+		workflowmsg.WorkflowRunsMsg{Name: "runs-test"},
 		5*time.Second,
 	)
 	allErr := suite.ResponseErrorMessage(allMsg.Payload)
 	require.Empty(t, allErr, "list all runs: %s", allErr)
 	assert.GreaterOrEqual(t, allResp.Total, 2, "should have at least 2 runs total")
 
-	suspResp, suspMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	suspResp, suspMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k,
-		sdk.WorkflowRunsMsg{Name: "runs-test", Status: "suspended"},
+		workflowmsg.WorkflowRunsMsg{Name: "runs-test", Status: "suspended"},
 		5*time.Second,
 	)
 	suspErr := suite.ResponseErrorMessage(suspMsg.Payload)
@@ -199,7 +201,7 @@ func testStartAsyncEventShape(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -222,9 +224,9 @@ func testStartAsyncEventShape(t *testing.T, _ *suite.TestEnv) {
 		kit.register("workflow", "async-test", wf);
 	`)
 
-	asyncResp, asyncMsg := wfPublishAndWait[sdk.WorkflowStartAsyncMsg, sdk.WorkflowStartAsyncResp](
+	asyncResp, asyncMsg := wfPublishAndWait[workflowmsg.WorkflowStartAsyncMsg, workflowmsg.WorkflowStartAsyncResp](
 		t, k,
-		sdk.WorkflowStartAsyncMsg{Name: "async-test", InputData: json.RawMessage(`{"n":7}`)},
+		workflowmsg.WorkflowStartAsyncMsg{Name: "async-test", InputData: json.RawMessage(`{"n":7}`)},
 		5*time.Second,
 	)
 	asyncErr := suite.ResponseErrorMessage(asyncMsg.Payload)
@@ -266,9 +268,9 @@ func testCrashRecoverySuspended(t *testing.T, _ *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k2,
-		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	statusErr := suite.ResponseErrorMessage(statusMsg.Payload)
@@ -281,9 +283,9 @@ func testResumeAfterRestart(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	resumeResp, resumeMsg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+	resumeResp, resumeMsg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 		t, k2,
-		sdk.WorkflowResumeMsg{
+		workflowmsg.WorkflowResumeMsg{
 			Name:       fixture.WorkflowName,
 			RunID:      fixture.RunID,
 			Step:       "gate",
@@ -300,17 +302,17 @@ func testCancelAfterRestart(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	cancelResp, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	cancelResp, cancelMsg := wfPublishAndWait[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](
 		t, k2,
-		sdk.WorkflowCancelMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowCancelMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(cancelMsg.Payload))
 	require.True(t, cancelResp.Cancelled)
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k2,
-		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(statusMsg.Payload))
@@ -322,9 +324,9 @@ func testRestartAfterRestart(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	restartResp, restartMsg := wfPublishAndWait[sdk.WorkflowRestartMsg, sdk.WorkflowRestartResp](
+	restartResp, restartMsg := wfPublishAndWait[workflowmsg.WorkflowRestartMsg, workflowmsg.WorkflowRestartResp](
 		t, k2,
-		sdk.WorkflowRestartMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowRestartMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	require.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(restartMsg.Payload))
@@ -337,17 +339,17 @@ func testRunsAfterRestart(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	allResp, allMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k2,
-		sdk.WorkflowRunsMsg{Name: fixture.WorkflowName},
+		workflowmsg.WorkflowRunsMsg{Name: fixture.WorkflowName},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(allMsg.Payload))
 	assert.GreaterOrEqual(t, allResp.Total, 1)
 
-	suspendedResp, suspendedMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	suspendedResp, suspendedMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k2,
-		sdk.WorkflowRunsMsg{Name: fixture.WorkflowName, Status: "suspended"},
+		workflowmsg.WorkflowRunsMsg{Name: fixture.WorkflowName, Status: "suspended"},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(suspendedMsg.Payload))
@@ -361,9 +363,9 @@ func testCorruptSnapshotFailsCleanly(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	_, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	_, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k2,
-		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	errMsg := suite.ResponseErrorMessage(statusMsg.Payload)
@@ -392,31 +394,31 @@ func testRunsOnTransport(t *testing.T, env *suite.TestEnv) {
 		kit.register("workflow", "runs-on-transport", wf);
 	`)
 
-	r1, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r1, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":0}`)},
+		workflowmsg.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":0}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "success", r1.Status)
 
-	r2, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	r2, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: "runs-on-transport", InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", r2.Status)
 
-	allResp, allMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	allResp, allMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k,
-		sdk.WorkflowRunsMsg{Name: "runs-on-transport"},
+		workflowmsg.WorkflowRunsMsg{Name: "runs-on-transport"},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(allMsg.Payload))
 	assert.GreaterOrEqual(t, allResp.Total, 2)
 
-	suspendedResp, suspendedMsg := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
+	suspendedResp, suspendedMsg := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
 		t, k,
-		sdk.WorkflowRunsMsg{Name: "runs-on-transport", Status: "suspended"},
+		workflowmsg.WorkflowRunsMsg{Name: "runs-on-transport", Status: "suspended"},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(suspendedMsg.Payload))
@@ -428,9 +430,9 @@ func testCrashRecoverySuspendedOnTransport(t *testing.T, env *suite.TestEnv) {
 	k2 := reopenPersistedWorkflowKit(t, fixture)
 	defer k2.Close()
 
-	statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k2,
-		sdk.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: fixture.WorkflowName, RunID: fixture.RunID},
 		10*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(statusMsg.Payload))
@@ -464,7 +466,7 @@ func workflowTransportForBackend(t *testing.T, backend string) brainkit.Transpor
 
 func newPersistentWorkflowKit(t *testing.T, transportCfg brainkit.TransportConfig, tmpDir, storePath, mastraDBPath string) *brainkit.Kit {
 	t.Helper()
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: transportCfg,
@@ -475,7 +477,7 @@ func newPersistentWorkflowKit(t *testing.T, transportCfg brainkit.TransportConfi
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(mastraDBPath),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	return k
@@ -512,9 +514,9 @@ func createSuspendedPersistedRun(t *testing.T, backend, workflowName string) wor
 		kit.register("workflow", %q, wf);
 	`, workflowName, workflowName))
 
-	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k1,
-		sdk.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", startResp.Status)
@@ -550,9 +552,9 @@ func createCompletedPersistedRun(t *testing.T, backend, workflowName string) wor
 		kit.register("workflow", %q, wf);
 	`, workflowName, workflowName))
 
-	startResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	startResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k1,
-		sdk.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
+		workflowmsg.WorkflowStartMsg{Name: workflowName, InputData: json.RawMessage(`{"x":1}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "success", startResp.Status)

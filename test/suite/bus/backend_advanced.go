@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -183,7 +184,7 @@ func testErrorCodeOnBus(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "ghost-backend-tool-suite"})
+	pr, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-backend-tool-suite"})
 	require.NoError(t, err)
 
 	ch := make(chan json.RawMessage, 1)

@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/server"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,13 +34,13 @@ func TestNewRejectsMissingFields(t *testing.T) {
 
 	_, err = server.New(server.Config{
 		Namespace: "x",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 	})
 	require.Error(t, err, "FSRoot required")
 
 	_, err = server.New(server.Config{
 		Namespace: "x",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    t.TempDir(),
 	})
 	require.Error(t, err, "gateway module required")
@@ -54,7 +55,7 @@ func TestStartStopLifecycle(t *testing.T) {
 
 	srv, err := server.New(server.Config{
 		Namespace: "server-lifecycle",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmp,
 		Modules: []brainkit.Module{
 			gateway.New(gateway.Config{Listen: addr}),
@@ -91,7 +92,7 @@ func TestKitAccessors(t *testing.T) {
 
 	srv, err := server.New(server.Config{
 		Namespace: "server-accessors",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmp,
 		Modules: []brainkit.Module{
 			gateway.New(gateway.Config{Listen: addr}),
@@ -136,7 +137,7 @@ modules:
 
 	var haveGateway bool
 	for _, m := range cfg.Modules {
-		if m != nil && m.Name() == "gateway" {
+		if m != nil && m.ID() == "gateway" {
 			haveGateway = true
 		}
 	}

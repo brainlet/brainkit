@@ -21,8 +21,8 @@ func secGateway(t *testing.T, env *suite.TestEnv) *bkgw.Gateway {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(env.Kit))
-	t.Cleanup(func() { gw.Stop() })
+	require.NoError(t, env.Kit.Mount(context.Background(), gw))
+	t.Cleanup(func() { _ = env.Kit.Unmount(context.Background(), gw.ID()) })
 	return gw
 }
 
@@ -44,8 +44,8 @@ func testGatewayHeaderInjection(t *testing.T, env *suite.TestEnv) {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(k))
-	defer gw.Stop()
+	require.NoError(t, k.Mount(context.Background(), gw))
+	defer k.Unmount(context.Background(), gw.ID())
 
 	secDeploy(t, k, "gw-header-sec.ts", `
 		bus.on("whoami", function(msg) {
@@ -75,8 +75,8 @@ func testGatewayProtoPollutionViaHTTP(t *testing.T, env *suite.TestEnv) {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(k))
-	defer gw.Stop()
+	require.NoError(t, k.Mount(context.Background(), gw))
+	defer k.Unmount(context.Background(), gw.ID())
 
 	secDeploy(t, k, "gw-proto-sec.ts", `
 		bus.on("check", function(msg) {
@@ -102,8 +102,8 @@ func testGatewayPathTraversalParams(t *testing.T, env *suite.TestEnv) {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(k))
-	defer gw.Stop()
+	require.NoError(t, k.Mount(context.Background(), gw))
+	defer k.Unmount(context.Background(), gw.ID())
 
 	secDeploy(t, k, "gw-params-sec.ts", `
 		bus.on("get", function(msg) {
@@ -139,8 +139,8 @@ func testGatewayWebSocketInjection(t *testing.T, env *suite.TestEnv) {
 		Listen:  ":0",
 		Timeout: 3 * time.Second,
 	})
-	require.NoError(t, gw.Init(k))
-	defer gw.Stop()
+	require.NoError(t, k.Mount(context.Background(), gw))
+	defer k.Unmount(context.Background(), gw.ID())
 
 	ctx := context.Background()
 	secDeploy(t, k, "gw-ws-sec.ts", `

@@ -39,3 +39,11 @@ func (m CustomMsg) MarshalJSON() ([]byte, error) {
 	}
 	return []byte("null"), nil
 }
+
+// CustomEvent is a user-defined event with a dynamic topic.
+type CustomEvent struct {
+	Topic   string          `json:"topic"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func (e CustomEvent) BusTopic() string { return e.Topic }

@@ -8,6 +8,12 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	registrymod "github.com/brainlet/brainkit/modules/registry"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +37,7 @@ func registryEnv(t *testing.T) *brainkit.Kit {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.InMemoryStorage(),
 		},
+		Modules: []brainkit.Module{registrymod.New(), toolsmod.New(), packagesmod.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -43,11 +50,11 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Verify provider is registered via registry.list bus command
-	pr, err := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "provider"})
+	pr, err := sdk.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "provider"})
 	require.NoError(t, err)
-	listCh := make(chan sdk.RegistryListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr.ReplyTo,
-		func(resp sdk.RegistryListResp, _ sdk.Message) { listCh <- resp })
+	listCh := make(chan registrymsg.RegistryListResp, 1)
+	unsub, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr.ReplyTo,
+		func(resp registrymsg.RegistryListResp, _ sdk.Message) { listCh <- resp })
 	defer unsub()
 
 	select {
@@ -58,10 +65,10 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Verify vector store via registry.list
-	pr2, _ := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "vectorStore"})
-	vecCh := make(chan sdk.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr2.ReplyTo,
-		func(resp sdk.RegistryListResp, _ sdk.Message) { vecCh <- resp })
+	pr2, _ := sdk.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "vectorStore"})
+	vecCh := make(chan registrymsg.RegistryListResp, 1)
+	unsub2, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr2.ReplyTo,
+		func(resp registrymsg.RegistryListResp, _ sdk.Message) { vecCh <- resp })
 	defer unsub2()
 
 	select {
@@ -72,10 +79,10 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// Verify storage via registry.list
-	pr3, _ := sdk.Publish(k, ctx, sdk.RegistryListMsg{Category: "storage"})
-	storCh := make(chan sdk.RegistryListResp, 1)
-	unsub3, _ := sdk.SubscribeTo[sdk.RegistryListResp](k, ctx, pr3.ReplyTo,
-		func(resp sdk.RegistryListResp, _ sdk.Message) { storCh <- resp })
+	pr3, _ := sdk.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "storage"})
+	storCh := make(chan registrymsg.RegistryListResp, 1)
+	unsub3, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr3.ReplyTo,
+		func(resp registrymsg.RegistryListResp, _ sdk.Message) { storCh <- resp })
 	defer unsub3()
 
 	select {
@@ -92,6 +99,7 @@ func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test",
 		CallerID:  "test-registry-dynamic",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{registrymod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -100,28 +108,16 @@ func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add provider via bus
-	pr, _ := sdk.PublishProviderAdd(k, ctx, sdk.ProviderAddMsg{
+	addResp, err := sdk.Call[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](k, ctx, registrymsg.ProviderAddMsg{
 		Name: "anthropic", Type: "anthropic", Config: json.RawMessage(`{"APIKey":"sk-ant"}`),
 	})
-	addCh := make(chan sdk.ProviderAddResp, 1)
-	unsub, _ := sdk.SubscribeProviderAddResp(k, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, _ sdk.Message) { addCh <- resp })
-	<-addCh
-	unsub()
+	require.NoError(t, err)
+	require.True(t, addResp.Added)
 
 	// Remove via bus
-	pr2, _ := sdk.PublishProviderRemove(k, ctx, sdk.ProviderRemoveMsg{Name: "anthropic"})
-	rmCh := make(chan sdk.ProviderRemoveResp, 1)
-	unsub2, _ := sdk.SubscribeProviderRemoveResp(k, ctx, pr2.ReplyTo,
-		func(resp sdk.ProviderRemoveResp, _ sdk.Message) { rmCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-rmCh:
-		assert.True(t, resp.Removed)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	rmResp, err := sdk.Call[registrymsg.ProviderRemoveMsg, registrymsg.ProviderRemoveResp](k, ctx, registrymsg.ProviderRemoveMsg{Name: "anthropic"})
+	require.NoError(t, err)
+	assert.True(t, rmResp.Removed)
 }
 
 func testJSBridgeHas(t *testing.T, _ *suite.TestEnv) {
@@ -179,7 +175,7 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	mp, _ := json.Marshal(map[string]string{"name": "registry-user", "entry": "registry-user.ts"})
-	pr, err := sdk.Publish(k, ctx, sdk.PackageDeployMsg{
+	pr, err := sdk.Publish(k, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp,
 		Files: map[string]string{"registry-user.ts": `
 			const registryTool = createTool({
@@ -196,8 +192,8 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](k, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
+	ch := make(chan packagemsg.PackageDeployResp, 1)
+	unsub, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](k, ctx, pr.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch <- r })
 	defer unsub()
 	select {
 	case <-ch:
@@ -205,12 +201,12 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pr2, err := sdk.Publish(k, ctx, sdk.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
+	pr2, err := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
 	require.NoError(t, err)
-	ch2 := make(chan sdk.ToolCallResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.ToolCallResp](k, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
+	ch2 := make(chan toolmsg.ToolCallResp, 1)
+	unsub2, _ := sdk.SubscribeTo[toolmsg.ToolCallResp](k, ctx, pr2.ReplyTo, func(r toolmsg.ToolCallResp, m sdk.Message) { ch2 <- r })
 	defer unsub2()
-	var resp sdk.ToolCallResp
+	var resp toolmsg.ToolCallResp
 	select {
 	case resp = <-ch2:
 	case <-ctx.Done():

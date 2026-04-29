@@ -62,6 +62,7 @@ type Config struct {
     ErrorHandler    func(error)                 // non-fatal errors
 
     MaxConcurrency  int                         // 0 = unlimited concurrent bus handlers
+    JSRuntime       bool                        // enable embedded JS/TS deploy/eval runtime
     MaxStackSize    int                         // QuickJS stack bytes; default 1 MiB
     RetryPolicies   map[string]RetryPolicy      // per-topic retry (§10.1)
 
@@ -81,6 +82,7 @@ type Config struct {
 | `SecretKey` + `SecretStore` both unset | Env-only secret fallback (read from `os.Getenv`; writes return `NotConfiguredError`). |
 | `Store` unset | No persistence — deployments, schedules, plugin state do not survive restart. |
 | `Logger` | `slog.Default()` |
+| `JSRuntime` | `false`; when true, root requests the registered `jsruntime` module. JS-dependent modules such as eval/packages/workflow also request it. |
 | `MaxStackSize` | `1 * 1024 * 1024` |
 | `TraceSampleRate` | `1.0` when tracing is active |
 
@@ -194,9 +196,8 @@ Zero-value `TransportConfig{}` is treated as `Memory()` by `brainkit.New`. Topic
 
 ```go
 type Module interface {
-    Name() string
-    Init(k *Kit) error
-    Close() error
+    ID() string
+    Mount(context.Context, module.Host) error
 }
 
 type ModuleStatus = string
@@ -209,7 +210,7 @@ const (
 type StatusReporter interface { Status() ModuleStatus }
 ```
 
-Modules are initialized in slice order before the transport router starts, so `Init` can `k.RegisterCommand(...)` new bus topics. `Close` is invoked in reverse order.
+Configured modules are mounted in slice order after the router starts. Modules register bus topics through `module.Host.Commands().Handle(...)`, which returns scoped handles that are closed on unmount. `Close` is invoked in reverse mount order.
 
 ### Module catalog
 
@@ -792,9 +793,29 @@ transport:
   url: nats://nats:4222               # used by nats | amqp | redis
   nats_name: svc-prod                 # optional durable prefix
 
-gateway:
-  listen: ":8080"
-  timeout: 30s
+modules:
+  jsruntime: {}
+  gateway:
+    listen: ":8080"
+    timeout: 30s
+  agents: {}
+  reference: {}
+  control: {}
+  eval: {}
+  health: {}
+  messaging: {}
+  metrics: {}
+  registry: {}
+  secrets: {}
+  tools: {}
+  packages: {}
+  audit:
+    path: ./data/audit.db
+    verbose: false
+  tracing:
+    retention: 168h
+  probes:
+    interval: 60s
 
 providers:
   - name: gpt          # label only; type + api_key are the wire fields
@@ -822,13 +843,6 @@ plugins:
     binary: /usr/local/bin/postgres-mcp
     env:
       PGURL: ${PG_DSN}
-
-audit:
-  path: ./data/audit.db
-  verbose: false
-
-tracing: true     # optional; nil = on
-probes: true      # optional; nil = on
 
 packages:
   - path: ./packages/api          # brainkit.PackageFromDir(...)

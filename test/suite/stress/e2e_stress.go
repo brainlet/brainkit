@@ -9,6 +9,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -26,11 +28,14 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 			Namespace: fmt.Sprintf("multi-stress-%d", i),
 			CallerID:  fmt.Sprintf("multi-stress-%d", i),
 			FSRoot:    tmpDir,
+			Modules:   []brainkit.Module{toolsmod.New()},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() { k.Close() })
 
-		type echoIn struct{ Message string `json:"message"` }
+		type echoIn struct {
+			Message string `json:"message"`
+		}
 		brainkit.RegisterTool(k, fmt.Sprintf("echo-stress-%d", i), tools.TypedTool[echoIn]{
 			Description: "echoes",
 			Execute: func(ctx context.Context, in echoIn) (any, error) {
@@ -43,7 +48,7 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 
 	for i, k := range kits {
 		payload, ok := sendAndReceive(t, k,
-			sdk.ToolCallMsg{Name: fmt.Sprintf("echo-stress-%d", i), Input: map[string]any{"message": fmt.Sprintf("kernel-%d", i)}},
+			toolmsg.ToolCallMsg{Name: fmt.Sprintf("echo-stress-%d", i), Input: map[string]any{"message": fmt.Sprintf("kernel-%d", i)}},
 			5*time.Second)
 		require.True(t, ok, "kit %d didn't respond", i)
 		assert.Contains(t, string(payload), fmt.Sprintf("kernel-%d", i))
@@ -61,7 +66,7 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 
 	for i := range n {
 		go func(val int) {
-			pubResult, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
+			pubResult, err := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
 			})
@@ -69,8 +74,8 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 				errors <- err
 				return
 			}
-			done := make(chan sdk.ToolCallResp, 1)
-			unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) {
+			done := make(chan toolmsg.ToolCallResp, 1)
+			unsub, err := sdk.SubscribeTo[toolmsg.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r toolmsg.ToolCallResp, m sdk.Message) {
 				done <- r
 			})
 			if err != nil {

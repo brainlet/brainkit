@@ -8,9 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
+
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +55,7 @@ func TestPluginRoundTrip(t *testing.T) {
 
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "plugin-host-test",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    t.TempDir(),
 		Modules: []brainkit.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
@@ -72,8 +76,8 @@ func TestPluginRoundTrip(t *testing.T) {
 	// emit window; polling avoids the race entirely and works
 	// regardless of subscription timing.
 	require.Eventually(t, func() bool {
-		resp, err := brainkit.CallPluginListRunning(kit, ctx, sdk.PluginListRunningMsg{},
-			brainkit.WithCallTimeout(2*time.Second))
+		resp, err := pluginmsg.CallPluginListRunning(kit, ctx, pluginmsg.PluginListRunningMsg{},
+			sdk.WithCallTimeout(2*time.Second))
 		if err != nil {
 			return false
 		}
@@ -85,10 +89,10 @@ func TestPluginRoundTrip(t *testing.T) {
 		return false
 	}, 30*time.Second, 250*time.Millisecond, "plugin did not register within 30s")
 
-	resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+	resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"text": "ping"},
-	}, brainkit.WithCallTimeout(10*time.Second))
+	}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err, "echo round-trip")
 
 	var out struct {

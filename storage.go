@@ -8,7 +8,9 @@ type StorageConfig = types.StorageConfig
 // VectorConfig configures a vector store backend in the resource pool.
 type VectorConfig = types.VectorConfig
 
-// Storage convenience constructors.
+// Storage convenience constructors. SQLiteStorage and SQLiteVector require
+// importing github.com/brainlet/brainkit/storagebridges in the binary that
+// creates the Kit.
 var (
 	SQLiteStorage      = types.SQLiteStorage
 	PostgresStorage    = types.PostgresStorage
@@ -19,3 +21,9 @@ var (
 	PgVectorStore      = types.PgVectorStore
 	MongoDBVectorStore = types.MongoDBVectorStore
 )
+
+// StorageURL returns the local HTTP bridge URL for a sqlite-backed storage.
+// Non-sqlite and unknown storages return an empty string.
+func (k *Kit) StorageURL(name string) string {
+	return k.kernel.StorageURL(name)
+}

@@ -2,7 +2,7 @@
 // examples/plugin-author binary. It builds the plugin from source
 // into a temp directory, boots a Kit with modules/plugins wired
 // to that binary, waits for the plugin.registered event, invokes
-// the `echo` tool through brainkit.CallToolCall, and prints the
+// the `echo` tool through toolmsg.CallToolCall, and prints the
 // reply.
 //
 // Run from the repo root:
@@ -25,9 +25,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
+
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 )
 
 // pluginSourceDir is the path to examples/plugin-author relative
@@ -58,7 +62,7 @@ func run() error {
 
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "plugin-host-demo",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    binDir,
 		Modules: []brainkit.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
@@ -81,10 +85,10 @@ func run() error {
 	}
 	fmt.Println("plugin registered: test/plugin-author@0.1.0")
 
-	resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+	resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"text": "ping"},
-	}, brainkit.WithCallTimeout(10*time.Second))
+	}, sdk.WithCallTimeout(10*time.Second))
 	if err != nil {
 		return fmt.Errorf("call echo: %w", err)
 	}
@@ -128,8 +132,8 @@ func waitForPluginRegistered(ctx context.Context, kit *brainkit.Kit, pluginName 
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		resp, err := brainkit.CallPluginListRunning(kit, deadline, sdk.PluginListRunningMsg{},
-			brainkit.WithCallTimeout(500*time.Millisecond))
+		resp, err := pluginmsg.CallPluginListRunning(kit, deadline, pluginmsg.PluginListRunningMsg{},
+			sdk.WithCallTimeout(500*time.Millisecond))
 		if err == nil {
 			for _, p := range resp.Plugins {
 				if p.Name == pluginName && p.Status != "crashed" && p.Status != "stopped" {
@@ -144,4 +148,3 @@ func waitForPluginRegistered(ctx context.Context, kit *brainkit.Kit, pluginName 
 		}
 	}
 }
-

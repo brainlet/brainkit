@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/brainlet/brainkit/internal/audit"
+	"github.com/brainlet/brainkit/internal/dts"
 	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/types"
@@ -115,17 +116,17 @@ func NewClient(baseURL string) *BusClient {
 // ── Embedded .d.ts (for CLI scaffolding) ─────────────────────────────────────
 
 var (
-	KitDTS      = engine.KitDTS
-	AiDTS       = engine.AiDTS
-	AgentDTS    = engine.AgentDTS
-	BrainkitDTS = engine.BrainkitDTS
-	GlobalsDTS  = engine.GlobalsDTS
+	KitDTS      = dts.Kit
+	AiDTS       = dts.AI
+	AgentDTS    = dts.Agent
+	BrainkitDTS = dts.Brainkit
+	GlobalsDTS  = dts.Globals
 )
 
 // ── Error types ──────────────────────────────────────────────────────────────
 
 var (
-	ErrCommandTopic     = types.ErrCommandTopic
+	ErrCommandTopic = types.ErrCommandTopic
 )
 
 // ── Encoding helper ──────────────────────────────────────────────────────────

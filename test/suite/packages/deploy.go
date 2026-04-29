@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -39,11 +41,11 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 		});
 	`)
 
-	pub, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
+	pub, err := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
 	require.NoError(t, err)
 
-	deployCh := make(chan sdk.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
+	deployCh := make(chan packagemsg.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	defer cancel()
 
 	select {
@@ -86,15 +88,15 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("ping", (msg) => { msg.reply({pong: true}); });`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
-	ch := make(chan sdk.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { ch <- resp })
+	pub, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
+	ch := make(chan packagemsg.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { ch <- resp })
 	<-ch
 	cancel()
 
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
-	listCh := make(chan sdk.PackageListDeployedResp, 1)
-	cancel2, _ := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.PackageListDeployedResp, _ sdk.Message) { listCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	listCh := make(chan packagemsg.PackageListDeployedResp, 1)
+	cancel2, _ := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](env.Kit, ctx, pub2.ReplyTo, func(resp packagemsg.PackageListDeployedResp, _ sdk.Message) { listCh <- resp })
 
 	select {
 	case resp := <-listCh:
@@ -107,9 +109,9 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout listing packages")
 	}
 
-	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "list-test"})
-	tearCh := make(chan sdk.PackageTeardownResp, 1)
-	cancel3, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.PackageTeardownResp, _ sdk.Message) { tearCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "list-test"})
+	tearCh := make(chan packagemsg.PackageTeardownResp, 1)
+	cancel3, _ := sdk.SubscribeTo[packagemsg.PackageTeardownResp](env.Kit, ctx, pub3.ReplyTo, func(resp packagemsg.PackageTeardownResp, _ sdk.Message) { tearCh <- resp })
 	select {
 	case resp := <-tearCh:
 		cancel3()
@@ -119,9 +121,9 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	pub4, _ := sdk.Publish(env.Kit, ctx, sdk.PackageListDeployedMsg{})
-	listCh2 := make(chan sdk.PackageListDeployedResp, 1)
-	cancel4, _ := sdk.SubscribeTo[sdk.PackageListDeployedResp](env.Kit, ctx, pub4.ReplyTo, func(resp sdk.PackageListDeployedResp, _ sdk.Message) { listCh2 <- resp })
+	pub4, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	listCh2 := make(chan packagemsg.PackageListDeployedResp, 1)
+	cancel4, _ := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](env.Kit, ctx, pub4.ReplyTo, func(resp packagemsg.PackageListDeployedResp, _ sdk.Message) { listCh2 <- resp })
 	defer cancel4()
 	select {
 	case resp := <-listCh2:
@@ -144,7 +146,7 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("x", (msg) => { msg.reply({}); });`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
+	pub, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
 	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
 		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
@@ -161,15 +163,15 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 		t.Fatal("timeout")
 	}
 
-	setPub, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	setCancel, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, setPub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	setPub, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	setCancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, setPub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	setCancel()
 
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
-	deployCh := make(chan sdk.PackageDeployResp, 1)
-	cancel2, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
+	deployCh := make(chan packagemsg.PackageDeployResp, 1)
+	cancel2, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub2.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	defer cancel2()
 
 	select {
@@ -192,15 +194,15 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v1Code := `bus.on("check", (msg) => { msg.reply({ version: "v1" }); });`
 
-	pub, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+	pub, err := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v1Code},
 	})
 	require.NoError(t, err)
 
-	deployCh := make(chan sdk.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pub.ReplyTo,
-		func(resp sdk.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
+	deployCh := make(chan packagemsg.PackageDeployResp, 1)
+	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo,
+		func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
 	select {
 	case resp := <-deployCh:
 		cancel()
@@ -218,7 +220,7 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v2Code := `bus.on("check", (msg) => { msg.reply({ version: "v2" }); });`
 
-	pub2, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
+	pub2, err := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v2Code},
 	})
@@ -238,7 +240,7 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 		if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
 			t.Fatalf("v2 deploy error: %s", errMsg)
 		}
-		var resp sdk.PackageDeployResp
+		var resp packagemsg.PackageDeployResp
 		json.Unmarshal(suite.ResponseData(msg.Payload), &resp)
 		require.True(t, resp.Deployed)
 	case <-time.After(10 * time.Second):
@@ -267,7 +269,7 @@ func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
 		bus.on("greet", (msg) => { msg.reply({ from: "second" }); });
 	`)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Path: dir})
+	pub, _ := sdk.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
 	errCh := make(chan string, 1)
 	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
 		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {

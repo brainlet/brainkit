@@ -13,6 +13,7 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "test.db")
 
 	// Kernel 1: deploy a service
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k1, err := brainkit.New(brainkit.Config{
@@ -34,6 +35,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store1,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -56,7 +58,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Kernel 2: same store — service should auto-redeploy
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
@@ -64,6 +66,7 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -86,13 +89,14 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -103,12 +107,13 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 	k.Close()
 
 	// Kernel 2: should have NO deployments
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, _ := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
+		Modules:   packageModules(),
 	})
 	defer k2.Close()
 
@@ -119,13 +124,14 @@ func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
 func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -135,7 +141,7 @@ func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 	k.Close()
 
 	// Verify order in store
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	deps, _ := store2.LoadDeployments()
 	store2.Close()
 
@@ -150,13 +156,14 @@ func testOrderPreserved(t *testing.T, _ *suite.TestEnv) {
 func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -174,12 +181,13 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 	k.Close()
 
 	// Kernel 2: should start even though broken-persist.ts fails to redeploy
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test",
 		CallerID:  "test",
 		Store:     store2,
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err, "Kernel should start even with a broken persisted deployment")
 	defer k2.Close()
@@ -205,11 +213,12 @@ func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(t.TempDir(), "pkg-restart.db")
 
 	// Phase 1: deploy with package name
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -221,7 +230,7 @@ func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Phase 2: verify package name survived in store
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	deps, err := store2.LoadDeployments()
 	require.NoError(t, err)
@@ -232,11 +241,12 @@ func testPackageNameSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(t.TempDir(), "redeploy-meta.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -265,11 +275,12 @@ func testRedeployPreservesMetadata(t *testing.T, _ *suite.TestEnv) {
 
 func testWithRestoringSkipsPersist(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(t.TempDir(), "restoring.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -293,7 +304,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "schedule-restart.db")
 
 	// Kernel 1: create a one-time schedule that fires 100ms from now
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -313,7 +324,7 @@ func testScheduleCatchUpOnRestart(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Kernel 2: same store — should fire the missed schedule on startup
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
@@ -334,7 +345,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "recurring-restart.db")
 
 	// Kernel 1: create recurring schedule
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -352,7 +363,7 @@ func testRecurringScheduleRestartsCorrectly(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Kernel 2: schedule should be restored and active
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -374,11 +385,12 @@ func testDeployOrderPreservedExactly(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "order-exact.db")
 
 	// Kernel 1: deploy A, B, C in order
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 
@@ -388,7 +400,7 @@ func testDeployOrderPreservedExactly(t *testing.T, _ *suite.TestEnv) {
 	k1.Close()
 
 	// Kernel 2: verify load order matches deploy order
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	deps, err := store2.LoadDeployments()
@@ -412,11 +424,12 @@ func testCorruptDeploymentTable(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "corrupt.db")
 
 	// Create valid store with a deployment
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store,
+		Store:   store,
+		Modules: packageModules(),
 	})
 	require.NoError(t, err)
 	testutil.Deploy(t, k, "valid-persist.ts", `output("valid");`)
@@ -446,12 +459,13 @@ func testCorruptDeploymentTable(t *testing.T, _ *suite.TestEnv) {
 	db.Close()
 
 	// Reopen — kernel should handle corrupt deployments gracefully
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	var errors []error
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: packageModules(),
 		ErrorHandler: func(err error) {
 			errors = append(errors, err)
 		},
@@ -477,7 +491,7 @@ func testCorruptScheduleTable(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "sched-corrupt.db")
 
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	store.SaveSchedule(types.PersistedSchedule{
 		ID: "valid-sched", Expression: "every 1h", Duration: time.Hour,
 		Topic: "valid.topic.persist", Payload: json.RawMessage(`{}`),
@@ -497,7 +511,7 @@ func testCorruptScheduleTable(t *testing.T, _ *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,

@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -72,33 +71,31 @@ func (k *Kernel) subscribe(topic string, handler func(sdk.Message)) (func(), err
 // internal/engine. The function must be registered on globalThis
 // (e.g., __brainkit.workflow.start).
 func (k *Kernel) CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
-	return k.callJS(ctx, fn, args)
-}
-
-func (k *Kernel) callJS(ctx context.Context, fn string, args any) (json.RawMessage, error) {
-	argsJSON, err := json.Marshal(args)
-	if err != nil {
-		return nil, fmt.Errorf("callJS %s: marshal args: %w", fn, err)
+	if k.jsRuntime == nil {
+		return nil, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
 	}
-	code := fmt.Sprintf("return JSON.stringify(await %s(JSON.parse(%q)))", fn, string(argsJSON))
-	result, err := k.EvalTS(ctx, "__dispatch__.ts", code)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(result), nil
+	return k.jsRuntime.CallJS(ctx, fn, args)
 }
 
 // callJSSync invokes a named function synchronously via bridge.Eval (not EvalTS).
 // Used for non-async operations that run on the JS thread directly (e.g., provider cache refresh).
 func (k *Kernel) callJSSync(fn string, args any) {
-	argsJSON, _ := json.Marshal(args)
-	k.bridge.Eval("__dispatch_sync__.js", fmt.Sprintf("%s(JSON.parse(%q))", fn, string(argsJSON)))
+	if k.jsRuntime == nil {
+		return
+	}
+	k.jsRuntime.CallJSSync(fn, args)
 }
 
 // ReplyRaw publishes directly to a resolved replyTo topic without namespace prefixing.
 // This is the Go equivalent of __go_brainkit_bus_reply in bridges.go.
 // Used by sdk.Reply and sdk.SendChunk.
 func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {
+	return k.ReplyRawWithEnvelope(ctx, replyTo, correlationID, payload, done, false)
+}
+
+// ReplyRawWithEnvelope publishes directly to a resolved replyTo topic and can
+// stamp envelope metadata for callers that should decode sdk.Envelope payloads.
+func (k *Kernel) ReplyRawWithEnvelope(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool, envelope bool) error {
 	if replyTo == "" {
 		return nil
 	}
@@ -106,6 +103,9 @@ func (k *Kernel) ReplyRaw(ctx context.Context, replyTo, correlationID string, pa
 	wmsg.Metadata.Set("correlationId", correlationID)
 	if done {
 		wmsg.Metadata.Set("done", "true")
+	}
+	if envelope {
+		wmsg.Metadata.Set("envelope", "true")
 	}
 	// replyTo is already namespaced+sanitized — publish directly to transport
 	return k.transport.Publisher.Publish(replyTo, wmsg)

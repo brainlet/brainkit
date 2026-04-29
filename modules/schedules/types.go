@@ -7,7 +7,7 @@ import (
 )
 
 // Store is the narrow persistence surface the module needs. brainkit's
-// KitStore (returned by brainkit.NewSQLiteStore) satisfies it structurally,
+// KitStore (returned by stores.NewSQLite) satisfies it structurally,
 // so the common case is `Config{Store: kitStore}`.
 type Store interface {
 	SaveSchedule(s types.PersistedSchedule) error
@@ -22,6 +22,6 @@ type Store interface {
 type Config struct {
 	// Store is optional. When nil: schedules are in-memory only and do not
 	// survive restart. When provided: schedules are persisted and restored on
-	// module Init, and ClaimScheduleFire is used for multi-replica dedup.
+	// module Mount, and ClaimScheduleFire is used for multi-replica dedup.
 	Store Store
 }

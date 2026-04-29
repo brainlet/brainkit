@@ -11,6 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/systemmsg"
 )
 
 // --- Failure Handling (retry, dead letter, error events) ---
@@ -63,10 +64,10 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 		slog.String("error", handlerErr.Error()),
 	)
 
-	k.bridge.Go(func(goCtx context.Context) {
+	go func() {
 		select {
 		case <-time.After(delay):
-		case <-goCtx.Done():
+		case <-k.shutdownCtx.Done():
 			return
 		}
 		k.remote.PublishRawWithMeta(context.Background(), topic, msg.Payload, map[string]string{
@@ -74,7 +75,7 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 			"replyTo":       msg.Metadata["replyTo"],
 			"correlationId": msg.Metadata["correlationId"],
 		})
-	})
+	}()
 }
 
 func (k *Kernel) sendErrorResponse(msg sdk.Message, err error) {
@@ -126,15 +127,15 @@ func (k *Kernel) deadLetter(msg sdk.Message, topic string, err error, retries in
 }
 
 func (k *Kernel) emitHandlerFailed(topic string, err error, retryCount int, willRetry bool) {
-	payload, _ := json.Marshal(sdk.HandlerFailedEvent{
+	payload, _ := json.Marshal(systemmsg.HandlerFailedEvent{
 		Topic: topic, Source: k.callerID, Error: err.Error(),
 		RetryCount: retryCount, WillRetry: willRetry,
 	})
-	k.publish(context.Background(), sdk.HandlerFailedEvent{}.BusTopic(), payload)
+	k.publish(context.Background(), systemmsg.TopicHandlerFailed, payload)
 }
 
 func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int, correlationID string) {
-	payload, _ := json.Marshal(sdk.HandlerExhaustedEvent{
+	payload, _ := json.Marshal(systemmsg.HandlerExhaustedEvent{
 		Topic: topic, Source: k.callerID, Error: err.Error(),
 		RetryCount: retryCount,
 	})
@@ -142,7 +143,7 @@ func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int, c
 	if correlationID != "" {
 		meta["correlationId"] = correlationID
 	}
-	k.remote.PublishRawWithMeta(context.Background(), sdk.HandlerExhaustedEvent{}.BusTopic(), payload, meta)
+	k.remote.PublishRawWithMeta(context.Background(), systemmsg.TopicHandlerExhausted, payload, meta)
 }
 
 func computeDelay(p *types.RetryPolicy, retryCount int) time.Duration {

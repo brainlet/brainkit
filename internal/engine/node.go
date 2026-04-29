@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/syncx"
-	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
@@ -20,8 +19,10 @@ type Node struct {
 	config types.NodeConfig
 	nodeID string
 
-	mu      syncx.Mutex
-	started bool
+	transportCloser interface{ Close() error }
+	mu              syncx.Mutex
+	started         bool
+	bound           bool
 }
 
 // NewNode creates a transport host around a local Kernel.
@@ -43,42 +44,52 @@ func NewNode(cfg types.NodeConfig) (*Node, error) {
 		kernelCfg.CallerID = cfg.NodeID
 	}
 
-	// Create external transport — consumer group = namespace for competing consumers
-	tcfg := messagingToTransportConfig(cfg.Messaging)
-	tcfg.Namespace = kernelCfg.Namespace
-	transport, err := transport.NewTransportSet(tcfg)
-	if err != nil {
-		return nil, fmt.Errorf("brainkit: transport: %w", err)
+	if kernelCfg.Transport == nil {
+		return nil, fmt.Errorf("brainkit: node transport is required")
 	}
 
 	// Inject transport into KernelConfig — Kernel uses it instead of creating its own.
 	// DeferRouterStart: we need to add node-specific bindings before the router starts.
-	kernelCfg.Transport = transport
 	kernelCfg.DeferRouterStart = true
 
 	kernel, err := NewKernel(kernelCfg)
 	if err != nil {
-		_ = transport.Close()
+		if closer, ok := kernelCfg.Transport.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
 		return nil, err
 	}
 
 	node := &Node{
-		Kernel: kernel,
-		config: cfg,
-		nodeID: cfg.NodeID,
+		Kernel:          kernel,
+		config:          cfg,
+		nodeID:          cfg.NodeID,
+		transportCloser: nil,
+	}
+	if closer, ok := kernelCfg.Transport.(interface{ Close() error }); ok {
+		node.transportCloser = closer
 	}
 
 	kernel.node = node // back-reference for secrets rotation
 	return node, nil
 }
 
-// StartRouter registers all command bindings (kernel + node-specific) on the
-// host and starts the Watermill router. brainkit.New calls this after all
-// brainkit.Modules have registered their commands so the router starts with
-// the complete binding set.
+// StartRouter registers root command bindings (kernel + node-specific) on the
+// host and starts the Watermill router. Hot-mounted modules add their command
+// handlers dynamically after the router is live.
 func (n *Node) StartRouter(ctx context.Context) error {
-	n.Kernel.host.RegisterCommands(commandBindingsForNode(n))
+	n.registerCommandBindings()
 	return n.Start(ctx)
+}
+
+func (n *Node) registerCommandBindings() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.bound {
+		return
+	}
+	n.Kernel.host.RegisterCommands(commandBindingsForNode(n))
+	n.bound = true
 }
 
 // Start starts the message router and launches plugins.
@@ -86,6 +97,8 @@ func (n *Node) StartRouter(ctx context.Context) error {
 // auto-provisioning, stream creation may take time. If ctx has no deadline,
 // a 2-minute safety timeout is applied.
 func (n *Node) Start(ctx context.Context) error {
+	n.registerCommandBindings()
+
 	n.mu.Lock()
 	if n.started {
 		n.mu.Unlock()
@@ -163,6 +176,9 @@ func (n *Node) Shutdown(ctx context.Context) error {
 	if n.Kernel != nil {
 		collect(n.Kernel.close())
 	}
+	if n.transportCloser != nil {
+		collect(n.transportCloser.Close())
+	}
 	return firstErr
 }
 
@@ -178,18 +194,6 @@ func (n *Node) IsDraining() bool {
 	return n.Kernel.IsDraining()
 }
 
-// Plugin lifecycle moved to modules/plugins. SecretsDomain's plugin
-// restarter is attached via (*Kit).SetPluginRestarter; the
+// Plugin lifecycle moved to modules/plugins. The plugin restarter is
+// attached via (*Kit).SetPluginRestarter; the
 // package-deploy `Requires.plugins` gate reads kernel.pluginChecker.
-
-// messagingToTransportConfig converts types.MessagingConfig to transport.TransportConfig.
-func messagingToTransportConfig(cfg types.MessagingConfig) transport.TransportConfig {
-	return transport.TransportConfig{
-		Type:         cfg.Transport,
-		NATSURL:      cfg.NATSURL,
-		NATSName:     cfg.NATSName,
-		AMQPURL:      cfg.AMQPURL,
-		RedisURL:     cfg.RedisURL,
-		NATSStoreDir: cfg.NATSStoreDir,
-	}
-}

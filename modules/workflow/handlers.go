@@ -5,56 +5,56 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // All handlers delegate to runtime/dispatch.js via Kit.CallJS.
 
-func (m *Module) handleStart(ctx context.Context, req sdk.WorkflowStartMsg) (*sdk.WorkflowStartResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.start", map[string]any{
+func (m *Module) handleStart(ctx context.Context, req workflowmsg.WorkflowStartMsg) (*workflowmsg.WorkflowStartResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.start", map[string]any{
 		"name":      req.Name,
 		"inputData": jsonOrNull(req.InputData),
 	})
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowStartResp
+	var resp workflowmsg.WorkflowStartResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleStartAsync(ctx context.Context, req sdk.WorkflowStartAsyncMsg) (*sdk.WorkflowStartAsyncResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.startAsync", map[string]any{
+func (m *Module) handleStartAsync(ctx context.Context, req workflowmsg.WorkflowStartAsyncMsg) (*workflowmsg.WorkflowStartAsyncResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.startAsync", map[string]any{
 		"name":      req.Name,
 		"inputData": jsonOrNull(req.InputData),
 	})
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowStartAsyncResp
+	var resp workflowmsg.WorkflowStartAsyncResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleStatus(ctx context.Context, req sdk.WorkflowStatusMsg) (*sdk.WorkflowStatusResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.status", req)
+func (m *Module) handleStatus(ctx context.Context, req workflowmsg.WorkflowStatusMsg) (*workflowmsg.WorkflowStatusResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.status", req)
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowStatusResp
+	var resp workflowmsg.WorkflowStatusResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleResume(ctx context.Context, req sdk.WorkflowResumeMsg) (*sdk.WorkflowResumeResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.resume", map[string]any{
+func (m *Module) handleResume(ctx context.Context, req workflowmsg.WorkflowResumeMsg) (*workflowmsg.WorkflowResumeResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.resume", map[string]any{
 		"name":       req.Name,
 		"runId":      req.RunID,
 		"step":       req.Step,
@@ -63,55 +63,55 @@ func (m *Module) handleResume(ctx context.Context, req sdk.WorkflowResumeMsg) (*
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowResumeResp
+	var resp workflowmsg.WorkflowResumeResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleCancel(ctx context.Context, req sdk.WorkflowCancelMsg) (*sdk.WorkflowCancelResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.cancel", req)
+func (m *Module) handleCancel(ctx context.Context, req workflowmsg.WorkflowCancelMsg) (*workflowmsg.WorkflowCancelResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.cancel", req)
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowCancelResp
+	var resp workflowmsg.WorkflowCancelResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleList(ctx context.Context, _ sdk.WorkflowListMsg) (*sdk.WorkflowListResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.list", nil)
+func (m *Module) handleList(ctx context.Context, _ workflowmsg.WorkflowListMsg) (*workflowmsg.WorkflowListResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.list", nil)
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowListResp
+	var resp workflowmsg.WorkflowListResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleRuns(ctx context.Context, req sdk.WorkflowRunsMsg) (*sdk.WorkflowRunsResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.runs", req)
+func (m *Module) handleRuns(ctx context.Context, req workflowmsg.WorkflowRunsMsg) (*workflowmsg.WorkflowRunsResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.runs", req)
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowRunsResp
+	var resp workflowmsg.WorkflowRunsResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (m *Module) handleRestart(ctx context.Context, req sdk.WorkflowRestartMsg) (*sdk.WorkflowRestartResp, error) {
-	raw, err := m.kit.CallJS(ctx, "__brainkit.workflow.restart", req)
+func (m *Module) handleRestart(ctx context.Context, req workflowmsg.WorkflowRestartMsg) (*workflowmsg.WorkflowRestartResp, error) {
+	raw, err := m.call(ctx, "__brainkit.workflow.restart", req)
 	if err != nil {
 		return nil, mapWorkflowError(err)
 	}
-	var resp sdk.WorkflowRestartResp
+	var resp workflowmsg.WorkflowRestartResp
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, err
 	}

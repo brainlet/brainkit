@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 )
@@ -18,46 +19,25 @@ func testVectorAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
+	resp, err := sdk.Call[registrymsg.VectorAddMsg, registrymsg.VectorAddResp](env.Kit, ctx, registrymsg.VectorAddMsg{
 		Name:   "test-vec-add",
 		Type:   "sqlite",
 		Config: json.RawMessage(`{}`),
 	})
-	type vectorAddResult struct {
-		resp sdk.VectorAddResp
-		msg  sdk.Message
+	if err != nil {
+		t.Fatalf("vector add: %v", err)
 	}
-	respCh := make(chan vectorAddResult, 1)
-	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.VectorAddResp, msg sdk.Message) { respCh <- vectorAddResult{resp, msg} })
-	defer unsub()
-
-	select {
-	case r := <-respCh:
-		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
-			t.Fatalf("error: %s", errMsg)
-		}
-		if !r.resp.Added {
-			t.Fatal("expected Added=true")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if !resp.Added {
+		t.Fatal("expected Added=true")
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "vectorStore"})
-	listCh := make(chan sdk.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.RegistryListResp, msg sdk.Message) { listCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-listCh:
-		if !strings.Contains(string(resp.Items), "test-vec-add") {
-			t.Fatalf("vector store not in list: %s", resp.Items)
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout on list")
+	listResp, err := sdk.Call[registrymsg.RegistryListMsg, registrymsg.RegistryListResp](env.Kit, ctx, registrymsg.RegistryListMsg{Category: "vectorStore"})
+	if err != nil {
+		t.Fatalf("registry.list: %v", err)
+	}
+	if !strings.Contains(string(listResp.Items), "test-vec-add") {
+		t.Fatalf("vector store not in list: %s", listResp.Items)
 	}
 }
 
@@ -66,29 +46,23 @@ func testVectorRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
+	addResp, err := sdk.Call[registrymsg.VectorAddMsg, registrymsg.VectorAddResp](env.Kit, ctx, registrymsg.VectorAddMsg{
 		Name: "test-vec-rm", Type: "sqlite", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan sdk.VectorAddResp, 1)
-	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.VectorAddResp, msg sdk.Message) { ch <- resp })
-	<-ch
-	unsub()
+	if err != nil {
+		t.Fatalf("vector add: %v", err)
+	}
+	if !addResp.Added {
+		t.Fatal("expected Added=true")
+	}
 
 	// Remove
-	pr2, _ := sdk.PublishVectorRemove(env.Kit, ctx, sdk.VectorRemoveMsg{Name: "test-vec-rm"})
-	rmCh := make(chan sdk.VectorRemoveResp, 1)
-	unsub2, _ := sdk.SubscribeVectorRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.VectorRemoveResp, msg sdk.Message) { rmCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-rmCh:
-		if !resp.Removed {
-			t.Fatal("expected Removed=true")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	rmResp, err := sdk.Call[registrymsg.VectorRemoveMsg, registrymsg.VectorRemoveResp](env.Kit, ctx, registrymsg.VectorRemoveMsg{Name: "test-vec-rm"})
+	if err != nil {
+		t.Fatalf("vector remove: %v", err)
+	}
+	if !rmResp.Removed {
+		t.Fatal("expected Removed=true")
 	}
 }
 
@@ -100,14 +74,15 @@ func testVectorAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add vector store via bus
-	pr, _ := sdk.PublishVectorAdd(env.Kit, ctx, sdk.VectorAddMsg{
+	resp, err := sdk.Call[registrymsg.VectorAddMsg, registrymsg.VectorAddResp](env.Kit, ctx, registrymsg.VectorAddMsg{
 		Name: "ts-vec-resolve", Type: "sqlite", Config: json.RawMessage(`{}`),
 	})
-	ch := make(chan sdk.VectorAddResp, 1)
-	unsub, _ := sdk.SubscribeVectorAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.VectorAddResp, msg sdk.Message) { ch <- resp })
-	<-ch
-	unsub()
+	if err != nil {
+		t.Fatalf("vector add: %v", err)
+	}
+	if !resp.Added {
+		t.Fatal("expected Added=true")
+	}
 
 	// Deploy .ts that resolves the vector store
 	code := `

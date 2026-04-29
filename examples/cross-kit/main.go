@@ -5,7 +5,7 @@
 // Uses github.com/nats-io/nats-server/v2 directly to boot a
 // standalone NATS server both Kits can connect to. That's the
 // pragmatic way to share a transport between two Kits in one
-// process — brainkit.EmbeddedNATS() is per-Kit and doesn't
+// process — transports.EmbeddedNATS() is per-Kit and doesn't
 // expose its URL.
 //
 // Run from the repo root:
@@ -24,6 +24,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 )
 
@@ -46,7 +47,7 @@ func run() error {
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: "analytics-prod",
 		CallerID:  "analytics-prod",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		FSRoot:    ".",
 	})
 	if err != nil {
@@ -70,7 +71,7 @@ func run() error {
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "orchestrator",
 		CallerID:  "orchestrator",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		FSRoot:    ".",
 		Modules: []brainkit.Module{
 			topology.NewModule(topology.Config{

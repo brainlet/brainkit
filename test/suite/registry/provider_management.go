@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 )
@@ -18,46 +19,25 @@ func testProviderAddViaBus(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
+	resp, err := sdk.Call[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](env.Kit, ctx, registrymsg.ProviderAddMsg{
 		Name:   "test-openai-add",
 		Type:   "openai",
 		Config: json.RawMessage(`{"APIKey":"test-key-123"}`),
 	})
-	type providerAddResult struct {
-		resp sdk.ProviderAddResp
-		msg  sdk.Message
+	if err != nil {
+		t.Fatalf("provider add: %v", err)
 	}
-	respCh := make(chan providerAddResult, 1)
-	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- providerAddResult{resp, msg} })
-	defer unsub()
-
-	select {
-	case r := <-respCh:
-		if errMsg := suite.ResponseErrorMessage(r.msg.Payload); errMsg != "" {
-			t.Fatalf("error: %s", errMsg)
-		}
-		if !r.resp.Added {
-			t.Fatal("expected Added=true")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if !resp.Added {
+		t.Fatal("expected Added=true")
 	}
 
 	// Verify via registry.list
-	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.RegistryListMsg{Category: "provider"})
-	listCh := make(chan sdk.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.RegistryListResp](env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.RegistryListResp, msg sdk.Message) { listCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-listCh:
-		if !strings.Contains(string(resp.Items), "test-openai-add") {
-			t.Fatalf("provider not in registry list: %s", resp.Items)
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout on list")
+	listResp, err := sdk.Call[registrymsg.RegistryListMsg, registrymsg.RegistryListResp](env.Kit, ctx, registrymsg.RegistryListMsg{Category: "provider"})
+	if err != nil {
+		t.Fatalf("registry.list: %v", err)
+	}
+	if !strings.Contains(string(listResp.Items), "test-openai-add") {
+		t.Fatalf("provider not in registry list: %s", listResp.Items)
 	}
 }
 
@@ -65,22 +45,12 @@ func testProviderAddInvalidName(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
+	_, err := sdk.Call[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](env.Kit, ctx, registrymsg.ProviderAddMsg{
 		Name: "", // invalid
 		Type: "openai",
 	})
-	respCh := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { respCh <- msg })
-	defer unsub()
-
-	select {
-	case msg := <-respCh:
-		if !suite.ResponseHasError(msg.Payload) {
-			t.Fatal("expected validation error for empty name")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	if err == nil {
+		t.Fatal("expected validation error for empty name")
 	}
 }
 
@@ -89,29 +59,23 @@ func testProviderRemoveViaBus(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Add first
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
+	addResp, err := sdk.Call[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](env.Kit, ctx, registrymsg.ProviderAddMsg{
 		Name: "test-remove-prov", Type: "openai", Config: json.RawMessage(`{"APIKey":"k"}`),
 	})
-	ch := make(chan sdk.ProviderAddResp, 1)
-	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { ch <- resp })
-	<-ch
-	unsub()
+	if err != nil {
+		t.Fatalf("provider add: %v", err)
+	}
+	if !addResp.Added {
+		t.Fatal("expected Added=true")
+	}
 
 	// Remove
-	pr2, _ := sdk.PublishProviderRemove(env.Kit, ctx, sdk.ProviderRemoveMsg{Name: "test-remove-prov"})
-	rmCh := make(chan sdk.ProviderRemoveResp, 1)
-	unsub2, _ := sdk.SubscribeProviderRemoveResp(env.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.ProviderRemoveResp, msg sdk.Message) { rmCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-rmCh:
-		if !resp.Removed {
-			t.Fatal("expected Removed=true")
-		}
-	case <-ctx.Done():
-		t.Fatal("timeout")
+	rmResp, err := sdk.Call[registrymsg.ProviderRemoveMsg, registrymsg.ProviderRemoveResp](env.Kit, ctx, registrymsg.ProviderRemoveMsg{Name: "test-remove-prov"})
+	if err != nil {
+		t.Fatalf("provider remove: %v", err)
+	}
+	if !rmResp.Removed {
+		t.Fatal("expected Removed=true")
 	}
 }
 
@@ -123,14 +87,15 @@ func testProviderAddThenResolveFromTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Add provider via bus
-	pr, _ := sdk.PublishProviderAdd(env.Kit, ctx, sdk.ProviderAddMsg{
+	resp, err := sdk.Call[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](env.Kit, ctx, registrymsg.ProviderAddMsg{
 		Name: "ts-resolve-test", Type: "openai", Config: json.RawMessage(`{"APIKey":"test-key"}`),
 	})
-	ch := make(chan sdk.ProviderAddResp, 1)
-	unsub, _ := sdk.SubscribeProviderAddResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ProviderAddResp, msg sdk.Message) { ch <- resp })
-	<-ch
-	unsub()
+	if err != nil {
+		t.Fatalf("provider add: %v", err)
+	}
+	if !resp.Added {
+		t.Fatal("expected Added=true")
+	}
 
 	// Deploy .ts that resolves the provider and reports back
 	code := `

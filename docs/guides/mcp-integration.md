@@ -51,9 +51,9 @@ each tool in the shared registry under the fully qualified name
 ## List available tools
 
 ```go
-list, err := brainkit.CallMcpListTools(kit, ctx,
-    sdk.McpListToolsMsg{Server: "fs"},
-    brainkit.WithCallTimeout(45*time.Second))
+list, err := mcpmsg.CallMcpListTools(kit, ctx,
+    mcpmsg.McpListToolsMsg{Server: "fs"},
+    sdk.WithCallTimeout(45*time.Second))
 for _, t := range list.Tools {
     fmt.Printf("%s  %s\n", t.Name, t.Description)
 }
@@ -64,13 +64,13 @@ Leave `Server` empty to list across every wired server.
 ## Call a tool
 
 ```go
-res, err := brainkit.CallMcpCallTool(kit, ctx,
-    sdk.McpCallToolMsg{
+res, err := mcpmsg.CallMcpCallTool(kit, ctx,
+    mcpmsg.McpCallToolMsg{
         Server: "fs",
         Tool:   "read_text_file",
         Args:   map[string]any{"path": "/tmp/mcp-demo/hello.txt"},
     },
-    brainkit.WithCallTimeout(30*time.Second))
+    sdk.WithCallTimeout(30*time.Second))
 // res.Result is json.RawMessage containing the MCP tool output.
 ```
 
@@ -78,7 +78,7 @@ Or through the generic tool surface (short-name resolution finds
 the MCP tool):
 
 ```go
-resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
     Name:  "read_text_file",
     Input: map[string]any{"path": "/tmp/mcp-demo/hello.txt"},
 })
@@ -126,8 +126,8 @@ Both commands have generated Call wrappers:
 
 | Command | Request | Response | Wrapper |
 |---|---|---|---|
-| `mcp.listTools` | `sdk.McpListToolsMsg` | `sdk.McpListToolsResp` | `brainkit.CallMcpListTools` |
-| `mcp.callTool` | `sdk.McpCallToolMsg` | `sdk.McpCallToolResp` | `brainkit.CallMcpCallTool` |
+| `mcp.listTools` | `mcpmsg.McpListToolsMsg` | `mcpmsg.McpListToolsResp` | `mcpmsg.CallMcpListTools` |
+| `mcp.callTool` | `mcpmsg.McpCallToolMsg` | `mcpmsg.McpCallToolResp` | `mcpmsg.CallMcpCallTool` |
 
 ## Errors
 

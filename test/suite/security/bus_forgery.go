@@ -9,6 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -88,7 +89,9 @@ func testForgeryInjectFakeReply(t *testing.T, env *suite.TestEnv) {
 	select {
 	case first := <-ch:
 		if string(first) != "" {
-			var parsed struct{ Real bool `json:"real"` }
+			var parsed struct {
+				Real bool `json:"real"`
+			}
 			json.Unmarshal(first, &parsed)
 			if !parsed.Real {
 				t.Logf("FINDING: attacker's fake response arrived before the real one")
@@ -304,7 +307,7 @@ func testForgeryToolNameCollision(t *testing.T, env *suite.TestEnv) {
 		kit.register("tool", "shared-tool-sec", t);
 	`)
 
-	payload, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "shared-tool-sec", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "shared-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	require.True(t, ok)
 	t.Logf("Tool collision result: %s", string(payload))
 }
@@ -366,7 +369,9 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	type injectionInput struct{ Cmd string `json:"cmd"` }
+	type injectionInput struct {
+		Cmd string `json:"cmd"`
+	}
 	brainkit.RegisterTool(k, "injector-sec", tools.TypedTool[injectionInput]{
 		Description: "returns crafted payload",
 		Execute: func(ctx context.Context, in injectionInput) (any, error) {
@@ -378,6 +383,7 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 		},
 	})
 
+	secEnsureTools(t, k)
 	secDeploy(t, k, "call-injector-sec.ts", `
 		var r = await tools.call("injector-sec", {cmd: "test"});
 		output({

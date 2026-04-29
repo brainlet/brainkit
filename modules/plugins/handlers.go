@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -19,7 +19,7 @@ func newLifecycleDomain(m *Module) *LifecycleDomain {
 	return &LifecycleDomain{mod: m}
 }
 
-func (d *LifecycleDomain) Start(ctx context.Context, req sdk.PluginStartMsg) (*sdk.PluginStartResp, error) {
+func (d *LifecycleDomain) Start(ctx context.Context, req pluginmsg.PluginStartMsg) (*pluginmsg.PluginStartResp, error) {
 	if req.Name == "" {
 		return nil, &sdkerrors.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -59,17 +59,17 @@ func (d *LifecycleDomain) Start(ctx context.Context, req sdk.PluginStartMsg) (*s
 			break
 		}
 	}
-	return &sdk.PluginStartResp{Started: true, Name: req.Name, PID: pid}, nil
+	return &pluginmsg.PluginStartResp{Started: true, Name: req.Name, PID: pid}, nil
 }
 
-func (d *LifecycleDomain) Stop(ctx context.Context, req sdk.PluginStopMsg) (*sdk.PluginStopResp, error) {
+func (d *LifecycleDomain) Stop(ctx context.Context, req pluginmsg.PluginStopMsg) (*pluginmsg.PluginStopResp, error) {
 	if err := d.mod.StopPlugin(ctx, req.Name); err != nil {
 		return nil, err
 	}
-	return &sdk.PluginStopResp{Stopped: true}, nil
+	return &pluginmsg.PluginStopResp{Stopped: true}, nil
 }
 
-func (d *LifecycleDomain) Restart(ctx context.Context, req sdk.PluginRestartMsg) (*sdk.PluginRestartResp, error) {
+func (d *LifecycleDomain) Restart(ctx context.Context, req pluginmsg.PluginRestartMsg) (*pluginmsg.PluginRestartResp, error) {
 	if err := d.mod.RestartPlugin(ctx, req.Name); err != nil {
 		return nil, err
 	}
@@ -80,14 +80,14 @@ func (d *LifecycleDomain) Restart(ctx context.Context, req sdk.PluginRestartMsg)
 			break
 		}
 	}
-	return &sdk.PluginRestartResp{Restarted: true, PID: pid}, nil
+	return &pluginmsg.PluginRestartResp{Restarted: true, PID: pid}, nil
 }
 
-func (d *LifecycleDomain) List(_ context.Context, _ sdk.PluginListRunningMsg) (*sdk.PluginListRunningResp, error) {
+func (d *LifecycleDomain) List(_ context.Context, _ pluginmsg.PluginListRunningMsg) (*pluginmsg.PluginListRunningResp, error) {
 	running := d.mod.ListRunningPlugins()
-	infos := make([]sdk.RunningPluginInfo, 0, len(running))
+	infos := make([]pluginmsg.RunningPluginInfo, 0, len(running))
 	for _, p := range running {
-		infos = append(infos, sdk.RunningPluginInfo{
+		infos = append(infos, pluginmsg.RunningPluginInfo{
 			Name:     p.Name,
 			PID:      p.PID,
 			Uptime:   p.Uptime.Round(time.Second).String(),
@@ -95,13 +95,13 @@ func (d *LifecycleDomain) List(_ context.Context, _ sdk.PluginListRunningMsg) (*
 			Restarts: p.Restarts,
 		})
 	}
-	return &sdk.PluginListRunningResp{Plugins: infos}, nil
+	return &pluginmsg.PluginListRunningResp{Plugins: infos}, nil
 }
 
-func (d *LifecycleDomain) Status(_ context.Context, req sdk.PluginStatusMsg) (*sdk.PluginStatusResp, error) {
+func (d *LifecycleDomain) Status(_ context.Context, req pluginmsg.PluginStatusMsg) (*pluginmsg.PluginStatusResp, error) {
 	for _, p := range d.mod.ListRunningPlugins() {
 		if p.Name == req.Name {
-			return &sdk.PluginStatusResp{
+			return &pluginmsg.PluginStatusResp{
 				Name:     p.Name,
 				PID:      p.PID,
 				Status:   p.Status,

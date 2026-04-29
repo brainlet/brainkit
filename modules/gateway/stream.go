@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"net/http"
 	"strconv"
 	"strings"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/transport"
@@ -33,7 +33,7 @@ type streamSession struct {
 	hasWriter  bool            // true when an HTTP handler goroutine is active
 
 	eventCh chan streamEvent // bus messages arrive here
-	unsub   func()          // bus subscription cancel
+	unsub   func()           // bus subscription cancel
 
 	config StreamConfig
 }
@@ -311,7 +311,9 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 						s.terminate("end")
 					} else {
 						errMsg := string(evt.Payload)
-						var parsed struct{ Error string `json:"error"` }
+						var parsed struct {
+							Error string `json:"error"`
+						}
 						if json.Unmarshal(evt.Payload, &parsed) == nil && parsed.Error != "" {
 							errMsg = parsed.Error
 						}
@@ -462,7 +464,7 @@ func (gw *Gateway) handleStream(w http.ResponseWriter, r *http.Request, matched 
 	// New stream
 	payload, err := buildPayload(r, matched, pathParams)
 	if err != nil {
-		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		writePayloadReadError(w, err)
 		return
 	}
 

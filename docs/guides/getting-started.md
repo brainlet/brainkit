@@ -186,10 +186,10 @@ err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
 Call it directly from Go:
 
 ```go
-resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
     Name:  "math.add",
     Input: map[string]any{"a": 40, "b": 2},
-}, brainkit.WithCallTimeout(2*time.Second))
+}, sdk.WithCallTimeout(2*time.Second))
 // resp.Result is json.RawMessage containing {"sum":42}
 ```
 
@@ -215,8 +215,15 @@ namespace: hello-server
 fs_root: ./data
 transport:
   type: embedded
-gateway:
-  listen: :8080
+modules:
+  jsruntime: {}
+  gateway:
+    listen: :8080
+  reference: {}
+  eval: {}
+  messaging: {}
+  health: {}
+  packages: {}
 ```
 
 ```go

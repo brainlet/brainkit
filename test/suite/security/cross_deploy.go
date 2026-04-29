@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -121,7 +123,7 @@ func testXDeployUnregisterAlienTool(t *testing.T, env *suite.TestEnv) {
 
 	attackerResult, _ := secEvalTSErr(k, "__thief.ts", `return String(globalThis.__module_result || "");`)
 
-	payload, ok := secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
+	payload, ok := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "valuable-tool-sec", Input: map[string]any{}}, 5*time.Second)
 	if ok && !suite.ResponseHasError(payload) {
 		assert.Contains(t, string(payload), "owner", "A's tool should still work")
 	} else {
@@ -219,7 +221,7 @@ func testXDeployAgentRegistrationRace(t *testing.T, env *suite.TestEnv) {
 	result, _ := secEvalTSErr(k, "__agent_race.ts", `return String(globalThis.__module_result || "");`)
 	t.Logf("Agent double-registration: %s", result)
 
-	pr, _ := sdk.Publish(k, ctx, sdk.AgentListMsg{})
+	pr, _ := sdk.Publish(k, ctx, agentmsg.AgentListMsg{})
 	ch := make(chan []byte, 1)
 	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -270,7 +272,7 @@ func testXDeployCreateToolMonkeyPatch(t *testing.T, env *suite.TestEnv) {
 	})
 	defer stealUnsub()
 
-	secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "innocent-sec", Input: map[string]any{"x": 21}}, 5*time.Second)
+	secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "innocent-sec", Input: map[string]any{"x": 21}}, 5*time.Second)
 	time.Sleep(500 * time.Millisecond)
 
 	if len(stolen) > 0 {

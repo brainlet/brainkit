@@ -1,6 +1,6 @@
 # brainkit
 
-Brainkit is an embeddable Go runtime for AI agent teams. A single `Kit` instance bundles an async pub/sub bus, a QuickJS JavaScript engine running SES-hardened `.ts` deployments, and a curated surface (AI SDK v5, Mastra, Node.js polyfills, storage and vector backends, MCP, observability, HTTP gateway, plugin hosting). Agents, tools, workflows and memories are authored once in TypeScript and deployed into isolated compartments on a running Kit.
+Brainkit is an embeddable Go runtime for AI agent teams. A single `Kit` instance starts as a light control-plane runtime with an async pub/sub bus; opt-in modules add SES-hardened `.ts` deployments, AI SDK v5, Mastra, storage and vector bridges, MCP, observability, HTTP gateway, and plugin hosting.
 
 This directory is the reference. The five files in `llm/` are dense, API-only pages intended for LLM ingestion and copy-paste. The narrative prose — concepts, design notes, walkthroughs — lives in `concepts/` and `guides/`.
 
@@ -9,7 +9,7 @@ This directory is the reference. The five files in `llm/` are dense, API-only pa
 ## Architecture at a glance
 
 - **Kit**: a single `*Kit` value created via `brainkit.New(brainkit.Config{...})`. Implements `sdk.Runtime` (publish / subscribe / reply / stream), `sdk.CrossNamespaceRuntime` (routed `To:` targeting), and `sdk.Replier` (correlated replies). Zero-value defaults — `Transport: brainkit.Memory()` if unset, embedded AMQP / NATS / Redis helpers are opt-in.
-- **Bus**: async pub/sub with typed `Call[Req, Resp]` / `CallStream[Req, Chunk, Resp]` helpers that wrap `Publish → SubscribeTo(replyTo) → select { resp / timeout }`. 62 generated `CallXxx(kit, ctx, msg, opts...)` wrappers live in `call_gen.go` — one per shipped SDK message type.
+- **Bus**: async pub/sub with typed `brainkit.Call[Req, Resp]` / `brainkit.CallStream[Req, Chunk, Resp]` helpers for Kit-specific behavior and generated package-owned `CallXxx(rt, ctx, msg, opts...)` wrappers for shipped message types. SDK-owned wrappers live in `sdk/typed_gen.go`; module-owned wrappers live with their module message package.
 - **SES compartments**: every deployed `.ts` file runs in its own hardened compartment with a tamed global surface (frozen `Date`, per-source module namespace `ts.<source>.<topic>`, no network / child-process access). Endowments are injected per-source: `bus`, `kit`, `model`, `embeddingModel`, `provider`, `storage`, `vectorStore`, `registry`, `tools`, `tool`, `fs` (Node.js shape), `mcp`, `output`, `secrets`, `generateWithApproval`, the full `"ai"` module and the full `"agent"` (Mastra) module.
 - **Transports**: `brainkit.Memory()` (default, zero-value), `brainkit.EmbeddedNATS()`, `brainkit.NATS(url)`, `brainkit.AMQP(url)`, `brainkit.Redis(url)` — each returns a `TransportConfig`. Topic sanitisers vary per backend; the Go surface is uniform.
 - **Providers**: 12 built-in constructors (OpenAI, Anthropic, Google, Mistral, Groq, DeepSeek, XAI, Cohere, Perplexity, TogetherAI, Fireworks, Cerebras). `WithBaseURL(...)` / `WithHeaders(...)` options on every one.
@@ -98,7 +98,7 @@ Dense, API-only pages — each mirrors one source-of-truth and is kept in sync w
 
 | File | Covers |
 |------|--------|
-| [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, bus primitives (`Publish` / `Emit` / `SubscribeTo` / `Reply` / `SendChunk` / `SendToService` / `ResolveServiceTopic`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]` with all 62 generated `CallXxx` wrappers, `CallOption` surface, typed SDK messages, errors, context keys. |
+| [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, bus primitives (`Publish` / `Emit` / `SubscribeTo` / `Reply` / `SendChunk` / `SendToService` / `ResolveServiceTopic`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `brainkit.Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]`, generated package-owned `CallXxx` wrappers, `CallOption` surface, typed SDK and module messages, errors, context keys. |
 | [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the 11-module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` + `Span` types, retry / error / health types, `PluginConfig` + `ScheduleConfig`, `server.Config` + `server.Server` + `QuickStart` + `LoadConfig` YAML shape. |
 | [`llm/ts-runtime.md`](llm/ts-runtime.md) | SES compartment execution model, mailbox naming `ts.<source>.<topic>`, endowment map, `BrainkitError` + error codes (`VALIDATION_ERROR`, `NOT_FOUND`, `TIMEOUT`, `HANDLER_FAILED`, `TRANSPORT_ERROR`, `COMPARTMENT_ERROR`, `TOPIC_COLLISION`, `NOT_CONFIGURED`, `PLUGIN_*`), full `bus` API (`publish`/`emit`/`subscribe`/`on`/`sendTo`/`call`/`callTo`/`schedule`/`onCancel`/`withCancelController`), `BusMessage.reply`/`send`/`stream.text`/`progress`/`object`/`event`/`error`/`end` with `seq` semantics, `kit.register` valid types, `model` / `embeddingModel` / `provider` resolvers, `storage` / `vectorStore` named pools (LibSQL file-URL guards), `registry`, `tools` / `tool`, the Node.js-shaped `fs` endowment, `mcp`, `output`, `secrets.get`, `generateWithApproval`, tamed `Date` / `Math`, tagged `console`, deployment patterns, failure semantics. |
 | [`llm/ai-sdk.md`](llm/ai-sdk.md) | The `"ai"` module (AI SDK v5, no wrapping). `CallSettings` (`maxOutputTokens`, not `maxTokens`), `Usage` with v5 names (`inputTokens` / `outputTokens`) + deprecated v4 aliases, `generateText` + `GenerateTextParams` (with `stopWhen` and `@deprecated maxSteps`), `streamText` + `StreamPart` union, `generateObject`, `streamObject`, `embed`, `embedMany`, middleware (`defaultSettingsMiddleware`, `extractReasoningMiddleware`, `wrapLanguageModel`), `tool<T>`, `jsonSchema`, the Zod surface. |
@@ -108,7 +108,7 @@ Dense, API-only pages — each mirrors one source-of-truth and is kept in sync w
 
 ## Bus topic catalog
 
-The authoritative list of built-in bus topics (with request / response Go types and source file) is generated from `sdk/*_messages.go` and kept in [`bus-topics.md`](bus-topics.md). Do not edit by hand — run `go run scripts/gen-bus-topics.go` to regenerate.
+The authoritative list of built-in bus topics (with request / response Go types and source file) is generated from `sdk/**/*_messages.go` and `modules/**/*_messages.go` and kept in [`bus-topics.md`](bus-topics.md). Do not edit by hand — run `go run scripts/gen-bus-topics.go` to regenerate.
 
 Everything in the shipped SDK — discovery, audit, gateway, MCP, plugins, schedules, secrets, storage pool, tracing, workflow control, vector pool, package lifecycle — flows through these typed topics.
 
@@ -153,8 +153,10 @@ Minimal in-process Kit with a Memory transport and a single deployment:
 kit, _ := brainkit.New(brainkit.Config{
     Namespace: "demo",
     Transport: brainkit.Memory(),        // default — zero value also works
+    JSRuntime: true,                      // enable JS/TS deploy/eval runtime
     FSRoot:    os.TempDir(),
     Providers: []brainkit.ProviderConfig{brainkit.OpenAI(os.Getenv("OPENAI_API_KEY"))},
+    Modules:   standard.CommandSet(),     // package.deploy, tools.*, health, eval, ...
 })
 defer kit.Close()
 
@@ -190,10 +192,15 @@ providers:
   - name: openai
     apiKey: ${OPENAI_API_KEY}
 modules:
-  - name: tracing
-  - name: gateway
-    config:
-      addr: :8080
+  jsruntime: {}
+  gateway:
+    listen: :8080
+  reference: {}
+  eval: {}
+  messaging: {}
+  health: {}
+  packages: {}
+  tracing: {}
 ```
 
 ```go

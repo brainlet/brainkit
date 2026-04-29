@@ -40,13 +40,28 @@ transport:
 
 # ── Modules ───────────────────────────────────────────────────────
 # Every key under modules: must be a module registered in the binary.
-# gateway is required (server mode exists to serve HTTP); the rest are
-# opt-in. Unknown keys fail at load with a "did you mean" hint.
+# gateway is required (server mode exists to serve HTTP). The small
+# command modules below expose the standard bus surface; remove any you
+# do not want to expose. Unknown keys fail at load with a "did you mean"
+# hint.
 
 modules:
+  jsruntime: {}
   gateway:
     listen: :8080
     # timeout: 30s
+
+  agents: {}
+  reference: {}
+  control: {}
+  eval: {}
+  health: {}
+  messaging: {}
+  metrics: {}
+  registry: {}
+  secrets: {}
+  tools: {}
+  packages: {}
 
   # audit:
   #   # path: ./data/audit.db   # default: <fs_root>/audit.db

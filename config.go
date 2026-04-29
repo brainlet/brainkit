@@ -6,12 +6,15 @@ import (
 
 	"github.com/brainlet/brainkit/audio"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 )
 
 // Config configures a brainkit runtime.
 //
 // All fields are optional with sensible defaults. The zero value creates a
-// standalone in-memory runtime with no persistence and auto-detected AI providers.
+// standalone in-memory control-plane runtime with no persistence. The embedded
+// JS/TS runtime starts only when JSRuntime is true or a mounted module requests
+// it.
 type Config struct {
 	// ClusterID identifies the logical group of runtimes. Default: "default".
 	// All runtimes on the same transport with the same ClusterID discover each other.
@@ -24,8 +27,9 @@ type Config struct {
 	CallerID string
 
 	// Transport configures the bus backend. One per Kit.
-	// Zero value = EmbeddedNATS() (in-process NATS, zero config, plugins work).
-	// Use Memory() for tests, NATS(url) / AMQP(url) / Redis(url) for external infra.
+	// Zero value = Memory() (in-process GoChannel, no external backend linked).
+	// Import github.com/brainlet/brainkit/transports before using
+	// EmbeddedNATS(), NATS(url), AMQP(url), or Redis(url).
 	Transport TransportConfig
 
 	// FSRoot is the filesystem sandbox for deployed .ts code.
@@ -64,8 +68,7 @@ type Config struct {
 	TraceSampleRate float64
 
 	// Store provides persistence for deployments, schedules, and plugins.
-	// Nil + FSRoot set = auto-create SQLiteStore at <FSRoot>/brainkit-store.db.
-	// Nil + FSRoot empty = no persistence (ephemeral).
+	// Nil = no persistence (ephemeral). Use package stores for concrete stores.
 	Store KitStore
 
 	// Logger for structured logging. Nil = slog.Default().
@@ -80,15 +83,23 @@ type Config struct {
 	// MaxConcurrency limits concurrent bus handler invocations. 0 = unlimited.
 	MaxConcurrency int
 
+	// JSRuntime enables the embedded JS/TS runtime. It is required for Deploy,
+	// EvalTS/EvalModule, package deployment, workflow commands, harnesses, and
+	// JS-backed storage/vector probes. Zero-value Config keeps the core control
+	// plane light. JS-dependent modules such as eval, packages, testing,
+	// workflow, and harness request it automatically; binaries must import
+	// github.com/brainlet/brainkit/modules/jsruntime or use modules/standard so
+	// that request can be satisfied.
+	JSRuntime bool
+
 	// MaxStackSize for the QuickJS runtime in bytes. Default: 1MB.
 	MaxStackSize int
 
 	// RetryPolicies maps topic glob patterns to retry configurations.
 	RetryPolicies map[string]RetryPolicy
 
-	// Modules are optional subsystems that extend the kernel with additional commands.
-	// See brainkit.NewMCPModule() for an example.
-	Modules []Module
+	// Modules are optional hot-mountable subsystems that extend the kernel.
+	Modules []bkmodule.Module
 
 	// Audio plays audio bytes from `.ts` agent code that calls
 	// `new Audio(stream).play()`. Nil = silent (the polyfill is
@@ -101,6 +112,8 @@ type Config struct {
 
 // toKernelConfig converts the flat Config to the internal engine KernelConfig.
 func (c Config) toKernelConfig() types.KernelConfig {
+	jsRuntime := c.JSRuntime || c.needsJSRuntime()
+
 	cfg := types.KernelConfig{
 		ClusterID:      c.ClusterID,
 		RuntimeID:      runtimeID,
@@ -112,6 +125,7 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		EnvVars:        c.EnvVars,
 		SecretKey:      c.SecretKey,
 		SecretStore:    c.SecretStore,
+		JSRuntime:      jsRuntime,
 		MaxStackSize:   c.MaxStackSize,
 		MaxConcurrency: c.MaxConcurrency,
 		RetryPolicies:  c.RetryPolicies,
@@ -123,8 +137,10 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		cfg.AudioSink = c.Audio
 	}
 
-	// Convert []ProviderConfig → map[string]AIProviderRegistration
-	if len(c.Providers) > 0 {
+	// Convert []ProviderConfig → map[string]AIProviderRegistration. A nil
+	// slice means "auto-detect from env"; an explicitly empty slice disables
+	// auto-detection.
+	if c.Providers != nil {
 		cfg.AIProviders = make(map[string]types.AIProviderRegistration, len(c.Providers))
 		for _, p := range c.Providers {
 			cfg.AIProviders[p.name] = types.AIProviderRegistration{
@@ -153,17 +169,57 @@ func (c Config) toKernelConfig() types.KernelConfig {
 		}
 	}
 
-	// Modules pass through verbatim. brainkit.New owns init +
-	// close ordering against the Kit; nothing in the kernel path
-	// needs to see them.
-	if len(c.Modules) > 0 {
-		cfg.Modules = make([]any, len(c.Modules))
-		for i, m := range c.Modules {
-			cfg.Modules[i] = m
+	return cfg
+}
+
+func (c Config) needsJSRuntime() bool {
+	if c.JSRuntime || c.Audio != nil || c.LogHandler != nil || c.MaxStackSize != 0 {
+		return true
+	}
+	if len(c.Storages) > 0 || len(c.Vectors) > 0 {
+		return true
+	}
+	for _, mod := range c.Modules {
+		if mod == nil {
+			continue
+		}
+		if moduleNeedsJSRuntime(mod) {
+			return true
 		}
 	}
+	return false
+}
 
-	return cfg
+func moduleNeedsJSRuntime(mod bkmodule.Module) bool {
+	if moduleDependsOn(mod, "jsruntime") {
+		return true
+	}
+	switch mod.ID() {
+	case "eval", "packages", "testing", "workflow", "harness":
+		return true
+	default:
+		return false
+	}
+}
+
+func moduleDependsOn(mod bkmodule.Module, dependency string) bool {
+	for _, dep := range moduleDependencies(mod) {
+		if dep == dependency {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleDependencies(mod bkmodule.Module) []string {
+	if mod == nil {
+		return nil
+	}
+	reporter, ok := mod.(bkmodule.DependencyReporter)
+	if !ok {
+		return nil
+	}
+	return reporter.Dependencies()
 }
 
 // toNodeConfig builds a NodeConfig for transport-connected mode.

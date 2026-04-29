@@ -1,55 +1,78 @@
 package schedules
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/brainlet/brainkit"
+	internalstore "github.com/brainlet/brainkit/internal/store"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 )
 
 // Module is the brainkit.Module form of persisted scheduling. It wires a
 // Scheduler into the Kit's QuickJS bridges and registers the schedule.*
-// bus commands at Init time.
+// bus commands at mount time.
 type Module struct {
 	cfg       Config
 	scheduler *Scheduler
-	kit       *brainkit.Kit
 }
 
 // NewModule builds the schedules module from config. Pass it to
 // brainkit.Config.Modules.
 func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
-func (m *Module) Name() string { return "schedules" }
+func (m *Module) ID() string { return "schedules" }
 
-func (m *Module) Init(k *brainkit.Kit) error {
-	m.kit = k
-
-	// Registry-path factories build without a Store. Fall back to
-	// the shared KitStore so schedules survive restart by default.
-	// Callers that want ephemeral scheduling can pass Config{Store:
-	// nil} via brainkit.Config.Modules directly.
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	if m.cfg.Store == nil {
-		if ks := k.Store(); ks != nil {
-			m.cfg.Store = ks
+		if store, ok := host.Store().(Store); ok {
+			m.cfg.Store = store
 		}
 	}
 
+	isDraining := func() bool {
+		if draining, ok := host.Runtime().(interface{ IsDraining() bool }); ok {
+			return draining.IsDraining()
+		}
+		return false
+	}
 	m.scheduler = newScheduler(
-		k,
+		host.Runtime(),
 		m.cfg.Store,
-		k.Logger(),
-		k.HasCommand,
-		k.IsDraining,
-		func(err error) { k.ReportError(err, brainkit.ErrorContext{Operation: "schedules", Component: "module"}) },
+		host.Logger(),
+		host.Commands().Has,
+		isDraining,
+		func(err error) { host.Logger().Error("schedules error", "error", err) },
 	)
-	k.SetScheduleHandler(m.scheduler)
+	host.Scope().Defer(func(context.Context) error { return m.scheduler.Close() })
 
-	k.RegisterCommand(brainkit.Command(m.handleCreate))
-	k.RegisterCommand(brainkit.Command(m.handleCancel))
-	k.RegisterCommand(brainkit.Command(m.handleList))
+	setScheduleHandler, err := bkmodule.RequireCapability[func(types.ScheduleHandler)](host, bkmodule.CapabilitySetScheduleHandler)
+	if err != nil {
+		return fmt.Errorf("schedules: %w", err)
+	}
+	setScheduleHandler(m.scheduler)
+	host.Scope().Defer(func(context.Context) error {
+		setScheduleHandler(nil)
+		return nil
+	})
 
-	// Restore persisted schedules if a store is configured.
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req schedulemsg.ScheduleCreateMsg) (*schedulemsg.ScheduleCreateResp, error) {
+		return m.handleCreate(ctx, req)
+	})); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req schedulemsg.ScheduleCancelMsg) (*schedulemsg.ScheduleCancelResp, error) {
+		return m.handleCancel(ctx, req)
+	})); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req schedulemsg.ScheduleListMsg) (*schedulemsg.ScheduleListResp, error) {
+		return m.handleList(ctx, req)
+	})); err != nil {
+		return err
+	}
+
 	m.scheduler.Restore()
 	return nil
 }
@@ -57,9 +80,6 @@ func (m *Module) Init(k *brainkit.Kit) error {
 func (m *Module) Close() error {
 	if m.scheduler != nil {
 		_ = m.scheduler.Close()
-	}
-	if m.kit != nil {
-		m.kit.SetScheduleHandler(nil)
 	}
 	return nil
 }
@@ -79,15 +99,15 @@ type YAML struct {
 type Factory struct{}
 
 // Build opens the dedicated store when Path is set, otherwise leaves
-// cfg.Store nil so Init falls back to the shared KitStore.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+// cfg.Store nil so Mount falls back to the shared KitStore.
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
 	}
 	cfg := Config{}
 	if y.Path != "" {
-		store, err := brainkit.NewSQLiteStore(y.Path)
+		store, err := internalstore.NewSQLiteKitStore(y.Path)
 		if err != nil {
 			return nil, fmt.Errorf("schedules: open store %q: %w", y.Path, err)
 		}
@@ -97,12 +117,12 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "schedules",
-		Status:  brainkit.ModuleStatusBeta,
+		Status:  bkmodule.StatusBeta,
 		Summary: "Persisted cron + one-shot scheduling with multi-replica claim.",
 	}
 }
 
-func init() { brainkit.RegisterModule("schedules", Factory{}) }
+func init() { bkmodule.Register("schedules", Factory{}) }

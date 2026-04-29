@@ -20,7 +20,7 @@
 // Usage:
 //
 //	kit, _ := brainkit.New(brainkit.Config{
-//	    Transport: brainkit.EmbeddedNATS(),
+//	    Transport: transports.EmbeddedNATS(),
 //	    Modules: []brainkit.Module{
 //	        plugins.NewModule(plugins.Config{
 //	            Plugins: []brainkit.PluginConfig{{Name: "foo", Binary: "./foo"}},

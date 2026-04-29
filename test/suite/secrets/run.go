@@ -17,6 +17,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("concurrent_access", func(t *testing.T) { testConcurrentAccess(t, env) })
 		t.Run("dev_mode_no_encryption", func(t *testing.T) { testDevModeNoEncryption(t, env) })
 		t.Run("list_never_leaks_values", func(t *testing.T) { testListNeverLeaksValues(t, env) })
+		t.Run("no_module_commands_absent", func(t *testing.T) { testNoModuleCommandsAbsent(t, env) })
 
 		// matrix.go — secrets permission matrix (adversarial)
 		t.Run("matrix_set_get_delete_list", func(t *testing.T) { testMatrixSetGetDeleteList(t, env) })

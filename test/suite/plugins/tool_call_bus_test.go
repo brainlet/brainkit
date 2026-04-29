@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/engine"
-	xport "github.com/brainlet/brainkit/internal/transport"
-	"github.com/brainlet/brainkit/internal/types"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
+	xport "github.com/brainlet/brainkit/internal/transport"
+	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
+	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ import (
 // Uses internal/engine directly because it tests low-level plugin protocol
 // that requires direct transport and tool registry access.
 func TestPluginToolCallViaBusEmbedded(t *testing.T) {
-	transport, err := xport.NewTransportSet(xport.TransportConfig{
+	transport, err := transportbackends.NewTransportSet(xport.TransportConfig{
 		Type: "embedded",
 	})
 	require.NoError(t, err)
@@ -36,6 +37,8 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 	require.NoError(t, err)
 	defer kernel.Close()
 
+	mountToolCallCommand(t, kernel)
+
 	// Simulate plugin side: subscribe to tool topic, respond.
 	fakeTopic := "fake.plugin.tool.echo"
 	fakeResultTopic := fakeTopic + ".result"
@@ -43,13 +46,10 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 	_, err = kernel.SubscribeRaw(context.Background(), fakeTopic, func(msg sdk.Message) {
 		correlationID := msg.Metadata["correlationId"]
 		result := json.RawMessage(`{"echoed":"ok"}`)
-		resp, _ := json.Marshal(sdk.ToolCallResp{Result: result})
-
-		replyMsg := message.NewMessage(watermill.NewUUID(), resp)
-		replyMsg.Metadata.Set("correlationId", correlationID)
+		resp, _ := json.Marshal(toolmsg.ToolCallResp{Result: result})
 
 		if replyTo := msg.Metadata["replyTo"]; replyTo != "" {
-			transport.Publisher.Publish(replyTo, replyMsg)
+			_ = kernel.ReplyRaw(context.Background(), replyTo, correlationID, resp, true)
 			return
 		}
 		ctx := xport.ContextWithCorrelationID(context.Background(), correlationID)
@@ -64,14 +64,9 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 			Fn: func(callCtx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
 				callerReplyTo := xport.ReplyToFromContext(callCtx)
 				if callerReplyTo != "" {
-					correlationID := xport.CorrelationIDFromContext(callCtx)
-					wmsg := message.NewMessage(watermill.NewUUID(), []byte(input))
-					wmsg.Metadata.Set("replyTo", callerReplyTo)
-					if correlationID != "" {
-						wmsg.Metadata.Set("correlationId", correlationID)
-					}
-					resolvedTopic := transport.SanitizeTopic(xport.NamespacedTopic("test-plugin-bus", fakeTopic))
-					if err := transport.Publisher.Publish(resolvedTopic, wmsg); err != nil {
+					if _, err := kernel.Remote().PublishRawWithMeta(callCtx, fakeTopic, input, map[string]string{
+						"replyTo": callerReplyTo,
+					}); err != nil {
 						return nil, err
 					}
 					return nil, nil
@@ -102,7 +97,7 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 				case <-callCtx.Done():
 					return nil, callCtx.Err()
 				case msg := <-resultCh:
-					var resp sdk.ToolCallResp
+					var resp toolmsg.ToolCallResp
 					json.Unmarshal(msg.Payload, &resp)
 					return resp.Result, nil
 				}
@@ -133,7 +128,7 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 		defer unsub()
 
 		start := time.Now()
-		_, err = sdk.Publish(kernel, ctx, sdk.ToolCallMsg{
+		_, err = sdk.Publish(kernel, ctx, toolmsg.ToolCallMsg{
 			Name:  "echo",
 			Input: "test input",
 		}, sdk.WithReplyTo(replyTo))
@@ -146,11 +141,38 @@ func TestPluginToolCallViaBusEmbedded(t *testing.T) {
 			t.Logf("bus response in %s: %s", elapsed.Round(time.Millisecond), string(data))
 			require.Less(t, elapsed, 3*time.Second)
 			require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
-			var resp sdk.ToolCallResp
+			var resp toolmsg.ToolCallResp
 			require.NoError(t, json.Unmarshal(data, &resp))
 			require.True(t, len(resp.Result) > 0 && string(resp.Result) != "null")
 		case <-ctx.Done():
 			t.Fatal("REGRESSION: tools.call via bus for plugin-style tool times out on Embedded transport")
 		}
 	})
+}
+
+func mountToolCallCommand(t *testing.T, kernel *engine.Kernel) {
+	t.Helper()
+	var zero toolmsg.ToolCallMsg
+	topic := zero.BusTopic()
+	_, err := kernel.MountCommand(context.Background(), bkmodule.CommandSpec{
+		Name:  topic,
+		Topic: topic,
+		Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
+			var req toolmsg.ToolCallMsg
+			if len(payload) > 0 {
+				if err := json.Unmarshal(payload, &req); err != nil {
+					return nil, err
+				}
+			}
+			resp, err := kernel.CallTool(ctx, bkmodule.ToolCallRequest{Name: req.Name, Input: req.Input})
+			if err != nil {
+				return nil, err
+			}
+			if resp == nil {
+				return nil, nil
+			}
+			return json.Marshal(toolmsg.ToolCallResp{Result: resp.Result})
+		},
+	})
+	require.NoError(t, err)
 }

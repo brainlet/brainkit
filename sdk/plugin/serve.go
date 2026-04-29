@@ -10,20 +10,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/ctxkeys"
 	"github.com/brainlet/brainkit/sdk/pluginws"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/google/uuid"
 )
 
 // wsClient implements Client (sdk.Runtime + Caller()) over WebSocket.
 type wsClient struct {
 	conn      *websocket.Conn
 	mu        sync.Mutex
-	eventSubs map[string][]func(sdk.Message) // topic → handlers
+	eventSubs map[string]map[string]func(sdk.Message) // topic → subscription ID → handler
 	subMu     sync.RWMutex
+	subAcks   map[string]chan error // subscribe frame ID → host ack
+	subAckMu  sync.Mutex
 	caller    *Caller // constructed in Run once the manifest is acked.
 }
 
@@ -51,36 +53,135 @@ func (c *wsClient) PublishRaw(ctx context.Context, topic string, payload json.Ra
 // SubscribeRaw sends a subscribe request to the host via WS.
 // The host creates a bus subscription and forwards events back over WS.
 func (c *wsClient) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
-	// Register local handler
-	c.subMu.Lock()
-	c.eventSubs[topic] = append(c.eventSubs[topic], handler)
-	c.subMu.Unlock()
+	removeLocal := c.addEventSub(topic, handler)
+	subscribeID := uuid.NewString()
+	ackCh := make(chan error, 1)
+	c.subAckMu.Lock()
+	c.subAcks[subscribeID] = ackCh
+	c.subAckMu.Unlock()
 
 	// Tell host to subscribe
 	data, _ := json.Marshal(pluginws.SubscribeMsg{Topic: topic})
 	c.mu.Lock()
-	wsjson.Write(ctx, c.conn, pluginws.Message{Type: pluginws.TypeSubscribe, Data: data})
+	err := wsjson.Write(ctx, c.conn, pluginws.Message{Type: pluginws.TypeSubscribe, ID: subscribeID, Data: data})
 	c.mu.Unlock()
+	if err != nil {
+		c.forgetSubscribeAck(subscribeID)
+		removeLocal()
+		return nil, err
+	}
+
+	waitCtx := ctx
+	var cancel context.CancelFunc
+	if _, ok := waitCtx.Deadline(); !ok {
+		waitCtx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+
+	select {
+	case err := <-ackCh:
+		if err != nil {
+			removeLocal()
+			return nil, err
+		}
+	case <-waitCtx.Done():
+		c.forgetSubscribeAck(subscribeID)
+		removeLocal()
+		return nil, waitCtx.Err()
+	}
 
 	return func() {
-		// Note: no unsubscribe over WS yet — cleanup happens on disconnect
+		removeLocal()
+		// Note: no unsubscribe over WS yet — host cleanup happens on disconnect.
 	}, nil
+}
+
+func (c *wsClient) addEventSub(topic string, handler func(sdk.Message)) func() {
+	subID := uuid.NewString()
+	c.subMu.Lock()
+	if c.eventSubs[topic] == nil {
+		c.eventSubs[topic] = make(map[string]func(sdk.Message))
+	}
+	c.eventSubs[topic][subID] = handler
+	c.subMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.subMu.Lock()
+			defer c.subMu.Unlock()
+			delete(c.eventSubs[topic], subID)
+			if len(c.eventSubs[topic]) == 0 {
+				delete(c.eventSubs, topic)
+			}
+		})
+	}
+}
+
+func (c *wsClient) forgetSubscribeAck(id string) {
+	c.subAckMu.Lock()
+	delete(c.subAcks, id)
+	c.subAckMu.Unlock()
+}
+
+func (c *wsClient) dispatchSubscribeAck(msg pluginws.Message) {
+	var ack pluginws.SubscribeAck
+	_ = json.Unmarshal(msg.Data, &ack)
+
+	c.subAckMu.Lock()
+	ch := c.subAcks[msg.ID]
+	delete(c.subAcks, msg.ID)
+	c.subAckMu.Unlock()
+	if ch == nil {
+		return
+	}
+	if ack.Error != "" {
+		ch <- fmt.Errorf("plugin subscribe %q: %s", ack.Topic, ack.Error)
+		return
+	}
+	ch <- nil
 }
 
 // dispatchEvent routes an incoming event to registered handlers.
 func (c *wsClient) dispatchEvent(evt pluginws.EventMsg) {
 	c.subMu.RLock()
-	handlers := c.eventSubs[evt.Topic]
+	subs := c.eventSubs[evt.Topic]
+	handlers := make([]func(sdk.Message), 0, len(subs))
+	for _, handler := range subs {
+		handlers = append(handlers, handler)
+	}
 	c.subMu.RUnlock()
+
+	payload := evt.Payload
+	metadata := evt.Metadata
+	if metadata["envelope"] == "true" {
+		if env, err := sdk.DecodeEnvelope(payload); err == nil && env.Ok {
+			payload = env.Data
+			metadata = cloneMetadata(metadata)
+			delete(metadata, "envelope")
+		}
+	}
 
 	msg := sdk.Message{
 		Topic:    evt.Topic,
-		Payload:  evt.Payload,
+		Payload:  payload,
 		CallerID: evt.CallerID,
+		Metadata: metadata,
 	}
 	for _, h := range handlers {
 		h(msg)
 	}
+}
+
+func cloneMetadata(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func (c *wsClient) Close() error {
@@ -111,13 +212,10 @@ func (p *Plugin) Run() error {
 	}
 	conn.SetReadLimit(10 * 1024 * 1024)
 
-	rt := &wsClient{conn: conn, eventSubs: make(map[string][]func(sdk.Message))}
-
-	if p.onStartFn != nil {
-		if err := p.onStartFn(rt); err != nil {
-			conn.Close(websocket.StatusInternalError, "OnStart failed")
-			return fmt.Errorf("plugin OnStart: %w", err)
-		}
+	rt := &wsClient{
+		conn:      conn,
+		eventSubs: make(map[string]map[string]func(sdk.Message)),
+		subAcks:   make(map[string]chan error),
 	}
 
 	// Send manifest
@@ -164,27 +262,10 @@ func (p *Plugin) Run() error {
 	// topics to subscribe to; but we also need the local handlers wired up.
 	for _, sub := range p.subscriptions {
 		handler := sub.handler
-		rt.subMu.Lock()
-		rt.eventSubs[sub.topic] = append(rt.eventSubs[sub.topic], func(msg sdk.Message) {
+		rt.addEventSub(sub.topic, func(msg sdk.Message) {
 			handler(ctx, msg.Payload, rt)
 		})
-		rt.subMu.Unlock()
 	}
-
-	// Build the shared-inbox Caller on the plugin's dedicated inbox.
-	// The host auto-forwards bus messages for subscribed topics over WS,
-	// so rt.SubscribeRaw → TypeSubscribe → host bus sub → event flow back
-	// is the same path the reply router consumes.
-	inbox := fmt.Sprintf("_brainkit.plugin-inbox.%s.%s", p.owner, p.name)
-	plugCaller, err := caller.NewCallerWithInbox(rt, inbox, nil)
-	if err != nil {
-		return fmt.Errorf("plugin: caller init: %w", err)
-	}
-	rt.caller = plugCaller
-	defer plugCaller.Close()
-
-	// READY — host reads this from stdout
-	fmt.Fprintf(os.Stdout, "READY:%s/%s@%s\n", p.owner, p.name, p.version)
 
 	// Tool lookup
 	toolMap := make(map[string]func(context.Context, Client, json.RawMessage) (json.RawMessage, error))
@@ -196,6 +277,25 @@ func (p *Plugin) Run() error {
 	// the read loop keeps processing WS events (needed for bus round-trips).
 	dispatcher := newToolDispatcher(10)
 	defer dispatcher.wait()
+
+	readErrCh := make(chan error, 1)
+	go func() {
+		readErrCh <- p.readLoop(ctx, conn, rt, dispatcher, toolMap)
+	}()
+
+	// Build the shared-inbox Caller on the plugin's dedicated inbox.
+	// The host auto-forwards bus messages for subscribed topics over WS,
+	// so rt.SubscribeRaw → TypeSubscribe → subscribe.ack → event flow back
+	// is the same path the reply router consumes.
+	inbox := fmt.Sprintf("_brainkit.plugin-inbox.%s.%s", p.owner, p.name)
+	plugCaller, err := sdk.NewCallerWithInbox(rt, inbox, nil)
+	if err != nil {
+		cancel()
+		conn.Close(websocket.StatusInternalError, "Caller init failed")
+		return fmt.Errorf("plugin: caller init: %w", err)
+	}
+	rt.caller = plugCaller
+	defer plugCaller.Close()
 
 	// Shutdown handler
 	sigCh := make(chan os.Signal, 1)
@@ -210,7 +310,30 @@ func (p *Plugin) Run() error {
 		os.Exit(0)
 	}()
 
-	// Tool call loop
+	if p.onStartFn != nil {
+		if err := p.onStartFn(rt); err != nil {
+			cancel()
+			conn.Close(websocket.StatusInternalError, "OnStart failed")
+			return fmt.Errorf("plugin OnStart: %w", err)
+		}
+	}
+
+	// READY — host reads this from stdout
+	fmt.Fprintf(os.Stdout, "READY:%s/%s@%s\n", p.owner, p.name, p.version)
+
+	if err := <-readErrCh; err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *Plugin) readLoop(
+	ctx context.Context,
+	conn *websocket.Conn,
+	rt *wsClient,
+	dispatcher *toolDispatcher,
+	toolMap map[string]func(context.Context, Client, json.RawMessage) (json.RawMessage, error),
+) error {
 	for {
 		var msg pluginws.Message
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {
@@ -240,6 +363,9 @@ func (p *Plugin) Run() error {
 			var evt pluginws.EventMsg
 			json.Unmarshal(msg.Data, &evt)
 			rt.dispatchEvent(evt)
+
+		case pluginws.TypeSubscribeAck:
+			rt.dispatchSubscribeAck(msg)
 
 		case pluginws.TypeCancel:
 			var cancelMsg pluginws.CancelMsg

@@ -13,7 +13,11 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,9 +105,10 @@ replace (
 	tmpDir := t.TempDir()
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-caller-plugin",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmpDir,
 		Modules: []brainkit.Module{
+			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []brainkit.PluginConfig{{
 					Name: "caller-test", Binary: binaryPath, AutoRestart: false,
@@ -118,8 +123,8 @@ replace (
 	defer cancel()
 
 	regCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PluginRegisteredEvent](kit, ctx, "plugin.registered",
-		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[pluginmsg.PluginRegisteredEvent](kit, ctx, "plugin.registered",
+		func(evt pluginmsg.PluginRegisteredEvent, _ sdk.Message) {
 			if evt.Name == "caller-test" {
 				select {
 				case regCh <- struct{}{}:
@@ -136,7 +141,7 @@ replace (
 	}
 
 	// Call the plugin's whoami tool and verify the reported inbox.
-	resp, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](kit, ctx, sdk.ToolCallMsg{
+	resp, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "whoami",
 		Input: map[string]any{},
 	}, brainkit.WithCallTimeout(15*time.Second))

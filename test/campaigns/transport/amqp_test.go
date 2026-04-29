@@ -22,7 +22,7 @@ import (
 
 func TestTransport_AMQP(t *testing.T) {
 	campaigns.RequirePodman(t)
-	infra := campaigns.NewInfra(t, campaigns.Transport("amqp"))
+	infra := campaigns.NewInfra(t, campaigns.Transport("amqp"), campaigns.MCP())
 	env := infra.Env(t)
 
 	bus.Run(t, env)

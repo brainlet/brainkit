@@ -13,6 +13,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("get_status_not_found", func(t *testing.T) { testGetStatusNotFound(t, env) })
 		t.Run("set_status_not_found", func(t *testing.T) { testSetStatusNotFound(t, env) })
 		t.Run("set_status_invalid", func(t *testing.T) { testSetStatusInvalid(t, env) })
+		t.Run("no_module_commands_absent", func(t *testing.T) { testNoModuleCommandsAbsent(t, env) })
 
 		// ai.go — AI agent tests (require OPENAI_API_KEY)
 		t.Run("deploy_agent_then_list", func(t *testing.T) { testDeployAgentThenList(t, env) })

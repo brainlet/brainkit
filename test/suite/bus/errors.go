@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +36,8 @@ func testEmitToCommandTopic(t *testing.T, env *suite.TestEnv) {
 }
 
 func testSubscribeReceivesMetadataAdv(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
 	err := env.Deploy("meta-check-adv.ts", `
 		bus.on("check", function(msg) {
@@ -47,21 +50,13 @@ func testSubscribeReceivesMetadataAdv(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.meta-check-adv.check", Payload: json.RawMessage(`{}`),
 	})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), `"hasTopic":true`)
-		assert.Contains(t, string(p), `"hasReplyTo":true`)
-		assert.Contains(t, string(p), `"hasCorrelation":true`)
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+	require.NoError(t, err)
+	assert.Contains(t, string(resp), `"hasTopic":true`)
+	assert.Contains(t, string(resp), `"hasReplyTo":true`)
+	assert.Contains(t, string(resp), `"hasCorrelation":true`)
 }
 
 func testReplyWithoutReplyTo(t *testing.T, env *suite.TestEnv) {
@@ -90,8 +85,6 @@ func testSendToNonexistentService(t *testing.T, env *suite.TestEnv) {
 }
 
 func testCorrelationIDPreserved(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	err := env.Deploy("corr-echo-adv.ts", `
 		bus.on("echo", function(msg) {
 			msg.reply({correlationId: msg.correlationId});
@@ -99,20 +92,11 @@ func testCorrelationIDPreserved(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	pr, got, ok := publishAndWaitMessage(t, env.Kit, sdk.CustomMsg{
 		Topic: "ts.corr-echo-adv.echo", Payload: json.RawMessage(`{}`),
-	})
-
-	ch := make(chan sdk.Message, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
-	defer unsub()
-
-	select {
-	case m := <-ch:
-		assert.Equal(t, pr.CorrelationID, m.Metadata["correlationId"])
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+	}, 3*time.Second)
+	require.True(t, ok)
+	assert.Equal(t, pr.CorrelationID, got.Metadata["correlationId"])
 }
 
 func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
@@ -127,19 +111,20 @@ func testMultipleReplies(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
-		Topic: "ts.multi-reply-adv.multi", Payload: json.RawMessage(`{}`),
-	})
-
 	var received []json.RawMessage
 	done := make(chan bool, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
+	replyTo := "ts.multi-reply-adv.multi.reply." + uuid.NewString()
+	unsub, _ := env.Kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
 		received = append(received, json.RawMessage(m.Payload))
 		if m.Metadata["done"] == "true" {
 			done <- true
 		}
 	})
 	defer unsub()
+
+	_, _ = sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+		Topic: "ts.multi-reply-adv.multi", Payload: json.RawMessage(`{}`),
+	}, sdk.WithReplyTo(replyTo))
 
 	select {
 	case <-done:

@@ -12,7 +12,10 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 )
 
 func benchTeardownName(source string) string {
@@ -29,7 +32,7 @@ func BenchmarkDeploy_1KB(b *testing.B) {
 		testutil.DeployErr(k, source, code)
 		// Teardown via bus — fire and forget for bench
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: benchTeardownName(source)})
+		sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }
@@ -43,7 +46,7 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
 		testutil.DeployErr(k, source, code)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		sdk.Publish(k, ctx, sdk.PackageTeardownMsg{Name: benchTeardownName(source)})
+		sdk.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
 		cancel()
 	}
 }
@@ -90,12 +93,12 @@ func BenchmarkToolCall(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := sdk.Publish(k, ctx, sdk.ToolCallMsg{
+		pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{
 			Name:  "echo",
 			Input: json.RawMessage(`{"message":"bench"}`),
 		})
 		ch := make(chan struct{}, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.ToolCallResp](k, ctx, pr.ReplyTo, func(_ sdk.ToolCallResp, _ sdk.Message) {
+		unsub, _ := sdk.SubscribeTo[toolmsg.ToolCallResp](k, ctx, pr.ReplyTo, func(_ toolmsg.ToolCallResp, _ sdk.Message) {
 			ch <- struct{}{}
 		})
 		<-ch
@@ -126,7 +129,7 @@ func BenchmarkRestartRecovery(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				storePath := filepath.Join(b.TempDir(), "restart-bench.db")
-				store, _ := brainkit.NewSQLiteStore(storePath)
+				store, _ := stores.NewSQLite(storePath)
 				k, _ := brainkit.New(brainkit.Config{Transport: brainkit.Memory(), Store: store, Namespace: "bench", CallerID: "bench"})
 				for j := 0; j < n; j++ {
 					testutil.DeployErr(k, fmt.Sprintf("svc-%d.ts", j),
@@ -135,7 +138,7 @@ func BenchmarkRestartRecovery(b *testing.B) {
 				k.Close()
 
 				b.StartTimer()
-				store2, _ := brainkit.NewSQLiteStore(storePath)
+				store2, _ := stores.NewSQLite(storePath)
 				k2, _ := brainkit.New(brainkit.Config{Transport: brainkit.Memory(), Store: store2, Namespace: "bench", CallerID: "bench"})
 				k2.Close()
 			}
@@ -157,7 +160,9 @@ func benchKit(b *testing.B) *brainkit.Kit {
 		b.Fatalf("benchKit: %v", err)
 	}
 
-	type echoIn struct{ Message string `json:"message"` }
+	type echoIn struct {
+		Message string `json:"message"`
+	}
 	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echo",
 		Execute: func(ctx context.Context, input echoIn) (any, error) {

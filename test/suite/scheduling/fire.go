@@ -50,19 +50,7 @@ func testInFiresOnce(t *testing.T, _ *suite.TestEnv) {
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, int32(1), count.Load(), "in 100ms should fire exactly once")
 
-	// Verify schedule was removed by listing via bus
-	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
-	listCh := make(chan sdk.ScheduleListResp, 1)
-	listUnsub, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
-	defer listUnsub()
-
-	select {
-	case resp := <-listCh:
-		assert.Empty(t, resp.Schedules, "one-time schedule should be removed after firing")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout listing schedules")
-	}
+	assert.Empty(t, testutil.ListSchedules(t, freshEnv.Kit), "one-time schedule should be removed after firing")
 }
 
 func testUnschedule(t *testing.T, env *suite.TestEnv) {
@@ -79,13 +67,7 @@ func testUnschedule(t *testing.T, env *suite.TestEnv) {
 
 	time.Sleep(250 * time.Millisecond)
 
-	// Cancel via bus command
-	pr, _ := sdk.PublishScheduleCancel(env.Kit, ctx, sdk.ScheduleCancelMsg{ID: id})
-	cancelCh := make(chan sdk.ScheduleCancelResp, 1)
-	cancelUnsub, _ := sdk.SubscribeScheduleCancelResp(env.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleCancelResp, msg sdk.Message) { cancelCh <- resp })
-	<-cancelCh
-	cancelUnsub()
+	testutil.Unschedule(t, env.Kit, id)
 
 	countAtCancel := count.Load()
 
@@ -102,7 +84,6 @@ func testInvalidExpression(t *testing.T, env *suite.TestEnv) {
 // testTeardownCancelsSchedules needs fresh kernel because it asserts schedule count.
 func testTeardownCancelsSchedules(t *testing.T, _ *suite.TestEnv) {
 	freshEnv := suite.Full(t)
-	ctx := context.Background()
 
 	err := freshEnv.Deploy("sched-teardown.ts", `
 		bus.schedule("every 100ms", "tick", {});
@@ -111,35 +92,12 @@ func testTeardownCancelsSchedules(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	// List schedules via bus
-	pr, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
-	listCh := make(chan sdk.ScheduleListResp, 1)
-	listUnsub, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr.ReplyTo,
-		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh <- resp })
-	select {
-	case resp := <-listCh:
-		assert.Greater(t, len(resp.Schedules), 0, "should have at least one schedule")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout listing schedules")
-	}
-	listUnsub()
+	assert.Greater(t, len(testutil.ListSchedules(t, freshEnv.Kit)), 0, "should have at least one schedule")
 
 	testutil.Teardown(t, freshEnv.Kit, "sched-teardown.ts")
 	time.Sleep(200 * time.Millisecond)
 
-	// List schedules again
-	pr2, _ := sdk.PublishScheduleList(freshEnv.Kit, ctx, sdk.ScheduleListMsg{})
-	listCh2 := make(chan sdk.ScheduleListResp, 1)
-	listUnsub2, _ := sdk.SubscribeScheduleListResp(freshEnv.Kit, ctx, pr2.ReplyTo,
-		func(resp sdk.ScheduleListResp, msg sdk.Message) { listCh2 <- resp })
-	defer listUnsub2()
-
-	select {
-	case resp := <-listCh2:
-		assert.Equal(t, 0, len(resp.Schedules), "teardown should cancel all schedules from the deployment")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout listing schedules")
-	}
+	assert.Equal(t, 0, len(testutil.ListSchedules(t, freshEnv.Kit)), "teardown should cancel all schedules from the deployment")
 }
 
 // testE2EScheduleFires — schedule a message, verify handler receives it.
@@ -186,8 +144,7 @@ func testInputAbuseScheduleEmptyTopic(t *testing.T, _ *suite.TestEnv) {
 	id, err := testutil.ScheduleErr(freshEnv.Kit, "in 1h", "", nil)
 	// Either succeeds or errors — no panic
 	if err == nil {
-		ctx := context.Background()
-		sdk.PublishScheduleCancel(freshEnv.Kit, ctx, sdk.ScheduleCancelMsg{ID: id})
+		testutil.Unschedule(t, freshEnv.Kit, id)
 	}
 }
 

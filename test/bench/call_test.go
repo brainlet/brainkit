@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 )
 
 type callBenchEnv struct {
@@ -27,7 +27,7 @@ func BenchmarkCall(b *testing.B) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	msg := sdk.ToolCallMsg{
+	msg := toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "ping"},
 	}
@@ -35,7 +35,7 @@ func BenchmarkCall(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
+		_, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](
 			env.Kit, ctx, msg,
 			brainkit.WithCallTimeout(5*time.Second),
 		)
@@ -52,7 +52,7 @@ func BenchmarkCallParallel(b *testing.B) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	msg := sdk.ToolCallMsg{
+	msg := toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "ping"},
 	}
@@ -61,7 +61,7 @@ func BenchmarkCallParallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
+			_, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](
 				env.Kit, ctx, msg,
 				brainkit.WithCallTimeout(5*time.Second),
 			)

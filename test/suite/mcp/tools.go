@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/mcp/mcpmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -16,18 +18,8 @@ func testListTools(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.McpListToolsMsg{})
+	resp, err := sdk.Call[mcpmsg.McpListToolsMsg, mcpmsg.McpListToolsResp](env.Kit, ctx, mcpmsg.McpListToolsMsg{})
 	require.NoError(t, err)
-	ch := make(chan sdk.McpListToolsResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.McpListToolsResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.McpListToolsResp, m sdk.Message) { ch <- r })
-	require.NoError(t, err)
-	defer unsub()
-	var resp sdk.McpListToolsResp
-	select {
-	case resp = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	found := false
 	for _, tool := range resp.Tools {
@@ -42,22 +34,12 @@ func testCallTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.McpCallToolMsg{
+	resp, err := sdk.Call[mcpmsg.McpCallToolMsg, mcpmsg.McpCallToolResp](env.Kit, ctx, mcpmsg.McpCallToolMsg{
 		Server: "testmcp",
 		Tool:   "echo",
 		Args:   map[string]any{"message": "hello from mcp test"},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.McpCallToolResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.McpCallToolResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.McpCallToolResp, m sdk.Message) { ch <- r })
-	require.NoError(t, err)
-	defer unsub()
-	var resp sdk.McpCallToolResp
-	select {
-	case resp = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]string
 	json.Unmarshal(resp.Result, &result)
@@ -69,21 +51,11 @@ func testCallToolViaRegistry(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{
+	resp, err := sdk.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](env.Kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "via registry"},
 	})
 	require.NoError(t, err)
-	ch := make(chan sdk.ToolCallResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch <- r })
-	require.NoError(t, err)
-	defer unsub()
-	var resp sdk.ToolCallResp
-	select {
-	case resp = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]string
 	json.Unmarshal(resp.Result, &result)

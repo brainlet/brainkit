@@ -7,7 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	metricsmod "github.com/brainlet/brainkit/modules/metrics"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -18,42 +23,27 @@ import (
 
 // testSurfaceGoSDK — core operations from Go SDK surface.
 func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
 	t.Run("tools.list", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.ToolListMsg{}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, toolmsg.ToolListMsg{}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
 
 	t.Run("tools.call/echo", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go-sdk"}}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "go-sdk"}}, 5*time.Second)
 		require.True(t, ok)
 		assert.Contains(t, string(payload), "go-sdk")
 	})
 
 	t.Run("secrets.set+get", func(t *testing.T) {
-		pr, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
+		_, err := brainkit.Call[secretmsg.SecretsSetMsg, secretmsg.SecretsSetResp](env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "go-surface-suite", Value: "go-val"})
 		require.NoError(t, err)
-		ch := make(chan []byte, 1)
-		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-		select {
-		case <-ch:
-		case <-time.After(3 * time.Second):
-			t.Fatal("timeout set")
-		}
-		unsub()
-
-		pr2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "go-surface-suite"})
-		ch2 := make(chan []byte, 1)
-		unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-		defer unsub2()
-		select {
-		case p := <-ch2:
-			assert.Contains(t, string(p), "go-val")
-		case <-time.After(3 * time.Second):
-			t.Fatal("timeout get")
-		}
+		resp, err := brainkit.Call[secretmsg.SecretsGetMsg, secretmsg.SecretsGetResp](env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "go-surface-suite"})
+		require.NoError(t, err)
+		assert.Equal(t, "go-val", resp.Value)
 	})
 
 	t.Run("fs.write+read", func(t *testing.T) {
@@ -67,16 +57,9 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	t.Run("bus.publish+reply", func(t *testing.T) {
 		testutil.Deploy(t, env.Kit, "go-surface-svc-suite.ts", `bus.on("ping", function(msg) { msg.reply({pong:true}); });`)
 
-		pr, _ := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
-		ch := make(chan []byte, 1)
-		unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-		defer unsub()
-		select {
-		case p := <-ch:
-			assert.Contains(t, string(p), "pong")
-		case <-time.After(3 * time.Second):
-			t.Fatal("timeout")
-		}
+		resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{Topic: "ts.go-surface-svc-suite.ping", Payload: json.RawMessage(`{}`)})
+		require.NoError(t, err)
+		assert.Contains(t, string(resp), "pong")
 	})
 
 	t.Run("schedule+unschedule", func(t *testing.T) {
@@ -86,13 +69,13 @@ func testSurfaceGoSDK(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("metrics", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.MetricsGetMsg{}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, metricsmod.MetricsGetMsg{}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
 
 	t.Run("registry.list", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.RegistryListMsg{Category: "provider"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, registrymsg.RegistryListMsg{Category: "provider"}, 5*time.Second)
 		require.True(t, ok)
 		assert.False(t, suite.ResponseHasError(payload))
 	})
@@ -207,7 +190,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 // testSurfaceErrorConsistency — same error looks the same from every surface.
 func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	t.Run("NOT_FOUND/go", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.ToolCallMsg{Name: "ghost-tool-consistency-suite"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, toolmsg.ToolCallMsg{Name: "ghost-tool-consistency-suite"}, 5*time.Second)
 		require.True(t, ok)
 		assert.Equal(t, "NOT_FOUND", suite.ResponseCode(payload))
 	})
@@ -235,7 +218,7 @@ func testSurfaceErrorConsistency(t *testing.T, env *suite.TestEnv) {
 	})
 
 	t.Run("VALIDATION_ERROR/go", func(t *testing.T) {
-		payload, ok := env.SendAndReceive(t, sdk.SecretsSetMsg{Name: "", Value: "v"}, 5*time.Second)
+		payload, ok := env.SendAndReceive(t, secretmsg.SecretsSetMsg{Name: "", Value: "v"}, 5*time.Second)
 		require.True(t, ok)
 		assert.Equal(t, "VALIDATION_ERROR", suite.ResponseCode(payload))
 	})

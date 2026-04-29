@@ -1,13 +1,14 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
+	healthmod "github.com/brainlet/brainkit/modules/health"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,14 +99,26 @@ func testDeploymentsCount(t *testing.T, env *suite.TestEnv) {
 // queryHealth queries health via the kit.health bus command and returns HealthStatus.
 func queryHealth(t *testing.T, kit *brainkit.Kit) brainkit.HealthStatus {
 	t.Helper()
+	if _, ok := kit.Module("health"); !ok {
+		if err := kit.Mount(contextWithTimeout(t, 5*time.Second), healthmod.New()); err != nil {
+			t.Fatalf("mount health module: %v", err)
+		}
+	}
 
-	raw := testutil.PublishAndWait(t, kit, sdk.KitHealthMsg{}, 10*time.Second)
+	raw := testutil.PublishAndWait(t, kit, healthmod.KitHealthMsg{}, 10*time.Second)
 
 	// KitHealthResp.Health is a json.RawMessage containing the HealthStatus
-	var resp sdk.KitHealthResp
+	var resp healthmod.KitHealthResp
 	require.NoError(t, json.Unmarshal(raw, &resp))
 
 	var health brainkit.HealthStatus
 	require.NoError(t, json.Unmarshal(resp.Health, &health))
 	return health
+}
+
+func contextWithTimeout(t *testing.T, timeout time.Duration) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	t.Cleanup(cancel)
+	return ctx
 }

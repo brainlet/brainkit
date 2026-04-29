@@ -8,18 +8,17 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/bus/caller"
-	js "github.com/brainlet/brainkit/internal/contract"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/modules/registry/storagehost"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 func (k *Kernel) initProviders(cfg types.KernelConfig, bridgeURLs map[string]string) error {
-	// Initialize the provider registry BEFORE loadRuntime so that JS code
-	// evaluated during runtime init (patches.js, resolve.js, kit_runtime.js)
-	// can access the registry via __go_registry_has / __go_registry_resolve.
+	// Initialize the provider registry before optional runtime modules inspect it.
 	k.providers = provreg.New(cfg.Probe)
+	k.storageHost = storagehost.NewManager(k.providers, k.HasJSRuntime)
 	for name, reg := range cfg.AIProviders {
 		k.providers.RegisterAIProvider(name, reg)
 	}
@@ -28,43 +27,6 @@ func (k *Kernel) initProviders(cfg types.KernelConfig, bridgeURLs map[string]str
 	if err := k.registerVectors(cfg, bridgeURLs); err != nil {
 		return fmt.Errorf("brainkit: register vectors: %w", err)
 	}
-
-	obsEnabled := cfg.Observability.Enabled == nil || *cfg.Observability.Enabled
-	obsStrategy := cfg.Observability.Strategy
-	if obsStrategy == "" {
-		obsStrategy = "realtime"
-	}
-	obsServiceName := cfg.Observability.ServiceName
-	if obsServiceName == "" {
-		obsServiceName = "brainkit"
-	}
-	k.bridge.Eval("__obs_config.js", fmt.Sprintf(
-		`globalThis.`+js.JSObsConfig+` = { enabled: %v, strategy: %q, serviceName: %q }`,
-		obsEnabled, obsStrategy, obsServiceName,
-	))
-
-	// Inject provider configs into the JS runtime for ai.generate/embed model resolution.
-	// The JS runtime's resolveModel() reads from globalThis.__kit_providers.
-	if len(cfg.AIProviders) > 0 {
-		provMap := make(map[string]map[string]string)
-		for name, reg := range cfg.AIProviders {
-			creds := extractProviderCredentials(reg)
-			entry := map[string]string{"APIKey": creds.APIKey}
-			if creds.BaseURL != "" {
-				entry["BaseURL"] = creds.BaseURL
-			}
-			provMap[name] = entry
-		}
-		provJSON, _ := json.Marshal(provMap)
-		k.bridge.Eval("__providers.js", fmt.Sprintf(
-			`globalThis.`+js.JSProviders+` = %s;`, string(provJSON),
-		))
-	}
-
-	if err := k.loadRuntime(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -86,9 +48,6 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 
 	k.remote = transport.NewRemoteClientWithTransport(cfg.Namespace, cfg.CallerID, k.transport)
 	k.remote.SetIdentity(cfg.ClusterID, cfg.RuntimeID)
-
-	// SecretsDomain — needs kernel.remote for bus event publishing
-	k.secretsDomain = newSecretsDomain(k.secretStore, k.remote, k.audit, cfg.CallerID, nil, k.refreshProviderIfSecret)
 
 	wmLogger := watermill.NopLogger{}
 	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
@@ -114,6 +73,13 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 
 	k.router = router
 	k.host = transport.NewHostWithTransport(cfg.Namespace, router, k.transport)
+	k.host.RegisterCommands([]transport.RawCommandBinding{{
+		Name:  "_brainkit.router.keepalive",
+		Topic: "_brainkit.router.keepalive",
+		Handle: func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			return nil, nil
+		},
+	}})
 
 	// Construct the shared-inbox reply router. Uses k (Kernel implements
 	// sdk.Runtime) — its SubscribeRaw resolves the inbox topic into the
@@ -122,7 +88,7 @@ func (k *Kernel) initTransport(cfg types.KernelConfig) error {
 	if runtimeID == "" {
 		runtimeID = watermill.NewUUID()
 	}
-	c, err := caller.NewCaller(k, runtimeID, k.logger)
+	c, err := sdk.NewCaller(k, runtimeID, k.logger)
 	if err != nil {
 		if createdTransport {
 			_ = k.transport.Close()
@@ -170,13 +136,13 @@ func (k *Kernel) StartRouter(ctx context.Context) error {
 
 func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 	// Auto-redeploy persisted .ts deployments
-	if cfg.Store != nil {
+	if cfg.Store != nil && cfg.JSRuntime {
 		k.redeployPersistedDeployments()
 	}
 
 	// Subscribe to deployment propagation events (for multi-replica sync).
 	// Uses fan-out subscriber so ALL replicas receive deploy/teardown events.
-	if cfg.Store != nil {
+	if cfg.Store != nil && cfg.JSRuntime {
 		k.subscribeToDeploymentPropagation()
 	}
 
@@ -185,7 +151,7 @@ func (k *Kernel) initPersistence(cfg types.KernelConfig) {
 
 	// Restart workflows that were active before the previous Kernel shutdown.
 	// Requires both deployment persistence (Store) and Mastra storage (Storages).
-	if cfg.Store != nil && len(cfg.Storages) > 0 {
+	if cfg.Store != nil && cfg.JSRuntime && len(cfg.Storages) > 0 {
 		k.restartActiveWorkflows()
 	}
 }

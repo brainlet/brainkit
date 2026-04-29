@@ -29,7 +29,7 @@ same tool invoked directly from Go (math.add):
   `bus.call("tools.call", {name, input}, {timeoutMs})` — same
   surface used for plugin tools and MCP tools.
 - Go callers can invoke the same tool through the generated
-  `brainkit.CallToolCall` wrapper — no type-parameter guessing.
+  `toolmsg.CallToolCall` wrapper — no type-parameter guessing.
 
 ## When to use typed Go tools vs plugins
 

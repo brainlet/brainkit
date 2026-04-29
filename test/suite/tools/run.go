@@ -14,6 +14,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("call_echo", func(t *testing.T) { testToolsCallEcho(t, env) })
 		t.Run("call_add", func(t *testing.T) { testToolsCallAdd(t, env) })
 		t.Run("call_not_found", func(t *testing.T) { testToolsCallNotFound(t, env) })
+		t.Run("no_module_commands_absent", func(t *testing.T) { testNoModuleCommandsAbsent(t, env) })
 
 		// input_abuse.go — tools input abuse (adversarial)
 		t.Run("input_abuse_call_nonexistent", func(t *testing.T) { testInputAbuseCallNonexistent(t, env) })

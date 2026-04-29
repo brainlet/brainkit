@@ -2,11 +2,11 @@ package engine
 
 import (
 	"context"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/brainlet/brainkit/internal/syncx"
 )
 
 // streamTracker manages heartbeat goroutines for active stream replyTo topics.
@@ -45,12 +45,11 @@ func (st *streamTracker) StartHeartbeat(replyTo, correlationID string) {
 		return
 	}
 	// Create a context that cancels on either StopHeartbeat or maxLife timeout.
-	// Derived from bridge.GoContext() so it also cancels on bridge.Close().
-	ctx, cancel := context.WithTimeout(st.kernel.bridge.GoContext(), st.maxLife)
+	ctx, cancel := context.WithTimeout(st.kernel.shutdownCtx, st.maxLife)
 	st.active[replyTo] = cancel
 	st.mu.Unlock()
 
-	st.kernel.bridge.Go(func(goCtx context.Context) {
+	run := func(goCtx context.Context) {
 		ticker := time.NewTicker(st.interval)
 		defer ticker.Stop()
 		// Self-remove from active map on exit — prevents map growth when
@@ -72,7 +71,8 @@ func (st *streamTracker) StartHeartbeat(replyTo, correlationID string) {
 				return
 			}
 		}
-	})
+	}
+	go run(st.kernel.shutdownCtx)
 }
 
 // StopHeartbeat cancels the heartbeat goroutine for a replyTo topic.

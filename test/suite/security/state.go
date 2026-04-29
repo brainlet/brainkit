@@ -7,6 +7,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,16 +18,16 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store-sec.db")
 
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "ghost-role-sec.ts", Code: `output("hi");`,
-		Order: 1,
+		Order:      1,
 		DeployedAt: time.Now(),
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -41,7 +42,7 @@ func testStateNonexistentRoleOnDeploy(t *testing.T, env *suite.TestEnv) {
 // testStateStoreWipedMidlife — store emptied behind brainkit's back — in-memory state survives.
 func testStateStoreWipedMidlife(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store-sec.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmpDir, "store-sec.db"))
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{

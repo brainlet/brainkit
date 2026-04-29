@@ -201,7 +201,7 @@ this grounds the review in the actual source.
   brainkit upgrade.
 - **Multi-tenant forge** — one forge per namespace, each with
   its own reviewer panel, gated by secrets or scopes.
-- **Teardown** — call `brainkit.CallPackageTeardown` for the
+- **Teardown** — call `packagemsg.CallPackageTeardown` for the
   forged agent when you're done so bus subscriptions are
   cleaned up.
 

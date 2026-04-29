@@ -17,6 +17,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("storage_bridge_check", func(t *testing.T) { testStorageBridgeCheck(t, env) })
 		t.Run("status_draining", func(t *testing.T) { testStatusDraining(t, env) })
 		t.Run("deployments_count", func(t *testing.T) { testDeploymentsCount(t, env) })
+		t.Run("no_module_commands_absent", func(t *testing.T) { testNoModuleCommandsAbsent(t, env) })
 
 		// shutdown.go (all use fresh kernels since they drain/close)
 		t.Run("drains_before_close", func(t *testing.T) { testDrainsBeforeClose(t, env) })

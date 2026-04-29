@@ -5,9 +5,11 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
-	bkplugin "github.com/brainlet/brainkit/sdk/plugin"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	bkplugin "github.com/brainlet/brainkit/sdk/plugin"
 )
 
 type EchoInput struct {
@@ -46,18 +48,13 @@ func main() {
 
 	p.OnStart(func(rt bkplugin.Client) error {
 		log.Println("[testplugin] started successfully")
-		listResult, err := sdk.Publish(rt, context.Background(), sdk.ToolListMsg{})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		resp, err := sdk.Call[toolmsg.ToolListMsg, toolmsg.ToolListResp](rt, ctx, toolmsg.ToolListMsg{}, sdk.WithCallNoCancelSignal())
 		if err != nil {
-			log.Printf("[testplugin] failed to publish tool list: %v", err)
+			log.Printf("[testplugin] failed to list host tools: %v", err)
 		} else {
-			toolsCh := make(chan sdk.ToolListResp, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.ToolListResp](rt, context.Background(), listResult.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { toolsCh <- r })
-			select {
-			case resp := <-toolsCh:
-				log.Printf("[testplugin] host has %d tools", len(resp.Tools))
-			case <-context.Background().Done():
-			}
-			unsub()
+			log.Printf("[testplugin] host has %d tools", len(resp.Tools))
 		}
 		return nil
 	})

@@ -1,0 +1,24 @@
+{
+  "// purpose": "IDE config for brainkit's ambient runtime type definitions.",
+  "// why-no-dom": "brainkit deployments run inside a SES Compartment that ships its own polyfills (Audio / WebSocket / FormData / fetch / Response / Request / Headers / URL / …). globals.d.ts declares every one of them. Including the default DOM lib would double-declare and pollute completion with thousands of HTMLElement-family types that .ts code running inside brainkit can't use.",
+  "// why-skipLibCheck": "Some ambient classes (Blob, File) exist in DOM too — users who opt into `lib: [\"dom\"]` on their own tsconfig get a duplicate-identifier warning that skipLibCheck suppresses. brainkit's own d.ts set is clean without DOM.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": []
+  },
+  "include": [
+    "globals.d.ts",
+    "brainkit.d.ts",
+    "assemblyscript.d.ts",
+    "kit.d.ts",
+    "ai.d.ts",
+    "agent.d.ts"
+  ]
+}

@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/deploy"
-	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/secrets"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
-	"log/slog"
+	bkmodule "github.com/brainlet/brainkit/module"
+	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 // --- sdk.Runtime implementation ---
@@ -41,8 +41,43 @@ func (k *Kernel) SetScheduleHandler(h types.ScheduleHandler) { k.scheduleHandler
 // command topics — scheduling a command would bypass reply plumbing.
 func (k *Kernel) HasCommand(topic string) bool { return k.catalog.HasCommand(topic) }
 
+// MountCommand live-mounts a module command after the router exists.
+func (k *Kernel) MountCommand(ctx context.Context, spec bkmodule.CommandSpec) (bkmodule.Handle, error) {
+	cmd := moduleCommand(spec)
+	if cmd.topic == "" {
+		return nil, fmt.Errorf("command topic is required")
+	}
+	k.mu.Lock()
+	if err := k.catalog.Add(cmd); err != nil {
+		k.mu.Unlock()
+		return nil, err
+	}
+	k.mu.Unlock()
+
+	handle, err := k.host.RegisterCommand(ctx, transport.RawCommandBinding{
+		Name:  cmd.topic,
+		Topic: cmd.topic,
+		Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
+			return cmd.invokeKernel(ctx, k, payload)
+		},
+	})
+	if err != nil {
+		k.mu.Lock()
+		k.catalog.Remove(cmd.topic)
+		k.mu.Unlock()
+		return nil, err
+	}
+
+	return bkmodule.HandleFunc(func(ctx context.Context) error {
+		k.mu.Lock()
+		k.catalog.Remove(cmd.topic)
+		k.mu.Unlock()
+		return handle.Stop(ctx)
+	}), nil
+}
+
 // SetAuditStore attaches (or detaches) the Recorder's underlying store.
-// The audit module calls this during Init; without a store the Recorder
+// The audit module calls this during mount; without a store the Recorder
 // is a no-op.
 func (k *Kernel) SetAuditStore(s auditpkg.Store) { k.audit.SetStore(s) }
 
@@ -55,7 +90,7 @@ func (k *Kernel) SetAuditVerbosity(v auditpkg.Verbosity) { k.audit.SetVerbosity(
 func (k *Kernel) Audit() *auditpkg.Recorder { return k.audit }
 
 // SecretStore exposes the encrypted secret store for modules that need
-// to resolve $secret: references at Kit init time.
+// to resolve $secret: references at startup.
 func (k *Kernel) SecretStore() secrets.SecretStore { return k.secretStore }
 
 // Store exposes the kit's configured KitStore (nil if none).
@@ -68,7 +103,7 @@ func (k *Kernel) Tracer() *tracingpkg.Tracer { return k.tracer }
 // ShutdownSignal returns a channel that closes when the kernel is
 // tearing down. Modules with long-running goroutines (plugin restart
 // backoff) select on this to exit promptly.
-func (k *Kernel) ShutdownSignal() <-chan struct{} { return k.bridge.GoContext().Done() }
+func (k *Kernel) ShutdownSignal() <-chan struct{} { return k.shutdownCtx.Done() }
 
 // TransportKind returns the normalized transport type ("memory",
 // "embedded", "nats", "amqp", "redis"). Modules use this to refuse
@@ -83,16 +118,21 @@ func (k *Kernel) TransportKind() string {
 
 // SetPluginChecker installs the module-side PluginChecker used by
 // package-deploy's `Requires.plugins` gate. Pass nil to detach.
-func (k *Kernel) SetPluginChecker(pc deploy.PluginChecker) { k.pluginChecker = pc }
+func (k *Kernel) SetPluginChecker(pc bkmodule.PluginChecker) { k.pluginChecker = pc }
 
-// SetPluginRestarter installs the module-side PluginRestarter used by
-// SecretsDomain for rotation-driven plugin restart. Pass nil to detach.
+// PluginChecker returns the active plugin-presence gate for modules that
+// validate plugin dependencies. Nil means no plugins module is mounted.
+func (k *Kernel) PluginChecker() bkmodule.PluginChecker { return k.pluginChecker }
+
+// SetPluginRestarter installs the module-side PluginRestarter used by the
+// secrets module for rotation-driven plugin restart. Pass nil to detach.
 func (k *Kernel) SetPluginRestarter(r PluginRestarter) {
 	k.pluginRestarter = r
-	if k.secretsDomain != nil {
-		k.secretsDomain.pluginRestarter = r
-	}
 }
+
+// PluginRestarter returns the active plugin restarter, if the plugins module
+// is mounted. Nil means there is no plugin module to restart.
+func (k *Kernel) PluginRestarter() PluginRestarter { return k.pluginRestarter }
 
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }
@@ -102,31 +142,65 @@ func (k *Kernel) Logger() *slog.Logger { return k.logger }
 // narrow reads without duplicating delegations on Kernel.
 func (k *Kernel) ProviderRegistry() *provreg.ProviderRegistry { return k.providers }
 
-// CreateAgent creates a persistent agent in the runtime.
-func (k *Kernel) CreateAgent(cfg agentembed.AgentConfig) (*agentembed.Agent, error) {
-	return k.agents.CreateAgent(cfg)
+// CallTool invokes a registered tool through the core registry.
+func (k *Kernel) CallTool(ctx context.Context, req bkmodule.ToolCallRequest) (*bkmodule.ToolCallResponse, error) {
+	return k.toolsDomain.Call(ctx, req)
+}
+
+// ResolveTool returns registration metadata for a tool.
+func (k *Kernel) ResolveTool(ctx context.Context, req bkmodule.ToolResolveRequest) (*bkmodule.ToolResolveResponse, error) {
+	return k.toolsDomain.Resolve(ctx, req)
+}
+
+// ListTools returns registered tools matching the optional SDK filter.
+func (k *Kernel) ListTools(ctx context.Context, req bkmodule.ToolListRequest) (*bkmodule.ToolListResponse, error) {
+	return k.toolsDomain.List(ctx, req)
+}
+
+// ClusterPeers returns this runtime's cluster identity. Multi-peer discovery is
+// module-owned; this core snapshot is the local control-plane identity data.
+func (k *Kernel) ClusterPeers(_ context.Context) ([]bkmodule.ClusterPeerInfo, error) {
+	return []bkmodule.ClusterPeerInfo{{
+		ClusterID: k.config.ClusterID,
+		RuntimeID: k.config.RuntimeID,
+		Namespace: k.config.Namespace,
+		CallerID:  k.config.CallerID,
+		StartedAt: k.startedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}}, nil
 }
 
 // --- Deployment delegation ---
 
 // ListResources returns all tracked resources, optionally filtered by type.
 func (k *Kernel) ListResources(resourceType ...string) ([]types.ResourceInfo, error) {
-	return k.deploymentMgr.ListResources(resourceType...)
+	if k.jsRuntime == nil {
+		return nil, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.ListResources(resourceType...)
 }
 
 // ResourcesFrom returns all resources created by a specific .ts file.
 func (k *Kernel) ResourcesFrom(filename string) ([]types.ResourceInfo, error) {
-	return k.deploymentMgr.ResourcesFrom(filename)
+	if k.jsRuntime == nil {
+		return nil, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.ResourcesFrom(filename)
 }
 
 // TeardownFile removes all resources created by a specific .ts file.
 func (k *Kernel) TeardownFile(filename string) (int, error) {
-	return k.deploymentMgr.TeardownFile(filename)
+	if k.jsRuntime == nil {
+		return 0, &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.TeardownFile(filename)
 }
 
 // RemoveResource removes a specific resource by type and ID.
 func (k *Kernel) RemoveResource(resourceType, id string) error {
-	return k.deploymentMgr.RemoveResource(resourceType, id)
+	if k.jsRuntime == nil {
+		return &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.RemoveResource(resourceType, id)
 }
 
 // --- Eval delegation ---
@@ -148,12 +222,18 @@ func (k *Kernel) evalDomain(ctx context.Context, req any, filename, code string)
 
 // EvalTS runs .ts-style code with brainkit infrastructure imports destructured.
 func (k *Kernel) EvalTS(ctx context.Context, filename, code string) (string, error) {
-	return k.deploymentMgr.EvalTS(ctx, filename, code)
+	if k.jsRuntime == nil {
+		return "", &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.EvalTS(ctx, filename, code)
 }
 
 // EvalModule runs code as an ES module with import { ... } from "kit".
 func (k *Kernel) EvalModule(ctx context.Context, filename, code string) (string, error) {
-	return k.deploymentMgr.EvalModule(ctx, filename, code)
+	if k.jsRuntime == nil {
+		return "", &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
+	return k.jsRuntime.EvalModule(ctx, filename, code)
 }
 
 // RegisterTool is a convenience method for registering typed Go tools.
@@ -168,7 +248,7 @@ func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
 }
 
 // SetTraceStore attaches a trace store to the Kernel's tracer. Used by
-// modules (e.g. tracing) to install durable storage at Init time.
+// modules (e.g. tracing) to install durable storage at mount time.
 func (k *Kernel) SetTraceStore(store types.TraceStore) {
 	k.tracer.SetStore(store)
 }
@@ -213,9 +293,15 @@ func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListS
 // currentDeploymentSource returns the deployment source currently executing on the JS thread.
 // Used for tracing span attribution and audit source tracking.
 func (k *Kernel) currentDeploymentSource() string {
-	return k.deploymentMgr.getCurrentSource()
+	if k.jsRuntime == nil {
+		return ""
+	}
+	return k.jsRuntime.CurrentSource()
 }
 
 func (k *Kernel) setCurrentSource(source string) {
-	k.deploymentMgr.setCurrentSource(source)
+	if k.jsRuntime == nil {
+		return
+	}
+	k.jsRuntime.SetCurrentSource(source)
 }

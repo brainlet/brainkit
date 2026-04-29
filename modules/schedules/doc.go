@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	store, _ := brainkit.NewSQLiteStore(path) // also implements schedules.Store
+//	store, _ := stores.NewSQLite(path) // also implements schedules.Store
 //	kit, _ := brainkit.New(brainkit.Config{
 //	    Store: store,
 //	    Modules: []brainkit.Module{

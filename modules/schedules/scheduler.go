@@ -130,7 +130,7 @@ func (s *Scheduler) Close() error {
 	return nil
 }
 
-// Restore replays persisted schedules. Called by the module during Init
+// Restore replays persisted schedules. Called by the module during Mount
 // when a Store is configured. Catches up missed fires.
 func (s *Scheduler) Restore() {
 	if s.store == nil {

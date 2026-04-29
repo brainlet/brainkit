@@ -1,7 +1,7 @@
 // Command workflows demonstrates declarative multi-step
 // workflows. Wires modules/workflow, deploys a .ts that
 // registers a 3-step pipeline (research → draft → review),
-// runs it via brainkit.CallWorkflowStart, prints each step's
+// runs it via workflowmsg.CallWorkflowStart, prints each step's
 // output.
 //
 // Run from the repo root:
@@ -18,6 +18,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	workflowmod "github.com/brainlet/brainkit/modules/workflow"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -91,10 +92,10 @@ func run() error {
 
 	// Kick off a run.
 	fmt.Println("starting research-pipeline for topic=\"brainkit\"…")
-	resp, err := brainkit.CallWorkflowStart(kit, ctx, sdk.WorkflowStartMsg{
+	resp, err := workflowmsg.CallWorkflowStart(kit, ctx, workflowmsg.WorkflowStartMsg{
 		Name:      "research-pipeline",
 		InputData: json.RawMessage(`{"topic":"brainkit"}`),
-	}, brainkit.WithCallTimeout(15*time.Second))
+	}, sdk.WithCallTimeout(15*time.Second))
 	if err != nil {
 		return fmt.Errorf("workflow.start: %w", err)
 	}

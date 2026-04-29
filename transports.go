@@ -1,5 +1,11 @@
 package brainkit
 
+import (
+	"fmt"
+	"path/filepath"
+	"sync"
+)
+
 // TransportConfig configures the bus transport. Create with EmbeddedNATS(),
 // NATS(), AMQP(), Redis(), or Memory().
 type TransportConfig struct {
@@ -9,6 +15,75 @@ type TransportConfig struct {
 	amqpURL  string
 	redisURL string
 }
+
+// TransportBuildContext is passed to registered transport backend builders.
+type TransportBuildContext struct {
+	Config       TransportConfig
+	Namespace    string
+	FSRoot       string
+	NATSStoreDir string
+}
+
+// TransportBuilder builds a concrete internal transport. External backend
+// packages register builders so importing brainkit alone does not compile every
+// network backend.
+type TransportBuilder func(TransportBuildContext) (any, error)
+
+var transportBuilders = struct {
+	sync.RWMutex
+	m map[string]TransportBuilder
+}{m: map[string]TransportBuilder{}}
+
+// RegisterTransportBuilder registers a non-memory transport backend.
+func RegisterTransportBuilder(kind string, builder TransportBuilder) {
+	transportBuilders.Lock()
+	defer transportBuilders.Unlock()
+	if builder == nil {
+		delete(transportBuilders.m, kind)
+		return
+	}
+	transportBuilders.m[kind] = builder
+}
+
+func buildConfiguredTransport(cfg TransportConfig, namespace, fsRoot string) (any, error) {
+	kind := cfg.typ
+	if kind == "" || kind == "memory" {
+		return nil, nil
+	}
+
+	transportBuilders.RLock()
+	builder := transportBuilders.m[kind]
+	transportBuilders.RUnlock()
+	if builder == nil {
+		return nil, fmt.Errorf("brainkit: transport %q requires importing github.com/brainlet/brainkit/transports", kind)
+	}
+
+	natsStoreDir := ""
+	if kind == "embedded" && fsRoot != "" {
+		natsStoreDir = filepath.Join(fsRoot, "nats-data")
+	}
+	return builder(TransportBuildContext{
+		Config:       cfg,
+		Namespace:    namespace,
+		FSRoot:       fsRoot,
+		NATSStoreDir: natsStoreDir,
+	})
+}
+
+// Kind returns the normalized transport kind.
+func (c TransportConfig) Kind() string { return c.typ }
+
+// NATSURL returns the configured NATS URL.
+func (c TransportConfig) NATSURL() string { return c.natsURL }
+
+// NATSName returns the configured NATS durable name.
+func (c TransportConfig) NATSName() string { return c.natsName }
+
+// AMQPURL returns the configured AMQP URL.
+func (c TransportConfig) AMQPURL() string { return c.amqpURL }
+
+// RedisURL returns the configured Redis URL.
+func (c TransportConfig) RedisURL() string { return c.redisURL }
 
 // TransportOption configures a transport constructor.
 type TransportOption func(*TransportConfig)

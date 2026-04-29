@@ -8,8 +8,12 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,38 +21,38 @@ import (
 // --- Node command tests (from test/adversarial/node_commands_test.go) ---
 
 func testNodeCommandsPluginList(t *testing.T, env *suite.TestEnv) {
-	kit := makeNode(t, env, "node-pluglist-cross")
+	kit := makeNodeWithConfig(t, env, "node-pluglist-cross", transportFieldsForBackend(t, "nats"), pluginsmod.NewModule(pluginsmod.Config{}))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, sdk.PluginListRunningMsg{})
+	p := publishAndWaitRaw(t, kit, ctx, pluginmsg.PluginListRunningMsg{})
 	assert.Contains(t, string(p), "plugins")
 }
 
 func testNodeCommandsPluginStopNonexistent(t *testing.T, env *suite.TestEnv) {
-	kit := makeNode(t, env, "node-plugstop-cross")
+	kit := makeNodeWithConfig(t, env, "node-plugstop-cross", transportFieldsForBackend(t, "nats"), pluginsmod.NewModule(pluginsmod.Config{}))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginStopMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginStopMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p), "stopping nonexistent plugin should error")
 }
 
 func testNodeCommandsPluginRestartNonexistent(t *testing.T, env *suite.TestEnv) {
-	kit := makeNode(t, env, "node-plugrestart-cross")
+	kit := makeNodeWithConfig(t, env, "node-plugrestart-cross", transportFieldsForBackend(t, "nats"), pluginsmod.NewModule(pluginsmod.Config{}))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginRestartMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginRestartMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p))
 }
 
 func testNodeCommandsPluginStatusNonexistent(t *testing.T, env *suite.TestEnv) {
-	kit := makeNode(t, env, "node-plugstatus-cross")
+	kit := makeNodeWithConfig(t, env, "node-plugstatus-cross", transportFieldsForBackend(t, "nats"), pluginsmod.NewModule(pluginsmod.Config{}))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, sdk.PluginStatusMsg{Name: "ghost-plugin"})
+	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginStatusMsg{Name: "ghost-plugin"})
 	assert.True(t, suite.ResponseHasError(p))
 }
 
@@ -57,7 +61,7 @@ func testNodeCommandsPackageListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, sdk.PackageListDeployedMsg{})
+	p := publishAndWaitRaw(t, kit, ctx, packagemsg.PackageListDeployedMsg{})
 	assert.Contains(t, string(p), "packages")
 }
 
@@ -72,19 +76,10 @@ func testNodeCommandsDeployOnNode(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Call
-	pr, _ := sdk.Publish(kit, ctx, sdk.CustomMsg{
+	p := publishAndWaitRaw(t, kit, ctx, sdk.CustomMsg{
 		Topic: "ts.node-deploy-cross.hello", Payload: json.RawMessage(`{}`),
 	})
-	ch := make(chan []byte, 1)
-	unsub, _ := kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "node")
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.Contains(t, string(p), "node")
 
 	// Teardown
 	testutil.Teardown(t, kit, "node-deploy-cross.ts")
@@ -97,7 +92,8 @@ func testNodeCommandsNodeShutdownClean(t *testing.T, env *suite.TestEnv) {
 		Namespace: "shutdown-test-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 

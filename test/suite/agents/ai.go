@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -22,10 +23,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Deploy .ts that creates a Mastra Agent and registers it
-	manifest, _ := json.Marshal(map[string]string{"name": "ai-agent-agent-adv", "entry": "ai-agent-agent-adv.ts"})
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{
-		Manifest: manifest,
-		Files: map[string]string{"ai-agent-agent-adv.ts": `
+	testutil.Deploy(t, env.Kit, "ai-agent-agent-adv.ts", `
 			const myAgent = new Agent({
 				name: "ai-list-agent-adv",
 				model: model("openai", "gpt-4o-mini"),
@@ -39,20 +37,7 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 				hasUsage: !!result.usage,
 				finishReason: result.finishReason,
 			});
-		`},
-	})
-	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	mch := make(chan sdk.Message, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r; mch <- m })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		m := <-mch
-		require.True(t, resp.Deployed, "deploy should succeed: %s", suite.ResponseErrorMessage(m.Payload))
-	case <-ctx.Done():
-		t.Fatal("timeout deploying AI agent")
-	}
+		`)
 
 	// Verify output from generate
 	result := testutil.EvalTS(t, env.Kit, "__read_ai_agent_adv.ts", `return globalThis.__module_result || "null"`)
@@ -63,66 +48,31 @@ func testDeployAgentThenList(t *testing.T, env *suite.TestEnv) {
 	assert.True(t, parsed["hasUsage"].(bool), "should have token usage")
 
 	// Verify agent was registered via AgentList
-	pr2, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
+	listResp, err := sdk.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})
 	require.NoError(t, err)
-	ch2 := make(chan sdk.AgentListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, pr2.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { ch2 <- r })
-	defer unsub2()
-	select {
-	case listResp := <-ch2:
-		found := false
-		for _, a := range listResp.Agents {
-			if a.Name == "ai-list-agent-adv" {
-				found = true
-			}
+	found := false
+	for _, a := range listResp.Agents {
+		if a.Name == "ai-list-agent-adv" {
+			found = true
 		}
-		assert.True(t, found, "ai-list-agent-adv should be in agents list")
-	case <-ctx.Done():
-		t.Fatal("timeout listing agents")
 	}
+	assert.True(t, found, "ai-list-agent-adv should be in agents list")
 
 	// Get status — should be "idle" by default
-	pr3, err := sdk.Publish(env.Kit, ctx, sdk.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	statusResp, err := sdk.Call[agentmsg.AgentGetStatusMsg, agentmsg.AgentGetStatusResp](env.Kit, ctx, agentmsg.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
 	require.NoError(t, err)
-	ch3 := make(chan sdk.AgentGetStatusResp, 1)
-	unsub3, err := sdk.SubscribeTo[sdk.AgentGetStatusResp](env.Kit, ctx, pr3.ReplyTo, func(r sdk.AgentGetStatusResp, m sdk.Message) { ch3 <- r })
-	require.NoError(t, err)
-	defer unsub3()
-	var statusResp sdk.AgentGetStatusResp
-	select {
-	case statusResp = <-ch3:
-	case <-ctx.Done():
-		t.Fatal("timeout getting initial status")
-	}
 	assert.Equal(t, "idle", statusResp.Status)
 
 	// Set status to "busy"
-	pr4, err := sdk.Publish(env.Kit, ctx, sdk.AgentSetStatusMsg{
+	_, err = sdk.Call[agentmsg.AgentSetStatusMsg, agentmsg.AgentSetStatusResp](env.Kit, ctx, agentmsg.AgentSetStatusMsg{
 		Name: "ai-list-agent-adv", Status: "busy",
 	})
 	require.NoError(t, err)
-	ch4 := make(chan sdk.AgentSetStatusResp, 1)
-	unsub4, _ := sdk.SubscribeTo[sdk.AgentSetStatusResp](env.Kit, ctx, pr4.ReplyTo, func(r sdk.AgentSetStatusResp, m sdk.Message) { ch4 <- r })
-	defer unsub4()
-	select {
-	case <-ch4:
-	case <-ctx.Done():
-		t.Fatal("timeout setting status")
-	}
 
 	// Re-get status — should be "busy"
-	pr5, err := sdk.Publish(env.Kit, ctx, sdk.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
+	statusResp, err = sdk.Call[agentmsg.AgentGetStatusMsg, agentmsg.AgentGetStatusResp](env.Kit, ctx, agentmsg.AgentGetStatusMsg{Name: "ai-list-agent-adv"})
 	require.NoError(t, err)
-	ch5 := make(chan sdk.AgentGetStatusResp, 1)
-	unsub5, err := sdk.SubscribeTo[sdk.AgentGetStatusResp](env.Kit, ctx, pr5.ReplyTo, func(r sdk.AgentGetStatusResp, m sdk.Message) { ch5 <- r })
-	require.NoError(t, err)
-	defer unsub5()
-	select {
-	case statusResp = <-ch5:
-	case <-ctx.Done():
-		t.Fatal("timeout getting updated status")
-	}
 	assert.Equal(t, "busy", statusResp.Status)
 
-	sdk.Publish(env.Kit, ctx, sdk.PackageTeardownMsg{Name: "ai-agent-agent-adv"})
+	testutil.Teardown(t, env.Kit, "ai-agent-agent-adv.ts")
 }

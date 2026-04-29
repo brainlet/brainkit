@@ -45,8 +45,8 @@ of one step matches the input of the next.
   `workflow.status`, `workflow.cancel`, `workflow.list`,
   `workflow.resume`, `workflow.restart`, `workflow.runs`,
   `workflow.startAsync` bus commands.
-- `brainkit.CallWorkflowStart(kit, ctx, {Name, InputData})`
-  runs the workflow synchronously. Use `CallWorkflowStartAsync`
+- `workflowmsg.CallWorkflowStart(kit, ctx, {Name, InputData})`
+  runs the workflow synchronously. Use `workflowmsg.CallWorkflowStartAsync`
   for fire-and-forget runs + poll `workflow.status` by run ID.
 - `createStep` / `createWorkflow` / `kit.register("workflow", ...)`
   on the `.ts` side build the graph and expose it by name.

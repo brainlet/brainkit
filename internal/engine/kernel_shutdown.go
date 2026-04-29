@@ -2,7 +2,7 @@ package engine
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"log/slog"
 	"os"
 	"time"
@@ -31,9 +31,9 @@ func (k *Kernel) Close() error {
 
 // resolveSecretStore determines the secret store from config with clear precedence:
 // 1. Explicit SecretStore → use it
-// 2. types.SQLiteStore + SecretKey → encrypted KV store
-// 3. types.SQLiteStore + no SecretKey → unencrypted KV store (dev mode, logged warning)
-// 4. No types.SQLiteStore → environment variable fallback
+// 2. Store exposing DB() *sql.DB + SecretKey -> encrypted KV store
+// 3. Store exposing DB() *sql.DB + no SecretKey -> unencrypted KV store (dev mode, logged warning)
+// 4. No SQL-backed Store -> environment variable fallback
 func resolveSecretStore(cfg types.KernelConfig, logger *slog.Logger) secrets.SecretStore {
 	if cfg.SecretStore != nil {
 		return cfg.SecretStore
@@ -44,9 +44,11 @@ func resolveSecretStore(cfg types.KernelConfig, logger *slog.Logger) secrets.Sec
 		key = os.Getenv("BRAINKIT_SECRET_KEY")
 	}
 
-	// Need a *types.SQLiteStore to back the encrypted KV store
-	sqliteStore, hasSQLite := cfg.Store.(*types.SQLiteStore)
-	if !hasSQLite || sqliteStore == nil {
+	type sqlDBStore interface {
+		DB() *sql.DB
+	}
+	sqlStore, hasSQL := cfg.Store.(sqlDBStore)
+	if !hasSQL || sqlStore == nil || sqlStore.DB() == nil {
 		return secrets.NewEnvStore()
 	}
 
@@ -54,7 +56,7 @@ func resolveSecretStore(cfg types.KernelConfig, logger *slog.Logger) secrets.Sec
 		logger.Warn("SecretKey not set, secrets stored without encryption")
 	}
 
-	store, err := secrets.NewEncryptedKVStore(sqliteStore.DB, key)
+	store, err := secrets.NewEncryptedKVStore(sqlStore.DB(), key)
 	if err != nil {
 		types.InvokeErrorHandler(cfg.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "CreateEncryptedSecretStore", Cause: err,
@@ -72,20 +74,19 @@ func (k *Kernel) close() error {
 		return nil
 	}
 	k.closed = true
-	subs := make([]func(), 0, len(k.bridgeSubs))
-	for _, cancel := range k.bridgeSubs {
-		subs = append(subs, cancel)
-	}
-	k.bridgeSubs = map[string]func(){}
 	k.mu.Unlock()
 
-	for _, cancel := range subs {
-		cancel()
+	if k.shutdownCancel != nil {
+		k.shutdownCancel()
 	}
 
 	// Stop all stream heartbeat goroutines
 	if k.streamTracker != nil {
 		k.streamTracker.CloseAll()
+	}
+
+	if k.jsRuntime != nil {
+		k.jsRuntime.Interrupt()
 	}
 
 	var firstErr error
@@ -106,19 +107,16 @@ func (k *Kernel) close() error {
 		collect(k.caller.Close())
 	}
 
-	if k.agentsDomain != nil && k.agents != nil {
-		k.agentsDomain.UnregisterAllForKit(k.agents.ID())
+	if rt := k.jsRuntime; rt != nil {
+		collect(rt.Close())
+		k.DetachJSRuntime(rt)
+		k.SetRuntimeConfigJSRuntime(false)
 	}
 	if k.config.Store != nil {
 		collect(k.config.Store.Close())
 	}
-	if k.agents != nil {
-		k.agents.Close()
-	}
-	for name, srv := range k.storages {
-		if err := srv.Close(); err != nil {
-			collect(fmt.Errorf("storage %q: %w", name, err))
-		}
+	if k.storageHost != nil {
+		collect(k.storageHost.CloseAll())
 	}
 
 	// Shut down transport last (only if we own it — Node owns its own)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 // testInputAbuseEmptyName — empty secret name returns VALIDATION_ERROR.
 func testInputAbuseEmptyName(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
-	payload, err := env.PublishAndWait(t, sdk.SecretsSetMsg{Name: "", Value: "val"}, 5*time.Second)
+	payload, err := env.PublishAndWait(t, secretmsg.SecretsSetMsg{Name: "", Value: "val"}, 5*time.Second)
 	require.NoError(t, err)
 	code := suite.ResponseCode(payload)
 	assert.Equal(t, "VALIDATION_ERROR", code)
@@ -26,11 +27,11 @@ func testInputAbuseLargeValue(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	big := strings.Repeat("x", 100000) // 100KB secret
 	ctx := context.Background()
-	pub, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
+	pub, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
 	require.NoError(t, err)
 
-	ch := make(chan sdk.SecretsSetResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { ch <- resp })
+	ch := make(chan secretmsg.SecretsSetResp, 1)
+	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
 	defer unsub()
 	select {
 	case resp := <-ch:
@@ -46,7 +47,7 @@ func testInputAbuseSpecialCharsInName(t *testing.T, _ *suite.TestEnv) {
 	names := []string{"key/with/slashes", "key.with.dots", "key with spaces", "key=with=equals"}
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
-			payload, err := env.PublishAndWait(t, sdk.SecretsSetMsg{Name: name, Value: "val"}, 5*time.Second)
+			payload, err := env.PublishAndWait(t, secretmsg.SecretsSetMsg{Name: name, Value: "val"}, 5*time.Second)
 			require.NoError(t, err)
 			// Should succeed or error cleanly — never panic
 			_ = payload
@@ -61,12 +62,12 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 
 	for i := 0; i < 20; i++ {
 		name := strings.Join([]string{"bulk-sec-adv", strings.Repeat("x", i%5)}, "-")
-		pub, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{
+		pub, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{
 			Name: name, Value: strings.Repeat("v", i+1),
 		})
 		require.NoError(t, err)
-		ch := make(chan sdk.SecretsSetResp, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { ch <- resp })
+		ch := make(chan secretmsg.SecretsSetResp, 1)
+		unsub, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
 		select {
 		case <-ch:
 		case <-time.After(5 * time.Second):
@@ -76,9 +77,9 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	// List should return without error or hang
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsListMsg{})
-	listCh := make(chan sdk.SecretsListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.SecretsListResp, _ sdk.Message) { listCh <- resp })
+	pub, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
+	listCh := make(chan secretmsg.SecretsListResp, 1)
+	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
 	defer unsub()
 	select {
 	case resp := <-listCh:

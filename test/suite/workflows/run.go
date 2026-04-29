@@ -5,13 +5,16 @@ package workflows
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +70,13 @@ func Run(t *testing.T, env *suite.TestEnv) {
 	})
 }
 
+func packageModules(extra ...brainkit.Module) []brainkit.Module {
+	modules := make([]brainkit.Module, 0, 1+len(extra))
+	modules = append(modules, packagesmod.New())
+	modules = append(modules, extra...)
+	return modules
+}
+
 // wfPublishAndWait publishes a workflow command and waits for the typed response.
 // Generic helper replicating publishAndWait from infra/workflow_bus_test.go.
 // Returns both the typed response and the raw sdk.Message so callers can
@@ -75,21 +85,40 @@ func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	t *testing.T, k *brainkit.Kit, msg Req, timeout time.Duration,
 ) (Resp, sdk.Message) {
 	t.Helper()
-	result, err := sdk.Publish(k, context.Background(), msg)
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
 	var resp Resp
 	var respMsg sdk.Message
-	unsub, err := sdk.SubscribeTo[Resp](k, ctx, result.ReplyTo, func(r Resp, m sdk.Message) {
-		resp = r
-		respMsg = m
-		cancel()
+	ch := make(chan sdk.Message, 1)
+	unsub, err := k.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
+		select {
+		case ch <- m:
+		default:
+		}
 	})
 	require.NoError(t, err)
 	defer unsub()
-	<-ctx.Done()
+
+	_, err = sdk.Publish(k, ctx, msg, sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
+
+	select {
+	case respMsg = <-ch:
+		payload := respMsg.Payload
+		if respMsg.Metadata["envelope"] == "true" {
+			env, err := sdk.DecodeEnvelope(payload)
+			require.NoError(t, err)
+			if !env.Ok {
+				return resp, respMsg
+			}
+			payload = env.Data
+		}
+		require.NoError(t, json.Unmarshal(payload, &resp))
+	case <-ctx.Done():
+		require.NoError(t, ctx.Err())
+	}
 	return resp, respMsg
 }
 

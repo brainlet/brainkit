@@ -12,9 +12,12 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/brainlet/brainkit/internal/transport"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit"
+	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/internal/transport"
+	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
+	"github.com/brainlet/brainkit/modules/standard"
+	bktransports "github.com/brainlet/brainkit/transports"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,8 +30,7 @@ func PodmanAvailable() bool {
 	if _, err := exec.LookPath("podman"); err != nil {
 		return false
 	}
-	// `podman ps` requires a running machine — fails if stopped or missing
-	err := exec.Command("podman", "ps", "--noheading").Run()
+	_, err := ResolvePodmanSocket()
 	return err == nil
 }
 
@@ -48,7 +50,7 @@ func AllBackends(t *testing.T) []string {
 // MustCreateTransport creates a transport or fails the test.
 func MustCreateTransport(t *testing.T, cfg transport.TransportConfig) *transport.Transport {
 	t.Helper()
-	transport, err := transport.NewTransportSet(cfg)
+	transport, err := transportbackends.NewTransportSet(cfg)
 	if err != nil {
 		t.Fatalf("create transport: %v", err)
 	}
@@ -228,9 +230,9 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	var providers []brainkit.ProviderConfig
+	providers := []brainkit.ProviderConfig{}
 	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+	if key, ok := OpenAIKey(); ok {
 		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
@@ -244,15 +246,16 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 	probe.Close()
 
 	kit, err := brainkit.New(brainkit.Config{
-		Namespace:   "test",
-		CallerID:    "test-" + backend,
-		FSRoot:      tmpDir,
-		Providers:   providers,
+		Namespace: "test",
+		CallerID:  "test-" + backend,
+		FSRoot:    tmpDir,
+		Providers: providers,
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		EnvVars:     envVars,
+		EnvVars:   envVars,
 		Transport: BrainkitTransport(tcfg),
+		Modules:   standard.CommandSet(),
 	})
 	if err != nil {
 		t.Fatalf("brainkit.New(%s): %v", backend, err)
@@ -296,18 +299,18 @@ func BrainkitTransport(tcfg transport.TransportConfig) brainkit.TransportConfig 
 	case "memory":
 		return brainkit.Memory()
 	case "embedded":
-		return brainkit.EmbeddedNATS()
+		return bktransports.EmbeddedNATS()
 	case "nats":
 		var opts []brainkit.TransportOption
 		if tcfg.NATSName != "" {
-			opts = append(opts, brainkit.WithNATSName(tcfg.NATSName))
+			opts = append(opts, bktransports.WithNATSName(tcfg.NATSName))
 		}
-		return brainkit.NATS(tcfg.NATSURL, opts...)
+		return bktransports.NATS(tcfg.NATSURL, opts...)
 	case "amqp":
-		return brainkit.AMQP(tcfg.AMQPURL)
+		return bktransports.AMQP(tcfg.AMQPURL)
 	case "redis":
-		return brainkit.Redis(tcfg.RedisURL)
+		return bktransports.Redis(tcfg.RedisURL)
 	default:
-		return brainkit.EmbeddedNATS()
+		return bktransports.EmbeddedNATS()
 	}
 }

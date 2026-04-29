@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -17,10 +18,10 @@ func testSecretsRotation(t *testing.T, _ *suite.TestEnv) {
 	ctx := env.T.Context()
 
 	// Set
-	pub1, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "rotate-key-sec-adv", Value: "old-value"})
+	pub1, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "rotate-key-sec-adv", Value: "old-value"})
 	require.NoError(t, err)
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	select {
 	case <-setCh:
 	case <-time.After(5 * time.Second):
@@ -29,9 +30,9 @@ func testSecretsRotation(t *testing.T, _ *suite.TestEnv) {
 	cancelSet()
 
 	// Rotate
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsRotateMsg{Name: "rotate-key-sec-adv", NewValue: "new-value"})
-	rotateCh := make(chan sdk.SecretsRotateResp, 1)
-	cancelRotate, _ := sdk.SubscribeTo[sdk.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.SecretsRotateResp, _ sdk.Message) { rotateCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "rotate-key-sec-adv", NewValue: "new-value"})
+	rotateCh := make(chan secretmsg.SecretsRotateResp, 1)
+	cancelRotate, _ := sdk.SubscribeTo[secretmsg.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsRotateResp, _ sdk.Message) { rotateCh <- resp })
 	select {
 	case resp := <-rotateCh:
 		assert.True(t, resp.Rotated)
@@ -41,9 +42,9 @@ func testSecretsRotation(t *testing.T, _ *suite.TestEnv) {
 	cancelRotate()
 
 	// Verify the new value is returned
-	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "rotate-key-sec-adv"})
-	getCh := make(chan sdk.SecretsGetResp, 1)
-	cancelGet, _ := sdk.SubscribeTo[sdk.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "rotate-key-sec-adv"})
+	getCh := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
 	defer cancelGet()
 	select {
 	case resp := <-getCh:
@@ -60,14 +61,14 @@ func testE2ESecretsRotateAndVerify(t *testing.T, _ *suite.TestEnv) {
 	ctx := env.T.Context()
 
 	// Set
-	pr1, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "rotate-key-e2e", Value: "v1"})
+	pr1, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "rotate-key-e2e", Value: "v1"})
 	ch1 := make(chan []byte, 1)
 	unsub1, _ := env.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
 	<-ch1
 	unsub1()
 
 	// Rotate
-	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsRotateMsg{Name: "rotate-key-e2e", NewValue: "v2"})
+	pr2, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "rotate-key-e2e", NewValue: "v2"})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	p2 := <-ch2
@@ -75,13 +76,15 @@ func testE2ESecretsRotateAndVerify(t *testing.T, _ *suite.TestEnv) {
 	assert.Contains(t, string(p2), "rotated")
 
 	// Get — should be v2
-	pr3, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "rotate-key-e2e"})
+	pr3, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "rotate-key-e2e"})
 	ch3 := make(chan []byte, 1)
 	unsub3, _ := env.Kit.SubscribeRaw(ctx, pr3.ReplyTo, func(m sdk.Message) { ch3 <- m.Payload })
 	defer unsub3()
 
 	p3 := <-ch3
-	var resp struct{ Value string `json:"value"` }
+	var resp struct {
+		Value string `json:"value"`
+	}
 	json.Unmarshal(suite.ResponseData(p3), &resp)
 	assert.Equal(t, "v2", resp.Value)
 }

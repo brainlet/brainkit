@@ -19,13 +19,13 @@ type Store interface {
 
 // Config configures the plugins module.
 type Config struct {
-	// Plugins is the static list of subprocess plugins to start on Init.
+	// Plugins is the static list of subprocess plugins to start on Mount.
 	// May be nil; plugins can also be added at runtime via the plugin.start
 	// bus command.
 	Plugins []types.PluginConfig
 
 	// Store is optional. When provided, dynamically-started plugins are
-	// persisted and restored on module Init. The narrow Store interface is
+	// persisted and restored on module Mount. The narrow Store interface is
 	// satisfied by brainkit.KitStore.
 	Store Store
 }

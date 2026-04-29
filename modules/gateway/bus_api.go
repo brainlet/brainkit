@@ -35,6 +35,10 @@ func busAPIHandler(rt sdk.Runtime) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestBodyTooLarge(err) {
+				writeBusJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
 			writeBusJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
@@ -92,6 +96,10 @@ func busAPIStreamHandler(rt sdk.Runtime) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestBodyTooLarge(err) {
+				writeBusJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
 			writeBusJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}

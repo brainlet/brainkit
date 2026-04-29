@@ -3,17 +3,19 @@ package engine
 import (
 	"os"
 
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/types"
+	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
 )
 
-// autoDetectProviders scans os.Getenv and cfg.EnvVars for known API key patterns
-// and registers AI providers that aren't already explicitly configured.
-// Priority: explicit AIProviders > EnvVars > os.Getenv.
+// autoDetectProviders scans os.Getenv and cfg.EnvVars for known API key
+// patterns only when the caller did not explicitly provide an AIProviders map.
+// A non-nil map, including an empty one, means provider configuration is fully
+// explicit and environment auto-detection is disabled.
 func autoDetectProviders(cfg *types.KernelConfig) {
-	if cfg.AIProviders == nil {
-		cfg.AIProviders = make(map[string]provreg.AIProviderRegistration)
+	if cfg.AIProviders != nil {
+		return
 	}
+	cfg.AIProviders = make(map[string]provreg.AIProviderRegistration)
 
 	type providerMapping struct {
 		name string

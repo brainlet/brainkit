@@ -83,17 +83,17 @@ an embedded NATS transport per Kit when you only need name resolution
    This is handy for ad-hoc scripts where you know the namespace
    up front.
 
-The generated `sdk.PeersResolveMsg` round-trip
-(`sdk.PeersResolveMsg{Name: "analytics"}`) is a bus-level alternative;
+The generated `topology.PeersResolveMsg` round-trip
+(`topology.PeersResolveMsg{Name: "analytics"}`) is a bus-level alternative;
 it runs through the same table.
 
 ```go
-resp, _ := brainkit.Call[sdk.PeersResolveMsg, sdk.PeersResolveResp](
-    caller, ctx, sdk.PeersResolveMsg{Name: "analytics"})
+resp, _ := brainkit.Call[topology.PeersResolveMsg, topology.PeersResolveResp](
+    caller, ctx, topology.PeersResolveMsg{Name: "analytics"})
 // resp.Namespace == "analytics-prod"
 ```
 
-Likewise, `sdk.PeersListMsg` enumerates every name + namespace the
+Likewise, `topology.PeersListMsg` enumerates every name + namespace the
 topology module knows about.
 
 ## Topology Module

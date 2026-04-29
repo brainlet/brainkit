@@ -8,9 +8,11 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +62,7 @@ func testTopologyPeersListBus(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	resp, err := brainkit.Call[sdk.PeersListMsg, sdk.PeersListResp](kit, ctx, sdk.PeersListMsg{})
+	resp, err := brainkit.Call[topology.PeersListMsg, topology.PeersListResp](kit, ctx, topology.PeersListMsg{})
 	require.NoError(t, err)
 	require.Len(t, resp.Peers, 2)
 
@@ -78,7 +80,7 @@ func testTopologyPeersListBus(t *testing.T, _ *suite.TestEnv) {
 func testTopologyNoModuleCallToRawNamespace(t *testing.T, _ *suite.TestEnv) {
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: "topology-target-raw",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		CallerID:  "target",
 		FSRoot:    t.TempDir(),
 	})
@@ -87,7 +89,7 @@ func testTopologyNoModuleCallToRawNamespace(t *testing.T, _ *suite.TestEnv) {
 
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "topology-caller-raw",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		CallerID:  "caller",
 		FSRoot:    t.TempDir(),
 	})
@@ -102,7 +104,7 @@ func testTopologyNoModuleCallToRawNamespace(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err = brainkit.Call[sdk.KitEvalMsg, sdk.KitEvalResp](caller, ctx, sdk.KitEvalMsg{
+	_, err = brainkit.Call[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](caller, ctx, evalmsg.KitEvalMsg{
 		Mode: "go", Code: "1+1",
 	}, brainkit.WithCallTo("does-not-exist-ns"))
 	require.Error(t, err, "unknown raw namespace should time out")
@@ -115,7 +117,7 @@ func testTopologyNoModuleCallToRawNamespace(t *testing.T, _ *suite.TestEnv) {
 func testTopologyCallToErrorsOnUnknownName(t *testing.T, _ *suite.TestEnv) {
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "topo-caller-unknown",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		CallerID:  "caller",
 		FSRoot:    t.TempDir(),
 		Modules: []brainkit.Module{
@@ -132,7 +134,7 @@ func testTopologyCallToErrorsOnUnknownName(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err = brainkit.Call[sdk.KitEvalMsg, sdk.KitEvalResp](caller, ctx, sdk.KitEvalMsg{
+	_, err = brainkit.Call[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](caller, ctx, evalmsg.KitEvalMsg{
 		Mode: "go", Code: "1",
 	}, brainkit.WithCallTo("not-a-peer"))
 	require.Error(t, err)
@@ -152,16 +154,17 @@ func testTopologyCallToResolvesAcrossKits(t *testing.T, env *suite.TestEnv) {
 	targetNS := "topo-target-resolves"
 	target, err := brainkit.New(brainkit.Config{
 		Namespace: targetNS,
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		CallerID:  "target",
 		FSRoot:    t.TempDir(),
+		Modules:   packageModules(),
 	})
 	require.NoError(t, err)
 	defer target.Close()
 
 	caller, err := brainkit.New(brainkit.Config{
 		Namespace: "topo-caller-resolves",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		CallerID:  "caller",
 		FSRoot:    t.TempDir(),
 		Modules: []brainkit.Module{

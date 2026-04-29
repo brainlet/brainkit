@@ -2,43 +2,35 @@ package engine
 
 import (
 	"context"
-	"fmt"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"log/slog"
-	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/bus/caller"
-	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
-	"github.com/brainlet/brainkit/internal/jsbridge"
-	"github.com/brainlet/brainkit/internal/libsql"
-	"github.com/brainlet/brainkit/internal/deploy"
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/secrets"
+	"github.com/brainlet/brainkit/internal/syncx"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
+	agentsmod "github.com/brainlet/brainkit/modules/agents"
+	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/modules/registry/storagehost"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // Kernel is the local brainkit runtime. Implements sdk.Runtime.
-// It owns JS runtime state and an internal Watermill transport.
+// It owns the light control plane and delegates optional JS runtime work.
 type Kernel struct {
 	// Domain handlers — all take narrow interfaces, not *Kernel.
-	// MetricsDomain is the exception (cross-cutting, reads from multiple subsystems).
-	toolsDomain         *ToolsDomain
-	agentsDomain        *AgentsDomain
-	secretsDomain       *SecretsDomain
-	registryDomain      *RegistryDomain
-	metricsDomain       *MetricsDomain
-	packageDeployDomain *PackageDeployDomain
-	testingDomain       *TestingDomain
+	toolsDomain  *toolsmod.Domain
+	agentsDomain *agentsmod.Domain
 
-	Tools           *toolreg.ToolRegistry
-	providers       *provreg.ProviderRegistry
+	Tools         *toolreg.ToolRegistry
+	providers     *provreg.ProviderRegistry
 	tracer        *tracing.Tracer
 	streamTracker *streamTracker // heartbeat goroutine manager for active streams
 
@@ -50,27 +42,25 @@ type Kernel struct {
 	ownsTransport bool // true if Kernel created the transport (false if injected by Node)
 
 	// Shared-inbox reply router. Created after transport init.
-	caller *caller.Caller
+	caller *sdk.Caller
 
-	config    types.KernelConfig
-	logger    *slog.Logger
-	namespace string
-	callerID  string
-	bridge    *jsbridge.Bridge
-	agents    *agentembed.Sandbox
-	storages  map[string]*libsql.Server
+	config      types.KernelConfig
+	logger      *slog.Logger
+	namespace   string
+	callerID    string
+	jsRuntime   JSRuntimeAttachment
+	storageHost *storagehost.Manager
 
-	secretStore   secrets.SecretStore
-	audit *auditpkg.Recorder // centralized event log — nil-safe
-	node          *Node              // optional back-reference, set by Node after creation
-	deploymentMgr *DeploymentManager // owns deploy/teardown/eval lifecycle
-
-	bridgeSubs map[string]func()
+	secretStore secrets.SecretStore
+	audit       *auditpkg.Recorder // centralized event log — nil-safe
+	node        *Node              // optional back-reference, set by Node after creation
 
 	mu     syncx.Mutex
 	closed bool
 
 	// Graceful shutdown
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 	activeHandlers atomic.Int64
 	draining       atomic.Bool
 
@@ -78,17 +68,17 @@ type Kernel struct {
 	pumpCycles atomic.Int64
 	busMetrics *transport.Metrics // per-topic bus message counts
 
-	// Scheduling handler — set by modules/schedules.Module at Init time.
+	// Scheduling handler — set by modules/schedules.Module at mount time.
 	// The QuickJS bridges (bus.schedule / bus.unschedule) and the schedule.*
 	// bus commands dispatch through this. Nil when the module isn't active.
 	scheduleHandler types.ScheduleHandler
 
-	// Plugin checker — set by modules/plugins.Module at Init time for the
+	// Plugin checker — set by modules/plugins.Module at mount time for the
 	// package-deploy `Requires.plugins` gate. Nil when the module isn't
-	// active; handlers_package_deploy substitutes a permissive stub.
-	pluginChecker deploy.PluginChecker
+	// active; modules/packages substitutes a deny-all stub.
+	pluginChecker bkmodule.PluginChecker
 
-	// Plugin restarter — set by modules/plugins.Module for SecretsDomain's
+	// Plugin restarter — set by modules/plugins.Module for the secrets module's
 	// rotation-driven plugin restart. Nil when the module isn't active.
 	pluginRestarter PluginRestarter
 
@@ -122,7 +112,7 @@ func (k *Kernel) IsDraining() bool {
 
 // Caller returns the Kernel's shared-inbox reply router. Nil until
 // transport init completes.
-func (k *Kernel) Caller() *caller.Caller { return k.caller }
+func (k *Kernel) Caller() *sdk.Caller { return k.caller }
 
 // SetDraining sets the draining state. Used for testing.
 func (k *Kernel) SetDraining(v bool) {
@@ -151,7 +141,15 @@ func (k *Kernel) waitForDrain(ctx context.Context) {
 }
 
 func (k *Kernel) nextDeployOrder() int {
-	return k.deploymentMgr.nextDeployOrder()
+	if k.jsRuntime == nil {
+		return 0
+	}
+	return k.jsRuntime.NextDeployOrder()
+}
+
+// HasJSRuntime reports whether this kernel owns the embedded JS/TS runtime.
+func (k *Kernel) HasJSRuntime() bool {
+	return k != nil && k.jsRuntime != nil
 }
 
 // Scheduling is in kernel_scheduling.go
@@ -181,24 +179,19 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 
 	kernel := &Kernel{
-		Tools:      sharedTools,
-		config:     cfg,
-		logger:     logger,
-		namespace:  cfg.Namespace,
-		callerID:   cfg.CallerID,
-		storages:   make(map[string]*libsql.Server),
-		bridgeSubs: make(map[string]func()),
+		Tools:        sharedTools,
+		config:       cfg,
+		logger:       logger,
+		namespace:    cfg.Namespace,
+		callerID:     cfg.CallerID,
+		agentsDomain: agentsmod.NewDomain(),
 	}
-	providers := make(map[string]agentembed.ProviderConfig)
-	for name, reg := range cfg.AIProviders {
-		pc := extractProviderCredentials(reg)
-		providers[name] = agentembed.ProviderConfig{APIKey: pc.APIKey, BaseURL: pc.BaseURL}
-	}
+	kernel.shutdownCtx, kernel.shutdownCancel = context.WithCancel(context.Background())
 
 	// Cleanup stack: each resource allocation pushes its cleanup function.
 	// On failure, all cleanups execute in reverse order. On success, the
 	// slice is nilled — Kernel.Close() owns resource lifecycle from then on.
-	var cleanups []func()
+	cleanups := []func(){kernel.shutdownCancel}
 	fail := func(err error) (*Kernel, error) {
 		for i := len(cleanups) - 1; i >= 0; i-- {
 			cleanups[i]()
@@ -206,74 +199,12 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		return nil, err
 	}
 
-	var audioSink jsbridge.AudioSink
-	if cfg.AudioSink != nil {
-		if s, ok := cfg.AudioSink.(jsbridge.AudioSink); ok {
-			audioSink = s
-		} else {
-			return fail(fmt.Errorf("brainkit: AudioSink does not implement jsbridge.AudioSink"))
-		}
-	}
-	agentSandbox, err := agentembed.NewSandbox(agentembed.SandboxConfig{
-		Providers:    providers,
-		EnvVars:      cfg.EnvVars,
-		MaxStackSize: cfg.MaxStackSize,
-		CWD:          cfg.FSRoot,
-		AudioSink:    audioSink,
-		FetchSpanHook: func(method, url string) func(int, error) {
-			// Lazy reference — tracer is initialized after sandbox creation
-			if kernel.tracer == nil {
-				return nil
-			}
-			span := kernel.tracer.StartSpan("fetch", context.Background())
-			span.SetAttribute("method", method)
-			span.SetAttribute("url", url)
-			return func(statusCode int, err error) {
-				if statusCode > 0 {
-					span.SetAttribute("status", strconv.Itoa(statusCode))
-				}
-				span.End(err)
-			}
-		},
-	})
-	if err != nil {
-		return fail(fmt.Errorf("brainkit: create runtime: %w", err))
-	}
-	cleanups = append(cleanups, func() { agentSandbox.Close() })
-	kernel.agents = agentSandbox
-	kernel.bridge = agentSandbox.Bridge()
-
-	kernel.agentsDomain = newAgentsDomain()
-
-	kernel.registerBridges()
-
-	// Start sqlite storage bridges (must happen before loadRuntime)
-	bridgeURLs, err := kernel.initStorages(cfg)
-	if err != nil {
-		return fail(fmt.Errorf("brainkit: start storage: %w", err))
-	}
-	cleanups = append(cleanups, func() {
-		for _, srv := range kernel.storages {
-			_ = srv.Close()
-		}
-	})
-
-	if err := kernel.initProviders(cfg, bridgeURLs); err != nil {
+	if err := kernel.initProviders(cfg, nil); err != nil {
 		return fail(err)
 	}
 
 	// Initialize secret store
 	kernel.secretStore = resolveSecretStore(cfg, logger)
-
-	// Plugin checker is set at Kit.Init time by modules/plugins; the factory
-	// reads kernel.pluginChecker so the closure is stable whether or not the
-	// module is active.
-	kernel.packageDeployDomain = newPackageDeployDomain(
-		kernel,
-		kernel.secretStore,
-		func() deploy.PluginChecker { return kernel.pluginChecker },
-	)
-	// SecretsDomain constructed later (needs kernel.remote for bus publishing)
 
 	// Initialize tracer
 	sampleRate := cfg.TraceSampleRate
@@ -282,59 +213,14 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 	kernel.tracer = tracing.NewTracer(cfg.TraceStore, sampleRate)
 
-	kernel.deploymentMgr = NewDeploymentManager(DeploymentManagerConfig{
-		Bridge:       kernel.bridge,
-		Agents:       kernel.agents,
-		Tracer:       kernel.tracer,
-		Store:        cfg.Store,
-		ErrorHandler: cfg.ErrorHandler,
-		Logger:       logger,
-		ToolCleanup: func(id string) {
-			kernel.toolsDomain.Unregister(context.Background(), id)
-		},
-		AgentCleanup: func(id string) {
-			kernel.agentsDomain.Unregister(context.Background(), id)
-		},
-		SubCleanup: func(id string) {
-			kernel.mu.Lock()
-			cancel := kernel.bridgeSubs[id]
-			delete(kernel.bridgeSubs, id)
-			kernel.mu.Unlock()
-			if cancel != nil {
-				cancel()
-			}
-		},
-		ScheduleCleanup: func(id string) {
-			if h := kernel.scheduleHandler; h != nil {
-				_ = h.Unschedule(context.Background(), id)
-			}
-		},
-	})
+	// ToolsDomain needs tracer — constructed here after tracer init.
+	kernel.toolsDomain = toolsmod.NewDomain(sharedTools, nil, kernel.tracer, kernel.audit, cfg.CallerID, cfg.RuntimeID)
 
-	// Upgrade Mastra storage from InMemoryStore to configured backend.
-	// patches.js creates _storeHolder with InMemoryStore. If a storage backend is
-	// configured, resolve it, call init() (creates mastra_workflow_snapshot table + others),
-	// and replace the holder's store so all Mastra persistence goes to the real database.
-	// Must run after deploymentMgr construction — upgradeMastraStorage calls EvalTS.
-	if len(cfg.Storages) > 0 {
-		kernel.upgradeMastraStorage()
-	}
-
-	// ToolsDomain needs tracer — constructed here after tracer init
-	kernel.toolsDomain = newToolsDomain(sharedTools, kernel.bridge, kernel.tracer, kernel.audit, cfg.CallerID, cfg.RuntimeID)
-
-	kernel.testingDomain = newTestingDomain(kernel, kernel)
-	kernel.registryDomain = newRegistryDomain(kernel.providers)
-	kernel.metricsDomain = newMetricsDomain(kernel)
 	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
 
 	// Build per-instance catalogs
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
-
-	// Modules satisfying brainkit.Module (Init(*Kit)) are initialized
-	// from brainkit.New after the Kit is fully constructed. Nothing
-	// to do here — the kernel-scoped Module interface was retired.
 
 	// Initial probe — probes module (session 05) owns periodic probing.
 	go kernel.ProbeAll()
@@ -344,18 +230,11 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 	// If DeferRouterStart: caller (Node) registers all bindings and starts the router
 
-	// Start background job pump — processes qctx.Schedule'd callbacks
-	// even when no EvalTS is active. Enables deployed .ts services to
-	// receive bus messages asynchronously.
-	kernel.startJobPump()
-
 	kernel.initPersistence(cfg)
 
 	if cleanup := kernel.initAudit(cfg); cleanup != nil {
 		cleanups = append(cleanups, cleanup)
 	}
-
-	kernel.packageDeployDomain.attachLifecycle(kernel.remote, kernel.audit, cfg.RuntimeID)
 
 	kernel.startedAt = time.Now()
 

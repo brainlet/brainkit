@@ -48,7 +48,7 @@ used by "brainkit deploy", "brainkit call", "brainkit inspect".`,
 			defer stop()
 
 			// The gateway module logs its own "gateway listening"
-			// line at Init time; this supervisor log stays high-level
+			// line at mount time; this supervisor log stays high-level
 			// with namespace + fs_root so operators have a single
 			// anchor for correlation.
 			slog.Info("brainkit started",

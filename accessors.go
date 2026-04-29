@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	provreg "github.com/brainlet/brainkit/internal/providers"
 	"github.com/brainlet/brainkit/internal/types"
 )
 
@@ -173,9 +172,8 @@ func (s *Secrets) Rotate(ctx context.Context, name, newValue string) error {
 	if err := s.Set(ctx, name, newValue); err != nil {
 		return err
 	}
-	// SecretsDomain's rotation hook does the restart wiring. Nothing
-	// extra here — the Set write IS the rotation event from the
-	// accessor's perspective.
+	// modules/secrets handles restart wiring for bus rotations. Nothing extra
+	// here: the Set write is the rotation event from the accessor's perspective.
 	return nil
 }
 
@@ -210,7 +208,3 @@ func (k *Kit) Secrets() *Secrets {
 	}
 	return k.secrets
 }
-
-// Guard against unused imports when the internal provreg package is
-// only referenced via type aliases above.
-var _ = provreg.AIProviderType("")

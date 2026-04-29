@@ -7,13 +7,18 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/transport"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/test/suite"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/internal/transport"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
+	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
+	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
+	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,23 +32,27 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 	// The suite WithTracing() already creates a MemoryTraceStore internally,
 	// but we need the reference. So we create our own kit.
 	tmpDir := t.TempDir()
-	kitStore, _ := brainkit.NewSQLiteStore(tmpDir + "/trace.db")
+	kitStore, _ := stores.NewSQLite(tmpDir + "/trace.db")
 	t.Cleanup(func() { kitStore.Close() })
 	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
+		Transport:  brainkit.Memory(),
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
 		Store:      kitStore,
 		TraceStore: store,
 		Modules: []brainkit.Module{
+			toolsmod.New(),
+			packagesmod.New(),
 			tracingmod.New(tracingmod.Config{Store: store}),
 		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
 
-	type echoIn struct{ Message string `json:"message"` }
+	type echoIn struct {
+		Message string `json:"message"`
+	}
 	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
@@ -107,9 +116,9 @@ func testQueryViaBus(t *testing.T, _ *suite.TestEnv) {
 	span := tracingpkg.NewTracer(store, 1.0).StartSpan("test.op", ctx)
 	span.End(nil)
 
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.TraceListMsg{Limit: 10})
-	listCh := make(chan sdk.TraceListResp, 1)
-	cancel, _ := sdk.SubscribeTo[sdk.TraceListResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.TraceListResp, _ sdk.Message) {
+	pub, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 10})
+	listCh := make(chan tracingmsg.TraceListResp, 1)
+	cancel, _ := sdk.SubscribeTo[tracingmsg.TraceListResp](env.Kit, ctx, pub.ReplyTo, func(resp tracingmsg.TraceListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer cancel()
@@ -128,9 +137,9 @@ func testNoStoreNoOp(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Minimal(t)
 	ctx := context.Background()
 
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.ToolListMsg{})
-	ch := make(chan sdk.ToolListResp, 1)
-	cancel, _ := sdk.SubscribeTo[sdk.ToolListResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.ToolListResp, _ sdk.Message) {
+	pub, _ := sdk.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
+	ch := make(chan toolmsg.ToolListResp, 1)
+	cancel, _ := sdk.SubscribeTo[toolmsg.ToolListResp](env.Kit, ctx, pub.ReplyTo, func(resp toolmsg.ToolListResp, _ sdk.Message) {
 		ch <- resp
 	})
 	defer cancel()
@@ -147,7 +156,7 @@ func testToolCallCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 	ctx := context.Background()
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
+	pr, _ := sdk.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
 	ch := make(chan []byte, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -204,7 +213,7 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	pr2, _ := sdk.Publish(env.Kit, ctx, sdk.TraceListMsg{Limit: 100})
+	pr2, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 100})
 	ch2 := make(chan []byte, 1)
 	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
 	defer unsub2()
@@ -223,24 +232,27 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
+		Transport:       brainkit.Memory(),
 		Namespace:       "test",
 		CallerID:        "test",
 		FSRoot:          tmpDir,
 		TraceStore:      store,
 		TraceSampleRate: 0.0, // sample nothing
+		Modules:         []brainkit.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
 
-	type echoIn struct{ Message string `json:"message"` }
+	type echoIn struct {
+		Message string `json:"message"`
+	}
 	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return in, nil },
 	})
 
 	ctx := context.Background()
-	pr, _ := sdk.Publish(k, ctx, sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})
+	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})
 	ch := make(chan []byte, 1)
 	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()
@@ -258,7 +270,7 @@ func testTraceContextPropagates(t *testing.T, _ *suite.TestEnv) {
 	store := tracingpkg.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
+		Transport:  brainkit.Memory(),
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -303,7 +315,7 @@ func testEmptyStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Empty(t, traces)
 
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.TraceGetMsg{TraceID: "nonexistent-trace-id"})
+	pr, _ := sdk.Publish(env.Kit, ctx, tracingmsg.TraceGetMsg{TraceID: "nonexistent-trace-id"})
 	ch := make(chan []byte, 1)
 	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
 	defer unsub()

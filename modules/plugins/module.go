@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+	_ "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/google/uuid"
 )
 
-// Module is the brainkit.Module form of subprocess plugins. Init launches
+// Module is the brainkit.Module form of subprocess plugins. Mount launches
 // the plugin WebSocket endpoint lazily on first plugin start, kicks off
 // any statically-configured plugins, restores dynamically-started plugins
 // from the configured Store, and registers the plugin.* bus commands.
@@ -25,19 +29,54 @@ import (
 // See the package doc for the full feature set.
 type Module struct {
 	cfg       Config
-	kit       *brainkit.Kit
+	kit       pluginHost
 	manager   *pluginManager
 	lifecycle *LifecycleDomain
+
+	regMu         sync.Mutex
+	registrations map[string]pluginmsg.PluginRegisteredEvent
 }
 
 // NewModule builds the plugins module from config. Pass it to
 // brainkit.Config.Modules.
 func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
-func (m *Module) Name() string { return "plugins" }
+func (m *Module) ID() string { return "plugins" }
 
-func (m *Module) Init(k *brainkit.Kit) error {
-	m.kit = k
+// Dependencies reports modules that must mount before plugins. Plugins can
+// register tools, so the tools.* command surface has to be present for callers
+// to invoke those tools over the bus.
+func (m *Module) Dependencies() []string { return []string{"tools"} }
+
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	ph, err := newMountedPluginHost(host)
+	if err != nil {
+		return err
+	}
+	host.Scope().Defer(func(context.Context) error { return m.Close() })
+	if err := m.start(ph); err != nil {
+		return err
+	}
+	for _, spec := range []bkmodule.CommandSpec{
+		bkmodule.Command(m.lifecycle.Start),
+		bkmodule.Command(m.lifecycle.Stop),
+		bkmodule.Command(m.lifecycle.Restart),
+		bkmodule.Command(m.lifecycle.List),
+		bkmodule.Command(m.lifecycle.Status),
+		bkmodule.Command(m.processPluginManifest),
+	} {
+		if _, err := host.Commands().Handle(spec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Module) start(host pluginHost) error {
+	m.kit = host
+	m.regMu.Lock()
+	m.registrations = map[string]pluginmsg.PluginRegisteredEvent{}
+	m.regMu.Unlock()
 
 	// Plugins require a real transport: the WS control plane binds a
 	// TCP socket and plugin→Kit bus traffic flows over the external
@@ -45,7 +84,7 @@ func (m *Module) Init(k *brainkit.Kit) error {
 	// the module is wired at all, users intend to run plugins, and a
 	// later restoreRunningPlugins() would silently start broken
 	// subprocesses otherwise.
-	if kind := k.TransportKind(); kind == "" || kind == "memory" {
+	if kind := m.kit.TransportKind(); kind == "" || kind == "memory" {
 		return &sdkerrors.ValidationError{Field: "transport", Message: "plugins module requires a non-memory transport"}
 	}
 
@@ -55,7 +94,7 @@ func (m *Module) Init(k *brainkit.Kit) error {
 	// interface structurally. nil is still allowed for callers that
 	// explicitly want ephemeral plugins.
 	if m.cfg.Store == nil {
-		if ks := k.Store(); ks != nil {
+		if ks := m.kit.Store(); ks != nil {
 			m.cfg.Store = ks
 		}
 	}
@@ -69,23 +108,45 @@ func (m *Module) Init(k *brainkit.Kit) error {
 	// Launch statically-configured plugins.
 	if len(m.cfg.Plugins) > 0 {
 		m.manager.startAll(m.cfg.Plugins)
+		m.replayRegistrationsAfter(250 * time.Millisecond)
 	}
 
-	// Register plugin.* bus commands.
-	k.RegisterCommand(brainkit.Command(m.lifecycle.Start))
-	k.RegisterCommand(brainkit.Command(m.lifecycle.Stop))
-	k.RegisterCommand(brainkit.Command(m.lifecycle.Restart))
-	k.RegisterCommand(brainkit.Command(m.lifecycle.List))
-	k.RegisterCommand(brainkit.Command(m.lifecycle.Status))
-	k.RegisterCommand(brainkit.Command(m.processPluginManifest))
-
-	// Attach ourselves as the deploy.PluginChecker so the package
-	// deploy dependency validator can see running plugins, and as the
-	// engine.PluginRestarter so SecretsDomain can restart plugins on
-	// secret rotation.
-	k.SetPluginChecker(m)
-	k.SetPluginRestarter(m)
+	// Attach ourselves as the module.PluginChecker so the package deploy
+	// dependency validator can see running plugins, and as the plugin
+	// restarter so modules/secrets can restart plugins on secret rotation.
+	m.kit.SetPluginChecker(m)
+	m.kit.SetPluginRestarter(m)
 	return nil
+}
+
+func (m *Module) announceRegistered(ctx context.Context, evt pluginmsg.PluginRegisteredEvent) {
+	m.regMu.Lock()
+	if m.registrations == nil {
+		m.registrations = map[string]pluginmsg.PluginRegisteredEvent{}
+	}
+	m.registrations[evt.Name] = evt
+	m.regMu.Unlock()
+
+	_, _ = m.kit.PublishRaw(ctx, evt.BusTopic(), mustMarshalJSON(evt))
+	m.kit.Audit().PluginRegistered(evt.Name, evt.Owner, evt.Version, evt.Tools)
+}
+
+func (m *Module) replayRegistrationsAfter(delay time.Duration) {
+	time.AfterFunc(delay, func() {
+		m.regMu.Lock()
+		kit := m.kit
+		events := make([]pluginmsg.PluginRegisteredEvent, 0, len(m.registrations))
+		for _, evt := range m.registrations {
+			events = append(events, evt)
+		}
+		m.regMu.Unlock()
+		if kit == nil {
+			return
+		}
+		for _, evt := range events {
+			_, _ = kit.PublishRaw(context.Background(), evt.BusTopic(), mustMarshalJSON(evt))
+		}
+	})
 }
 
 func (m *Module) Close() error {
@@ -98,11 +159,15 @@ func (m *Module) Close() error {
 	if m.kit != nil {
 		m.kit.SetPluginChecker(nil)
 		m.kit.SetPluginRestarter(nil)
+		m.kit = nil
 	}
+	m.regMu.Lock()
+	m.registrations = nil
+	m.regMu.Unlock()
 	return nil
 }
 
-// IsPluginRunning satisfies deploy.PluginChecker. It reports whether a
+// IsPluginRunning satisfies module.PluginChecker. It reports whether a
 // plugin by that name is currently tracked by the manager.
 func (m *Module) IsPluginRunning(name string) bool {
 	if m.manager == nil {
@@ -146,7 +211,7 @@ func (m *Module) StartPlugin(ctx context.Context, cfg types.PluginConfig) error 
 			break
 		}
 	}
-	_, _ = m.kit.PublishRaw(ctx, "plugin.started", mustMarshalJSON(sdk.PluginStartedEvent{
+	_, _ = m.kit.PublishRaw(ctx, "plugin.started", mustMarshalJSON(pluginmsg.PluginStartedEvent{
 		Name: cfg.Name, PID: pid,
 	}))
 	m.kit.Audit().PluginStarted(cfg.Name, pid)
@@ -166,7 +231,7 @@ func (m *Module) StopPlugin(ctx context.Context, name string) error {
 	if m.cfg.Store != nil {
 		m.cfg.Store.DeleteRunningPlugin(name)
 	}
-	_, _ = m.kit.PublishRaw(ctx, "plugin.stopped", mustMarshalJSON(sdk.PluginStoppedEvent{
+	_, _ = m.kit.PublishRaw(ctx, "plugin.stopped", mustMarshalJSON(pluginmsg.PluginStoppedEvent{
 		Name: name, Reason: "stopped",
 	}))
 	m.kit.Audit().PluginStopped(name, "stopped")
@@ -243,7 +308,7 @@ func (m *Module) restoreRunningPlugins() {
 // processPluginManifest is the plugin.manifest bus command handler. It
 // registers the plugin's tool set against the Kit's tool registry and
 // emits a plugin.registered event. Moved from Node.processPluginManifest.
-func (m *Module) processPluginManifest(ctx context.Context, manifest sdk.PluginManifestMsg) (*sdk.PluginManifestResp, error) {
+func (m *Module) processPluginManifest(ctx context.Context, manifest pluginmsg.PluginManifestMsg) (*pluginmsg.PluginManifestResp, error) {
 	for _, tool := range manifest.Tools {
 		tool := tool
 		fullName := tools.ComposeName(manifest.Owner, manifest.Name, manifest.Version, tool.Name)
@@ -332,7 +397,7 @@ func (m *Module) processPluginManifest(ctx context.Context, manifest sdk.PluginM
 								}
 							}
 						}
-						var result sdk.ToolCallResp
+						var result toolmsg.ToolCallResp
 						if err := json.Unmarshal(payload, &result); err != nil {
 							span.End(err)
 							return nil, fmt.Errorf("brainkit: decode plugin tool result: %w", err)
@@ -345,15 +410,14 @@ func (m *Module) processPluginManifest(ctx context.Context, manifest sdk.PluginM
 		})
 	}
 
-	_, _ = m.kit.PublishRaw(ctx, sdk.PluginRegisteredEvent{}.BusTopic(), mustMarshalJSON(sdk.PluginRegisteredEvent{
+	m.announceRegistered(ctx, pluginmsg.PluginRegisteredEvent{
 		Owner:   manifest.Owner,
 		Name:    manifest.Name,
 		Version: manifest.Version,
 		Tools:   len(manifest.Tools),
-	}))
-	m.kit.Audit().PluginRegistered(manifest.Name, manifest.Owner, manifest.Version, len(manifest.Tools))
+	})
 
-	return &sdk.PluginManifestResp{Registered: true}, nil
+	return &pluginmsg.PluginManifestResp{Registered: true}, nil
 }
 
 // PluginYAML is one entry in the plugins list.
@@ -379,8 +443,8 @@ type YAML []PluginYAML
 type Factory struct{}
 
 // Build decodes the plugin list and returns a module whose Store
-// field is left nil — Init fills it from k.Store() at Init time.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+// field is left nil — Mount fills it from k.Store() at mount time.
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -397,15 +461,15 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "plugins",
-		Status:  brainkit.ModuleStatusStable,
+		Status:  bkmodule.StatusStable,
 		Summary: "Subprocess plugin manager with WS control plane.",
 	}
 }
 
-func init() { brainkit.RegisterModule("plugins", Factory{}) }
+func init() { bkmodule.Register("plugins", Factory{}) }
 
 // pluginToolTopic is the wire topic for a plugin tool call. Moved from
 // node.go as unexported.

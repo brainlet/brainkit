@@ -3,9 +3,13 @@ package brainkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/brainlet/brainkit/internal/engine"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -29,7 +33,10 @@ func RuntimeID() string { return runtimeID }
 type Kit struct {
 	kernel  *engine.Kernel
 	node    *engine.Node
-	modules []Module // Kit-scoped modules initialized from cfg.Modules
+	modules map[string]bkmodule.Module
+	mounted map[string]bkmodule.Scope
+	mountMu sync.Mutex
+	caps    *bkmodule.CapabilityRegistry
 
 	// Accessor caches — populated lazily on first call to the
 	// matching accessor method. They are stateless wrappers over the
@@ -53,20 +60,40 @@ type Kit struct {
 //   - Providers nil → auto-detect from os.Getenv (OPENAI_API_KEY → openai, etc.)
 //   - SecretKey set → auto-create EncryptedKVStore
 func New(cfg Config) (*Kit, error) {
-	kit := &Kit{}
+	kit := &Kit{
+		modules: map[string]bkmodule.Module{},
+		mounted: map[string]bkmodule.Scope{},
+		caps:    bkmodule.NewCapabilityRegistry(),
+	}
 
 	// Zero-value transport defaults to Memory — no disk side-effects, no
 	// background goroutines beyond the QuickJS runtime itself.
 	if cfg.Transport.typ == "" {
 		cfg.Transport = Memory()
 	}
+	var err error
+	if cfg.needsJSRuntime() {
+		cfg.Modules, err = ensureJSRuntimeModule(cfg.Modules, cfg.FSRoot)
+		if err != nil {
+			return nil, err
+		}
+	}
+	cfg.Modules, err = orderModulesForStartup(cfg.Modules, cfg.FSRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	kernelCfg := cfg.toKernelConfig()
+	// Root assembly does not instantiate JS directly. When requested, the
+	// registered jsruntime module is mounted after the router starts and enables
+	// the runtime through a core capability. Keeping this false is the next step
+	// toward removing JS implementation imports from the core package.
+	kernelCfg.JSRuntime = false
 
 	if cfg.Transport.typ == "memory" {
 		// Standalone Kernel — in-memory GoChannel, no plugins, fast for tests.
-		// Defer router start so brainkit.Module.Init can register commands
-		// before the transport finalizes bindings.
+		// Defer router start so the root command catalog is bound consistently
+		// with the transport-connected path.
 		kernelCfg.DeferRouterStart = true
 		kernel, err := engine.NewKernel(kernelCfg)
 		if err != nil {
@@ -75,6 +102,15 @@ func New(cfg Config) (*Kit, error) {
 		kit.kernel = kernel
 	} else {
 		// Transport-connected Node (embedded, nats, amqp, redis)
+		transportNamespace := kernelCfg.Namespace
+		if transportNamespace == "" {
+			transportNamespace = "user"
+		}
+		builtTransport, err := buildConfiguredTransport(cfg.Transport, transportNamespace, cfg.FSRoot)
+		if err != nil {
+			return nil, err
+		}
+		kernelCfg.Transport = builtTransport
 		nodeCfg := cfg.toNodeConfig(kernelCfg)
 		node, err := engine.NewNode(nodeCfg)
 		if err != nil {
@@ -82,55 +118,6 @@ func New(cfg Config) (*Kit, error) {
 		}
 		kit.node = node
 		kit.kernel = node.Kernel
-	}
-
-	// Register the reference catalog + fetch commands before modules
-	// init — deployments or modules that want to pull the embedded
-	// LLM-reference corpus need the handler wired before any bus
-	// traffic starts.
-	registerReferenceCommands(kit)
-
-	// Initialize Kit-scoped modules (Init(*Kit)) after the kernel is built
-	// but before the transport router starts — modules that register bus
-	// commands must be able to add them to the catalog before bindings are
-	// installed on the host.
-	//
-	// Two-pass: attach every module to kit.modules FIRST, then Init in
-	// order. This lets a module's Init resolve a sibling module via
-	// kit.Module("name") regardless of slice position (topology, for
-	// example, reaches for the discovery module). Single-pass init
-	// would force callers to order dependencies by hand.
-	//
-	// Note: kit.Module("x") during Init returns the sibling's Module
-	// *value*, but x's Init may not have run yet. Store a reference
-	// and dereference it later (at request time, inside a handler,
-	// etc.) — never call into peer state during your own Init
-	// unless you know that peer has already initialized. Topology
-	// for instance stores the discovery module reference but calls
-	// Provider() lazily at request time, by which point discovery
-	// has populated its internal state.
-	for _, m := range cfg.Modules {
-		pkgMod, ok := m.(Module)
-		if !ok {
-			continue
-		}
-		kit.modules = append(kit.modules, pkgMod)
-	}
-	// Track how many modules initialized so a failure mid-loop only
-	// Closes the ones whose Init actually ran.
-	initialized := 0
-	for _, pkgMod := range kit.modules {
-		if err := pkgMod.Init(kit); err != nil {
-			for i := initialized - 1; i >= 0; i-- {
-				_ = kit.modules[i].Close()
-			}
-			// Drop the un-initialized tail so a subsequent Close on
-			// kit doesn't touch modules that never saw Init.
-			kit.modules = kit.modules[:initialized]
-			_ = kit.runtime().Close()
-			return nil, fmt.Errorf("brainkit: module %q init: %w", pkgMod.Name(), err)
-		}
-		initialized++
 	}
 
 	// Finalize transport bindings + start the router.
@@ -148,7 +135,123 @@ func New(cfg Config) (*Kit, error) {
 		}
 	}
 
+	// Modules mount after the router is live. Their command host can add
+	// handlers dynamically, which is the same path used for hot-mounting
+	// modules after New returns.
+	for _, mod := range cfg.Modules {
+		if mod == nil {
+			continue
+		}
+		if err := kit.Mount(context.Background(), mod); err != nil {
+			kit.Close()
+			return nil, fmt.Errorf("brainkit: module %q mount: %w", mod.ID(), err)
+		}
+	}
+
 	return kit, nil
+}
+
+func ensureJSRuntimeModule(mods []bkmodule.Module, fsRoot string) ([]bkmodule.Module, error) {
+	for i, mod := range mods {
+		if mod != nil && mod.ID() == "jsruntime" {
+			if i == 0 {
+				return mods, nil
+			}
+			out := make([]bkmodule.Module, 0, len(mods))
+			out = append(out, mod)
+			out = append(out, mods[:i]...)
+			out = append(out, mods[i+1:]...)
+			return out, nil
+		}
+	}
+	mod, err := buildRegisteredModule("jsruntime", fsRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]bkmodule.Module, 0, len(mods)+1)
+	out = append(out, mod)
+	out = append(out, mods...)
+	return out, nil
+}
+
+func orderModulesForStartup(mods []bkmodule.Module, fsRoot string) ([]bkmodule.Module, error) {
+	explicit := make(map[string]bkmodule.Module, len(mods))
+	order := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		if mod == nil {
+			continue
+		}
+		id := mod.ID()
+		if id == "" {
+			return nil, fmt.Errorf("brainkit: module ID is required")
+		}
+		if _, exists := explicit[id]; exists {
+			continue
+		}
+		explicit[id] = mod
+		order = append(order, id)
+	}
+
+	state := map[string]int{}
+	out := make([]bkmodule.Module, 0, len(explicit))
+	var visit func(string) error
+	visit = func(id string) error {
+		switch state[id] {
+		case 2:
+			return nil
+		case 1:
+			return fmt.Errorf("brainkit: module dependency cycle involving %q", id)
+		}
+		state[id] = 1
+
+		mod := explicit[id]
+		if mod == nil {
+			var err error
+			mod, err = buildRegisteredModule(id, fsRoot)
+			if err != nil {
+				return err
+			}
+		}
+		for _, dep := range moduleDependencies(mod) {
+			if dep == "" || dep == id {
+				continue
+			}
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+
+		out = append(out, mod)
+		state[id] = 2
+		return nil
+	}
+
+	for _, id := range order {
+		if err := visit(id); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func buildRegisteredModule(id, fsRoot string) (bkmodule.Module, error) {
+	factory, ok := bkmodule.Lookup(id)
+	if !ok {
+		if id == "jsruntime" {
+			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime or use modules/standard", id)
+		}
+		return nil, fmt.Errorf("brainkit: module dependency %q is not registered", id)
+	}
+	mod, err := factory.Build(bkmodule.BuildContext{
+		FSRoot: fsRoot,
+		Decode: func(any) error {
+			return nil
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("brainkit: build module %q: %w", id, err)
+	}
+	return mod, nil
 }
 
 // runtime returns the underlying sdk.Runtime (Node if present, else Kernel).
@@ -173,10 +276,12 @@ func (k *Kit) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.M
 
 // Close shuts down with a short drain timeout (5s).
 func (k *Kit) Close() error {
-	for i := len(k.modules) - 1; i >= 0; i-- {
-		_ = k.modules[i].Close()
-	}
-	return k.runtime().Close()
+	var err error
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = errors.Join(err, k.closeMounted(ctx))
+	err = errors.Join(err, k.runtime().Close())
+	return err
 }
 
 // --- sdk.CrossNamespaceRuntime implementation ---
@@ -219,8 +324,12 @@ func (k *Kit) IsDraining() bool {
 
 // Shutdown drains in-flight handlers then closes. Use Close() for quick shutdown.
 func (k *Kit) Shutdown(ctx context.Context) error {
+	var err error
+	err = errors.Join(err, k.closeMounted(ctx))
 	if k.node != nil {
-		return k.node.Shutdown(ctx)
+		err = errors.Join(err, k.node.Shutdown(ctx))
+		return err
 	}
-	return k.kernel.Shutdown(ctx)
+	err = errors.Join(err, k.kernel.Shutdown(ctx))
+	return err
 }

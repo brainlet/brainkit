@@ -8,6 +8,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/tracing"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func testHealthWithTracingStore(t *testing.T, _ *suite.TestEnv) {
 	traceStore := tracing.NewMemoryTraceStore(1000)
 
 	k, err := brainkit.New(brainkit.Config{
-		Transport: brainkit.Memory(),
+		Transport:  brainkit.Memory(),
 		Namespace:  "test",
 		CallerID:   "test",
 		FSRoot:     tmpDir,
@@ -145,7 +146,7 @@ func testHealthAfterClose(t *testing.T, _ *suite.TestEnv) {
 // testPersistenceStoreHealth — health when persistence store is configured.
 func testPersistenceStoreHealth(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "store.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmpDir, "store.db"))
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{

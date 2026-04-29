@@ -13,7 +13,12 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	metricsmod "github.com/brainlet/brainkit/modules/metrics"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,10 +53,10 @@ func testConcurrencyDeployTeardownRace(t *testing.T, env *suite.TestEnv) {
 			// Teardown via bus — non-fatal
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			pr, err := sdk.Publish(tk, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
 			if err == nil {
 				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, _ sdk.Message) {
+				unsub, _ := sdk.SubscribeTo[packagemsg.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ packagemsg.PackageTeardownResp, _ sdk.Message) {
 					ch <- struct{}{}
 				})
 				select {
@@ -137,6 +142,8 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	}
 
 	tk := env.Kit
+	cleanupStressDeployments(t, tk)
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	n := 10
 	sources := make([]string, n)
@@ -166,25 +173,8 @@ func testConcurrencyMassDeployTeardown(t *testing.T, env *suite.TestEnv) {
 		src := src
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			pr, err := sdk.Publish(tk, ctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
-			if err != nil {
-				return
-			}
-			ch := make(chan bool, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](tk, ctx, pr.ReplyTo, func(_ sdk.PackageTeardownResp, msg sdk.Message) {
-				ch <- suite.ResponseErrorMessage(msg.Payload) == ""
-			})
-			select {
-			case ok := <-ch:
-				if ok {
-					tornDown.Add(1)
-				}
-			case <-ctx.Done():
-			}
-			if unsub != nil {
-				unsub()
+			if err := stressTeardown(t, tk, src); err == nil {
+				tornDown.Add(1)
 			}
 		}()
 	}
@@ -207,6 +197,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 
 	tk := env.Kit
 	ctx := context.Background()
+	t.Cleanup(func() { cleanupStressDeployments(t, tk) })
 
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -216,8 +207,7 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 			sctx, scancel := context.WithTimeout(ctx, 5*time.Second)
 			defer scancel()
 
-			// Schedule via bus
-			pr, err := sdk.Publish(tk, sctx, sdk.ScheduleCreateMsg{
+			resp, err := sdk.Call[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](tk, sctx, schedulemsg.ScheduleCreateMsg{
 				Expression: "in 1h",
 				Topic:      "stress.race.topic",
 				Payload:    json.RawMessage(`{}`),
@@ -225,22 +215,8 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 			if err != nil {
 				return
 			}
-			ch := make(chan string, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.ScheduleCreateResp](tk, sctx, pr.ReplyTo, func(r sdk.ScheduleCreateResp, _ sdk.Message) {
-				ch <- r.ID
-			})
-			var id string
-			select {
-			case id = <-ch:
-			case <-sctx.Done():
-			}
-			if unsub != nil {
-				unsub()
-			}
-
-			if id != "" {
-				// Cancel the schedule via bus
-				sdk.Publish(tk, sctx, sdk.ScheduleCancelMsg{ID: id})
+			if resp.ID != "" {
+				_, _ = sdk.Call[schedulemsg.ScheduleCancelMsg, schedulemsg.ScheduleCancelResp](tk, sctx, schedulemsg.ScheduleCancelMsg{ID: resp.ID})
 			}
 		}()
 	}
@@ -249,20 +225,9 @@ func testConcurrencyScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 	// Verify all cancelled — list schedules via bus
 	lctx, lcancel := context.WithTimeout(ctx, 5*time.Second)
 	defer lcancel()
-	pr, err := sdk.Publish(tk, lctx, sdk.ScheduleListMsg{})
+	resp, err := sdk.Call[schedulemsg.ScheduleListMsg, schedulemsg.ScheduleListResp](tk, lctx, schedulemsg.ScheduleListMsg{})
 	if err == nil {
-		ch := make(chan []sdk.ScheduleInfo, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.ScheduleListResp](tk, lctx, pr.ReplyTo, func(r sdk.ScheduleListResp, _ sdk.Message) {
-			ch <- r.Schedules
-		})
-		select {
-		case scheds := <-ch:
-			assert.Empty(t, scheds, "all schedules should be cancelled")
-		case <-lctx.Done():
-		}
-		if unsub != nil {
-			unsub()
-		}
+		assert.Empty(t, resp.Schedules, "all schedules should be cancelled")
 	}
 }
 
@@ -276,6 +241,7 @@ func testConcurrencyCloseDuringHandlers(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: t.TempDir(),
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 
@@ -338,43 +304,17 @@ func testConcurrencyStorageAddRemoveRace(t *testing.T, env *suite.TestEnv) {
 			defer wg.Done()
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, sctx, sdk.StorageAddMsg{
+			_, _ = sdk.Call[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](tk, sctx, registrymsg.StorageAddMsg{
 				Name:   "stress-race-store",
 				Type:   "memory",
 				Config: json.RawMessage(`{}`),
 			})
-			if err == nil {
-				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[sdk.StorageAddResp](tk, sctx, pr.ReplyTo, func(_ sdk.StorageAddResp, _ sdk.Message) {
-					ch <- struct{}{}
-				})
-				select {
-				case <-ch:
-				case <-sctx.Done():
-				}
-				if unsub != nil {
-					unsub()
-				}
-			}
 		}()
 		go func() {
 			defer wg.Done()
 			sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			pr, err := sdk.Publish(tk, sctx, sdk.StorageRemoveMsg{Name: "stress-race-store"})
-			if err == nil {
-				ch := make(chan struct{}, 1)
-				unsub, _ := sdk.SubscribeTo[sdk.StorageRemoveResp](tk, sctx, pr.ReplyTo, func(_ sdk.StorageRemoveResp, _ sdk.Message) {
-					ch <- struct{}{}
-				})
-				select {
-				case <-ch:
-				case <-sctx.Done():
-				}
-				if unsub != nil {
-					unsub()
-				}
-			}
+			_, _ = sdk.Call[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](tk, sctx, registrymsg.StorageRemoveMsg{Name: "stress-race-store"})
 		}()
 	}
 	wg.Wait()
@@ -403,10 +343,7 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 			default:
 				src := fmt.Sprintf("churn-stress-%d.ts", i)
 				testutil.DeployErr(tk, src, `output("churn-stress");`)
-				// Teardown via bus — fire and forget
-				sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				sdk.Publish(tk, sctx, sdk.PackageTeardownMsg{Name: strings.TrimSuffix(src, ".ts")})
-				cancel()
+				_ = stressTeardown(t, tk, src)
 				i++
 			}
 		}
@@ -415,10 +352,10 @@ func testConcurrencyMetricsDuringChurn(t *testing.T, env *suite.TestEnv) {
 	// Query metrics via bus repeatedly
 	for i := 0; i < 50; i++ {
 		mctx, mcancel := context.WithTimeout(ctx, 2*time.Second)
-		pr, err := sdk.Publish(tk, mctx, sdk.MetricsGetMsg{})
+		pr, err := sdk.Publish(tk, mctx, metricsmod.MetricsGetMsg{})
 		if err == nil {
-			ch := make(chan sdk.MetricsGetResp, 1)
-			unsub, _ := sdk.SubscribeTo[sdk.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r sdk.MetricsGetResp, _ sdk.Message) {
+			ch := make(chan metricsmod.MetricsGetResp, 1)
+			unsub, _ := sdk.SubscribeTo[metricsmod.MetricsGetResp](tk, mctx, pr.ReplyTo, func(r metricsmod.MetricsGetResp, _ sdk.Message) {
 				ch <- r
 			})
 			select {
@@ -446,20 +383,22 @@ func testConcurrencySharedSQLiteStore(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "stress-shared.db")
 
-	store1, err := brainkit.NewSQLiteStore(storePath)
+	store1, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-kit1", CallerID: "stress-kit1", FSRoot: tmpDir, Store: store1,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 	defer k1.Close()
 
-	store2, err := brainkit.NewSQLiteStore(storePath)
+	store2, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-kit2", CallerID: "stress-kit2", FSRoot: tmpDir, Store: store2,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -495,10 +434,11 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "stress-store.db")
 
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store1,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 
@@ -507,10 +447,11 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	}
 	k1.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "stress-test", CallerID: "stress-test", FSRoot: tmpDir, Store: store2,
+		Modules: stressModules(),
 	})
 	require.NoError(t, err)
 	defer k2.Close()
@@ -523,4 +464,3 @@ func testConcurrencyDeployDuringRestore(t *testing.T, env *suite.TestEnv) {
 	_, err = k2.PublishRaw(context.Background(), "test.alive", json.RawMessage(`{}`))
 	assert.NoError(t, err, "k2 should be alive")
 }
-

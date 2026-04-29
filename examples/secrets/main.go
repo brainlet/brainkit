@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/stores"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func run() error {
 	tmp := mustTempDir()
 	defer cleanupTemp(tmp)
 
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmp, "kit.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmp, "kit.db"))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}

@@ -30,9 +30,9 @@ fullstack campaigns).
 | Function | Purpose |
 |----------|---------|
 | testKitEval | Publishes KitEvalMsg with JS expressions (arithmetic, object, async Promise) and verifies the evaluated results |
-| testKitHealth | Publishes KitHealthMsg and verifies the response contains healthy=true and status="running" |
-| testKitSendRequestReply | Deploys a .ts echo service, publishes KitSendMsg to its topic, and verifies the reply payload |
-| testKitSendWithAwait | Deploys a .ts async compute service, publishes KitSendMsg, and verifies the async-computed sum |
+| testKitHealth | Publishes modules/health KitHealthMsg and verifies the response contains healthy=true and status="running" |
+| testKitSendRequestReply | Deploys a .ts echo service, publishes modules/messaging KitSendMsg to its topic, and verifies the reply payload |
+| testKitSendWithAwait | Deploys a .ts async compute service, publishes modules/messaging KitSendMsg, and verifies the async-computed sum |
 
 ## Cross-references
 

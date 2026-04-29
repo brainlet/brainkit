@@ -10,6 +10,7 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store1,
@@ -31,7 +32,7 @@ func testScheduleSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	assert.Len(t, listSchedules(t, k1), 1)
 	k1.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
@@ -49,7 +50,7 @@ func testMissedRecurringCatchUp(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "missed-persist-1",
 		Expression: "every 1h",
@@ -63,7 +64,7 @@ func testMissedRecurringCatchUp(t *testing.T, _ *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,
@@ -83,7 +84,7 @@ func testExpiredOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "test.db")
 
-	store, _ := brainkit.NewSQLiteStore(storePath)
+	store, _ := stores.NewSQLite(storePath)
 	store.SaveSchedule(types.PersistedSchedule{
 		ID:         "expired-persist-1",
 		Expression: "in 30s",
@@ -97,7 +98,7 @@ func testExpiredOneTimeFires(t *testing.T, _ *suite.TestEnv) {
 	})
 	store.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", Store: store2,

@@ -3,19 +3,83 @@ package testutil
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/bus/caller"
+	"github.com/brainlet/brainkit"
+	controlmod "github.com/brainlet/brainkit/modules/control"
+	evalmod "github.com/brainlet/brainkit/modules/eval"
+	"github.com/brainlet/brainkit/modules/eval/evalmsg"
+	healthmod "github.com/brainlet/brainkit/modules/health"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
 // callerHolder is implemented by *brainkit.Kit. Used so roundTrip keeps its
 // sdk.Runtime signature without importing brainkit here.
 type callerHolder interface {
-	Caller() *caller.Caller
+	Caller() *sdk.Caller
+}
+
+type moduleKit interface {
+	Module(id string) (brainkit.Module, bool)
+	Mount(context.Context, brainkit.Module) error
+}
+
+func ensureHealthModule(rt sdk.Runtime) bool {
+	k, ok := rt.(moduleKit)
+	if !ok {
+		return true
+	}
+	if _, ok := k.Module("health"); ok {
+		return true
+	}
+	if _, err := roundTrip(rt, healthmod.KitHealthMsg{}, time.Millisecond); errors.Is(err, sdk.ErrCallerClosed) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = k.Mount(ctx, healthmod.New())
+	return true
+}
+
+func ensureControlModule(rt sdk.Runtime) bool {
+	k, ok := rt.(moduleKit)
+	if !ok {
+		return true
+	}
+	if _, ok := k.Module("control"); ok {
+		return true
+	}
+	if _, err := roundTrip(rt, controlmod.ClusterPeersMsg{}, time.Millisecond); errors.Is(err, sdk.ErrCallerClosed) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = k.Mount(ctx, controlmod.New())
+	return true
+}
+
+func ensureEvalModule(rt sdk.Runtime) bool {
+	k, ok := rt.(moduleKit)
+	if !ok {
+		return true
+	}
+	if _, ok := k.Module("eval"); ok {
+		return true
+	}
+	if _, err := roundTrip(rt, evalmsg.KitEvalMsg{}, time.Millisecond); errors.Is(err, sdk.ErrCallerClosed) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = k.Mount(ctx, evalmod.New())
+	return true
 }
 
 // roundTrip sends msg via the Kit's shared-inbox Caller and returns the raw
@@ -37,7 +101,7 @@ func roundTrip(rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (
 	if err != nil {
 		return nil, fmt.Errorf("marshal %T: %w", msg, err)
 	}
-	reply, err := c.Call(ctx, msg.BusTopic(), payload, caller.Config{})
+	reply, err := c.Call(ctx, msg.BusTopic(), payload, sdk.CallerConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", msg.BusTopic(), err)
 	}
@@ -80,7 +144,7 @@ func DeployWithOpts(rt sdk.Runtime, source, code, packageName string) error {
 	if name == "" {
 		name = strings.TrimSuffix(source, ".ts")
 	}
-	msg := sdk.PackageDeployMsg{
+	msg := packagemsg.PackageDeployMsg{
 		Manifest: inlineManifest(name, source),
 		Files:    map[string]string{source: code},
 	}
@@ -91,14 +155,14 @@ func DeployWithOpts(rt sdk.Runtime, source, code, packageName string) error {
 	if err != nil {
 		return err
 	}
-	_, err = decodeResp[sdk.PackageDeployResp](payload)
+	_, err = decodeResp[packagemsg.PackageDeployResp](payload)
 	return err
 }
 
 func DeployWithResources(t *testing.T, rt sdk.Runtime, source, code string) []sdk.ResourceInfo {
 	t.Helper()
 	name := strings.TrimSuffix(source, ".ts")
-	msg := sdk.PackageDeployMsg{
+	msg := packagemsg.PackageDeployMsg{
 		Manifest: inlineManifest(name, source),
 		Files:    map[string]string{source: code},
 	}
@@ -106,7 +170,7 @@ func DeployWithResources(t *testing.T, rt sdk.Runtime, source, code string) []sd
 	if err != nil {
 		t.Fatalf("Deploy(%s): %v", source, err)
 	}
-	resp, err := decodeResp[sdk.PackageDeployResp](payload)
+	resp, err := decodeResp[packagemsg.PackageDeployResp](payload)
 	if err != nil {
 		t.Fatalf("Deploy(%s): %v", source, err)
 	}
@@ -131,11 +195,14 @@ func EvalTS(t *testing.T, rt sdk.Runtime, source, code string) string {
 }
 
 func EvalTSErr(rt sdk.Runtime, source, code string) (string, error) {
-	payload, err := roundTrip(rt, sdk.KitEvalMsg{Source: source, Code: code, Mode: "ts"}, 15*time.Second)
+	if !ensureEvalModule(rt) {
+		return "", sdk.ErrCallerClosed
+	}
+	payload, err := roundTrip(rt, evalmsg.KitEvalMsg{Source: source, Code: code, Mode: "ts"}, 15*time.Second)
 	if err != nil {
 		return "", err
 	}
-	resp, err := decodeResp[sdk.KitEvalResp](payload)
+	resp, err := decodeResp[evalmsg.KitEvalResp](payload)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +213,8 @@ func EvalTSErr(rt sdk.Runtime, source, code string) (string, error) {
 
 func SetDraining(t *testing.T, rt sdk.Runtime, draining bool) {
 	t.Helper()
-	_, err := roundTrip(rt, sdk.KitSetDrainingMsg{Draining: draining}, 5*time.Second)
+	ensureControlModule(rt)
+	_, err := roundTrip(rt, controlmod.KitSetDrainingMsg{Draining: draining}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("SetDraining: %v", err)
 	}
@@ -157,24 +225,24 @@ func SetDraining(t *testing.T, rt sdk.Runtime, draining bool) {
 func Teardown(t *testing.T, rt sdk.Runtime, source string) {
 	t.Helper()
 	name := strings.TrimSuffix(source, ".ts")
-	payload, err := roundTrip(rt, sdk.PackageTeardownMsg{Name: name}, 10*time.Second)
+	payload, err := roundTrip(rt, packagemsg.PackageTeardownMsg{Name: name}, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Teardown(%s): %v", source, err)
 	}
-	if _, err := decodeResp[sdk.PackageTeardownResp](payload); err != nil {
+	if _, err := decodeResp[packagemsg.PackageTeardownResp](payload); err != nil {
 		t.Fatalf("Teardown(%s): %v", source, err)
 	}
 }
 
 // ── ListDeployments ─────────────────────────────────────────────────────────
 
-func ListDeployments(t *testing.T, rt sdk.Runtime) []sdk.DeployedPackageInfo {
+func ListDeployments(t *testing.T, rt sdk.Runtime) []packagemsg.DeployedPackageInfo {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.PackageListDeployedMsg{}, 10*time.Second)
+	payload, err := roundTrip(rt, packagemsg.PackageListDeployedMsg{}, 10*time.Second)
 	if err != nil {
 		t.Fatalf("ListDeployments: %v", err)
 	}
-	resp, err := decodeResp[sdk.PackageListDeployedResp](payload)
+	resp, err := decodeResp[packagemsg.PackageListDeployedResp](payload)
 	if err != nil {
 		t.Fatalf("ListDeployments: %v", err)
 	}
@@ -193,13 +261,13 @@ func Schedule(t *testing.T, rt sdk.Runtime, expression, topic string, payload js
 }
 
 func ScheduleErr(rt sdk.Runtime, expression, topic string, schedPayload json.RawMessage) (string, error) {
-	payload, err := roundTrip(rt, sdk.ScheduleCreateMsg{
+	payload, err := roundTrip(rt, schedulemsg.ScheduleCreateMsg{
 		Expression: expression, Topic: topic, Payload: schedPayload,
 	}, 10*time.Second)
 	if err != nil {
 		return "", err
 	}
-	resp, err := decodeResp[sdk.ScheduleCreateResp](payload)
+	resp, err := decodeResp[schedulemsg.ScheduleCreateResp](payload)
 	if err != nil {
 		return "", err
 	}
@@ -210,24 +278,24 @@ func ScheduleErr(rt sdk.Runtime, expression, topic string, schedPayload json.Raw
 
 func Unschedule(t *testing.T, rt sdk.Runtime, id string) {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.ScheduleCancelMsg{ID: id}, 5*time.Second)
+	payload, err := roundTrip(rt, schedulemsg.ScheduleCancelMsg{ID: id}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Unschedule(%s): %v", id, err)
 	}
-	if _, err := decodeResp[sdk.ScheduleCancelResp](payload); err != nil {
+	if _, err := decodeResp[schedulemsg.ScheduleCancelResp](payload); err != nil {
 		t.Fatalf("Unschedule(%s): %v", id, err)
 	}
 }
 
 // ── ListSchedules ───────────────────────────────────────────────────────────
 
-func ListSchedules(t *testing.T, rt sdk.Runtime) []sdk.ScheduleInfo {
+func ListSchedules(t *testing.T, rt sdk.Runtime) []schedulemsg.ScheduleInfo {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.ScheduleListMsg{}, 5*time.Second)
+	payload, err := roundTrip(rt, schedulemsg.ScheduleListMsg{}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("ListSchedules: %v", err)
 	}
-	resp, err := decodeResp[sdk.ScheduleListResp](payload)
+	resp, err := decodeResp[schedulemsg.ScheduleListResp](payload)
 	if err != nil {
 		t.Fatalf("ListSchedules: %v", err)
 	}
@@ -238,7 +306,10 @@ func ListSchedules(t *testing.T, rt sdk.Runtime) []sdk.ScheduleInfo {
 
 func Alive(t *testing.T, rt sdk.Runtime) bool {
 	t.Helper()
-	_, err := roundTrip(rt, sdk.KitHealthMsg{}, 5*time.Second)
+	if !ensureHealthModule(rt) {
+		return false
+	}
+	_, err := roundTrip(rt, healthmod.KitHealthMsg{}, 5*time.Second)
 	return err == nil
 }
 
@@ -248,11 +319,12 @@ func Alive(t *testing.T, rt sdk.Runtime) bool {
 // Different from Deploy which uses EvalTS (no import support).
 func EvalModule(t *testing.T, rt sdk.Runtime, source, code string) {
 	t.Helper()
-	payload, err := roundTrip(rt, sdk.KitEvalMsg{Source: source, Code: code, Mode: "module"}, 15*time.Second)
+	ensureEvalModule(rt)
+	payload, err := roundTrip(rt, evalmsg.KitEvalMsg{Source: source, Code: code, Mode: "module"}, 15*time.Second)
 	if err != nil {
 		t.Fatalf("EvalModule(%s): %v", source, err)
 	}
-	if _, err := decodeResp[sdk.KitEvalResp](payload); err != nil {
+	if _, err := decodeResp[evalmsg.KitEvalResp](payload); err != nil {
 		t.Fatalf("EvalModule(%s): %v", source, err)
 	}
 }
@@ -267,8 +339,8 @@ func WaitForPlugin(t *testing.T, rt sdk.Runtime, pluginName string, timeout time
 	defer cancel()
 
 	ch := make(chan struct{}, 1)
-	unsub, err := sdk.SubscribeTo[sdk.PluginRegisteredEvent](rt, ctx, "plugin.registered",
-		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+	unsub, err := sdk.SubscribeTo[pluginmsg.PluginRegisteredEvent](rt, ctx, "plugin.registered",
+		func(evt pluginmsg.PluginRegisteredEvent, _ sdk.Message) {
 			if evt.Name == pluginName {
 				select {
 				case ch <- struct{}{}:

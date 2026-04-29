@@ -7,22 +7,25 @@ package suite
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
+	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	auditmod "github.com/brainlet/brainkit/modules/audit"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/modules/standard"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/workflow"
+	"github.com/brainlet/brainkit/sdk"
+	_ "github.com/brainlet/brainkit/storagebridges"
+	"github.com/brainlet/brainkit/stores"
+	"github.com/google/uuid"
 )
 
 // TestEnv is the shared test environment for all suite domains.
@@ -173,10 +176,10 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	tmpDir := t.TempDir()
 
 	// Build providers from env
-	var providers []brainkit.ProviderConfig
+	providers := []brainkit.ProviderConfig{}
 	envVars := make(map[string]string)
 	if cfg.AIProviders {
-		if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		if key, ok := testutil.OpenAIKey(); ok {
 			providers = append(providers, brainkit.OpenAI(key))
 			envVars["OPENAI_API_KEY"] = key
 		}
@@ -203,7 +206,7 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	// Persistence: KitStore backed by SQLite
 	if cfg.Persistence == "sqlite" {
 		storePath := filepath.Join(tmpDir, "kitstore.db")
-		store, err := brainkit.NewSQLiteStore(storePath)
+		store, err := stores.NewSQLite(storePath)
 		if err != nil {
 			t.Fatalf("suite.NewEnv: open store: %v", err)
 		}
@@ -228,6 +231,11 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 	if len(cfg.MCPServers) > 0 {
 		kitCfg.Modules = append(kitCfg.Modules, mcppkg.New(cfg.MCPServers))
 	}
+
+	// Package deployment commands come from modules/packages. Most suite
+	// domains deploy at least one fixture over package.deploy, so keep the
+	// module in the shared environment by default.
+	kitCfg.Modules = append(kitCfg.Modules, standard.CommandSet()...)
 
 	// Workflow commands come from modules/workflow — always include so the
 	// workflow suite's bus commands are available.
@@ -317,13 +325,9 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg sdk.BrainkitMessage, timeout 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := sdk.Publish(e.Kit, ctx, msg)
-	if err != nil {
-		return nil, err
-	}
-
+	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
 	ch := make(chan json.RawMessage, 1)
-	unsub, err := e.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
+	unsub, err := e.Kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
 		select {
 		case ch <- json.RawMessage(m.Payload):
 		default:
@@ -333,6 +337,11 @@ func (e *TestEnv) PublishAndWait(t *testing.T, msg sdk.BrainkitMessage, timeout 
 		return nil, err
 	}
 	defer unsub()
+
+	_, err = sdk.Publish(e.Kit, ctx, msg, sdk.WithReplyTo(replyTo))
+	if err != nil {
+		return nil, err
+	}
 
 	select {
 	case payload := <-ch:
@@ -443,11 +452,11 @@ func ResponseDataFromMsg(m sdk.Message) json.RawMessage {
 	return m.Payload
 }
 
-// RequireAI skips the test if OPENAI_API_KEY is not set.
+// RequireAI skips unless live AI tests are explicitly enabled and OPENAI_API_KEY is set.
 func (e *TestEnv) RequireAI(t *testing.T) {
 	t.Helper()
 	if !testutil.HasAIKey() {
-		t.Skip("needs OPENAI_API_KEY")
+		t.Skip("needs OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 }
 
@@ -463,7 +472,7 @@ func (e *TestEnv) RequirePodman(t *testing.T) {
 func NewSQLiteStoreForTest(t *testing.T) types.KitStore {
 	t.Helper()
 	storePath := filepath.Join(t.TempDir(), "test-store.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	if err != nil {
 		t.Fatalf("NewSQLiteStoreForTest: %v", err)
 	}

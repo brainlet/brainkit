@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/eval/evalmsg"
+	healthmod "github.com/brainlet/brainkit/modules/health"
+	messagingmod "github.com/brainlet/brainkit/modules/messaging"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -41,17 +45,17 @@ func testKitEval(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp := publishAndWait[sdk.KitEvalMsg, sdk.KitEvalResp](t, env.Kit, ctx, sdk.KitEvalMsg{
+	resp := publishAndWait[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](t, env.Kit, ctx, evalmsg.KitEvalMsg{
 		Code: `output(1 + 1)`,
 	})
 	assert.Equal(t, "2", resp.Result)
 
-	resp = publishAndWait[sdk.KitEvalMsg, sdk.KitEvalResp](t, env.Kit, ctx, sdk.KitEvalMsg{
+	resp = publishAndWait[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](t, env.Kit, ctx, evalmsg.KitEvalMsg{
 		Code: `output({ hello: "world" })`,
 	})
 	assert.JSONEq(t, `{"hello":"world"}`, resp.Result)
 
-	resp = publishAndWait[sdk.KitEvalMsg, sdk.KitEvalResp](t, env.Kit, ctx, sdk.KitEvalMsg{
+	resp = publishAndWait[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](t, env.Kit, ctx, evalmsg.KitEvalMsg{
 		Code: `const x = await Promise.resolve(42); output(x)`,
 	})
 	assert.Equal(t, "42", resp.Result)
@@ -61,7 +65,7 @@ func testKitHealth(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp := publishAndWait[sdk.KitHealthMsg, sdk.KitHealthResp](t, env.Kit, ctx, sdk.KitHealthMsg{})
+	resp := publishAndWait[healthmod.KitHealthMsg, healthmod.KitHealthResp](t, env.Kit, ctx, healthmod.KitHealthMsg{})
 
 	var health struct {
 		Healthy bool   `json:"healthy"`
@@ -77,7 +81,7 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	manifest1, _ := json.Marshal(map[string]string{"name": "echo-svc-cmd", "entry": "echo-svc-cmd.ts"})
-	deployResp := publishAndWait[sdk.PackageDeployMsg, sdk.PackageDeployResp](t, env.Kit, ctx, sdk.PackageDeployMsg{
+	deployResp := publishAndWait[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](t, env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: manifest1,
 		Files: map[string]string{"echo-svc-cmd.ts": `
 			bus.on("ping", (msg) => {
@@ -87,12 +91,14 @@ func testKitSendRequestReply(t *testing.T, env *suite.TestEnv) {
 	})
 	require.True(t, deployResp.Deployed)
 
-	sendResp := publishAndWait[sdk.KitSendMsg, sdk.KitSendResp](t, env.Kit, ctx, sdk.KitSendMsg{
+	sendResp := publishAndWait[messagingmod.KitSendMsg, messagingmod.KitSendResp](t, env.Kit, ctx, messagingmod.KitSendMsg{
 		Topic:   "ts.echo-svc-cmd.ping",
 		Payload: json.RawMessage(`{"value":"hello"}`),
 	})
 
-	var payload struct{ Pong string `json:"pong"` }
+	var payload struct {
+		Pong string `json:"pong"`
+	}
 	require.NoError(t, json.Unmarshal(suite.ResponseData(sendResp.Payload), &payload))
 	assert.Equal(t, "hello", payload.Pong)
 }
@@ -102,7 +108,7 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	manifest2, _ := json.Marshal(map[string]string{"name": "async-svc-cmd", "entry": "async-svc-cmd.ts"})
-	deployResp := publishAndWait[sdk.PackageDeployMsg, sdk.PackageDeployResp](t, env.Kit, ctx, sdk.PackageDeployMsg{
+	deployResp := publishAndWait[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](t, env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: manifest2,
 		Files: map[string]string{"async-svc-cmd.ts": `
 			bus.on("compute", async (msg) => {
@@ -113,12 +119,14 @@ func testKitSendWithAwait(t *testing.T, env *suite.TestEnv) {
 	})
 	require.True(t, deployResp.Deployed)
 
-	sendResp := publishAndWait[sdk.KitSendMsg, sdk.KitSendResp](t, env.Kit, ctx, sdk.KitSendMsg{
+	sendResp := publishAndWait[messagingmod.KitSendMsg, messagingmod.KitSendResp](t, env.Kit, ctx, messagingmod.KitSendMsg{
 		Topic:   "ts.async-svc-cmd.compute",
 		Payload: json.RawMessage(`{"a":3,"b":4}`),
 	})
 
-	var payload struct{ Sum int `json:"sum"` }
+	var payload struct {
+		Sum int `json:"sum"`
+	}
 	require.NoError(t, json.Unmarshal(suite.ResponseData(sendResp.Payload), &payload))
 	assert.Equal(t, 7, payload.Sum)
 }

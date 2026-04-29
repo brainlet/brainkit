@@ -28,7 +28,7 @@ Skipped under `go test -short` because the test shells out to
   instead of subscribing to `plugin.registered` — the event
   emits before the caller can subscribe in practice).
 - How to invoke a plugin tool through the generated
-  `brainkit.CallToolCall` wrapper.
+  `toolmsg.CallToolCall` wrapper.
 
 ## Contrast with `test/suite/plugins/`
 

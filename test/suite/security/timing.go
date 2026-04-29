@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -94,7 +97,7 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 	tmpDir := t.TempDir()
 	storePath := tmpDir + "/timing-sec.db"
 
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -107,7 +110,7 @@ func testTimingMessageDuringRestore(t *testing.T, env *suite.TestEnv) {
 	`)
 	k1.Close()
 
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
@@ -244,7 +247,7 @@ func testTimingCloseWhileToolCallInProgress(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	go func() {
-		secSendAndReceive(t, k, sdk.ToolCallMsg{Name: "slow-sec", Input: map[string]any{}}, 5*time.Second)
+		secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "slow-sec", Input: map[string]any{}}, 5*time.Second)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -296,7 +299,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, sdk.StorageAddMsg{
+			sdk.Publish(k, ctx, registrymsg.StorageAddMsg{
 				Name: "race-storage-sec",
 				Type: "memory",
 			})
@@ -305,7 +308,7 @@ func testTimingStorageRaceWithDeploy(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			sdk.Publish(k, ctx, sdk.StorageRemoveMsg{
+			sdk.Publish(k, ctx, registrymsg.StorageRemoveMsg{
 				Name: "race-storage-sec",
 			})
 		}

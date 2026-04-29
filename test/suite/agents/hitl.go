@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,15 +109,10 @@ func installApprover(t *testing.T, env *suite.TestEnv, ctx context.Context, appr
 			t.Logf("approver: missing replyTo on %s", approvalTopic)
 			return
 		}
-		// PublishRaw on the kit auto-namespaces. The bridge already
-		// resolved replyTo with the publisher's namespace, so we must
-		// publish without re-prefixing — strip the namespace prefix
-		// before handing it back to PublishRaw.
-		stripped := replyTo
-		if strings.HasPrefix(replyTo, "test.") {
-			stripped = strings.TrimPrefix(replyTo, "test.")
-		}
-		if _, err := env.Kit.PublishRaw(ctx, stripped, respBytes); err != nil {
+		// replyTo is already namespaced and transport-sanitized by the
+		// publisher. ReplyRaw publishes to that absolute transport topic;
+		// PublishRaw would namespace/sanitize it a second time on NATS.
+		if err := env.Kit.ReplyRaw(ctx, replyTo, msg.Metadata["correlationId"], respBytes, true); err != nil {
 			t.Logf("approver: publish reply: %v", err)
 		}
 	})
@@ -129,18 +124,21 @@ func installApprover(t *testing.T, env *suite.TestEnv, ctx context.Context, appr
 // reply payload.
 func triggerHitl(t *testing.T, env *suite.TestEnv, ctx context.Context, service string) map[string]any {
 	t.Helper()
-	pr, err := sdk.SendToService(env.Kit, ctx, service, "run", json.RawMessage(`{}`))
-	require.NoError(t, err)
-
+	replyTo := sdk.ResolveServiceTopic(service, "run") + ".reply." + uuid.NewString()
 	replyCh := make(chan sdk.Message, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		select {
-		case replyCh <- msg:
-		default:
+	unsub, err := env.Kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
+		if msg.Metadata["done"] == "true" {
+			select {
+			case replyCh <- msg:
+			default:
+			}
 		}
 	})
 	require.NoError(t, err)
 	defer unsub()
+
+	_, err = sdk.SendToService(env.Kit, ctx, service, "run", json.RawMessage(`{}`), sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
 
 	select {
 	case msg := <-replyCh:
@@ -148,7 +146,7 @@ func triggerHitl(t *testing.T, env *suite.TestEnv, ctx context.Context, service 
 		require.NoError(t, json.Unmarshal(suite.ResponseDataFromMsg(msg), &parsed))
 		return parsed
 	case <-ctx.Done():
-		t.Fatalf("triggerHitl: timeout waiting for reply on %s", pr.ReplyTo)
+		t.Fatalf("triggerHitl: timeout waiting for reply on %s", replyTo)
 		return nil
 	}
 }

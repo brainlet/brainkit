@@ -10,7 +10,9 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/workflow"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,15 +41,15 @@ func testConcurrentStarts(t *testing.T, _ *suite.TestEnv) {
 
 	const N = 5
 	type startResult struct {
-		resp sdk.WorkflowStartResp
+		resp workflowmsg.WorkflowStartResp
 		msg  sdk.Message
 	}
 	results := make(chan startResult, N)
 
 	testutil.ConcurrentDo(t, N, func(i int) {
-		resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{
+			workflowmsg.WorkflowStartMsg{
 				Name:      "concurrent-test",
 				InputData: json.RawMessage(`{"n":` + json.Number(string(rune('0'+i+1))).String() + `}`),
 			},
@@ -72,7 +74,7 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -147,14 +149,14 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	// Phase 1: Start 10 fast-sequential concurrently
 	t.Log("Phase 1: 10 fast-sequential")
 	type phase1Result struct {
-		resp sdk.WorkflowStartResp
+		resp workflowmsg.WorkflowStartResp
 		msg  sdk.Message
 	}
 	fastResults := make(chan phase1Result, 10)
 	testutil.ConcurrentDo(t, 10, func(i int) {
-		resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "fast-seq", InputData: json.RawMessage(`{"n":` + fmt.Sprintf("%d", i) + `}`)},
+			workflowmsg.WorkflowStartMsg{Name: "fast-seq", InputData: json.RawMessage(`{"n":` + fmt.Sprintf("%d", i) + `}`)},
 			10*time.Second,
 		)
 		fastResults <- phase1Result{resp, msg}
@@ -170,9 +172,9 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	t.Log("Phase 2: 3 suspend-resume")
 	suspRunIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "suspend-wf", InputData: json.RawMessage(fmt.Sprintf(`{"id":"s%d"}`, i))},
+			workflowmsg.WorkflowStartMsg{Name: "suspend-wf", InputData: json.RawMessage(fmt.Sprintf(`{"id":"s%d"}`, i))},
 			10*time.Second,
 		)
 		require.Equal(t, "suspended", resp.Status, "suspend-wf should suspend")
@@ -182,9 +184,9 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	// Phase 3: Start 2 parallel-brancher
 	t.Log("Phase 3: 2 parallel-brancher")
 	for i := 0; i < 2; i++ {
-		resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "parallel-wf", InputData: json.RawMessage(fmt.Sprintf(`{"x":%d}`, i+1))},
+			workflowmsg.WorkflowStartMsg{Name: "parallel-wf", InputData: json.RawMessage(fmt.Sprintf(`{"x":%d}`, i+1))},
 			10*time.Second,
 		)
 		assert.Equal(t, "success", resp.Status, "parallel-wf should complete")
@@ -194,9 +196,9 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	t.Log("Phase 4: 2 multi-suspend")
 	multiRunIDs := make([]string, 2)
 	for i := 0; i < 2; i++ {
-		resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "multi-sus", InputData: json.RawMessage(fmt.Sprintf(`{"id":"m%d"}`, i))},
+			workflowmsg.WorkflowStartMsg{Name: "multi-sus", InputData: json.RawMessage(fmt.Sprintf(`{"id":"m%d"}`, i))},
 			10*time.Second,
 		)
 		require.Equal(t, "suspended", resp.Status)
@@ -206,9 +208,9 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	// Phase 5: Resume suspend-resume instances one by one
 	t.Log("Phase 5: resume 3 suspend-resume")
 	for _, runID := range suspRunIDs {
-		resp, msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{Name: "suspend-wf", RunID: runID, Step: "gate", ResumeData: json.RawMessage(`{"ok":true}`)},
+			workflowmsg.WorkflowResumeMsg{Name: "suspend-wf", RunID: runID, Step: "gate", ResumeData: json.RawMessage(`{"ok":true}`)},
 			10*time.Second,
 		)
 		errMsg := suite.ResponseErrorMessage(msg.Payload)
@@ -219,16 +221,16 @@ func testMultiWorkflowStress(t *testing.T, _ *suite.TestEnv) {
 	// Phase 6: Resume multi-suspend through both cycles
 	t.Log("Phase 6: resume multi-suspend (2 cycles each)")
 	for _, runID := range multiRunIDs {
-		r1, _ := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		r1, _ := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{Name: "multi-sus", RunID: runID, Step: "g1", ResumeData: json.RawMessage(`{"v":"first"}`)},
+			workflowmsg.WorkflowResumeMsg{Name: "multi-sus", RunID: runID, Step: "g1", ResumeData: json.RawMessage(`{"v":"first"}`)},
 			10*time.Second,
 		)
 		require.Equal(t, "suspended", r1.Status, "after g1 resume should suspend at g2")
 
-		r2, _ := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		r2, _ := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{Name: "multi-sus", RunID: runID, Step: "g2", ResumeData: json.RawMessage(`{"v":"second"}`)},
+			workflowmsg.WorkflowResumeMsg{Name: "multi-sus", RunID: runID, Step: "g2", ResumeData: json.RawMessage(`{"v":"second"}`)},
 			10*time.Second,
 		)
 		assert.Equal(t, "success", r2.Status, "after g2 resume should complete")
@@ -243,7 +245,7 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	}
 
 	tmpDir := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "kit.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmpDir, "kit.db"))
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
@@ -253,7 +255,7 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "mastra.db")),
 		},
-		Modules: []brainkit.Module{workflow.New()},
+		Modules: packageModules(workflow.New()),
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })
@@ -357,14 +359,14 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	type fastResult struct {
 		n     int
 		runID string
-		resp  sdk.WorkflowStartResp
+		resp  workflowmsg.WorkflowStartResp
 		msg   sdk.Message
 	}
 	fastCh := make(chan fastResult, 10)
 	testutil.ConcurrentDo(t, 10, func(i int) {
-		resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "lr-fast", InputData: json.RawMessage(fmt.Sprintf(`{"n":%d}`, i))},
+			workflowmsg.WorkflowStartMsg{Name: "lr-fast", InputData: json.RawMessage(fmt.Sprintf(`{"n":%d}`, i))},
 			10*time.Second,
 		)
 		fastCh <- fastResult{i, resp.RunID, resp, msg}
@@ -375,9 +377,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		require.Empty(t, errMsg, "fast n=%d error: %s", fr.n, errMsg)
 		require.Equal(t, "success", fr.resp.Status, "fast n=%d status", fr.n)
 		// Verify status from storage shows success
-		statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusResp, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-fast", RunID: fr.runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-fast", RunID: fr.runID},
 			5*time.Second,
 		)
 		assert.Equal(t, "success", statusResp.Status, "fast n=%d storage status", fr.n)
@@ -386,9 +388,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// 5 sleepers — start async (10s sleep)
 	sleeperRunIDs := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		resp, msg := wfPublishAndWait[sdk.WorkflowStartAsyncMsg, sdk.WorkflowStartAsyncResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartAsyncMsg, workflowmsg.WorkflowStartAsyncResp](
 			t, k,
-			sdk.WorkflowStartAsyncMsg{Name: "lr-sleeper", InputData: json.RawMessage(fmt.Sprintf(`{"id":"s%d","sleepMs":10000}`, i))},
+			workflowmsg.WorkflowStartAsyncMsg{Name: "lr-sleeper", InputData: json.RawMessage(fmt.Sprintf(`{"id":"s%d","sleepMs":10000}`, i))},
 			5*time.Second,
 		)
 		require.Empty(t, suite.ResponseErrorMessage(msg.Payload), "sleeper start s%d", i)
@@ -399,9 +401,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 
 	// Verify sleepers are running/pending (not completed yet)
 	for i, runID := range sleeperRunIDs {
-		statusResp, statusMsg := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusResp, statusMsg := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
 			5*time.Second,
 		)
 		require.Empty(t, suite.ResponseErrorMessage(statusMsg.Payload), "sleeper s%d status", i)
@@ -412,18 +414,18 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// 3 suspenders — verify they suspend
 	suspRunIDs := make([]string, 3)
 	for i := 0; i < 3; i++ {
-		resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "lr-suspend", InputData: json.RawMessage(fmt.Sprintf(`{"id":"susp%d"}`, i))},
+			workflowmsg.WorkflowStartMsg{Name: "lr-suspend", InputData: json.RawMessage(fmt.Sprintf(`{"id":"susp%d"}`, i))},
 			10*time.Second,
 		)
 		require.Equal(t, "suspended", resp.Status, "suspend susp%d", i)
 		suspRunIDs[i] = resp.RunID
 
 		// Verify storage also shows suspended
-		statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusResp, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-suspend", RunID: resp.RunID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-suspend", RunID: resp.RunID},
 			5*time.Second,
 		)
 		assert.Equal(t, "suspended", statusResp.Status, "suspend susp%d storage", i)
@@ -432,9 +434,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// 2 multi-suspend — verify first suspend
 	multiRunIDs := make([]string, 2)
 	for i := 0; i < 2; i++ {
-		resp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "lr-multi-sus", InputData: json.RawMessage(fmt.Sprintf(`{"id":"ms%d"}`, i))},
+			workflowmsg.WorkflowStartMsg{Name: "lr-multi-sus", InputData: json.RawMessage(fmt.Sprintf(`{"id":"ms%d"}`, i))},
 			10*time.Second,
 		)
 		require.Equal(t, "suspended", resp.Status, "multi-sus ms%d first suspend", i)
@@ -449,17 +451,17 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// 3 parallel: verify each branch output
 	for i := 0; i < 3; i++ {
 		x := i + 1
-		resp, msg := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 			t, k,
-			sdk.WorkflowStartMsg{Name: "lr-parallel", InputData: json.RawMessage(fmt.Sprintf(`{"x":%d}`, x))},
+			workflowmsg.WorkflowStartMsg{Name: "lr-parallel", InputData: json.RawMessage(fmt.Sprintf(`{"x":%d}`, x))},
 			10*time.Second,
 		)
 		require.Empty(t, suite.ResponseErrorMessage(msg.Payload), "parallel x=%d", x)
 		require.Equal(t, "success", resp.Status, "parallel x=%d status", x)
 		// Query storage for per-step outputs
-		statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusResp, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-parallel", RunID: resp.RunID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-parallel", RunID: resp.RunID},
 			5*time.Second,
 		)
 		assert.Equal(t, "success", statusResp.Status, "parallel x=%d storage status", x)
@@ -473,9 +475,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 
 	for i, runID := range suspRunIDs {
 		approved := i%2 == 0
-		resp, msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		resp, msg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{
+			workflowmsg.WorkflowResumeMsg{
 				Name: "lr-suspend", RunID: runID, Step: "gate",
 				ResumeData: json.RawMessage(fmt.Sprintf(`{"approved":%v}`, approved)),
 			},
@@ -486,9 +488,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		require.Equal(t, "success", resp.Status, "resume susp%d status", i)
 
 		// Verify output in storage
-		statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusResp, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-suspend", RunID: runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-suspend", RunID: runID},
 			5*time.Second,
 		)
 		assert.Equal(t, "success", statusResp.Status)
@@ -509,9 +511,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 
 	for i, runID := range multiRunIDs {
 		// First gate: g1 receives v="alpha"
-		r1, r1Msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		r1, r1Msg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{Name: "lr-multi-sus", RunID: runID, Step: "g1", ResumeData: json.RawMessage(`{"v":"alpha"}`)},
+			workflowmsg.WorkflowResumeMsg{Name: "lr-multi-sus", RunID: runID, Step: "g1", ResumeData: json.RawMessage(`{"v":"alpha"}`)},
 			10*time.Second,
 		)
 		r1Err := suite.ResponseErrorMessage(r1Msg.Payload)
@@ -519,18 +521,18 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		require.Equal(t, "suspended", r1.Status, "ms%d should suspend at g2", i)
 
 		// Verify g1 step output in storage: r1 = "ms<i>-alpha"
-		statusAfterG1, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusAfterG1, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-multi-sus", RunID: runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-multi-sus", RunID: runID},
 			5*time.Second,
 		)
 		assert.Equal(t, "suspended", statusAfterG1.Status)
 		assert.Contains(t, string(statusAfterG1.Steps), fmt.Sprintf("ms%d-alpha", i), "g1 should produce ms%d-alpha", i)
 
 		// Second gate: g2 receives v="beta"
-		r2, r2Msg := wfPublishAndWait[sdk.WorkflowResumeMsg, sdk.WorkflowResumeResp](
+		r2, r2Msg := wfPublishAndWait[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](
 			t, k,
-			sdk.WorkflowResumeMsg{Name: "lr-multi-sus", RunID: runID, Step: "g2", ResumeData: json.RawMessage(`{"v":"beta"}`)},
+			workflowmsg.WorkflowResumeMsg{Name: "lr-multi-sus", RunID: runID, Step: "g2", ResumeData: json.RawMessage(`{"v":"beta"}`)},
 			10*time.Second,
 		)
 		r2Err := suite.ResponseErrorMessage(r2Msg.Payload)
@@ -538,9 +540,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		require.Equal(t, "success", r2.Status, "ms%d should complete after g2", i)
 
 		// Verify g2 step output: r2 = "ms<i>-alpha-beta"
-		statusAfterG2, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		statusAfterG2, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-multi-sus", RunID: runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-multi-sus", RunID: runID},
 			5*time.Second,
 		)
 		assert.Equal(t, "success", statusAfterG2.Status)
@@ -553,25 +555,25 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// ══════════════════════════════════════════════════════════════════
 	t.Log("Wave 5: start a workflow, suspend it, cancel it")
 
-	cancelResp, _ := wfPublishAndWait[sdk.WorkflowStartMsg, sdk.WorkflowStartResp](
+	cancelResp, _ := wfPublishAndWait[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](
 		t, k,
-		sdk.WorkflowStartMsg{Name: "lr-suspend", InputData: json.RawMessage(`{"id":"to-cancel"}`)},
+		workflowmsg.WorkflowStartMsg{Name: "lr-suspend", InputData: json.RawMessage(`{"id":"to-cancel"}`)},
 		10*time.Second,
 	)
 	require.Equal(t, "suspended", cancelResp.Status)
 
-	cancelResult, cancelMsg := wfPublishAndWait[sdk.WorkflowCancelMsg, sdk.WorkflowCancelResp](
+	cancelResult, cancelMsg := wfPublishAndWait[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](
 		t, k,
-		sdk.WorkflowCancelMsg{Name: "lr-suspend", RunID: cancelResp.RunID},
+		workflowmsg.WorkflowCancelMsg{Name: "lr-suspend", RunID: cancelResp.RunID},
 		5*time.Second,
 	)
 	require.Empty(t, suite.ResponseErrorMessage(cancelMsg.Payload))
 	require.True(t, cancelResult.Cancelled)
 
 	// Verify storage shows canceled
-	cancelStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+	cancelStatus, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 		t, k,
-		sdk.WorkflowStatusMsg{Name: "lr-suspend", RunID: cancelResp.RunID},
+		workflowmsg.WorkflowStatusMsg{Name: "lr-suspend", RunID: cancelResp.RunID},
 		5*time.Second,
 	)
 	assert.Equal(t, "canceled", cancelStatus.Status, "canceled run should show canceled in storage")
@@ -585,9 +587,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		deadline := time.Now().Add(25 * time.Second)
 		var finalStatus string
 		for time.Now().Before(deadline) {
-			statusResp, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+			statusResp, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 				t, k,
-				sdk.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
+				workflowmsg.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
 				5*time.Second,
 			)
 			finalStatus = statusResp.Status
@@ -599,9 +601,9 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 		require.Equal(t, "success", finalStatus, "sleeper s%d should complete", i)
 
 		// Verify the "after" step produced the correct output
-		afterStatus, _ := wfPublishAndWait[sdk.WorkflowStatusMsg, sdk.WorkflowStatusResp](
+		afterStatus, _ := wfPublishAndWait[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](
 			t, k,
-			sdk.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
+			workflowmsg.WorkflowStatusMsg{Name: "lr-sleeper", RunID: runID},
 			5*time.Second,
 		)
 		assert.Contains(t, string(afterStatus.Steps), fmt.Sprintf("slept-s%d", i),
@@ -614,28 +616,28 @@ func testLongRunningIntegration(t *testing.T, _ *suite.TestEnv) {
 	// ══════════════════════════════════════════════════════════════════
 	t.Log("Final: verifying run counts in storage")
 
-	fastRuns, _ := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
-		t, k, sdk.WorkflowRunsMsg{Name: "lr-fast"}, 5*time.Second,
+	fastRuns, _ := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
+		t, k, workflowmsg.WorkflowRunsMsg{Name: "lr-fast"}, 5*time.Second,
 	)
 	assert.GreaterOrEqual(t, fastRuns.Total, 10, "lr-fast should have >=10 runs")
 
-	sleeperRuns, _ := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
-		t, k, sdk.WorkflowRunsMsg{Name: "lr-sleeper"}, 5*time.Second,
+	sleeperRuns, _ := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
+		t, k, workflowmsg.WorkflowRunsMsg{Name: "lr-sleeper"}, 5*time.Second,
 	)
 	assert.Equal(t, 5, sleeperRuns.Total, "lr-sleeper should have 5 runs")
 
-	suspendRuns, _ := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
-		t, k, sdk.WorkflowRunsMsg{Name: "lr-suspend"}, 5*time.Second,
+	suspendRuns, _ := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
+		t, k, workflowmsg.WorkflowRunsMsg{Name: "lr-suspend"}, 5*time.Second,
 	)
 	assert.GreaterOrEqual(t, suspendRuns.Total, 4, "lr-suspend should have >=4 runs (3 resumed + 1 canceled)")
 
-	canceledRuns, _ := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
-		t, k, sdk.WorkflowRunsMsg{Name: "lr-suspend", Status: "canceled"}, 5*time.Second,
+	canceledRuns, _ := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
+		t, k, workflowmsg.WorkflowRunsMsg{Name: "lr-suspend", Status: "canceled"}, 5*time.Second,
 	)
 	assert.Equal(t, 1, canceledRuns.Total, "exactly 1 lr-suspend run should be canceled")
 
-	multiRuns, _ := wfPublishAndWait[sdk.WorkflowRunsMsg, sdk.WorkflowRunsResp](
-		t, k, sdk.WorkflowRunsMsg{Name: "lr-multi-sus"}, 5*time.Second,
+	multiRuns, _ := wfPublishAndWait[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](
+		t, k, workflowmsg.WorkflowRunsMsg{Name: "lr-multi-sus"}, 5*time.Second,
 	)
 	assert.Equal(t, 2, multiRuns.Total, "lr-multi-sus should have 2 runs")
 

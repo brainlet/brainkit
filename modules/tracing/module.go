@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk"
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
 
 	_ "modernc.org/sqlite"
 )
@@ -23,7 +23,7 @@ import (
 // Config configures the tracing module.
 type Config struct {
 	// Store is the durable span store to attach to the Kit's tracer.
-	// Required — the module's Init returns nil without it.
+	// Required — the module's Mount returns nil without it.
 	Store TraceStore
 }
 
@@ -36,49 +36,77 @@ type Module struct {
 // New builds a tracing module.
 func New(cfg Config) *Module { return &Module{cfg: cfg} }
 
-// Name reports the module identifier.
-func (m *Module) Name() string { return "tracing" }
+// ID reports the hot-mount module identifier.
+func (m *Module) ID() string { return "tracing" }
 
 // Status reports maturity.
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusBeta }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
-// Init installs the module's store into the Kit's tracer and registers
-// trace.get / trace.list bus commands.
-func (m *Module) Init(k *brainkit.Kit) error {
-	if m.cfg.Store == nil {
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	setTraceStore, err := bkmodule.RequireCapability[func(TraceStore)](host, bkmodule.CapabilitySetTraceStore)
+	if err != nil {
+		return fmt.Errorf("tracing: %w", err)
+	}
+	host.Scope().Defer(func(context.Context) error {
+		setTraceStore(nil)
+		return m.Close()
+	})
+	if !m.attach(traceCoreFunc(setTraceStore)) {
 		return nil
 	}
-	m.store = m.cfg.Store
-	k.SetTraceStore(m.store)
-
-	k.RegisterCommand(brainkit.Command(m.handleGet))
-	k.RegisterCommand(brainkit.Command(m.handleList))
+	if _, err := host.Commands().Handle(bkmodule.Command(m.handleGet)); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(m.handleList)); err != nil {
+		return err
+	}
 	return nil
+}
+
+type traceCore interface {
+	SetTraceStore(TraceStore)
+}
+
+type traceCoreFunc func(TraceStore)
+
+func (f traceCoreFunc) SetTraceStore(store TraceStore) { f(store) }
+
+func (m *Module) attach(core traceCore) bool {
+	if m.cfg.Store == nil {
+		return false
+	}
+	m.store = m.cfg.Store
+	core.SetTraceStore(m.store)
+	return true
 }
 
 // Close closes the trace store if it implements io.Closer.
 func (m *Module) Close() error {
+	if m.store == nil {
+		return nil
+	}
+	defer func() { m.store = nil }()
 	if c, ok := m.store.(interface{ Close() error }); ok {
 		return c.Close()
 	}
 	return nil
 }
 
-func (m *Module) handleGet(_ context.Context, req sdk.TraceGetMsg) (*sdk.TraceGetResp, error) {
+func (m *Module) handleGet(_ context.Context, req tracingmsg.TraceGetMsg) (*tracingmsg.TraceGetResp, error) {
 	if m.store == nil {
-		return &sdk.TraceGetResp{Spans: json.RawMessage("[]")}, nil
+		return &tracingmsg.TraceGetResp{Spans: json.RawMessage("[]")}, nil
 	}
 	spans, err := m.store.GetTrace(req.TraceID)
 	if err != nil {
 		return nil, err
 	}
 	data, _ := json.Marshal(spans)
-	return &sdk.TraceGetResp{Spans: data}, nil
+	return &tracingmsg.TraceGetResp{Spans: data}, nil
 }
 
-func (m *Module) handleList(_ context.Context, req sdk.TraceListMsg) (*sdk.TraceListResp, error) {
+func (m *Module) handleList(_ context.Context, req tracingmsg.TraceListMsg) (*tracingmsg.TraceListResp, error) {
 	if m.store == nil {
-		return &sdk.TraceListResp{Traces: json.RawMessage("[]")}, nil
+		return &tracingmsg.TraceListResp{Traces: json.RawMessage("[]")}, nil
 	}
 	query := TraceQuery{Source: req.Source, Status: req.Status, Limit: req.Limit}
 	if req.MinDuration > 0 {
@@ -89,7 +117,7 @@ func (m *Module) handleList(_ context.Context, req sdk.TraceListMsg) (*sdk.Trace
 		return nil, err
 	}
 	data, _ := json.Marshal(traces)
-	return &sdk.TraceListResp{Traces: data}, nil
+	return &tracingmsg.TraceListResp{Traces: data}, nil
 }
 
 // YAML is the config shape decoded by the registry factory. Empty
@@ -104,7 +132,7 @@ type YAML struct {
 type Factory struct{}
 
 // Build opens the SQLite-backed trace store and returns the module.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -129,12 +157,12 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "tracing",
-		Status:  brainkit.ModuleStatusBeta,
+		Status:  bkmodule.StatusBeta,
 		Summary: "Persistent span store with trace.get / trace.list.",
 	}
 }
 
-func init() { brainkit.RegisterModule("tracing", Factory{}) }
+func init() { bkmodule.Register("tracing", Factory{}) }

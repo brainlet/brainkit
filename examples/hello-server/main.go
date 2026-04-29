@@ -34,7 +34,7 @@ func main() {
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// The gateway module logs its own "listening" line at Init time.
+	// The gateway module logs its own "listening" line at mount time.
 	log.Printf("brainkit %s up — fs_root=%s", cfg.Namespace, cfg.FSRoot)
 	if err := srv.Start(ctx); err != nil {
 		log.Fatalf("server start: %v", err)

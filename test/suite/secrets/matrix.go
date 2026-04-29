@@ -10,7 +10,10 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	secretsmod "github.com/brainlet/brainkit/modules/secrets"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,10 +26,10 @@ func testMatrixSetGetDeleteList(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Set
-	pub1, err := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "lifecycle-key-sec-adv", Value: "lifecycle-val"})
+	pub1, err := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "lifecycle-key-sec-adv", Value: "lifecycle-val"})
 	require.NoError(t, err)
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	select {
 	case resp := <-setCh:
 		assert.True(t, resp.Stored)
@@ -36,9 +39,9 @@ func testMatrixSetGetDeleteList(t *testing.T, _ *suite.TestEnv) {
 	cancelSet()
 
 	// Get
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "lifecycle-key-sec-adv"})
-	getCh := make(chan sdk.SecretsGetResp, 1)
-	cancelGet, _ := sdk.SubscribeTo[sdk.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "lifecycle-key-sec-adv"})
+	getCh := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
 	select {
 	case resp := <-getCh:
 		assert.Equal(t, "lifecycle-val", resp.Value)
@@ -48,9 +51,9 @@ func testMatrixSetGetDeleteList(t *testing.T, _ *suite.TestEnv) {
 	cancelGet()
 
 	// List
-	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsListMsg{})
-	listCh := make(chan sdk.SecretsListResp, 1)
-	cancelList, _ := sdk.SubscribeTo[sdk.SecretsListResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.SecretsListResp, _ sdk.Message) { listCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
+	listCh := make(chan secretmsg.SecretsListResp, 1)
+	cancelList, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
 	select {
 	case resp := <-listCh:
 		found := false
@@ -66,9 +69,9 @@ func testMatrixSetGetDeleteList(t *testing.T, _ *suite.TestEnv) {
 	cancelList()
 
 	// Delete
-	pub4, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsDeleteMsg{Name: "lifecycle-key-sec-adv"})
-	delCh := make(chan sdk.SecretsDeleteResp, 1)
-	cancelDel, _ := sdk.SubscribeTo[sdk.SecretsDeleteResp](env.Kit, ctx, pub4.ReplyTo, func(resp sdk.SecretsDeleteResp, _ sdk.Message) { delCh <- resp })
+	pub4, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsDeleteMsg{Name: "lifecycle-key-sec-adv"})
+	delCh := make(chan secretmsg.SecretsDeleteResp, 1)
+	cancelDel, _ := sdk.SubscribeTo[secretmsg.SecretsDeleteResp](env.Kit, ctx, pub4.ReplyTo, func(resp secretmsg.SecretsDeleteResp, _ sdk.Message) { delCh <- resp })
 	select {
 	case resp := <-delCh:
 		assert.True(t, resp.Deleted)
@@ -78,9 +81,9 @@ func testMatrixSetGetDeleteList(t *testing.T, _ *suite.TestEnv) {
 	cancelDel()
 
 	// Get after delete — should be empty
-	pub5, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "lifecycle-key-sec-adv"})
-	getCh2 := make(chan sdk.SecretsGetResp, 1)
-	cancelGet2, _ := sdk.SubscribeTo[sdk.SecretsGetResp](env.Kit, ctx, pub5.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh2 <- resp })
+	pub5, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "lifecycle-key-sec-adv"})
+	getCh2 := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet2, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub5.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh2 <- resp })
 	defer cancelGet2()
 	select {
 	case resp := <-getCh2:
@@ -97,16 +100,16 @@ func testMatrixRotate(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Set v1
-	pub1, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "rot-key-sec-adv", Value: "v1"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	pub1, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "rot-key-sec-adv", Value: "v1"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 
 	// Rotate to v2
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsRotateMsg{Name: "rot-key-sec-adv", NewValue: "v2"})
-	rotateCh := make(chan sdk.SecretsRotateResp, 1)
-	cancelRotate, _ := sdk.SubscribeTo[sdk.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.SecretsRotateResp, _ sdk.Message) { rotateCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "rot-key-sec-adv", NewValue: "v2"})
+	rotateCh := make(chan secretmsg.SecretsRotateResp, 1)
+	cancelRotate, _ := sdk.SubscribeTo[secretmsg.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsRotateResp, _ sdk.Message) { rotateCh <- resp })
 	select {
 	case resp := <-rotateCh:
 		assert.True(t, resp.Rotated)
@@ -116,9 +119,9 @@ func testMatrixRotate(t *testing.T, _ *suite.TestEnv) {
 	cancelRotate()
 
 	// Get — should be v2
-	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "rot-key-sec-adv"})
-	getCh := make(chan sdk.SecretsGetResp, 1)
-	cancelGet, _ := sdk.SubscribeTo[sdk.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "rot-key-sec-adv"})
+	getCh := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
 	defer cancelGet()
 	select {
 	case resp := <-getCh:
@@ -131,11 +134,12 @@ func testMatrixRotate(t *testing.T, _ *suite.TestEnv) {
 // testMatrixManySecrets — set 20 secrets, list them all.
 func testMatrixManySecrets(t *testing.T, _ *suite.TestEnv) {
 	tmpDir := t.TempDir()
-	store, _ := brainkit.NewSQLiteStore(filepath.Join(tmpDir, "bulk.db"))
+	store, _ := stores.NewSQLite(filepath.Join(tmpDir, "bulk.db"))
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "bulk-test-key-32-characters!!",
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -143,18 +147,18 @@ func testMatrixManySecrets(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	for i := 0; i < 20; i++ {
-		pub, _ := sdk.Publish(k, ctx, sdk.SecretsSetMsg{
+		pub, _ := sdk.Publish(k, ctx, secretmsg.SecretsSetMsg{
 			Name: fmt.Sprintf("bulk-key-sec-adv-%d", i), Value: fmt.Sprintf("val-%d", i),
 		})
-		ch := make(chan sdk.SecretsSetResp, 1)
-		unsub, _ := sdk.SubscribeTo[sdk.SecretsSetResp](k, ctx, pub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { ch <- resp })
+		ch := make(chan secretmsg.SecretsSetResp, 1)
+		unsub, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](k, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
 		<-ch
 		unsub()
 	}
 
-	pub, _ := sdk.Publish(k, ctx, sdk.SecretsListMsg{})
-	listCh := make(chan sdk.SecretsListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.SecretsListResp](k, ctx, pub.ReplyTo, func(resp sdk.SecretsListResp, _ sdk.Message) { listCh <- resp })
+	pub, _ := sdk.Publish(k, ctx, secretmsg.SecretsListMsg{})
+	listCh := make(chan secretmsg.SecretsListResp, 1)
+	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](k, ctx, pub.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
 	defer unsub()
 
 	select {
@@ -178,35 +182,37 @@ func testMatrixEncryptedPersistence(t *testing.T, _ *suite.TestEnv) {
 	masterKey := "test-encryption-key-32chars!!"
 
 	// Phase 1: Set encrypted secret
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: masterKey,
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pub1, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "enc-key-sec-adv", Value: "enc-secret-val"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](k1, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	pub1, _ := sdk.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "enc-key-sec-adv", Value: "enc-secret-val"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](k1, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 	k1.Close()
 
 	// Phase 2: Reopen with same key, retrieve
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: masterKey,
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pub2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "enc-key-sec-adv"})
-	getCh := make(chan sdk.SecretsGetResp, 1)
-	cancelGet, _ := sdk.SubscribeTo[sdk.SecretsGetResp](k2, ctx, pub2.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh <- resp })
+	pub2, _ := sdk.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "enc-key-sec-adv"})
+	getCh := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](k2, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
 	defer cancelGet()
 	select {
 	case resp := <-getCh:
@@ -222,33 +228,35 @@ func testMatrixWrongKeyCannotDecrypt(t *testing.T, _ *suite.TestEnv) {
 	storePath := filepath.Join(tmpDir, "secrets.db")
 
 	// Set with key A
-	store1, _ := brainkit.NewSQLiteStore(storePath)
+	store1, _ := stores.NewSQLite(storePath)
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store1, SecretKey: "correct-key-32-characters-long!",
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pub1, _ := sdk.Publish(k1, ctx, sdk.SecretsSetMsg{Name: "protected-sec-adv", Value: "sensitive"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](k1, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	pub1, _ := sdk.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "protected-sec-adv", Value: "sensitive"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](k1, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 	k1.Close()
 
 	// Reopen with WRONG key
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store2, SecretKey: "wrong-key-32-characters-long-!",
+		Modules: []brainkit.Module{secretsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pub2, _ := sdk.Publish(k2, ctx, sdk.SecretsGetMsg{Name: "protected-sec-adv"})
+	pub2, _ := sdk.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "protected-sec-adv"})
 	getCh := make(chan []byte, 1)
 	unsub, _ := k2.SubscribeRaw(ctx, pub2.ReplyTo, func(m sdk.Message) { getCh <- m.Payload })
 	defer unsub()
@@ -272,36 +280,36 @@ func testMatrixAuditEvents(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	storedCh := make(chan sdk.SecretsStoredEvent, 1)
-	cancelStored, _ := sdk.SubscribeTo[sdk.SecretsStoredEvent](env.Kit, ctx, "secrets.stored", func(evt sdk.SecretsStoredEvent, _ sdk.Message) { storedCh <- evt })
+	storedCh := make(chan secretmsg.SecretsStoredEvent, 1)
+	cancelStored, _ := sdk.SubscribeTo[secretmsg.SecretsStoredEvent](env.Kit, ctx, "secrets.stored", func(evt secretmsg.SecretsStoredEvent, _ sdk.Message) { storedCh <- evt })
 	defer cancelStored()
 
-	accessedCh := make(chan sdk.SecretsAccessedEvent, 1)
-	cancelAccessed, _ := sdk.SubscribeTo[sdk.SecretsAccessedEvent](env.Kit, ctx, "secrets.accessed", func(evt sdk.SecretsAccessedEvent, _ sdk.Message) { accessedCh <- evt })
+	accessedCh := make(chan secretmsg.SecretsAccessedEvent, 1)
+	cancelAccessed, _ := sdk.SubscribeTo[secretmsg.SecretsAccessedEvent](env.Kit, ctx, "secrets.accessed", func(evt secretmsg.SecretsAccessedEvent, _ sdk.Message) { accessedCh <- evt })
 	defer cancelAccessed()
 
-	deletedCh := make(chan sdk.SecretsDeletedEvent, 1)
-	cancelDeleted, _ := sdk.SubscribeTo[sdk.SecretsDeletedEvent](env.Kit, ctx, "secrets.deleted", func(evt sdk.SecretsDeletedEvent, _ sdk.Message) { deletedCh <- evt })
+	deletedCh := make(chan secretmsg.SecretsDeletedEvent, 1)
+	cancelDeleted, _ := sdk.SubscribeTo[secretmsg.SecretsDeletedEvent](env.Kit, ctx, "secrets.deleted", func(evt secretmsg.SecretsDeletedEvent, _ sdk.Message) { deletedCh <- evt })
 	defer cancelDeleted()
 
 	// Set — triggers secrets.stored
-	pub1, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "audit-key-sec-adv", Value: "v"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	pub1, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "audit-key-sec-adv", Value: "v"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub1.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 
 	// Get — triggers secrets.accessed
-	pub2, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsGetMsg{Name: "audit-key-sec-adv"})
-	getCh := make(chan sdk.SecretsGetResp, 1)
-	cancelGet, _ := sdk.SubscribeTo[sdk.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp sdk.SecretsGetResp, _ sdk.Message) { getCh <- resp })
+	pub2, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "audit-key-sec-adv"})
+	getCh := make(chan secretmsg.SecretsGetResp, 1)
+	cancelGet, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
 	<-getCh
 	cancelGet()
 
 	// Delete — triggers secrets.deleted
-	pub3, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsDeleteMsg{Name: "audit-key-sec-adv"})
-	delCh := make(chan sdk.SecretsDeleteResp, 1)
-	cancelDel, _ := sdk.SubscribeTo[sdk.SecretsDeleteResp](env.Kit, ctx, pub3.ReplyTo, func(resp sdk.SecretsDeleteResp, _ sdk.Message) { delCh <- resp })
+	pub3, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsDeleteMsg{Name: "audit-key-sec-adv"})
+	delCh := make(chan secretmsg.SecretsDeleteResp, 1)
+	cancelDel, _ := sdk.SubscribeTo[secretmsg.SecretsDeleteResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsDeleteResp, _ sdk.Message) { delCh <- resp })
 	<-delCh
 	cancelDel()
 
@@ -335,9 +343,9 @@ func testMatrixFromTS(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set via bus first
-	pub, _ := sdk.Publish(env.Kit, ctx, sdk.SecretsSetMsg{Name: "ts-secret-sec-adv", Value: "ts-value"})
-	setCh := make(chan sdk.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[sdk.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp sdk.SecretsSetResp, _ sdk.Message) { setCh <- resp })
+	pub, _ := sdk.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "ts-secret-sec-adv", Value: "ts-value"})
+	setCh := make(chan secretmsg.SecretsSetResp, 1)
+	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
 	<-setCh
 	cancelSet()
 

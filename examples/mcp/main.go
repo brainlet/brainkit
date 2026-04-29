@@ -3,8 +3,8 @@
 // `@modelcontextprotocol/server-filesystem` MCP server pointed
 // at a temp directory seeded with a known file, then:
 //
-//   1. Lists tools the server advertises.
-//   2. Invokes read_file and prints the content.
+//  1. Lists tools the server advertises.
+//  2. Invokes read_file and prints the content.
 //
 // Prerequisites: node + npx on PATH.
 //
@@ -25,6 +25,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	mcpmod "github.com/brainlet/brainkit/modules/mcp"
+	"github.com/brainlet/brainkit/modules/mcp/mcpmsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -86,8 +87,8 @@ func run() error {
 	defer cancel()
 
 	fmt.Println("MCP server 'fs' tool catalog:")
-	list, err := brainkit.CallMcpListTools(kit, ctx, sdk.McpListToolsMsg{Server: "fs"},
-		brainkit.WithCallTimeout(45*time.Second))
+	list, err := mcpmsg.CallMcpListTools(kit, ctx, mcpmsg.McpListToolsMsg{Server: "fs"},
+		sdk.WithCallTimeout(45*time.Second))
 	if err != nil {
 		return fmt.Errorf("mcp.listTools: %w", err)
 	}
@@ -100,11 +101,11 @@ func run() error {
 
 	fmt.Println()
 	fmt.Printf("mcp.callTool fs/read_text_file path=%s:\n", seededFile)
-	res, err := brainkit.CallMcpCallTool(kit, ctx, sdk.McpCallToolMsg{
+	res, err := mcpmsg.CallMcpCallTool(kit, ctx, mcpmsg.McpCallToolMsg{
 		Server: "fs",
 		Tool:   "read_text_file",
 		Args:   map[string]any{"path": filepath.Join(tmp, seededFile)},
-	}, brainkit.WithCallTimeout(30*time.Second))
+	}, sdk.WithCallTimeout(30*time.Second))
 	if err != nil {
 		return fmt.Errorf("mcp.callTool: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -16,8 +17,6 @@ import (
 
 // testE2EMultiServiceChain — A deploys, B deploys, A calls B, B calls Go tool.
 func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	// Deploy Service B — listens on bus, calls Go "echo" tool
 	err := env.Deploy("svc-b-adv.ts", `
 		bus.on("process", async function(msg) {
@@ -36,24 +35,14 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	// Call A
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	// Call A through the shared inbox caller. Fast handlers can reply before a
+	// post-publish subscription exists on external transports such as NATS.
+	p := testutil.PublishAndWait(t, env.Kit, sdk.CustomMsg{
 		Topic:   "ts.svc-a-adv.start",
 		Payload: json.RawMessage(`{"input":"hello"}`),
-	})
-	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "fromA")
-		assert.Contains(t, string(p), "forwarded")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	}, 5*time.Second)
+	assert.Contains(t, string(p), "fromA")
+	assert.Contains(t, string(p), "forwarded")
 }
 
 // testE2EStreamingResponse — deploy handler that uses msg.stream, verify SSE events.
@@ -71,39 +60,15 @@ func testE2EStreamingResponse(t *testing.T, env *suite.TestEnv) {
 	`)
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
-		Topic:   "ts.streamer-adv.stream",
-		Payload: json.RawMessage(`{}`),
+	var chunks []json.RawMessage
+	_, err = env.Kit.Caller().Call(ctx, "ts.streamer-adv.stream", json.RawMessage(`{}`), sdk.CallerConfig{
+		StreamHandler: func(m sdk.Message) error {
+			chunks = append(chunks, json.RawMessage(m.Payload))
+			return nil
+		},
 	})
 	require.NoError(t, err)
-
-	var chunks []json.RawMessage
-	done := make(chan bool, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
-		chunks = append(chunks, json.RawMessage(m.Payload))
-		var parsed struct {
-			Type string `json:"type"`
-		}
-		json.Unmarshal(m.Payload, &parsed)
-		if parsed.Type == "end" {
-			done <- true
-		}
-		// Also check done metadata
-		if m.Metadata["done"] == "true" {
-			done <- true
-		}
-	})
-	defer unsub()
-
-	select {
-	case <-done:
-		// On GoChannel, rapid stream messages may arrive merged — exact count varies.
-		// What matters: we got the end signal and at least some chunks.
-		assert.Greater(t, len(chunks), 0, "should have received stream chunks")
-	case <-time.After(5 * time.Second):
-		t.Logf("received %d chunks before timeout", len(chunks))
-		assert.Greater(t, len(chunks), 0, "should have received some chunks")
-	}
+	assert.Greater(t, len(chunks), 0, "should have received stream chunks")
 }
 
 // testE2EMultiDomain — workflow crossing domain boundaries:
@@ -123,16 +88,16 @@ func testE2EMultiDomain(t *testing.T, _ *suite.TestEnv) {
 	readData := testutil.EvalTS(t, freshEnv.Kit, "__test_multi_read.ts", `return fs.readFileSync("input.json", "utf8");`)
 
 	// 3. Process with the "echo" tool
-	pr, err := sdk.Publish(freshEnv.Kit, ctx, sdk.ToolCallMsg{
+	pr, err := sdk.Publish(freshEnv.Kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": readData},
 	})
 	require.NoError(t, err)
-	callCh := make(chan sdk.ToolCallResp, 1)
-	cancelCall, err := sdk.SubscribeTo[sdk.ToolCallResp](freshEnv.Kit, ctx, pr.ReplyTo, func(r sdk.ToolCallResp, _ sdk.Message) { callCh <- r })
+	callCh := make(chan toolmsg.ToolCallResp, 1)
+	cancelCall, err := sdk.SubscribeTo[toolmsg.ToolCallResp](freshEnv.Kit, ctx, pr.ReplyTo, func(r toolmsg.ToolCallResp, _ sdk.Message) { callCh <- r })
 	require.NoError(t, err)
 	defer cancelCall()
-	var callResp sdk.ToolCallResp
+	var callResp toolmsg.ToolCallResp
 	select {
 	case callResp = <-callCh:
 	case <-ctx.Done():

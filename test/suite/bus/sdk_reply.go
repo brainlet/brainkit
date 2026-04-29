@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,33 +20,22 @@ func testSDKReply(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("echo-svc.ts", `
+	testutil.Deploy(t, env.Kit, "echo-svc.ts", `
 			bus.on("ping", (msg) => {
 				msg.reply({ pong: true, from: "ts" });
 			});
-		`))
-	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+		`)
 
-	relayCh := make(chan json.RawMessage, 1)
-	pr, err := sdk.SendToService(env.Kit, ctx, "echo-svc.ts", "ping", map[string]string{"hello": "world"})
-	require.NoError(t, err)
-
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo, func(payload json.RawMessage, msg sdk.Message) {
-		relayCh <- payload
+	reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic("echo-svc.ts", "ping"),
+		Payload: json.RawMessage(`{"hello":"world"}`),
 	})
 	require.NoError(t, err)
-	defer unsub()
 
-	select {
-	case reply := <-relayCh:
-		var data map[string]any
-		json.Unmarshal(reply, &data)
-		assert.Equal(t, true, data["pong"])
-		assert.Equal(t, "ts", data["from"])
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for reply")
-	}
+	var data map[string]any
+	json.Unmarshal(reply, &data)
+	assert.Equal(t, true, data["pong"])
+	assert.Equal(t, "ts", data["from"])
 }
 
 func testSDKReplyGoToGo(t *testing.T, env *suite.TestEnv) {
@@ -56,28 +48,15 @@ func testSDKReplyGoToGo(t *testing.T, env *suite.TestEnv) {
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+	reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
 		Topic:   "test.approval.request",
 		Payload: json.RawMessage(`{"action":"delete"}`),
 	})
 	require.NoError(t, err)
 
-	replyCh := make(chan json.RawMessage, 1)
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
-		func(payload json.RawMessage, msg sdk.Message) {
-			replyCh <- payload
-		})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case reply := <-replyCh:
-		var data map[string]bool
-		json.Unmarshal(reply, &data)
-		assert.True(t, data["approved"])
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for Go-to-Go reply")
-	}
+	var data map[string]bool
+	json.Unmarshal(reply, &data)
+	assert.True(t, data["approved"])
 }
 
 func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
@@ -93,15 +72,10 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 		})
 	require.NoError(t, err)
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
-		Topic:   "test.stream.request",
-		Payload: json.RawMessage(`{}`),
-	})
-	require.NoError(t, err)
-
 	var mu sync.Mutex
 	var received []json.RawMessage
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
+	replyTo := "test.stream.request.reply." + uuid.NewString()
+	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, replyTo,
 		func(payload json.RawMessage, msg sdk.Message) {
 			mu.Lock()
 			received = append(received, payload)
@@ -109,6 +83,12 @@ func testSDKSendChunk(t *testing.T, env *suite.TestEnv) {
 		})
 	require.NoError(t, err)
 	defer unsub()
+
+	_, err = sdk.Publish(env.Kit, ctx, sdk.CustomMsg{
+		Topic:   "test.stream.request",
+		Payload: json.RawMessage(`{}`),
+	}, sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
 
 	time.Sleep(500 * time.Millisecond)
 	mu.Lock()
@@ -121,33 +101,21 @@ func testSDKSendToService(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := sdk.Publish(env.Kit, ctx, pkgDeployMsg("calc.ts", `
+	testutil.Deploy(t, env.Kit, "calc.ts", `
 			bus.on("add", (msg) => {
 				const a = msg.payload.a || 0;
 				const b = msg.payload.b || 0;
 				msg.reply({ result: a + b });
 			});
-		`))
-	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+		`)
 
-	pr, err := sdk.SendToService(env.Kit, ctx, "calc.ts", "add", map[string]int{"a": 17, "b": 25})
+	reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic("calc.ts", "add"),
+		Payload: json.RawMessage(`{"a":17,"b":25}`),
+	})
 	require.NoError(t, err)
 
-	replyCh := make(chan json.RawMessage, 1)
-	unsub, err := sdk.SubscribeTo[json.RawMessage](env.Kit, ctx, pr.ReplyTo,
-		func(payload json.RawMessage, msg sdk.Message) {
-			replyCh <- payload
-		})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case reply := <-replyCh:
-		var data map[string]any
-		json.Unmarshal(reply, &data)
-		assert.Equal(t, float64(42), data["result"])
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for calc reply")
-	}
+	var data map[string]any
+	json.Unmarshal(reply, &data)
+	assert.Equal(t, float64(42), data["result"])
 }

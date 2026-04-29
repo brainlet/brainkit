@@ -1,7 +1,6 @@
 package brainkit
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"io/fs"
@@ -9,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/reference/referencemsg"
 )
 
 // referenceFS bundles the brainkit reference corpus that an LLM
@@ -214,6 +213,31 @@ func ReferenceNames() []string {
 	return out
 }
 
+func referenceListEntries() []referencemsg.KitReferenceListEntry {
+	infos := ReferenceList()
+	entries := make([]referencemsg.KitReferenceListEntry, len(infos))
+	for i, info := range infos {
+		entries[i] = referencemsg.KitReferenceListEntry{
+			Name:        info.Name,
+			Kind:        string(info.Kind),
+			Description: info.Description,
+			Size:        info.Size,
+			Parts:       info.Parts,
+		}
+	}
+	return entries
+}
+
+type referenceCatalogCapability struct{}
+
+func (referenceCatalogCapability) GetReference(name string) (string, error) {
+	return Reference(name)
+}
+
+func (referenceCatalogCapability) ListReferences() []referencemsg.KitReferenceListEntry {
+	return referenceListEntries()
+}
+
 func composePack(name string, parts []string) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Reference pack: %s\n\n", name)
@@ -268,34 +292,6 @@ func resolveRaw(name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("brainkit: Reference %q: not found (try one of %v)", name, ReferenceNames())
-}
-
-// registerReferenceCommands wires the kit.reference and
-// kit.reference.list bus handlers on a freshly-constructed Kit.
-// Called from brainkit.New before module init so Module.Init
-// implementations can depend on the commands being present.
-func registerReferenceCommands(k *Kit) {
-	k.RegisterCommand(Command(func(_ context.Context, req sdk.KitReferenceMsg) (*sdk.KitReferenceResp, error) {
-		content, err := Reference(req.Name)
-		if err != nil {
-			return nil, err
-		}
-		return &sdk.KitReferenceResp{Name: req.Name, Content: content}, nil
-	}))
-	k.RegisterCommand(Command(func(_ context.Context, _ sdk.KitReferenceListMsg) (*sdk.KitReferenceListResp, error) {
-		infos := ReferenceList()
-		entries := make([]sdk.KitReferenceListEntry, len(infos))
-		for i, info := range infos {
-			entries[i] = sdk.KitReferenceListEntry{
-				Name:        info.Name,
-				Kind:        string(info.Kind),
-				Description: info.Description,
-				Size:        info.Size,
-				Parts:       info.Parts,
-			}
-		}
-		return &sdk.KitReferenceListResp{References: entries}, nil
-	}))
 }
 
 func rawDescription(name string) string {

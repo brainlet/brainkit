@@ -1,7 +1,6 @@
 package bus
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,10 +10,15 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/sdkerrors"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,31 +27,16 @@ import (
 // busErrorCodeAdv publishes a message and extracts the error code+details from the response.
 func busErrorCodeAdv(t *testing.T, k *brainkit.Kit, msg sdk.BrainkitMessage) (string, map[string]any) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pr, err := sdk.Publish(k, ctx, msg)
-	require.NoError(t, err)
-
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
-		ch <- json.RawMessage(m.Payload)
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case payload := <-ch:
-		return suite.ResponseCode(payload), suite.ResponseErrorDetails(payload)
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for bus response")
+	payload, ok := publishAndWaitPayload(t, k, msg, 5*time.Second)
+	if !ok {
 		return "", nil
 	}
+	return suite.ResponseCode(payload), suite.ResponseErrorDetails(payload)
 }
 
 // testErrorContractBusNotFound — NOT_FOUND for nonexistent tool.
 func testErrorContractBusNotFound(t *testing.T, env *suite.TestEnv) {
-	code, details := busErrorCodeAdv(t, env.Kit, sdk.ToolCallMsg{Name: "nonexistent-tool-xyz-adv"})
+	code, details := busErrorCodeAdv(t, env.Kit, toolmsg.ToolCallMsg{Name: "nonexistent-tool-xyz-adv"})
 	assert.Equal(t, "NOT_FOUND", code)
 	if details != nil {
 		assert.Equal(t, "nonexistent-tool-xyz-adv", details["name"])
@@ -56,7 +45,7 @@ func testErrorContractBusNotFound(t *testing.T, env *suite.TestEnv) {
 
 // testErrorContractBusValidationError — VALIDATION_ERROR for empty secret name.
 func testErrorContractBusValidationError(t *testing.T, env *suite.TestEnv) {
-	code, _ := busErrorCodeAdv(t, env.Kit, sdk.SecretsSetMsg{Name: "", Value: "val"})
+	code, _ := busErrorCodeAdv(t, env.Kit, secretmsg.SecretsSetMsg{Name: "", Value: "val"})
 	assert.Equal(t, "VALIDATION_ERROR", code)
 }
 
@@ -82,7 +71,7 @@ func testErrorContractBusIdempotentDeploy(t *testing.T, _ *suite.TestEnv) {
 // testErrorContractBusDeployErrorBadSyntax — DEPLOY_ERROR for bad syntax.
 func testErrorContractBusDeployErrorBadSyntax(t *testing.T, env *suite.TestEnv) {
 	badManifest, _ := json.Marshal(map[string]string{"name": "bad-syntax-adv", "entry": "bad-syntax-adv.ts"})
-	code, details := busErrorCodeAdv(t, env.Kit, sdk.PackageDeployMsg{
+	code, details := busErrorCodeAdv(t, env.Kit, packagemsg.PackageDeployMsg{
 		Manifest: badManifest,
 		Files:    map[string]string{"bad-syntax-adv.ts": "const x: number = {{{invalid syntax;;;"},
 	})
@@ -144,6 +133,7 @@ func testErrorContractJSBridgeNotConfiguredSecrets(t *testing.T, _ *suite.TestEn
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test",
+		JSRuntime: true,
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -162,13 +152,14 @@ func testErrorContractErrorHandlerPersistenceError(t *testing.T, _ *suite.TestEn
 
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store,
+		Store:   store,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -214,13 +205,14 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 
 	tmpDir := t.TempDir()
 	storePath := filepath.Join(tmpDir, "store.db")
-	store, err := brainkit.NewSQLiteStore(storePath)
+	store, err := stores.NewSQLite(storePath)
 	require.NoError(t, err)
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store,
+		Store:   store,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -242,11 +234,12 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 	k.Close()
 
 	// Create a new kernel — it will try to redeploy "corrupt-adv.ts" and fail
-	store2, _ := brainkit.NewSQLiteStore(storePath)
+	store2, _ := stores.NewSQLite(storePath)
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Store: store2,
+		Store:   store2,
+		Modules: []brainkit.Module{packagesmod.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)

@@ -1,50 +1,90 @@
 package audit
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
-	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/audit/stores"
 )
 
-// Module is the brainkit.Module form of the audit log. Init attaches a
+// Module is the brainkit.Module form of the audit log. Mount attaches a
 // store to the core Recorder (so every subsystem's Record calls start
 // persisting) and registers the audit.query / audit.stats / audit.prune
 // bus commands.
 type Module struct {
 	cfg    Config
-	kit    *brainkit.Kit
 	domain *domain
 }
 
 // NewModule builds the audit module from config.
 func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
-func (m *Module) Name() string { return "audit" }
+func (m *Module) ID() string { return "audit" }
 
-func (m *Module) Init(k *brainkit.Kit) error {
-	m.kit = k
-	m.domain = newDomain(m.cfg.Store)
-
-	// Attach the store to core's Recorder so writes start persisting.
-	k.SetAuditStore(m.cfg.Store)
-	if m.cfg.Verbose {
-		k.SetAuditVerbosity(VerbosityVerbose)
+func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
+	setStore, err := bkmodule.RequireCapability[func(Store)](host, bkmodule.CapabilitySetAuditStore)
+	if err != nil {
+		return fmt.Errorf("audit: %w", err)
 	}
-
-	k.RegisterCommand(brainkit.Command(m.domain.Query))
-	k.RegisterCommand(brainkit.Command(m.domain.Stats))
-	k.RegisterCommand(brainkit.Command(m.domain.Prune))
+	setVerbosity, err := bkmodule.RequireCapability[func(Verbosity)](host, bkmodule.CapabilitySetAuditVerbosity)
+	if err != nil {
+		return fmt.Errorf("audit: %w", err)
+	}
+	host.Scope().Defer(func(context.Context) error {
+		setStore(nil)
+		if m.cfg.Verbose {
+			setVerbosity(VerbosityNormal)
+		}
+		return m.closeStore()
+	})
+	m.attach(auditCoreFuncs{setStore: setStore, setVerbosity: setVerbosity})
+	if _, err := host.Commands().Handle(bkmodule.Command(m.domain.Query)); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(m.domain.Stats)); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(m.domain.Prune)); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (m *Module) Close() error {
-	if m.kit != nil {
-		m.kit.SetAuditStore(nil)
+type auditCore interface {
+	SetAuditStore(Store)
+	SetAuditVerbosity(Verbosity)
+}
+
+type auditCoreFuncs struct {
+	setStore     func(Store)
+	setVerbosity func(Verbosity)
+}
+
+func (f auditCoreFuncs) SetAuditStore(store Store) { f.setStore(store) }
+
+func (f auditCoreFuncs) SetAuditVerbosity(verbosity Verbosity) { f.setVerbosity(verbosity) }
+
+func (m *Module) attach(core auditCore) {
+	m.domain = newDomain(m.cfg.Store)
+
+	// Attach the store to core's Recorder so writes start persisting.
+	core.SetAuditStore(m.cfg.Store)
+	if m.cfg.Verbose {
+		core.SetAuditVerbosity(VerbosityVerbose)
 	}
+}
+
+func (m *Module) Close() error {
+	return m.closeStore()
+}
+
+func (m *Module) closeStore() error {
 	if m.cfg.OwnStore && m.cfg.Store != nil {
-		return m.cfg.Store.Close()
+		err := m.cfg.Store.Close()
+		m.cfg.Store = nil
+		return err
 	}
 	return nil
 }
@@ -64,7 +104,7 @@ type Factory struct{}
 
 // Build opens the audit store and returns the module. OwnStore is
 // always true — the factory opened it, the factory's module closes it.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -76,7 +116,7 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 	return NewModule(Config{Store: store, Verbose: y.Verbose, OwnStore: true}), nil
 }
 
-func openAuditStore(ctx brainkit.ModuleContext, y YAML) (Store, error) {
+func openAuditStore(ctx bkmodule.BuildContext, y YAML) (Store, error) {
 	switch y.Type {
 	case "", "sqlite":
 		path := y.Path
@@ -100,12 +140,12 @@ func openAuditStore(ctx brainkit.ModuleContext, y YAML) (Store, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "audit",
-		Status:  brainkit.ModuleStatusStable,
+		Status:  bkmodule.StatusStable,
 		Summary: "Persistent audit log with query/stats/prune bus commands.",
 	}
 }
 
-func init() { brainkit.RegisterModule("audit", Factory{}) }
+func init() { bkmodule.Register("audit", Factory{}) }

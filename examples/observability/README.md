@@ -34,22 +34,22 @@ trace.list (last 20):
 - `modules/tracing.New(Config{Store})` installs the trace store
   and registers `trace.list` / `trace.get`. `Config.TraceSampleRate`
   on the Kit controls what gets sampled.
-- Generated wrappers saturate the types: `brainkit.CallAuditQuery`,
-  `brainkit.CallAuditStats`, `brainkit.CallTraceList`,
-  `brainkit.CallTraceGet` — no type-parameter guessing.
+- Generated wrappers saturate the types: `auditmsg.CallAuditQuery`,
+  `auditmsg.CallAuditStats`, `tracingmsg.CallTraceList`,
+  `tracingmsg.CallTraceGet` — no type-parameter guessing.
 
 ## Filter cookbook
 
 ```go
 // Only audit events from a specific deployment:
-brainkit.CallAuditQuery(kit, ctx, sdk.AuditQueryMsg{
+auditmsg.CallAuditQuery(kit, ctx, auditmsg.AuditQueryMsg{
     Category: "deploy",
     Source:   "my-pkg.ts",
     Limit:    50,
 })
 
 // Traces slower than 500ms, errored only:
-brainkit.CallTraceList(kit, ctx, sdk.TraceListMsg{
+tracingmsg.CallTraceList(kit, ctx, tracingmsg.TraceListMsg{
     Status:      "error",
     MinDuration: 500, // ms
     Limit:       20,
@@ -62,7 +62,7 @@ brainkit.CallTraceList(kit, ctx, sdk.TraceListMsg{
 with a schedule so old events roll off automatically:
 
 ```go
-brainkit.CallScheduleCreate(kit, ctx, sdk.ScheduleCreateMsg{
+schedulemsg.CallScheduleCreate(kit, ctx, schedulemsg.ScheduleCreateMsg{
     Expression: "0 4 * * *", // 4am daily
     Topic:      "audit.prune",
     Payload:    json.RawMessage(`{"olderThanHours":720}`), // 30 days

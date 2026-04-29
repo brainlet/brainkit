@@ -66,6 +66,7 @@ fields:
 | `LogHandler` | `func(LogEntry)` | Tagged log stream from `.ts` and the runtime. |
 | `ErrorHandler` | `func(error)` | Non-fatal error sink. |
 | `MaxConcurrency` | `int` | Concurrent bus handler cap. 0 = unlimited. |
+| `JSRuntime` | `bool` | Requests the embedded JS/TS runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or use `modules/standard` so the request can be satisfied. |
 | `MaxStackSize` | `int` | QuickJS stack bytes. Default 1 MB. |
 | `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
 | `Modules` | `[]Module` | Opt-in subsystems. |
@@ -153,12 +154,12 @@ func Call[Req sdk.BrainkitMessage, Resp any](
 Publishes `req` on `req.BusTopic()`, waits for the reply on a
 private shared-inbox topic, returns the decoded response. Requires
 either `ctx.Deadline()` or `WithCallTimeout`; otherwise returns
-`*caller.NoDeadlineError`.
+`*sdk.NoDeadlineError`.
 
 ```go
-resp, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](
+resp, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](
     kit, ctx,
-    sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"msg": "hi"}},
+    toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"msg": "hi"}},
     brainkit.WithCallTimeout(2*time.Second),
 )
 ```
@@ -178,19 +179,24 @@ payload, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](
 
 ### Generated wrappers
 
-`call_gen.go` ships 62 generated wrappers — one per typed
+Generated `typed_gen.go` files ship call wrappers — one per typed
 Msg/Resp pair — that saturate the generics so your call sites stay
-readable:
+readable without adding module command names to the root `brainkit`
+API. SDK-owned commands live in `sdk/typed_gen.go`; module-owned
+commands live with their module message package:
 
 ```go
-resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{...})
-resp, err := brainkit.CallAuditQuery(kit, ctx, sdk.AuditQueryMsg{...})
-resp, err := brainkit.CallScheduleCreate(kit, ctx, sdk.ScheduleCreateMsg{...})
-resp, err := brainkit.CallMcpListTools(kit, ctx, sdk.McpListToolsMsg{})
+resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{...})
+resp, err := secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{Name: "API_TOKEN"})
+resp, err := auditmsg.CallAuditQuery(kit, ctx, auditmsg.AuditQueryMsg{...})
+resp, err := schedulemsg.CallScheduleCreate(kit, ctx, schedulemsg.ScheduleCreateMsg{...})
+resp, err := mcpmsg.CallMcpListTools(kit, ctx, mcpmsg.McpListToolsMsg{})
+resp, err := health.CallKitHealth(kit, ctx, health.KitHealthMsg{})
 ```
 
-Your editor's autocomplete on `brainkit.Call` will show you the
-full list.
+Your editor's autocomplete on `Call` in the message-owning package
+will show the typed helper set. Use generic `brainkit.Call` when you
+need Kit-specific options such as topology-aware `brainkit.WithCallTo`.
 
 ### Streaming
 
@@ -239,16 +245,20 @@ envelope (custom topics, pre-built payload, subscription
 bookkeeping) use the `sdk` package directly:
 
 ```go
-import "github.com/brainlet/brainkit/sdk"
+import (
+    "github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+    "github.com/brainlet/brainkit/modules/tools/toolmsg"
+    "github.com/brainlet/brainkit/sdk"
+)
 
-pr, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{Name: "echo"})
+pr, err := sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{Name: "echo"})
 // pr.ReplyTo, pr.CorrelationID, pr.MessageID, pr.Topic
 
-unsub, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr.ReplyTo,
-    func(resp sdk.ToolCallResp, m sdk.Message) { /* ... */ })
+unsub, err := sdk.SubscribeTo[toolmsg.ToolCallResp](kit, ctx, pr.ReplyTo,
+    func(resp toolmsg.ToolCallResp, m sdk.Message) { /* ... */ })
 defer unsub()
 
-err = sdk.Emit(kit, ctx, sdk.PluginRegisteredEvent{Name: "cron"})
+err = sdk.Emit(kit, ctx, pluginmsg.PluginRegisteredEvent{Name: "cron"})
 pr, err = sdk.SendToService(kit, ctx, "calc.ts", "add", map[string]int{"a": 1, "b": 2})
 ```
 
@@ -279,7 +289,7 @@ err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
 method. Schema derives from struct tags via reflection. Invoke:
 
 ```go
-resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
     Name:  "math.add",
     Input: map[string]any{"a": 40, "b": 2},
 })
@@ -320,14 +330,14 @@ Deployments register handlers on the mailbox namespace
 
 ## Module composition
 
-Modules are opt-in subsystems that extend the Kit with additional
-bus commands. They implement a three-method interface:
+Modules are opt-in subsystems that extend the Kit with scoped resources
+such as bus commands, tools, subscriptions, and hooks. They implement the
+hot-mount interface:
 
 ```go
 type Module interface {
-    Name() string
-    Init(k *Kit) error
-    Close() error
+    ID() string
+    Mount(context.Context, module.Host) error
 }
 ```
 
@@ -425,17 +435,16 @@ Every typed call error is matchable with `errors.As`:
 ```go
 import (
     "errors"
-    "github.com/brainlet/brainkit/internal/bus/caller"
     "github.com/brainlet/brainkit/sdk"
 )
 
 _, err := brainkit.Call[...](kit, ctx, req)
 if err != nil {
     var (
-        timeout *caller.CallTimeoutError
-        cancel  *caller.CallCancelledError
-        decode  *caller.DecodeError
-        noDead  *caller.NoDeadlineError
+        timeout *sdk.CallTimeoutError
+        cancel  *sdk.CallCancelledError
+        decode  *sdk.CallDecodeError
+        noDead  *sdk.NoDeadlineError
         notFnd  *sdk.NotFoundError
         exists  *sdk.AlreadyExistsError
         valErr  *sdk.ValidationError

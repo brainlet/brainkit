@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,8 +23,8 @@ func TestEnv_Full_Smoke(t *testing.T) {
 func TestEnv_Full_ToolsRegistered(t *testing.T) {
 	env := Full(t)
 	// Verify echo and add tools via bus command
-	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
-	var resp sdk.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, toolmsg.ToolListMsg{}, 5*time.Second)
+	var resp toolmsg.ToolListResp
 	require.NoError(t, json.Unmarshal(payload, &resp))
 	names := make(map[string]bool)
 	for _, tool := range resp.Tools {
@@ -46,8 +47,8 @@ func TestEnv_Minimal_Smoke(t *testing.T) {
 
 func TestEnv_Minimal_NoTools(t *testing.T) {
 	env := Minimal(t)
-	payload := testutil.PublishAndWait(t, env.Kit, sdk.ToolListMsg{}, 5*time.Second)
-	var resp sdk.ToolListResp
+	payload := testutil.PublishAndWait(t, env.Kit, toolmsg.ToolListMsg{}, 5*time.Second)
+	var resp toolmsg.ToolListResp
 	require.NoError(t, json.Unmarshal(payload, &resp))
 	assert.Empty(t, resp.Tools, "minimal env should have no tools")
 }

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/test/suite"
@@ -22,7 +24,7 @@ func testCallReturnsTypedNotFound(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := brainkit.Call[sdk.ToolCallMsg, json.RawMessage](env.Kit, ctx, sdk.ToolCallMsg{
+	_, err := brainkit.Call[toolmsg.ToolCallMsg, json.RawMessage](env.Kit, ctx, toolmsg.ToolCallMsg{
 		Name: "ghost-tool-env-call",
 	})
 	require.Error(t, err)
@@ -39,7 +41,7 @@ func testCallReturnsTypedValidation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := brainkit.Call[sdk.SecretsSetMsg, json.RawMessage](env.Kit, ctx, sdk.SecretsSetMsg{
+	_, err := brainkit.Call[secretmsg.SecretsSetMsg, json.RawMessage](env.Kit, ctx, secretmsg.SecretsSetMsg{
 		Name:  "",
 		Value: "val",
 	})

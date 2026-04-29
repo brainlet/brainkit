@@ -16,6 +16,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	"github.com/brainlet/brainkit/modules/standard"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -205,7 +206,7 @@ func (r *Runner) runFixture(t *testing.T, fix fixtureEntry, hasAI, hasPodman boo
 
 	// Skip checks
 	if needs.AI && !hasAI {
-		t.Skipf("needs OPENAI_API_KEY")
+		t.Skipf("needs OPENAI_API_KEY and BRAINKIT_TEST_LIVE_AI=1")
 	}
 	if needs.Container != "" && !hasPodman {
 		t.Skipf("needs Podman for %s container", needs.Container)
@@ -357,12 +358,16 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 	testutil.LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	var providers []brainkit.ProviderConfig
+	providers := []brainkit.ProviderConfig{}
 	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+	if key, ok := testutil.OpenAIKey(); ok {
 		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
+
+	mods := append(standard.CommandSet(), mcppkg.New(map[string]mcppkg.ServerConfig{
+		"test": {URL: mcpURL},
+	}))
 
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
@@ -374,11 +379,7 @@ func newKitWithMCP(t *testing.T) *brainkit.Kit {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
-		Modules: []brainkit.Module{
-			mcppkg.New(map[string]mcppkg.ServerConfig{
-				"test": {URL: mcpURL},
-			}),
-		},
+		Modules: mods,
 	})
 	if err != nil {
 		t.Fatalf("New Kit with MCP: %v", err)

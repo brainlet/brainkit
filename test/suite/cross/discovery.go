@@ -11,6 +11,7 @@ import (
 	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,7 +107,7 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 	kit1, err := brainkit.New(brainkit.Config{
 		Namespace: "disc-agents-cross",
 		CallerID:  "host",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
@@ -115,7 +116,7 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 	kit2, err := brainkit.New(brainkit.Config{
 		Namespace: "disc-workers-cross",
 		CallerID:  "host",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
@@ -129,12 +130,12 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan sdk.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit1, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+	listCh := make(chan topology.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](kit1, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer unsub()
-	sdk.Publish(kit1, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	sdk.Publish(kit1, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-listCh:
@@ -160,7 +161,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 	kit1, err := brainkit.New(brainkit.Config{
 		Namespace: "disc-stay-cross",
 		CallerID:  "host",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
@@ -169,7 +170,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 	kit2, err := brainkit.New(brainkit.Config{
 		Namespace: "disc-leave-cross",
 		CallerID:  "host",
-		Transport: brainkit.NATS(natsURL),
+		Transport: transports.NATS(natsURL),
 		Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 	})
 	require.NoError(t, err)
@@ -181,7 +182,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp1 := publishAndWaitJSON(t, kit1, ctx, sdk.PeersListMsg{})
+	resp1 := publishAndWaitJSON(t, kit1, ctx, topology.PeersListMsg{})
 	assert.Contains(t, string(resp1), "disc-leave-cross", "kit2 should be discovered before leave")
 
 	// Graceful close — sends leave message
@@ -189,7 +190,7 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 	time.Sleep(1 * time.Second)
 
 	// Verify kit2 is removed immediately (leave message, not TTL)
-	resp2 := publishAndWaitJSON(t, kit1, ctx, sdk.PeersListMsg{})
+	resp2 := publishAndWaitJSON(t, kit1, ctx, topology.PeersListMsg{})
 	assert.NotContains(t, string(resp2), "disc-leave-cross", "kit2 should be gone after graceful leave")
 }
 
@@ -203,7 +204,7 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 		kit, err := brainkit.New(brainkit.Config{
 			Namespace: ns,
 			CallerID:  "host",
-			Transport: brainkit.NATS(natsURL),
+			Transport: transports.NATS(natsURL),
 			Modules:   busDiscoveryModules(1*time.Second, 5*time.Second),
 		})
 		require.NoError(t, err)
@@ -223,12 +224,12 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan sdk.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](observer, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+	listCh := make(chan topology.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](observer, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer unsub()
-	sdk.Publish(observer, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	sdk.Publish(observer, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
 
 	select {
 	case resp := <-listCh:
@@ -251,7 +252,7 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-disc-cross",
 		CallerID:  "test-node",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		Modules: []brainkit.Module{
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
@@ -268,13 +269,13 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 
 	// peers.list via bus — subscribe BEFORE publish (GoChannel delivers synchronously)
 	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan sdk.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PeersListResp](kit, ctx, replyTo, func(resp sdk.PeersListResp, _ sdk.Message) {
+	listCh := make(chan topology.PeersListResp, 1)
+	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](kit, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
 		listCh <- resp
 	})
 	defer unsub()
 
-	_, err = sdk.Publish(kit, ctx, sdk.PeersListMsg{}, sdk.WithReplyTo(replyTo))
+	_, err = sdk.Publish(kit, ctx, topology.PeersListMsg{}, sdk.WithReplyTo(replyTo))
 	require.NoError(t, err)
 
 	select {

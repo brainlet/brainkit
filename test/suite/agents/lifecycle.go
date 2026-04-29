@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -15,18 +16,8 @@ func testListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.AgentListMsg{})
+	resp, err := sdk.Call[agentmsg.AgentListMsg, agentmsg.AgentListResp](env.Kit, ctx, agentmsg.AgentListMsg{})
 	require.NoError(t, err)
-	ch := make(chan sdk.AgentListResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.AgentListResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.AgentListResp, m sdk.Message) { ch <- r })
-	require.NoError(t, err)
-	defer unsub()
-	var resp sdk.AgentListResp
-	select {
-	case resp = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 	assert.Empty(t, resp.Agents)
 }
 
@@ -34,74 +25,25 @@ func testDiscoverNoMatch(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.AgentDiscoverMsg{Capability: "teleportation"})
+	resp, err := sdk.Call[agentmsg.AgentDiscoverMsg, agentmsg.AgentDiscoverResp](env.Kit, ctx, agentmsg.AgentDiscoverMsg{Capability: "teleportation"})
 	require.NoError(t, err)
-	ch := make(chan sdk.AgentDiscoverResp, 1)
-	unsub, err := sdk.SubscribeTo[sdk.AgentDiscoverResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.AgentDiscoverResp, m sdk.Message) { ch <- r })
-	require.NoError(t, err)
-	defer unsub()
-	var resp sdk.AgentDiscoverResp
-	select {
-	case resp = <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 	assert.Empty(t, resp.Agents)
 }
 
 func testGetStatusNotFound(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.AgentGetStatusMsg{Name: "ghost-agent"})
+	payload, err := env.PublishAndWait(t, agentmsg.AgentGetStatusMsg{Name: "ghost-agent"}, 15*time.Second)
 	require.NoError(t, err)
-	ch := make(chan string, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		ch <- suite.ResponseErrorMessage(msg.Payload)
-	})
-	defer unsub()
-	select {
-	case errMsg := <-ch:
-		assert.NotEmpty(t, errMsg)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.NotEmpty(t, suite.ResponseErrorMessage(payload))
 }
 
 func testSetStatusNotFound(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.AgentSetStatusMsg{Name: "ghost-agent", Status: "busy"})
+	payload, err := env.PublishAndWait(t, agentmsg.AgentSetStatusMsg{Name: "ghost-agent", Status: "busy"}, 15*time.Second)
 	require.NoError(t, err)
-	ch := make(chan string, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		ch <- suite.ResponseErrorMessage(msg.Payload)
-	})
-	defer unsub()
-	select {
-	case errMsg := <-ch:
-		assert.NotEmpty(t, errMsg)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.NotEmpty(t, suite.ResponseErrorMessage(payload))
 }
 
 func testSetStatusInvalid(t *testing.T, env *suite.TestEnv) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.AgentSetStatusMsg{Name: "any", Status: "flying"})
+	payload, err := env.PublishAndWait(t, agentmsg.AgentSetStatusMsg{Name: "any", Status: "flying"}, 15*time.Second)
 	require.NoError(t, err)
-	ch := make(chan string, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		ch <- suite.ResponseErrorMessage(msg.Payload)
-	})
-	defer unsub()
-	select {
-	case errMsg := <-ch:
-		assert.NotEmpty(t, errMsg)
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	assert.NotEmpty(t, suite.ResponseErrorMessage(payload))
 }

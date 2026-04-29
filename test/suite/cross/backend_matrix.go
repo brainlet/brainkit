@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // testCrossKitPublishReply — Kit A publishes to Kit B, gets reply.
@@ -32,22 +32,9 @@ func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({from: "kit-b", test: "suite"}); });
 	`)
 
-	// Kit A publishes to Kit B
-	pr, err := sdk.PublishTo[sdk.CustomMsg](kitA, ctx, "xk-b-suite",
+	p := publishToAndWaitRaw(t, kitA, ctx, "xk-b-suite",
 		sdk.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)})
-	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "kit-b")
-	case <-ctx.Done():
-		t.Fatal("timeout on cross-Kit publish/reply")
-	}
+	assert.Contains(t, string(p), "kit-b")
 }
 
 // testCrossKitErrorPropagation — error codes survive cross-Kit.
@@ -64,23 +51,8 @@ func testCrossKitErrorPropagation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Call nonexistent tool on Kit B from Kit A
-	pr, err := sdk.PublishTo[sdk.ToolCallMsg](kitA, ctx, "xe-b-suite",
-		sdk.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
-	require.NoError(t, err)
-
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := kitA.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
-		ch <- json.RawMessage(m.Payload)
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case payload := <-ch:
-		code := suite.ResponseCode(payload)
-		assert.Equal(t, "NOT_FOUND", code, "error code should survive cross-Kit")
-	case <-ctx.Done():
-		t.Fatal("timeout on cross-Kit error propagation")
-	}
+	payload := publishToAndWaitRaw(t, kitA, ctx, "xe-b-suite",
+		toolmsg.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
+	code := suite.ResponseCode(json.RawMessage(payload))
+	assert.Equal(t, "NOT_FOUND", code, "error code should survive cross-Kit")
 }

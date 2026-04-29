@@ -25,6 +25,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// commands.go — bus command tests (kit.eval, kit.health, kit.send)
 		t.Run("kit_eval", func(t *testing.T) { testKitEval(t, env) })
+		t.Run("kit_eval_no_module_commands_absent", func(t *testing.T) { testKitEvalNoModuleCommandsAbsent(t, env) })
 		t.Run("kit_health", func(t *testing.T) { testKitHealth(t, env) })
 		t.Run("kit_send_request_reply", func(t *testing.T) { testKitSendRequestReply(t, env) })
 		t.Run("kit_send_with_await", func(t *testing.T) { testKitSendWithAwait(t, env) })

@@ -24,7 +24,7 @@
 //
 //	kit, _ := brainkit.New(brainkit.Config{
 //	    Namespace: "orchestrator",
-//	    Transport: brainkit.NATS(url),
+//	    Transport: transports.NATS(url),
 //	    Modules: []brainkit.Module{
 //	        topology.NewModule(topology.Config{
 //	            Peers: []topology.Peer{

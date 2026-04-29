@@ -7,11 +7,11 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/types"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
+	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/mcp/mcpmsg"
+	_ "github.com/brainlet/brainkit/modules/tools"
 
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -23,39 +23,46 @@ type Module struct {
 }
 
 // New creates an MCP module that will connect to the given servers at
-// Kit.Init time.
+// module mount time.
 func New(servers map[string]ServerConfig) *Module {
 	return &Module{servers: servers}
 }
 
-// Name reports the module identifier.
-func (m *Module) Name() string { return "mcp" }
+// ID reports the hot-mount module identifier.
+func (m *Module) ID() string { return "mcp" }
+
+// Dependencies reports modules that must mount before mcp. MCP-discovered tools
+// are registered in the shared tool registry and need the tools.* bus surface
+// for normal tool invocation.
+func (m *Module) Dependencies() []string { return []string{"tools"} }
 
 // Status reports maturity (stable).
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusStable }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
-// Init connects to every configured MCP server, registers discovered tools
-// with the Kit's tool registry, and wires the mcp.listTools / mcp.callTool
-// bus commands. Individual server connect failures are reported through the
-// Kit's error handler but do not fail Init — other servers still initialize.
-func (m *Module) Init(k *brainkit.Kit) error {
+// Mount connects configured MCP servers and scopes the discovered tools plus
+// mcp.* commands to the module lifetime.
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	if len(m.servers) == 0 {
 		return nil
 	}
 
 	m.manager = NewManager()
+	host.Scope().Defer(func(context.Context) error {
+		if m.manager != nil {
+			return m.manager.Close()
+		}
+		return nil
+	})
 
 	for name, cfg := range m.servers {
-		if err := m.manager.Connect(context.Background(), name, cfg); err != nil {
-			k.ReportError(&sdkerrors.TransportError{
-				Operation: "MCP.Connect:" + name, Cause: err,
-			}, types.ErrorContext{Operation: "ConnectMCP", Component: "mcp", Source: name})
+		if err := m.manager.Connect(ctx, name, cfg); err != nil {
+			host.Logger().Warn("mcp connect failed", "server", name, "error", err)
 			continue
 		}
 		for _, tool := range m.manager.ListToolsForServer(name) {
 			toolCopy := tool
 			fullName := toolreg.ComposeName("mcp", toolCopy.ServerName, "1.0.0", toolCopy.Name)
-			_ = k.RegisterRawTool(toolreg.RegisteredTool{
+			if _, err := host.Tools().Register(ctx, bkmodule.ToolSpec{
 				Name:        fullName,
 				ShortName:   toolCopy.Name,
 				Owner:       "mcp",
@@ -63,21 +70,25 @@ func (m *Module) Init(k *brainkit.Kit) error {
 				Version:     "1.0.0",
 				Description: toolCopy.Description,
 				InputSchema: toolCopy.InputSchema,
-				Executor: &toolreg.GoFuncExecutor{
-					Fn: func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
-						return m.manager.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
-					},
-				},
-			})
+				Executor: bkmodule.ToolExecutorFunc(func(ctx context.Context, callerID string, input json.RawMessage) (json.RawMessage, error) {
+					return m.manager.CallTool(ctx, toolCopy.ServerName, toolCopy.Name, input)
+				}),
+			}); err != nil {
+				return err
+			}
 		}
 	}
 
-	k.RegisterCommand(brainkit.Command(func(ctx context.Context, req sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req mcpmsg.McpListToolsMsg) (*mcpmsg.McpListToolsResp, error) {
 		return m.listTools(ctx, req)
-	}))
-	k.RegisterCommand(brainkit.Command(func(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
+	})); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req mcpmsg.McpCallToolMsg) (*mcpmsg.McpCallToolResp, error) {
 		return m.callTool(ctx, req)
-	}))
+	})); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -90,19 +101,19 @@ func (m *Module) Close() error {
 	return nil
 }
 
-func (m *Module) listTools(_ context.Context, _ sdk.McpListToolsMsg) (*sdk.McpListToolsResp, error) {
+func (m *Module) listTools(_ context.Context, _ mcpmsg.McpListToolsMsg) (*mcpmsg.McpListToolsResp, error) {
 	if m.manager == nil {
 		return nil, &sdkerrors.NotConfiguredError{Feature: "mcp"}
 	}
 	tools := m.manager.ListTools()
-	var infos []sdk.McpToolInfo
+	var infos []mcpmsg.McpToolInfo
 	for _, t := range tools {
-		infos = append(infos, sdk.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
+		infos = append(infos, mcpmsg.McpToolInfo{Name: t.Name, Server: t.ServerName, Description: t.Description})
 	}
-	return &sdk.McpListToolsResp{Tools: infos}, nil
+	return &mcpmsg.McpListToolsResp{Tools: infos}, nil
 }
 
-func (m *Module) callTool(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.McpCallToolResp, error) {
+func (m *Module) callTool(ctx context.Context, req mcpmsg.McpCallToolMsg) (*mcpmsg.McpCallToolResp, error) {
 	if m.manager == nil {
 		return nil, &sdkerrors.NotConfiguredError{Feature: "mcp"}
 	}
@@ -111,7 +122,7 @@ func (m *Module) callTool(ctx context.Context, req sdk.McpCallToolMsg) (*sdk.Mcp
 	if err != nil {
 		return nil, err
 	}
-	return &sdk.McpCallToolResp{Result: result}, nil
+	return &mcpmsg.McpCallToolResp{Result: result}, nil
 }
 
 // ServerYAML is one entry in the YAML `servers:` map. Exactly one of
@@ -132,8 +143,8 @@ type YAML struct {
 type Factory struct{}
 
 // Build decodes YAML and returns an MCP module that will connect to
-// every listed server during Init.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+// every listed server during Mount.
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -151,12 +162,13 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
-		Name:    "mcp",
-		Status:  brainkit.ModuleStatusStable,
-		Summary: "Model Context Protocol client: discovers + proxies external tools.",
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
+		Name:     "mcp",
+		Status:   bkmodule.StatusStable,
+		Summary:  "Model Context Protocol client: discovers + proxies external tools.",
+		Requires: []string{"tools"},
 	}
 }
 
-func init() { brainkit.RegisterModule("mcp", Factory{}) }
+func init() { bkmodule.Register("mcp", Factory{}) }

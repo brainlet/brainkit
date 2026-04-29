@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	provreg "github.com/brainlet/brainkit/internal/providers"
+	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
 )
 
 // --- Kernel-level probing (uses JS runtime for vector/storage) ---
@@ -20,6 +20,11 @@ func (k *Kernel) ProbeAIProvider(name string) provreg.ProbeResult {
 // and calling listIndexes(). This tests real connectivity, not just config validity.
 func (k *Kernel) ProbeVectorStore(name string) provreg.ProbeResult {
 	start := time.Now()
+	if !k.HasJSRuntime() {
+		err := "js runtime not configured"
+		k.providers.UpdateProbeResult("vectorStore", name, false, time.Since(start), err)
+		return provreg.ProbeResult{Error: err, Latency: time.Since(start)}
+	}
 	result, err := k.EvalTS(context.Background(), "__probe_vectorstore.ts", fmt.Sprintf(`
 		try {
 			var vs = vectorStore(%q);
@@ -55,6 +60,11 @@ func (k *Kernel) ProbeVectorStore(name string) provreg.ProbeResult {
 // and calling a simple operation. Tests real connectivity.
 func (k *Kernel) ProbeStorage(name string) provreg.ProbeResult {
 	start := time.Now()
+	if !k.HasJSRuntime() {
+		err := "js runtime not configured"
+		k.providers.UpdateProbeResult("storage", name, false, time.Since(start), err)
+		return provreg.ProbeResult{Error: err, Latency: time.Since(start)}
+	}
 	result, err := k.EvalTS(context.Background(), "__probe_storage.ts", fmt.Sprintf(`
 		try {
 			var s = storage(%q);
@@ -93,6 +103,9 @@ func (k *Kernel) ProbeAll() {
 	for _, p := range k.providers.ListAIProviders() {
 		k.ProbeAIProvider(p.Name)
 	}
+	if !k.HasJSRuntime() {
+		return
+	}
 	for _, v := range k.providers.ListVectorStores() {
 		k.ProbeVectorStore(v.Name)
 	}
@@ -100,4 +113,3 @@ func (k *Kernel) ProbeAll() {
 		k.ProbeStorage(s.Name)
 	}
 }
-

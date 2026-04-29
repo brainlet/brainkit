@@ -8,6 +8,12 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/agents/agentmsg"
+	metricsmod "github.com/brainlet/brainkit/modules/metrics"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -23,25 +29,25 @@ type cmdTest struct {
 
 func busCommandTable() []cmdTest {
 	return []cmdTest{
-		{"tools.call", sdk.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, sdk.ToolCallMsg{Name: ""}, "NOT_FOUND", false},
-		{"tools.list", sdk.ToolListMsg{}, sdk.ToolListMsg{}, "", false},
-		{"tools.resolve", sdk.ToolResolveMsg{Name: "echo"}, sdk.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false},
-		{"agents.list", sdk.AgentListMsg{}, sdk.AgentListMsg{}, "", false},
-		{"agents.get-status", sdk.AgentGetStatusMsg{Name: "ghost"}, sdk.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false},
-		{"agents.set-status", sdk.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, sdk.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false},
-		{"agents.discover", sdk.AgentDiscoverMsg{}, sdk.AgentDiscoverMsg{}, "", false},
-		{"secrets.set", sdk.SecretsSetMsg{Name: "matrix-k", Value: "v"}, sdk.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false},
-		{"secrets.get", sdk.SecretsGetMsg{Name: "matrix-k"}, sdk.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false},
-		{"secrets.delete", sdk.SecretsDeleteMsg{Name: "ghost"}, sdk.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false},
-		{"secrets.list", sdk.SecretsListMsg{}, sdk.SecretsListMsg{}, "", false},
-		{"secrets.rotate", sdk.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, sdk.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false},
-		{"registry.has", sdk.RegistryHasMsg{Category: "provider", Name: "openai"}, sdk.RegistryHasMsg{}, "", false},
-		{"registry.list", sdk.RegistryListMsg{Category: "provider"}, sdk.RegistryListMsg{}, "", false},
-		{"registry.resolve", sdk.RegistryResolveMsg{Category: "provider", Name: "ghost"}, sdk.RegistryResolveMsg{}, "", false},
-		{"metrics.get", sdk.MetricsGetMsg{}, sdk.MetricsGetMsg{}, "", false},
-		{"package.list", sdk.PackageListDeployedMsg{}, sdk.PackageListDeployedMsg{}, "", false},
-		{"package.info", sdk.PackageDeployInfoMsg{Name: "ghost"}, sdk.PackageDeployInfoMsg{Name: ""}, "", false},
-		{"package.teardown", sdk.PackageTeardownMsg{Name: "ghost"}, sdk.PackageTeardownMsg{Name: ""}, "", false},
+		{"tools.call", toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "test"}}, toolmsg.ToolCallMsg{Name: ""}, "NOT_FOUND", false},
+		{"tools.list", toolmsg.ToolListMsg{}, toolmsg.ToolListMsg{}, "", false},
+		{"tools.resolve", toolmsg.ToolResolveMsg{Name: "echo"}, toolmsg.ToolResolveMsg{Name: "ghost-tool-xyz"}, "NOT_FOUND", false},
+		{"agents.list", agentmsg.AgentListMsg{}, agentmsg.AgentListMsg{}, "", false},
+		{"agents.get-status", agentmsg.AgentGetStatusMsg{Name: "ghost"}, agentmsg.AgentGetStatusMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"agents.set-status", agentmsg.AgentSetStatusMsg{Name: "ghost", Status: "idle"}, agentmsg.AgentSetStatusMsg{Name: "", Status: ""}, "VALIDATION_ERROR", false},
+		{"agents.discover", agentmsg.AgentDiscoverMsg{}, agentmsg.AgentDiscoverMsg{}, "", false},
+		{"secrets.set", secretmsg.SecretsSetMsg{Name: "matrix-k", Value: "v"}, secretmsg.SecretsSetMsg{Name: "", Value: "v"}, "VALIDATION_ERROR", false},
+		{"secrets.get", secretmsg.SecretsGetMsg{Name: "matrix-k"}, secretmsg.SecretsGetMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"secrets.delete", secretmsg.SecretsDeleteMsg{Name: "ghost"}, secretmsg.SecretsDeleteMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"secrets.list", secretmsg.SecretsListMsg{}, secretmsg.SecretsListMsg{}, "", false},
+		{"secrets.rotate", secretmsg.SecretsRotateMsg{Name: "matrix-k", NewValue: "v2"}, secretmsg.SecretsRotateMsg{Name: ""}, "VALIDATION_ERROR", false},
+		{"registry.has", registrymsg.RegistryHasMsg{Category: "provider", Name: "openai"}, registrymsg.RegistryHasMsg{}, "", false},
+		{"registry.list", registrymsg.RegistryListMsg{Category: "provider"}, registrymsg.RegistryListMsg{}, "", false},
+		{"registry.resolve", registrymsg.RegistryResolveMsg{Category: "provider", Name: "ghost"}, registrymsg.RegistryResolveMsg{}, "", false},
+		{"metrics.get", metricsmod.MetricsGetMsg{}, metricsmod.MetricsGetMsg{}, "", false},
+		{"package.list", packagemsg.PackageListDeployedMsg{}, packagemsg.PackageListDeployedMsg{}, "", false},
+		{"package.info", packagemsg.PackageDeployInfoMsg{Name: "ghost"}, packagemsg.PackageDeployInfoMsg{Name: ""}, "", false},
+		{"package.teardown", packagemsg.PackageTeardownMsg{Name: "ghost"}, packagemsg.PackageTeardownMsg{Name: ""}, "", false},
 	}
 }
 
@@ -126,4 +132,3 @@ func testBusMatrixGarbagePayload(t *testing.T, _ *suite.TestEnv) {
 		}
 	}
 }
-

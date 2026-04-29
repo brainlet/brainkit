@@ -10,10 +10,14 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
+	"github.com/brainlet/brainkit/sdk/systemmsg"
 )
 
 // redeployPersistedDeployments loads and re-deploys all persisted .ts deployments.
 func (k *Kernel) redeployPersistedDeployments() {
+	if k.jsRuntime == nil {
+		return
+	}
 	deployments, err := k.config.Store.LoadDeployments()
 	if err != nil {
 		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
@@ -30,7 +34,7 @@ func (k *Kernel) redeployPersistedDeployments() {
 	})
 
 	maxOrder := int32(deployments[len(deployments)-1].Order)
-	k.deploymentMgr.SetDeployOrderSeed(maxOrder)
+	k.jsRuntime.SetDeployOrderSeed(maxOrder)
 
 	for _, d := range deployments {
 		var opts []types.DeployOption
@@ -52,7 +56,10 @@ func (k *Kernel) redeployPersistedDeployments() {
 // the Mastra store holder from InMemoryStore to the real backend.
 // Tries "default" first (convention), falls back to first available.
 func (k *Kernel) upgradeMastraStorage() {
-	raw, err := k.callJS(context.Background(), "__brainkit.storage.upgrade", nil)
+	if k.jsRuntime == nil {
+		return
+	}
+	raw, err := k.CallJS(context.Background(), "__brainkit.storage.upgrade", nil)
 	if err != nil {
 		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "UpgradeMastraStorage", Cause: err,
@@ -73,7 +80,10 @@ func (k *Kernel) upgradeMastraStorage() {
 // reconnects via createRun({runId}), and calls restart() to re-enter from snapshot.
 // Called automatically during NewKernel after .ts re-deployment.
 func (k *Kernel) restartActiveWorkflows() {
-	raw, err := k.callJS(context.Background(), "__brainkit.storage.restartWorkflows", nil)
+	if k.jsRuntime == nil {
+		return
+	}
+	raw, err := k.CallJS(context.Background(), "__brainkit.storage.restartWorkflows", nil)
 	if err != nil {
 		types.InvokeErrorHandler(k.config.ErrorHandler, &sdkerrors.PersistenceError{
 			Operation: "RestartActiveWorkflows", Cause: err,
@@ -101,6 +111,9 @@ func (k *Kernel) restartActiveWorkflows() {
 
 // RestartActiveWorkflows is the public Go API for manually triggering workflow recovery.
 func (k *Kernel) RestartActiveWorkflows(ctx context.Context) error {
+	if k.jsRuntime == nil {
+		return &sdkerrors.NotConfiguredError{Feature: "js runtime"}
+	}
 	k.restartActiveWorkflows()
 	return nil
 }
@@ -110,9 +123,12 @@ func (k *Kernel) RestartActiveWorkflows(ctx context.Context) error {
 // When a deploy event from a different RuntimeID arrives, loads the deployment from
 // the shared KitStore and deploys locally.
 func (k *Kernel) subscribeToDeploymentPropagation() {
+	if k.jsRuntime == nil {
+		return
+	}
 	// Listen for deploy events
-	_, _ = k.remote.SubscribeRawFanOut(context.Background(), "kit.deployed", func(msg sdk.Message) {
-		var evt sdk.KitDeployedEvent
+	_, _ = k.remote.SubscribeRawFanOut(context.Background(), systemmsg.TopicKitDeployed, func(msg sdk.Message) {
+		var evt systemmsg.KitDeployedEvent
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return
 		}
@@ -140,8 +156,8 @@ func (k *Kernel) subscribeToDeploymentPropagation() {
 	})
 
 	// Listen for teardown events
-	_, _ = k.remote.SubscribeRawFanOut(context.Background(), "kit.teardown.done", func(msg sdk.Message) {
-		var evt sdk.KitTeardownedEvent
+	_, _ = k.remote.SubscribeRawFanOut(context.Background(), systemmsg.TopicKitTeardowned, func(msg sdk.Message) {
+		var evt systemmsg.KitTeardownedEvent
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return
 		}

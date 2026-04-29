@@ -349,8 +349,8 @@ spawned agent, is in
 Every registered agent responds on `agents.generate` and friends:
 
 ```go
-resp, err := brainkit.CallAgentList(kit, ctx, sdk.AgentListMsg{},
-    brainkit.WithCallTimeout(2*time.Second))
+resp, err := agentmsg.CallAgentList(kit, ctx, agentmsg.AgentListMsg{},
+    sdk.WithCallTimeout(2*time.Second))
 for _, a := range resp.Agents {
     fmt.Println(a.Name, a.Instructions)
 }

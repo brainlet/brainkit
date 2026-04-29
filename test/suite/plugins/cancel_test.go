@@ -12,7 +12,11 @@ import (
 
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,9 +105,10 @@ replace (
 	tmpDir := t.TempDir()
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-cancel-plugin",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmpDir,
 		Modules: []brainkit.Module{
+			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []brainkit.PluginConfig{{
 					Name: "cancel-test", Binary: binaryPath, AutoRestart: false,
@@ -118,8 +123,8 @@ replace (
 	defer cancel()
 
 	regCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PluginRegisteredEvent](kit, ctx, "plugin.registered",
-		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[pluginmsg.PluginRegisteredEvent](kit, ctx, "plugin.registered",
+		func(evt pluginmsg.PluginRegisteredEvent, _ sdk.Message) {
 			if evt.Name == "cancel-test" {
 				select {
 				case regCh <- struct{}{}:
@@ -142,7 +147,7 @@ replace (
 	defer callCancel()
 
 	start := time.Now()
-	_, callErr := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](kit, callCtx, sdk.ToolCallMsg{
+	_, callErr := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](kit, callCtx, toolmsg.ToolCallMsg{
 		Name:  "sleep",
 		Input: map[string]any{},
 	})
@@ -160,7 +165,7 @@ replace (
 
 	quickCtx, quickCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer quickCancel()
-	resp, err := brainkit.Call[sdk.ToolCallMsg, sdk.ToolCallResp](kit, quickCtx, sdk.ToolCallMsg{
+	resp, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](kit, quickCtx, toolmsg.ToolCallMsg{
 		Name:  "sleep",
 		Input: map[string]any{},
 	}, brainkit.WithCallTimeout(2*time.Second))

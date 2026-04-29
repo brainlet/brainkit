@@ -1,15 +1,17 @@
 package discovery
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/transport"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/google/uuid"
 )
 
 // Module is the brainkit.Module form of peer discovery. It owns a Provider
-// (bus or static) and self-registers the local peer on Kit.Init so other
+// (bus or static) and self-registers the local peer on Mount so other
 // kits on the same cluster can find it. The bus surface (peers.list /
 // peers.resolve) now lives in modules/topology — callers that want the
 // bus commands must pair discovery with topology (passing this module's
@@ -23,17 +25,45 @@ type Module struct {
 // brainkit.Config.Modules.
 func NewModule(cfg ModuleConfig) *Module { return &Module{cfg: cfg} }
 
-func (m *Module) Name() string { return "discovery" }
+func (m *Module) ID() string { return "discovery" }
 
-func (m *Module) Init(k *brainkit.Kit) error {
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
+	namespace, err := bkmodule.RequireCapability[string](host, bkmodule.CapabilityNamespace)
+	if err != nil {
+		return fmt.Errorf("discovery: %w", err)
+	}
+
+	var presence transport.Presence
+	if p, ok := bkmodule.Capability[transport.Presence](host, bkmodule.CapabilityPresenceTransport); ok {
+		presence = p
+	}
+
+	if err := m.start(namespace, presence); err != nil {
+		return err
+	}
+	if m.provider == nil {
+		return nil
+	}
+
+	host.Scope().Defer(func(context.Context) error {
+		return m.Close()
+	})
+	_, err = host.Capabilities().Provide(ctx, "discovery.provider", m)
+	return err
+}
+
+func (m *Module) start(namespace string, presence transport.Presence) error {
 	switch m.cfg.Type {
 	case "":
 		return nil
 	case "static":
 		m.provider = NewStaticFromConfig(m.cfg.StaticPeers)
 	case "bus":
+		if presence == nil {
+			return fmt.Errorf("discovery: bus discovery requires a presence transport")
+		}
 		m.provider = NewBus(BusConfig{
-			Transport: k.PresenceTransport(),
+			Transport: presence,
 			Heartbeat: m.cfg.Heartbeat,
 			TTL:       m.cfg.TTL,
 		})
@@ -49,14 +79,16 @@ func (m *Module) Init(k *brainkit.Kit) error {
 	if name == "" {
 		name = uuid.NewString()
 	}
-	return m.provider.Register(Peer{Name: name, Namespace: k.Namespace()})
+	return m.provider.Register(Peer{Name: name, Namespace: namespace})
 }
 
 func (m *Module) Close() error {
 	if m.provider == nil {
 		return nil
 	}
-	return m.provider.Close()
+	err := m.provider.Close()
+	m.provider = nil
+	return err
 }
 
 // Provider exposes the underlying presence provider so topology (or any
@@ -90,9 +122,9 @@ type YAML struct {
 type Factory struct{}
 
 // Build decodes YAML into a discovery.ModuleConfig and returns the
-// module. The provider itself is wired in Init when PresenceTransport
+// module. The provider itself is wired in Mount when PresenceTransport
 // is live.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -115,12 +147,12 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "discovery",
-		Status:  brainkit.ModuleStatusBeta,
+		Status:  bkmodule.StatusBeta,
 		Summary: "Peer discovery: static list or bus-announced presence.",
 	}
 }
 
-func init() { brainkit.RegisterModule("discovery", Factory{}) }
+func init() { bkmodule.Register("discovery", Factory{}) }

@@ -11,9 +11,17 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	auditmod "github.com/brainlet/brainkit/modules/audit"
+	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+	healthmod "github.com/brainlet/brainkit/modules/health"
+	metricsmod "github.com/brainlet/brainkit/modules/metrics"
+	packagesmod "github.com/brainlet/brainkit/modules/packages"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,11 +49,18 @@ func TestMetricsPluginE2E(t *testing.T) {
 
 	// Start Kit with metrics plugin
 	tmpDir := t.TempDir()
+	auditStore, err := auditstores.NewSQLite(filepath.Join(tmpDir, "audit.db"))
+	require.NoError(t, err)
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-metrics-plugin",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		FSRoot:    tmpDir,
 		Modules: []brainkit.Module{
+			toolsmod.New(),
+			healthmod.New(),
+			metricsmod.New(),
+			packagesmod.New(),
+			auditmod.NewModule(auditmod.Config{Store: auditStore, OwnStore: true}),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []brainkit.PluginConfig{{
 					Name: "metrics", Binary: binaryPath, AutoRestart: false,
@@ -140,7 +155,7 @@ func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolNa
 	require.NoError(t, err)
 	defer unsub()
 
-	sdk.Publish(kit, ctx, sdk.ToolCallMsg{
+	sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  toolName,
 		Input: input,
 	}, sdk.WithReplyTo(replyTo))
@@ -151,7 +166,7 @@ func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolNa
 			t.Fatalf("tool %s error: %s", toolName, errMsg)
 		}
 		data := suite.ResponseDataFromMsg(msg)
-		var resp sdk.ToolCallResp
+		var resp toolmsg.ToolCallResp
 		require.NoError(t, json.Unmarshal(data, &resp))
 		return resp.Result
 	case <-ctx.Done():

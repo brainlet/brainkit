@@ -27,11 +27,11 @@ cancelled schedule 78e16d28-…
 - `modules/schedules.NewModule(Config{Store: store})` wires the
   cron engine, backed by the same `KitStore` used for deployments
   so schedules survive restarts.
-- `brainkit.CallScheduleCreate(kit, ctx, ScheduleCreateMsg{
+- `schedulemsg.CallScheduleCreate(kit, ctx, schedulemsg.ScheduleCreateMsg{
   Expression, Topic, Payload})` installs a schedule. The
   generated wrapper saturates the types so you don't write
   `Call[ScheduleCreateMsg, ScheduleCreateResp](...)`.
-- `brainkit.CallScheduleCancel` cancels by ID.
+- `schedulemsg.CallScheduleCancel` cancels by ID.
 - The `.ts` side also has `bus.schedule(expression, topic, data)`
   for in-deployment scheduling — returns a schedule ID that you
   unschedule with `bus.unschedule(id)`.

@@ -41,6 +41,7 @@ type KernelConfig struct {
 
 	// Infrastructure
 	MaxStackSize       int
+	JSRuntime          bool
 	SharedTools        *tools.ToolRegistry
 	Observability      ObservabilityConfig
 	Store              KitStore
@@ -53,7 +54,6 @@ type KernelConfig struct {
 	DeferRouterStart   bool
 	MaxConcurrency     int
 	ProviderKeyMapping map[string]string
-	Modules            []any // engine.Module — uses any to avoid import cycle
 
 	// AudioSink wires the host-side player for the Audio
 	// polyfill (jsbridge.AudioSink). nil = silent. Held as
@@ -103,4 +103,3 @@ type MessagingConfig struct {
 	RedisURL     string
 	NATSStoreDir string // JetStream store for embedded NATS. Empty = ephemeral.
 }
-

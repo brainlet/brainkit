@@ -21,7 +21,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 )
 
 func main() {
@@ -37,7 +39,7 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
-	store, err := brainkit.NewSQLiteStore(filepath.Join(tmp, "kit.db"))
+	store, err := stores.NewSQLite(filepath.Join(tmp, "kit.db"))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -92,11 +94,11 @@ func run() error {
 	defer unsub()
 
 	// Schedule: fire ts.heartbeat-demo.heartbeat every 2 seconds.
-	created, err := brainkit.CallScheduleCreate(kit, ctx, sdk.ScheduleCreateMsg{
+	created, err := schedulemsg.CallScheduleCreate(kit, ctx, schedulemsg.ScheduleCreateMsg{
 		Expression: "every 2s",
 		Topic:      "ts.heartbeat-demo.heartbeat",
 		Payload:    json.RawMessage(`{}`),
-	}, brainkit.WithCallTimeout(5*time.Second))
+	}, sdk.WithCallTimeout(5*time.Second))
 	if err != nil {
 		return fmt.Errorf("schedule create: %w", err)
 	}
@@ -112,8 +114,8 @@ func run() error {
 	}
 
 	// Cancel the schedule.
-	_, err = brainkit.CallScheduleCancel(kit, ctx, sdk.ScheduleCancelMsg{ID: created.ID},
-		brainkit.WithCallTimeout(3*time.Second))
+	_, err = schedulemsg.CallScheduleCancel(kit, ctx, schedulemsg.ScheduleCancelMsg{ID: created.ID},
+		sdk.WithCallTimeout(3*time.Second))
 	if err != nil {
 		return fmt.Errorf("schedule cancel: %w", err)
 	}

@@ -3,10 +3,11 @@ package stress
 import (
 	"testing"
 
-	quickjs "github.com/buke/quickjs-go"
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/test/suite"
+	quickjs "github.com/buke/quickjs-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -120,6 +121,7 @@ func testGCZeroLeakSESRuntime(t *testing.T, env *suite.TestEnv) {
 		Namespace: "gc-stress-leak-test",
 		CallerID:  "gc-stress-leak-test",
 		FSRoot:    t.TempDir(),
+		Modules:   []brainkit.Module{toolsmod.New()},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

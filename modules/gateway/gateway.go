@@ -3,21 +3,24 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
-	"github.com/brainlet/brainkit/internal/syncx"
 	"sync/atomic"
 	"time"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/transport"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
+
+const defaultMaxBodyBytes int64 = 1 << 20 // 1 MiB
 
 // Middleware is standard Go HTTP middleware.
 type Middleware func(http.Handler) http.Handler
@@ -68,15 +71,18 @@ func (c *StreamConfig) withDefaults() StreamConfig {
 
 // Config configures the HTTP gateway.
 type Config struct {
-	Listen     string
-	Timeout    time.Duration
-	Middleware []Middleware
-	CORS       *CORSConfig
-	NoHealth   bool
-	Logger     *slog.Logger     // optional — nil = slog.Default()
-	Tracer     Tracer           // optional — creates root spans for requests
-	RateLimit  *RateLimitConfig // optional — global rate limiter (429 when exceeded)
-	Stream     *StreamConfig    // optional — SSE streaming config. nil = use defaults.
+	Listen  string
+	Timeout time.Duration
+	// MaxBodyBytes caps request bodies read by dynamic gateway and bus API
+	// routes. Zero uses the default; negative disables the limit.
+	MaxBodyBytes int64
+	Middleware   []Middleware
+	CORS         *CORSConfig
+	NoHealth     bool
+	Logger       *slog.Logger     // optional — nil = slog.Default()
+	Tracer       Tracer           // optional — creates root spans for requests
+	RateLimit    *RateLimitConfig // optional — global rate limiter (429 when exceeded)
+	Stream       *StreamConfig    // optional — SSE streaming config. nil = use defaults.
 
 	// NoBusAPI disables the built-in POST /api/bus +
 	// POST /api/stream endpoints. Default: off (endpoints are
@@ -132,45 +138,50 @@ type Gateway struct {
 // Advanced options (CORS, RateLimit, Middleware) aren't expressed in
 // YAML today — plug those in via code in a custom binary.
 type YAML struct {
-	Listen   string        `yaml:"listen"`
-	Timeout  time.Duration `yaml:"timeout"`
-	NoHealth bool          `yaml:"no_health"`
+	Listen       string        `yaml:"listen"`
+	Timeout      time.Duration `yaml:"timeout"`
+	MaxBodyBytes int64         `yaml:"max_body_bytes"`
+	NoHealth     bool          `yaml:"no_health"`
 }
 
 // Factory is the registered ModuleFactory for gateway.
 type Factory struct{}
 
 // Build decodes YAML into a Gateway Config and returns a new gateway.
-// Gateway.Init binds the HTTP listener.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+// Gateway.Mount binds the HTTP listener.
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
 	}
 	return New(Config{
-		Listen:   y.Listen,
-		Timeout:  y.Timeout,
-		NoHealth: y.NoHealth,
+		Listen:       y.Listen,
+		Timeout:      y.Timeout,
+		MaxBodyBytes: y.MaxBodyBytes,
+		NoHealth:     y.NoHealth,
 	}), nil
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "gateway",
-		Status:  brainkit.ModuleStatusStable,
+		Status:  bkmodule.StatusStable,
 		Summary: "HTTP gateway: POST /api/bus + POST /api/stream + health.",
 	}
 }
 
-func init() { brainkit.RegisterModule("gateway", Factory{}) }
+func init() { bkmodule.Register("gateway", Factory{}) }
 
 // New creates an HTTP gateway module. Pass the returned *Gateway to
-// brainkit.Config.Modules; Init captures the Kit as the runtime and calls
+// brainkit.Config.Modules; Mount captures the Kit as the runtime and calls
 // Start. For standalone use, call SetRuntime(rt) before Start.
 func New(cfg Config) *Gateway {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 30 * time.Second
+	}
+	if cfg.MaxBodyBytes == 0 {
+		cfg.MaxBodyBytes = defaultMaxBodyBytes
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = ":8080"
@@ -189,7 +200,7 @@ func New(cfg Config) *Gateway {
 }
 
 // SetRuntime wires the Runtime the gateway uses to dispatch bus commands.
-// Init calls this automatically; standalone users set it before Start.
+// Mount calls this automatically; standalone users set it before Start.
 func (gw *Gateway) SetRuntime(rt sdk.Runtime) {
 	gw.rt = rt
 }
@@ -294,6 +305,9 @@ func (gw *Gateway) Start() error {
 	}
 	for i := len(gw.config.Middleware) - 1; i >= 0; i-- {
 		handler = gw.config.Middleware[i](handler)
+	}
+	if gw.config.MaxBodyBytes > 0 {
+		handler = limitRequestBody(gw.config.MaxBodyBytes)(handler)
 	}
 	// Rate limiter wraps outermost — applies before all other middleware
 	if gw.config.RateLimit != nil {
@@ -464,6 +478,34 @@ func buildPayload(r *http.Request, matched *route, pathParams map[string]string)
 	}
 
 	return json.RawMessage(body), nil
+}
+
+func limitRequestBody(max int64) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if max > 0 && r.Body != nil {
+				if r.ContentLength > max {
+					http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+					return
+				}
+				r.Body = http.MaxBytesReader(w, r.Body, max)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
+}
+
+func writePayloadReadError(w http.ResponseWriter, err error) {
+	if isRequestBodyTooLarge(err) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 }
 
 func requestID(r *http.Request) string {

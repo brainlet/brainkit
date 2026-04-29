@@ -14,7 +14,9 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/schedules"
+	"github.com/brainlet/brainkit/modules/standard"
 	"github.com/brainlet/brainkit/sdk"
+	_ "github.com/brainlet/brainkit/storagebridges"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -85,9 +87,9 @@ func NewTestKitFull(t *testing.T) *TestKit {
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	var providers []brainkit.ProviderConfig
+	providers := []brainkit.ProviderConfig{}
 	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+	if key, ok := OpenAIKey(); ok {
 		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
@@ -106,7 +108,7 @@ func NewTestKitFull(t *testing.T) *TestKit {
 		},
 		// In-memory schedules module so fixtures can exercise
 		// bus.schedule / bus.unschedule without a persistence backend.
-		Modules: []brainkit.Module{schedules.NewModule(schedules.Config{})},
+		Modules: append(standard.CommandSet(), schedules.NewModule(schedules.Config{})),
 		EnvVars: envVars,
 	})
 	if err != nil {
@@ -149,9 +151,9 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 	LoadEnv(t)
 	tmpDir := t.TempDir()
 
-	var providers []brainkit.ProviderConfig
+	providers := []brainkit.ProviderConfig{}
 	envVars := make(map[string]string)
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+	if key, ok := OpenAIKey(); ok {
 		providers = append(providers, brainkit.OpenAI(key))
 		envVars["OPENAI_API_KEY"] = key
 	}
@@ -165,6 +167,7 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmpDir, "brainkit.db")),
 		},
+		Modules: standard.CommandSet(),
 		EnvVars: envVars,
 	})
 	if err != nil {
@@ -188,9 +191,35 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 	return kit
 }
 
-// HasAIKey returns true if an AI provider key is available.
+// LiveAIEnabled reports whether tests may call live AI providers. A local .env
+// may contain real credentials, but deterministic test runs should not hit
+// external APIs unless the run opted in explicitly.
+func LiveAIEnabled() bool {
+	return truthyEnv("BRAINKIT_TEST_LIVE_AI") || truthyEnv("BRAINKIT_LIVE_AI")
+}
+
+// OpenAIKey returns the OpenAI key only when live AI tests are explicitly enabled.
+func OpenAIKey() (string, bool) {
+	if !LiveAIEnabled() {
+		return "", false
+	}
+	key := os.Getenv("OPENAI_API_KEY")
+	return key, key != ""
+}
+
+// HasAIKey returns true if live AI tests are enabled and an AI provider key is available.
 func HasAIKey() bool {
-	return os.Getenv("OPENAI_API_KEY") != ""
+	_, ok := OpenAIKey()
+	return ok
+}
+
+func truthyEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // BuildTestMCP compiles the testmcp binary and returns its path.

@@ -8,29 +8,26 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/sdk/systemmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
 
 // deployInlinePkg deploys a single-file inline .ts source via PackageDeployMsg
 // and blocks until the deploy reply arrives. Shared across failure tests.
-func deployInlinePkg(t *testing.T, kit *brainkit.Kit, ctx context.Context, source, code string) {
+func deployInlinePkg(t *testing.T, kit *brainkit.Kit, _ context.Context, source, code string) {
 	t.Helper()
 	name := strings.TrimSuffix(source, ".ts")
 	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": source})
-	pr, _ := sdk.Publish(kit, ctx, sdk.PackageDeployMsg{
+	_, ok := publishAndWaitPayload(t, kit, packagemsg.PackageDeployMsg{
 		Manifest: manifest,
 		Files:    map[string]string{source: code},
-	})
-	deployCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](kit, ctx, pr.ReplyTo, func(_ sdk.PackageDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
-	select {
-	case <-deployCh:
-	case <-ctx.Done():
+	}, 10*time.Second)
+	if !ok {
 		t.Fatal("deploy timeout")
 	}
-	unsub()
 	time.Sleep(100 * time.Millisecond)
 }
 
@@ -40,20 +37,9 @@ func testSyncThrowErrorResponse(t *testing.T, env *suite.TestEnv) {
 
 	deployInlinePkg(t, env.Kit, ctx, "thrower.ts", `bus.on("fail", (msg) => { throw new Error("sync boom"); });`)
 
-	sendPR, _ := sdk.SendToService(env.Kit, ctx, "thrower.ts", "fail", map[string]bool{"x": true})
-	errCh := make(chan string, 1)
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
-			errCh <- m
-		}
-	})
-	defer replyUnsub()
-
-	select {
-	case errMsg := <-errCh:
-		assert.Contains(t, errMsg, "sync boom")
-	case <-ctx.Done():
-		t.Fatal("timeout — caller should get error response, not silent timeout")
+	_, err := env.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("thrower.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	if assert.Error(t, err, "caller should get error response, not silent timeout") {
+		assert.Contains(t, err.Error(), "sync boom")
 	}
 }
 
@@ -63,20 +49,9 @@ func testAsyncRejectionErrorResponse(t *testing.T, env *suite.TestEnv) {
 
 	deployInlinePkg(t, env.Kit, ctx, "async-fail.ts", `bus.on("fail", async (msg) => { throw new Error("async boom"); });`)
 
-	sendPR, _ := sdk.SendToService(env.Kit, ctx, "async-fail.ts", "fail", map[string]bool{"x": true})
-	errCh := make(chan string, 1)
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
-			errCh <- m
-		}
-	})
-	defer replyUnsub()
-
-	select {
-	case errMsg := <-errCh:
-		assert.Contains(t, errMsg, "async boom")
-	case <-ctx.Done():
-		t.Fatal("timeout — caller should get error response for async rejection")
+	_, err := env.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("async-fail.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	if assert.Error(t, err, "caller should get error response for async rejection") {
+		assert.Contains(t, err.Error(), "async boom")
 	}
 }
 
@@ -88,8 +63,8 @@ func testHandlerFailedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Subscribe to bus.handler.failed BEFORE deploying+sending
-	eventCh := make(chan sdk.HandlerFailedEvent, 1)
-	eventUnsub, _ := sdk.SubscribeTo[sdk.HandlerFailedEvent](freshEnv.Kit, ctx, "bus.handler.failed", func(evt sdk.HandlerFailedEvent, _ sdk.Message) {
+	eventCh := make(chan systemmsg.HandlerFailedEvent, 1)
+	eventUnsub, _ := sdk.SubscribeTo[systemmsg.HandlerFailedEvent](freshEnv.Kit, ctx, systemmsg.TopicHandlerFailed, func(evt systemmsg.HandlerFailedEvent, _ sdk.Message) {
 		eventCh <- evt
 	})
 	defer eventUnsub()
@@ -132,20 +107,11 @@ func testRetryPolicyRetries(t *testing.T, _ *suite.TestEnv) {
 			});
 		`)
 
-	sendPR, _ := sdk.SendToService(retryEnv.Kit, ctx, "retry-test.ts", "try", map[string]bool{"x": true})
-	replyCh := make(chan map[string]any, 1)
-	replyUnsub, _ := retryEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
+	payload, err := retryEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("retry-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	if assert.NoError(t, err, "retries should eventually succeed") {
 		var resp map[string]any
-		json.Unmarshal(msg.Payload, &resp)
-		replyCh <- resp
-	})
-	defer replyUnsub()
-
-	select {
-	case resp := <-replyCh:
+		requireNoJSONError(t, json.Unmarshal(payload, &resp))
 		assert.Equal(t, true, resp["ok"])
-	case <-ctx.Done():
-		t.Fatal("timeout — retries should eventually succeed")
 	}
 }
 
@@ -171,13 +137,12 @@ func testRetryExhaustedDeadLetter(t *testing.T, _ *suite.TestEnv) {
 	defer dlUnsub()
 
 	errCh := make(chan string, 1)
-	sendPR, _ := sdk.SendToService(dlEnv.Kit, ctx, "dl-test.ts", "fail", map[string]bool{"x": true})
-	replyUnsub, _ := dlEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
-			errCh <- m
+	go func() {
+		_, err := dlEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("dl-test.ts", "fail"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+		if err != nil {
+			errCh <- err.Error()
 		}
-	})
-	defer replyUnsub()
+	}()
 
 	select {
 	case dl := <-dlCh:
@@ -210,8 +175,8 @@ func testExhaustedEventEmitted(t *testing.T, _ *suite.TestEnv) {
 
 	deployInlinePkg(t, exEnv.Kit, ctx, "exhaust-evt.ts", `bus.on("fail", (msg) => { throw new Error("exhaust event"); });`)
 
-	exhaustedCh := make(chan sdk.HandlerExhaustedEvent, 1)
-	exUnsub, _ := sdk.SubscribeTo[sdk.HandlerExhaustedEvent](exEnv.Kit, ctx, "bus.handler.exhausted", func(evt sdk.HandlerExhaustedEvent, _ sdk.Message) {
+	exhaustedCh := make(chan systemmsg.HandlerExhaustedEvent, 1)
+	exUnsub, _ := sdk.SubscribeTo[systemmsg.HandlerExhaustedEvent](exEnv.Kit, ctx, systemmsg.TopicHandlerExhausted, func(evt systemmsg.HandlerExhaustedEvent, _ sdk.Message) {
 		exhaustedCh <- evt
 	})
 	defer exUnsub()
@@ -248,20 +213,18 @@ func testRetryPreservesReplyTo(t *testing.T, _ *suite.TestEnv) {
 			});
 		`)
 
-	sendPR, _ := sdk.SendToService(rpEnv.Kit, ctx, "replyto-test.ts", "try", map[string]bool{"x": true})
-	replyCh := make(chan map[string]any, 1)
-	replyUnsub, _ := rpEnv.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
+	payload, err := rpEnv.Kit.Caller().Call(ctx, sdk.ResolveServiceTopic("replyto-test.ts", "try"), json.RawMessage(`{"x":true}`), sdk.CallerConfig{})
+	if assert.NoError(t, err, "original caller should receive the success reply after retry") {
 		var resp map[string]any
-		json.Unmarshal(suite.ResponseData(msg.Payload), &resp)
-		replyCh <- resp
-	})
-	defer replyUnsub()
-
-	select {
-	case resp := <-replyCh:
+		requireNoJSONError(t, json.Unmarshal(payload, &resp))
 		assert.Equal(t, true, resp["ok"])
 		assert.Equal(t, float64(2), resp["attempt"])
-	case <-ctx.Done():
-		t.Fatal("timeout — original caller should receive the success reply after retry")
+	}
+}
+
+func requireNoJSONError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
 }

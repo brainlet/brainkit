@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
@@ -68,7 +69,8 @@ func testPostgresStorageDeath(t *testing.T, _ *suite.TestEnv) {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.PostgresStorage(pgConnStr),
 		},
-		Store: mustStore(t, filepath.Join(tmpDir, "kit.db")),
+		Store:   mustStore(t, filepath.Join(tmpDir, "kit.db")),
+		Modules: packageModules(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -221,9 +223,9 @@ func busRoundTripWithTimeout(t *testing.T, k *brainkit.Kit, topic string, payloa
 	}
 }
 
-func mustStore(t *testing.T, path string) *brainkit.SQLiteStore {
+func mustStore(t *testing.T, path string) *stores.SQLite {
 	t.Helper()
-	store, err := brainkit.NewSQLiteStore(path)
+	store, err := stores.NewSQLite(path)
 	if err != nil {
 		t.Fatalf("NewSQLiteStore: %v", err)
 	}

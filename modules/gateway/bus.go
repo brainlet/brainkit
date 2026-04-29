@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/brainlet/brainkit/modules/gateway/gatewaymsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -16,7 +17,7 @@ func (gw *Gateway) subscribeBusCommands() {
 
 	// gateway.http.route.add
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.add", func(msg sdk.Message) {
-		var req sdk.GatewayRouteAddMsg
+		var req gatewaymsg.GatewayRouteAddMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
 			return
@@ -27,14 +28,14 @@ func (gw *Gateway) subscribeBusCommands() {
 			Type: rt, Owner: req.Owner,
 		})
 		gw.logger.Info("route added via bus", slog.String("method", req.Method), slog.String("path", req.Path), slog.String("topic", req.Topic), slog.String("owner", req.Owner))
-		gw.replyJSON(msg, sdk.GatewayRouteAddResp{Added: true})
+		gw.replyJSON(msg, gatewaymsg.GatewayRouteAddResp{Added: true})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
 
 	// gateway.http.route.remove
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.remove", func(msg sdk.Message) {
-		var req sdk.GatewayRouteRemoveMsg
+		var req gatewaymsg.GatewayRouteRemoveMsg
 		if err := json.Unmarshal(msg.Payload, &req); err != nil {
 			gw.replyError(msg, "invalid payload: "+err.Error())
 			return
@@ -63,7 +64,7 @@ func (gw *Gateway) subscribeBusCommands() {
 			}
 		}
 		gw.logger.Info("routes removed via bus", slog.Int("removed", removed))
-		gw.replyJSON(msg, sdk.GatewayRouteRemoveResp{Removed: removed})
+		gw.replyJSON(msg, gatewaymsg.GatewayRouteRemoveResp{Removed: removed})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
@@ -71,14 +72,14 @@ func (gw *Gateway) subscribeBusCommands() {
 	// gateway.http.route.list
 	if unsub, err := gw.rt.SubscribeRaw(ctx, "gateway.http.route.list", func(msg sdk.Message) {
 		routes := gw.routes.list()
-		infos := make([]sdk.GatewayRouteInfo, len(routes))
+		infos := make([]gatewaymsg.GatewayRouteInfo, len(routes))
 		for i, r := range routes {
-			infos[i] = sdk.GatewayRouteInfo{
+			infos[i] = gatewaymsg.GatewayRouteInfo{
 				Method: r.Method, Path: r.Path, Topic: r.Topic,
 				Type: r.Type, Owner: r.Owner,
 			}
 		}
-		gw.replyJSON(msg, sdk.GatewayRouteListResp{Routes: infos})
+		gw.replyJSON(msg, gatewaymsg.GatewayRouteListResp{Routes: infos})
 	}); err == nil {
 		gw.busUnsubs = append(gw.busUnsubs, unsub)
 	}
@@ -88,7 +89,7 @@ func (gw *Gateway) subscribeBusCommands() {
 		gw.routes.mu.RLock()
 		routeCount := len(gw.routes.routes)
 		gw.routes.mu.RUnlock()
-		gw.replyJSON(msg, sdk.GatewayStatusResp{
+		gw.replyJSON(msg, gatewaymsg.GatewayStatusResp{
 			Listening:         gw.ln != nil,
 			Address:           gw.Addr(),
 			RouteCount:        routeCount,

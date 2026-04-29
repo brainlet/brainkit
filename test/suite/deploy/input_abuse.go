@@ -1,13 +1,12 @@
 package deploy
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,8 +119,6 @@ func testDeployThrowsDuringInit(t *testing.T, env *suite.TestEnv) {
 
 // testDeployPartialCleanup — deploy that registers a tool then throws: tool should be cleaned up.
 func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	err := testutil.DeployErr(env.Kit, "partial-deploy-adv.ts", `
 		const t = createTool({ id: "partial-adv-tool", description: "partial", execute: async () => ({}) });
 		kit.register("tool", "partial-adv-tool", t);
@@ -130,19 +127,9 @@ func testDeployPartialCleanup(t *testing.T, env *suite.TestEnv) {
 	assert.Error(t, err)
 
 	// The tool should have been cleaned up by teardown
-	pr, pubErr := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "partial-adv-tool"})
+	payload, pubErr := env.PublishAndWait(t, toolmsg.ToolResolveMsg{Name: "partial-adv-tool"}, 3*time.Second)
 	require.NoError(t, pubErr)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case payload := <-ch:
-		assert.Contains(t, string(payload), "not found")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+	assert.Contains(t, string(payload), "not found")
 }
 
 // testDeployDottedSourceName — dots in source name interact with bus topic resolution.
@@ -163,8 +150,6 @@ func testDeployDottedSourceName(t *testing.T, env *suite.TestEnv) {
 
 // testDeployRedeployDifferentTools — redeploy replaces tools: old tool should be gone.
 func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
-	ctx := context.Background()
-
 	// Deploy v1 with tool A
 	testutil.Deploy(t, env.Kit, "evolving-deploy-adv.ts", `
 		const a = createTool({ id: "tool-a-adv", description: "v1", execute: async () => ({ v: 1 }) });
@@ -178,16 +163,9 @@ func testDeployRedeployDifferentTools(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// tool-a should not exist
-	pr, _ := sdk.Publish(env.Kit, ctx, sdk.ToolResolveMsg{Name: "tool-a-adv"})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-	select {
-	case payload := <-ch:
-		assert.Contains(t, string(payload), "not found")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+	payload, ok := env.SendAndReceive(t, toolmsg.ToolResolveMsg{Name: "tool-a-adv"}, 3*time.Second)
+	require.True(t, ok)
+	assert.Contains(t, string(payload), "not found")
 
 	testutil.Teardown(t, env.Kit, "evolving-deploy-adv.ts")
 }

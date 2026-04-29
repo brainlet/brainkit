@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/brainlet/brainkit"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/modules/discovery"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -19,7 +18,8 @@ type Peer = discovery.Peer
 // ProviderSource is the narrow surface topology needs from a
 // presence-aware subsystem. modules/discovery.Module satisfies it
 // (via its exported Provider() accessor) — topology calls this lazily
-// at request time, so wiring works regardless of module init order.
+// at request time, so wiring works regardless of module mount order
+// when Config.Discovery is supplied directly.
 type ProviderSource interface {
 	Provider() discovery.Provider
 }
@@ -37,7 +37,7 @@ type Config struct {
 	// the module directly (topology calls Provider() lazily).
 	Discovery ProviderSource
 
-	// UseDiscovery, when true, tells Init to resolve the discovery
+	// UseDiscovery, when true, tells Mount to resolve the discovery
 	// module via k.Module("discovery") and use it as the provider
 	// source. Required for the registry path, where a sibling module
 	// isn't available at Build time.
@@ -67,31 +67,43 @@ func NewModule(cfg Config) *Module {
 	return m
 }
 
-func (m *Module) Name() string              { return "topology" }
-func (m *Module) Status() brainkit.ModuleStatus { return brainkit.ModuleStatusBeta }
+func (m *Module) ID() string              { return "topology" }
+func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
-func (m *Module) Init(k *brainkit.Kit) error {
-	// Registry path: resolve the discovery module via the Kit at
-	// Init time (Build time is too early — sibling modules exist as
-	// registered factories then, but no Module instance exists yet).
+func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	if m.cfg.UseDiscovery && m.cfg.Discovery == nil {
-		mod, ok := k.Module("discovery")
-		if !ok {
-			return fmt.Errorf("topology: use_discovery is true but no discovery module is configured")
+		value, err := host.Capabilities().Require("discovery.provider")
+		if err != nil {
+			return fmt.Errorf("topology: use_discovery is true but no discovery.provider capability is mounted")
 		}
-		src, ok := mod.(ProviderSource)
-		if !ok {
-			return fmt.Errorf("topology: discovery module %T does not expose Provider()", mod)
+		switch src := value.(type) {
+		case ProviderSource:
+			m.cfg.Discovery = src
+		case discovery.Provider:
+			m.cfg.Discovery = providerSourceFunc(func() discovery.Provider { return src })
+		default:
+			return fmt.Errorf("topology: discovery.provider capability is %T, want topology.ProviderSource or discovery.Provider", value)
 		}
-		m.cfg.Discovery = src
 	}
 
-	k.RegisterCommand(brainkit.Command(m.handleList))
-	k.RegisterCommand(brainkit.Command(m.handleResolve))
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req PeersListMsg) (*PeersListResp, error) {
+		return m.handleList(ctx, req)
+	})); err != nil {
+		return err
+	}
+	if _, err := host.Commands().Handle(bkmodule.Command(func(ctx context.Context, req PeersResolveMsg) (*PeersResolveResp, error) {
+		return m.handleResolve(ctx, req)
+	})); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (m *Module) Close() error { return nil }
+
+type providerSourceFunc func() discovery.Provider
+
+func (f providerSourceFunc) Provider() discovery.Provider { return f() }
 
 // provider returns the live discovery.Provider the module reads from
 // (nil when no source is wired or the source hasn't initialized yet).
@@ -170,21 +182,21 @@ func (m *Module) Namespaces() []string {
 	return out
 }
 
-func (m *Module) handleList(_ context.Context, _ sdk.PeersListMsg) (*sdk.PeersListResp, error) {
+func (m *Module) handleList(_ context.Context, _ PeersListMsg) (*PeersListResp, error) {
 	peers := m.Peers()
-	infos := make([]sdk.PeerInfo, len(peers))
+	infos := make([]PeerInfo, len(peers))
 	for i, p := range peers {
-		infos[i] = sdk.PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
+		infos[i] = PeerInfo{Name: p.Name, Namespace: p.Namespace, Address: p.Address, Meta: p.Meta}
 	}
-	return &sdk.PeersListResp{Peers: infos, Namespaces: m.Namespaces()}, nil
+	return &PeersListResp{Peers: infos, Namespaces: m.Namespaces()}, nil
 }
 
-func (m *Module) handleResolve(_ context.Context, req sdk.PeersResolveMsg) (*sdk.PeersResolveResp, error) {
+func (m *Module) handleResolve(_ context.Context, req PeersResolveMsg) (*PeersResolveResp, error) {
 	ns, err := m.Resolve(req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("topology.resolve %q: %w", req.Name, err)
 	}
-	return &sdk.PeersResolveResp{Namespace: ns}, nil
+	return &PeersResolveResp{Namespace: ns}, nil
 }
 
 // PeerYAML is a single static peer entry.
@@ -208,9 +220,9 @@ type YAML struct {
 type Factory struct{}
 
 // Build decodes YAML into a topology.Config. Discovery wiring (when
-// requested) is deferred to Init, where the Kit can resolve the
+// requested) is deferred to Mount, where the Kit can resolve the
 // sibling module.
-func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
+func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	var y YAML
 	if err := ctx.Decode(&y); err != nil {
 		return nil, err
@@ -228,12 +240,12 @@ func (Factory) Build(ctx brainkit.ModuleContext) (brainkit.Module, error) {
 }
 
 // Describe surfaces module metadata for `brainkit modules list`.
-func (Factory) Describe() brainkit.ModuleDescriptor {
-	return brainkit.ModuleDescriptor{
+func (Factory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{
 		Name:    "topology",
-		Status:  brainkit.ModuleStatusBeta,
+		Status:  bkmodule.StatusBeta,
 		Summary: "Cross-kit routing — static peers + optional discovery feed.",
 	}
 }
 
-func init() { brainkit.RegisterModule("topology", Factory{}) }
+func init() { bkmodule.Register("topology", Factory{}) }

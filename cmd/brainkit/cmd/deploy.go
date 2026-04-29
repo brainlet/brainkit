@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/spf13/cobra"
 )
 
@@ -48,7 +48,7 @@ package; a directory ships with its manifest.json plus every
 				return err
 			}
 
-			var resp sdk.PackageDeployResp
+			var resp packagemsg.PackageDeployResp
 			if err := json.Unmarshal(reply, &resp); err != nil {
 				return fmt.Errorf("decode response: %w (body: %s)", err, string(reply))
 			}
@@ -71,7 +71,7 @@ package; a directory ships with its manifest.json plus every
 // buildDeployMsg wraps a filesystem path as a PackageDeployMsg.
 // Files send as inline sources so the server doesn't need
 // filesystem access to the caller's machine.
-func buildDeployMsg(path string, info os.FileInfo) (sdk.PackageDeployMsg, error) {
+func buildDeployMsg(path string, info os.FileInfo) (packagemsg.PackageDeployMsg, error) {
 	if info.IsDir() {
 		return buildDirectoryMsg(path)
 	}
@@ -81,15 +81,15 @@ func buildDeployMsg(path string, info os.FileInfo) (sdk.PackageDeployMsg, error)
 // buildFileMsg wraps a single .ts file as a one-entry package.
 // hello.ts → package "hello", deployed as hello.ts, namespace
 // ts.hello.*.
-func buildFileMsg(path string) (sdk.PackageDeployMsg, error) {
+func buildFileMsg(path string) (packagemsg.PackageDeployMsg, error) {
 	code, err := os.ReadFile(path)
 	if err != nil {
-		return sdk.PackageDeployMsg{}, err
+		return packagemsg.PackageDeployMsg{}, err
 	}
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 	manifest := fmt.Sprintf(`{"name":%q,"version":"0.0.0","entry":%q}`, name, filename)
-	return sdk.PackageDeployMsg{
+	return packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{filename: string(code)},
 	}, nil
@@ -97,10 +97,10 @@ func buildFileMsg(path string) (sdk.PackageDeployMsg, error) {
 
 // buildDirectoryMsg reads manifest.json + every .ts file in the
 // directory tree (skipping node_modules / .git / types).
-func buildDirectoryMsg(path string) (sdk.PackageDeployMsg, error) {
+func buildDirectoryMsg(path string) (packagemsg.PackageDeployMsg, error) {
 	manifestData, err := os.ReadFile(filepath.Join(path, "manifest.json"))
 	if err != nil {
-		return sdk.PackageDeployMsg{}, fmt.Errorf("read manifest: %w", err)
+		return packagemsg.PackageDeployMsg{}, fmt.Errorf("read manifest: %w", err)
 	}
 	files := make(map[string]string)
 	walkErr := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
@@ -126,9 +126,9 @@ func buildDirectoryMsg(path string) (sdk.PackageDeployMsg, error) {
 		return nil
 	})
 	if walkErr != nil {
-		return sdk.PackageDeployMsg{}, fmt.Errorf("walk package: %w", walkErr)
+		return packagemsg.PackageDeployMsg{}, fmt.Errorf("walk package: %w", walkErr)
 	}
-	return sdk.PackageDeployMsg{
+	return packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifestData),
 		Files:    files,
 	}, nil

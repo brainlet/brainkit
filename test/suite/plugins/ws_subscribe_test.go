@@ -12,8 +12,12 @@ import (
 
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -104,8 +108,9 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	// Start Kit with plugin
 	kit, err := brainkit.New(brainkit.Config{
 		Namespace: "test-ws-sub",
-		Transport: brainkit.EmbeddedNATS(),
+		Transport: transports.EmbeddedNATS(),
 		Modules: []brainkit.Module{
+			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []brainkit.PluginConfig{{
 					Name: "sub-test", Binary: binaryPath, AutoRestart: false,
@@ -121,8 +126,8 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	defer cancel()
 
 	regCh := make(chan struct{}, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PluginRegisteredEvent](kit, ctx, "plugin.registered",
-		func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+	unsub, _ := sdk.SubscribeTo[pluginmsg.PluginRegisteredEvent](kit, ctx, "plugin.registered",
+		func(evt pluginmsg.PluginRegisteredEvent, _ sdk.Message) {
 			if evt.Name == "sub-test" {
 				select {
 				case regCh <- struct{}{}:
@@ -159,7 +164,7 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	})
 	defer unsubReply()
 
-	sdk.Publish(kit, ctx, sdk.ToolCallMsg{
+	sdk.Publish(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "status",
 		Input: map[string]any{},
 	}, sdk.WithReplyTo(replyTo))
@@ -168,7 +173,7 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	case msg := <-replyCh:
 		require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
 		data := suite.ResponseDataFromMsg(msg)
-		var resp sdk.ToolCallResp
+		var resp toolmsg.ToolCallResp
 		require.NoError(t, json.Unmarshal(data, &resp))
 
 		var status struct {

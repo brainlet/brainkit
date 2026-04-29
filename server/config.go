@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/transports"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,16 +20,16 @@ import (
 // at binary-link time produce an error at load — typos surface
 // loudly instead of silently disabling the module.
 type FileConfig struct {
-	Namespace    string                    `yaml:"namespace"`
-	Transport    TransportYAML             `yaml:"transport"`
-	FSRoot       string                    `yaml:"fs_root"`
-	KitStorePath string                    `yaml:"kit_store_path"`
-	SecretKey    string                    `yaml:"secret_key"`
-	Providers    []ProviderYAML            `yaml:"providers"`
-	Storages     map[string]StorageYAML    `yaml:"storages"`
-	Vectors      map[string]VectorYAML     `yaml:"vectors"`
-	Packages     []PackageYAML             `yaml:"packages"`
-	Modules      map[string]yaml.Node      `yaml:"modules"`
+	Namespace    string                 `yaml:"namespace"`
+	Transport    TransportYAML          `yaml:"transport"`
+	FSRoot       string                 `yaml:"fs_root"`
+	KitStorePath string                 `yaml:"kit_store_path"`
+	SecretKey    string                 `yaml:"secret_key"`
+	Providers    []ProviderYAML         `yaml:"providers"`
+	Storages     map[string]StorageYAML `yaml:"storages"`
+	Vectors      map[string]VectorYAML  `yaml:"vectors"`
+	Packages     []PackageYAML          `yaml:"packages"`
+	Modules      map[string]yaml.Node   `yaml:"modules"`
 }
 
 // TransportYAML selects a transport backend from config.
@@ -113,6 +114,8 @@ var topLevelModuleKeys = map[string]bool{
 	"workflow":  true,
 	"plugins":   true,
 	"harness":   true,
+	"packages":  true,
+	"testing":   true,
 }
 
 // translateTopLevelYAMLError wraps a strict-decode error with a
@@ -239,17 +242,17 @@ func (t TransportYAML) build() (brainkit.TransportConfig, error) {
 	case "memory":
 		return brainkit.Memory(), nil
 	case "embedded", "":
-		return brainkit.EmbeddedNATS(), nil
+		return transports.EmbeddedNATS(), nil
 	case "nats":
 		var opts []brainkit.TransportOption
 		if t.NATSName != "" {
-			opts = append(opts, brainkit.WithNATSName(t.NATSName))
+			opts = append(opts, transports.WithNATSName(t.NATSName))
 		}
-		return brainkit.NATS(t.URL, opts...), nil
+		return transports.NATS(t.URL, opts...), nil
 	case "amqp":
-		return brainkit.AMQP(t.URL), nil
+		return transports.AMQP(t.URL), nil
 	case "redis":
-		return brainkit.Redis(t.URL), nil
+		return transports.Redis(t.URL), nil
 	default:
 		return brainkit.TransportConfig{}, fmt.Errorf("server: unknown transport %q", t.Type)
 	}

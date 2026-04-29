@@ -140,9 +140,9 @@ Plugins announce themselves on the `plugin.registered` event.
 Subscribe with `sdk.SubscribeTo`:
 
 ```go
-unsub, err := sdk.SubscribeTo[sdk.PluginRegisteredEvent](
+unsub, err := sdk.SubscribeTo[pluginmsg.PluginRegisteredEvent](
     kit, ctx, "plugin.registered",
-    func(evt sdk.PluginRegisteredEvent, _ sdk.Message) {
+    func(evt pluginmsg.PluginRegisteredEvent, _ sdk.Message) {
         if evt.Name == "demo" {
             fmt.Printf("plugin ready: %s/%s@%s\n",
                 evt.Owner, evt.Name, evt.Version)
@@ -160,10 +160,10 @@ registry alongside Go-registered tools and are callable via
 Same `tools.call` topic as Go tools:
 
 ```go
-resp, err := brainkit.CallToolCall(kit, ctx, sdk.ToolCallMsg{
+resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
     Name:  "echo",
     Input: map[string]any{"text": "ping"},
-}, brainkit.WithCallTimeout(10*time.Second))
+}, sdk.WithCallTimeout(10*time.Second))
 // resp.Result == json.RawMessage(`{"echoed":"ping"}`)
 ```
 
@@ -191,7 +191,7 @@ The `modules/plugins` manager owns:
    `plugin.manifest`.
 
 All six commands have generated Call wrappers:
-`brainkit.CallPluginStart`, `CallPluginStop`, `CallPluginRestart`,
+`pluginmsg.CallPluginStart`, `pluginmsg.CallPluginStop`, `pluginmsg.CallPluginRestart`,
 etc.
 
 ## Host environment variables
@@ -234,7 +234,8 @@ When the plugins module is wired and you call
 `kit.Secrets().Rotate(ctx, name, newValue)`, the manager checks
 whether any plugin's `Env` references `$secret:name` and restarts
 those plugins with the refreshed value. Nothing extra to wire —
-`modules/plugins` registers a restarter with the Kit during `Init`.
+`modules/plugins` registers a restarter with the Kit during module
+mount.
 
 ## Cancellation
 
@@ -243,6 +244,6 @@ Tool calls plumb cancellation end-to-end:
 - Go caller ctx cancelled → host sends a `tool.cancel` frame to
   the plugin → plugin's `ctx` in the tool handler is cancelled.
 - Plugin returns promptly; the host finalizes the call with
-  `*caller.CallCancelledError`.
+  `*sdk.CallCancelledError`.
 
 Long-running tools should watch `ctx.Done()` and return early.

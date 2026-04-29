@@ -129,7 +129,7 @@ surface on top of brainkit — it's the shape the runtime gives you.
   architect-style agents, each specialized in a domain (UI
   helpers, data-transform agents, interview bots), and let a
   router agent pick which architect to delegate to.
-- **Teardown.** Call `brainkit.CallPackageTeardown` with the
+- **Teardown.** Call `packagemsg.CallPackageTeardown` with the
   spawned name when you're done so the agent + its bus
   subscriptions are cleaned up.
 

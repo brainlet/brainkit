@@ -10,11 +10,14 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/testutil"
+	tools "github.com/brainlet/brainkit/internal/tools"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
+	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -28,18 +31,7 @@ func testPluginInProcessListTools(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
-	require.NoError(t, err)
-	ch1 := make(chan sdk.ToolListResp, 1)
-	us1, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pr1.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch1 <- r })
-	require.NoError(t, err)
-	defer us1()
-	var resp sdk.ToolListResp
-	select {
-	case resp = <-ch1:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	resp := callAndWait[toolmsg.ToolListMsg, toolmsg.ToolListResp](t, rt, ctx, toolmsg.ToolListMsg{})
 	found := false
 	for _, tool := range resp.Tools {
 		if tool.ShortName == "echo" {
@@ -54,21 +46,10 @@ func testPluginInProcessCallTool(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr2, err := sdk.Publish(rt, ctx, sdk.ToolCallMsg{
+	resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, rt, ctx, toolmsg.ToolCallMsg{
 		Name:  "add",
 		Input: map[string]any{"a": 100, "b": 200},
 	})
-	require.NoError(t, err)
-	ch2 := make(chan sdk.ToolCallResp, 1)
-	us2, err := sdk.SubscribeTo[sdk.ToolCallResp](rt, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
-	require.NoError(t, err)
-	defer us2()
-	var resp sdk.ToolCallResp
-	select {
-	case resp = <-ch2:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 	var result map[string]int
 	json.Unmarshal(resp.Result, &result)
 	assert.Equal(t, 300, result["sum"])
@@ -93,33 +74,13 @@ func testPluginInProcessDeployTeardown(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	pluginManifest, _ := json.Marshal(map[string]string{"name": "plugin-created-cross", "entry": "plugin-created-cross.ts"})
-	pr5, err := sdk.Publish(rt, ctx, sdk.PackageDeployMsg{
+	deployResp := callAndWait[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](t, rt, ctx, packagemsg.PackageDeployMsg{
 		Manifest: pluginManifest,
 		Files:    map[string]string{"plugin-created-cross.ts": `const t = createTool({ id: "plugin-tool", description: "from plugin", execute: async () => ({ created: true }) }); kit.register("tool", "plugin-tool", t);`},
 	})
-	require.NoError(t, err)
-	ch5 := make(chan sdk.PackageDeployResp, 1)
-	us5, err := sdk.SubscribeTo[sdk.PackageDeployResp](rt, ctx, pr5.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch5 <- r })
-	require.NoError(t, err)
-	defer us5()
-	var deployResp sdk.PackageDeployResp
-	select {
-	case deployResp = <-ch5:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 	assert.True(t, deployResp.Deployed)
 
-	pr6, err := sdk.Publish(rt, ctx, sdk.PackageTeardownMsg{Name: "plugin-created-cross"})
-	require.NoError(t, err)
-	ch6 := make(chan sdk.PackageTeardownResp, 1)
-	us6, _ := sdk.SubscribeTo[sdk.PackageTeardownResp](rt, ctx, pr6.ReplyTo, func(r sdk.PackageTeardownResp, m sdk.Message) { ch6 <- r })
-	defer us6()
-	select {
-	case <-ch6:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	callAndWait[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](t, rt, ctx, packagemsg.PackageTeardownMsg{Name: "plugin-created-cross"})
 }
 
 func testPluginInProcessAsyncSubscribe(t *testing.T, env *suite.TestEnv) {
@@ -127,16 +88,16 @@ func testPluginInProcessAsyncSubscribe(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pubResult, err := sdk.Publish(rt, ctx, sdk.ToolListMsg{})
-	require.NoError(t, err)
-	assert.NotEmpty(t, pubResult.ReplyTo)
+	replyTo := fmt.Sprintf("tools.list.reply.%d", time.Now().UnixNano())
 
 	received := make(chan bool, 1)
-	unsub, err := sdk.SubscribeTo[sdk.ToolListResp](rt, ctx, pubResult.ReplyTo, func(resp sdk.ToolListResp, msg sdk.Message) {
+	unsub, err := sdk.SubscribeTo[toolmsg.ToolListResp](rt, ctx, replyTo, func(resp toolmsg.ToolListResp, msg sdk.Message) {
 		received <- true
 	})
 	require.NoError(t, err)
 	defer unsub()
+	_, err = sdk.Publish(rt, ctx, toolmsg.ToolListMsg{}, sdk.WithReplyTo(replyTo))
+	require.NoError(t, err)
 
 	select {
 	case <-received:
@@ -157,21 +118,10 @@ func testPluginSubprocessEcho(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr1, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
+	resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "echo",
 		Input: map[string]any{"message": "hello from host"},
 	})
-	require.NoError(t, err)
-	ch1 := make(chan sdk.ToolCallResp, 1)
-	us1, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr1.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch1 <- r })
-	require.NoError(t, err)
-	defer us1()
-	var resp sdk.ToolCallResp
-	select {
-	case resp = <-ch1:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]string
 	json.Unmarshal(resp.Result, &result)
@@ -188,21 +138,10 @@ func testPluginSubprocessConcat(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr2, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
+	resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "concat",
 		Input: map[string]any{"a": "foo", "b": "bar"},
 	})
-	require.NoError(t, err)
-	ch2 := make(chan sdk.ToolCallResp, 1)
-	us2, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr2.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch2 <- r })
-	require.NoError(t, err)
-	defer us2()
-	var resp sdk.ToolCallResp
-	select {
-	case resp = <-ch2:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]string
 	json.Unmarshal(resp.Result, &result)
@@ -218,21 +157,10 @@ func testPluginSubprocessHostToolStillWorks(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr3, err := sdk.Publish(kit, ctx, sdk.ToolCallMsg{
+	resp := callAndWait[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](t, kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "host-add",
 		Input: map[string]any{"a": 10, "b": 20},
 	})
-	require.NoError(t, err)
-	ch3 := make(chan sdk.ToolCallResp, 1)
-	us3, err := sdk.SubscribeTo[sdk.ToolCallResp](kit, ctx, pr3.ReplyTo, func(r sdk.ToolCallResp, m sdk.Message) { ch3 <- r })
-	require.NoError(t, err)
-	defer us3()
-	var resp sdk.ToolCallResp
-	select {
-	case resp = <-ch3:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]int
 	json.Unmarshal(resp.Result, &result)
@@ -248,18 +176,7 @@ func testPluginSubprocessToolsListShowsBoth(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr4, err := sdk.Publish(kit, ctx, sdk.ToolListMsg{})
-	require.NoError(t, err)
-	ch4 := make(chan sdk.ToolListResp, 1)
-	us4, err := sdk.SubscribeTo[sdk.ToolListResp](kit, ctx, pr4.ReplyTo, func(r sdk.ToolListResp, m sdk.Message) { ch4 <- r })
-	require.NoError(t, err)
-	defer us4()
-	var resp sdk.ToolListResp
-	select {
-	case resp = <-ch4:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	resp := callAndWait[toolmsg.ToolListMsg, toolmsg.ToolListResp](t, kit, ctx, toolmsg.ToolListMsg{})
 
 	names := make(map[string]bool)
 	for _, tool := range resp.Tools {
@@ -330,8 +247,8 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 		Namespace: "plugin-e2e-cross",
 		CallerID:  "host",
 		FSRoot:    tmpDir,
-		Transport: brainkit.NATS(natsURL, brainkit.WithNATSName("brainkit-test-cross")),
-		Modules: []brainkit.Module{
+		Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-test-cross")),
+		Modules: packageModules(
 			pluginsmod.NewModule(pluginsmod.Config{
 				Plugins: []brainkit.PluginConfig{
 					{
@@ -341,7 +258,7 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 					},
 				},
 			}),
-		},
+		),
 	})
 	require.NoError(t, err)
 

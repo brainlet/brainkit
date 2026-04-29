@@ -22,7 +22,7 @@ import (
 
 func TestTransport_NATS(t *testing.T) {
 	campaigns.RequirePodman(t)
-	infra := campaigns.NewInfra(t, campaigns.Transport("nats"))
+	infra := campaigns.NewInfra(t, campaigns.Transport("nats"), campaigns.MCP())
 	env := infra.Env(t)
 
 	bus.Run(t, env)

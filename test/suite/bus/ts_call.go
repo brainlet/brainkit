@@ -26,32 +26,18 @@ func tsCallDeployAndTrigger(t *testing.T, env *suite.TestEnv, source, handlerCod
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	pr, err := sdk.SendToService(env.Kit, ctx, source, "trigger", map[string]any{})
+	payload, err := json.Marshal(map[string]any{})
 	require.NoError(t, err)
-
-	replyCh := make(chan sdk.Message, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		if msg.Metadata["done"] == "true" {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		}
+	data, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic(source, "trigger"),
+		Payload: payload,
 	})
-	defer unsub()
-
-	select {
-	case msg := <-replyCh:
-		data := suite.ResponseData(msg.Payload)
-		var m map[string]any
-		if len(data) > 0 {
-			_ = json.Unmarshal(data, &m)
-		}
-		return m
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for trigger reply")
-		return nil
+	require.NoError(t, err)
+	var m map[string]any
+	if len(data) > 0 {
+		_ = json.Unmarshal(data, &m)
 	}
+	return m
 }
 
 // testTSBusCallHappyPath — .ts handler B's bus.on uses bus.call to reach

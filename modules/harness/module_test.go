@@ -5,6 +5,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/harness"
+	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +24,7 @@ func TestModuleLifecycle(t *testing.T) {
 		FSRoot:    t.TempDir(),
 		Modules:   []brainkit.Module{m},
 	})
-	// A zero-value HarnessConfig fails validation; the module init
+	// A zero-value HarnessConfig fails validation; the module mount
 	// surfaces that error from the Kit constructor.
 	if err != nil {
 		require.Contains(t, err.Error(), "harness")

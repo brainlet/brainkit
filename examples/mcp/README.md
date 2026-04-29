@@ -35,9 +35,9 @@ mcp.callTool fs/read_text_file path=hello.txt:
 - `modules/mcp.New(map[string]ServerConfig{...})` spawns the
   configured servers at Kit init and registers their tools on
   the Kit's tool registry.
-- `brainkit.CallMcpListTools(kit, ctx, {Server: "fs"})` queries
+- `mcpmsg.CallMcpListTools(kit, ctx, {Server: "fs"})` queries
   a specific server's catalog over the bus.
-- `brainkit.CallMcpCallTool(kit, ctx, {Server, Tool, Args})`
+- `mcpmsg.CallMcpCallTool(kit, ctx, {Server, Tool, Args})`
   invokes a tool. The example calls `read_text_file` with a
   full path to the seeded file.
 

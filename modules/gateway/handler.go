@@ -5,20 +5,20 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/bus/caller"
+	"github.com/brainlet/brainkit/sdk"
 )
 
 // callerHolder is implemented by *brainkit.Kit so the gateway can acquire
 // the shared-inbox Caller without importing the brainkit package (import
 // cycle avoidance).
 type callerHolder interface {
-	Caller() *caller.Caller
+	Caller() *sdk.Caller
 }
 
 func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched *route, pathParams map[string]string) {
 	payload, err := buildPayload(r, matched, pathParams)
 	if err != nil {
-		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		writePayloadReadError(w, err)
 		return
 	}
 
@@ -36,9 +36,9 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 	ctx, cancel := context.WithTimeout(r.Context(), gw.config.Timeout)
 	defer cancel()
 
-	reply, err := c.Call(ctx, matched.Topic, payload, caller.Config{})
+	reply, err := c.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
 	if err != nil {
-		var tErr *caller.CallTimeoutError
+		var tErr *sdk.CallTimeoutError
 		if errors.As(err, &tErr) {
 			if r.Context().Err() != nil {
 				return
@@ -46,7 +46,7 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 			http.Error(w, `{"error":"gateway timeout"}`, http.StatusGatewayTimeout)
 			return
 		}
-		var cErr *caller.CallCancelledError
+		var cErr *sdk.CallCancelledError
 		if errors.As(err, &cErr) {
 			return
 		}

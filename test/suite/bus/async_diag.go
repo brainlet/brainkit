@@ -3,10 +3,11 @@ package bus
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -20,39 +21,15 @@ func deployAndSendDiag(t *testing.T, env *suite.TestEnv, source, code string, ti
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	name := strings.TrimSuffix(source, ".ts")
-	manifest, _ := json.Marshal(map[string]string{"name": name, "entry": source})
-	pr, err := sdk.Publish(env.Kit, ctx, sdk.PackageDeployMsg{Manifest: manifest, Files: map[string]string{source: code}})
-	require.NoError(t, err)
-	ch := make(chan sdk.PackageDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](env.Kit, ctx, pr.ReplyTo, func(r sdk.PackageDeployResp, m sdk.Message) { ch <- r })
-	defer unsub()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-		t.Fatal("deploy timeout")
-	}
-	time.Sleep(100 * time.Millisecond)
-
-	pr2, err := sdk.SendToService(env.Kit, ctx, source, "test", json.RawMessage(`{}`))
-	require.NoError(t, err)
-	replyCh := make(chan sdk.Message, 1)
-	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(msg sdk.Message) {
-		if msg.Metadata["done"] == "true" {
-			replyCh <- msg
-		}
+	testutil.Deploy(t, env.Kit, source, code)
+	data, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   sdk.ResolveServiceTopic(source, "test"),
+		Payload: json.RawMessage(`{}`),
 	})
-	defer unsub2()
-
-	select {
-	case msg := <-replyCh:
-		var result map[string]any
-		json.Unmarshal(suite.ResponseData(msg.Payload), &result)
-		return result
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for reply")
-		return nil
-	}
+	require.NoError(t, err)
+	var result map[string]any
+	json.Unmarshal(data, &result)
+	return result
 }
 
 func testDiagBusOnAwaitPromiseResolve(t *testing.T, env *suite.TestEnv) {

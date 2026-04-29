@@ -5,5 +5,17 @@ transport:
   type: embedded
 
 modules:
+  jsruntime: {}
   gateway:
     listen: :8080
+  agents: {}
+  reference: {}
+  control: {}
+  eval: {}
+  health: {}
+  messaging: {}
+  metrics: {}
+  registry: {}
+  secrets: {}
+  tools: {}
+  packages: {}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/stores"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +14,7 @@ import (
 func newKitForAccessors(t *testing.T, opts ...brainkit.Config) *brainkit.Kit {
 	t.Helper()
 	tmp := t.TempDir()
-	store, err := brainkit.NewSQLiteStore(tmp + "/kit.db")
+	store, err := stores.NewSQLite(tmp + "/kit.db")
 	require.NoError(t, err)
 	cfg := brainkit.Config{
 		Transport: brainkit.Memory(),

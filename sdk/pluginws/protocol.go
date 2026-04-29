@@ -21,11 +21,12 @@ const (
 	TypeSubscribe  = "subscribe" // plugin subscribes to bus topic
 
 	// Host → Plugin
-	TypeManifestAck = "manifest.ack"
-	TypeToolCall    = "tool.call"
-	TypeEvent       = "event" // bus event forwarded to plugin
-	TypeShutdown    = "shutdown"
-	TypeCancel      = "tool.cancel" // cancel an in-flight tool call
+	TypeManifestAck  = "manifest.ack"
+	TypeSubscribeAck = "subscribe.ack"
+	TypeToolCall     = "tool.call"
+	TypeEvent        = "event" // bus event forwarded to plugin
+	TypeShutdown     = "shutdown"
+	TypeCancel       = "tool.cancel" // cancel an in-flight tool call
 )
 
 // Manifest is sent by the plugin after connecting.
@@ -66,9 +67,9 @@ type ToolResult struct {
 
 // PublishMsg is sent by the plugin to publish a message to a bus topic.
 type PublishMsg struct {
-	Topic         string            `json:"topic"`
-	Payload       json.RawMessage   `json:"payload"`
-	Metadata      map[string]string `json:"metadata,omitempty"` // replyTo, correlationId, etc.
+	Topic    string            `json:"topic"`
+	Payload  json.RawMessage   `json:"payload"`
+	Metadata map[string]string `json:"metadata,omitempty"` // replyTo, correlationId, etc.
 }
 
 // SubscribeMsg is sent by the plugin to subscribe to a bus topic.
@@ -77,11 +78,18 @@ type SubscribeMsg struct {
 	Topic string `json:"topic"`
 }
 
+// SubscribeAck confirms that a SubscribeMsg has been bound to the host bus.
+type SubscribeAck struct {
+	Topic string `json:"topic"`
+	Error string `json:"error,omitempty"`
+}
+
 // EventMsg is sent by the host when a subscribed bus topic receives a message.
 type EventMsg struct {
-	Topic    string          `json:"topic"`
-	Payload  json.RawMessage `json:"payload"`
-	CallerID string          `json:"callerID,omitempty"`
+	Topic    string            `json:"topic"`
+	Payload  json.RawMessage   `json:"payload"`
+	CallerID string            `json:"callerID,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // CancelMsg is sent by the host to signal that an in-flight tool call

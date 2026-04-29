@@ -129,3 +129,8 @@ bin/**.go binary
 /workflows
 /agent-forge
 /agent-spawner
+
+# Maestro runtime state
+.maestro/missions/
+.maestro/sessions/
+.maestro/tasks/local-history/

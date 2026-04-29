@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	"github.com/brainlet/brainkit/internal/bus/caller"
 	"github.com/brainlet/brainkit/internal/testutil"
+	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -23,11 +23,11 @@ func testCallEmitsCancelOnCtxCancel(t *testing.T, _ *suite.TestEnv) {
 		bus.on("slow", (msg) => { /* never reply */ });
 	`)
 
-	noticeCh := make(chan caller.CancelNotice, 1)
+	noticeCh := make(chan sdk.CancelNotice, 1)
 	noticeCtx, noticeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer noticeCancel()
-	unsub, err := env.Kit.SubscribeRaw(noticeCtx, caller.CancelTopic, func(msg sdk.Message) {
-		var n caller.CancelNotice
+	unsub, err := env.Kit.SubscribeRaw(noticeCtx, sdk.CancelTopic, func(msg sdk.Message) {
+		var n sdk.CancelNotice
 		if err := json.Unmarshal(msg.Payload, &n); err == nil {
 			select {
 			case noticeCh <- n:
@@ -67,7 +67,7 @@ func testCallNoCancelSignalSuppresses(t *testing.T, _ *suite.TestEnv) {
 	got := make(chan struct{}, 1)
 	subCtx, subCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer subCancel()
-	unsub, err := env.Kit.SubscribeRaw(subCtx, caller.CancelTopic, func(_ sdk.Message) {
+	unsub, err := env.Kit.SubscribeRaw(subCtx, sdk.CancelTopic, func(_ sdk.Message) {
 		select {
 		case got <- struct{}{}:
 		default:
@@ -105,12 +105,12 @@ func testExhaustedEventCarriesCorrelationId(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	exhaustManifest, _ := json.Marshal(map[string]string{"name": "exhaust-cid", "entry": "exhaust-cid.ts"})
-	pr, _ := sdk.Publish(exEnv.Kit, ctx, sdk.PackageDeployMsg{
+	pr, _ := sdk.Publish(exEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: exhaustManifest,
 		Files:    map[string]string{"exhaust-cid.ts": `bus.on("fail", (msg) => { throw new Error("cid exhaust"); });`},
 	})
 	deployCh := make(chan struct{}, 1)
-	dUnsub, _ := sdk.SubscribeTo[sdk.PackageDeployResp](exEnv.Kit, ctx, pr.ReplyTo, func(_ sdk.PackageDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
+	dUnsub, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](exEnv.Kit, ctx, pr.ReplyTo, func(_ packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- struct{}{} })
 	<-deployCh
 	dUnsub()
 	time.Sleep(100 * time.Millisecond)
