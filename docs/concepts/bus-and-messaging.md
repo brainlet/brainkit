@@ -27,9 +27,12 @@ A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
   `sdk.Emit(ctx, MyEvent{…})` where `MyEvent.BusTopic()` returns
   `orders.completed` and any subscriber can receive it.
 
-The Kit does not maintain a separate command catalog — the set of
-topics is just the set of `BusTopic()` values plus whatever a
-deployment or plugin registers at runtime.
+The Kit maintains a live command catalog for request/reply routing, and
+modules publish a manifest that describes the topics they own or consume:
+commands, emitted events, raw subscriptions, and host capabilities.
+The generated topic list still comes from `BusTopic()` declarations, but
+runtime availability comes from which modules are mounted. Deployments and
+plugins can add their own topics at runtime.
 
 ## Typed Calls from Go
 

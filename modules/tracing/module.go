@@ -162,6 +162,13 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "tracing",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Persistent span store with trace.get / trace.list.",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[tracingmsg.TraceGetMsg, tracingmsg.TraceGetResp](),
+			bkmodule.CommandMessage[tracingmsg.TraceListMsg, tracingmsg.TraceListResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func(TraceStore)](bkmodule.CapabilitySetTraceStore),
+		},
 	}
 }
 

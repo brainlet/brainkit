@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	"github.com/brainlet/brainkit/modules/audit/stores"
 )
 
@@ -145,6 +146,15 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "audit",
 		Status:  bkmodule.StatusStable,
 		Summary: "Persistent audit log with query/stats/prune bus commands.",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[auditmsg.AuditPruneMsg, auditmsg.AuditPruneResp](),
+			bkmodule.CommandMessage[auditmsg.AuditQueryMsg, auditmsg.AuditQueryResp](),
+			bkmodule.CommandMessage[auditmsg.AuditStatsMsg, auditmsg.AuditStatsResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func(Store)](bkmodule.CapabilitySetAuditStore),
+			bkmodule.RequiredCapabilityOf[func(Verbosity)](bkmodule.CapabilitySetAuditVerbosity),
+		},
 	}
 }
 

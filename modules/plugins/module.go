@@ -466,6 +466,22 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "plugins",
 		Status:  bkmodule.StatusStable,
 		Summary: "Subprocess plugin manager with WS control plane.",
+		Requires: []string{
+			"tools",
+		},
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[pluginmsg.PluginListRunningMsg, pluginmsg.PluginListRunningResp](),
+			bkmodule.CommandMessage[pluginmsg.PluginManifestMsg, pluginmsg.PluginManifestResp](),
+			bkmodule.CommandMessage[pluginmsg.PluginRestartMsg, pluginmsg.PluginRestartResp](),
+			bkmodule.CommandMessage[pluginmsg.PluginStartMsg, pluginmsg.PluginStartResp](),
+			bkmodule.CommandMessage[pluginmsg.PluginStatusMsg, pluginmsg.PluginStatusResp](),
+			bkmodule.CommandMessage[pluginmsg.PluginStopMsg, pluginmsg.PluginStopResp](),
+		},
+		Events: []bkmodule.MessageDescriptor{
+			bkmodule.EventMessage[pluginmsg.PluginRegisteredEvent](),
+			bkmodule.EventMessage[pluginmsg.PluginStartedEvent](),
+			bkmodule.EventMessage[pluginmsg.PluginStoppedEvent](),
+		},
 	}
 }
 

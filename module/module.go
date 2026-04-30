@@ -33,18 +33,28 @@ const (
 	StatusWIP    Status = "wip"
 )
 
-// Descriptor is optional module metadata for listing and docs.
+// Descriptor is the module manifest used for listing, docs, dependency
+// resolution, and runtime introspection.
 type Descriptor struct {
-	Name     string   `json:"name"`
-	Status   Status   `json:"status,omitempty"`
-	Summary  string   `json:"summary,omitempty"`
-	Provides []string `json:"provides,omitempty"`
-	Requires []string `json:"requires,omitempty"`
+	Name          string                 `json:"name"`
+	Status        Status                 `json:"status,omitempty"`
+	Summary       string                 `json:"summary,omitempty"`
+	Provides      []string               `json:"provides,omitempty"`
+	Requires      []string               `json:"requires,omitempty"`
+	Commands      []MessageDescriptor    `json:"commands,omitempty"`
+	Events        []MessageDescriptor    `json:"events,omitempty"`
+	Subscriptions []MessageDescriptor    `json:"subscriptions,omitempty"`
+	Capabilities  []CapabilityDescriptor `json:"capabilities,omitempty"`
 }
 
 // Describer is implemented by factories or modules that expose metadata.
 type Describer interface {
 	Describe() Descriptor
+}
+
+// StatusReporter is implemented by modules that expose a maturity tag.
+type StatusReporter interface {
+	Status() Status
 }
 
 // Host is the surface a module can use during Mount.
@@ -131,7 +141,7 @@ func Descriptors() []Descriptor {
 				desc.Name = name
 			}
 		}
-		out = append(out, desc)
+		out = append(out, NormalizeDescriptor(name, desc))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

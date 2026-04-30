@@ -81,6 +81,19 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "jsruntime",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Embedded JS/TS runtime activation.",
+		Provides: []string{
+			"jsruntime",
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.ProvidedCapabilityOf[func(context.Context) error](bkmodule.CapabilityEnableJSRuntime),
+			bkmodule.ProvidedCapabilityOf[func() bool](bkmodule.CapabilityHasJSRuntime),
+			bkmodule.ProvidedCapabilityOf[runtimecap.Deployer](bkmodule.CapabilityDeployer),
+			bkmodule.ProvidedCapabilityOf[runtimecap.TSRunner](bkmodule.CapabilityTSRunner),
+			bkmodule.ProvidedCapabilityOf[runtimecap.Host](bkmodule.CapabilityEvalRuntime),
+			bkmodule.ProvidedCapabilityOf[func(context.Context, string, any) (json.RawMessage, error)](bkmodule.CapabilityCallJS),
+			bkmodule.ProvidedCapabilityOf[func() any](bkmodule.CapabilityHarnessRuntime),
+			bkmodule.RequiredCapabilityOf[runtimecap.Host](bkmodule.CapabilityJSRuntimeHost),
+		},
 	}
 }
 

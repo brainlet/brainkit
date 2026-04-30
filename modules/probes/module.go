@@ -70,6 +70,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "probes",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Periodic health probes of providers, vector stores, and storages.",
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func()](bkmodule.CapabilityProbeAll),
+		},
 	}
 }
 

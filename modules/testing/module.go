@@ -86,6 +86,13 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Requires: []string{
 			"jsruntime",
 		},
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[testingmsg.TestRunMsg, testingmsg.TestRunResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[runtimecap.Deployer](bkmodule.CapabilityDeployer),
+			bkmodule.RequiredCapabilityOf[runtimecap.TSRunner](bkmodule.CapabilityTSRunner),
+		},
 	}
 }
 

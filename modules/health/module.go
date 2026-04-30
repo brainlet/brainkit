@@ -68,6 +68,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "health",
 		Status:  bkmodule.StatusStable,
 		Summary: "Runtime health bus command (kit.health).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[KitHealthMsg, KitHealthResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func(context.Context) any](bkmodule.CapabilityHealthSnapshot),
+		},
 	}
 }
 

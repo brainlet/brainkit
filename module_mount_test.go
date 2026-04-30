@@ -58,6 +58,26 @@ func TestKitMountCommandAfterStartUnmountAndRemount(t *testing.T) {
 	require.Equal(t, "hello-two", resp.Text)
 }
 
+func TestMountedModulesIncludesRuntimeCommandManifest(t *testing.T) {
+	k, err := New(Config{Transport: Memory()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	require.NoError(t, k.Mount(context.Background(), hotEchoModule{id: "hot-echo-manifest", suffix: "-one"}))
+
+	descs := k.MountedModules()
+	require.Len(t, descs, 1)
+	require.Equal(t, "hot-echo-manifest", descs[0].Name)
+	require.Len(t, descs[0].Commands, 1)
+	require.Equal(t, "test.hot.echo", descs[0].Commands[0].Topic)
+	require.Equal(t, bkmodule.MessageKindCommand, descs[0].Commands[0].Kind)
+	require.Contains(t, descs[0].Commands[0].Request, "hotEchoMsg")
+	require.Contains(t, descs[0].Commands[0].Response, "hotEchoResp")
+
+	require.NoError(t, k.Unmount(context.Background(), "hot-echo-manifest"))
+	require.Empty(t, k.MountedModules())
+}
+
 type cleanupModule struct {
 	id     string
 	closed *bool
@@ -163,6 +183,22 @@ func TestKitUnmountCancelsScopedSubscriptions(t *testing.T) {
 	}
 }
 
+func TestMountedModulesIncludesRuntimeSubscriptionManifest(t *testing.T) {
+	k, err := New(Config{Transport: Memory()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	seen := make(chan string, 1)
+	require.NoError(t, k.Mount(context.Background(), eventModule{id: "events-manifest", seen: seen}))
+
+	descs := k.MountedModules()
+	require.Len(t, descs, 1)
+	require.Equal(t, "events-manifest", descs[0].Name)
+	require.Len(t, descs[0].Subscriptions, 1)
+	require.Equal(t, "test.event", descs[0].Subscriptions[0].Topic)
+	require.Equal(t, bkmodule.MessageKindSubscription, descs[0].Subscriptions[0].Kind)
+}
+
 type capabilityModule struct {
 	id string
 }
@@ -188,4 +224,49 @@ func TestKitUnmountRemovesScopedCapabilities(t *testing.T) {
 	require.NoError(t, k.Unmount(ctx, "capability"))
 	_, ok = k.caps.Get("test.capability")
 	require.False(t, ok)
+}
+
+type descriptorDependencyModule struct {
+	id string
+}
+
+func (m descriptorDependencyModule) ID() string { return m.id }
+
+func (m descriptorDependencyModule) Mount(context.Context, bkmodule.Host) error { return nil }
+
+type descriptorDependencyFactory struct {
+	id       string
+	requires []string
+}
+
+func (f descriptorDependencyFactory) Build(bkmodule.BuildContext) (bkmodule.Module, error) {
+	return descriptorDependencyModule{id: f.id}, nil
+}
+
+func (f descriptorDependencyFactory) Describe() bkmodule.Descriptor {
+	return bkmodule.Descriptor{Name: f.id, Requires: f.requires}
+}
+
+func TestDescriptorRequiresDriveHotMountDependencies(t *testing.T) {
+	const depID = "test-descriptor-dependency"
+	const modID = "test-descriptor-dependent"
+
+	bkmodule.Register(depID, descriptorDependencyFactory{id: depID})
+	bkmodule.Register(modID, descriptorDependencyFactory{id: modID, requires: []string{depID}})
+
+	k, err := New(Config{Transport: Memory()})
+	require.NoError(t, err)
+	defer k.Close()
+
+	require.NoError(t, k.Mount(context.Background(), descriptorDependencyModule{id: modID}))
+	_, depMounted := k.Module(depID)
+	require.True(t, depMounted)
+	_, modMounted := k.Module(modID)
+	require.True(t, modMounted)
+
+	descs := k.MountedModules()
+	require.Len(t, descs, 2)
+	require.Equal(t, depID, descs[0].Name)
+	require.Equal(t, modID, descs[1].Name)
+	require.Equal(t, []string{depID}, descs[1].Requires)
 }

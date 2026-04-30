@@ -64,6 +64,9 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 	if k.modules == nil {
 		k.modules = map[string]bkmodule.Module{}
 	}
+	if k.descs == nil {
+		k.descs = map[string]bkmodule.Descriptor{}
+	}
 	if _, exists := k.mounted[id]; exists {
 		k.mountMu.Unlock()
 		return fmt.Errorf("brainkit: module %q already mounted", id)
@@ -80,8 +83,10 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 		k.mountMu.Unlock()
 		return fmt.Errorf("brainkit: mount %q: %w", id, err)
 	}
+	desc := mountedModuleDescriptor(id, bkmodule.DescribeModule(mod), host.commands, host.subscriptions)
 	k.mountMu.Lock()
 	k.modules[id] = mod
+	k.descs[id] = desc
 	k.mountMu.Unlock()
 	return nil
 }
@@ -93,12 +98,66 @@ func (k *Kit) Unmount(ctx context.Context, id string) error {
 	if ok {
 		delete(k.mounted, id)
 		delete(k.modules, id)
+		delete(k.descs, id)
 	}
 	k.mountMu.Unlock()
 	if !ok {
 		return fmt.Errorf("brainkit: module %q is not mounted", id)
 	}
 	return scope.Close(ctx)
+}
+
+// MountedModules returns descriptors for every module currently mounted in
+// this Kit. The result is a snapshot sorted by module name.
+func (k *Kit) MountedModules() []ModuleDescriptor {
+	k.mountMu.Lock()
+	defer k.mountMu.Unlock()
+	out := make([]ModuleDescriptor, 0, len(k.descs))
+	for _, desc := range k.descs {
+		out = append(out, desc)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func mountedModuleDescriptor(id string, desc bkmodule.Descriptor, mountedCommands []bkmodule.MessageDescriptor, mountedSubscriptions []bkmodule.MessageDescriptor) bkmodule.Descriptor {
+	if len(mountedCommands) > 0 {
+		known := map[string]struct{}{}
+		for _, cmd := range desc.Commands {
+			if cmd.Topic != "" {
+				known[cmd.Topic] = struct{}{}
+			}
+		}
+		for _, cmd := range mountedCommands {
+			if cmd.Topic == "" {
+				continue
+			}
+			if _, ok := known[cmd.Topic]; ok {
+				continue
+			}
+			desc.Commands = append(desc.Commands, cmd)
+			known[cmd.Topic] = struct{}{}
+		}
+	}
+	if len(mountedSubscriptions) > 0 {
+		known := map[string]struct{}{}
+		for _, sub := range desc.Subscriptions {
+			if sub.Topic != "" {
+				known[sub.Topic] = struct{}{}
+			}
+		}
+		for _, sub := range mountedSubscriptions {
+			if sub.Topic == "" {
+				continue
+			}
+			if _, ok := known[sub.Topic]; ok {
+				continue
+			}
+			desc.Subscriptions = append(desc.Subscriptions, sub)
+			known[sub.Topic] = struct{}{}
+		}
+	}
+	return bkmodule.NormalizeDescriptor(id, desc)
 }
 
 func (k *Kit) closeMounted(ctx context.Context) error {
@@ -114,6 +173,7 @@ func (k *Kit) closeMounted(ctx context.Context) error {
 		scopes = append(scopes, k.mounted[id])
 		delete(k.mounted, id)
 		delete(k.modules, id)
+		delete(k.descs, id)
 	}
 	k.mountMu.Unlock()
 
@@ -125,25 +185,43 @@ func (k *Kit) closeMounted(ctx context.Context) error {
 }
 
 type moduleHost struct {
-	k     *Kit
-	scope bkmodule.Scope
+	k             *Kit
+	scope         bkmodule.Scope
+	commands      []bkmodule.MessageDescriptor
+	subscriptions []bkmodule.MessageDescriptor
 }
 
-func (h *moduleHost) Scope() bkmodule.Scope          { return h.scope }
-func (h *moduleHost) Runtime() sdk.Runtime           { return h.k.runtime() }
-func (h *moduleHost) Caller() *sdk.Caller            { return h.k.kernel.Caller() }
-func (h *moduleHost) Messages() bkmodule.MessageHost { return &kitMessageHost{k: h.k, scope: h.scope} }
-func (h *moduleHost) Commands() bkmodule.CommandHost { return &kitCommandHost{k: h.k, scope: h.scope} }
-func (h *moduleHost) Tools() bkmodule.ToolHost       { return &kitToolHost{k: h.k, scope: h.scope} }
-func (h *moduleHost) Logger() *slog.Logger           { return h.k.kernel.Logger() }
-func (h *moduleHost) Store() any                     { return h.k.kernel.Store() }
+func (h *moduleHost) Scope() bkmodule.Scope { return h.scope }
+func (h *moduleHost) Runtime() sdk.Runtime  { return h.k.runtime() }
+func (h *moduleHost) Caller() *sdk.Caller   { return h.k.kernel.Caller() }
+func (h *moduleHost) Messages() bkmodule.MessageHost {
+	return &kitMessageHost{k: h.k, scope: h.scope, record: h.recordSubscription}
+}
+func (h *moduleHost) Commands() bkmodule.CommandHost {
+	return &kitCommandHost{k: h.k, scope: h.scope, record: h.recordCommand}
+}
+func (h *moduleHost) Tools() bkmodule.ToolHost { return &kitToolHost{k: h.k, scope: h.scope} }
+func (h *moduleHost) Logger() *slog.Logger     { return h.k.kernel.Logger() }
+func (h *moduleHost) Store() any               { return h.k.kernel.Store() }
 func (h *moduleHost) Capabilities() bkmodule.CapabilityHost {
 	return &kitCapabilityHost{k: h.k, scope: h.scope}
 }
 
+func (h *moduleHost) recordCommand(spec bkmodule.CommandSpec) {
+	h.commands = append(h.commands, spec.Descriptor())
+}
+
+func (h *moduleHost) recordSubscription(topic string) {
+	h.subscriptions = append(h.subscriptions, bkmodule.MessageDescriptor{
+		Topic: topic,
+		Kind:  bkmodule.MessageKindSubscription,
+	})
+}
+
 type kitMessageHost struct {
-	k     *Kit
-	scope bkmodule.Scope
+	k      *Kit
+	scope  bkmodule.Scope
+	record func(string)
 }
 
 func (h *kitMessageHost) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
@@ -159,19 +237,26 @@ func (h *kitMessageHost) SubscribeRaw(ctx context.Context, topic string, handler
 		cancel()
 		return nil
 	})
+	if h.record != nil {
+		h.record(topic)
+	}
 	h.scope.Defer(handle.Close)
 	return handle, nil
 }
 
 type kitCommandHost struct {
-	k     *Kit
-	scope bkmodule.Scope
+	k      *Kit
+	scope  bkmodule.Scope
+	record func(bkmodule.CommandSpec)
 }
 
 func (h *kitCommandHost) Handle(spec bkmodule.CommandSpec) (bkmodule.Handle, error) {
 	handle, err := h.k.kernel.MountCommand(context.Background(), spec)
 	if err != nil {
 		return nil, err
+	}
+	if h.record != nil {
+		h.record(spec)
 	}
 	h.scope.Defer(handle.Close)
 	return handle, nil

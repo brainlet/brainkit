@@ -245,6 +245,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "topology",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Cross-kit routing — static peers + optional discovery feed.",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[PeersListMsg, PeersListResp](),
+			bkmodule.CommandMessage[PeersResolveMsg, PeersResolveResp](),
+		},
 	}
 }
 

@@ -71,6 +71,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "messaging",
 		Status:  bkmodule.StatusStable,
 		Summary: "Request/reply messaging command (kit.send).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[KitSendMsg, KitSendResp](),
+		},
 	}
 }
 

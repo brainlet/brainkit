@@ -102,6 +102,21 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "registry",
 		Status:  bkmodule.StatusStable,
 		Summary: "Registry/provider/storage/vector admin bus commands.",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[registrymsg.ProviderAddMsg, registrymsg.ProviderAddResp](),
+			bkmodule.CommandMessage[registrymsg.ProviderRemoveMsg, registrymsg.ProviderRemoveResp](),
+			bkmodule.CommandMessage[registrymsg.RegistryHasMsg, registrymsg.RegistryHasResp](),
+			bkmodule.CommandMessage[registrymsg.RegistryListMsg, registrymsg.RegistryListResp](),
+			bkmodule.CommandMessage[registrymsg.RegistryResolveMsg, registrymsg.RegistryResolveResp](),
+			bkmodule.CommandMessage[registrymsg.StorageAddMsg, registrymsg.StorageAddResp](),
+			bkmodule.CommandMessage[registrymsg.StorageRemoveMsg, registrymsg.StorageRemoveResp](),
+			bkmodule.CommandMessage[registrymsg.VectorAddMsg, registrymsg.VectorAddResp](),
+			bkmodule.CommandMessage[registrymsg.VectorRemoveMsg, registrymsg.VectorRemoveResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[*provreg.ProviderRegistry](bkmodule.CapabilityProviderRegistry),
+			bkmodule.RequiredCapabilityOf[storageManager](bkmodule.CapabilityStorageManager),
+		},
 	}
 }
 

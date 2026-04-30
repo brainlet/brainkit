@@ -168,6 +168,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Status:   bkmodule.StatusStable,
 		Summary:  "Model Context Protocol client: discovers + proxies external tools.",
 		Requires: []string{"tools"},
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[mcpmsg.McpCallToolMsg, mcpmsg.McpCallToolResp](),
+			bkmodule.CommandMessage[mcpmsg.McpListToolsMsg, mcpmsg.McpListToolsResp](),
+		},
 	}
 }
 

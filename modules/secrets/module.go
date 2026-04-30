@@ -116,6 +116,22 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "secrets",
 		Status:  bkmodule.StatusStable,
 		Summary: "Secret management bus commands (secrets.set, get, delete, list, rotate).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[secretmsg.SecretsDeleteMsg, secretmsg.SecretsDeleteResp](),
+			bkmodule.CommandMessage[secretmsg.SecretsGetMsg, secretmsg.SecretsGetResp](),
+			bkmodule.CommandMessage[secretmsg.SecretsListMsg, secretmsg.SecretsListResp](),
+			bkmodule.CommandMessage[secretmsg.SecretsRotateMsg, secretmsg.SecretsRotateResp](),
+			bkmodule.CommandMessage[secretmsg.SecretsSetMsg, secretmsg.SecretsSetResp](),
+		},
+		Events: []bkmodule.MessageDescriptor{
+			bkmodule.EventMessage[secretmsg.SecretsAccessedEvent](),
+			bkmodule.EventMessage[secretmsg.SecretsDeletedEvent](),
+			bkmodule.EventMessage[secretmsg.SecretsRotatedEvent](),
+			bkmodule.EventMessage[secretmsg.SecretsStoredEvent](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[coresecrets.SecretStore](bkmodule.CapabilitySecretStore),
+		},
 	}
 }
 

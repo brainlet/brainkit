@@ -86,6 +86,15 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "agents",
 		Status:  bkmodule.StatusStable,
 		Summary: "Agent registry bus commands (agents.list, discover, get-status, set-status).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[agentmsg.AgentDiscoverMsg, agentmsg.AgentDiscoverResp](),
+			bkmodule.CommandMessage[agentmsg.AgentGetStatusMsg, agentmsg.AgentGetStatusResp](),
+			bkmodule.CommandMessage[agentmsg.AgentListMsg, agentmsg.AgentListResp](),
+			bkmodule.CommandMessage[agentmsg.AgentSetStatusMsg, agentmsg.AgentSetStatusResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[agentRegistry](bkmodule.CapabilityAgentRegistry),
+		},
 	}
 }
 

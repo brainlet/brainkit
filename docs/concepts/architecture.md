@@ -83,6 +83,13 @@ type Module interface {
 }
 ```
 
+Factories and modules can also expose a `module.Descriptor`. The descriptor is
+the module manifest: status, module dependencies, owned commands, emitted
+events, raw subscriptions, and host capabilities. `Kit.Mount` records command
+and subscription topics registered through `module.Host`, and
+`Kit.MountedModules()` returns the live manifest snapshot. `brainkit modules
+list --json` shows the registry-side manifests compiled into the binary.
+
 Optionally a module can implement `StatusReporter` to declare itself
 `ModuleStatusStable`, `ModuleStatusBeta`, or `ModuleStatusWIP`. The
 status surfaces through module descriptors and CLI listing so a caller

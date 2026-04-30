@@ -213,14 +213,7 @@ func moduleDependsOn(mod bkmodule.Module, dependency string) bool {
 }
 
 func moduleDependencies(mod bkmodule.Module) []string {
-	if mod == nil {
-		return nil
-	}
-	reporter, ok := mod.(bkmodule.DependencyReporter)
-	if !ok {
-		return nil
-	}
-	return reporter.Dependencies()
+	return bkmodule.DependenciesOf(mod)
 }
 
 // toNodeConfig builds a NodeConfig for transport-connected mode.

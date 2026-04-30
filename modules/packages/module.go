@@ -104,6 +104,19 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Requires: []string{
 			"jsruntime",
 		},
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[packagemsg.PackageDeployInfoMsg, packagemsg.PackageDeployInfoResp](),
+			bkmodule.CommandMessage[packagemsg.PackageDeployMsg, packagemsg.PackageDeployResp](),
+			bkmodule.CommandMessage[packagemsg.PackageListDeployedMsg, packagemsg.PackageListDeployedResp](),
+			bkmodule.CommandMessage[packagemsg.PackageTeardownMsg, packagemsg.PackageTeardownResp](),
+		},
+		Events: []bkmodule.MessageDescriptor{
+			bkmodule.EventMessage[systemmsg.KitDeployedEvent](),
+			bkmodule.EventMessage[systemmsg.KitTeardownedEvent](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[runtimecap.Deployer](bkmodule.CapabilityDeployer),
+		},
 	}
 }
 

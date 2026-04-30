@@ -76,6 +76,13 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "control",
 		Status:  bkmodule.StatusStable,
 		Summary: "Runtime control bus commands (kit.set-draining, cluster.peers).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[ClusterPeersMsg, ClusterPeersResp](),
+			bkmodule.CommandMessage[KitSetDrainingMsg, KitSetDrainingResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
+		},
 	}
 }
 

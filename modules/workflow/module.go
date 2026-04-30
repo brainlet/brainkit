@@ -11,6 +11,7 @@ import (
 
 	bkmodule "github.com/brainlet/brainkit/module"
 	_ "github.com/brainlet/brainkit/modules/jsruntime"
+	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 )
 
 // Module wraps the workflow bus commands.
@@ -48,6 +49,19 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Summary: "Mastra-style workflow bus commands (start, status, resume, …).",
 		Requires: []string{
 			"jsruntime",
+		},
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[workflowmsg.WorkflowCancelMsg, workflowmsg.WorkflowCancelResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowListMsg, workflowmsg.WorkflowListResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowRestartMsg, workflowmsg.WorkflowRestartResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowResumeMsg, workflowmsg.WorkflowResumeResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowRunsMsg, workflowmsg.WorkflowRunsResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowStartAsyncMsg, workflowmsg.WorkflowStartAsyncResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowStartMsg, workflowmsg.WorkflowStartResp](),
+			bkmodule.CommandMessage[workflowmsg.WorkflowStatusMsg, workflowmsg.WorkflowStatusResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func(context.Context, string, any) (json.RawMessage, error)](bkmodule.CapabilityCallJS),
 		},
 	}
 }

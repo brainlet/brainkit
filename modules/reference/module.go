@@ -81,6 +81,13 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "reference",
 		Status:  bkmodule.StatusStable,
 		Summary: "Embedded reference corpus commands (kit.reference, list).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[referencemsg.KitReferenceListMsg, referencemsg.KitReferenceListResp](),
+			bkmodule.CommandMessage[referencemsg.KitReferenceMsg, referencemsg.KitReferenceResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[catalog](bkmodule.CapabilityReferenceCatalog),
+		},
 	}
 }
 

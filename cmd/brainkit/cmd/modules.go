@@ -66,7 +66,7 @@ server.LoadConfig time.`,
 
 func renderModuleTable(w io.Writer, descs []brainkit.ModuleDescriptor) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tSTATUS\tSUMMARY")
+	fmt.Fprintln(tw, "NAME\tSTATUS\tCOMMANDS\tEVENTS\tCAPS\tSUMMARY")
 	for _, d := range descs {
 		status := d.Status
 		if status == "" {
@@ -76,7 +76,7 @@ func renderModuleTable(w io.Writer, descs []brainkit.ModuleDescriptor) {
 		if summary == "" {
 			summary = "(no summary)"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", d.Name, status, summary)
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%s\n", d.Name, status, len(d.Commands), len(d.Events), len(d.Capabilities), summary)
 	}
 	tw.Flush()
 }

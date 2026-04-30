@@ -35,6 +35,7 @@ type Kit struct {
 	node    *engine.Node
 	modules map[string]bkmodule.Module
 	mounted map[string]bkmodule.Scope
+	descs   map[string]bkmodule.Descriptor
 	mountMu sync.Mutex
 	caps    *bkmodule.CapabilityRegistry
 
@@ -63,6 +64,7 @@ func New(cfg Config) (*Kit, error) {
 	kit := &Kit{
 		modules: map[string]bkmodule.Module{},
 		mounted: map[string]bkmodule.Scope{},
+		descs:   map[string]bkmodule.Descriptor{},
 		caps:    bkmodule.NewCapabilityRegistry(),
 	}
 

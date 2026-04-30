@@ -16,6 +16,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/transport"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modules/gateway/gatewaymsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/google/uuid"
 )
@@ -168,6 +169,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "gateway",
 		Status:  bkmodule.StatusStable,
 		Summary: "HTTP gateway: POST /api/bus + POST /api/stream + health.",
+		Subscriptions: []bkmodule.MessageDescriptor{
+			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayRouteAddMsg, gatewaymsg.GatewayRouteAddResp](),
+			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayRouteListMsg, gatewaymsg.GatewayRouteListResp](),
+			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayRouteRemoveMsg, gatewaymsg.GatewayRouteRemoveResp](),
+			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayStatusMsg, gatewaymsg.GatewayStatusResp](),
+		},
 	}
 }
 

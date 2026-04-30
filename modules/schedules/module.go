@@ -122,6 +122,14 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "schedules",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Persisted cron + one-shot scheduling with multi-replica claim.",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[schedulemsg.ScheduleCancelMsg, schedulemsg.ScheduleCancelResp](),
+			bkmodule.CommandMessage[schedulemsg.ScheduleCreateMsg, schedulemsg.ScheduleCreateResp](),
+			bkmodule.CommandMessage[schedulemsg.ScheduleListMsg, schedulemsg.ScheduleListResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func(types.ScheduleHandler)](bkmodule.CapabilitySetScheduleHandler),
+		},
 	}
 }
 

@@ -119,6 +119,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Requires: []string{
 			"jsruntime",
 		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func() any](bkmodule.CapabilityHarnessRuntime),
+		},
 	}
 }
 

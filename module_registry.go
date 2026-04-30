@@ -11,6 +11,14 @@ type ModuleFactory = bkmodule.Factory
 // ModuleDescriptor is optional metadata a factory can expose for CLI/docs.
 type ModuleDescriptor = bkmodule.Descriptor
 
+// ModuleMessageDescriptor describes one command/event/subscription topic in a
+// module manifest.
+type ModuleMessageDescriptor = bkmodule.MessageDescriptor
+
+// ModuleCapabilityDescriptor describes one module host capability in a module
+// manifest.
+type ModuleCapabilityDescriptor = bkmodule.CapabilityDescriptor
+
 // ModuleDescriber is an optional interface a ModuleFactory can implement.
 type ModuleDescriber = bkmodule.Describer
 

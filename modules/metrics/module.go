@@ -68,6 +68,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "metrics",
 		Status:  bkmodule.StatusStable,
 		Summary: "Runtime metrics bus command (metrics.get).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[MetricsGetMsg, MetricsGetResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[func() any](bkmodule.CapabilityMetricsSnapshot),
+		},
 	}
 }
 

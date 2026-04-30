@@ -78,6 +78,14 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "tools",
 		Status:  bkmodule.StatusStable,
 		Summary: "Tool registry bus commands (tools.call, resolve, list).",
+		Commands: []bkmodule.MessageDescriptor{
+			bkmodule.CommandMessage[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](),
+			bkmodule.CommandMessage[toolmsg.ToolListMsg, toolmsg.ToolListResp](),
+			bkmodule.CommandMessage[toolmsg.ToolResolveMsg, toolmsg.ToolResolveResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.ToolCommands](bkmodule.CapabilityToolCommands),
+		},
 	}
 }
 
@@ -86,9 +94,12 @@ func init() { bkmodule.Register("tools", Factory{}) }
 func (m *Module) callCommand() bkmodule.CommandSpec {
 	var zero toolmsg.ToolCallMsg
 	topic := zero.BusTopic()
+	desc := bkmodule.CommandMessage[toolmsg.ToolCallMsg, toolmsg.ToolCallResp]()
 	return bkmodule.CommandSpec{
-		Name:  topic,
-		Topic: topic,
+		Name:     topic,
+		Topic:    topic,
+		Request:  desc.Request,
+		Response: desc.Response,
 		Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 			var req toolmsg.ToolCallMsg
 			if len(payload) > 0 {

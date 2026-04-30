@@ -152,6 +152,14 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Name:    "discovery",
 		Status:  bkmodule.StatusBeta,
 		Summary: "Peer discovery: static list or bus-announced presence.",
+		Provides: []string{
+			"discovery.provider",
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.ProvidedCapabilityOf[*Module]("discovery.provider"),
+			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityNamespace),
+			bkmodule.RequiredCapabilityOf[transport.Presence](bkmodule.CapabilityPresenceTransport),
+		},
 	}
 }
 

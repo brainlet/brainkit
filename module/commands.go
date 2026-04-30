@@ -10,9 +10,12 @@ import (
 
 // CommandSpec binds a logical command topic to a raw JSON handler.
 type CommandSpec struct {
-	Name   string
-	Topic  string
-	Handle func(context.Context, json.RawMessage) (json.RawMessage, error)
+	Name     string
+	Topic    string
+	Request  string
+	Response string
+	Summary  string
+	Handle   func(context.Context, json.RawMessage) (json.RawMessage, error)
 }
 
 // Command builds a CommandSpec from a typed Brainkit message handler.
@@ -20,8 +23,10 @@ func Command[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Re
 	var zero Req
 	topic := zero.BusTopic()
 	return CommandSpec{
-		Name:  topic,
-		Topic: topic,
+		Name:     topic,
+		Topic:    topic,
+		Request:  typeName[Req](),
+		Response: typeName[Resp](),
 		Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
 			var req Req
 			if len(payload) > 0 {
@@ -38,6 +43,21 @@ func Command[Req sdk.BrainkitMessage, Resp any](handler func(context.Context, Re
 			}
 			return json.Marshal(resp)
 		},
+	}
+}
+
+// Descriptor returns the manifest metadata for this command registration.
+func (s CommandSpec) Descriptor() MessageDescriptor {
+	topic := s.Topic
+	if topic == "" {
+		topic = s.Name
+	}
+	return MessageDescriptor{
+		Topic:    topic,
+		Kind:     MessageKindCommand,
+		Request:  s.Request,
+		Response: s.Response,
+		Summary:  s.Summary,
 	}
 }
 
