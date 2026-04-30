@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -16,12 +14,12 @@ import (
 
 // PublishRaw sends a message to a topic. Returns correlationID.
 func (k *Kernel) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
-	return k.remote.PublishRaw(ctx, topic, payload)
+	return k.transportHost.PublishRaw(ctx, topic, payload)
 }
 
 // SubscribeRaw subscribes to a topic. Subscription is active before this returns.
 func (k *Kernel) SubscribeRaw(ctx context.Context, topic string, handler func(sdk.Message)) (func(), error) {
-	return k.remote.SubscribeRaw(ctx, topic, handler)
+	return k.transportHost.SubscribeRaw(ctx, topic, handler)
 }
 
 // --- sdk.CrossNamespaceRuntime implementation ---
@@ -44,23 +42,23 @@ func (k *Kernel) persistenceError(ctx context.Context, operation, source string,
 
 // PublishRawTo publishes to a specific Kit's namespace.
 func (k *Kernel) PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
-	return k.remote.PublishRawToNamespace(ctx, targetNamespace, topic, payload)
+	return k.transportHost.PublishRawToNamespace(ctx, targetNamespace, topic, payload)
 }
 
 // SubscribeRawTo subscribes to a topic in a specific Kit's namespace.
 func (k *Kernel) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
-	return k.remote.SubscribeRawToNamespace(ctx, targetNamespace, topic, handler)
+	return k.transportHost.SubscribeRawToNamespace(ctx, targetNamespace, topic, handler)
 }
 
 // publish is an internal convenience for fire-and-forget event publishing.
 func (k *Kernel) publish(ctx context.Context, topic string, payload json.RawMessage) error {
-	_, err := k.remote.PublishRaw(ctx, topic, payload)
+	_, err := k.transportHost.PublishRaw(ctx, topic, payload)
 	return err
 }
 
 // subscribe is an internal convenience for subscribing with full message.
 func (k *Kernel) subscribe(topic string, handler func(sdk.Message)) (func(), error) {
-	return k.remote.SubscribeRaw(context.Background(), topic, handler)
+	return k.transportHost.SubscribeRaw(context.Background(), topic, handler)
 }
 
 // callJS invokes a named function in the JS runtime with JSON-serialized arguments.
@@ -99,16 +97,7 @@ func (k *Kernel) ReplyRawWithEnvelope(ctx context.Context, replyTo, correlationI
 	if replyTo == "" {
 		return nil
 	}
-	wmsg := message.NewMessage(watermill.NewUUID(), []byte(payload))
-	wmsg.Metadata.Set("correlationId", correlationID)
-	if done {
-		wmsg.Metadata.Set("done", "true")
-	}
-	if envelope {
-		wmsg.Metadata.Set("envelope", "true")
-	}
-	// replyTo is already namespaced+sanitized — publish directly to transport
-	return k.transport.Publisher.Publish(replyTo, wmsg)
+	return k.transportHost.PublishReply(ctx, replyTo, correlationID, payload, done, envelope)
 }
 
 // replyEnvelope publishes a terminal envelope reply. Stamps envelope=true
@@ -117,9 +106,5 @@ func (k *Kernel) replyEnvelope(replyTo, correlationID string, payload []byte) er
 	if replyTo == "" {
 		return nil
 	}
-	wmsg := message.NewMessage(watermill.NewUUID(), payload)
-	wmsg.Metadata.Set("correlationId", correlationID)
-	wmsg.Metadata.Set("done", "true")
-	wmsg.Metadata.Set("envelope", "true")
-	return k.transport.Publisher.Publish(replyTo, wmsg)
+	return k.transportHost.PublishReply(context.Background(), replyTo, correlationID, payload, true, true)
 }

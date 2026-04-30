@@ -3,7 +3,7 @@ package server
 import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
-	"github.com/brainlet/brainkit/modules/standard"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/transports"
 )
 

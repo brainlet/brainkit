@@ -97,14 +97,14 @@ func (k *Kernel) close() error {
 	}
 
 	// Shut down router first (stops processing messages)
-	if k.router != nil {
-		collect(k.router.Close())
+	if k.transportHost != nil {
+		collect(k.transportHost.CloseRouter())
 	}
 
 	// Close the Caller — unsubscribes inbox, finalizes pending with
 	// ErrCallerClosed.
-	if k.caller != nil {
-		collect(k.caller.Close())
+	if k.transportHost != nil {
+		collect(k.transportHost.CloseCaller())
 	}
 
 	if rt := k.jsRuntime; rt != nil {
@@ -120,8 +120,8 @@ func (k *Kernel) close() error {
 	}
 
 	// Shut down transport last (only if we own it — Node owns its own)
-	if k.ownsTransport && k.transport != nil {
-		collect(k.transport.Close())
+	if k.transportHost != nil {
+		collect(k.transportHost.CloseOwnedTransport())
 	}
 
 	return firstErr

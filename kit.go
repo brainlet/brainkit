@@ -238,7 +238,7 @@ func buildRegisteredModule(id, fsRoot string) (bkmodule.Module, error) {
 	factory, ok := bkmodule.Lookup(id)
 	if !ok {
 		if id == "jsruntime" {
-			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime or use modules/standard", id)
+			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime or github.com/brainlet/brainkit/presets/standard", id)
 		}
 		return nil, fmt.Errorf("brainkit: module dependency %q is not registered", id)
 	}

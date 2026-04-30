@@ -7,7 +7,7 @@ package storagebridges
 
 import (
 	"github.com/brainlet/brainkit/internal/libsql"
-	"github.com/brainlet/brainkit/modules/registry/storagehost"
+	"github.com/brainlet/brainkit/modulehost/storagehost"
 )
 
 func init() {

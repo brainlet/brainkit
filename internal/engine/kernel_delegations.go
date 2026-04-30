@@ -28,7 +28,12 @@ func (k *Kernel) CallerID() string { return k.callerID }
 // Remote returns the transport-level client. Used by (*Kit).PresenceTransport
 // to expose cluster-wide publish/subscribe to brainkit.Modules (e.g. discovery)
 // without leaking the full transport surface.
-func (k *Kernel) Remote() *transport.RemoteClient { return k.remote }
+func (k *Kernel) Remote() *transport.RemoteClient {
+	if k.transportHost == nil {
+		return nil
+	}
+	return k.transportHost.Remote()
+}
 
 // SetScheduleHandler attaches the scheduler. The schedules module calls this
 // during its Init; bridges_scheduling.go and the schedule.* bus commands
@@ -54,7 +59,7 @@ func (k *Kernel) MountCommand(ctx context.Context, spec bkmodule.CommandSpec) (b
 	}
 	k.mu.Unlock()
 
-	handle, err := k.host.RegisterCommand(ctx, transport.RawCommandBinding{
+	handle, err := k.transportHost.RegisterCommand(ctx, transport.RawCommandBinding{
 		Name:  cmd.topic,
 		Topic: cmd.topic,
 		Handle: func(ctx context.Context, payload json.RawMessage) (json.RawMessage, error) {
@@ -110,10 +115,10 @@ func (k *Kernel) ShutdownSignal() <-chan struct{} { return k.shutdownCtx.Done() 
 // configurations that the transport can't support — e.g. the plugins
 // module requires real networking and refuses "memory".
 func (k *Kernel) TransportKind() string {
-	if k.transport == nil {
+	if k.transportHost == nil {
 		return ""
 	}
-	return k.transport.Kind
+	return k.transportHost.TransportKind()
 }
 
 // SetPluginChecker installs the module-side PluginChecker used by
@@ -140,7 +145,7 @@ func (k *Kernel) Logger() *slog.Logger { return k.logger }
 // ProviderRegistry exposes the shared provider/storage/vector registry
 // so brainkit-level accessors (Providers/Storages/Vectors) can issue
 // narrow reads without duplicating delegations on Kernel.
-func (k *Kernel) ProviderRegistry() *provreg.ProviderRegistry { return k.providers }
+func (k *Kernel) ProviderRegistry() *provreg.ProviderRegistry { return k.providerHost.Registry() }
 
 // CallTool invokes a registered tool through the core registry.
 func (k *Kernel) CallTool(ctx context.Context, req bkmodule.ToolCallRequest) (*bkmodule.ToolCallResponse, error) {
@@ -259,36 +264,46 @@ func (k *Kernel) SetTraceStore(store types.TraceStore) {
 // Injects env vars into the JS runtime's process.env.
 func (k *Kernel) RegisterAIProvider(name string, typ provreg.AIProviderType, config any) error {
 	reg := provreg.AIProviderRegistration{Type: typ, Config: config}
-	return k.providers.RegisterAIProvider(name, reg)
+	return k.providerHost.Registry().RegisterAIProvider(name, reg)
 }
 
 // UnregisterAIProvider removes an AI provider.
-func (k *Kernel) UnregisterAIProvider(name string) { k.providers.UnregisterAIProvider(name) }
+func (k *Kernel) UnregisterAIProvider(name string) {
+	k.providerHost.Registry().UnregisterAIProvider(name)
+}
 
 // ListAIProviders returns all registered AI providers.
-func (k *Kernel) ListAIProviders() []provreg.ProviderInfo { return k.providers.ListAIProviders() }
+func (k *Kernel) ListAIProviders() []provreg.ProviderInfo {
+	return k.providerHost.Registry().ListAIProviders()
+}
 
 // RegisterVectorStore registers a typed vector store at runtime.
 func (k *Kernel) RegisterVectorStore(name string, typ provreg.VectorStoreType, config any) error {
-	return k.providers.RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
+	return k.providerHost.Registry().RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
 }
 
 // UnregisterVectorStore removes a vector store.
-func (k *Kernel) UnregisterVectorStore(name string) { k.providers.UnregisterVectorStore(name) }
+func (k *Kernel) UnregisterVectorStore(name string) {
+	k.providerHost.Registry().UnregisterVectorStore(name)
+}
 
 // ListVectorStores returns all registered vector stores.
-func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo { return k.providers.ListVectorStores() }
+func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo {
+	return k.providerHost.Registry().ListVectorStores()
+}
 
 // RegisterStorage registers a typed Mastra storage at runtime.
 func (k *Kernel) RegisterStorage(name string, typ provreg.StorageType, config any) error {
-	return k.providers.RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
+	return k.providerHost.Registry().RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
 }
 
 // UnregisterStorage removes a Mastra storage.
-func (k *Kernel) UnregisterStorage(name string) { k.providers.UnregisterStorage(name) }
+func (k *Kernel) UnregisterStorage(name string) { k.providerHost.Registry().UnregisterStorage(name) }
 
 // ListStorages returns all registered Mastra storages.
-func (k *Kernel) ListStorages() []provreg.StorageInfo { return k.providers.ListStorages() }
+func (k *Kernel) ListStorages() []provreg.StorageInfo {
+	return k.providerHost.Registry().ListStorages()
+}
 
 // currentDeploymentSource returns the deployment source currently executing on the JS thread.
 // Used for tracing span attribution and audit source tracking.

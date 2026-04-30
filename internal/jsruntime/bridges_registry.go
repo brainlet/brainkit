@@ -5,7 +5,7 @@ import (
 	"time"
 
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/engine"
+	"github.com/brainlet/brainkit/modulehost/resourcehost"
 	quickjs "github.com/buke/quickjs-go"
 )
 
@@ -105,7 +105,7 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			if len(args) < 4 {
 				return qctx.NewUndefined()
 			}
-			r.deploymentMgr.Resources().Register(engine.ResourceEntry{
+			r.deploymentMgr.Resources().Register(resourcehost.Entry{
 				Type:      args[0].String(),
 				ID:        args[1].String(),
 				Name:      args[2].String(),

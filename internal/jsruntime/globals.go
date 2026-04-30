@@ -7,6 +7,7 @@ import (
 
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/modulehost/providerhost"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -31,7 +32,7 @@ func (r *Runtime) initJSRuntimeGlobals(cfg types.KernelConfig) error {
 	if len(cfg.AIProviders) > 0 {
 		provMap := make(map[string]map[string]string)
 		for name, reg := range cfg.AIProviders {
-			creds := extractProviderCredentials(reg)
+			creds := providerhost.ExtractProviderCredentials(reg)
 			entry := map[string]string{"APIKey": creds.APIKey}
 			if creds.BaseURL != "" {
 				entry["BaseURL"] = creds.BaseURL

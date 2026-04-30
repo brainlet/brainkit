@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	podmanOnce     sync.Once
-	podmanSocket   string
-	podmanErr      error
+	podmanOnce   sync.Once
+	podmanSocket string
+	podmanErr    error
 )
 
 // podmanConnectionEntry matches the JSON output of `podman system connection list --format json`.

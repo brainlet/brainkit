@@ -2,18 +2,13 @@ package engine
 
 import (
 	"context"
-	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/modulecap/runtime"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
-type DeploymentInfo struct {
-	Source    string               `json:"source"`
-	CreatedAt time.Time            `json:"createdAt"`
-	Resources []types.ResourceInfo `json:"resources,omitempty"`
-	Order     int                  `json:"order"`
-}
+type DeploymentInfo = runtimecap.DeploymentInfo
 
 func (k *Kernel) Deploy(ctx context.Context, source, code string, opts ...types.DeployOption) ([]types.ResourceInfo, error) {
 	if k.jsRuntime == nil {

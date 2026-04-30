@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	quickjs "github.com/buke/quickjs-go"
 	js "github.com/brainlet/brainkit/internal/contract"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
+	quickjs "github.com/buke/quickjs-go"
 )
 
 var (

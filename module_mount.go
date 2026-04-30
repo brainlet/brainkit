@@ -311,7 +311,7 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		return func(restarter PluginRestarter) {
 			h.k.kernel.SetPluginRestarter(restarter)
 		}, true
-	case bkmodule.CapabilityKernel:
+	case bkmodule.CapabilityJSRuntimeHost:
 		return h.k.kernel, true
 	default:
 		return nil, false

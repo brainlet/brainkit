@@ -46,7 +46,7 @@ func (k *Kernel) Health(ctx context.Context) types.HealthStatus {
 	// Providers — cached results from periodic probing (no live HTTP)
 	// Only report providers that have been probed at least once.
 	// Unprobed providers are not unhealthy — they just haven't been checked yet.
-	for _, p := range k.providers.ListAIProviders() {
+	for _, p := range k.providerHost.Registry().ListAIProviders() {
 		if p.LastProbed.IsZero() {
 			checks = append(checks, types.HealthCheck{
 				Name:    "provider:" + p.Name,

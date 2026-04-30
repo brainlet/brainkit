@@ -7,12 +7,12 @@ import (
 	"log/slog"
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/tools"
 	coretracing "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulecap/plugin"
 )
 
 type pluginHost interface {
@@ -22,7 +22,7 @@ type pluginHost interface {
 	Logger() *slog.Logger
 	ReportError(error, types.ErrorContext)
 	SetPluginChecker(bkmodule.PluginChecker)
-	SetPluginRestarter(engine.PluginRestarter)
+	SetPluginRestarter(plugincap.Restarter)
 	Audit() *auditpkg.Recorder
 	Tools() *tools.ToolRegistry
 	Tracer() *coretracing.Tracer
@@ -43,7 +43,7 @@ type pluginMountExt struct {
 	audit              *auditpkg.Recorder
 	reportError        func(error, types.ErrorContext)
 	setPluginChecker   func(bkmodule.PluginChecker)
-	setPluginRestarter func(engine.PluginRestarter)
+	setPluginRestarter func(plugincap.Restarter)
 	namespace          string
 	callerID           string
 }
@@ -86,7 +86,7 @@ func newMountedPluginHost(host bkmodule.Host) (pluginHost, error) {
 	if err != nil {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
-	setPluginRestarter, err := bkmodule.RequireCapability[func(engine.PluginRestarter)](host, bkmodule.CapabilitySetPluginRestarter)
+	setPluginRestarter, err := bkmodule.RequireCapability[func(plugincap.Restarter)](host, bkmodule.CapabilitySetPluginRestarter)
 	if err != nil {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
@@ -131,7 +131,7 @@ func (h mountedPluginHost) ReportError(err error, ctx types.ErrorContext) {
 func (h mountedPluginHost) SetPluginChecker(checker bkmodule.PluginChecker) {
 	h.ext.setPluginChecker(checker)
 }
-func (h mountedPluginHost) SetPluginRestarter(restarter engine.PluginRestarter) {
+func (h mountedPluginHost) SetPluginRestarter(restarter plugincap.Restarter) {
 	h.ext.setPluginRestarter(restarter)
 }
 func (h mountedPluginHost) Audit() *auditpkg.Recorder       { return h.ext.audit }

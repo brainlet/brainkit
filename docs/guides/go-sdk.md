@@ -66,7 +66,7 @@ fields:
 | `LogHandler` | `func(LogEntry)` | Tagged log stream from `.ts` and the runtime. |
 | `ErrorHandler` | `func(error)` | Non-fatal error sink. |
 | `MaxConcurrency` | `int` | Concurrent bus handler cap. 0 = unlimited. |
-| `JSRuntime` | `bool` | Requests the embedded JS/TS runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or use `modules/standard` so the request can be satisfied. |
+| `JSRuntime` | `bool` | Requests the embedded JS/TS runtime for deploy/eval/workflow/harness paths. Zero-value Kit leaves it off; import `modules/jsruntime` or `presets/standard` so the request can be satisfied. |
 | `MaxStackSize` | `int` | QuickJS stack bytes. Default 1 MB. |
 | `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
 | `Modules` | `[]Module` | Opt-in subsystems. |

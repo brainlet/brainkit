@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/brainlet/brainkit/internal/engine"
 	runtimejs "github.com/brainlet/brainkit/internal/jsruntime"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulecap/runtime"
 )
 
 // Module enables the embedded JS/TS runtime on mount.
@@ -25,28 +25,28 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
 // Mount starts the embedded JS/TS runtime if it is not already active.
 func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
-	kernel, err := bkmodule.RequireCapability[*engine.Kernel](host, bkmodule.CapabilityKernel)
+	runtimeHost, err := bkmodule.RequireCapability[runtimecap.Host](host, bkmodule.CapabilityJSRuntimeHost)
 	if err != nil {
 		return fmt.Errorf("jsruntime: %w", err)
 	}
-	if err := runtimejs.Enable(ctx, kernel); err != nil {
+	if err := runtimejs.Enable(ctx, runtimeHost); err != nil {
 		return err
 	}
 	for name, value := range map[string]any{
 		bkmodule.CapabilityEnableJSRuntime: func(ctx context.Context) error {
-			return runtimejs.Enable(ctx, kernel)
+			return runtimejs.Enable(ctx, runtimeHost)
 		},
 		bkmodule.CapabilityHasJSRuntime: func() bool {
-			return kernel.HasJSRuntime()
+			return runtimeHost.HasJSRuntime()
 		},
-		bkmodule.CapabilityDeployer:    engine.Deployer(kernel),
-		bkmodule.CapabilityTSRunner:    engine.TSRunner(kernel),
-		bkmodule.CapabilityEvalRuntime: kernel,
+		bkmodule.CapabilityDeployer:    runtimecap.Deployer(runtimeHost),
+		bkmodule.CapabilityTSRunner:    runtimecap.TSRunner(runtimeHost),
+		bkmodule.CapabilityEvalRuntime: runtimeHost,
 		bkmodule.CapabilityCallJS: func(ctx context.Context, fn string, args any) (json.RawMessage, error) {
-			return kernel.CallJS(ctx, fn, args)
+			return runtimeHost.CallJS(ctx, fn, args)
 		},
 		bkmodule.CapabilityHarnessRuntime: func() any {
-			return kernel.HarnessRuntime()
+			return runtimeHost.HarnessRuntime()
 		},
 	} {
 		if _, err := host.Capabilities().Provide(ctx, name, value); err != nil {

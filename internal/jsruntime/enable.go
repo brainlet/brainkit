@@ -8,15 +8,15 @@ import (
 	"sync"
 
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
-	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/types"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/modulecap/runtime"
+	"github.com/brainlet/brainkit/modulehost/providerhost"
 )
 
 // Runtime owns the optional embedded JS/TS runtime for a Kernel.
 type Runtime struct {
-	host          *engine.Kernel
+	host          runtimecap.Host
 	cfg           types.KernelConfig
 	bridge        *jsbridge.Bridge
 	agents        *agentembed.Sandbox
@@ -29,7 +29,7 @@ type Runtime struct {
 // Enable starts the embedded JS/TS runtime for a light Kernel. It is
 // idempotent and can be called during construction or from a hot-mounted
 // jsruntime module.
-func Enable(ctx context.Context, host *engine.Kernel) error {
+func Enable(ctx context.Context, host runtimecap.Host) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -44,7 +44,7 @@ func Enable(ctx context.Context, host *engine.Kernel) error {
 
 	providers := make(map[string]agentembed.ProviderConfig)
 	for name, reg := range cfg.AIProviders {
-		pc := extractProviderCredentials(reg)
+		pc := providerhost.ExtractProviderCredentials(reg)
 		providers[name] = agentembed.ProviderConfig{APIKey: pc.APIKey, BaseURL: pc.BaseURL}
 	}
 
@@ -181,7 +181,7 @@ func (r *Runtime) Teardown(ctx context.Context, source string) (int, error) {
 	return r.deploymentMgr.Teardown(ctx, source)
 }
 
-func (r *Runtime) ListDeployments() []engine.DeploymentInfo {
+func (r *Runtime) ListDeployments() []runtimecap.DeploymentInfo {
 	return r.deploymentMgr.ListDeployments()
 }
 
@@ -270,12 +270,4 @@ func (r *Runtime) removeBridgeSub(id string) func() {
 	delete(r.bridgeSubs, id)
 	r.mu.Unlock()
 	return cancel
-}
-
-func extractProviderCredentials(reg provreg.AIProviderRegistration) struct{ APIKey, BaseURL string } {
-	if cp, ok := reg.Config.(types.CredentialProvider); ok {
-		apiKey, baseURL := cp.ProviderCredentials()
-		return struct{ APIKey, BaseURL string }{apiKey, baseURL}
-	}
-	return struct{ APIKey, BaseURL string }{}
 }

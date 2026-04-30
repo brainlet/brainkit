@@ -16,7 +16,7 @@ import (
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/transport"
 	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
-	"github.com/brainlet/brainkit/modules/standard"
+	"github.com/brainlet/brainkit/presets/standard"
 	bktransports "github.com/brainlet/brainkit/transports"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"

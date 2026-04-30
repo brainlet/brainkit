@@ -12,11 +12,12 @@ import (
 
 	js "github.com/brainlet/brainkit/internal/contract"
 	agentembed "github.com/brainlet/brainkit/internal/embed/agent"
-	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/jsbridge"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
+	"github.com/brainlet/brainkit/modulecap/runtime"
+	"github.com/brainlet/brainkit/modulehost/resourcehost"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	typescript "github.com/brainlet/brainkit/vendor_typescript"
 )
@@ -24,7 +25,7 @@ import (
 type DeploymentManager struct {
 	lifecycleMu syncx.Mutex
 	mu          syncx.Mutex
-	deployments map[string]*engine.DeploymentInfo
+	deployments map[string]*runtimecap.DeploymentInfo
 	deployOrder atomic.Int32
 
 	bridge          *jsbridge.Bridge
@@ -33,7 +34,7 @@ type DeploymentManager struct {
 	store           types.KitStore
 	errorHandler    func(error, types.ErrorContext)
 	logger          *slog.Logger
-	resources       *engine.ResourceRegistry
+	resources       *resourcehost.Registry
 	toolCleanup     func(id string) // called on tool unregister
 	agentCleanup    func(id string) // called on agent unregister
 	subCleanup      func(id string) // called on subscription cancel
@@ -62,14 +63,14 @@ type DeploymentManagerConfig struct {
 
 func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
 	return &DeploymentManager{
-		deployments:     make(map[string]*engine.DeploymentInfo),
+		deployments:     make(map[string]*runtimecap.DeploymentInfo),
 		bridge:          cfg.Bridge,
 		agents:          cfg.Agents,
 		tracer:          cfg.Tracer,
 		store:           cfg.Store,
 		errorHandler:    cfg.ErrorHandler,
 		logger:          cfg.Logger,
-		resources:       engine.NewResourceRegistry(),
+		resources:       resourcehost.NewRegistry(),
 		toolCleanup:     cfg.ToolCleanup,
 		agentCleanup:    cfg.AgentCleanup,
 		subCleanup:      cfg.SubCleanup,
@@ -78,7 +79,7 @@ func NewDeploymentManager(cfg DeploymentManagerConfig) *DeploymentManager {
 }
 
 // Resources returns the Go-native resource registry for direct registration by bridges.
-func (m *DeploymentManager) Resources() *engine.ResourceRegistry {
+func (m *DeploymentManager) Resources() *resourcehost.Registry {
 	return m.resources
 }
 
@@ -177,7 +178,7 @@ func (m *DeploymentManager) teardownLocked(ctx context.Context, source string) (
 	return removed, nil
 }
 
-func (m *DeploymentManager) ListDeployments() []engine.DeploymentInfo {
+func (m *DeploymentManager) ListDeployments() []runtimecap.DeploymentInfo {
 	m.mu.Lock()
 	sources := make([]string, 0, len(m.deployments))
 	for s := range m.deployments {
@@ -185,14 +186,14 @@ func (m *DeploymentManager) ListDeployments() []engine.DeploymentInfo {
 	}
 	m.mu.Unlock()
 
-	result := make([]engine.DeploymentInfo, 0, len(sources))
+	result := make([]runtimecap.DeploymentInfo, 0, len(sources))
 	for _, s := range sources {
 		resources, _ := m.ResourcesFrom(s)
 		m.mu.Lock()
 		d, ok := m.deployments[s]
 		m.mu.Unlock()
 		if ok {
-			result = append(result, engine.DeploymentInfo{
+			result = append(result, runtimecap.DeploymentInfo{
 				Source:    d.Source,
 				CreatedAt: d.CreatedAt,
 				Resources: resources,
@@ -272,9 +273,9 @@ func (m *DeploymentManager) trackDeployment(source string) []types.ResourceInfo 
 	now := time.Now()
 	m.mu.Lock()
 	if m.deployments == nil {
-		m.deployments = make(map[string]*engine.DeploymentInfo)
+		m.deployments = make(map[string]*runtimecap.DeploymentInfo)
 	}
-	m.deployments[source] = &engine.DeploymentInfo{
+	m.deployments[source] = &runtimecap.DeploymentInfo{
 		Source:    source,
 		CreatedAt: now,
 		Resources: resources,
@@ -385,14 +386,14 @@ func (m *DeploymentManager) RemoveResource(resourceType, id string) error {
 	if !ok {
 		return nil
 	}
-	m.dispatchCleanups([]engine.ResourceEntry{entry})
-	m.sweepJSRefs([]engine.ResourceEntry{entry})
+	m.dispatchCleanups([]resourcehost.Entry{entry})
+	m.sweepJSRefs([]resourcehost.Entry{entry})
 	return nil
 }
 
 // dispatchCleanups runs Go-native cleanup for each removed resource.
 // No JS eval — all cleanup targets are Go subsystems.
-func (m *DeploymentManager) dispatchCleanups(entries []engine.ResourceEntry) {
+func (m *DeploymentManager) dispatchCleanups(entries []resourcehost.Entry) {
 	for _, entry := range entries {
 		switch entry.Type {
 		case "tool":
@@ -418,7 +419,7 @@ func (m *DeploymentManager) dispatchCleanups(entries []engine.ResourceEntry) {
 
 // sweepJSRefs removes stale entries from JS-side __kit_refs and __bus_subs maps.
 // Single batch eval — one JS call regardless of entry count.
-func (m *DeploymentManager) sweepJSRefs(entries []engine.ResourceEntry) {
+func (m *DeploymentManager) sweepJSRefs(entries []resourcehost.Entry) {
 	if len(entries) == 0 {
 		return
 	}
@@ -451,7 +452,7 @@ func (m *DeploymentManager) sweepJSRefs(entries []engine.ResourceEntry) {
 	}
 }
 
-func entriesToResourceInfos(entries []engine.ResourceEntry) []types.ResourceInfo {
+func entriesToResourceInfos(entries []resourcehost.Entry) []types.ResourceInfo {
 	infos := make([]types.ResourceInfo, len(entries))
 	for i, e := range entries {
 		infos[i] = types.ResourceInfo{

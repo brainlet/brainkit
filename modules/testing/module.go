@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	braintest "github.com/brainlet/brainkit/internal/braintest"
-	"github.com/brainlet/brainkit/internal/engine"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulecap/runtime"
 	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/modules/testing/testingmsg"
 )
@@ -16,8 +16,8 @@ import (
 // Module exposes test.run. Construct via New and include in
 // brainkit.Config.Modules when the runtime should execute .test.ts suites.
 type Module struct {
-	deployer engine.Deployer
-	tsRunner engine.TSRunner
+	deployer runtimecap.Deployer
+	tsRunner runtimecap.TSRunner
 }
 
 // New creates the testing module.
@@ -34,11 +34,11 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
 // Mount registers test.run.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	deployer, err := bkmodule.RequireCapability[engine.Deployer](host, bkmodule.CapabilityDeployer)
+	deployer, err := bkmodule.RequireCapability[runtimecap.Deployer](host, bkmodule.CapabilityDeployer)
 	if err != nil {
 		return fmt.Errorf("testing: %w", err)
 	}
-	tsRunner, err := bkmodule.RequireCapability[engine.TSRunner](host, bkmodule.CapabilityTSRunner)
+	tsRunner, err := bkmodule.RequireCapability[runtimecap.TSRunner](host, bkmodule.CapabilityTSRunner)
 	if err != nil {
 		return fmt.Errorf("testing: %w", err)
 	}
@@ -91,10 +91,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 
 func init() { bkmodule.Register("testing", Factory{}) }
 
-// testRuntime adapts engine.Deployer + engine.TSRunner to braintest.Runtime.
+// testRuntime adapts runtime capabilities to braintest.Runtime.
 type testRuntime struct {
-	deployer engine.Deployer
-	tsRunner engine.TSRunner
+	deployer runtimecap.Deployer
+	tsRunner runtimecap.TSRunner
 }
 
 func (r *testRuntime) EvalTS(ctx context.Context, source, code string) (string, error) {

@@ -2,7 +2,7 @@ package engine
 
 import (
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/modules/registry/storagehost"
+	"github.com/brainlet/brainkit/modulehost/storagehost"
 )
 
 func (k *Kernel) AddStorage(name string, cfg types.StorageConfig) error {

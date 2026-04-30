@@ -42,7 +42,7 @@ const (
 	CapabilityReportError           = "brainkit.core.report_error"
 	CapabilitySetPluginChecker      = "brainkit.core.set_plugin_checker"
 	CapabilitySetPluginRestarter    = "brainkit.core.set_plugin_restarter"
-	CapabilityKernel                = "brainkit.core.kernel"
+	CapabilityJSRuntimeHost         = "brainkit.core.jsruntime_host"
 	CapabilityEnableJSRuntime       = "brainkit.core.enable_js_runtime"
 	CapabilityHasJSRuntime          = "brainkit.core.has_js_runtime"
 )

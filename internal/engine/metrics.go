@@ -6,7 +6,6 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 )
 
-
 // Metrics returns a point-in-time snapshot of internal Kernel state.
 func (k *Kernel) Metrics() types.KernelMetrics {
 	scheduleCount := 0
@@ -25,8 +24,8 @@ func (k *Kernel) Metrics() types.KernelMetrics {
 	}
 
 	// Bus per-topic metrics
-	if k.busMetrics != nil {
-		snap := k.busMetrics.Snapshot()
+	if k.transportHost != nil && k.transportHost.Metrics() != nil {
+		snap := k.transportHost.Metrics().Snapshot()
 		m.Bus = &snap
 	}
 

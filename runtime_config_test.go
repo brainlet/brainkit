@@ -8,7 +8,7 @@ import (
 	evalmod "github.com/brainlet/brainkit/modules/eval"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	jsruntimemod "github.com/brainlet/brainkit/modules/jsruntime"
-	"github.com/brainlet/brainkit/modules/standard"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/stretchr/testify/require"
 )

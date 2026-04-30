@@ -70,7 +70,7 @@ func (k *Kernel) handleHandlerFailure(msg sdk.Message, topic string, handlerErr 
 		case <-k.shutdownCtx.Done():
 			return
 		}
-		k.remote.PublishRawWithMeta(context.Background(), topic, msg.Payload, map[string]string{
+		k.transportHost.PublishRawWithMeta(context.Background(), topic, msg.Payload, map[string]string{
 			"retryCount":    strconv.Itoa(nextRetry),
 			"replyTo":       msg.Metadata["replyTo"],
 			"correlationId": msg.Metadata["correlationId"],
@@ -143,7 +143,7 @@ func (k *Kernel) emitHandlerExhausted(topic string, err error, retryCount int, c
 	if correlationID != "" {
 		meta["correlationId"] = correlationID
 	}
-	k.remote.PublishRawWithMeta(context.Background(), systemmsg.TopicHandlerExhausted, payload, meta)
+	k.transportHost.PublishRawWithMeta(context.Background(), systemmsg.TopicHandlerExhausted, payload, meta)
 }
 
 func computeDelay(p *types.RetryPolicy, retryCount int) time.Duration {

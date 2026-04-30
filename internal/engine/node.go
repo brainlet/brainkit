@@ -88,7 +88,7 @@ func (n *Node) registerCommandBindings() {
 	if n.bound {
 		return
 	}
-	n.Kernel.host.RegisterCommands(commandBindingsForNode(n))
+	n.Kernel.transportHost.RegisterCommands(commandBindingsForNode(n))
 	n.bound = true
 }
 
@@ -108,9 +108,7 @@ func (n *Node) Start(ctx context.Context) error {
 	n.mu.Unlock()
 
 	// Start the router in a background goroutine
-	go func() {
-		_ = n.Kernel.router.Run(context.Background())
-	}()
+	n.Kernel.transportHost.Run(context.Background())
 
 	// Wait for the router to be ready (all handlers subscribed).
 	// Apply a default 2-minute timeout if the caller didn't set one.
@@ -121,7 +119,7 @@ func (n *Node) Start(ctx context.Context) error {
 		defer cancel()
 	}
 	select {
-	case <-n.Kernel.router.Running():
+	case <-n.Kernel.transportHost.Running():
 		// All handlers subscribed
 	case <-waitCtx.Done():
 		return &sdk.TimeoutError{Operation: "router start (NATS JetStream provisioning)"}

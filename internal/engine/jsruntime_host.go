@@ -18,6 +18,13 @@ func (k *Kernel) RuntimeConfig() types.KernelConfig { return k.config }
 // SetRuntimeConfigJSRuntime marks whether the optional JS runtime is active.
 func (k *Kernel) SetRuntimeConfigJSRuntime(active bool) { k.config.JSRuntime = active }
 
+// SetDeployOrderSeed updates the attached runtime's deployment order seed.
+func (k *Kernel) SetDeployOrderSeed(seed int32) {
+	if k.jsRuntime != nil {
+		k.jsRuntime.SetDeployOrderSeed(seed)
+	}
+}
+
 // ToolsDomain exposes the local tool domain to optional runtime attachments.
 func (k *Kernel) ToolsDomain() *toolsmod.Domain { return k.toolsDomain }
 

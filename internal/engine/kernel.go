@@ -6,18 +6,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill/message"
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/syncx"
 	toolreg "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
-	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulehost/providerhost"
+	"github.com/brainlet/brainkit/modulehost/runtimehost"
+	"github.com/brainlet/brainkit/modulehost/storagehost"
+	"github.com/brainlet/brainkit/modulehost/transporthost"
 	agentsmod "github.com/brainlet/brainkit/modules/agents"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
-	"github.com/brainlet/brainkit/modules/registry/storagehost"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 )
@@ -30,19 +30,11 @@ type Kernel struct {
 	agentsDomain *agentsmod.Domain
 
 	Tools         *toolreg.ToolRegistry
-	providers     *provreg.ProviderRegistry
+	providerHost  *providerhost.Manager
 	tracer        *tracing.Tracer
 	streamTracker *streamTracker // heartbeat goroutine manager for active streams
-
-	// Internal Watermill transport — always present
-	transport     *transport.Transport
-	router        *message.Router
-	remote        *transport.RemoteClient
-	host          *transport.Host
-	ownsTransport bool // true if Kernel created the transport (false if injected by Node)
-
-	// Shared-inbox reply router. Created after transport init.
-	caller *sdk.Caller
+	transportHost *transporthost.Host
+	runtimeHost   *runtimehost.Manager
 
 	config      types.KernelConfig
 	logger      *slog.Logger
@@ -66,7 +58,6 @@ type Kernel struct {
 
 	// Metrics
 	pumpCycles atomic.Int64
-	busMetrics *transport.Metrics // per-topic bus message counts
 
 	// Scheduling handler — set by modules/schedules.Module at mount time.
 	// The QuickJS bridges (bus.schedule / bus.unschedule) and the schedule.*
@@ -112,7 +103,12 @@ func (k *Kernel) IsDraining() bool {
 
 // Caller returns the Kernel's shared-inbox reply router. Nil until
 // transport init completes.
-func (k *Kernel) Caller() *sdk.Caller { return k.caller }
+func (k *Kernel) Caller() *sdk.Caller {
+	if k.transportHost == nil {
+		return nil
+	}
+	return k.transportHost.Caller()
+}
 
 // SetDraining sets the draining state. Used for testing.
 func (k *Kernel) SetDraining(v bool) {
@@ -165,8 +161,8 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		cfg.CallerID = cfg.Namespace
 	}
 
-	// Auto-detect AI providers from OS env + EnvVars before sandbox creation
-	autoDetectProviders(&cfg)
+	// Auto-detect AI providers from OS env + EnvVars before sandbox creation.
+	providerhost.AutoDetectProviders(&cfg)
 
 	logger := cfg.Logger
 	if logger == nil {
@@ -222,7 +218,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.catalog = buildCommandCatalog()
 	kernel.events = buildEventCatalog(kernel.catalog)
 
-	// Initial probe — probes module (session 05) owns periodic probing.
+	// Initial probe — probes module owns periodic probing.
 	go kernel.ProbeAll()
 
 	if err := kernel.initTransport(cfg); err != nil {
@@ -230,6 +226,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	}
 	// If DeferRouterStart: caller (Node) registers all bindings and starts the router
 
+	kernel.runtimeHost = runtimehost.New(kernel, logger, kernel.transportHost.SubscribeRawFanOut)
 	kernel.initPersistence(cfg)
 
 	if cleanup := kernel.initAudit(cfg); cleanup != nil {

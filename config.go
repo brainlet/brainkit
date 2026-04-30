@@ -88,8 +88,9 @@ type Config struct {
 	// JS-backed storage/vector probes. Zero-value Config keeps the core control
 	// plane light. JS-dependent modules such as eval, packages, testing,
 	// workflow, and harness request it automatically; binaries must import
-	// github.com/brainlet/brainkit/modules/jsruntime or use modules/standard so
-	// that request can be satisfied.
+	// github.com/brainlet/brainkit/modules/jsruntime or
+	// github.com/brainlet/brainkit/presets/standard so that request can be
+	// satisfied.
 	JSRuntime bool
 
 	// MaxStackSize for the QuickJS runtime in bytes. Default: 1MB.

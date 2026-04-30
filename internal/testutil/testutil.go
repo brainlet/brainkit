@@ -14,7 +14,7 @@ import (
 	"github.com/brainlet/brainkit"
 	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/schedules"
-	"github.com/brainlet/brainkit/modules/standard"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	_ "github.com/brainlet/brainkit/storagebridges"
 	"github.com/testcontainers/testcontainers-go/wait"

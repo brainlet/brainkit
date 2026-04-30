@@ -12,11 +12,11 @@ import (
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	coredeploy "github.com/brainlet/brainkit/internal/deploy"
-	"github.com/brainlet/brainkit/internal/engine"
 	"github.com/brainlet/brainkit/internal/secrets"
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulecap/runtime"
 	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -44,7 +44,7 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers package.* command handlers against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	deployer, err := bkmodule.RequireCapability[engine.Deployer](host, bkmodule.CapabilityDeployer)
+	deployer, err := bkmodule.RequireCapability[runtimecap.Deployer](host, bkmodule.CapabilityDeployer)
 	if err != nil {
 		return fmt.Errorf("packages: %w", err)
 	}
@@ -113,9 +113,9 @@ type busPublisher interface {
 	PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error)
 }
 
-// deployerAdapter adapts engine.Deployer to the internal deploy package.
+// deployerAdapter adapts runtimecap.Deployer to the internal deploy package.
 type deployerAdapter struct {
-	deployer    engine.Deployer
+	deployer    runtimecap.Deployer
 	packageName string
 }
 
@@ -135,7 +135,7 @@ func (d *deployerAdapter) Teardown(ctx context.Context, source string) error {
 
 // Domain handles package.deploy/teardown/list/info bus commands.
 type Domain struct {
-	deployer             engine.Deployer
+	deployer             runtimecap.Deployer
 	secretStore          secrets.SecretStore
 	pluginCheckerFactory func() bkmodule.PluginChecker
 
@@ -148,7 +148,7 @@ type Domain struct {
 }
 
 // NewDomain builds a package deployment command domain.
-func NewDomain(deployer engine.Deployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker) *Domain {
+func NewDomain(deployer runtimecap.Deployer, secretStore secrets.SecretStore, pluginCheckerFactory func() bkmodule.PluginChecker) *Domain {
 	return &Domain{
 		deployer:             deployer,
 		secretStore:          secretStore,

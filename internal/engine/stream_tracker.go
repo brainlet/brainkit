@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit/internal/syncx"
 )
 
@@ -62,9 +60,7 @@ func (st *streamTracker) StartHeartbeat(replyTo, correlationID string) {
 		for {
 			select {
 			case <-ticker.C:
-				wmsg := message.NewMessage(watermill.NewUUID(), []byte(`{"type":"heartbeat"}`))
-				wmsg.Metadata.Set("correlationId", correlationID)
-				st.kernel.transport.Publisher.Publish(replyTo, wmsg)
+				_ = st.kernel.transportHost.PublishReply(goCtx, replyTo, correlationID, []byte(`{"type":"heartbeat"}`), false, false)
 			case <-ctx.Done():
 				return
 			case <-goCtx.Done():
