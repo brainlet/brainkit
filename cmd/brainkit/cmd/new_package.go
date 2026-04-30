@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ bus.on("hello", (msg) => {
   msg.reply({ message: "Hello from %s!" });
 });
 `, name)
-			if err := brainkit.ScaffoldPackage(dir, name, "index.ts", source); err != nil {
+			if err := packages.ScaffoldPackage(dir, name, "index.ts", source); err != nil {
 				return err
 			}
 			cmd.Printf("Created package %s in %s/\n", name, dir)

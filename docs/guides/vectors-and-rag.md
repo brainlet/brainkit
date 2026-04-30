@@ -30,12 +30,12 @@ Three constructors ship out of the box:
 | `brainkit.PgVectorStore(dsn)` | Postgres with the `pgvector` extension. |
 | `brainkit.MongoDBVectorStore(uri, dbName)` | MongoDB Atlas Vector Search. |
 
-Runtime management:
+Runtime management is owned by `modules/registry`:
 
 ```go
-for _, v := range kit.Vectors().List() {
-    fmt.Println(v.Name, v.Type)
-}
+list, _ := registrymsg.CallRegistryList(kit, ctx,
+    registrymsg.RegistryListMsg{Category: "vectorStore"})
+fmt.Println(string(list.Items))
 ```
 
 ## Resolve from `.ts`

@@ -4,8 +4,8 @@ import { Agent, CompositeVoice, OpenAIVoice } from "agent";
 import { model, output } from "kit";
 
 const voice = new CompositeVoice({
-  speakProvider: new OpenAIVoice(),
-  listenProvider: new OpenAIVoice(),
+  output: new OpenAIVoice(),
+  input: new OpenAIVoice(),
 });
 
 const agent = new Agent({

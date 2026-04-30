@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
-	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/systemmsg"
 )
@@ -47,15 +45,8 @@ func buildEventCatalog(catalog *commandRegistry) *knownEventRegistry {
 	specs := []eventSpec{
 		eventOf[systemmsg.KitDeployedEvent](),
 		eventOf[systemmsg.KitTeardownedEvent](),
-		eventOf[pluginmsg.PluginRegisteredEvent](),
 		eventOf[systemmsg.HandlerFailedEvent](),
 		eventOf[systemmsg.HandlerExhaustedEvent](),
-		eventOf[pluginmsg.PluginStartedEvent](),
-		eventOf[pluginmsg.PluginStoppedEvent](),
-		eventOf[secretmsg.SecretsAccessedEvent](),
-		eventOf[secretmsg.SecretsStoredEvent](),
-		eventOf[secretmsg.SecretsRotatedEvent](),
-		eventOf[secretmsg.SecretsDeletedEvent](),
 	}
 	byTopic := make(map[string]eventSpec, len(specs))
 	for _, spec := range specs {

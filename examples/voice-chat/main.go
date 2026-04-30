@@ -28,6 +28,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -56,6 +57,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 		Audio:     local.New(),
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -65,7 +67,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("voice-chat", "voice.ts", chatSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("voice-chat", "voice.ts", chatSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 
@@ -108,12 +110,12 @@ func run() error {
 }
 
 // chatSource is one Agent + one topic. Every turn:
-//   1. agent.generate(question) → text answer
-//   2. voice.speak(answer) → Node Readable of MP3 bytes
-//   3. new Audio(stream).play() → bytes routed to audio/local
-//      through Config.Audio; play() only resolves when the
-//      desktop sink has drained so the next prompt doesn't
-//      step on the current reply.
+//  1. agent.generate(question) → text answer
+//  2. voice.speak(answer) → Node Readable of MP3 bytes
+//  3. new Audio(stream).play() → bytes routed to audio/local
+//     through Config.Audio; play() only resolves when the
+//     desktop sink has drained so the next prompt doesn't
+//     step on the current reply.
 const chatSource = `
 const voice = new OpenAIVoice();
 const agent = new Agent({

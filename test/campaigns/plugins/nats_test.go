@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/test/campaigns"
 	"github.com/brainlet/brainkit/test/suite/cross"
 )
@@ -18,7 +18,7 @@ func TestPlugins_NATS(t *testing.T) {
 	infra := campaigns.NewInfra(t,
 		campaigns.Transport("nats"),
 		campaigns.Nodes(2),
-		campaigns.Plugins(brainkit.PluginConfig{
+		campaigns.Plugins(pluginsmod.PluginConfig{
 			Name:         "testplugin",
 			Binary:       pluginBinary,
 			StartTimeout: 30 * time.Second,

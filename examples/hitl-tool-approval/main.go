@@ -13,7 +13,7 @@
 //  1. approve  — Go side auto-approves, agent completes
 //  2. decline  — Go side rejects, agent falls back
 //  3. no-op    — Prompt doesn't trigger the tool; approval never
-//                fires
+//     fires
 //
 // Requires OPENAI_API_KEY.
 //
@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -52,6 +53,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -88,7 +90,7 @@ func run() error {
 	}
 	defer unsub()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("hitl-tool-approval", "hitl.ts", hitlSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("hitl-tool-approval", "hitl.ts", hitlSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/4] hitl-tool-approval deployed")

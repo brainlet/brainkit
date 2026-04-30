@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	workflowmod "github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -52,7 +53,7 @@ func run() error {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "workflow.db")),
 		},
-		Modules: []brainkit.Module{workflowmod.New()},
+		Modules: []brainkit.Module{packages.New(), workflowmod.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -62,7 +63,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("hitl-workflow-demo", "wf.ts", workflowSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("hitl-workflow-demo", "wf.ts", workflowSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/4] deploy-pipeline workflow registered")

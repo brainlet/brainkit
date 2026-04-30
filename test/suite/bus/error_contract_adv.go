@@ -12,7 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
@@ -159,7 +159,7 @@ func testErrorContractErrorHandlerPersistenceError(t *testing.T, _ *suite.TestEn
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -212,7 +212,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -239,7 +239,7 @@ func testErrorContractErrorHandlerDeployError(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)

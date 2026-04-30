@@ -17,7 +17,7 @@ import (
 	"github.com/brainlet/brainkit/cmd/brainkit/cmd"
 	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	healthmod "github.com/brainlet/brainkit/modules/health"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,7 +67,7 @@ func startTestServer(t *testing.T) (addr string) {
 		Namespace: "cli-test",
 		Transport: brainkit.Memory(),
 		FSRoot:    t.TempDir(),
-		Modules:   []brainkit.Module{healthmod.New(), packagesmod.New(), gw},
+		Modules:   []brainkit.Module{healthmod.New(), packages.New(), gw},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { kit.Close() })

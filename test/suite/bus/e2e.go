@@ -28,9 +28,9 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 
 	// Deploy Service A — receives request, forwards to B
 	err = env.Deploy("svc-a-adv.ts", `
-		bus.on("start", function(msg) {
-			var r = bus.sendTo("svc-b-adv.ts", "process", {data: msg.payload.input});
-			msg.reply({fromA: true, forwarded: true, replyTo: r.replyTo});
+		bus.on("start", async function(msg) {
+			var r = await bus.callService("svc-b-adv.ts", "process", {data: msg.payload.input}, {timeoutMs: 5000});
+			msg.reply({fromA: true, forwarded: true, serviceB: r});
 		});
 	`)
 	require.NoError(t, err)
@@ -43,6 +43,7 @@ func testE2EMultiServiceChain(t *testing.T, env *suite.TestEnv) {
 	}, 5*time.Second)
 	assert.Contains(t, string(p), "fromA")
 	assert.Contains(t, string(p), "forwarded")
+	assert.Contains(t, string(p), "fromB")
 }
 
 // testE2EStreamingResponse — deploy handler that uses msg.stream, verify SSE events.

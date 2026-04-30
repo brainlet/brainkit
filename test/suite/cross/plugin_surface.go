@@ -8,7 +8,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
@@ -39,12 +38,12 @@ func testPluginSurfaceGoToolFromPlugin(t *testing.T, env *suite.TestEnv) {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(kit, "host-echo", tools.TypedTool[echoIn]{
+	require.NoError(t, kit.Mount(context.Background(), toolsmod.GoTool("host-echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes from host",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message, "source": "host"}, nil
 		},
-	})
+	})))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -106,12 +105,12 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 		A int `json:"a"`
 		B int `json:"b"`
 	}
-	brainkit.RegisterTool(kit, "add", tools.TypedTool[addIn]{
+	require.NoError(t, kit.Mount(context.Background(), toolsmod.GoTool("add", toolsmod.TypedTool[addIn]{
 		Description: "adds numbers",
 		Execute: func(ctx context.Context, in addIn) (any, error) {
 			return map[string]int{"sum": in.A + in.B}, nil
 		},
-	})
+	})))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

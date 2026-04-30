@@ -12,4 +12,4 @@ const mem = new Memory({ storage: store });
 const agent = new Agent({ name: "integration", model: model("openai", "gpt-4o-mini"), instructions: "You are helpful.", memory: mem, tools: { greet } });
 const agentResult = await agent.generate("Say hello to brainkit");
 const pubResult = bus.publish("integration.test", { done: true });
-output({ workflowStatus: wfResult.status, toolGreeting: (toolResult as any)?.greeting, agentHasText: agentResult.text.length > 0, busHasReplyTo: pubResult.replyTo.length > 0, allPassed: true });
+output({ workflowStatus: wfResult.status, toolGreeting: (toolResult as any)?.greeting, agentHasText: agentResult.text.length > 0, busPublished: pubResult === undefined, allPassed: true });

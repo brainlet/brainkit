@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -95,6 +96,7 @@ export function greet(name: string): string {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -104,7 +106,7 @@ export function greet(name: string): string {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("workspace-agent", "workspace.ts", workspaceSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("workspace-agent", "workspace.ts", workspaceSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/5] workspace-agent deployed")

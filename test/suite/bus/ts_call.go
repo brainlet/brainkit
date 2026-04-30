@@ -17,8 +17,7 @@ import (
 )
 
 // tsCallDeployAndTrigger deploys a .ts that has a bus.on("trigger", ...)
-// handler using bus.call internally, then sends a trigger and returns the
-// reply payload map.
+// handler, then sends a trigger and returns the reply payload map.
 func tsCallDeployAndTrigger(t *testing.T, env *suite.TestEnv, source, handlerCode string) map[string]any {
 	t.Helper()
 	testutil.Deploy(t, env.Kit, source, handlerCode)
@@ -57,6 +56,106 @@ func testTSBusCallHappyPath(t *testing.T, env *suite.TestEnv) {
 		});
 	`)
 	assert.Equal(t, "hi!", reply["echoed"])
+}
+
+// testTSBusCallStreamHappyPath — .ts bus.callStream consumes intermediate
+// chunks and resolves with the terminal reply on the same shared caller path.
+func testTSBusCallStreamHappyPath(t *testing.T, env *suite.TestEnv) {
+	testutil.Deploy(t, env.Kit, "ts-callstream-server.ts", `
+		bus.on("numbers", (msg) => {
+			msg.send({ n: 1 });
+			msg.send({ n: 2 });
+			msg.send({ n: 3 });
+			msg.reply({ done: true, total: 3 });
+		});
+	`)
+	time.Sleep(100 * time.Millisecond)
+
+	reply := tsCallDeployAndTrigger(t, env, "ts-callstream-client.ts", `
+		bus.on("trigger", async (msg) => {
+			let count = 0;
+			let sum = 0;
+			let sawCorrelation = false;
+			const final = await bus.callStream("ts.ts-callstream-server.numbers", {}, {
+				timeoutMs: 5000,
+				bufferSize: 8,
+				bufferPolicy: "block",
+				onChunk: async (chunk, streamMsg) => {
+					await Promise.resolve();
+					count++;
+					sum += chunk.n;
+					sawCorrelation = sawCorrelation || !!streamMsg.correlationId;
+				},
+			});
+			msg.reply({ final: final.done, total: final.total, count, sum, sawCorrelation });
+		});
+	`)
+	assert.Equal(t, true, reply["final"])
+	assert.Equal(t, float64(3), reply["total"])
+	assert.Equal(t, float64(3), reply["count"])
+	assert.Equal(t, float64(6), reply["sum"])
+	assert.Equal(t, true, reply["sawCorrelation"])
+}
+
+// testTSBusCallServiceStreamHappyPath — .ts callServiceStream resolves a
+// service mailbox and still receives done=false chunks before the terminal.
+func testTSBusCallServiceStreamHappyPath(t *testing.T, env *suite.TestEnv) {
+	testutil.Deploy(t, env.Kit, "ts-service-stream-server.ts", `
+		bus.on("numbers", (msg) => {
+			msg.send({ n: 4 });
+			msg.send({ n: 5 });
+			msg.reply({ ok: true });
+		});
+	`)
+	time.Sleep(100 * time.Millisecond)
+
+	reply := tsCallDeployAndTrigger(t, env, "ts-service-stream-client.ts", `
+		bus.on("trigger", async (msg) => {
+			let count = 0;
+			let sum = 0;
+			const final = await bus.callServiceStream("ts-service-stream-server.ts", "numbers", {}, {
+				timeoutMs: 5000,
+				onChunk: (chunk) => {
+					count++;
+					sum += chunk.n;
+				},
+			});
+			msg.reply({ finalOk: final.ok, count, sum });
+		});
+	`)
+	assert.Equal(t, true, reply["finalOk"])
+	assert.Equal(t, float64(2), reply["count"])
+	assert.Equal(t, float64(9), reply["sum"])
+}
+
+// testTSBusCallStreamOnChunkErrorRejects — local stream consumer failures
+// abort the call and preserve typed BrainkitError details.
+func testTSBusCallStreamOnChunkErrorRejects(t *testing.T, env *suite.TestEnv) {
+	testutil.Deploy(t, env.Kit, "ts-callstream-error-server.ts", `
+		bus.on("numbers", (msg) => {
+			msg.send({ n: 1 });
+			msg.reply({ ok: true });
+		});
+	`)
+	time.Sleep(100 * time.Millisecond)
+
+	reply := tsCallDeployAndTrigger(t, env, "ts-callstream-error-client.ts", `
+		bus.on("trigger", async (msg) => {
+			try {
+				await bus.callStream("ts.ts-callstream-error-server.numbers", {}, {
+					timeoutMs: 5000,
+					onChunk: () => {
+						throw new BrainkitError("bad stream chunk", "VALIDATION_ERROR", { field: "chunk" });
+					},
+				});
+				msg.reply({ code: "NO_THROW" });
+			} catch (e) {
+				msg.reply({ code: e.code || "NO_CODE", field: e.details && e.details.field || "" });
+			}
+		});
+	`)
+	assert.Equal(t, "VALIDATION_ERROR", reply["code"])
+	assert.Equal(t, "chunk", reply["field"])
 }
 
 // testTSBusCallRequiresTimeout — bus.call without timeoutMs rejects.

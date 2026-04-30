@@ -97,7 +97,7 @@
 | testEmitToCommandTopic | Calls bus.emit on a command topic from JS, asserts it throws an error |
 | testSubscribeReceivesMetadataAdv | Deploys handler that replies with topic/replyTo/correlationId presence flags, verifies all are true |
 | testReplyWithoutReplyTo | Deploys handler that calls msg.reply, sends via emit (no replyTo), asserts kernel stays alive |
-| testSendToNonexistentService | Calls bus.sendTo for a nonexistent service from JS, asserts it returns a replyTo (fire and forget) |
+| testSendToNonexistentService | Calls bus.sendTo for a nonexistent service from JS, asserts it returns void (fire and forget) |
 | testCorrelationIDPreserved | Deploys handler that echoes correlationId, verifies it matches the original publish's correlationId |
 | testMultipleReplies | Deploys handler sending 2 chunks + final, asserts at least 2 messages received including done=true |
 | testSubscribeUnsubscribe | Subscribes from JS, emits, unsubscribes, emits again, asserts no panic |
@@ -163,7 +163,7 @@
 | Function | Purpose |
 |----------|---------|
 | testInputAbuseBusEmptyTopic | Calls bus.publish("") from JS, asserts an error is thrown (not a panic) |
-| testInputAbuseBusLargePayload | Publishes a 100KB payload from JS, asserts it succeeds and returns a replyTo |
+| testInputAbuseBusLargePayload | Publishes a 100KB payload from JS, asserts it succeeds without creating a replyTo |
 | testInputAbuseBusDeeplyNestedJSON | Publishes a 50-level nested JSON object from JS, asserts it succeeds |
 | testInputAbuseBusSubscribeEmptyTopic | Calls bus.subscribe("") from JS, asserts no panic |
 

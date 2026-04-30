@@ -26,7 +26,7 @@ func (r *Runtime) registerLoggingBridge(qctx *quickjs.Context) {
 			source := args[0].String()
 			level := args[1].String()
 			message := args[2].String()
-			r.host.EmitLog(source, level, message)
+			r.handlers.EmitLog(source, level, message)
 			return qctx.NewUndefined()
 		}))
 }

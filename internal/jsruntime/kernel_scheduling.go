@@ -40,10 +40,10 @@ func (r *Runtime) startJobPump() {
 }
 
 func (r *Runtime) processScheduledJobs() {
-	if r.host.IsClosed() {
+	if r.handlers.IsClosed() {
 		return
 	}
-	r.host.IncrementPumpCycles()
+	r.handlers.IncrementPumpCycles()
 	if r.bridge == nil {
 		return
 	}

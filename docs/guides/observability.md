@@ -118,12 +118,9 @@ _, err = auditmsg.CallAuditPrune(kit, ctx,
 ### Verbose tier
 
 `audit.Config{Verbose: true}` records every bus message including
-internal control frames. Toggle at runtime:
-
-```go
-kit.SetAuditVerbosity(brainkit.AuditVerbosityVerbose)
-kit.SetAuditVerbosity(brainkit.AuditVerbosityNormal)
-```
+internal control frames. Runtime audit wiring is owned by
+`modules/audit`; embedded callers configure it through the mounted
+audit module rather than root Kit setters.
 
 ## Tracing
 

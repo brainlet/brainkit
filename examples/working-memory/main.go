@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -64,6 +65,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "memory.db")),
 		},
@@ -76,7 +78,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("working-memory", "memory.ts", memorySource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("working-memory", "memory.ts", memorySource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

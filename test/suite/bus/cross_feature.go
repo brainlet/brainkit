@@ -10,9 +10,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
@@ -130,7 +129,7 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 	type processIn struct {
 		Data string `json:"data"`
 	}
-	brainkit.RegisterTool(k, "process-and-emit-adv", tools.TypedTool[processIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("process-and-emit-adv", toolsmod.TypedTool[processIn]{
 		Description: "processes and emits event",
 		Execute: func(ctx context.Context, in processIn) (any, error) {
 			sdk.Emit(k, ctx, sdk.CustomEvent{
@@ -139,7 +138,7 @@ func testCrossGoToolEmitsBusEvent(t *testing.T, _ *suite.TestEnv) {
 			})
 			return map[string]string{"result": "done"}, nil
 		},
-	})
+	})))
 
 	ctx := context.Background()
 
@@ -181,12 +180,12 @@ func testCrossTracedToolCall(t *testing.T, _ *suite.TestEnv) {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k, "traced-echo-adv", tools.TypedTool[echoIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("traced-echo-adv", toolsmod.TypedTool[echoIn]{
 		Description: "echoes with tracing",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
 		},
-	})
+	})))
 
 	ctx := context.Background()
 	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "traced-echo-adv", Input: map[string]any{"message": "traced"}})
@@ -264,17 +263,17 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	k1, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store1,
-		Modules: []brainkit.Module{toolsmod.New(), packagesmod.New()},
+		Modules: []brainkit.Module{toolsmod.New(), packages.New()},
 	})
 	require.NoError(t, err)
 
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k1, "echo", tools.TypedTool[echoIn]{
+	require.NoError(t, k1.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
-	})
+	})))
 
 	testutil.Deploy(t, k1, "persist-handler-adv.ts", `
 		bus.on("ask", async function(msg) {
@@ -289,15 +288,15 @@ func testCrossDeployWithPersistenceAndRestart(t *testing.T, _ *suite.TestEnv) {
 	k2, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store2,
-		Modules: []brainkit.Module{toolsmod.New(), packagesmod.New()},
+		Modules: []brainkit.Module{toolsmod.New(), packages.New()},
 	})
 	require.NoError(t, err)
 	defer k2.Close()
 
-	brainkit.RegisterTool(k2, "echo", tools.TypedTool[echoIn]{
+	require.NoError(t, k2.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return map[string]string{"echoed": in.Message}, nil },
-	})
+	})))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

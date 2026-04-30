@@ -1,4 +1,4 @@
-package tools
+package toolhost
 
 import (
 	"context"
@@ -20,7 +20,9 @@ type JSEvaluator interface {
 	EvalOnJSThread(filename, code string) (string, error)
 }
 
-// Domain handles tool registry operations: call, resolve, register, list.
+// Domain handles host-side tool registry operations: call, resolve, register,
+// unregister, and list. The modules/tools package is only the bus command
+// adapter for this host capability.
 type Domain struct {
 	tools     *toolreg.ToolRegistry
 	eval      JSEvaluator

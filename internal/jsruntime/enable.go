@@ -16,7 +16,12 @@ import (
 
 // Runtime owns the optional embedded JS/TS runtime for a Kernel.
 type Runtime struct {
-	host          runtimecap.Host
+	core          runtimecap.CoreHost
+	registry      runtimecap.RegistryHost
+	toolAgents    runtimecap.ToolAgentHost
+	bus           runtimecap.BusHost
+	handlers      runtimecap.HandlerHost
+	schedules     runtimecap.ScheduleHost
 	cfg           types.KernelConfig
 	bridge        *jsbridge.Bridge
 	agents        *agentembed.Sandbox
@@ -90,7 +95,12 @@ func Enable(ctx context.Context, host runtimecap.Host) error {
 	}
 
 	runtime := &Runtime{
-		host:       host,
+		core:       host,
+		registry:   host,
+		toolAgents: host,
+		bus:        host,
+		handlers:   host,
+		schedules:  host,
 		cfg:        cfg,
 		bridge:     agentSandbox.Bridge(),
 		agents:     agentSandbox,
@@ -149,15 +159,15 @@ func (r *Runtime) newDeploymentManager(cfg types.KernelConfig) *DeploymentManage
 	return NewDeploymentManager(DeploymentManagerConfig{
 		Bridge:       r.bridge,
 		Agents:       r.agents,
-		Tracer:       r.host.Tracer(),
+		Tracer:       r.core.Tracer(),
 		Store:        cfg.Store,
 		ErrorHandler: cfg.ErrorHandler,
-		Logger:       r.host.Logger(),
+		Logger:       r.core.Logger(),
 		ToolCleanup: func(id string) {
-			r.host.ToolsDomain().Unregister(context.Background(), id)
+			r.toolAgents.ToolsDomain().Unregister(context.Background(), id)
 		},
 		AgentCleanup: func(id string) {
-			r.host.AgentsDomain().Unregister(context.Background(), id)
+			r.toolAgents.AgentsDomain().Unregister(context.Background(), id)
 		},
 		SubCleanup: func(id string) {
 			cancel := r.removeBridgeSub(id)
@@ -166,7 +176,7 @@ func (r *Runtime) newDeploymentManager(cfg types.KernelConfig) *DeploymentManage
 			}
 		},
 		ScheduleCleanup: func(id string) {
-			if h := r.host.ScheduleHandler(); h != nil {
+			if h := r.schedules.ScheduleHandler(); h != nil {
 				_ = h.Unschedule(context.Background(), id)
 			}
 		},
@@ -236,7 +246,7 @@ func (r *Runtime) Close() error {
 		cancel()
 	}
 	if r.agents != nil {
-		r.host.AgentsDomain().UnregisterAllForKit(r.agents.ID())
+		r.toolAgents.AgentsDomain().UnregisterAllForKit(r.agents.ID())
 		r.agents.Close()
 	}
 	return nil

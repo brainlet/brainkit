@@ -119,7 +119,11 @@
       unsubscribe: _kitObj.bus.unsubscribe,
       sendTo: _kitObj.bus.sendTo,
       call: _kitObj.bus.call,
+      callStream: _kitObj.bus.callStream,
+      callService: _kitObj.bus.callService,
+      callServiceStream: _kitObj.bus.callServiceStream,
       callTo: _kitObj.bus.callTo,
+      callToStream: _kitObj.bus.callToStream,
       schedule: ws(function(expression, topic, data) {
         return _kitObj.bus.schedule(expression, ns + "." + topic, data);
       }),
@@ -177,7 +181,11 @@
         unsubscribe: scopedBus.unsubscribe,
         sendTo: rewrapErrors(scopedBus.sendTo),
         call: rewrapErrorsAsync(scopedBus.call),
+        callStream: rewrapErrorsAsync(scopedBus.callStream),
+        callService: rewrapErrorsAsync(scopedBus.callService),
+        callServiceStream: rewrapErrorsAsync(scopedBus.callServiceStream),
         callTo: rewrapErrorsAsync(scopedBus.callTo),
+        callToStream: rewrapErrorsAsync(scopedBus.callToStream),
         schedule: rewrapErrors(scopedBus.schedule),
         unschedule: scopedBus.unschedule,
         onCancel: scopedBus.onCancel,

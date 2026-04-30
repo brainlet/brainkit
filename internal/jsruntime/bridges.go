@@ -17,7 +17,7 @@ import (
 func (r *Runtime) registerBridges() {
 	qctx := r.bridge.Context()
 
-	r.registerRequestBridges(qctx, r.host)
+	r.registerRequestBridges(qctx, r.bus)
 	r.registerControlBridges(qctx)
 	r.registerBusBridges(qctx)
 	r.registerLoggingBridge(qctx)
@@ -28,6 +28,6 @@ func (r *Runtime) registerBridges() {
 
 	// Set context globals
 	qctx.Globals().Set(js.JSSandboxID, qctx.NewString(r.agents.ID()))
-	qctx.Globals().Set(js.JSSandboxNamespace, qctx.NewString(r.host.Namespace()))
-	qctx.Globals().Set(js.JSSandboxCallerID, qctx.NewString(r.host.CallerID()))
+	qctx.Globals().Set(js.JSSandboxNamespace, qctx.NewString(r.core.Namespace()))
+	qctx.Globals().Set(js.JSSandboxCallerID, qctx.NewString(r.core.CallerID()))
 }

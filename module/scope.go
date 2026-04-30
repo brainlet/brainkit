@@ -15,14 +15,18 @@ type Scope interface {
 	ID() string
 	Child(id string) Scope
 	Defer(Cleanup)
+	Resource(ResourceDescriptor)
+	Resources() []ResourceDescriptor
 	Close(context.Context) error
 }
 
 type scope struct {
-	id       string
-	mu       sync.Mutex
-	cleanups []Cleanup
-	closed   bool
+	id        string
+	mu        sync.Mutex
+	cleanups  []Cleanup
+	resources []ResourceDescriptor
+	children  []*scope
+	closed    bool
 }
 
 // NewScope creates an empty resource scope.
@@ -37,8 +41,13 @@ func (s *scope) Child(id string) Scope {
 	if s.id != "" && id != "" {
 		childID = s.id + "/" + id
 	}
-	child := NewScope(childID)
-	s.Defer(child.Close)
+	child := &scope{id: childID}
+	s.mu.Lock()
+	if !s.closed {
+		s.children = append(s.children, child)
+		s.cleanups = append(s.cleanups, child.Close)
+	}
+	s.mu.Unlock()
 	return child
 }
 
@@ -52,6 +61,30 @@ func (s *scope) Defer(fn Cleanup) {
 		return
 	}
 	s.cleanups = append(s.cleanups, fn)
+}
+
+func (s *scope) Resource(desc ResourceDescriptor) {
+	if desc.Kind == "" || desc.Name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.resources = append(s.resources, desc)
+}
+
+func (s *scope) Resources() []ResourceDescriptor {
+	s.mu.Lock()
+	resources := append([]ResourceDescriptor(nil), s.resources...)
+	children := append([]*scope(nil), s.children...)
+	s.mu.Unlock()
+
+	for _, child := range children {
+		resources = append(resources, child.Resources()...)
+	}
+	return normalizeResources(resources)
 }
 
 func (s *scope) Close(ctx context.Context) error {

@@ -22,10 +22,10 @@ func (r *Runtime) registerSecretBridges(qctx *quickjs.Context) {
 			}
 			name := args[0].String()
 
-			if r.host.SecretStore() == nil {
+			if r.core.SecretStore() == nil {
 				return r.throwBrainkitError(qctx, &sdkerrors.NotConfiguredError{Feature: "secrets"})
 			}
-			val, err := r.host.SecretStore().Get(context.Background(), name)
+			val, err := r.core.SecretStore().Get(context.Background(), name)
 			if err != nil {
 				return r.throwBrainkitError(qctx, &sdkerrors.BridgeError{Function: "secret_get", Cause: err})
 			}
@@ -35,7 +35,7 @@ func (r *Runtime) registerSecretBridges(qctx *quickjs.Context) {
 			// Audit: emit secrets.accessed event
 			source := r.CurrentSource()
 			if source == "" {
-				source = r.host.CallerID()
+				source = r.core.CallerID()
 			}
 			r.emitSecretEvent(context.Background(), secretmsg.SecretsAccessedEvent{
 				Name:      name,
@@ -48,5 +48,5 @@ func (r *Runtime) registerSecretBridges(qctx *quickjs.Context) {
 
 func (r *Runtime) emitSecretEvent(ctx context.Context, event sdk.BrainkitMessage) {
 	payload, _ := json.Marshal(event)
-	_ = r.host.PublishEvent(ctx, event.BusTopic(), payload)
+	_ = r.bus.PublishEvent(ctx, event.BusTopic(), payload)
 }

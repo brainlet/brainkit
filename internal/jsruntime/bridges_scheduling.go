@@ -21,7 +21,7 @@ func (r *Runtime) registerSchedulingBridges(qctx *quickjs.Context) {
 			if len(args) < 4 {
 				return r.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "args", Message: "bus.schedule: expected 4 args"})
 			}
-			handler := r.host.ScheduleHandler()
+			handler := r.schedules.ScheduleHandler()
 			if handler == nil {
 				return r.throwBrainkitError(qctx, &sdkerrors.NotConfiguredError{Feature: "schedules"})
 			}
@@ -43,7 +43,7 @@ func (r *Runtime) registerSchedulingBridges(qctx *quickjs.Context) {
 			if len(args) < 1 {
 				return r.throwBrainkitError(qctx, &sdkerrors.ValidationError{Field: "scheduleId", Message: "bus.unschedule: expected 1 arg"})
 			}
-			handler := r.host.ScheduleHandler()
+			handler := r.schedules.ScheduleHandler()
 			if handler == nil {
 				return r.throwBrainkitError(qctx, &sdkerrors.NotConfiguredError{Feature: "schedules"})
 			}

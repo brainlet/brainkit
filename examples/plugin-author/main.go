@@ -12,7 +12,7 @@
 // Then point a host Kit at the resulting binary:
 //
 //	plugins.NewModule(plugins.Config{
-//	    Plugins: []brainkit.PluginConfig{{
+//	    Plugins: []plugins.PluginConfig{{
 //	        Name:   "demo",
 //	        Binary: "./examples/plugin-author/plugin-author",
 //	    }},

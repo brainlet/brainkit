@@ -14,7 +14,7 @@ import (
 // brainkit.Config.Modules when the runtime should expose the Go-side
 // request/reply bridge over the bus.
 type Module struct {
-	caller *sdk.Caller
+	caller bkmodule.RequestCaller
 }
 
 // New creates the messaging module.
@@ -28,9 +28,9 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers messaging command handlers against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	caller := host.Caller()
-	if caller == nil {
-		return fmt.Errorf("messaging: caller is required")
+	caller, err := bkmodule.RequireCapability[bkmodule.RequestCaller](host, bkmodule.CapabilityRequestCaller)
+	if err != nil {
+		return fmt.Errorf("messaging: %w", err)
 	}
 	m.caller = caller
 	host.Scope().Defer(func(context.Context) error {
@@ -73,6 +73,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 		Summary: "Request/reply messaging command (kit.send).",
 		Commands: []bkmodule.MessageDescriptor{
 			bkmodule.CommandMessage[KitSendMsg, KitSendResp](),
+		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.RequestCaller](bkmodule.CapabilityRequestCaller),
 		},
 	}
 }

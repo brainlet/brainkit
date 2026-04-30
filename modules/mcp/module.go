@@ -31,11 +31,6 @@ func New(servers map[string]ServerConfig) *Module {
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "mcp" }
 
-// Dependencies reports modules that must mount before mcp. MCP-discovered tools
-// are registered in the shared tool registry and need the tools.* bus surface
-// for normal tool invocation.
-func (m *Module) Dependencies() []string { return []string{"tools"} }
-
 // Status reports maturity (stable).
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 

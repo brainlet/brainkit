@@ -3,15 +3,14 @@ package jsruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	quickjs "github.com/buke/quickjs-go"
-	"github.com/google/uuid"
 )
 
 // registerApprovalBridges adds __go_brainkit_await_approval for bus-based HITL tool approval.
@@ -34,51 +33,37 @@ func (r *Runtime) registerApprovalBridges(qctx *quickjs.Context) {
 					waitCtx, waitCancel := context.WithTimeout(goCtx, timeout)
 					defer waitCancel()
 
-					correlationID := uuid.NewString()
-					replyTo := approvalTopic + ".reply." + correlationID
+					caller := r.bus.Caller()
+					if caller == nil {
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							errVal := qctx.NewError(fmt.Errorf("await_approval: caller not initialized"))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
 
-					// Subscribe BEFORE publishing (avoid race)
-					replyCh := make(chan sdk.Message, 1)
-					unsub, subErr := r.host.Remote().SubscribeRaw(waitCtx, replyTo, func(msg sdk.Message) {
-						select {
-						case replyCh <- msg:
-						default:
+					responseJSON, callErr := caller.Call(waitCtx, approvalTopic, payload, sdk.CallerConfig{})
+					if callErr != nil {
+						var timeoutErr *sdk.CallTimeoutError
+						var cancelledErr *sdk.CallCancelledError
+						if errors.As(callErr, &timeoutErr) || errors.As(callErr, &cancelledErr) {
+							timeoutJSON := `{"approved":false,"reason":"timeout"}`
+							qctx.Schedule(func(qctx *quickjs.Context) {
+								resolve(qctx.NewString(timeoutJSON))
+							})
+							return
 						}
+						qctx.Schedule(func(qctx *quickjs.Context) {
+							errVal := qctx.NewError(fmt.Errorf("await_approval: call: %w", callErr))
+							defer errVal.Free()
+							reject(errVal)
+						})
+						return
+					}
+					qctx.Schedule(func(qctx *quickjs.Context) {
+						resolve(qctx.NewString(string(responseJSON)))
 					})
-					if subErr != nil {
-						qctx.Schedule(func(qctx *quickjs.Context) {
-							errVal := qctx.NewError(fmt.Errorf("await_approval: subscribe: %w", subErr))
-							defer errVal.Free()
-							reject(errVal)
-						})
-						return
-					}
-					defer unsub()
-
-					// Publish approval request with replyTo
-					pubCtx := transport.WithPublishMeta(waitCtx, correlationID, replyTo)
-					if _, pubErr := r.host.Remote().PublishRaw(pubCtx, approvalTopic, payload); pubErr != nil {
-						qctx.Schedule(func(qctx *quickjs.Context) {
-							errVal := qctx.NewError(fmt.Errorf("await_approval: publish: %w", pubErr))
-							defer errVal.Free()
-							reject(errVal)
-						})
-						return
-					}
-
-					// Wait for response or timeout
-					select {
-					case msg := <-replyCh:
-						responseJSON := string(msg.Payload)
-						qctx.Schedule(func(qctx *quickjs.Context) {
-							resolve(qctx.NewString(responseJSON))
-						})
-					case <-waitCtx.Done():
-						timeoutJSON := `{"approved":false,"reason":"timeout"}`
-						qctx.Schedule(func(qctx *quickjs.Context) {
-							resolve(qctx.NewString(timeoutJSON))
-						})
-					}
 				})
 			})
 		}))

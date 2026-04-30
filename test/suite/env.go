@@ -13,12 +13,13 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	auditmod "github.com/brainlet/brainkit/modules/audit"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/presets/standard"
@@ -44,7 +45,7 @@ type EnvConfig struct {
 	Persistence    string // "none", "sqlite"
 	FSRoot         bool
 	NodeCount      int // 0=kernel-only, 1=node, 2+=crosskit
-	Plugins        []brainkit.PluginConfig
+	Plugins        []pluginsmod.PluginConfig
 	SecretKey      string
 	AIProviders    bool // auto-detect from .env
 	MCPServers     map[string]mcppkg.ServerConfig
@@ -121,7 +122,7 @@ func WithFSRoot() EnvOption {
 	return func(c *EnvConfig) { c.FSRoot = true }
 }
 
-func WithPlugins(configs ...brainkit.PluginConfig) EnvOption {
+func WithPlugins(configs ...pluginsmod.PluginConfig) EnvOption {
 	return func(c *EnvConfig) { c.Plugins = configs }
 }
 
@@ -281,22 +282,22 @@ func NewEnv(t *testing.T, cfg EnvConfig) *TestEnv {
 
 	// Register test tools
 	if cfg.Tools {
-		if err := brainkit.RegisterTool(kit, "echo", tools.TypedTool[testutil.EchoInput]{
+		if err := kit.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[testutil.EchoInput]{
 			Description: "echoes the input message",
 			Execute: func(ctx context.Context, input testutil.EchoInput) (any, error) {
 				return map[string]string{"echoed": input.Message}, nil
 			},
-		}); err != nil {
-			t.Fatalf("suite.NewEnv: register echo: %v", err)
+		})); err != nil {
+			t.Fatalf("suite.NewEnv: mount echo tool: %v", err)
 		}
 
-		if err := brainkit.RegisterTool(kit, "add", tools.TypedTool[testutil.AddInput]{
+		if err := kit.Mount(context.Background(), toolsmod.GoTool("add", toolsmod.TypedTool[testutil.AddInput]{
 			Description: "adds two numbers",
 			Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 				return map[string]int{"sum": input.A + input.B}, nil
 			},
-		}); err != nil {
-			t.Fatalf("suite.NewEnv: register add: %v", err)
+		})); err != nil {
+			t.Fatalf("suite.NewEnv: mount add tool: %v", err)
 		}
 	}
 

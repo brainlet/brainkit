@@ -39,13 +39,16 @@
 // behavior, such as topology-aware [WithCallTo]. The SDK wrappers saturate
 // type parameters without adding module command names to the root API.
 //
-// # Accessors
+// # Runtime administration modules
 //
-// Provider, storage, vector, and secret management consolidate
-// behind narrow accessors that cache a single instance per Kit:
+// Provider, storage, vector, and secret management are module-owned bus APIs.
+// Mount modules/registry or modules/secrets when a process needs to mutate or
+// inspect those tables after Kit startup:
 //
-//	kit.Providers().Register("openai", "openai", cfg)
-//	kit.Secrets().Set(ctx, "API_KEY", "…")
+//	resp, err := registrymsg.CallRegistryList(kit, ctx,
+//	    registrymsg.RegistryListMsg{Category: "provider"})
+//	_, err = secretmsg.CallSecretsSet(kit, ctx,
+//	    secretmsg.SecretsSetMsg{Name: "API_KEY", Value: "..."})
 //
 // # Modules
 //

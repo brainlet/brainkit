@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -36,12 +35,13 @@ func testE2EMultipleKernels(t *testing.T, _ *suite.TestEnv) {
 		type echoIn struct {
 			Message string `json:"message"`
 		}
-		brainkit.RegisterTool(k, fmt.Sprintf("echo-stress-%d", i), tools.TypedTool[echoIn]{
+		err = k.Mount(context.Background(), toolsmod.GoTool(fmt.Sprintf("echo-stress-%d", i), toolsmod.TypedTool[echoIn]{
 			Description: "echoes",
 			Execute: func(ctx context.Context, in echoIn) (any, error) {
 				return map[string]string{"echoed": in.Message}, nil
 			},
-		})
+		}))
+		require.NoError(t, err)
 
 		kits[i] = k
 	}

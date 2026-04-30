@@ -3,42 +3,12 @@ package brainkit
 import (
 	"encoding/json"
 
-	"github.com/brainlet/brainkit/internal/audit"
-	"github.com/brainlet/brainkit/internal/dts"
-	"github.com/brainlet/brainkit/internal/engine"
-	"github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/types"
 )
 
-// RegisteredTool is a pre-built tool registration. Modules register tools
-// via (*Kit).RegisterRawTool.
-type RegisteredTool = tools.RegisteredTool
-
-// GoFuncExecutor wraps a Go function as a tool executor.
-type GoFuncExecutor = tools.GoFuncExecutor
-
 // ErrorContext provides operation / component / source fields for
-// non-fatal errors forwarded via (*Kit).ReportError.
+// non-fatal errors routed to the internal error handler.
 type ErrorContext = types.ErrorContext
-
-// ScheduleHandler is the surface (*Kit).SetScheduleHandler expects.
-// The schedules module implements it; external users rarely need to
-// name it directly since modules/schedules.NewModule returns a value
-// that already satisfies it.
-type ScheduleHandler = types.ScheduleHandler
-
-// AuditStore is the persistence interface used by the central Recorder
-// and the audit module's query commands. Re-exported from internal/audit
-// so callers of (*Kit).SetAuditStore can name the argument type.
-type AuditStore = audit.Store
-
-// AuditVerbosity tier controls how much detail the Recorder writes.
-type AuditVerbosity = audit.Verbosity
-
-const (
-	AuditVerbosityNormal  = audit.VerbosityNormal
-	AuditVerbosityVerbose = audit.VerbosityVerbose
-)
 
 // ── Common types ─────────────────────────────────────────────────────────────
 
@@ -54,30 +24,6 @@ type Result = types.Result
 // RetryPolicy configures retry behavior for failed bus handlers.
 type RetryPolicy = types.RetryPolicy
 
-// PluginConfig configures a plugin subprocess.
-type PluginConfig = types.PluginConfig
-
-// ScheduleConfig configures a scheduled bus message.
-type ScheduleConfig = types.ScheduleConfig
-
-// MCPServerConfig configures an MCP tool server connection.
-type MCPServerConfig = types.MCPServerConfig
-
-// (Module is now defined in module.go — keep the engine package imported
-// for other aliases below.)
-
-// Package describes a deployment unit. Build via PackageInline / PackageFromFile / PackageFromDir.
-type Package struct {
-	Name    string            `json:"name"`
-	Version string            `json:"version,omitempty"`
-	Entry   string            `json:"entry,omitempty"`
-	Files   map[string]string `json:"files,omitempty"`
-
-	// path is set by PackageFromDir / PackageFromFile to route the deploy
-	// through the filesystem-bundling path. Internal.
-	path string `json:"-"`
-}
-
 // ── Health & Metrics ────────────────────────────────────────────────────────
 
 // HealthStatus is the full health report.
@@ -88,17 +34,6 @@ type HealthCheck = types.HealthCheck
 
 // KernelMetrics is a point-in-time snapshot.
 type KernelMetrics = types.KernelMetrics
-
-// ── Tools ────────────────────────────────────────────────────────────────────
-
-// TypedTool defines a tool with a typed Go struct for input.
-type TypedTool[T any] = tools.TypedTool[T]
-
-// RegisterTool registers a typed Go tool on a Kit runtime.
-// Go-only: tool execution requires a Go function pointer, can't be a bus message.
-func RegisterTool[T any](k *Kit, name string, tool TypedTool[T]) error {
-	return engine.RegisterTool(k.kernel, name, tool)
-}
 
 // ── Client ───────────────────────────────────────────────────────────────────
 
@@ -112,16 +47,6 @@ type StreamEvent = types.StreamEvent
 func NewClient(baseURL string) *BusClient {
 	return types.NewClient(baseURL)
 }
-
-// ── Embedded .d.ts (for CLI scaffolding) ─────────────────────────────────────
-
-var (
-	KitDTS      = dts.Kit
-	AiDTS       = dts.AI
-	AgentDTS    = dts.Agent
-	BrainkitDTS = dts.Brainkit
-	GlobalsDTS  = dts.Globals
-)
 
 // ── Error types ──────────────────────────────────────────────────────────────
 

@@ -1,6 +1,5 @@
-// Command secrets demonstrates the encrypted secret store
-// lifecycle: Set / Get / Rotate / Delete through the
-// Kit.Secrets() accessor. Uses an explicit SecretKey so values
+// Command secrets demonstrates the encrypted secret store lifecycle through
+// the modules/secrets typed bus messages. Uses an explicit SecretKey so values
 // are encrypted at rest.
 //
 // Run from the repo root:
@@ -16,6 +15,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	secretsmod "github.com/brainlet/brainkit/modules/secrets"
+	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/stores"
 )
 
@@ -40,6 +41,7 @@ func run() error {
 		FSRoot:    tmp,
 		Store:     store,
 		SecretKey: "demo-secret-key-sufficiently-long!",
+		Modules:   []brainkit.Module{secretsmod.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -49,44 +51,42 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	secrets := kit.Secrets()
-
 	// Set.
-	if err := secrets.Set(ctx, "API_KEY", "sk-demo-v1"); err != nil {
+	if _, err := secretmsg.CallSecretsSet(kit, ctx, secretmsg.SecretsSetMsg{Name: "API_KEY", Value: "sk-demo-v1"}); err != nil {
 		return fmt.Errorf("set API_KEY: %w", err)
 	}
 	fmt.Println("set API_KEY = sk-demo-v1")
 
 	// Get.
-	v, err := secrets.Get(ctx, "API_KEY")
+	got, err := secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{Name: "API_KEY"})
 	if err != nil {
 		return fmt.Errorf("get API_KEY: %w", err)
 	}
-	fmt.Printf("get API_KEY → %s\n", v)
+	fmt.Printf("get API_KEY -> %s\n", got.Value)
 
 	// Rotate.
-	if err := secrets.Rotate(ctx, "API_KEY", "sk-demo-v2"); err != nil {
+	if _, err := secretmsg.CallSecretsRotate(kit, ctx, secretmsg.SecretsRotateMsg{Name: "API_KEY", NewValue: "sk-demo-v2"}); err != nil {
 		return fmt.Errorf("rotate API_KEY: %w", err)
 	}
-	v, _ = secrets.Get(ctx, "API_KEY")
-	fmt.Printf("rotate API_KEY → %s\n", v)
+	rotated, _ := secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{Name: "API_KEY"})
+	fmt.Printf("rotate API_KEY -> %s\n", rotated.Value)
 
 	// List.
-	meta, err := secrets.List(ctx)
+	list, err := secretmsg.CallSecretsList(kit, ctx, secretmsg.SecretsListMsg{})
 	if err != nil {
 		return fmt.Errorf("list secrets: %w", err)
 	}
-	fmt.Printf("list: %d secret(s)\n", len(meta))
-	for _, m := range meta {
-		fmt.Printf("  %s (version=%d, updated=%s)\n", m.Name, m.Version, m.UpdatedAt.Format(time.RFC3339))
+	fmt.Printf("list: %d secret(s)\n", len(list.Secrets))
+	for _, m := range list.Secrets {
+		fmt.Printf("  %s (version=%d, updated=%s)\n", m.Name, m.Version, m.UpdatedAt)
 	}
 
 	// Delete.
-	if err := secrets.Delete(ctx, "API_KEY"); err != nil {
+	if _, err := secretmsg.CallSecretsDelete(kit, ctx, secretmsg.SecretsDeleteMsg{Name: "API_KEY"}); err != nil {
 		return fmt.Errorf("delete API_KEY: %w", err)
 	}
-	after, _ := secrets.Get(ctx, "API_KEY")
-	fmt.Printf("delete API_KEY → Get returns %q\n", after)
+	after, _ := secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{Name: "API_KEY"})
+	fmt.Printf("delete API_KEY -> Get returns %q\n", after.Value)
 
 	return nil
 }

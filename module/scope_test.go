@@ -38,6 +38,19 @@ func TestScopeChildClosesWithParent(t *testing.T) {
 	require.True(t, closed)
 }
 
+func TestScopeResourcesIncludeChildrenAndNormalize(t *testing.T) {
+	parent := NewScope("parent")
+	parent.Resource(Resource(ResourceKindProcess, "worker"))
+	parent.Resource(Resource(ResourceKindProcess, "worker"))
+	child := parent.Child("child")
+	child.Resource(Resource(ResourceKindHook, "handler"))
+
+	require.Equal(t, []ResourceDescriptor{
+		Resource(ResourceKindHook, "handler"),
+		Resource(ResourceKindProcess, "worker"),
+	}, parent.Resources())
+}
+
 func TestCapabilityRegistryProvideAndClose(t *testing.T) {
 	registry := NewCapabilityRegistry()
 	handle, err := registry.Provide(context.Background(), "trace-store", "value")

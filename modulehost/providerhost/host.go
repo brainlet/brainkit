@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 )
 
 // Hooks are the optional runtime callbacks used for probes that need JS-side

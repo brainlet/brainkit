@@ -13,7 +13,9 @@ import (
 // include in brainkit.Config.Modules when the runtime should expose these
 // control-plane commands over the bus.
 type Module struct {
-	control bkmodule.RuntimeControl
+	control        bkmodule.RuntimeControl
+	mountedModules func() []bkmodule.Descriptor
+	lifecycle      bkmodule.ModuleLifecycle
 }
 
 // New creates the control module.
@@ -32,14 +34,30 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 		return fmt.Errorf("control: %w", err)
 	}
 	m.control = control
+	mountedModules, err := bkmodule.RequireCapability[func() []bkmodule.Descriptor](host, bkmodule.CapabilityMountedModules)
+	if err != nil {
+		return fmt.Errorf("control: %w", err)
+	}
+	m.mountedModules = mountedModules
+	lifecycle, err := bkmodule.RequireCapability[bkmodule.ModuleLifecycle](host, bkmodule.CapabilityModuleLifecycle)
+	if err != nil {
+		return fmt.Errorf("control: %w", err)
+	}
+	m.lifecycle = lifecycle
 	host.Scope().Defer(func(context.Context) error {
 		m.control = nil
+		m.mountedModules = nil
+		m.lifecycle = nil
 		return nil
 	})
 
 	for _, spec := range []bkmodule.CommandSpec{
 		bkmodule.Command(m.SetDraining),
 		bkmodule.Command(m.ClusterPeers),
+		bkmodule.Command(m.Modules),
+		bkmodule.Command(m.ModuleMount),
+		bkmodule.Command(m.ModuleUnmount),
+		bkmodule.Command(m.ModuleDescribe),
 	} {
 		if _, err := host.Commands().Handle(spec); err != nil {
 			return err
@@ -52,6 +70,8 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 // the module scope, so unmounting unregisters them.
 func (m *Module) Close() error {
 	m.control = nil
+	m.mountedModules = nil
+	m.lifecycle = nil
 	return nil
 }
 
@@ -75,12 +95,18 @@ func (Factory) Describe() bkmodule.Descriptor {
 	return bkmodule.Descriptor{
 		Name:    "control",
 		Status:  bkmodule.StatusStable,
-		Summary: "Runtime control bus commands (kit.set-draining, cluster.peers).",
+		Summary: "Runtime control bus commands (kit.set-draining, kit.modules, module lifecycle, cluster.peers).",
 		Commands: []bkmodule.MessageDescriptor{
 			bkmodule.CommandMessage[ClusterPeersMsg, ClusterPeersResp](),
+			bkmodule.CommandMessage[KitModuleDescribeMsg, KitModuleDescribeResp](),
+			bkmodule.CommandMessage[KitModuleMountMsg, KitModuleMountResp](),
+			bkmodule.CommandMessage[KitModuleUnmountMsg, KitModuleUnmountResp](),
+			bkmodule.CommandMessage[KitModulesMsg, KitModulesResp](),
 			bkmodule.CommandMessage[KitSetDrainingMsg, KitSetDrainingResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.ModuleLifecycle](bkmodule.CapabilityModuleLifecycle),
+			bkmodule.RequiredCapabilityOf[func() []bkmodule.Descriptor](bkmodule.CapabilityMountedModules),
 			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
 		},
 	}
@@ -111,4 +137,54 @@ func (m *Module) ClusterPeers(ctx context.Context, _ ClusterPeersMsg) (*ClusterP
 		})
 	}
 	return &ClusterPeersResp{Peers: resp}, nil
+}
+
+// Modules handles kit.modules.
+func (m *Module) Modules(context.Context, KitModulesMsg) (*KitModulesResp, error) {
+	if m.mountedModules == nil {
+		return nil, fmt.Errorf("control: mounted module catalog is not configured")
+	}
+	return &KitModulesResp{Modules: m.mountedModules()}, nil
+}
+
+// ModuleMount handles kit.module.mount.
+func (m *Module) ModuleMount(ctx context.Context, req KitModuleMountMsg) (*KitModuleMountResp, error) {
+	if m.lifecycle == nil {
+		return nil, fmt.Errorf("control: module lifecycle is not configured")
+	}
+	desc, err := m.lifecycle.MountModule(ctx, req.ID, bkmodule.ModuleBuildConfig{
+		JSON: req.Config,
+		YAML: req.ConfigYAML,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &KitModuleMountResp{Module: desc}, nil
+}
+
+// ModuleUnmount handles kit.module.unmount.
+func (m *Module) ModuleUnmount(ctx context.Context, req KitModuleUnmountMsg) (*KitModuleUnmountResp, error) {
+	if m.lifecycle == nil {
+		return nil, fmt.Errorf("control: module lifecycle is not configured")
+	}
+	if req.ID == "control" {
+		return nil, fmt.Errorf("control: refusing to unmount control module through its own command")
+	}
+	desc, err := m.lifecycle.UnmountModule(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &KitModuleUnmountResp{Module: desc}, nil
+}
+
+// ModuleDescribe handles kit.module.describe.
+func (m *Module) ModuleDescribe(ctx context.Context, req KitModuleDescribeMsg) (*KitModuleDescribeResp, error) {
+	if m.lifecycle == nil {
+		return nil, fmt.Errorf("control: module lifecycle is not configured")
+	}
+	desc, mounted, err := m.lifecycle.DescribeModule(ctx, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &KitModuleDescribeResp{Module: desc, Mounted: mounted}, nil
 }

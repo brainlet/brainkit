@@ -229,7 +229,7 @@ func testExhaustionLargePayloadViaJS(t *testing.T, env *suite.TestEnv) {
 		try {
 			var big = {data: "x".repeat(5 * 1024 * 1024)};
 			var r = bus.publish("incoming.stress-large-test", big);
-			output({published: true, replyTo: r.replyTo.length > 0});
+			output({published: r === undefined});
 		} catch(e) {
 			output({error: e.message});
 		}

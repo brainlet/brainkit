@@ -112,7 +112,7 @@ kit, err := brainkit.New(brainkit.Config{
     FSRoot:    "/var/lib/host",
     Modules: []brainkit.Module{
         pluginsmod.NewModule(pluginsmod.Config{
-            Plugins: []brainkit.PluginConfig{{
+            Plugins: []pluginsmod.PluginConfig{{
                 Name:         "demo",
                 Binary:       "./examples/plugin-author/plugin-author",
                 AutoRestart:  false,
@@ -123,7 +123,7 @@ kit, err := brainkit.New(brainkit.Config{
 })
 ```
 
-`brainkit.PluginConfig` fields most users touch:
+`plugins.PluginConfig` fields most users touch:
 
 | Field | Purpose |
 |---|---|
@@ -231,7 +231,7 @@ touch either.
 ## Secrets rotation
 
 When the plugins module is wired and you call
-`kit.Secrets().Rotate(ctx, name, newValue)`, the manager checks
+`secretmsg.CallSecretsRotate(...)`, the manager checks
 whether any plugin's `Env` references `$secret:name` and restarts
 those plugins with the refreshed value. Nothing extra to wire —
 `modules/plugins` registers a restarter with the Kit during module

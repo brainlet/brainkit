@@ -35,7 +35,7 @@ target, _ := brainkit.New(brainkit.Config{
 defer target.Close()
 
 // Deploy a handler that answers the quarterly report topic.
-_, _ = target.Deploy(ctx, brainkit.PackageInline("report-svc", "report.ts", `
+_, _ = packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
     bus.on("quarterly", (msg) => {
         msg.reply({ revenue: 1234567, quarter: msg.payload.quarter });
     });
@@ -154,8 +154,8 @@ const resp = await bus.callTo("analytics",
     { timeoutMs: 10000 });
 ```
 
-`bus.sendTo(name, topic, payload)` is the fire-and-forget variant.
-Both resolve through the host Kit's topology module.
+`bus.sendTo(name, topic, payload)` is local service-addressed
+fire-and-forget. Cross-namespace request/reply uses `bus.callTo`.
 
 ## Cross-Namespace Low-Level API
 

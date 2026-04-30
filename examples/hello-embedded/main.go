@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -19,6 +20,7 @@ func main() {
 		Namespace: "hello-embedded",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)
@@ -29,7 +31,7 @@ func main() {
 	defer cancel()
 
 	// Deploy a tiny .ts package that answers "hello".
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline(
+	if _, err := packages.Deploy(ctx, kit, packages.Inline(
 		"greeter", "greeter.ts",
 		`bus.on("hello", (msg) => msg.reply({ greeting: "hello, " + msg.payload.name }));`,
 	)); err != nil {

@@ -31,6 +31,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -109,6 +110,7 @@ func run(outRaw, question string, play bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    wsRoot,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	}
 	if play {
 		// Wire desktop playback. Without this, .ts code calling
@@ -127,7 +129,7 @@ func run(outRaw, question string, play bool) error {
 	defer cancel()
 
 	source := fmt.Sprintf(voiceSource, outSubdir)
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("voice-agent", "voice.ts", source)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("voice-agent", "voice.ts", source)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] voice-agent deployed")

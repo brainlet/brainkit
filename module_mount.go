@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	plugincap "github.com/brainlet/brainkit/modulecap/plugin"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -33,7 +34,7 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 		if _, mounted := k.Module(dep); mounted {
 			continue
 		}
-		depMod, err := buildRegisteredModule(dep, "")
+		depMod, err := buildRegisteredModule(dep, k.fsRoot)
 		if err != nil {
 			return err
 		}
@@ -45,7 +46,7 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 	}
 	if id != "jsruntime" && moduleNeedsJSRuntime(mod) {
 		if _, mounted := k.Module("jsruntime"); !mounted {
-			jsmod, err := buildRegisteredModule("jsruntime", "")
+			jsmod, err := buildRegisteredModule("jsruntime", k.fsRoot)
 			if err != nil {
 				return err
 			}
@@ -83,7 +84,7 @@ func (k *Kit) Mount(ctx context.Context, mod bkmodule.Module) error {
 		k.mountMu.Unlock()
 		return fmt.Errorf("brainkit: mount %q: %w", id, err)
 	}
-	desc := mountedModuleDescriptor(id, bkmodule.DescribeModule(mod), host.commands, host.subscriptions)
+	desc := mountedModuleDescriptor(id, bkmodule.DescribeModule(mod), host.commands, host.subscriptions, host.capabilities, host.resources, scope.Resources())
 	k.mountMu.Lock()
 	k.modules[id] = mod
 	k.descs[id] = desc
@@ -120,7 +121,15 @@ func (k *Kit) MountedModules() []ModuleDescriptor {
 	return out
 }
 
-func mountedModuleDescriptor(id string, desc bkmodule.Descriptor, mountedCommands []bkmodule.MessageDescriptor, mountedSubscriptions []bkmodule.MessageDescriptor) bkmodule.Descriptor {
+func mountedModuleDescriptor(
+	id string,
+	desc bkmodule.Descriptor,
+	mountedCommands []bkmodule.MessageDescriptor,
+	mountedSubscriptions []bkmodule.MessageDescriptor,
+	mountedCapabilities []bkmodule.CapabilityDescriptor,
+	mountedResources []bkmodule.ResourceDescriptor,
+	scopeResources []bkmodule.ResourceDescriptor,
+) bkmodule.Descriptor {
 	if len(mountedCommands) > 0 {
 		known := map[string]struct{}{}
 		for _, cmd := range desc.Commands {
@@ -157,6 +166,44 @@ func mountedModuleDescriptor(id string, desc bkmodule.Descriptor, mountedCommand
 			known[sub.Topic] = struct{}{}
 		}
 	}
+	if len(mountedCapabilities) > 0 {
+		known := map[string]struct{}{}
+		for _, cap := range desc.Capabilities {
+			if cap.Name != "" {
+				known[string(cap.Direction)+"\x00"+cap.Name] = struct{}{}
+			}
+		}
+		for _, cap := range mountedCapabilities {
+			if cap.Name == "" {
+				continue
+			}
+			key := string(cap.Direction) + "\x00" + cap.Name
+			if _, ok := known[key]; ok {
+				continue
+			}
+			desc.Capabilities = append(desc.Capabilities, cap)
+			known[key] = struct{}{}
+		}
+	}
+	if len(mountedResources) > 0 || len(scopeResources) > 0 {
+		known := map[string]struct{}{}
+		for _, res := range desc.Resources {
+			if res.Kind != "" && res.Name != "" {
+				known[string(res.Kind)+"\x00"+res.Name] = struct{}{}
+			}
+		}
+		for _, res := range append(append([]bkmodule.ResourceDescriptor(nil), mountedResources...), scopeResources...) {
+			if res.Kind == "" || res.Name == "" {
+				continue
+			}
+			key := string(res.Kind) + "\x00" + res.Name
+			if _, ok := known[key]; ok {
+				continue
+			}
+			desc.Resources = append(desc.Resources, res)
+			known[key] = struct{}{}
+		}
+	}
 	return bkmodule.NormalizeDescriptor(id, desc)
 }
 
@@ -189,22 +236,23 @@ type moduleHost struct {
 	scope         bkmodule.Scope
 	commands      []bkmodule.MessageDescriptor
 	subscriptions []bkmodule.MessageDescriptor
+	capabilities  []bkmodule.CapabilityDescriptor
+	resources     []bkmodule.ResourceDescriptor
 }
 
 func (h *moduleHost) Scope() bkmodule.Scope { return h.scope }
-func (h *moduleHost) Runtime() sdk.Runtime  { return h.k.runtime() }
-func (h *moduleHost) Caller() *sdk.Caller   { return h.k.kernel.Caller() }
 func (h *moduleHost) Messages() bkmodule.MessageHost {
 	return &kitMessageHost{k: h.k, scope: h.scope, record: h.recordSubscription}
 }
 func (h *moduleHost) Commands() bkmodule.CommandHost {
 	return &kitCommandHost{k: h.k, scope: h.scope, record: h.recordCommand}
 }
-func (h *moduleHost) Tools() bkmodule.ToolHost { return &kitToolHost{k: h.k, scope: h.scope} }
-func (h *moduleHost) Logger() *slog.Logger     { return h.k.kernel.Logger() }
-func (h *moduleHost) Store() any               { return h.k.kernel.Store() }
+func (h *moduleHost) Tools() bkmodule.ToolHost {
+	return &kitToolHost{k: h.k, scope: h.scope, record: h.recordResource}
+}
+func (h *moduleHost) Logger() *slog.Logger { return h.k.kernel.Logger() }
 func (h *moduleHost) Capabilities() bkmodule.CapabilityHost {
-	return &kitCapabilityHost{k: h.k, scope: h.scope}
+	return &kitCapabilityHost{k: h.k, scope: h.scope, record: h.recordCapability}
 }
 
 func (h *moduleHost) recordCommand(spec bkmodule.CommandSpec) {
@@ -216,6 +264,14 @@ func (h *moduleHost) recordSubscription(topic string) {
 		Topic: topic,
 		Kind:  bkmodule.MessageKindSubscription,
 	})
+}
+
+func (h *moduleHost) recordCapability(desc bkmodule.CapabilityDescriptor) {
+	h.capabilities = append(h.capabilities, desc)
+}
+
+func (h *moduleHost) recordResource(desc bkmodule.ResourceDescriptor) {
+	h.resources = append(h.resources, desc)
 }
 
 type kitMessageHost struct {
@@ -244,6 +300,10 @@ func (h *kitMessageHost) SubscribeRaw(ctx context.Context, topic string, handler
 	return handle, nil
 }
 
+func (h *kitMessageHost) ReplyRaw(ctx context.Context, replyTo, correlationID string, payload json.RawMessage, done bool) error {
+	return h.k.kernel.ReplyRaw(ctx, replyTo, correlationID, payload, done)
+}
+
 type kitCommandHost struct {
 	k      *Kit
 	scope  bkmodule.Scope
@@ -265,8 +325,9 @@ func (h *kitCommandHost) Handle(spec bkmodule.CommandSpec) (bkmodule.Handle, err
 func (h *kitCommandHost) Has(topic string) bool { return h.k.kernel.HasCommand(topic) }
 
 type kitToolHost struct {
-	k     *Kit
-	scope bkmodule.Scope
+	k      *Kit
+	scope  bkmodule.Scope
+	record func(bkmodule.ResourceDescriptor)
 }
 
 func (h *kitToolHost) Register(_ context.Context, spec bkmodule.ToolSpec) (bkmodule.Handle, error) {
@@ -289,6 +350,9 @@ func (h *kitToolHost) Register(_ context.Context, spec bkmodule.ToolSpec) (bkmod
 	if err := h.k.kernel.Tools.Register(tool); err != nil {
 		return nil, err
 	}
+	if h.record != nil {
+		h.record(bkmodule.ToolResource(spec))
+	}
 	handle := bkmodule.HandleFunc(func(context.Context) error {
 		h.k.kernel.Tools.Unregister(spec.Name)
 		return nil
@@ -298,14 +362,18 @@ func (h *kitToolHost) Register(_ context.Context, spec bkmodule.ToolSpec) (bkmod
 }
 
 type kitCapabilityHost struct {
-	k     *Kit
-	scope bkmodule.Scope
+	k      *Kit
+	scope  bkmodule.Scope
+	record func(bkmodule.CapabilityDescriptor)
 }
 
 func (h *kitCapabilityHost) Provide(ctx context.Context, name string, value any) (bkmodule.Handle, error) {
 	handle, err := h.k.caps.Provide(ctx, name, value)
 	if err != nil {
 		return nil, err
+	}
+	if h.record != nil {
+		h.record(bkmodule.ProvidedCapability(name, value))
 	}
 	h.scope.Defer(handle.Close)
 	return handle, nil
@@ -370,12 +438,28 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 		return h.k.kernel.ProviderRegistry(), true
 	case bkmodule.CapabilityStorageManager:
 		return h.k.kernel.StorageManager(), true
+	case bkmodule.CapabilityKitStore:
+		if store := h.k.kernel.Store(); store != nil {
+			return store, true
+		}
+		return nil, false
 	case bkmodule.CapabilityMetricsSnapshot:
 		return func() any { return h.k.kernel.Metrics() }, true
 	case bkmodule.CapabilityHealthSnapshot:
 		return func(ctx context.Context) any { return h.k.kernel.Health(ctx) }, true
+	case bkmodule.CapabilityHealthProbes:
+		return bkmodule.HealthProbes(h.k.kernel), true
+	case bkmodule.CapabilityRequestCaller:
+		if caller := h.k.kernel.Caller(); caller != nil {
+			return bkmodule.RequestCaller(caller), true
+		}
+		return nil, false
 	case bkmodule.CapabilityAgentRegistry:
 		return h.k.kernel.AgentsDomain(), true
+	case bkmodule.CapabilityMountedModules:
+		return func() []bkmodule.Descriptor { return h.k.MountedModules() }, true
+	case bkmodule.CapabilityModuleLifecycle:
+		return kitModuleLifecycle{k: h.k}, true
 	case bkmodule.CapabilityToolCommands:
 		return h.k.kernel.ToolsDomain(), true
 	case bkmodule.CapabilityRuntimeControl:
@@ -393,7 +477,7 @@ func (h *kitCapabilityHost) coreCapability(name string) (any, bool) {
 			h.k.kernel.SetPluginChecker(checker)
 		}, true
 	case bkmodule.CapabilitySetPluginRestarter:
-		return func(restarter PluginRestarter) {
+		return func(restarter plugincap.Restarter) {
 			h.k.kernel.SetPluginRestarter(restarter)
 		}, true
 	case bkmodule.CapabilityJSRuntimeHost:

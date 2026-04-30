@@ -36,7 +36,7 @@ kit, _ := brainkit.New(brainkit.Config{
 defer kit.Close()
 
 // Deploy a .ts package
-_, _ = kit.Deploy(ctx, brainkit.PackageInline(
+_, _ = packages.Deploy(ctx, kit, packages.Inline(
     "researcher",
     "researcher.ts",
     researcherCode,
@@ -85,7 +85,7 @@ reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.Custom
 Teardown releases all bus subscriptions, unregisters agents / tools / workflows, and disposes the compartment:
 
 ```go
-_, _ = kit.Teardown(ctx, "researcher")
+_, _ = packages.Teardown(ctx, kit, "researcher")
 ```
 
 `examples/agent-spawner/main.go` is the flagship walkthrough: a Go program deploys an architect agent, asks it to design and deploy a second agent at runtime, and then calls the newly-spawned agent directly over the bus.
@@ -99,7 +99,7 @@ Dense, API-only pages — each mirrors one source-of-truth and is kept in sync w
 | File | Covers |
 |------|--------|
 | [`llm/go-sdk.md`](llm/go-sdk.md) | `sdk.Runtime` / `CrossNamespaceRuntime` / `Replier` interfaces, bus primitives (`Publish` / `Emit` / `SubscribeTo` / `Reply` / `SendChunk` / `SendToService` / `ResolveServiceTopic`), envelopes (`EnvelopeOK` / `EnvelopeErr` / encode / decode / `IsEnvelope`), `brainkit.Call[Req,Resp]` / `CallStream[Req,Chunk,Resp]`, generated package-owned `CallXxx` wrappers, `CallOption` surface, typed SDK and module messages, errors, context keys. |
-| [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the 11-module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` + `Span` types, retry / error / health types, `PluginConfig` + `ScheduleConfig`, `server.Config` + `server.Server` + `QuickStart` + `LoadConfig` YAML shape. |
+| [`llm/go-config.md`](llm/go-config.md) | `brainkit.Config` (every field + default), `brainkit.New` / `brainkit.QuickStart`, the 12 `ProviderConfig` constructors with `WithBaseURL` / `WithHeaders`, the 5 `TransportConfig` helpers (+ `WithNATSName`), the 11-module catalog with status and module-specific helpers (`NewSQLiteTraceStore`, audit stores, tracing / discovery / topology / MCP / gateway configs), `StorageConfig` + `VectorConfig`, `KitStore` + records + `SQLiteStore` + `NewPostgresStore`, `SecretStore` + `$secret:NAME` interpolation, `TraceStore` + `Span` types, retry / error / health types, module-owned `plugins.PluginConfig` + `schedules.ScheduleConfig`, `server.Config` + `server.Server` + `QuickStart` + `LoadConfig` YAML shape. |
 | [`llm/ts-runtime.md`](llm/ts-runtime.md) | SES compartment execution model, mailbox naming `ts.<source>.<topic>`, endowment map, `BrainkitError` + error codes (`VALIDATION_ERROR`, `NOT_FOUND`, `TIMEOUT`, `HANDLER_FAILED`, `TRANSPORT_ERROR`, `COMPARTMENT_ERROR`, `TOPIC_COLLISION`, `NOT_CONFIGURED`, `PLUGIN_*`), full `bus` API (`publish`/`emit`/`subscribe`/`on`/`sendTo`/`call`/`callTo`/`schedule`/`onCancel`/`withCancelController`), `BusMessage.reply`/`send`/`stream.text`/`progress`/`object`/`event`/`error`/`end` with `seq` semantics, `kit.register` valid types, `model` / `embeddingModel` / `provider` resolvers, `storage` / `vectorStore` named pools (LibSQL file-URL guards), `registry`, `tools` / `tool`, the Node.js-shaped `fs` endowment, `mcp`, `output`, `secrets.get`, `generateWithApproval`, tamed `Date` / `Math`, tagged `console`, deployment patterns, failure semantics. |
 | [`llm/ai-sdk.md`](llm/ai-sdk.md) | The `"ai"` module (AI SDK v5, no wrapping). `CallSettings` (`maxOutputTokens`, not `maxTokens`), `Usage` with v5 names (`inputTokens` / `outputTokens`) + deprecated v4 aliases, `generateText` + `GenerateTextParams` (with `stopWhen` and `@deprecated maxSteps`), `streamText` + `StreamPart` union, `generateObject`, `streamObject`, `embed`, `embedMany`, middleware (`defaultSettingsMiddleware`, `extractReasoningMiddleware`, `wrapLanguageModel`), `tool<T>`, `jsonSchema`, the Zod surface. |
 | [`llm/mastra.md`](llm/mastra.md) | The `"agent"` module (Mastra, no wrapping). `Agent` class + `AgentConfig` + `AgentCallOptions`, `AgentResult` with **v4 usage names** (`promptTokens` / `completionTokens`), `AgentStreamResult`, `createTool` + `ToolConfig`, `createWorkflow` + `createStep` + builder (`then` / `parallel` / `branch` / `foreach` / `dountil` / `sleep` / `commit`), `Memory` + `MemoryConfig` + `MemoryOptions` (semantic recall, working memory, observational memory), 5 storage classes (`InMemoryStore`, `LibSQLStore` — `opts.url` file-URL guard, `UpstashStore`, `PostgresStore`, `MongoDBStore`), 3 vector classes (`LibSQLVector` — `opts.connectionUrl` file-URL guard, `PgVector`, `MongoDBVector`), `ModelRouterEmbeddingModel`, `MDocument` / `GraphRAG` / `createVectorQueryTool` / `createDocumentChunkerTool` / `createGraphRAGTool` / `rerank` / `rerankWithScorer`, `Observability` + `DefaultExporter` + `SensitiveDataFilter`, `createScorer` builder + `runEvals`, `Workspace` + `LocalFilesystem` + `LocalSandbox`, `RequestContext`, HITL flow (tool `requireApproval`, workflow `ctx.suspend`, `generateWithApproval`). |
@@ -128,7 +128,7 @@ Walkthroughs and concept-level docs under `guides/`:
 - [`guides/transport-backends.md`](guides/transport-backends.md) — memory / embedded-NATS / NATS / AMQP / Redis trade-offs and topic sanitisers.
 - [`guides/mcp-integration.md`](guides/mcp-integration.md) — the MCP module + `mcp.listTools` / `mcp.callTool` bus surface.
 - [`guides/hitl-approval.md`](guides/hitl-approval.md) — `generateWithApproval`, Mastra tool `requireApproval`, workflow `ctx.suspend`.
-- [`guides/plugins.md`](guides/plugins.md) — out-of-process plugin SDK, `PluginConfig`, lifecycle events.
+- [`guides/plugins.md`](guides/plugins.md) — out-of-process plugin SDK, `plugins.PluginConfig`, lifecycle events.
 - [`guides/observability.md`](guides/observability.md) — tracing, probes, topology, metrics.
 
 ## Concepts (design notes)
@@ -160,7 +160,7 @@ kit, _ := brainkit.New(brainkit.Config{
 })
 defer kit.Close()
 
-_, _ = kit.Deploy(ctx, brainkit.PackageInline("echo", "echo.ts", `
+_, _ = packages.Deploy(ctx, kit, packages.Inline("echo", "echo.ts", `
     import { bus } from "kit";
     bus.on("ping", (msg) => msg.reply({ pong: msg.payload }));
 `))

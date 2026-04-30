@@ -3,25 +3,17 @@ package module
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
-
-	"github.com/brainlet/brainkit/sdk"
 )
 
 // Module is a hot-mountable capability bundle.
 type Module interface {
 	ID() string
 	Mount(context.Context, Host) error
-}
-
-// DependencyReporter is optionally implemented by modules that need other
-// modules mounted first. The host resolves registered dependencies before
-// mounting the module.
-type DependencyReporter interface {
-	Dependencies() []string
 }
 
 // Status reports a module's maturity for CLI/docs surfaces.
@@ -45,6 +37,7 @@ type Descriptor struct {
 	Events        []MessageDescriptor    `json:"events,omitempty"`
 	Subscriptions []MessageDescriptor    `json:"subscriptions,omitempty"`
 	Capabilities  []CapabilityDescriptor `json:"capabilities,omitempty"`
+	Resources     []ResourceDescriptor   `json:"resources,omitempty"`
 }
 
 // Describer is implemented by factories or modules that expose metadata.
@@ -60,14 +53,11 @@ type StatusReporter interface {
 // Host is the surface a module can use during Mount.
 type Host interface {
 	Scope() Scope
-	Runtime() sdk.Runtime
-	Caller() *sdk.Caller
 	Messages() MessageHost
 	Commands() CommandHost
 	Tools() ToolHost
 	Capabilities() CapabilityHost
 	Logger() *slog.Logger
-	Store() any
 }
 
 // BuildContext is what assembly layers hand to a factory before a Kit exists.
@@ -86,6 +76,22 @@ type FactoryFunc func(BuildContext) (Module, error)
 
 // Build satisfies Factory.
 func (f FactoryFunc) Build(ctx BuildContext) (Module, error) { return f(ctx) }
+
+// ModuleBuildConfig carries runtime module factory input. JSON is decoded as
+// YAML-compatible structured data so module YAML tags still apply; YAML is
+// useful for operators and CLIs that want to pass a config file verbatim.
+type ModuleBuildConfig struct {
+	JSON json.RawMessage `json:"json,omitempty"`
+	YAML string          `json:"yaml,omitempty"`
+}
+
+// ModuleLifecycle is the control-plane capability for registered linked-code
+// module lifecycle operations.
+type ModuleLifecycle interface {
+	MountModule(context.Context, string, ModuleBuildConfig) (Descriptor, error)
+	UnmountModule(context.Context, string) (Descriptor, error)
+	DescribeModule(context.Context, string) (Descriptor, bool, error)
+}
 
 var (
 	registryMu sync.RWMutex

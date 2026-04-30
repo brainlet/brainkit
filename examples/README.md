@@ -16,7 +16,7 @@ from the repo root.
 | [hello-server](./hello-server/) | Service mode: `brainkit.yaml` + `server.New` + `Start` |
 | [multi-kit](./multi-kit/) | Two Kits in one process, routed by peer name through `modules/topology` |
 | [observability](./observability/) | `audit.query` + `audit.stats` + `trace.list` round-trip via `modules/audit` + `modules/tracing` |
-| [package-workflow](./package-workflow/) | The on-disk package lifecycle: `ScaffoldPackage` → edit → add a sibling file → `PackageFromDir` deploy → teardown. The shape `brainkit new package` produces, unpacked into Go. |
+| [package-workflow](./package-workflow/) | The on-disk package lifecycle: `packages.ScaffoldPackage` → edit → add a sibling file → `packages.FromDir` deploy → teardown. The shape `brainkit new package` produces, unpacked into Go. |
 | [gateway-routes](./gateway-routes/) | HTTP gateway on a bare Kit — `GET /hello` forwards to a deployed `.ts` handler |
 | [go-tools](./go-tools/) | Register typed Go functions as first-class bus tools; invoke from `.ts` and from Go |
 | [guardrails](./guardrails/) | Input processors on an Agent — `PromptInjectionDetector` rewrites hostile input, `PIIDetector` masks PII |
@@ -28,7 +28,7 @@ from the repo root.
 | [plugin-host](./plugin-host/) | Live round-trip for plugin-author — builds the plugin, boots a Kit, calls its tool, prints the reply (with integration test) |
 | [rag-pipeline](./rag-pipeline/) | Full Mastra RAG flow — `MDocument.chunk` + embeddings + pgvector + `createVectorQueryTool` on an Agent, with positive / negative questions + optional `rerankWithScorer` path |
 | [schedules](./schedules/) | Cron-style scheduled bus messages — `modules/schedules`, create / cancel via generated wrappers |
-| [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via the `Kit.Secrets()` accessor |
+| [secrets](./secrets/) | Encrypted secret store lifecycle — Set / Get / Rotate / Delete via `modules/secrets` typed bus calls |
 | [storage-vectors](./storage-vectors/) | Persistent KV (Mastra Memory + SQLite) + vector store / similarity search from `.ts` |
 | [streaming](./streaming/) | Every streaming surface: bus `CallStream`, gateway SSE, WebSocket, Webhook |
 | [voice-agent](./voice-agent/) | Full speak → listen → generate → speak round trip via `OpenAIVoice` — TTS to MP3, STT back to text, generate answer, TTS to a second MP3 |

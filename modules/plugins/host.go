@@ -46,6 +46,7 @@ type pluginMountExt struct {
 	setPluginRestarter func(plugincap.Restarter)
 	namespace          string
 	callerID           string
+	store              Store
 }
 
 type mountedPluginHost struct {
@@ -99,6 +100,7 @@ func newMountedPluginHost(host bkmodule.Host) (pluginHost, error) {
 		return nil, fmt.Errorf("plugins: %w", err)
 	}
 	secretStore, _ := bkmodule.Capability[types.SecretStore](host, bkmodule.CapabilitySecretStore)
+	store, _ := bkmodule.Capability[Store](host, bkmodule.CapabilityKitStore)
 
 	return mountedPluginHost{host: host, ext: pluginMountExt{
 		transportKind:      transportKind,
@@ -113,16 +115,16 @@ func newMountedPluginHost(host bkmodule.Host) (pluginHost, error) {
 		setPluginRestarter: setPluginRestarter,
 		namespace:          namespace,
 		callerID:           callerID,
+		store:              store,
 	}}, nil
 }
 
 func (h mountedPluginHost) PublishRaw(ctx context.Context, topic string, payload json.RawMessage) (string, error) {
-	return h.host.Runtime().PublishRaw(ctx, topic, payload)
+	return h.host.Messages().PublishRaw(ctx, topic, payload)
 }
 func (h mountedPluginHost) TransportKind() string { return h.ext.transportKind }
 func (h mountedPluginHost) Store() Store {
-	store, _ := h.host.Store().(Store)
-	return store
+	return h.ext.store
 }
 func (h mountedPluginHost) Logger() *slog.Logger { return h.host.Logger() }
 func (h mountedPluginHost) ReportError(err error, ctx types.ErrorContext) {

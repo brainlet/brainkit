@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
@@ -42,7 +41,7 @@ func (d *LifecycleDomain) Start(ctx context.Context, req pluginmsg.PluginStartMs
 		return nil, fmt.Errorf("plugin.start: no binary path for plugin %q (not installed and no binary specified)", req.Name)
 	}
 
-	cfg := types.PluginConfig{
+	cfg := PluginConfig{
 		Name:   req.Name,
 		Binary: binary,
 		Env:    req.Env,

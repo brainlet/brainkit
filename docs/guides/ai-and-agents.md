@@ -38,8 +38,9 @@ brainkit.OpenAI(key,
 )
 ```
 
-Manage providers after boot via `kit.Providers()` —
-`Register` / `Unregister` / `List` / `Get` / `Has`.
+Manage providers after boot by mounting `modules/registry` and calling
+`registrymsg.ProviderAddMsg`, `ProviderRemoveMsg`, `RegistryListMsg`,
+`RegistryHasMsg`, or `RegistryResolveMsg`.
 
 See [`examples/ai-chat/`](../../examples/ai-chat/) for a complete
 single-provider program, and

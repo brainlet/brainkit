@@ -15,7 +15,7 @@ import (
 	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
 	healthmod "github.com/brainlet/brainkit/modules/health"
 	metricsmod "github.com/brainlet/brainkit/modules/metrics"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
@@ -59,10 +59,10 @@ func TestMetricsPluginE2E(t *testing.T) {
 			toolsmod.New(),
 			healthmod.New(),
 			metricsmod.New(),
-			packagesmod.New(),
+			packages.New(),
 			auditmod.NewModule(auditmod.Config{Store: auditStore, OwnStore: true}),
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{{
+				Plugins: []pluginsmod.PluginConfig{{
 					Name: "metrics", Binary: binaryPath, AutoRestart: false,
 				}},
 			}),

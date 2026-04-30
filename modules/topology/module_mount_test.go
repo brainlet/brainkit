@@ -27,7 +27,21 @@ func TestTopologyModuleHotMountsCommands(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "peer-a-ns", resp.Namespace)
 
-	require.True(t, k.HasCommand("peers.resolve"))
+	require.True(t, mountedCommand(k, "topology", "peers.resolve"))
 	require.NoError(t, k.Unmount(ctx, "topology"))
-	require.False(t, k.HasCommand("peers.resolve"))
+	require.False(t, mountedCommand(k, "topology", "peers.resolve"))
+}
+
+func mountedCommand(k *brainkit.Kit, moduleID, topic string) bool {
+	for _, desc := range k.MountedModules() {
+		if desc.Name != moduleID {
+			continue
+		}
+		for _, cmd := range desc.Commands {
+			if cmd.Topic == topic {
+				return true
+			}
+		}
+	}
+	return false
 }

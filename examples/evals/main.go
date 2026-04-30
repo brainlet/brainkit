@@ -16,8 +16,8 @@
 package main
 
 import (
-	_ "embed"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -65,6 +66,7 @@ func run(key string, save, check bool) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -74,7 +76,7 @@ func run(key string, save, check bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("evals", "evals.ts", evalsSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("evals", "evals.ts", evalsSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] evals deployed")

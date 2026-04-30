@@ -12,7 +12,7 @@ import (
 	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
-	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	toolhost "github.com/brainlet/brainkit/modulehost/toolhost"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/ctxkeys"
@@ -21,10 +21,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestToolsDomain(runtimeID string) (*toolsmod.Domain, *toolreg.ToolRegistry) {
+func newTestToolsDomain(runtimeID string) (*toolhost.Domain, *toolreg.ToolRegistry) {
 	reg := toolreg.New()
 	tracer := tracing.NewTracer(nil, 1.0)
-	domain := toolsmod.NewDomain(reg, nil, tracer, nil, "test-caller", runtimeID)
+	domain := toolhost.NewDomain(reg, nil, tracer, nil, "test-caller", runtimeID)
 	return domain, reg
 }
 
@@ -136,7 +136,7 @@ func TestNonLocalToolCallFromRemoteAllowed(t *testing.T) {
 
 // TestAttackRemotePluginToolViaDirectBus simulates an attacker on the same NATS
 // transport attempting to call a plugin tool on another Kit by publishing a
-// toolreg.call message to that Kit's namespace.
+// tools.call message to that Kit's namespace.
 func TestAttackRemotePluginToolViaDirectBus(t *testing.T) {
 	domain, reg := newTestToolsDomain("victim-runtime")
 
@@ -152,7 +152,7 @@ func TestAttackRemotePluginToolViaDirectBus(t *testing.T) {
 		},
 	})
 
-	// Attacker sends toolreg.call from different runtime
+	// Attacker sends tools.call from different runtime
 	ctx := context.WithValue(context.Background(), ctxkeys.RuntimeID, "attacker-runtime")
 	_, err := domain.Call(ctx, bkmodule.ToolCallRequest{Name: "query", Input: map[string]any{"sql": "DROP TABLE users"}})
 
@@ -279,12 +279,12 @@ func TestAttackCrossKitPluginToolOnEmbeddedNATS(t *testing.T) {
 
 	// Attacker tries to call victim's plugin tool via cross-namespace publish.
 	// The attacker subscribes to a replyTo in its own namespace, then publishes
-	// toolreg.call to the victim's namespace with replyTo stamped in metadata.
+	// tools.call to the victim's namespace with replyTo stamped in metadata.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Subscribe to reply BEFORE publishing (roundTrip pattern)
-	replyTopic := "toolreg.call.reply.attack-test"
+	replyTopic := "tools.call.reply.attack-test"
 	ch := make(chan json.RawMessage, 1)
 	unsub, _ := attacker.SubscribeRaw(ctx, replyTopic, func(m sdk.Message) {
 		ch <- json.RawMessage(m.Payload)
@@ -294,11 +294,11 @@ func TestAttackCrossKitPluginToolOnEmbeddedNATS(t *testing.T) {
 	// Give subscription time to register on NATS
 	time.Sleep(500 * time.Millisecond)
 
-	// Publish toolreg.call to victim's namespace with attacker's replyTo
+	// Publish tools.call to victim's namespace with attacker's replyTo
 	payload, _ := json.Marshal(toolmsg.ToolCallMsg{Name: "read-db", Input: map[string]any{}})
 	// WithPublishMeta sets logical replyTo — PublishRawToNamespace resolves it.
 	attackCtx := transport.WithPublishMeta(ctx, "attack-corr", replyTopic)
-	attacker.Kernel.PublishRawTo(attackCtx, "victim", "toolreg.call", payload)
+	attacker.Kernel.PublishRawTo(attackCtx, "victim", (toolmsg.ToolCallMsg{}).BusTopic(), payload)
 
 	select {
 	case resp := <-ch:

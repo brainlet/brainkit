@@ -11,7 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/google/uuid"
@@ -72,7 +72,7 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 func packageModules(extra ...brainkit.Module) []brainkit.Module {
 	modules := make([]brainkit.Module, 0, 1+len(extra))
-	modules = append(modules, packagesmod.New())
+	modules = append(modules, packages.New())
 	modules = append(modules, extra...)
 	return modules
 }

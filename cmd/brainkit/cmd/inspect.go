@@ -29,6 +29,7 @@ prints the result. Subjects:
   plugins    — running plugins (plugin.list)
   schedules  — active schedules (schedules.list)
   agents     — registered agents (agents.list)
+  modules    — mounted module manifests (kit.modules)
   tools      — registered tools (tools.list)
   workflows  — registered workflows (workflow.list)
   resources  — every registered tool + agent + workflow, grouped
@@ -41,7 +42,7 @@ rendering.`,
 		Args: cobra.ExactArgs(1),
 		ValidArgs: []string{
 			"health", "packages", "plugins", "schedules",
-			"agents", "tools", "workflows", "resources",
+			"agents", "modules", "tools", "workflows", "resources",
 			"audit", "traces", "routes",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -88,6 +89,7 @@ var inspectSubjects = map[string]inspectSubject{
 	"plugins":   {topic: "plugin.list", payload: "{}", render: renderPlugins},
 	"schedules": {topic: "schedules.list", payload: "{}", render: renderSchedules},
 	"agents":    {topic: "agents.list", payload: "{}", render: renderAgents},
+	"modules":   {topic: "kit.modules", payload: "{}", render: renderModules},
 	"tools":     {topic: "tools.list", payload: "{}", render: renderTools},
 	"workflows": {topic: "workflow.list", payload: "{}", render: renderWorkflows},
 	"audit":     {topic: "audit.query", payload: `{"limit":20}`, render: renderAudit},
@@ -301,6 +303,38 @@ func nonEmpty(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func renderModules(w io.Writer, payload json.RawMessage) error {
+	var resp struct {
+		Modules []struct {
+			Name         string   `json:"name"`
+			Status       string   `json:"status"`
+			Summary      string   `json:"summary"`
+			Requires     []string `json:"requires"`
+			Commands     []any    `json:"commands"`
+			Events       []any    `json:"events"`
+			Capabilities []any    `json:"capabilities"`
+			Resources    []any    `json:"resources"`
+		} `json:"modules"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return writeJSONPretty(w, payload)
+	}
+	tw := newTW(w)
+	fmt.Fprintln(tw, "NAME\tSTATUS\tREQUIRES\tCOMMANDS\tEVENTS\tCAPS\tRES\tSUMMARY")
+	for _, m := range resp.Modules {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\n",
+			nonEmpty(m.Name, "-"),
+			nonEmpty(m.Status, "-"),
+			nonEmpty(strings.Join(m.Requires, ","), "-"),
+			len(m.Commands),
+			len(m.Events),
+			len(m.Capabilities),
+			len(m.Resources),
+			nonEmpty(m.Summary, "-"))
+	}
+	return tw.Flush()
 }
 
 func renderTools(w io.Writer, payload json.RawMessage) error {

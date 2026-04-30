@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/schedules"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	_ "github.com/brainlet/brainkit/storagebridges"
@@ -116,24 +116,24 @@ func NewTestKitFull(t *testing.T) *TestKit {
 	}
 	t.Cleanup(func() { kit.Close() })
 
-	err = brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
+	err = kit.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
-	})
+	}))
 	if err != nil {
-		t.Fatalf("RegisterTool echo: %v", err)
+		t.Fatalf("Mount echo tool: %v", err)
 	}
 
-	err = brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
+	err = kit.Mount(context.Background(), toolsmod.GoTool("add", toolsmod.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
-	})
+	}))
 	if err != nil {
-		t.Fatalf("RegisterTool add: %v", err)
+		t.Fatalf("Mount add tool: %v", err)
 	}
 
 	return &TestKit{kit}
@@ -174,18 +174,22 @@ func NewTestNode(t *testing.T) sdk.Runtime {
 		t.Fatalf("brainkit.New (node): %v", err)
 	}
 
-	brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
+	if err := kit.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
-	})
-	brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
+	})); err != nil {
+		t.Fatalf("Mount echo tool: %v", err)
+	}
+	if err := kit.Mount(context.Background(), toolsmod.GoTool("add", toolsmod.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
-	})
+	})); err != nil {
+		t.Fatalf("Mount add tool: %v", err)
+	}
 
 	t.Cleanup(func() { kit.Close() })
 	return kit

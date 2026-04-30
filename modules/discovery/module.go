@@ -45,6 +45,12 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 		return nil
 	}
 
+	host.Scope().Resource(bkmodule.ResourceWithMetadata(
+		bkmodule.ResourceKindCustom,
+		"discovery.provider",
+		map[string]string{"type": m.cfg.Type},
+		"Peer discovery provider.",
+	))
 	host.Scope().Defer(func(context.Context) error {
 		return m.Close()
 	})
@@ -159,6 +165,9 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.ProvidedCapabilityOf[*Module]("discovery.provider"),
 			bkmodule.RequiredCapabilityOf[string](bkmodule.CapabilityNamespace),
 			bkmodule.RequiredCapabilityOf[transport.Presence](bkmodule.CapabilityPresenceTransport),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindCustom, "discovery.provider", "Peer discovery provider."),
 		},
 	}
 }

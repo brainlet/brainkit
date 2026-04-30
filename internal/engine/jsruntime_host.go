@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/brainlet/brainkit/internal/types"
-	agentsmod "github.com/brainlet/brainkit/modules/agents"
-	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	agenthost "github.com/brainlet/brainkit/modulehost/agenthost"
+	toolhost "github.com/brainlet/brainkit/modulehost/toolhost"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -26,10 +26,10 @@ func (k *Kernel) SetDeployOrderSeed(seed int32) {
 }
 
 // ToolsDomain exposes the local tool domain to optional runtime attachments.
-func (k *Kernel) ToolsDomain() *toolsmod.Domain { return k.toolsDomain }
+func (k *Kernel) ToolsDomain() *toolhost.Domain { return k.toolsDomain }
 
 // AgentsDomain exposes the local agent registry to optional runtime attachments.
-func (k *Kernel) AgentsDomain() *agentsmod.Domain { return k.agentsDomain }
+func (k *Kernel) AgentsDomain() *agenthost.Domain { return k.agentsDomain }
 
 // SetToolEvaluator installs the JS evaluator used by JS-registered tools.
 func (k *Kernel) SetToolEvaluator(eval JSEvaluator) {

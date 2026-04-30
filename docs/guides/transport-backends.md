@@ -5,7 +5,7 @@ A Kit has exactly one transport. Pick it with one of the
 `brainkit.NATS(url)` / `brainkit.AMQP(url)` / `brainkit.Redis(url)`
 constructors.
 
-| Backend | Constructor | `kit.TransportKind()` | Topic sanitizer |
+| Backend | Constructor | Internal kind | Topic sanitizer |
 |---|---|---|---|
 | GoChannel | `brainkit.Memory()` | `"memory"` | none |
 | Embedded NATS | `brainkit.EmbeddedNATS()` (default) | `"embedded"` | dots → dashes |
@@ -13,8 +13,7 @@ constructors.
 | AMQP (RabbitMQ) | `brainkit.AMQP(url)` | `"amqp"` | slashes → dashes |
 | Redis Streams | `brainkit.Redis(url)` | `"redis"` | none |
 
-Zero value for `Config.Transport` resolves to
-`brainkit.EmbeddedNATS()`.
+Zero value for `Config.Transport` resolves to `brainkit.Memory()`.
 
 ## Memory
 
@@ -138,14 +137,9 @@ against the plugin supervisor and cross-Kit flows. The others
 carry the core bus surface but aren't part of the plugin /
 cross-Kit matrix.
 
-## Inspecting the running transport
-
-```go
-fmt.Println(kit.TransportKind())  // "memory" | "embedded" | "nats" | "amqp" | "redis"
-```
-
-Modules use this to refuse configurations they can't support (e.g.
-`modules/plugins` rejects `"memory"`).
+Modules receive the normalized transport kind as a capability and can refuse
+configurations they cannot support. For example, `modules/plugins` rejects
+`"memory"`.
 
 ## Transport matrix in tests
 

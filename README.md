@@ -24,20 +24,20 @@ kit, _ := brainkit.New(brainkit.Config{
     Providers: []brainkit.ProviderConfig{
         brainkit.OpenAI(os.Getenv("OPENAI_API_KEY")),
     },
+    Modules: append(standard.CommandSet(),
+        toolsmod.GoTool("add", toolsmod.TypedTool[struct{ A, B int }]{
+            Description: "adds two numbers",
+            Execute: func(_ context.Context, in struct{ A, B int }) (any, error) {
+                return map[string]int{"sum": in.A + in.B}, nil
+            },
+        }),
+    ),
 })
 defer kit.Close()
 
-// Register a Go tool — the agent sees it as a typed Mastra tool.
-brainkit.RegisterTool(kit, "add", tools.TypedTool[struct{ A, B int }]{
-    Description: "adds two numbers",
-    Execute: func(_ context.Context, in struct{ A, B int }) (any, error) {
-        return map[string]int{"sum": in.A + in.B}, nil
-    },
-})
-
 // Deploy an agent. No restart, no build step. bus.on("ask", ...) listens
 // on `ts.math.ask` — deployment-namespaced automatically.
-kit.Deploy(ctx, brainkit.PackageInline("math", "math.ts", `
+packages.Deploy(ctx, kit, packages.Inline("math", "math.ts", `
     import { Agent } from "agent";
     import { model, tool, bus } from "kit";
     bus.on("ask", async (msg) => {

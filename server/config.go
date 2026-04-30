@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/transports"
 	"gopkg.in/yaml.v3"
 )
@@ -216,7 +217,7 @@ func (fc FileConfig) toConfig() (Config, error) {
 	}
 
 	for _, pkg := range fc.Packages {
-		p, err := brainkit.PackageFromDir(pkg.Path)
+		p, err := packages.FromDir(pkg.Path)
 		if err != nil {
 			return Config{}, fmt.Errorf("server: load package %q: %w", pkg.Path, err)
 		}

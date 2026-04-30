@@ -9,9 +9,22 @@ declare module "kit" {
 
   // ── Bus (messaging) ──────────────────────────────────────────
 
+  export interface BusCallOptions {
+    timeoutMs: number;
+  }
+
+  export interface BusStreamOptions {
+    timeoutMs: number;
+    onChunk: (chunk: any, msg: BusMessage) => void | Promise<void>;
+    /** Per-call stream chunk buffer. Defaults to the Go caller default. */
+    bufferSize?: number;
+    /** Backpressure policy when onChunk lags behind the producer. Defaults to "block". */
+    bufferPolicy?: "block" | "dropNewest" | "dropOldest" | "error";
+  }
+
   export const bus: {
-    /** Send + expect reply. Returns routing info. */
-    publish(topic: string, data?: unknown): { replyTo: string; correlationId: string };
+    /** Publish an event. No reply inbox is created; use call() for request/reply. */
+    publish(topic: string, data?: unknown): void;
     /** Fire-and-forget. No replyTo. */
     emit(topic: string, data?: unknown): void;
     /** Listen on any absolute topic. */
@@ -20,9 +33,9 @@ declare module "kit" {
     on(localTopic: string, handler: (msg: BusMessage) => void | Promise<void>): string;
     /** Remove a subscription. */
     unsubscribe(subId: string): void;
-    /** Send to a deployed .ts service by name.
+    /** Fire-and-forget send to a deployed .ts service by name.
      *  Resolves "my-agent.ts" + "ask" → publishes to ts.my-agent.ask */
-    sendTo(service: string, topic: string, data?: unknown): { replyTo: string; correlationId: string };
+    sendTo(service: string, topic: string, data?: unknown): void;
     /**
      * Send a request-reply command and await the terminal envelope.
      * Throws BrainkitError on the remote handler's ok=false reply;
@@ -32,9 +45,20 @@ declare module "kit" {
      * @example
      *   const reply = await bus.call("ts.my-svc.chat", { text: "hi" }, { timeoutMs: 5000 });
      */
-    call<T = any>(topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
+    call<T = any>(topic: string, data?: unknown, opts?: BusCallOptions): Promise<T>;
+    /**
+     * Request/reply with streaming chunks. Intermediate done=false replies
+     * are delivered to onChunk; the promise resolves with the terminal reply.
+     */
+    callStream<T = any>(topic: string, data?: unknown, opts?: BusStreamOptions): Promise<T>;
+    /** Local service-addressed variant of call(). */
+    callService<T = any>(service: string, topic: string, data?: unknown, opts?: BusCallOptions): Promise<T>;
+    /** Local service-addressed variant of callStream(). */
+    callServiceStream<T = any>(service: string, topic: string, data?: unknown, opts?: BusStreamOptions): Promise<T>;
     /** Cross-kit variant of call(): routes the request to a different namespace. */
-    callTo<T = any>(namespace: string, topic: string, data?: unknown, opts?: { timeoutMs: number }): Promise<T>;
+    callTo<T = any>(namespace: string, topic: string, data?: unknown, opts?: BusCallOptions): Promise<T>;
+    /** Cross-kit variant of callStream(): routes the request to a different namespace. */
+    callToStream<T = any>(namespace: string, topic: string, data?: unknown, opts?: BusStreamOptions): Promise<T>;
     /**
      * Subscribe to cancel signals for an in-flight Call identified by
      * correlationId. The handler fires when the upstream caller
@@ -283,9 +307,8 @@ declare module "kit" {
   // ── Secrets ─────────────────────────────────────────────────
 
   /**
-   * Secret vault — encrypted key/value store backed by
-   * `Kit.Secrets()` on the Go side. Names must be registered
-   * via `kit.Secrets().Set(...)` or pre-seeded at deploy time.
+   * Secret vault — encrypted key/value store backed by the Kit secret store.
+   * Names must be registered via modules/secrets or pre-seeded at deploy time.
    * Returns empty string when the name isn't set.
    */
   export const secrets: {

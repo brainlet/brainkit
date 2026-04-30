@@ -262,7 +262,17 @@ func (s *streamSession) writeLoop(w http.ResponseWriter, flusher http.Flusher, r
 							s.nextID++
 							s.eventCount++
 							written = s.eventCount
+							count := s.eventCount
 							s.mu.Unlock()
+							if count >= s.config.MaxEvents {
+								s.mu.RLock()
+								capID := formatStreamID(s.id, s.nextID)
+								s.mu.RUnlock()
+								writeSyntheticError(w, flusher, capID, "max_events",
+									fmt.Sprintf("stream event limit exceeded (%d)", s.config.MaxEvents))
+								s.terminate("max_events")
+								return
+							}
 						case <-reassemblyTimeout.C:
 							break reassemble
 						case <-maxDurationTimer.C:

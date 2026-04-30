@@ -14,6 +14,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	"github.com/brainlet/brainkit/test/fixtures"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -30,7 +31,7 @@ type infraConfig struct {
 	tracing     bool
 	ai          bool
 	mcp         bool
-	plugins     []brainkit.PluginConfig
+	plugins     []pluginsmod.PluginConfig
 	nodeCount   int
 }
 
@@ -120,7 +121,7 @@ func MCP() InfraOption {
 }
 
 // Plugins adds plugin configurations.
-func Plugins(configs ...brainkit.PluginConfig) InfraOption {
+func Plugins(configs ...pluginsmod.PluginConfig) InfraOption {
 	return func(c *infraConfig) { c.plugins = append(c.plugins, configs...) }
 }
 

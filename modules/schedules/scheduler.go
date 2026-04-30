@@ -10,18 +10,17 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/google/uuid"
 )
 
 // Scheduler owns the live schedule set. It implements types.ScheduleHandler
 // so the kernel's QuickJS bridges (bus.schedule / bus.unschedule) dispatch
-// through it. It publishes fires via the runtime's PublishRaw.
+// through it. It publishes fires through the module message host.
 type Scheduler struct {
-	runtime sdk.Runtime
-	store   Store
-	logger  *slog.Logger
+	publisher eventPublisher
+	store     Store
+	logger    *slog.Logger
 
 	// Topic-catalog guard — schedules cannot target command topics.
 	isCommand func(topic string) bool
@@ -37,6 +36,10 @@ type Scheduler struct {
 	schedules map[string]*entry
 }
 
+type eventPublisher interface {
+	PublishRaw(context.Context, string, json.RawMessage) (string, error)
+}
+
 type entry struct {
 	types.PersistedSchedule
 	timer *time.Timer
@@ -44,10 +47,10 @@ type entry struct {
 
 // newScheduler constructs a Scheduler wired to a Kit. Exported types flow in
 // via the module so this file stays free of brainkit imports (no cycle).
-func newScheduler(runtime sdk.Runtime, store Store, logger *slog.Logger,
+func newScheduler(publisher eventPublisher, store Store, logger *slog.Logger,
 	isCommand func(string) bool, isDraining func() bool, reportError func(error)) *Scheduler {
 	return &Scheduler{
-		runtime:     runtime,
+		publisher:   publisher,
 		store:       store,
 		logger:      logger,
 		isCommand:   isCommand,
@@ -70,7 +73,7 @@ func parseScheduleExpression(expr string) (time.Duration, bool, error) {
 }
 
 // Schedule creates a new scheduled bus message. Implements types.ScheduleHandler.
-func (s *Scheduler) Schedule(ctx context.Context, cfg types.ScheduleConfig) (string, error) {
+func (s *Scheduler) Schedule(ctx context.Context, cfg ScheduleConfig) (string, error) {
 	if s.isCommand != nil && s.isCommand(cfg.Topic) {
 		return "", &sdkerrors.ValidationError{Field: "topic", Message: cfg.Topic + " is a command topic; schedules cannot target commands"}
 	}
@@ -231,7 +234,7 @@ func (s *Scheduler) fire(e *entry) {
 }
 
 func (s *Scheduler) publish(ctx context.Context, topic string, payload json.RawMessage) error {
-	_, err := s.runtime.PublishRaw(ctx, topic, payload)
+	_, err := s.publisher.PublishRaw(ctx, topic, payload)
 	return err
 }
 
@@ -246,5 +249,5 @@ func (s *Scheduler) persistenceError(ctx context.Context, operation, source stri
 		"error":     err.Error(),
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
-	_, _ = s.runtime.PublishRaw(ctx, "kit.persistence.error", payload)
+	_, _ = s.publisher.PublishRaw(ctx, "kit.persistence.error", payload)
 }

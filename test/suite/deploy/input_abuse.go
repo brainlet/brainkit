@@ -140,10 +140,10 @@ func testDeployDottedSourceName(t *testing.T, env *suite.TestEnv) {
 
 	// Verify the mailbox resolves correctly despite dots
 	result := testutil.EvalTS(t, env.Kit, "__dotted_test-deploy-adv.ts", `
-		var r = bus.publish("ts.my.dotted.agent-deploy-adv.ask", { q: "test" });
-		return r.replyTo;
+		var r = await bus.call("ts.my.dotted.agent-deploy-adv.ask", { q: "test" }, { timeoutMs: 5000 });
+		return r.answer || "";
 	`)
-	assert.Contains(t, result, "ts.my.dotted.agent-deploy-adv.ask.reply.")
+	assert.Equal(t, "dotted", result)
 
 	testutil.Teardown(t, env.Kit, "my.dotted.agent-deploy-adv.ts")
 }

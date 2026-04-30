@@ -32,6 +32,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio"
 	"github.com/brainlet/brainkit/audio/local"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -103,6 +104,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
 		Audio:     audio.Composite(speakers, fileSink, busSink),
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -133,7 +135,7 @@ func run() error {
 
 	deployCtx, deployCancel := context.WithTimeout(ctx, 20*time.Second)
 	defer deployCancel()
-	if _, err := kit.Deploy(deployCtx, brainkit.PackageInline("voice-broadcast", "broadcast.ts", broadcastSource)); err != nil {
+	if _, err := packages.Deploy(deployCtx, kit, packages.Inline("voice-broadcast", "broadcast.ts", broadcastSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

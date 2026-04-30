@@ -112,8 +112,8 @@ func testFrameworkDeployAndTest(t *testing.T, _ *suite.TestEnv) {
 		test("deploy and call", async () => {
 			await deploy("echo.ts", 'bus.on("ping", (msg) => { msg.reply({ pong: true }); });');
 
-			var result = bus.sendTo("echo.ts", "ping", {});
-			expect(result).toBeDefined();
+			var result = await bus.callService("echo.ts", "ping", {}, { timeoutMs: 5000 });
+			expect(result.pong).toBe(true);
 		});
 	`)
 

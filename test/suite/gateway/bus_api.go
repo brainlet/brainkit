@@ -24,6 +24,8 @@ import (
 func testBusAPIHealthRoundTrip(t *testing.T, _ *suite.TestEnv) {
 	k := suite.Full(t).Kit
 	_, addr := gwStart(t, k)
+	require.NotNil(t, k.Caller())
+	before := k.Caller().Snapshot()
 
 	body := strings.NewReader(`{"topic":"kit.health","payload":{}}`)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -66,6 +68,8 @@ func testBusAPIHealthRoundTrip(t *testing.T, _ *suite.TestEnv) {
 	}
 	require.NoError(t, json.Unmarshal(hresp.Health, &health))
 	assert.NotEmpty(t, health.Status)
+	after := k.Caller().Snapshot()
+	assert.Greater(t, after.Completed, before.Completed, "/api/bus should use the shared-inbox caller")
 }
 
 // testBusAPIMissingTopic rejects a POST /api/bus with an empty

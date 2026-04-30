@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/brainlet/brainkit/internal/types"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 )
 
 func TestAutoDetectProvidersUsesEnvVarsAndHonorsExplicitMap(t *testing.T) {

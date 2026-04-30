@@ -1,6 +1,6 @@
 # go-tools
 
-Register typed Go functions as first-class brainkit tools.
+Mount typed Go functions as first-class brainkit tools.
 Deployed `.ts` code and Go callers both invoke the tools over
 the bus at `tools.call`.
 
@@ -21,8 +21,8 @@ same tool invoked directly from Go (math.add):
 
 ## What it shows
 
-- `brainkit.RegisterTool(kit, name, brainkit.TypedTool[In]{…})`
-  registers a typed Go function as a bus-addressable tool. The
+- `toolsmod.GoTool(name, toolsmod.TypedTool[In]{…})`
+  returns a scoped module that registers a typed Go function as a bus-addressable tool. The
   framework generates a JSON Schema from the `In` struct tags and
   serves it through `tools.list`.
 - Deployed `.ts` code calls the tool through

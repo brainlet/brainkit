@@ -38,15 +38,7 @@ type Kit struct {
 	descs   map[string]bkmodule.Descriptor
 	mountMu sync.Mutex
 	caps    *bkmodule.CapabilityRegistry
-
-	// Accessor caches — populated lazily on first call to the
-	// matching accessor method. They are stateless wrappers over the
-	// kernel's registries / secret store, so a single instance per
-	// Kit is enough.
-	providers *Providers
-	storages  *Storages
-	vectors   *Vectors
-	secrets   *Secrets
+	fsRoot  string
 }
 
 // New creates a brainkit runtime from config.
@@ -66,6 +58,7 @@ func New(cfg Config) (*Kit, error) {
 		mounted: map[string]bkmodule.Scope{},
 		descs:   map[string]bkmodule.Descriptor{},
 		caps:    bkmodule.NewCapabilityRegistry(),
+		fsRoot:  cfg.FSRoot,
 	}
 
 	// Zero-value transport defaults to Memory — no disk side-effects, no
@@ -234,26 +227,6 @@ func orderModulesForStartup(mods []bkmodule.Module, fsRoot string) ([]bkmodule.M
 		}
 	}
 	return out, nil
-}
-
-func buildRegisteredModule(id, fsRoot string) (bkmodule.Module, error) {
-	factory, ok := bkmodule.Lookup(id)
-	if !ok {
-		if id == "jsruntime" {
-			return nil, fmt.Errorf("brainkit: JS runtime requested but module %q is not registered; import github.com/brainlet/brainkit/modules/jsruntime or github.com/brainlet/brainkit/presets/standard", id)
-		}
-		return nil, fmt.Errorf("brainkit: module dependency %q is not registered", id)
-	}
-	mod, err := factory.Build(bkmodule.BuildContext{
-		FSRoot: fsRoot,
-		Decode: func(any) error {
-			return nil
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("brainkit: build module %q: %w", id, err)
-	}
-	return mod, nil
 }
 
 // runtime returns the underlying sdk.Runtime (Node if present, else Kernel).

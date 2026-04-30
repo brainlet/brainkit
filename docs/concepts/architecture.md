@@ -28,9 +28,9 @@ That Kit is the runtime. It is the only top-level object. A Kit:
 - Owns **one Watermill router** (the bus). Every subsystem — Go, JS,
   plugins, gateway handlers — speaks to every other subsystem by
   publishing messages. There is no separate RPC layer.
-- Exposes **typed Go accessors** for providers, storages, vectors, and
-  secrets (`kit.Providers()`, `kit.Storages()`, `kit.Vectors()`,
-  `kit.Secrets()`).
+- Seeds provider/storage/vector/secret registries from `Config`; runtime
+  administration is exposed by opt-in modules such as `modules/registry` and
+  `modules/secrets`.
 - Loads **zero or more Modules** (gateway, audit, tracing, probes,
   topology, discovery, plugins, MCP, schedules, workflow, harness)
   which hot-mount scoped resources into the running Kit.
@@ -48,9 +48,9 @@ is:
 - **Config builders.** `Memory()`, `EmbeddedNATS()`, `NATS(url)`,
   `AMQP(url)`, `Redis(url)`; `OpenAI(key)`, `Anthropic(key)`, … for the
   12 supported providers.
-- **Deployment helpers.** `PackageInline(name, entry, source)`,
-  `PackageFromDir(dir)`, `PackageFromFile(path)`, then
-  `kit.Deploy(ctx, pkg)`.
+- **Package deployment helpers.** `modules/packages` owns
+  `packages.Inline`, `packages.FromDir`, `packages.FromFile`, and
+  `packages.Deploy(ctx, kit, pkg)`.
 - **Bus calls.** The generic
   `Call[Req, Resp any](kit, ctx, req, opts…) (Resp, error)` plus
   `CallStream[Req, Chunk, Resp any]` for servers that emit chunks
@@ -61,9 +61,9 @@ is:
   `agentmsg.CallAgentDiscover`, `auditmsg.CallAuditQuery`,
   `topology.CallPeersResolve`, …). Regenerate them with `make generate`
   after adding new typed message types.
-- **Typed tool registration.** `RegisterTool(kit, name, TypedTool[T])`
-  registers a typed Go function as a first-class tool. See
-  `examples/go-tools/main.go`.
+- **Typed tool registration.** `modules/tools.GoTool(name, TypedTool[T])`
+  returns a scoped module that registers a typed Go function as a first-class
+  tool. See `examples/go-tools/main.go`.
 - **Lifecycle.** `kit.Shutdown(ctx)` drains gracefully, `kit.Close()`
   is the quick equivalent.
 
@@ -85,10 +85,15 @@ type Module interface {
 
 Factories and modules can also expose a `module.Descriptor`. The descriptor is
 the module manifest: status, module dependencies, owned commands, emitted
-events, raw subscriptions, and host capabilities. `Kit.Mount` records command
-and subscription topics registered through `module.Host`, and
+events, raw subscriptions, host capabilities, and generic resources. `Kit.Mount`
+records command/subscription topics, provided capabilities, registered tools,
+and explicit `Scope.Resource(...)` entries from `module.Host`, then
 `Kit.MountedModules()` returns the live manifest snapshot. `brainkit modules
 list --json` shows the registry-side manifests compiled into the binary.
+When the control module is mounted, the same lifecycle is available over the
+bus through `kit.modules`, `kit.module.describe`, `kit.module.mount`, and
+`kit.module.unmount`; the CLI wraps these as `brainkit inspect modules` and
+`brainkit modules inspect|mount|unmount`.
 
 Optionally a module can implement `StatusReporter` to declare itself
 `ModuleStatusStable`, `ModuleStatusBeta`, or `ModuleStatusWIP`. The
@@ -99,7 +104,9 @@ Configured modules mount after the router starts, and `Kit.Mount` can
 mount additional linked-code modules later. Module-owned commands,
 tools, subscriptions, capabilities, goroutines, and HTTP servers are
 leased into the module's scope and released on `Kit.Unmount`,
-`Kit.Close`, or `Kit.Shutdown`. The 11 standard modules are:
+`Kit.Close`, or `Kit.Shutdown`. Runtime bus unmount refuses to remove a
+module while another mounted module declares it in `Requires`. The 11
+standard modules are:
 
 | Module     | Status | Purpose                                            |
 | ---------- | ------ | -------------------------------------------------- |
@@ -161,7 +168,7 @@ backend applies.
 A deployment is a `.ts` (or `.js`) package plus a manifest:
 
 ```go
-kit.Deploy(ctx, brainkit.PackageInline(
+packages.Deploy(ctx, kit, packages.Inline(
     "greeter", "greeter.ts",
     `bus.on("hello", (msg) => msg.reply({ greeting: "hi " + msg.payload.name }));`,
 ))
@@ -177,19 +184,22 @@ Compartment, runs the JS handler, and replies through the bus. See
 
 ## Providers, Storages, Vectors, Secrets
 
-Four typed registries hang off the Kit:
+Four typed registries are seeded by Kit config:
 
 ```go
-kit.Providers().Register("openai", "openai", ProviderConfig{APIKey: "..."})
-kit.Storages().Register("main", "libsql", StorageConfig{URL: "file:./kit.db"})
-kit.Vectors().Register("qdrant", "qdrant", VectorConfig{URL: "..."})
+brainkit.New(brainkit.Config{
+    Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+    Storages: map[string]brainkit.StorageConfig{"main": brainkit.SQLiteStorage("./kit.db")},
+    Vectors:  map[string]brainkit.VectorConfig{"docs": brainkit.SQLiteVector("./vectors.db")},
+})
 ```
 
 Each registry owns its own table of named backends. Deployed `.ts` code
 sees the same table through `globalThis.__kit_providers` and calls it
 through Mastra (`model("openai", "gpt-4o")`) or through
-`kit.register(type, name, ref)` for tools/agents/workflows/memories.
-See [provider-registry.md](provider-registry.md).
+`kit.register(type, name, ref)` for tools/agents/workflows/memories. Mount
+`modules/registry` or `modules/secrets` for runtime admin messages. See
+[provider-registry.md](provider-registry.md).
 
 ## CLI
 

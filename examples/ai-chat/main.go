@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -46,6 +47,7 @@ func main() {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{providerCfg},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)
@@ -72,7 +74,7 @@ func main() {
 		});
 	`, *provider, *modelID)
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("chatter", "chatter.ts", code)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("chatter", "chatter.ts", code)); err != nil {
 		log.Fatalf("deploy: %v", err)
 	}
 

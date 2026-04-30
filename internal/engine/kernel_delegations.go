@@ -8,12 +8,11 @@ import (
 
 	auditpkg "github.com/brainlet/brainkit/internal/audit"
 	"github.com/brainlet/brainkit/internal/secrets"
-	toolreg "github.com/brainlet/brainkit/internal/tools"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
@@ -142,9 +141,9 @@ func (k *Kernel) PluginRestarter() PluginRestarter { return k.pluginRestarter }
 // Logger returns the structured logger.
 func (k *Kernel) Logger() *slog.Logger { return k.logger }
 
-// ProviderRegistry exposes the shared provider/storage/vector registry
-// so brainkit-level accessors (Providers/Storages/Vectors) can issue
-// narrow reads without duplicating delegations on Kernel.
+// ProviderRegistry exposes the shared provider/storage/vector registry to
+// module hosts and JS runtime bridges. Public runtime administration goes
+// through modules/registry bus messages.
 func (k *Kernel) ProviderRegistry() *provreg.ProviderRegistry { return k.providerHost.Registry() }
 
 // CallTool invokes a registered tool through the core registry.
@@ -241,11 +240,6 @@ func (k *Kernel) EvalModule(ctx context.Context, filename, code string) (string,
 	return k.jsRuntime.EvalModule(ctx, filename, code)
 }
 
-// RegisterTool is a convenience method for registering typed Go tools.
-func RegisterTool[T any](k *Kernel, name string, tool toolreg.TypedTool[T]) error {
-	return toolreg.Register(k.Tools, name, tool)
-}
-
 // ReportError forwards a non-fatal error through the Kernel's configured
 // ErrorHandler (no-op if none is configured). Used by modules.
 func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
@@ -256,53 +250,6 @@ func (k *Kernel) ReportError(err error, ctx types.ErrorContext) {
 // modules (e.g. tracing) to install durable storage at mount time.
 func (k *Kernel) SetTraceStore(store types.TraceStore) {
 	k.tracer.SetStore(store)
-}
-
-// --- Provider Registry delegation ---
-
-// RegisterAIProvider registers a typed AI provider at runtime.
-// Injects env vars into the JS runtime's process.env.
-func (k *Kernel) RegisterAIProvider(name string, typ provreg.AIProviderType, config any) error {
-	reg := provreg.AIProviderRegistration{Type: typ, Config: config}
-	return k.providerHost.Registry().RegisterAIProvider(name, reg)
-}
-
-// UnregisterAIProvider removes an AI provider.
-func (k *Kernel) UnregisterAIProvider(name string) {
-	k.providerHost.Registry().UnregisterAIProvider(name)
-}
-
-// ListAIProviders returns all registered AI providers.
-func (k *Kernel) ListAIProviders() []provreg.ProviderInfo {
-	return k.providerHost.Registry().ListAIProviders()
-}
-
-// RegisterVectorStore registers a typed vector store at runtime.
-func (k *Kernel) RegisterVectorStore(name string, typ provreg.VectorStoreType, config any) error {
-	return k.providerHost.Registry().RegisterVectorStore(name, provreg.VectorStoreRegistration{Type: typ, Config: config})
-}
-
-// UnregisterVectorStore removes a vector store.
-func (k *Kernel) UnregisterVectorStore(name string) {
-	k.providerHost.Registry().UnregisterVectorStore(name)
-}
-
-// ListVectorStores returns all registered vector stores.
-func (k *Kernel) ListVectorStores() []provreg.VectorStoreInfo {
-	return k.providerHost.Registry().ListVectorStores()
-}
-
-// RegisterStorage registers a typed Mastra storage at runtime.
-func (k *Kernel) RegisterStorage(name string, typ provreg.StorageType, config any) error {
-	return k.providerHost.Registry().RegisterStorage(name, provreg.StorageRegistration{Type: typ, Config: config})
-}
-
-// UnregisterStorage removes a Mastra storage.
-func (k *Kernel) UnregisterStorage(name string) { k.providerHost.Registry().UnregisterStorage(name) }
-
-// ListStorages returns all registered Mastra storages.
-func (k *Kernel) ListStorages() []provreg.StorageInfo {
-	return k.providerHost.Registry().ListStorages()
 }
 
 // currentDeploymentSource returns the deployment source currently executing on the JS thread.

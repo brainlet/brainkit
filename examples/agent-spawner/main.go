@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -71,6 +72,7 @@ func run(apiKey, modelID, request, askPrompt string) error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(apiKey)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -82,7 +84,7 @@ func run(apiKey, modelID, request, askPrompt string) error {
 
 	// ── Step 1: deploy the architect ──────────────────────────
 	architectCode := fmt.Sprintf(architectTemplate, modelID, modelID)
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("architect", "architect.ts", architectCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("architect", "architect.ts", architectCode)); err != nil {
 		return fmt.Errorf("deploy architect: %w", err)
 	}
 	fmt.Println("[1/3] architect deployed")

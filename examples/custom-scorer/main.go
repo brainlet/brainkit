@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -64,6 +65,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -73,7 +75,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("custom-scorer", "scorer.ts", scorerSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("custom-scorer", "scorer.ts", scorerSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] custom-scorer deployed")

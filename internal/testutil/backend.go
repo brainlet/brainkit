@@ -13,9 +13,9 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/internal/transport"
 	transportbackends "github.com/brainlet/brainkit/internal/transport/backends"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/presets/standard"
 	bktransports "github.com/brainlet/brainkit/transports"
 	"github.com/docker/go-connections/nat"
@@ -262,18 +262,22 @@ func NewTestKitFullWithBackend(t *testing.T, backend string) *TestKit {
 	}
 	t.Cleanup(func() { kit.Close() })
 
-	brainkit.RegisterTool(kit, "echo", tools.TypedTool[EchoInput]{
+	if err := kit.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[EchoInput]{
 		Description: "echoes the input message",
 		Execute: func(ctx context.Context, input EchoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
-	})
-	brainkit.RegisterTool(kit, "add", tools.TypedTool[AddInput]{
+	})); err != nil {
+		t.Fatalf("Mount echo tool: %v", err)
+	}
+	if err := kit.Mount(context.Background(), toolsmod.GoTool("add", toolsmod.TypedTool[AddInput]{
 		Description: "adds two numbers",
 		Execute: func(ctx context.Context, input AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
-	})
+	})); err != nil {
+		t.Fatalf("Mount add tool: %v", err)
+	}
 
 	return &TestKit{kit}
 }

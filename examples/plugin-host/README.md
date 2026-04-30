@@ -23,7 +23,7 @@ Skipped under `go test -short` because the test shells out to
 ## What it shows
 
 - How to wire `modules/plugins.NewModule` onto an embedded-NATS
-  Kit with one `brainkit.PluginConfig`.
+  Kit with one `plugins.PluginConfig`.
 - How to wait for the plugin to be ready (poll `plugin.list`
   instead of subscribing to `plugin.registered` — the event
   emits before the caller can subscribe in practice).

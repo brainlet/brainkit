@@ -83,6 +83,55 @@
     value: {}, writable: false, enumerable: false, configurable: true
   });
 
+  Object.defineProperty(globalThis, '__kit_bus_stream_handlers', {
+    value: {}, writable: false, enumerable: false, configurable: true
+  });
+
+  function parseCallRaw(raw) {
+    if (raw === "" || raw === "null") return null;
+    return JSON.parse(raw);
+  }
+
+  function streamHandlerId() {
+    return "stream:" + Date.now() + ":" + Math.random().toString(36).slice(2);
+  }
+
+  function callStream(topic, data, targetNamespace, opts, apiName) {
+    opts = opts || {};
+    apiName = apiName || "bus.callStream";
+    if (!opts.timeoutMs || typeof opts.timeoutMs !== "number") {
+      return Promise.reject(new BrainkitError(apiName + ": timeoutMs is required", "VALIDATION_ERROR", { field: "timeoutMs" }));
+    }
+    if (typeof opts.onChunk !== "function") {
+      return Promise.reject(new BrainkitError(apiName + ": onChunk handler is required", "VALIDATION_ERROR", { field: "onChunk" }));
+    }
+    var bufferSize = opts.bufferSize === undefined ? 0 : opts.bufferSize;
+    if (typeof bufferSize !== "number" || bufferSize < 0 || Math.floor(bufferSize) !== bufferSize) {
+      return Promise.reject(new BrainkitError(apiName + ": bufferSize must be a non-negative integer", "VALIDATION_ERROR", { field: "bufferSize" }));
+    }
+    var bufferPolicy = opts.bufferPolicy || "block";
+    if (bufferPolicy !== "block" && bufferPolicy !== "dropNewest" && bufferPolicy !== "dropOldest" && bufferPolicy !== "error") {
+      return Promise.reject(new BrainkitError(apiName + ": invalid bufferPolicy", "VALIDATION_ERROR", { field: "bufferPolicy" }));
+    }
+    var id = streamHandlerId();
+    globalThis.__kit_bus_stream_handlers[id] = { onChunk: opts.onChunk };
+    return __go_brainkit_bus_call_stream(
+      topic,
+      JSON.stringify(data === undefined ? null : data),
+      targetNamespace || "",
+      opts.timeoutMs,
+      id,
+      bufferSize,
+      bufferPolicy
+    ).then(function(raw) {
+      delete globalThis.__kit_bus_stream_handlers[id];
+      return parseCallRaw(raw);
+    }, function(err) {
+      delete globalThis.__kit_bus_stream_handlers[id];
+      throw err;
+    });
+  }
+
   // ─── Message Wrapper ──────────────────────────────────────────
   function wrapMsg(rawMsg) {
     var _seq = 0; // monotonic sequence number for stream events
@@ -169,8 +218,7 @@
   // ─── Bus API ──────────────────────────────────────────────────
   globalThis.__kit_bus = {
     publish: function(topic, data) {
-      var result = __go_brainkit_bus_publish(topic, JSON.stringify(data || null));
-      return JSON.parse(result);
+      __go_brainkit_bus_emit(topic, JSON.stringify(data === undefined ? null : data));
     },
     emit: function(topic, data) {
       __go_brainkit_bus_emit(topic, JSON.stringify(data || null));
@@ -215,7 +263,7 @@
     },
     sendTo: function(service, localTopic, data) {
       var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
-      return globalThis.__kit_bus.publish("ts." + name + "." + localTopic, data);
+      globalThis.__kit_bus.publish("ts." + name + "." + localTopic, data);
     },
     // call(topic, data, { timeoutMs }) → Promise<responseData>
     // Publishes a request-reply command; waits for the envelope terminal;
@@ -227,9 +275,37 @@
         return Promise.reject(new BrainkitError("bus.call: timeoutMs is required", "VALIDATION_ERROR", { field: "timeoutMs" }));
       }
       return __go_brainkit_bus_call(topic, JSON.stringify(data === undefined ? null : data), "", opts.timeoutMs).then(function(raw) {
-        if (raw === "" || raw === "null") return null;
-        return JSON.parse(raw);
+        return parseCallRaw(raw);
       });
+    },
+    // callStream(topic, data, { timeoutMs, onChunk, bufferSize?, bufferPolicy? })
+    // Uses the same shared caller as call(), but delivers intermediate
+    // done=false replies to onChunk before resolving with the terminal reply.
+    callStream: function(topic, data, opts) {
+      return callStream(topic, data, "", opts, "bus.callStream");
+    },
+    // callService(service, topic, data, { timeoutMs }) → Promise<responseData>
+    // Resolves a deployed .ts service name to its mailbox topic and uses the
+    // same shared-inbox request/reply path as call().
+    callService: function(service, localTopic, data, opts) {
+      if (!service || typeof service !== "string") {
+        return Promise.reject(new BrainkitError("bus.callService: service is required", "VALIDATION_ERROR", { field: "service" }));
+      }
+      if (!localTopic || typeof localTopic !== "string") {
+        return Promise.reject(new BrainkitError("bus.callService: topic is required", "VALIDATION_ERROR", { field: "topic" }));
+      }
+      var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
+      return globalThis.__kit_bus.call("ts." + name + "." + localTopic, data, opts);
+    },
+    callServiceStream: function(service, localTopic, data, opts) {
+      if (!service || typeof service !== "string") {
+        return Promise.reject(new BrainkitError("bus.callServiceStream: service is required", "VALIDATION_ERROR", { field: "service" }));
+      }
+      if (!localTopic || typeof localTopic !== "string") {
+        return Promise.reject(new BrainkitError("bus.callServiceStream: topic is required", "VALIDATION_ERROR", { field: "topic" }));
+      }
+      var name = service.replace(/\.ts$/, "").replace(/\//g, ".");
+      return callStream("ts." + name + "." + localTopic, data, "", opts, "bus.callServiceStream");
     },
     // callTo(namespace, topic, data, { timeoutMs }) → same as call, cross-kit.
     callTo: function(namespace, topic, data, opts) {
@@ -241,9 +317,14 @@
         return Promise.reject(new BrainkitError("bus.callTo: namespace is required", "VALIDATION_ERROR", { field: "namespace" }));
       }
       return __go_brainkit_bus_call(topic, JSON.stringify(data === undefined ? null : data), namespace, opts.timeoutMs).then(function(raw) {
-        if (raw === "" || raw === "null") return null;
-        return JSON.parse(raw);
+        return parseCallRaw(raw);
       });
+    },
+    callToStream: function(namespace, topic, data, opts) {
+      if (!namespace || typeof namespace !== "string") {
+        return Promise.reject(new BrainkitError("bus.callToStream: namespace is required", "VALIDATION_ERROR", { field: "namespace" }));
+      }
+      return callStream(topic, data, namespace, opts, "bus.callToStream");
     },
     schedule: function(expression, topic, data) {
       var id = __go_brainkit_bus_schedule(expression, topic, JSON.stringify(data || null), globalThis.__kit_currentSource || "go");

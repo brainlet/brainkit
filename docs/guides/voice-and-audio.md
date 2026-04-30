@@ -64,8 +64,8 @@ Or mix-and-match with `CompositeVoice`:
 
 ```ts
 const voice = new CompositeVoice({
-    speakProvider: new ElevenLabsVoice(),   // high-quality TTS
-    listenProvider: new DeepgramVoice(),    // fast STT
+    output: new ElevenLabsVoice(),   // high-quality TTS
+    input: new DeepgramVoice(),      // fast STT
 });
 ```
 
@@ -107,7 +107,7 @@ const text   = await agent.voice.listen(stream, { filetype: "mp3" });
 takes a Node Readable of audio bytes and returns the transcript.
 
 Mix-and-match providers (different for TTS vs STT) with
-`CompositeVoice({ speakProvider, listenProvider })`.
+`CompositeVoice({ output, input })`.
 
 ## Playing audio on the desktop
 

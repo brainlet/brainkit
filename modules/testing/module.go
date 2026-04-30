@@ -26,9 +26,6 @@ func New() *Module { return &Module{} }
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "testing" }
 
-// Dependencies reports modules that must mount before test execution.
-func (m *Module) Dependencies() []string { return []string{"jsruntime"} }
-
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -49,7 +50,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
 		Store:     store,
-		Modules: []brainkit.Module{
+		Modules: []brainkit.Module{packages.New(),
 			schedulesmod.NewModule(schedulesmod.Config{Store: store}),
 		},
 	})
@@ -70,7 +71,7 @@ func run() error {
 			console.log("tick", ticks, "at", new Date().toISOString());
 		});
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("heartbeat-demo", "hb.ts", tsCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("heartbeat-demo", "hb.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

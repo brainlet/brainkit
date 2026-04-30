@@ -110,7 +110,7 @@ replace (
 		Modules: []brainkit.Module{
 			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{{
+				Plugins: []pluginsmod.PluginConfig{{
 					Name: "caller-test", Binary: binaryPath, AutoRestart: false,
 				}},
 			}),

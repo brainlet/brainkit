@@ -26,25 +26,26 @@ func (m *Module) ID() string { return "schedules" }
 
 func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	if m.cfg.Store == nil {
-		if store, ok := host.Store().(Store); ok {
+		if store, ok := bkmodule.Capability[Store](host, bkmodule.CapabilityKitStore); ok {
 			m.cfg.Store = store
 		}
 	}
 
 	isDraining := func() bool {
-		if draining, ok := host.Runtime().(interface{ IsDraining() bool }); ok {
-			return draining.IsDraining()
+		if control, ok := bkmodule.Capability[bkmodule.RuntimeControl](host, bkmodule.CapabilityRuntimeControl); ok {
+			return control.IsDraining()
 		}
 		return false
 	}
 	m.scheduler = newScheduler(
-		host.Runtime(),
+		host.Messages(),
 		m.cfg.Store,
 		host.Logger(),
 		host.Commands().Has,
 		isDraining,
 		func(err error) { host.Logger().Error("schedules error", "error", err) },
 	)
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindScheduler, "schedules.scheduler", "Persisted cron and one-shot scheduler."))
 	host.Scope().Defer(func(context.Context) error { return m.scheduler.Close() })
 
 	setScheduleHandler, err := bkmodule.RequireCapability[func(types.ScheduleHandler)](host, bkmodule.CapabilitySetScheduleHandler)
@@ -52,6 +53,7 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 		return fmt.Errorf("schedules: %w", err)
 	}
 	setScheduleHandler(m.scheduler)
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindHook, "schedule-handler", "Core schedule dispatch hook."))
 	host.Scope().Defer(func(context.Context) error {
 		setScheduleHandler(nil)
 		return nil
@@ -128,7 +130,12 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[schedulemsg.ScheduleListMsg, schedulemsg.ScheduleListResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
 			bkmodule.RequiredCapabilityOf[func(types.ScheduleHandler)](bkmodule.CapabilitySetScheduleHandler),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindScheduler, "schedules.scheduler", "Persisted cron and one-shot scheduler."),
+			bkmodule.Resource(bkmodule.ResourceKindHook, "schedule-handler", "Core schedule dispatch hook."),
 		},
 	}
 }

@@ -71,9 +71,6 @@ func init() { bkmodule.Register("workflow", Factory{}) }
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "workflow" }
 
-// Dependencies reports modules that must mount before workflow commands.
-func (m *Module) Dependencies() []string { return []string{"jsruntime"} }
-
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 

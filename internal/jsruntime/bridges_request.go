@@ -27,7 +27,7 @@ func (r *Runtime) registerRequestBridges(qctx *quickjs.Context, invoker commandI
 			payload := json.RawMessage(args[1].String())
 
 			// Tracing
-			span := r.host.Tracer().StartSpan("command:"+topic, context.Background())
+			span := r.core.Tracer().StartSpan("command:"+topic, context.Background())
 			resp, err := invoker.InvokeCommand(context.Background(), topic, payload)
 			span.End(err)
 			if err != nil {
@@ -48,7 +48,7 @@ func (r *Runtime) registerRequestBridges(qctx *quickjs.Context, invoker commandI
 
 			return qctx.NewPromise(func(resolve, reject func(*quickjs.Value)) {
 				r.bridge.Go(func(goCtx context.Context) {
-					span := r.host.Tracer().StartSpan("command:"+topic, goCtx)
+					span := r.core.Tracer().StartSpan("command:"+topic, goCtx)
 					resp, err := invoker.InvokeCommand(goCtx, topic, payload)
 					span.End(err)
 					if err != nil {

@@ -750,8 +750,8 @@ const text   = await voice.listen(stream,             // → string transcript
 
 // Or mix providers per leg.
 const split = new CompositeVoice({
-    speakProvider:  new OpenAIVoice(),
-    listenProvider: new OpenAIVoice(),
+    output: new OpenAIVoice(),
+    input: new OpenAIVoice(),
 });
 
 // Wire on an Agent.

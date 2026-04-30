@@ -16,7 +16,7 @@ brainkit.New(brainkit.Config{
     Transport: brainkit.NATS(url), // required — plugins refuse memory
     Modules: []brainkit.Module{
         pluginsmod.NewModule(pluginsmod.Config{
-            Plugins: []brainkit.PluginConfig{{
+            Plugins: []pluginsmod.PluginConfig{{
                 Name:   "metrics",
                 Binary: "./bin/brainkit-plugin-metrics",
             }},

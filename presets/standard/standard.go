@@ -11,7 +11,7 @@ import (
 	jsruntimemod "github.com/brainlet/brainkit/modules/jsruntime"
 	messagingmod "github.com/brainlet/brainkit/modules/messaging"
 	metricsmod "github.com/brainlet/brainkit/modules/metrics"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	referencemod "github.com/brainlet/brainkit/modules/reference"
 	registrymod "github.com/brainlet/brainkit/modules/registry"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
@@ -34,6 +34,6 @@ func CommandSet() []bkmodule.Module {
 		registrymod.New(),
 		secretsmod.New(),
 		toolsmod.New(),
-		packagesmod.New(),
+		packages.New(),
 	}
 }

@@ -79,7 +79,7 @@ func testReplyWithoutReplyTo(t *testing.T, env *suite.TestEnv) {
 func testSendToNonexistentService(t *testing.T, env *suite.TestEnv) {
 	result := testutil.EvalTS(t, env.Kit, "__sendto_ghost.ts", `
 		var r = bus.sendTo("ghost-service.ts", "ask", {});
-		return r.replyTo ? "published" : "fail";
+		return r === undefined ? "published" : "fail";
 	`)
 	assert.Equal(t, "published", result)
 }

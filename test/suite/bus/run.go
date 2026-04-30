@@ -27,6 +27,9 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 		// ts_call.go — .ts bus.call / bus.callTo wire envelope
 		t.Run("ts_bus_call_happy_path", func(t *testing.T) { testTSBusCallHappyPath(t, env) })
+		t.Run("ts_bus_call_stream_happy_path", func(t *testing.T) { testTSBusCallStreamHappyPath(t, env) })
+		t.Run("ts_bus_call_service_stream_happy_path", func(t *testing.T) { testTSBusCallServiceStreamHappyPath(t, env) })
+		t.Run("ts_bus_call_stream_on_chunk_error_rejects", func(t *testing.T) { testTSBusCallStreamOnChunkErrorRejects(t, env) })
 		t.Run("ts_bus_call_requires_timeout", func(t *testing.T) { testTSBusCallRequiresTimeout(t, env) })
 		t.Run("ts_bus_call_propagates_brainkit_error", func(t *testing.T) { testTSBusCallPropagatesBrainkitError(t, env) })
 		t.Run("ts_bus_call_times_out", func(t *testing.T) { testTSBusCallTimesOut(t, env) })
@@ -47,12 +50,14 @@ func Run(t *testing.T, env *suite.TestEnv) {
 		t.Run("call_stream_handler_error_aborts", func(t *testing.T) { testCallStreamHandlerErrorAborts(t, env) })
 
 		// publish.go — JS bridge + deploy + bus.on flow
-		t.Run("js_publish_returns_reply_to", func(t *testing.T) { testJSPublishReturnsReplyTo(t, env) })
+		t.Run("js_raw_publish_bridge_returns_reply_to", func(t *testing.T) { testJSRawPublishBridgeReturnsReplyTo(t, env) })
+		t.Run("js_publish_fire_and_forget", func(t *testing.T) { testJSPublishFireAndForget(t, env) })
 		t.Run("js_emit_fire_and_forget", func(t *testing.T) { testJSEmitFireAndForget(t, env) })
 		t.Run("js_reply_done_flag", func(t *testing.T) { testJSReplyDoneFlag(t, env) })
 		t.Run("js_subscribe_receives_metadata", func(t *testing.T) { testJSSubscribeReceivesMetadata(t, env) })
 		t.Run("go_to_js_round_trip", func(t *testing.T) { testGoToJSRoundTrip(t, env) })
 		t.Run("deploy_with_bus_on", func(t *testing.T) { testDeployWithBusOn(t, env) })
+		t.Run("js_call_service_uses_shared_caller", func(t *testing.T) { testJSCallServiceUsesSharedCaller(t, env) })
 		t.Run("streaming_chunks", func(t *testing.T) { testStreamingChunks(t, env) })
 		t.Run("kit_register_agent_discovery", func(t *testing.T) { testKitRegisterAgentDiscovery(t, env) })
 

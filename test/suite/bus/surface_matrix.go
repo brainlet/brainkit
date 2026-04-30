@@ -112,7 +112,7 @@ func testSurfaceTSDeployed(t *testing.T, env *suite.TestEnv) {
 		},
 		{
 			"bus.publish",
-			`var r = bus.publish("incoming.ts-surface-suite-test", {data: "test"}); output(r.replyTo ? "ok" : "fail");`,
+			`var r = bus.publish("incoming.ts-surface-suite-test", {data: "test"}); output(r === undefined ? "ok" : "fail");`,
 			"ok",
 		},
 		{
@@ -173,7 +173,7 @@ func testSurfaceEvalTS(t *testing.T, env *suite.TestEnv) {
 		{"fs.list", `return JSON.stringify(fs.readdirSync("."));`, ""},
 		{"metrics", `var r = JSON.parse(__go_brainkit_request("metrics.get", "{}")); return r.metrics ? "ok" : "fail";`, "ok"},
 		{"registry.list", `__go_brainkit_request("registry.list", JSON.stringify({category:"provider"})); return "ok";`, "ok"},
-		{"bus.publish", `var r = bus.publish("incoming.eval-surface-suite", {data:"test"}); return r.replyTo ? "ok" : "fail";`, "ok"},
+		{"bus.publish", `var r = bus.publish("incoming.eval-surface-suite", {data:"test"}); return r === undefined ? "ok" : "fail";`, "ok"},
 		{"bus.emit", `bus.emit("events.eval-surface-suite", {data:"test"}); return "ok";`, "ok"},
 	}
 

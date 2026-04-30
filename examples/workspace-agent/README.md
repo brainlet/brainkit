@@ -133,7 +133,7 @@ rebuilt per CLAUDE.md's 3-step protocol.
 ## Comparison with agent-forge
 
 `agent-forge` scaffolds a brand-new package on disk from an
-architect's spec, then Go deploys it via `PackageFromDir`.
+architect's spec, then Go deploys it via `packages.FromDir`.
 `workspace-agent` is the inverse: the agent already has a
 workspace directory, and it edits + runs things inside it. The
 two compose — a forge could output into a workspace-agent's

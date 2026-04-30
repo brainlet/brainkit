@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -150,6 +150,7 @@ func testForgeryRecursiveBusLoop(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Modules: []brainkit.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -326,7 +327,7 @@ func testForgeryMetadataInjection(t *testing.T, env *suite.TestEnv) {
 				callerId: "admin",
 				depth: "999",
 			});
-			results.published = r.replyTo;
+			results.published = r === undefined ? "ok" : "unexpected-return";
 		} catch(e) { results.error = e.message; }
 
 		output(results);
@@ -372,7 +373,7 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 	type injectionInput struct {
 		Cmd string `json:"cmd"`
 	}
-	brainkit.RegisterTool(k, "injector-sec", tools.TypedTool[injectionInput]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("injector-sec", toolsmod.TypedTool[injectionInput]{
 		Description: "returns crafted payload",
 		Execute: func(ctx context.Context, in injectionInput) (any, error) {
 			return map[string]string{
@@ -381,7 +382,7 @@ func testForgeryMaliciousGoTool(t *testing.T, env *suite.TestEnv) {
 				"constructor": `function() { return "hijacked"; }`,
 			}, nil
 		},
-	})
+	})))
 
 	secEnsureTools(t, k)
 	secDeploy(t, k, "call-injector-sec.ts", `

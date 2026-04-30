@@ -2,8 +2,11 @@ package module
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/brainlet/brainkit/sdk"
 )
 
 const (
@@ -32,9 +35,14 @@ const (
 	CapabilityToolRegistry          = "brainkit.core.tool_registry"
 	CapabilityProviderRegistry      = "brainkit.core.provider_registry"
 	CapabilityStorageManager        = "brainkit.core.storage_manager"
+	CapabilityKitStore              = "brainkit.core.kit_store"
 	CapabilityMetricsSnapshot       = "brainkit.core.metrics_snapshot"
 	CapabilityHealthSnapshot        = "brainkit.core.health_snapshot"
+	CapabilityHealthProbes          = "brainkit.core.health_probes"
+	CapabilityRequestCaller         = "brainkit.core.request_caller"
 	CapabilityAgentRegistry         = "brainkit.core.agent_registry"
+	CapabilityMountedModules        = "brainkit.core.mounted_modules"
+	CapabilityModuleLifecycle       = "brainkit.core.module_lifecycle"
 	CapabilityToolCommands          = "brainkit.core.tool_commands"
 	CapabilityRuntimeControl        = "brainkit.core.runtime_control"
 	CapabilityTracer                = "brainkit.core.tracer"
@@ -52,6 +60,38 @@ const (
 // implementation.
 type PluginChecker interface {
 	IsPluginRunning(name string) bool
+}
+
+// ReferenceEntry describes one embedded reference item exposed through the
+// reference catalog capability.
+type ReferenceEntry struct {
+	Name        string
+	Kind        string
+	Description string
+	Size        int
+	Parts       []string
+}
+
+// ReferenceCatalog is the core reference corpus capability consumed by
+// modules/reference.
+type ReferenceCatalog interface {
+	GetReference(name string) (string, error)
+	ListReferences() []ReferenceEntry
+}
+
+// HealthProbes is the neutral capability for HTTP/lifecycle modules that need
+// liveness and readiness without access to the concrete runtime.
+type HealthProbes interface {
+	Alive(context.Context) bool
+	Ready(context.Context) bool
+}
+
+// RequestCaller is the neutral request/reply capability for modules that need
+// to call arbitrary bus commands. The default implementation is the SDK
+// shared-inbox caller, so replies are routed asynchronously by correlation ID
+// rather than by creating a subscription per call.
+type RequestCaller interface {
+	Call(context.Context, string, json.RawMessage, sdk.CallerConfig) (json.RawMessage, error)
 }
 
 // CapabilityHost manages named runtime capabilities exposed by modules.

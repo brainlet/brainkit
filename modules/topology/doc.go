@@ -37,6 +37,6 @@
 //
 // Example — combined with bus discovery:
 //
-//	bus := discovery.NewBus(discovery.BusConfig{Transport: kit.PresenceTransport()})
-//	topology.NewModule(topology.Config{Discovery: bus})
+//	discoveryModule := discovery.NewModule(discovery.ModuleConfig{Type: "bus"})
+//	topology.NewModule(topology.Config{Discovery: discoveryModule})
 package topology

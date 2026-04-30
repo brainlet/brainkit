@@ -84,9 +84,8 @@ func TestStartStopLifecycle(t *testing.T) {
 	}
 }
 
-// TestKitAccessors verifies Kit() exposes the composed runtime and
-// the accessor surface added in session 10.
-func TestKitAccessors(t *testing.T) {
+// TestKit exposes the composed runtime.
+func TestKit(t *testing.T) {
 	tmp := t.TempDir()
 	addr := freePort(t)
 
@@ -103,8 +102,6 @@ func TestKitAccessors(t *testing.T) {
 
 	kit := srv.Kit()
 	require.NotNil(t, kit)
-	require.NotNil(t, kit.Providers())
-	require.NotNil(t, kit.Secrets())
 	assert.Equal(t, "server-accessors", kit.Namespace())
 }
 

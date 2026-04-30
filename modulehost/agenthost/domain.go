@@ -1,4 +1,4 @@
-package agents
+package agenthost
 
 import (
 	"context"
@@ -6,13 +6,71 @@ import (
 	"strings"
 
 	"github.com/brainlet/brainkit/internal/syncx"
-	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/sdk"
 )
 
-type AgentInfo = agentmsg.AgentInfo
+// AgentInfo is the host-side representation of a registered agent.
+type AgentInfo struct {
+	Name         string   `json:"name"`
+	Capabilities []string `json:"capabilities"`
+	Model        string   `json:"model"`
+	Status       string   `json:"status"`
+	Kit          string   `json:"kit"`
+}
 
-// Domain owns the in-memory agent registry and agents.* command behavior.
+// AgentFilter filters agent list results.
+type AgentFilter struct {
+	Capability string `json:"capability,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Status     string `json:"status,omitempty"`
+}
+
+type ListRequest struct {
+	Filter *AgentFilter `json:"filter,omitempty"`
+}
+
+type ListResponse struct {
+	Agents []AgentInfo `json:"agents"`
+}
+
+type DiscoverRequest struct {
+	Capability string `json:"capability,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Status     string `json:"status,omitempty"`
+}
+
+type DiscoverResponse struct {
+	Agents []AgentInfo `json:"agents"`
+}
+
+type StatusRequest struct {
+	Name string `json:"name"`
+}
+
+type StatusResponse struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type SetStatusRequest struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type SetStatusResponse struct {
+	OK bool `json:"ok"`
+}
+
+// Registry is the capability consumed by modules/agents.
+type Registry interface {
+	ListAgents(context.Context, ListRequest) (*ListResponse, error)
+	DiscoverAgents(context.Context, DiscoverRequest) (*DiscoverResponse, error)
+	GetAgentStatus(context.Context, StatusRequest) (*StatusResponse, error)
+	SetAgentStatus(context.Context, SetStatusRequest) (*SetStatusResponse, error)
+}
+
+// Domain owns the in-memory host-side agent registry. The modules/agents
+// package is only the bus command adapter for this capability.
 type Domain struct {
 	mu  syncx.RWMutex
 	reg map[string]*AgentInfo
@@ -56,9 +114,9 @@ func (d *Domain) Unregister(_ context.Context, name string) error {
 }
 
 // ListAgents returns all registered agents matching an optional filter.
-func (d *Domain) ListAgents(_ context.Context, req agentmsg.AgentListMsg) (*agentmsg.AgentListResp, error) {
+func (d *Domain) ListAgents(_ context.Context, req ListRequest) (*ListResponse, error) {
 	d.mu.RLock()
-	var result []agentmsg.AgentInfo
+	var result []AgentInfo
 	for _, info := range d.reg {
 		if req.Filter != nil && !agentMatches(req.Filter, info) {
 			continue
@@ -67,25 +125,25 @@ func (d *Domain) ListAgents(_ context.Context, req agentmsg.AgentListMsg) (*agen
 	}
 	d.mu.RUnlock()
 	if result == nil {
-		result = []agentmsg.AgentInfo{}
+		result = []AgentInfo{}
 	}
-	return &agentmsg.AgentListResp{Agents: result}, nil
+	return &ListResponse{Agents: result}, nil
 }
 
 // DiscoverAgents finds agents matching criteria.
-func (d *Domain) DiscoverAgents(ctx context.Context, req agentmsg.AgentDiscoverMsg) (*agentmsg.AgentDiscoverResp, error) {
-	listResp, _ := d.ListAgents(ctx, agentmsg.AgentListMsg{
-		Filter: &agentmsg.AgentFilter{
+func (d *Domain) DiscoverAgents(ctx context.Context, req DiscoverRequest) (*DiscoverResponse, error) {
+	listResp, _ := d.ListAgents(ctx, ListRequest{
+		Filter: &AgentFilter{
 			Capability: req.Capability,
 			Model:      req.Model,
 			Status:     req.Status,
 		},
 	})
-	return &agentmsg.AgentDiscoverResp{Agents: listResp.Agents}, nil
+	return &DiscoverResponse{Agents: listResp.Agents}, nil
 }
 
 // GetAgentStatus returns the status of a named agent.
-func (d *Domain) GetAgentStatus(_ context.Context, req agentmsg.AgentGetStatusMsg) (*agentmsg.AgentGetStatusResp, error) {
+func (d *Domain) GetAgentStatus(_ context.Context, req StatusRequest) (*StatusResponse, error) {
 	if req.Name == "" {
 		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -95,11 +153,11 @@ func (d *Domain) GetAgentStatus(_ context.Context, req agentmsg.AgentGetStatusMs
 	if !ok {
 		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
-	return &agentmsg.AgentGetStatusResp{Name: info.Name, Status: info.Status}, nil
+	return &StatusResponse{Name: info.Name, Status: info.Status}, nil
 }
 
 // SetAgentStatus updates the status of a named agent.
-func (d *Domain) SetAgentStatus(_ context.Context, req agentmsg.AgentSetStatusMsg) (*agentmsg.AgentSetStatusResp, error) {
+func (d *Domain) SetAgentStatus(_ context.Context, req SetStatusRequest) (*SetStatusResponse, error) {
 	if req.Name == "" {
 		return nil, &sdk.ValidationError{Field: "name", Message: "is required"}
 	}
@@ -120,7 +178,7 @@ func (d *Domain) SetAgentStatus(_ context.Context, req agentmsg.AgentSetStatusMs
 	if !ok {
 		return nil, &sdk.NotFoundError{Resource: "agent", Name: req.Name}
 	}
-	return &agentmsg.AgentSetStatusResp{OK: true}, nil
+	return &SetStatusResponse{OK: true}, nil
 }
 
 // UnregisterAllForKit removes all agents registered by a specific Kit instance.
@@ -149,7 +207,7 @@ func (d *Domain) Get(name string) *AgentInfo {
 	return &cp
 }
 
-func agentMatches(filter *agentmsg.AgentFilter, info *AgentInfo) bool {
+func agentMatches(filter *AgentFilter, info *AgentInfo) bool {
 	if filter.Status != "" && info.Status != filter.Status {
 		return false
 	}

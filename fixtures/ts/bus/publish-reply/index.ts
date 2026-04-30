@@ -1,28 +1,15 @@
-// Test: bus.publish() returns replyTo, subscriber uses msg.reply()
+// Test: bus.call() uses shared request/reply and subscriber uses msg.reply()
 import type { BusMessage } from "kit";
 import { bus, output } from "kit";
-
-let replyData: any = null;
 
 // Subscribe to a service topic
 bus.subscribe("test.greet", (msg: BusMessage) => {
   msg.reply({ greeting: "hello " + (msg.payload as any).name });
 });
 
-// Publish and subscribe to the replyTo topic
-const result = bus.publish("test.greet", { name: "brainkit" });
-bus.subscribe(result.replyTo, (msg: BusMessage) => {
-  // msg.reply wraps payloads in a wire envelope {ok:true, data:...};
-  // unwrap here so the test asserts against the inner value.
-  const p: any = msg.payload;
-  replyData = p && typeof p === "object" && "ok" in p && "data" in p ? p.data : p;
-});
-
-await new Promise(r => setTimeout(r, 200));
+const replyData = await bus.call("test.greet", { name: "brainkit" }, { timeoutMs: 5000 });
 
 output({
-  hasReplyTo: typeof result.replyTo === "string" && result.replyTo.length > 0,
-  hasCorrelationId: typeof result.correlationId === "string" && result.correlationId.length > 0,
   replied: replyData !== null,
   greeting: (replyData as any)?.greeting || "",
 });

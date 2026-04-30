@@ -8,13 +8,6 @@ import (
 	"github.com/brainlet/brainkit/sdk"
 )
 
-// callerHolder is implemented by *brainkit.Kit so the gateway can acquire
-// the shared-inbox Caller without importing the brainkit package (import
-// cycle avoidance).
-type callerHolder interface {
-	Caller() *sdk.Caller
-}
-
 func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched *route, pathParams map[string]string) {
 	payload, err := buildPayload(r, matched, pathParams)
 	if err != nil {
@@ -22,13 +15,7 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 		return
 	}
 
-	holder, ok := gw.rt.(callerHolder)
-	if !ok {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	c := holder.Caller()
-	if c == nil {
+	if gw.caller == nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -36,7 +23,7 @@ func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request, matched
 	ctx, cancel := context.WithTimeout(r.Context(), gw.config.Timeout)
 	defer cancel()
 
-	reply, err := c.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
+	reply, err := gw.caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
 	if err != nil {
 		var tErr *sdk.CallTimeoutError
 		if errors.As(err, &tErr) {

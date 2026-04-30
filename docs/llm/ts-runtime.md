@@ -1,12 +1,12 @@
 # TypeScript Runtime — API Reference
 
-Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `kit.Deploy(...)` source. Canonical source: `internal/engine/runtime/kit_runtime.js`, `internal/engine/runtime/bus.js`, `internal/engine/runtime/infrastructure.js`, `internal/engine/runtime/resolve.js`, `internal/engine/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/engine/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
+Dense reference for the `.ts` deployment surface in brainkit: the SES Compartment endowments installed on every `packages.Deploy(...)` source. Canonical source: `internal/engine/runtime/kit_runtime.js`, `internal/engine/runtime/bus.js`, `internal/engine/runtime/infrastructure.js`, `internal/engine/runtime/resolve.js`, `internal/engine/runtime/approval.js`, and the `.d.ts` bundle shipped at `internal/engine/runtime/kit.d.ts`. Runtime version: v1.0.0-rc.1.
 
 ---
 
 ## 1. Execution model
 
-1. A `.ts` file reaches the runtime via `kit.Deploy(ctx, brainkit.Package*)` (Go) or `bus.call("package.deploy", …)` (JS).
+1. A `.ts` file reaches the runtime via `packages.Deploy(ctx, kit, packages.Package*)` (Go) or `bus.call("package.deploy", ...)` (JS).
 2. TypeScript is transpiled (types stripped, runtime JS preserved) by esbuild.
 3. ES `import` statements are stripped. All symbols arrive through Compartment endowments.
 4. The deployment runs inside a frozen SES Compartment. `globalThis` is the per-deployment endowment map; pre-lockdown (`Date.now`, `Math.random`) is preserved behind the SES taming.
@@ -98,7 +98,8 @@ Error codes observable from `.ts`:
 |------|---------|
 | `VALIDATION_ERROR` | Input schema / option failure (also thrown by `bus.call` / `bus.callTo` / `bus.onCancel` parameter validation) |
 | `NOT_FOUND` | Named resource missing |
-| `TIMEOUT` | `bus.call` / remote handler exceeded its deadline |
+| `CALL_TIMEOUT` | `bus.call` / stream caller deadline elapsed before a terminal reply |
+| `TIMEOUT` | Generic timeout from lower-level operations |
 | `HANDLER_FAILED` | Remote handler threw |
 | `TRANSPORT_ERROR` | Bus publish / subscribe failure |
 | `COMPARTMENT_ERROR` | SES lockdown violation |
@@ -114,37 +115,60 @@ Error codes observable from `.ts`:
 
 ```typescript
 const bus: {
-    publish(topic: string, data?: unknown): { replyTo: string; correlationId: string }
+    publish(topic: string, data?: unknown): void
     emit(topic: string, data?: unknown): void
     subscribe(topic: string, handler: (msg: BusMessage) => void | Promise<void>): string
     on(localTopic: string, handler: (msg: BusMessage) => void | Promise<void>): string
     unsubscribe(subId: string): void
-    sendTo(service: string, topic: string, data?: unknown): { replyTo: string; correlationId: string }
+    sendTo(service: string, topic: string, data?: unknown): void
     call<T = any>(topic: string, data?: unknown, opts: { timeoutMs: number }): Promise<T>
+    callStream<T = any>(topic: string, data?: unknown, opts: BusStreamOptions): Promise<T>
+    callService<T = any>(service: string, topic: string, data?: unknown, opts: { timeoutMs: number }): Promise<T>
+    callServiceStream<T = any>(service: string, topic: string, data?: unknown, opts: BusStreamOptions): Promise<T>
     callTo<T = any>(namespace: string, topic: string, data?: unknown, opts: { timeoutMs: number }): Promise<T>
+    callToStream<T = any>(namespace: string, topic: string, data?: unknown, opts: BusStreamOptions): Promise<T>
     schedule(expression: string, localTopic: string, data?: unknown): string
     unschedule(scheduleId: string): void
     onCancel(correlationId: string, handler: (evt: any) => void): () => void
     withCancelController(msg: BusMessage): { signal: AbortSignal; cleanup: () => void }
 }
+
+type BusStreamOptions = {
+    timeoutMs: number
+    onChunk: (chunk: any, msg: BusMessage) => void | Promise<void>
+    bufferSize?: number
+    bufferPolicy?: "block" | "dropNewest" | "dropOldest" | "error"
+}
 ```
 
-### 4.1 `publish` vs `emit` vs `call`
+### 4.1 `publish` / `emit` vs `call`
 
-- `publish` sends a request. Mastra-style handlers on the target topic reply with `msg.reply(data)`; the response is routed back through an auto-generated `replyTo`.
-- `emit` is fire-and-forget — no `replyTo` is attached.
-- `call` does `publish` + wait for the terminal envelope and returns the decoded response. **`timeoutMs` is required** (mirrors Go's deadline rule). Throws `BrainkitError("TIMEOUT")` on expiry or rewraps an ok=false reply.
+- `publish` and `emit` are fire-and-forget event sends — no `replyTo` is attached.
+- `call` publishes through the shared caller inbox, waits for the terminal envelope, and returns the decoded response. **`timeoutMs` is required** (mirrors Go's deadline rule). Throws `BrainkitError("CALL_TIMEOUT")` on expiry or rewraps an ok=false reply.
+- `callService(service, topic, data, opts)` resolves `service` to `ts.<service>.<topic>` and uses the same shared caller as `call`.
 - `callTo(namespace, topic, data, opts)` is `call` across namespaces. Both `namespace` and `opts.timeoutMs` are required.
+- `callStream`, `callServiceStream`, and `callToStream` use the same shared caller but deliver intermediate done=false replies to `opts.onChunk` before resolving with the terminal reply. `onChunk` may be async; chunks are drained one at a time. `bufferPolicy` defaults to `"block"`.
 
 ```typescript
 // Request/reply
 const resp = await bus.call("ts.analytics.summary", { range: "7d" }, { timeoutMs: 5000 })
 
 // Fire-and-forget
-bus.emit("metrics.log", { name: "deploy", value: 1 })
+bus.publish("metrics.log", { name: "deploy", value: 1 })
+
+// Local service request/reply
+const serviceResp = await bus.callService("analytics", "summary", { range: "7d" }, { timeoutMs: 5000 })
 
 // Cross-namespace
 const users = await bus.callTo("auth", "users.list", {}, { timeoutMs: 2000 })
+
+// Streaming request/reply
+const chunks: any[] = []
+const final = await bus.callStream("ts.jobs.run", { id: "42" }, {
+    timeoutMs: 10000,
+    onChunk: (chunk) => chunks.push(chunk),
+    bufferPolicy: "block",
+})
 ```
 
 ### 4.2 `subscribe`, `on`, `unsubscribe`
@@ -161,7 +185,9 @@ bus.sendTo("haiku-bot", "ask", { prompt: "autumn" })
 // → publishes to "ts.haiku-bot.ask"
 ```
 
-`service` is the deployment name (with or without `.ts` suffix); `topic` is the local topic on that deployment. Returns the same `{ replyTo, correlationId }` shape as `publish`.
+`service` is the deployment name (with or without `.ts` suffix);
+`topic` is the local topic on that deployment. `sendTo` is
+fire-and-forget; use `callService` when a response is required.
 
 ### 4.4 `schedule` / `unschedule`
 
@@ -224,7 +250,11 @@ bus.on("expensive", async (msg) => {
 | Call | Required |
 |------|----------|
 | `bus.call(topic, data, opts)` | `opts.timeoutMs: number` |
+| `bus.callStream(topic, data, opts)` | `opts.timeoutMs: number`, `opts.onChunk: function` |
+| `bus.callService(service, topic, data, opts)` | `service: string`, `topic: string`, `opts.timeoutMs: number` |
+| `bus.callServiceStream(service, topic, data, opts)` | `service: string`, `topic: string`, `opts.timeoutMs: number`, `opts.onChunk: function` |
 | `bus.callTo(namespace, topic, data, opts)` | `namespace: string`, `opts.timeoutMs: number` |
+| `bus.callToStream(namespace, topic, data, opts)` | `namespace: string`, `opts.timeoutMs: number`, `opts.onChunk: function` |
 | `bus.onCancel(correlationId, handler)` | `correlationId: string`, `handler: function` |
 | `LibSQLStore({ url })` | `url` must not start with `file:` — use `storage("name")` (§7) |
 | `LibSQLVector({ connectionUrl })` | `connectionUrl` must not start with `file:` — use `vectorStore("name")` (§7) |
@@ -278,7 +308,7 @@ provider(registeredName: string): AIProviderFactory
 
 - `model` returns an AI SDK v5 `LanguageModel`. If the provider is unknown or has no `create*` factory, it falls back to the literal string `"<provider>/<model>"` so the runtime can still register a plausible identifier.
 - `embeddingModel` requires a provider that supports embeddings. Throws `Error("embeddingModel: provider '<name>' not registered")` or `"... does not support embeddings"` when the factory lacks `embedding` / `textEmbeddingModel`.
-- `provider(name)` resolves a **registered** provider (set via `kit.Providers().Register` or `Config.Providers`) and returns the cached AI SDK factory; useful when you need the raw factory to call e.g. `openai.chat("gpt-4o")`.
+- `provider(name)` resolves a **registered** provider (set via `Config.Providers` or `modules/registry`) and returns the cached AI SDK factory; useful when you need the raw factory to call e.g. `openai.chat("gpt-4o")`.
 
 ```typescript
 const gpt = model("openai", "gpt-4o-mini")
@@ -610,6 +640,6 @@ bus.on("bootstrap", async (msg) => {
 | Unhandled exception during module evaluation | Deploy returns an error; module is not registered; resources registered before the throw are unwound via Go TeardownFile. |
 | `bus.on(localTopic, …)` reused in the same package | Throws `BrainkitError("TOPIC_COLLISION")`. |
 | `kit.register(type, …)` with invalid type | Throws `Error("kit.register: invalid type ...")`. |
-| Teardown (`kit.Teardown(name)`) | Go sweeps subscriptions, schedules, registered resources; cleanup callbacks run. JS refs map is cleared. |
+| Teardown (`packages.Teardown(ctx, kit, name)`) | Go sweeps subscriptions, schedules, registered resources; cleanup callbacks run. JS refs map is cleared. |
 
 The runtime tracks every resource registered during evaluation. On teardown or redeploy the Go side calls the registered cleanup functions in LIFO order so `bus.subscribe`, `bus.schedule`, and `kit.register` do not leak across generations.

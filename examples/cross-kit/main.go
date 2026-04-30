@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/topology"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/transports"
@@ -58,7 +59,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if _, err := target.Deploy(ctx, brainkit.PackageInline("report-svc", "report.ts", `
+	if _, err := packages.Deploy(ctx, target, packages.Inline("report-svc", "report.ts", `
 		bus.on("quarterly", (msg) => {
 			msg.reply({ revenue: 1234567, quarter: msg.payload.quarter });
 		});
@@ -73,7 +74,7 @@ func run() error {
 		CallerID:  "orchestrator",
 		Transport: transports.NATS(natsURL),
 		FSRoot:    ".",
-		Modules: []brainkit.Module{
+		Modules: []brainkit.Module{packages.New(),
 			topology.NewModule(topology.Config{
 				Peers: []topology.Peer{
 					{Name: "analytics", Namespace: "analytics-prod"},

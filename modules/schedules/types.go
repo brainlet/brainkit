@@ -6,6 +6,9 @@ import (
 	"github.com/brainlet/brainkit/internal/types"
 )
 
+// ScheduleConfig configures a scheduled bus message.
+type ScheduleConfig = types.ScheduleConfig
+
 // Store is the narrow persistence surface the module needs. brainkit's
 // KitStore (returned by stores.NewSQLite) satisfies it structurally,
 // so the common case is `Config{Store: kitStore}`.

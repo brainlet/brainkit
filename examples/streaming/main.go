@@ -32,6 +32,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -58,7 +59,7 @@ func run() error {
 		Namespace: "streaming-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules:   []brainkit.Module{gw},
+		Modules:   []brainkit.Module{packages.New(), gw},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -84,7 +85,7 @@ func run() error {
 			msg.reply({ received: true });
 		});
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("streaming-demo", "stream.ts", tsCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("streaming-demo", "stream.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

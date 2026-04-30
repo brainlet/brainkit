@@ -53,7 +53,7 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 		return fmt.Errorf("secrets: %w", err)
 	}
 	m.store = store
-	m.bus = host.Runtime()
+	m.bus = host.Messages()
 	m.audit, _ = bkmodule.Capability[*auditpkg.Recorder](host, bkmodule.CapabilityAuditRecorder)
 	m.callerID, _ = bkmodule.Capability[string](host, bkmodule.CapabilityCallerID)
 	m.pluginRestarter, _ = bkmodule.Capability[func() any](host, bkmodule.CapabilityPluginRestarter)

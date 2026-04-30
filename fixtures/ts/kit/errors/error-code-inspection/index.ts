@@ -10,9 +10,9 @@ try {
   results.toolCall = e.message || "error";
 }
 
-// Test 2: bus.publish returns replyTo
+// Test 2: bus.publish is fire-and-forget
 const pubResult = bus.publish("incoming.error-test", { test: true });
-results.hasReplyTo = pubResult.replyTo ? "yes" : "no";
+results.publishReturnedVoid = pubResult === undefined ? "yes" : "no";
 
 // Test 3: bus.emit doesn't throw on valid event topic
 try {

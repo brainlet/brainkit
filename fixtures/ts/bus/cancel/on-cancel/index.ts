@@ -13,11 +13,10 @@ bus.on("maybe-cancel", async (msg) => {
   msg.reply({ ok: true });
 });
 
-const { replyTo } = bus.publish("ts.bus-on-cancel-demo.maybe-cancel", {});
+await bus.call("ts.bus-on-cancel-demo.maybe-cancel", {}, { timeoutMs: 5000 });
 // Assert onCancel callback was attached (callback registration
 // path runs even if cancellation never happens).
 output({
   hasOnCancel: typeof bus.publish === "function",
-  replyToExists: typeof replyTo === "string",
   cancelFiredIsBool: typeof cancelFired === "boolean",
 });

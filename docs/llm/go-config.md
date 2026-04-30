@@ -144,14 +144,15 @@ Providers: []brainkit.ProviderConfig{
 }
 ```
 
-Runtime registration is also available at any time via the Providers accessor:
+Runtime registration is available by mounting `modules/registry` and calling
+the typed registry message wrappers:
 
 ```go
-kit.Providers().Register(name string, typ AIProviderType, config any) error
-kit.Providers().Unregister(name string)
-kit.Providers().List() []ProviderInfo
-kit.Providers().Get(name string) (AIProviderRegistration, bool)
-kit.Providers().Has(name string) bool
+registrymsg.CallProviderAdd(kit, ctx, registrymsg.ProviderAddMsg{...})
+registrymsg.CallProviderRemove(kit, ctx, registrymsg.ProviderRemoveMsg{...})
+registrymsg.CallRegistryList(kit, ctx, registrymsg.RegistryListMsg{Category: "provider"})
+registrymsg.CallRegistryHas(kit, ctx, registrymsg.RegistryHasMsg{Category: "provider", Name: name})
+registrymsg.CallRegistryResolve(kit, ctx, registrymsg.RegistryResolveMsg{Category: "provider", Name: name})
 ```
 
 ---
@@ -245,8 +246,8 @@ auditstores.NewPostgres(connStr string) (*auditstores.Postgres, error)
 discovery.NewStaticFromConfig(configs []PeerConfig) *Static
 discovery.NewBus(BusConfig{Transport, Heartbeat, TTL}) *Bus
 
-// mcp
-type mcp.ServerConfig = types.MCPServerConfig
+// modules/mcp
+type ServerConfig struct { /* fields below */ }
 ```
 
 ### Discovery / topology configuration
@@ -276,7 +277,8 @@ type topology.Config struct {
 ### MCP server config
 
 ```go
-type MCPServerConfig struct {
+// modules/mcp
+type ServerConfig struct {
     Command string            `json:"command,omitempty"` // stdio transport
     Args    []string          `json:"args,omitempty"`
     Env     map[string]string `json:"env,omitempty"`
@@ -336,14 +338,14 @@ Storages: map[string]brainkit.StorageConfig{
 
 Deployments reach the pool via `storage("main")` in `.ts` code.
 
-Runtime registration:
+Runtime registration is owned by `modules/registry`:
 
 ```go
-kit.Storages().Register(name string, typ StorageType, config any) error
-kit.Storages().Unregister(name string)
-kit.Storages().List() []StorageInfo
-kit.Storages().Get(name string) (types.StorageRegistration, bool)
-kit.Storages().Has(name string) bool
+registrymsg.CallStorageAdd(kit, ctx, registrymsg.StorageAddMsg{...})
+registrymsg.CallStorageRemove(kit, ctx, registrymsg.StorageRemoveMsg{...})
+registrymsg.CallRegistryList(kit, ctx, registrymsg.RegistryListMsg{Category: "storage"})
+registrymsg.CallRegistryHas(kit, ctx, registrymsg.RegistryHasMsg{Category: "storage", Name: name})
+registrymsg.CallRegistryResolve(kit, ctx, registrymsg.RegistryResolveMsg{Category: "storage", Name: name})
 ```
 
 ---
@@ -368,14 +370,14 @@ brainkit.PgVectorStore(connStr string) VectorConfig
 brainkit.MongoDBVectorStore(uri, dbName string) VectorConfig
 ```
 
-Deployments reach the pool via `vectorStore("name")` in `.ts` code. Runtime registration follows the same shape as Storages:
+Deployments reach the pool via `vectorStore("name")` in `.ts` code. Runtime registration follows the same `modules/registry` shape:
 
 ```go
-kit.Vectors().Register(name string, typ VectorStoreType, config any) error
-kit.Vectors().Unregister(name string)
-kit.Vectors().List() []VectorStoreInfo
-kit.Vectors().Get(name string) (types.VectorStoreRegistration, bool)
-kit.Vectors().Has(name string) bool
+registrymsg.CallVectorAdd(kit, ctx, registrymsg.VectorAddMsg{...})
+registrymsg.CallVectorRemove(kit, ctx, registrymsg.VectorRemoveMsg{...})
+registrymsg.CallRegistryList(kit, ctx, registrymsg.RegistryListMsg{Category: "vectorStore"})
+registrymsg.CallRegistryHas(kit, ctx, registrymsg.RegistryHasMsg{Category: "vectorStore", Name: name})
+registrymsg.CallRegistryResolve(kit, ctx, registrymsg.RegistryResolveMsg{Category: "vectorStore", Name: name})
 ```
 
 ---
@@ -497,14 +499,14 @@ type SecretMeta struct {
 
 Priority: `Config.SecretStore` (explicit) > `Config.SecretKey` (auto-create `EncryptedKVStore`) > env-only fallback (`NotConfiguredError` on writes).
 
-Accessor:
+Runtime secret administration is owned by `modules/secrets`:
 
 ```go
-kit.Secrets().Set(ctx context.Context, name, value string) error
-kit.Secrets().Get(ctx context.Context, name string) (string, error)
-kit.Secrets().Delete(ctx context.Context, name string) error
-kit.Secrets().List(ctx context.Context) ([]SecretMeta, error)
-kit.Secrets().Rotate(ctx context.Context, name, newValue string) error // Set + plugin-restart hook
+secretmsg.CallSecretsSet(kit, ctx, secretmsg.SecretsSetMsg{...})
+secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{...})
+secretmsg.CallSecretsDelete(kit, ctx, secretmsg.SecretsDeleteMsg{...})
+secretmsg.CallSecretsList(kit, ctx, secretmsg.SecretsListMsg{})
+secretmsg.CallSecretsRotate(kit, ctx, secretmsg.SecretsRotateMsg{...})
 ```
 
 Plugin environment entries of the form `$secret:NAME` are resolved against this store when plugins boot; rotation restarts affected plugins when a plugin restarter module is wired (see `modules/plugins`).
@@ -608,7 +610,7 @@ type ResourceInfo struct {
 }
 ```
 
-Use `kit.ReportError(err error, ctx ErrorContext)` to surface non-fatal errors through the configured handler.
+Internal runtime and module capabilities surface non-fatal errors through the configured handler.
 
 ### 10.3 HealthStatus / HealthCheck / KernelMetrics
 
@@ -647,6 +649,7 @@ Surfaced over the `kit.health` and `metrics.get` bus commands; `HealthStatus` an
 ## 11. Plugins and Schedules (inputs)
 
 ```go
+// modules/plugins
 type PluginConfig struct {
     Name            string
     Binary          string
@@ -659,6 +662,7 @@ type PluginConfig struct {
     ShutdownTimeout time.Duration
 }
 
+// modules/schedules
 type ScheduleConfig struct {
     ID         string
     Expression string          // cron or "every 30s"
@@ -668,23 +672,18 @@ type ScheduleConfig struct {
 }
 ```
 
-`PluginConfig` feeds `modules/plugins.Config.Plugins`; `ScheduleConfig` is used by the `schedules.create` bus command via the schedules module handlers.
+`plugins.PluginConfig` feeds `modules/plugins.Config.Plugins`; `schedules.ScheduleConfig` is used by the `schedules.create` bus command via the schedules module handlers.
 
-Secret interpolation: env values of the form `$secret:NAME` are resolved by the plugins module against `kit.Secrets()` before the subprocess is started.
+Secret interpolation: env values of the form `$secret:NAME` are resolved by the plugins module against the Kit secret store before the subprocess is started.
 
 ---
 
-## 12. Embedded `.d.ts` bundles
+## 12. Package scaffolding `.d.ts` bundles
 
 ```go
-// Used by CLI scaffolding (e.g. brainkit init) to seed TypeScript projects.
-var (
-    brainkit.KitDTS      // kit.d.ts — the SES Compartment endowments
-    brainkit.AiDTS       // ai.d.ts — AI SDK v5 surface
-    brainkit.AgentDTS    // agent.d.ts — Mastra Agent / Workflow surface
-    brainkit.BrainkitDTS // brainkit.d.ts — combined declarations
-    brainkit.GlobalsDTS  // globals.d.ts — ambient bus / kit / model globals
-)
+// modules/packages owns package scaffolding and writes the embedded
+// TypeScript declaration files into the generated package directory.
+err := packages.ScaffoldPackage(dir, "name", "index.ts", source)
 ```
 
 Each is a `string` whose value is the exact .d.ts text shipped with the runtime.
@@ -714,13 +713,13 @@ type Config struct {
     Storages  map[string]brainkit.StorageConfig
     Vectors   map[string]brainkit.VectorConfig
 
-    Plugins []brainkit.PluginConfig        // wires the plugins module when non-empty
+    Plugins []plugins.PluginConfig         // wires the plugins module when non-empty
 
     Audit   *AuditConfig                   // nil = SQLite at <FSRoot>/audit.db
     Tracing *bool                          // nil/true = on
     Probes  *bool                          // nil/true = on
 
-    Packages []brainkit.Package            // auto-deployed after boot
+    Packages []packages.Package            // auto-deployed after boot
     Extra    []brainkit.Module             // appended to the composed module set
 }
 
@@ -758,7 +757,7 @@ func server.QuickStart(namespace, fsRoot string, opts ...QuickStartOption) (*Ser
 type QuickStartOption func(*Config)
 func server.WithListen(addr string) QuickStartOption                  // override :8080
 func server.WithSecretKey(key string) QuickStartOption
-func server.WithPackages(pkgs ...brainkit.Package) QuickStartOption
+func server.WithPackages(pkgs ...packages.Package) QuickStartOption
 func server.WithExtraModules(mods ...brainkit.Module) QuickStartOption
 ```
 
@@ -845,7 +844,7 @@ plugins:
       PGURL: ${PG_DSN}
 
 packages:
-  - path: ./packages/api          # brainkit.PackageFromDir(...)
+  - path: ./packages/api          # packages.FromDir(...)
 ```
 
 Provider types accepted by `LoadConfig`: `openai`, `anthropic`, `google`, `mistral`, `groq`, `deepseek`, `xai`, `cohere`, `perplexity`, `togetherai`, `fireworks`, `cerebras`. Unknown types return `"server: unknown provider type %q"`.
@@ -910,7 +909,7 @@ srv, err := server.New(server.Config{
 
         // Plugins: pass the subprocess list; the module picks up the
         // KitStore from the Kit at Init time for persistence.
-        plugins.NewModule(plugins.Config{Plugins: []types.PluginConfig{
+        plugins.NewModule(plugins.Config{Plugins: []plugins.PluginConfig{
             {Name: "pg-mcp", Binary: "/usr/local/bin/pg-mcp",
              Env: map[string]string{"PGURL": "$secret:PG_DSN"}},
         }}),
@@ -921,7 +920,7 @@ srv, err := server.New(server.Config{
     // YAML-driven path, the registry factories construct these
     // stores for you from `modules.audit.path` / `modules.tracing.path`.
 
-    Packages: []brainkit.Package{must(brainkit.PackageFromDir("./packages/api"))},
+    Packages: []packages.Package{must(packages.FromDir("./packages/api"))},
 })
 if err != nil { return err }
 defer srv.Close()

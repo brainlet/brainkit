@@ -27,7 +27,7 @@ type pluginManager struct {
 
 // pluginConn tracks one connected plugin subprocess.
 type pluginConn struct {
-	config    types.PluginConfig
+	config    PluginConfig
 	identity  string
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
@@ -50,7 +50,7 @@ func (pm *pluginManager) log() *slog.Logger {
 	return pm.mod.kit.Logger()
 }
 
-func (pm *pluginManager) startAll(configs []types.PluginConfig) {
+func (pm *pluginManager) startAll(configs []PluginConfig) {
 	for i := range configs {
 		cfg := configs[i]
 		pluginDefaults(&cfg)
@@ -64,7 +64,7 @@ func (pm *pluginManager) startAll(configs []types.PluginConfig) {
 
 // startPlugin launches the plugin subprocess. restartCount tracks how many
 // times this plugin has been restarted (0 for initial start).
-func (pm *pluginManager) startPlugin(cfg types.PluginConfig, restartCount int) error {
+func (pm *pluginManager) startPlugin(cfg PluginConfig, restartCount int) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cmd := exec.CommandContext(ctx, cfg.Binary, cfg.Args...)
@@ -339,7 +339,7 @@ func (w *logWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func pluginDefaults(cfg *types.PluginConfig) {
+func pluginDefaults(cfg *PluginConfig) {
 	if cfg.MaxRestarts == 0 {
 		cfg.MaxRestarts = 5
 	}

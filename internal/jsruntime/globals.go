@@ -82,6 +82,6 @@ func (r *Runtime) upgradeMastraStorage() {
 		Storage  string `json:"storage"`
 	}
 	if json.Unmarshal(raw, &parsed) == nil && parsed.Upgraded {
-		r.host.Logger().Info("Mastra storage upgraded", "backend", parsed.Storage)
+		r.core.Logger().Info("Mastra storage upgraded", "backend", parsed.Storage)
 	}
 }

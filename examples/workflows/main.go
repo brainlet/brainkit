@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	workflowmod "github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -33,7 +34,7 @@ func run() error {
 		Namespace: "workflows-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules: []brainkit.Module{
+		Modules: []brainkit.Module{packages.New(),
 			workflowmod.New(),
 		},
 	})
@@ -86,7 +87,7 @@ func run() error {
 
 		kit.register("workflow", "research-pipeline", wf);
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("workflows-demo", "wf.ts", tsCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("workflows-demo", "wf.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

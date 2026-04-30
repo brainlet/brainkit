@@ -6,7 +6,7 @@ other agents at runtime**.
 ```
   Go                     Kit (JS/TS compartment)
   ────────────────       ──────────────────────────────────────
-  kit.Deploy             ─▶ architect.ts
+  packages.Deploy        ─▶ architect.ts
                               ├── Agent "architect" + deploy_agent tool
                               └── bus.on("create", …)
 
@@ -137,7 +137,7 @@ surface on top of brainkit — it's the shape the runtime gives you.
 
 | Primitive | Where |
 |-----------|-------|
-| `kit.Deploy` from Go | `brainkit.PackageInline(name, file, code)` + `kit.Deploy` |
+| `packages.Deploy` from Go | `packages.Inline(name, file, code)` + `packages.Deploy` |
 | `package.deploy` from JS | `bus.call("package.deploy", {manifest, files}, {timeoutMs})` |
 | Agent registration | `kit.register("agent", name, agent)` |
 | Tool | `createTool({ id, description, inputSchema: z.object(…), execute })` |

@@ -11,32 +11,32 @@ converge on the same typed topic: `package.deploy`.
 
 ## Building a Package
 
-`brainkit.Package` is a value type with three producers:
+`packages.Package` is a value type with three producers:
 
 ```go
 // Inline: single file of source as a string.
-brainkit.PackageInline("greeter", "greeter.ts",
+packages.Inline("greeter", "greeter.ts",
     `bus.on("hello", (m) => m.reply({ greeting: "hi " + m.payload.name }));`)
 
 // File on disk: single `.ts`. Imports are bundled by esbuild at
 // deploy time on the handler side.
-brainkit.PackageFromFile("./services/greeter.ts")
+packages.FromFile("./services/greeter.ts")
 
 // Directory with manifest.json: multi-file package, version,
 // additional files. The handler reads the manifest and bundles
 // the entry.
-brainkit.PackageFromDir("./services/greeter")
+packages.FromDir("./services/greeter")
 ```
 
 Each producer returns a `Package{Name, Version, Entry, Files, path}`
 value. `path` is set only by the `FromDir`/`FromFile` producers and
-tells the handler to bundle from disk; `Files` is set by `PackageInline`
+tells the handler to bundle from disk; `Files` is set by `packages.Inline`
 and carries the source verbatim.
 
-`Deploy` sends the package as a `packagemsg.PackageDeployMsg`:
+`packages.Deploy` sends the package as a `packagemsg.PackageDeployMsg`:
 
 ```go
-resp, err := kit.Deploy(ctx, pkg)  // Call[PackageDeployMsg, PackageDeployResp]
+resp, err := packages.Deploy(ctx, kit, pkg)
 // → DeployResult{Name, Version, Source, Resources}
 ```
 
@@ -52,7 +52,10 @@ The same bus topic powers three very different callers:
 ### Go library
 
 ```go
-_, err := kit.Deploy(ctx, brainkit.PackageFromDir("./services/greeter"))
+pkg, err := packages.FromDir("./services/greeter")
+if err == nil {
+    _, err = packages.Deploy(ctx, kit, pkg)
+}
 ```
 
 ### CLI
@@ -174,9 +177,9 @@ records an entry under the current package. The tracked types are:
 | `memory`       | `kit.register("memory", name, memRef)`                | Remove from JS memory registry.                 |
 | `subscription` | `bus.on(topic, h)` or `bus.subscribe(topic, h)`       | Unsubscribe from transport + drop JS handler.   |
 
-Resources appear in `DeployResult.Resources` so the caller can see what
-was registered. `kit.List(ctx)` returns the names and status of every
-currently deployed package.
+Resources appear in `packages.DeployResult.Resources` so the caller can see
+what was registered. `packages.List(ctx, kit)` returns the names and status
+of every currently deployed package.
 
 ## Addressing a Deployment
 
@@ -197,7 +200,8 @@ reply, _ := brainkit.Call[sdk.CustomMsg, json.RawMessage](
 const r = await bus.call("ts.greeter.hello", { name: "world" },
     { timeoutMs: 2000 });
 // Or the symmetric helper:
-await bus.sendTo("greeter", "hello", { name: "world" });
+await bus.callService("greeter", "hello", { name: "world" },
+    { timeoutMs: 2000 });
 ```
 
 ```sh
@@ -208,12 +212,12 @@ brainkit call ts.greeter.hello --payload '{"name":"world"}'
 ## Lifecycle: Teardown, Redeploy, Get, List
 
 ```go
-err := kit.Teardown(ctx, "greeter")        // revert every registered resource
-info, ok, _ := kit.Get(ctx, "greeter")     // status + version
-pkgs, _ := kit.List(ctx)                   // everything currently deployed
+err := packages.Teardown(ctx, kit, "greeter")        // revert every registered resource
+info, ok, _ := packages.Get(ctx, kit, "greeter")     // status + version
+pkgs, _ := packages.List(ctx, kit)                   // everything currently deployed
 ```
 
-Redeploy is a `Deploy` on an existing package name — the handler tears
+Redeploy is a `packages.Deploy` on an existing package name — the handler tears
 down the old instance and brings up the new one in a single bus call.
 `DeployResult.Resources` reflects the newly registered set. Teardown
 is idempotent; tearing down a name that does not exist returns
@@ -235,13 +239,13 @@ deploy a package as part of a step.
 ```
 
 `version` is optional. `entry` is required for inline and dir-based
-packages; `PackageFromFile` synthesizes a manifest with the filename
+packages; `packages.FromFile` synthesizes a manifest with the filename
 stem as `name` and the basename as `entry`.
 
 ## Common Pitfalls
 
-- **Missing deadline.** `Call[PackageDeployMsg, …]` requires a deadline;
-  `kit.Deploy` sets 30s by default, but if you call it directly with
+- **Missing deadline.** `Call[PackageDeployMsg, ...]` requires a deadline;
+  `packages.Deploy` sets 30s by default, but if you call the bus directly with
   no context timeout it errors out immediately. Pass
   `WithCallTimeout(d)` or a context with a deadline.
 - **Circular packages.** A package that deploys another that deploys

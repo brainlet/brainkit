@@ -16,6 +16,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/packages"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 		Namespace: "gateway-routes",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
-		Modules:   []brainkit.Module{gw},
+		Modules:   []brainkit.Module{packages.New(), gw},
 	})
 	if err != nil {
 		log.Fatalf("new kit: %v", err)
@@ -45,7 +46,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline(
+	if _, err := packages.Deploy(ctx, kit, packages.Inline(
 		"greeter", "greeter.ts",
 		`bus.on("hello", (msg) => {
 			const name = (msg.payload && msg.payload.name) || "stranger";

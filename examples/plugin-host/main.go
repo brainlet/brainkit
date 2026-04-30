@@ -66,7 +66,7 @@ func run() error {
 		FSRoot:    binDir,
 		Modules: []brainkit.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{{
+				Plugins: []pluginsmod.PluginConfig{{
 					Name:         "demo",
 					Binary:       binaryPath,
 					AutoRestart:  false,

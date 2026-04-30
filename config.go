@@ -192,15 +192,7 @@ func (c Config) needsJSRuntime() bool {
 }
 
 func moduleNeedsJSRuntime(mod bkmodule.Module) bool {
-	if moduleDependsOn(mod, "jsruntime") {
-		return true
-	}
-	switch mod.ID() {
-	case "eval", "packages", "testing", "workflow", "harness":
-		return true
-	default:
-		return false
-	}
+	return moduleDependsOn(mod, "jsruntime")
 }
 
 func moduleDependsOn(mod bkmodule.Module, dependency string) bool {

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 )
 
 // BenchEnv is the shared benchmark environment.
@@ -29,19 +29,20 @@ func NewEnv(b *testing.B) *BenchEnv {
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
+		Modules:   []brainkit.Module{toolsmod.New()},
 	})
 	if err != nil {
 		b.Fatalf("bench.NewEnv: New: %v", err)
 	}
 
 	// Register echo tool (used by bus benchmarks).
-	if err := brainkit.RegisterTool(k, "echo", tools.TypedTool[echoInput]{
+	if err := k.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoInput]{
 		Description: "echo",
 		Execute: func(ctx context.Context, input echoInput) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
-	}); err != nil {
-		b.Fatalf("bench.NewEnv: register echo: %v", err)
+	})); err != nil {
+		b.Fatalf("bench.NewEnv: mount echo tool: %v", err)
 	}
 
 	b.Cleanup(func() { k.Close() })

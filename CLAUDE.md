@@ -112,7 +112,7 @@ Symmetric across surfaces:
 Pure async pub/sub only. No PublishAwait. No blocking helpers. Caller explicitly subscribes and waits. Pattern: `Publish → SubscribeTo(replyTo) → select { case resp: case timeout: }`.
 
 ### Deployment
-`.ts` files deploy into SES Compartments: `kit.Deploy("name.ts", code)` → transpile → strip ES imports → evaluate in Compartment with endowments. Mailbox namespace: `ts.<name>.<topic>`.
+`.ts` files deploy into SES Compartments via `packages.Deploy(...)`: transpile → strip ES imports → evaluate in Compartment with endowments. Mailbox namespace: `ts.<name>.<topic>`.
 
 ### Testing
 Real tests only — no mocks, no fake data. Use real API keys from `.env`, real Podman containers for NATS/Redis/Postgres/MongoDB, real SQLite for SQL transport. Test all combinations: every auth method, every backend, every surface.

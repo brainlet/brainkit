@@ -9,7 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )

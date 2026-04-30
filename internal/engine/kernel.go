@@ -13,12 +13,12 @@ import (
 	"github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	agenthost "github.com/brainlet/brainkit/modulehost/agenthost"
 	"github.com/brainlet/brainkit/modulehost/providerhost"
 	"github.com/brainlet/brainkit/modulehost/runtimehost"
 	"github.com/brainlet/brainkit/modulehost/storagehost"
+	toolhost "github.com/brainlet/brainkit/modulehost/toolhost"
 	"github.com/brainlet/brainkit/modulehost/transporthost"
-	agentsmod "github.com/brainlet/brainkit/modules/agents"
-	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -26,8 +26,8 @@ import (
 // It owns the light control plane and delegates optional JS runtime work.
 type Kernel struct {
 	// Domain handlers — all take narrow interfaces, not *Kernel.
-	toolsDomain  *toolsmod.Domain
-	agentsDomain *agentsmod.Domain
+	toolsDomain  *toolhost.Domain
+	agentsDomain *agenthost.Domain
 
 	Tools         *toolreg.ToolRegistry
 	providerHost  *providerhost.Manager
@@ -180,7 +180,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 		logger:       logger,
 		namespace:    cfg.Namespace,
 		callerID:     cfg.CallerID,
-		agentsDomain: agentsmod.NewDomain(),
+		agentsDomain: agenthost.NewDomain(),
 	}
 	kernel.shutdownCtx, kernel.shutdownCancel = context.WithCancel(context.Background())
 
@@ -210,7 +210,7 @@ func NewKernel(cfg types.KernelConfig) (*Kernel, error) {
 	kernel.tracer = tracing.NewTracer(cfg.TraceStore, sampleRate)
 
 	// ToolsDomain needs tracer — constructed here after tracer init.
-	kernel.toolsDomain = toolsmod.NewDomain(sharedTools, nil, kernel.tracer, kernel.audit, cfg.CallerID, cfg.RuntimeID)
+	kernel.toolsDomain = toolhost.NewDomain(sharedTools, nil, kernel.tracer, kernel.audit, cfg.CallerID, cfg.RuntimeID)
 
 	kernel.streamTracker = newStreamTracker(kernel, 10*time.Second, 10*time.Minute)
 

@@ -1,7 +1,7 @@
 # Go SDK
 
 The Go API surface you write against is the `brainkit` package
-(Kit, Config, accessors, Call wrappers) plus a thin `sdk` package
+(Kit, Config, startup builders, Call wrappers) plus a thin `sdk` package
 that owns the message envelope and typed message shapes. This guide
 covers every piece you'd reach for in a production program.
 
@@ -29,14 +29,12 @@ Lifecycle:
 |---|---|
 | `kit.Close()` | Fast shutdown with a 5 s drain timeout. |
 | `kit.Shutdown(ctx)` | Graceful drain bound by `ctx`. |
-| `kit.ShutdownSignal()` | `<-chan struct{}` closed when tear-down begins. Long-running goroutines select on it. |
 
 Identity helpers:
 
 ```go
 kit.Namespace()      // string
 kit.CallerID()       // string stamped into outbound metadata
-kit.TransportKind()  // "memory" | "embedded" | "nats" | "amqp" | "redis"
 ```
 
 ## Config
@@ -71,31 +69,34 @@ fields:
 | `RetryPolicies` | `map[string]RetryPolicy` | Topic glob → retry config. |
 | `Modules` | `[]Module` | Opt-in subsystems. |
 
-## Accessors
+## Runtime Admin Modules
 
-After `New`, four accessors manage registered resources:
-
-```go
-kit.Providers()  // *Providers — Register, Unregister, List, Get, Has
-kit.Storages()   // *Storages  — (plural) same five methods
-kit.Vectors()    // *Vectors   — same five methods
-kit.Secrets()    // *Secrets   — Set, Get, Delete, List, Rotate
-```
-
-Example:
+After `New`, runtime provider/storage/vector/secret administration is exposed
+by opt-in modules, not root Kit accessors.
 
 ```go
-kit.Providers().Register("openai", brainkit.AIProviderType("openai"),
-    map[string]any{"apiKey": os.Getenv("OPENAI_API_KEY")})
+kit, err := brainkit.New(brainkit.Config{
+    Transport: brainkit.Memory(),
+    Modules: []brainkit.Module{
+        registrymod.New(),
+        secretsmod.New(),
+    },
+})
 
-list := kit.Storages().List()
-for _, s := range list { fmt.Println(s.Name, s.Type) }
+_, err = registrymsg.CallProviderAdd(kit, ctx, registrymsg.ProviderAddMsg{
+    Name:   "openai",
+    Type:   "openai",
+    Config: brainkit.MustJSON(map[string]any{"APIKey": os.Getenv("OPENAI_API_KEY")}),
+})
 
-if err := kit.Secrets().Set(ctx, "API_TOKEN", "sk-..."); err != nil { ... }
+_, err = secretmsg.CallSecretsSet(kit, ctx,
+    secretmsg.SecretsSetMsg{Name: "API_TOKEN", Value: "sk-..."})
 ```
 
-Secrets require `Config.SecretKey`; otherwise `Set`/`Get`/`Delete`
-return an error wrapping a `NotConfigured` shape.
+Use `Config.Providers`, `Config.Storages`, and `Config.Vectors` for startup
+configuration. Mount `modules/registry` when runtime mutation/listing is part
+of the process contract. Mount `modules/secrets` when `secrets.*` bus commands
+should exist.
 
 See [`examples/secrets/`](../../examples/secrets/).
 
@@ -277,16 +278,16 @@ schema.
 type AddInput  struct { A int `json:"a"`; B int `json:"b"` }
 type AddOutput struct { Sum int `json:"sum"` }
 
-err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
+err := kit.Mount(ctx, toolsmod.GoTool("math.add", toolsmod.TypedTool[AddInput]{
     Description: "Return a + b as a typed sum.",
     Execute: func(_ context.Context, in AddInput) (any, error) {
         return AddOutput{Sum: in.A + in.B}, nil
     },
-})
+}))
 ```
 
-`RegisterTool[T]` is a package-level generic function, not a Kit
-method. Schema derives from struct tags via reflection. Invoke:
+`GoTool[T]` returns a module; mounting it registers the tool for that
+module scope. Schema derives from struct tags via reflection. Invoke:
 
 ```go
 resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
@@ -305,23 +306,29 @@ Compartments.
 
 ```go
 // Inline — handy for tests and demos.
-kit.Deploy(ctx, brainkit.PackageInline("greeter", "greeter.ts",
+packages.Deploy(ctx, kit, packages.Inline("greeter", "greeter.ts",
     `bus.on("hello", (m) => m.reply({ok: true}));`))
 
 // Single file from disk.
-kit.Deploy(ctx, brainkit.PackageFromFile("./svc/agent.ts"))
+pkg, err := packages.FromFile("./svc/agent.ts")
+if err == nil {
+    _, err = packages.Deploy(ctx, kit, pkg)
+}
 
 // Directory with a brainkit.yaml manifest (multi-file packages).
-kit.Deploy(ctx, brainkit.PackageFromDir("./svc"))
+pkg, err = packages.FromDir("./svc")
+if err == nil {
+    _, err = packages.Deploy(ctx, kit, pkg)
+}
 
 // List everything currently deployed.
-names, err := kit.List(ctx)
+names, err := packages.List(ctx, kit)
 
 // Get the source / manifest of a deployment.
-pkg, err := kit.Get(ctx, "greeter")
+pkgInfo, ok, err := packages.Get(ctx, kit, "greeter")
 
 // Remove a deployment. All resources it registered are dropped.
-err = kit.Teardown(ctx, "greeter")
+err = packages.Teardown(ctx, kit, "greeter")
 ```
 
 Deployments register handlers on the mailbox namespace

@@ -13,7 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// ServerConfig is an alias for the shared MCPServerConfig type.
+// ServerConfig configures one external MCP server connection.
 type ServerConfig = types.MCPServerConfig
 
 // ToolInfo describes a tool from an MCP server.

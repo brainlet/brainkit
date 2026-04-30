@@ -11,6 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
+	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/stores"
@@ -198,7 +199,7 @@ func testTimingToolCallDuringDeploy(t *testing.T, env *suite.TestEnv) {
 func testTimingScheduleFiresBeforeHandlerReady(t *testing.T, env *suite.TestEnv) {
 	k := suite.Full(t).Kit
 
-	_, err := secSchedule(t, k, brainkit.ScheduleConfig{
+	_, err := secSchedule(t, k, schedulesmod.ScheduleConfig{
 		Expression: "in 200ms",
 		Topic:      "ts.timing-handler-sec.trigger",
 		Payload:    json.RawMessage(`{"scheduled": true}`),
@@ -271,7 +272,7 @@ func testTimingScheduleUnscheduleRace(t *testing.T, env *suite.TestEnv) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			id, err := secSchedule(t, k, brainkit.ScheduleConfig{
+			id, err := secSchedule(t, k, schedulesmod.ScheduleConfig{
 				Expression: "in 10ms",
 				Topic:      "race.sched.topic.sec",
 				Payload:    json.RawMessage(`{}`),

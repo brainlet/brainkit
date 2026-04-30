@@ -127,7 +127,7 @@ In a Go module or tool implementation, return a typed error and let
 the framework envelope it:
 
 ```go
-brainkit.RegisterTool(kit, "weather", brainkit.TypedTool[WeatherInput]{
+kit.Mount(ctx, toolsmod.GoTool("weather", toolsmod.TypedTool[WeatherInput]{
     Description: "Fetch weather.",
     Execute: func(ctx context.Context, in WeatherInput) (any, error) {
         if in.City == "" {
@@ -138,7 +138,7 @@ brainkit.RegisterTool(kit, "weather", brainkit.TypedTool[WeatherInput]{
         }
         return WeatherOutput{...}, nil
     },
-})
+}))
 ```
 
 The caller sees `*sdk.ValidationError` or `*sdk.NotFoundError` on the

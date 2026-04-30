@@ -17,5 +17,5 @@ bus.on("abort-demo", async (msg) => {
   msg.reply({ ok: true });
 });
 
-bus.publish("ts.bus-cancel-fetch-abort-demo.abort-demo", {});
+await bus.call("ts.bus-cancel-fetch-abort-demo.abort-demo", {}, { timeoutMs: 5000 });
 output({ handlerGotCtrl, signalNotInitiallyAborted: signalWasAborted });

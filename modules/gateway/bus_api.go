@@ -2,12 +2,12 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/transport"
+	bkmodule "github.com/brainlet/brainkit/module"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/google/uuid"
 )
 
 // registerBusAPIRoutes adds the built-in POST /api/bus and
@@ -18,9 +18,9 @@ import (
 // brainkit directly.
 //
 // Disable via Config.NoBusAPI=true.
-func registerBusAPIRoutes(mux *http.ServeMux, rt sdk.Runtime) {
-	mux.HandleFunc("POST /api/bus", busAPIHandler(rt))
-	mux.HandleFunc("POST /api/stream", busAPIStreamHandler(rt))
+func registerBusAPIRoutes(mux *http.ServeMux, caller bkmodule.RequestCaller) {
+	mux.HandleFunc("POST /api/bus", busAPIHandler(caller))
+	mux.HandleFunc("POST /api/stream", busAPIStreamHandler(caller))
 }
 
 // busAPIHandler handles POST /api/bus — generic bus request-reply
@@ -31,7 +31,7 @@ func registerBusAPIRoutes(mux *http.ServeMux, rt sdk.Runtime) {
 //
 // The client's request context controls how long to wait — there
 // is no server-side timeout cap on top.
-func busAPIHandler(rt sdk.Runtime) http.HandlerFunc {
+func busAPIHandler(caller bkmodule.RequestCaller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -55,36 +55,27 @@ func busAPIHandler(rt sdk.Runtime) http.HandlerFunc {
 			writeBusJSON(w, http.StatusBadRequest, map[string]string{"error": "topic is required"})
 			return
 		}
+		if caller == nil {
+			writeBusJSON(w, http.StatusInternalServerError, map[string]string{"error": "caller is not configured"})
+			return
+		}
 
-		ctx := r.Context()
-		correlationID := uuid.NewString()
-		replyTo := req.Topic + ".reply." + correlationID
-
-		replyCh := make(chan sdk.Message, 1)
-		unsub, err := rt.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		})
+		reply, err := caller.Call(r.Context(), req.Topic, req.Payload, sdk.CallerConfig{})
 		if err != nil {
-			writeBusJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscribe: " + err.Error()})
+			var timeoutErr *sdk.CallTimeoutError
+			if errors.As(err, &timeoutErr) {
+				writeBusJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timeout waiting for response"})
+				return
+			}
+			var cancelledErr *sdk.CallCancelledError
+			if errors.As(err, &cancelledErr) {
+				writeBusJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timeout waiting for response"})
+				return
+			}
+			writeBusJSON(w, http.StatusBadGateway, map[string]string{"error": "call: " + err.Error()})
 			return
 		}
-		defer unsub()
-
-		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := rt.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
-			writeBusJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
-			return
-		}
-
-		select {
-		case msg := <-replyCh:
-			writeBusJSON(w, http.StatusOK, map[string]json.RawMessage{"payload": msg.Payload})
-		case <-ctx.Done():
-			writeBusJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "timeout waiting for response"})
-		}
+		writeBusJSON(w, http.StatusOK, map[string]json.RawMessage{"payload": reply})
 	}
 }
 
@@ -92,7 +83,7 @@ func busAPIHandler(rt sdk.Runtime) http.HandlerFunc {
 // stream every reply event as NDJSON. Each intermediate reply
 // (`done=false`) writes one line and flushes; the terminal reply
 // (`done=true`) writes last and closes the response.
-func busAPIStreamHandler(rt sdk.Runtime) http.HandlerFunc {
+func busAPIStreamHandler(caller bkmodule.RequestCaller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -114,6 +105,10 @@ func busAPIStreamHandler(rt sdk.Runtime) http.HandlerFunc {
 		}
 		if req.Topic == "" {
 			writeBusJSON(w, http.StatusBadRequest, map[string]string{"error": "topic is required"})
+			return
+		}
+		if caller == nil {
+			writeBusJSON(w, http.StatusInternalServerError, map[string]string{"error": "caller is not configured"})
 			return
 		}
 
@@ -123,52 +118,33 @@ func busAPIStreamHandler(rt sdk.Runtime) http.HandlerFunc {
 			return
 		}
 
-		ctx := r.Context()
-		correlationID := uuid.NewString()
-		replyTo := req.Topic + ".reply." + correlationID
-
-		eventCh := make(chan sdk.Message, 100)
-		unsub, err := rt.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			select {
-			case eventCh <- msg:
-			default:
-			}
-		})
-		if err != nil {
-			writeBusJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscribe: " + err.Error()})
-			return
-		}
-		defer unsub()
-
-		pubCtx := transport.WithPublishMeta(ctx, correlationID, replyTo)
-		if _, err := rt.PublishRaw(pubCtx, req.Topic, req.Payload); err != nil {
-			writeBusJSON(w, http.StatusBadGateway, map[string]string{"error": "publish: " + err.Error()})
-			return
-		}
-
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
 		enc := json.NewEncoder(w)
-		for {
-			select {
-			case msg := <-eventCh:
-				done := msg.Metadata != nil && msg.Metadata["done"] == "true"
-				_ = enc.Encode(map[string]any{
+		reply, err := caller.Call(r.Context(), req.Topic, req.Payload, sdk.CallerConfig{
+			StreamHandler: func(msg sdk.Message) error {
+				if err := enc.Encode(map[string]any{
 					"payload": json.RawMessage(msg.Payload),
-					"done":    done,
-				})
-				flusher.Flush()
-				if done {
-					return
+					"done":    false,
+				}); err != nil {
+					return err
 				}
-			case <-ctx.Done():
-				_ = enc.Encode(map[string]string{"error": "timeout"})
 				flusher.Flush()
-				return
-			}
+				return nil
+			},
+		})
+		if err != nil {
+			_ = enc.Encode(map[string]string{"error": "call: " + err.Error()})
+			flusher.Flush()
+			return
 		}
+		_ = enc.Encode(map[string]any{
+			"payload": reply,
+			"done":    true,
+		})
+		flusher.Flush()
 	}
 }
 

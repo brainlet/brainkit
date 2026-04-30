@@ -42,6 +42,72 @@ type CapabilityDescriptor struct {
 	Summary   string              `json:"summary,omitempty"`
 }
 
+// ResourceKind identifies a non-bus resource owned by a module scope.
+type ResourceKind string
+
+const (
+	ResourceKindTool       ResourceKind = "tool"
+	ResourceKindCapability ResourceKind = "capability"
+	ResourceKindHook       ResourceKind = "hook"
+	ResourceKindStore      ResourceKind = "store"
+	ResourceKindProcess    ResourceKind = "process"
+	ResourceKindHTTP       ResourceKind = "http"
+	ResourceKindRuntime    ResourceKind = "runtime"
+	ResourceKindScheduler  ResourceKind = "scheduler"
+	ResourceKindCustom     ResourceKind = "custom"
+)
+
+// ResourceDescriptor describes a non-bus resource owned by a module. Resources
+// are intentionally generic so modules can manifest stores, hooks, processes,
+// HTTP listeners, schedulers, and domain-specific handles without new host APIs.
+type ResourceDescriptor struct {
+	Kind     ResourceKind      `json:"kind"`
+	Name     string            `json:"name"`
+	Summary  string            `json:"summary,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// Resource describes a generic module-owned resource.
+func Resource(kind ResourceKind, name string, summary ...string) ResourceDescriptor {
+	return ResourceDescriptor{
+		Kind:    kind,
+		Name:    name,
+		Summary: first(summary),
+	}
+}
+
+// ResourceWithMetadata describes a generic resource with stable string
+// metadata for CLI/JSON introspection.
+func ResourceWithMetadata(kind ResourceKind, name string, metadata map[string]string, summary ...string) ResourceDescriptor {
+	return ResourceDescriptor{
+		Kind:     kind,
+		Name:     name,
+		Summary:  first(summary),
+		Metadata: cloneStringMap(metadata),
+	}
+}
+
+// ToolResource describes a tool registered through module.Host.Tools.
+func ToolResource(spec ToolSpec) ResourceDescriptor {
+	metadata := map[string]string{}
+	if spec.ShortName != "" {
+		metadata["short_name"] = spec.ShortName
+	}
+	if spec.Owner != "" {
+		metadata["owner"] = spec.Owner
+	}
+	if spec.Package != "" {
+		metadata["package"] = spec.Package
+	}
+	if spec.Version != "" {
+		metadata["version"] = spec.Version
+	}
+	if spec.Local {
+		metadata["local"] = "true"
+	}
+	return ResourceWithMetadata(ResourceKindTool, spec.Name, metadata, spec.Description)
+}
+
 // CommandMessage describes a request/reply bus command.
 func CommandMessage[Req sdk.BrainkitMessage, Resp any](summary ...string) MessageDescriptor {
 	var req Req
@@ -132,7 +198,7 @@ func ProvidedCapabilityOf[T any](name string, summary ...string) CapabilityDescr
 
 // DescribeModule returns normalized metadata for a module instance. It prefers
 // module-owned metadata, then the registered factory's metadata, and finally
-// falls back to ID/status/dependency interfaces on the module value itself.
+// falls back to status metadata on the module value itself.
 func DescribeModule(mod Module) Descriptor {
 	if mod == nil {
 		return Descriptor{}
@@ -154,17 +220,11 @@ func DescribeModule(mod Module) Descriptor {
 			desc.Status = s.Status()
 		}
 	}
-	if len(desc.Requires) == 0 {
-		if deps, ok := mod.(DependencyReporter); ok {
-			desc.Requires = deps.Dependencies()
-		}
-	}
 	return NormalizeDescriptor(id, desc)
 }
 
 // DependenciesOf returns module dependencies using descriptor metadata as the
-// source of truth, with DependencyReporter retained as a fallback for modules
-// that have not added descriptors yet.
+// source of truth.
 func DependenciesOf(mod Module) []string {
 	desc := DescribeModule(mod)
 	out := append([]string(nil), desc.Requires...)
@@ -184,6 +244,7 @@ func NormalizeDescriptor(name string, desc Descriptor) Descriptor {
 	desc.Events = normalizeMessages(desc.Events, MessageKindEvent)
 	desc.Subscriptions = normalizeMessages(desc.Subscriptions, MessageKindSubscription)
 	desc.Capabilities = normalizeCapabilities(desc.Capabilities)
+	desc.Resources = normalizeResources(desc.Resources)
 	return desc
 }
 
@@ -242,6 +303,33 @@ func normalizeCapabilities(in []CapabilityDescriptor) []CapabilityDescriptor {
 	return out
 }
 
+func normalizeResources(in []ResourceDescriptor) []ResourceDescriptor {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ResourceDescriptor, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, res := range in {
+		if res.Kind == "" || res.Name == "" {
+			continue
+		}
+		key := string(res.Kind) + "\x00" + res.Name
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		res.Metadata = cloneStringMap(res.Metadata)
+		out = append(out, res)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind == out[j].Kind {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Kind < out[j].Kind
+	})
+	return out
+}
+
 func uniqueStrings(in []string) []string {
 	if len(in) == 0 {
 		return nil
@@ -267,6 +355,23 @@ func first(values []string) string {
 		return ""
 	}
 	return values[0]
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if k == "" {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func typeName[T any]() string {

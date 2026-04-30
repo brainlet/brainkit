@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulecap/runtime"
 	"github.com/brainlet/brainkit/modules/eval/evalmsg"
 	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
@@ -18,14 +18,7 @@ import (
 // brainkit.Config.Modules when the runtime should expose JS/TS eval over the
 // bus.
 type Module struct {
-	runtime runtime
-}
-
-type runtime interface {
-	Deploy(context.Context, string, string, ...types.DeployOption) ([]types.ResourceInfo, error)
-	Teardown(context.Context, string) (int, error)
-	EvalTS(context.Context, string, string) (string, error)
-	EvalModule(context.Context, string, string) (string, error)
+	runtime runtimecap.EvalRuntime
 }
 
 // New creates the eval module.
@@ -34,15 +27,12 @@ func New() *Module { return &Module{} }
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "eval" }
 
-// Dependencies reports modules that must mount before eval.
-func (m *Module) Dependencies() []string { return []string{"jsruntime"} }
-
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusBeta }
 
 // Mount registers kit.eval against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	runtime, err := bkmodule.RequireCapability[runtime](host, bkmodule.CapabilityEvalRuntime)
+	runtime, err := bkmodule.RequireCapability[runtimecap.EvalRuntime](host, bkmodule.CapabilityEvalRuntime)
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
@@ -91,7 +81,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[evalmsg.KitEvalMsg, evalmsg.KitEvalResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[runtime](bkmodule.CapabilityEvalRuntime),
+			bkmodule.RequiredCapabilityOf[runtimecap.EvalRuntime](bkmodule.CapabilityEvalRuntime),
 		},
 	}
 }

@@ -14,12 +14,7 @@ import (
 // include in brainkit.Config.Modules when the runtime should expose the
 // embedded reference corpus over the bus.
 type Module struct {
-	catalog catalog
-}
-
-type catalog interface {
-	GetReference(string) (string, error)
-	ListReferences() []referencemsg.KitReferenceListEntry
+	catalog bkmodule.ReferenceCatalog
 }
 
 // New creates the reference module.
@@ -33,7 +28,7 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers reference command handlers against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	catalog, err := bkmodule.RequireCapability[catalog](host, bkmodule.CapabilityReferenceCatalog)
+	catalog, err := bkmodule.RequireCapability[bkmodule.ReferenceCatalog](host, bkmodule.CapabilityReferenceCatalog)
 	if err != nil {
 		return fmt.Errorf("reference: %w", err)
 	}
@@ -86,7 +81,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[referencemsg.KitReferenceMsg, referencemsg.KitReferenceResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[catalog](bkmodule.CapabilityReferenceCatalog),
+			bkmodule.RequiredCapabilityOf[bkmodule.ReferenceCatalog](bkmodule.CapabilityReferenceCatalog),
 		},
 	}
 }
@@ -104,5 +99,16 @@ func (m *Module) Get(_ context.Context, req referencemsg.KitReferenceMsg) (*refe
 
 // List handles kit.reference.list.
 func (m *Module) List(context.Context, referencemsg.KitReferenceListMsg) (*referencemsg.KitReferenceListResp, error) {
-	return &referencemsg.KitReferenceListResp{References: m.catalog.ListReferences()}, nil
+	refs := m.catalog.ListReferences()
+	out := make([]referencemsg.KitReferenceListEntry, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, referencemsg.KitReferenceListEntry{
+			Name:        ref.Name,
+			Kind:        ref.Kind,
+			Description: ref.Description,
+			Size:        ref.Size,
+			Parts:       append([]string(nil), ref.Parts...),
+		})
+	}
+	return &referencemsg.KitReferenceListResp{References: out}, nil
 }

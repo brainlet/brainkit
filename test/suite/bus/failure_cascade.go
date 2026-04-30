@@ -11,7 +11,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/systemmsg"
@@ -33,7 +33,7 @@ func testCascadeDeployWithBrokenStore(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			errorCalled = true
 		},
@@ -134,8 +134,8 @@ func testCascadeTeardownCleansSubscriptions(t *testing.T, _ *suite.TestEnv) {
 
 	// Verify it works
 	result := testutil.EvalTS(t, freshEnv.Kit, "__ping-cascade.ts", `
-		var r = bus.publish("ts.sub-cleanup-cascade.ping", {});
-		return r.replyTo ? "ok" : "fail";
+		var r = await bus.call("ts.sub-cleanup-cascade.ping", {}, {timeoutMs: 1000});
+		return r && r.pong ? "ok" : "fail";
 	`)
 	assert.Equal(t, "ok", result)
 
@@ -214,7 +214,7 @@ func testCascadePublishDuringDrain(t *testing.T, _ *suite.TestEnv) {
 	// Publish should still work (publish isn't affected by drain — only handlers are)
 	result := testutil.EvalTS(t, freshEnv.Kit, "__drain_pub_cascade.ts", `
 		var r = bus.publish("ts.drain-pub-cascade.ask", {});
-		return r.replyTo ? "published" : "fail";
+		return r === undefined ? "published" : "fail";
 	`)
 	assert.Equal(t, "published", result)
 
@@ -244,7 +244,7 @@ func testCascadeRetryExhausted(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		RetryPolicies: map[string]brainkit.RetryPolicy{
 			"ts.retry-test-cascade.*": {MaxRetries: 2, InitialDelay: 10 * time.Millisecond},
 		},

@@ -24,7 +24,7 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			var configJSON []byte
 			switch category {
 			case "provider":
-				if reg, ok := r.host.ProviderRegistry().GetAIProvider(name); ok {
+				if reg, ok := r.registry.ProviderRegistry().GetAIProvider(name); ok {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
@@ -32,7 +32,7 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 					})
 				}
 			case "vectorStore":
-				if reg, ok := r.host.ProviderRegistry().GetVectorStore(name); ok {
+				if reg, ok := r.registry.ProviderRegistry().GetVectorStore(name); ok {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
@@ -40,7 +40,7 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 					})
 				}
 			case "storage":
-				if reg, ok := r.host.ProviderRegistry().GetStorage(name); ok {
+				if reg, ok := r.registry.ProviderRegistry().GetStorage(name); ok {
 					configJSON, _ = json.Marshal(map[string]any{
 						"type":   string(reg.Type),
 						"name":   name,
@@ -65,11 +65,11 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			var found bool
 			switch category {
 			case "provider":
-				found = r.host.ProviderRegistry().HasAIProvider(name)
+				found = r.registry.ProviderRegistry().HasAIProvider(name)
 			case "vectorStore":
-				found = r.host.ProviderRegistry().HasVectorStore(name)
+				found = r.registry.ProviderRegistry().HasVectorStore(name)
 			case "storage":
-				found = r.host.ProviderRegistry().HasStorage(name)
+				found = r.registry.ProviderRegistry().HasStorage(name)
 			}
 			if found {
 				return qctx.NewString("true")
@@ -87,11 +87,11 @@ func (r *Runtime) registerRegistryBridges(qctx *quickjs.Context) {
 			var result any
 			switch category {
 			case "provider":
-				result = r.host.ProviderRegistry().ListAIProviders()
+				result = r.registry.ProviderRegistry().ListAIProviders()
 			case "vectorStore":
-				result = r.host.ProviderRegistry().ListVectorStores()
+				result = r.registry.ProviderRegistry().ListVectorStores()
 			case "storage":
-				result = r.host.ProviderRegistry().ListStorages()
+				result = r.registry.ProviderRegistry().ListStorages()
 			default:
 				result = []any{}
 			}

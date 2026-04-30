@@ -11,4 +11,5 @@ import (
 type MessageHost interface {
 	PublishRaw(context.Context, string, json.RawMessage) (string, error)
 	SubscribeRaw(context.Context, string, func(sdk.Message)) (Handle, error)
+	ReplyRaw(context.Context, string, string, json.RawMessage, bool) error
 }

@@ -32,6 +32,7 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 	if err := runtimejs.Enable(ctx, runtimeHost); err != nil {
 		return err
 	}
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JS/TS runtime activation lease."))
 	for name, value := range map[string]any{
 		bkmodule.CapabilityEnableJSRuntime: func(ctx context.Context) error {
 			return runtimejs.Enable(ctx, runtimeHost)
@@ -41,7 +42,7 @@ func (m *Module) Mount(ctx context.Context, host bkmodule.Host) error {
 		},
 		bkmodule.CapabilityDeployer:    runtimecap.Deployer(runtimeHost),
 		bkmodule.CapabilityTSRunner:    runtimecap.TSRunner(runtimeHost),
-		bkmodule.CapabilityEvalRuntime: runtimeHost,
+		bkmodule.CapabilityEvalRuntime: runtimecap.EvalRuntime(runtimeHost),
 		bkmodule.CapabilityCallJS: func(ctx context.Context, fn string, args any) (json.RawMessage, error) {
 			return runtimeHost.CallJS(ctx, fn, args)
 		},
@@ -89,10 +90,13 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.ProvidedCapabilityOf[func() bool](bkmodule.CapabilityHasJSRuntime),
 			bkmodule.ProvidedCapabilityOf[runtimecap.Deployer](bkmodule.CapabilityDeployer),
 			bkmodule.ProvidedCapabilityOf[runtimecap.TSRunner](bkmodule.CapabilityTSRunner),
-			bkmodule.ProvidedCapabilityOf[runtimecap.Host](bkmodule.CapabilityEvalRuntime),
+			bkmodule.ProvidedCapabilityOf[runtimecap.EvalRuntime](bkmodule.CapabilityEvalRuntime),
 			bkmodule.ProvidedCapabilityOf[func(context.Context, string, any) (json.RawMessage, error)](bkmodule.CapabilityCallJS),
 			bkmodule.ProvidedCapabilityOf[func() any](bkmodule.CapabilityHarnessRuntime),
 			bkmodule.RequiredCapabilityOf[runtimecap.Host](bkmodule.CapabilityJSRuntimeHost),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindRuntime, "jsruntime.heap", "Embedded JS/TS runtime activation lease."),
 		},
 	}
 }

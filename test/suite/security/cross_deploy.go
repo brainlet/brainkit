@@ -304,7 +304,7 @@ func testXDeploySendToCrafted(t *testing.T, env *suite.TestEnv) {
 			__proto__: {polluted: true},
 			constructor: {prototype: {pwned: true}},
 		});
-		output({sent: true, replyTo: r.replyTo});
+		output({sent: r === undefined});
 	`)
 
 	time.Sleep(1 * time.Second)

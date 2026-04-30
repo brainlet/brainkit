@@ -23,10 +23,11 @@ func pkgTeardown(source string) packagemsg.PackageTeardownMsg {
 	return packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}
 }
 
-// testJSPublishReturnsReplyTo verifies that __go_brainkit_bus_publish
-// generates a replyTo and correlationId, and returns them to JS.
-func testJSPublishReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
-	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish.ts", `
+// testJSRawPublishBridgeReturnsReplyTo verifies that the internal Go bridge
+// can still seed low-level reply-topic tests without making bus.publish expose
+// that routing detail.
+func testJSRawPublishBridgeReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
+	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish_raw.ts", `
 		var result = __go_brainkit_bus_publish("test.publish.target", JSON.stringify({hello: "world"}));
 		var parsed = JSON.parse(result);
 		return JSON.stringify({
@@ -40,8 +41,36 @@ func testJSPublishReturnsReplyTo(t *testing.T, env *suite.TestEnv) {
 		HasCorrelationId bool `json:"hasCorrelationId"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
-	assert.True(t, parsed.HasReplyTo, "bus.publish should return replyTo")
-	assert.True(t, parsed.HasCorrelationId, "bus.publish should return correlationId")
+	assert.True(t, parsed.HasReplyTo, "raw publish bridge should return replyTo")
+	assert.True(t, parsed.HasCorrelationId, "raw publish bridge should return correlationId")
+}
+
+// testJSPublishFireAndForget verifies the public JS bus.publish surface is an
+// event publish, not a request/reply helper with an exposed replyTo.
+func testJSPublishFireAndForget(t *testing.T, env *suite.TestEnv) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	received := make(chan sdk.Message, 1)
+	unsub, err := env.Kit.SubscribeRaw(ctx, "test.publish.fire", func(msg sdk.Message) {
+		received <- msg
+	})
+	require.NoError(t, err)
+	defer unsub()
+
+	result := testutil.EvalTS(t, env.Kit, "__test_bus_publish_fire.ts", `
+		var r = bus.publish("test.publish.fire", {event: "happened"});
+		return String(r === undefined);
+	`)
+	assert.Equal(t, "true", result)
+
+	select {
+	case msg := <-received:
+		assert.Contains(t, string(msg.Payload), "happened")
+		assert.Empty(t, msg.Metadata["replyTo"], "publish should NOT have replyTo")
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for published message")
+	}
 }
 
 // testJSEmitFireAndForget verifies __go_brainkit_bus_emit publishes without replyTo.
@@ -215,6 +244,31 @@ func testDeployWithBusOn(t *testing.T, env *suite.TestEnv) {
 	assert.Contains(t, string(resp), "hello world")
 
 	sdk.Publish(env.Kit, ctx, pkgTeardown("greeter.ts"))
+}
+
+func testJSCallServiceUsesSharedCaller(t *testing.T, env *suite.TestEnv) {
+	require.NotNil(t, env.Kit.Caller())
+	before := env.Kit.Caller().Snapshot()
+
+	tsCode := `
+		bus.on("greet", function(msg) {
+			msg.reply({ greeting: "hello " + msg.payload.name });
+		});
+	`
+	testutil.Deploy(t, env.Kit, "service-caller.ts", tsCode)
+
+	result := testutil.EvalTS(t, env.Kit, "__test_call_service.ts", `
+		var resp = await bus.callService("service-caller.ts", "greet", { name: "shared" }, { timeoutMs: 5000 });
+		return JSON.stringify(resp);
+	`)
+	assert.Contains(t, result, "hello shared")
+
+	after := env.Kit.Caller().Snapshot()
+	assert.Greater(t, after.Completed, before.Completed, "bus.callService should use the shared-inbox caller")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sdk.Publish(env.Kit, ctx, pkgTeardown("service-caller.ts"))
 }
 
 // testStreamingChunks verifies msg.send (chunks) + msg.reply (final) from a .ts service.

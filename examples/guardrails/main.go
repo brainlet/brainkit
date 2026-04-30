@@ -8,10 +8,10 @@
 //
 //   - ts.guardrails.clean     — safe input, passes through
 //   - ts.guardrails.injection — attempted instruction override,
-//                               rewritten by the detector
+//     rewritten by the detector
 //   - ts.guardrails.pii       — contains an email + phone, which
-//                               the PIIDetector masks before the
-//                               model ever sees them
+//     the PIIDetector masks before the
+//     model ever sees them
 //
 // Cost note: each processor is an inline LLM call. With three
 // processors + the main agent, each user prompt triggers up to
@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -53,6 +54,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -62,7 +64,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("guardrails", "guardrails.ts", guardrailsSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("guardrails", "guardrails.ts", guardrailsSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/4] guardrails deployed")

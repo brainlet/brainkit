@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	bkmodule "github.com/brainlet/brainkit/module"
+	"github.com/brainlet/brainkit/modulehost/agenthost"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 )
 
@@ -14,14 +15,7 @@ import (
 // and include in brainkit.Config.Modules when the runtime should expose the
 // agent registry over the bus.
 type Module struct {
-	registry agentRegistry
-}
-
-type agentRegistry interface {
-	ListAgents(context.Context, agentmsg.AgentListMsg) (*agentmsg.AgentListResp, error)
-	DiscoverAgents(context.Context, agentmsg.AgentDiscoverMsg) (*agentmsg.AgentDiscoverResp, error)
-	GetAgentStatus(context.Context, agentmsg.AgentGetStatusMsg) (*agentmsg.AgentGetStatusResp, error)
-	SetAgentStatus(context.Context, agentmsg.AgentSetStatusMsg) (*agentmsg.AgentSetStatusResp, error)
+	registry agenthost.Registry
 }
 
 // New creates the agents module.
@@ -35,7 +29,7 @@ func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
 // Mount registers agents.* command handlers against the running Kit.
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
-	registry, err := bkmodule.RequireCapability[agentRegistry](host, bkmodule.CapabilityAgentRegistry)
+	registry, err := bkmodule.RequireCapability[agenthost.Registry](host, bkmodule.CapabilityAgentRegistry)
 	if err != nil {
 		return fmt.Errorf("agents: %w", err)
 	}
@@ -93,7 +87,7 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.CommandMessage[agentmsg.AgentSetStatusMsg, agentmsg.AgentSetStatusResp](),
 		},
 		Capabilities: []bkmodule.CapabilityDescriptor{
-			bkmodule.RequiredCapabilityOf[agentRegistry](bkmodule.CapabilityAgentRegistry),
+			bkmodule.RequiredCapabilityOf[agenthost.Registry](bkmodule.CapabilityAgentRegistry),
 		},
 	}
 }
@@ -102,20 +96,65 @@ func init() { bkmodule.Register("agents", Factory{}) }
 
 // List handles agents.list.
 func (m *Module) List(ctx context.Context, req agentmsg.AgentListMsg) (*agentmsg.AgentListResp, error) {
-	return m.registry.ListAgents(ctx, req)
+	resp, err := m.registry.ListAgents(ctx, agenthost.ListRequest{Filter: hostFilter(req.Filter)})
+	if err != nil {
+		return nil, err
+	}
+	return &agentmsg.AgentListResp{Agents: msgAgents(resp.Agents)}, nil
 }
 
 // Discover handles agents.discover.
 func (m *Module) Discover(ctx context.Context, req agentmsg.AgentDiscoverMsg) (*agentmsg.AgentDiscoverResp, error) {
-	return m.registry.DiscoverAgents(ctx, req)
+	resp, err := m.registry.DiscoverAgents(ctx, agenthost.DiscoverRequest{
+		Capability: req.Capability,
+		Model:      req.Model,
+		Status:     req.Status,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &agentmsg.AgentDiscoverResp{Agents: msgAgents(resp.Agents)}, nil
 }
 
 // GetStatus handles agents.get-status.
 func (m *Module) GetStatus(ctx context.Context, req agentmsg.AgentGetStatusMsg) (*agentmsg.AgentGetStatusResp, error) {
-	return m.registry.GetAgentStatus(ctx, req)
+	resp, err := m.registry.GetAgentStatus(ctx, agenthost.StatusRequest{Name: req.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &agentmsg.AgentGetStatusResp{Name: resp.Name, Status: resp.Status}, nil
 }
 
 // SetStatus handles agents.set-status.
 func (m *Module) SetStatus(ctx context.Context, req agentmsg.AgentSetStatusMsg) (*agentmsg.AgentSetStatusResp, error) {
-	return m.registry.SetAgentStatus(ctx, req)
+	resp, err := m.registry.SetAgentStatus(ctx, agenthost.SetStatusRequest{Name: req.Name, Status: req.Status})
+	if err != nil {
+		return nil, err
+	}
+	return &agentmsg.AgentSetStatusResp{OK: resp.OK}, nil
+}
+
+func hostFilter(filter *agentmsg.AgentFilter) *agenthost.AgentFilter {
+	if filter == nil {
+		return nil
+	}
+	return &agenthost.AgentFilter{
+		Capability: filter.Capability,
+		Model:      filter.Model,
+		Status:     filter.Status,
+	}
+}
+
+func msgAgents(in []agenthost.AgentInfo) []agentmsg.AgentInfo {
+	out := make([]agentmsg.AgentInfo, 0, len(in))
+	for _, info := range in {
+		out = append(out, agentmsg.AgentInfo{
+			Name:         info.Name,
+			Capabilities: append([]string(nil), info.Capabilities...),
+			Model:        info.Model,
+			Status:       info.Status,
+			Kit:          info.Kit,
+		})
+	}
+	return out
 }

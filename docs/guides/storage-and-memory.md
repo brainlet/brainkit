@@ -33,18 +33,22 @@ Five storage builders ship out of the box:
 | `brainkit.UpstashStorage(url, token)` | Upstash REST storage. |
 | `brainkit.InMemoryStorage()` | Ephemeral in-process, lost on close. |
 
-Manage the registry at runtime via `kit.Storages()`:
+Manage the registry at runtime by mounting `modules/registry` and calling
+`registrymsg.StorageAddMsg`, `RegistryListMsg`, and `StorageRemoveMsg`:
 
 ```go
-kit.Storages().Register("scratch",
-    brainkit.StorageType("sqlite"),
-    map[string]any{"path": ":memory:"})
+_, _ = registrymsg.CallStorageAdd(kit, ctx, registrymsg.StorageAddMsg{
+    Name:   "scratch",
+    Type:   "sqlite",
+    Config: brainkit.MustJSON(map[string]any{"path": ":memory:"}),
+})
 
-for _, s := range kit.Storages().List() {
-    fmt.Println(s.Name, s.Type)
-}
+list, _ := registrymsg.CallRegistryList(kit, ctx,
+    registrymsg.RegistryListMsg{Category: "storage"})
+fmt.Println(string(list.Items))
 
-kit.Storages().Unregister("scratch")
+_, _ = registrymsg.CallStorageRemove(kit, ctx,
+    registrymsg.StorageRemoveMsg{Name: "scratch"})
 ```
 
 ## Access from `.ts`

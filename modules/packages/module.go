@@ -16,7 +16,7 @@ import (
 	"github.com/brainlet/brainkit/internal/syncx"
 	"github.com/brainlet/brainkit/internal/types"
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/modulecap/runtime"
+	runtimecap "github.com/brainlet/brainkit/modulecap/runtime"
 	_ "github.com/brainlet/brainkit/modules/jsruntime"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -36,9 +36,6 @@ func New() *Module { return &Module{} }
 // ID reports the hot-mount module identifier.
 func (m *Module) ID() string { return "packages" }
 
-// Dependencies reports modules that must mount before package deployment.
-func (m *Module) Dependencies() []string { return []string{"jsruntime"} }
-
 // Status reports maturity.
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusStable }
 
@@ -54,7 +51,7 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	audit, _ := bkmodule.Capability[*auditpkg.Recorder](host, bkmodule.CapabilityAuditRecorder)
 
 	m.domain = NewDomain(deployer, secretStore, pluginCheckerFactory)
-	m.domain.attachLifecycle(host.Runtime(), audit, runtimeID)
+	m.domain.attachLifecycle(host.Messages(), audit, runtimeID)
 	host.Scope().Defer(func(context.Context) error {
 		m.domain = nil
 		return nil

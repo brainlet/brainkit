@@ -21,9 +21,3 @@ var (
 	PgVectorStore      = types.PgVectorStore
 	MongoDBVectorStore = types.MongoDBVectorStore
 )
-
-// StorageURL returns the local HTTP bridge URL for a sqlite-backed storage.
-// Non-sqlite and unknown storages return an empty string.
-func (k *Kit) StorageURL(name string) string {
-	return k.kernel.StorageURL(name)
-}

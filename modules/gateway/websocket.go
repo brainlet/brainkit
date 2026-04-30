@@ -6,10 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/brainlet/brainkit/internal/transport"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/google/uuid"
 	"github.com/coder/websocket"
+	"github.com/google/uuid"
 )
 
 func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, matched *route, pathParams map[string]string) {
@@ -43,41 +42,14 @@ func (gw *Gateway) handleWebSocket(w http.ResponseWriter, r *http.Request, match
 			"type":      "message",
 		})
 
-		reqID := uuid.NewString()
-		replyTo := matched.Topic + ".reply." + reqID
-
-		replyCh := make(chan sdk.Message, 1)
-		unsub, subErr := gw.rt.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		})
-		if subErr != nil {
+		if gw.caller == nil {
 			continue
 		}
-
-		pubCtx := transport.WithPublishMeta(ctx, reqID, replyTo)
-		if _, pubErr := gw.rt.PublishRaw(pubCtx, matched.Topic, payload); pubErr != nil {
-			unsub()
+		reply, callErr := gw.caller.Call(ctx, matched.Topic, payload, sdk.CallerConfig{})
+		if callErr != nil {
 			continue
 		}
-
-		select {
-		case msg := <-replyCh:
-			unsub()
-			out := msg.Payload
-			// Unwrap success envelope so WS clients see clean JSON; on
-			// error envelope, forward the raw envelope so clients can
-			// inspect code/message.
-			if msg.Metadata["envelope"] == "true" {
-				if env, err := sdk.DecodeEnvelope(out); err == nil && env.Ok {
-					out = env.Data
-				}
-			}
-			conn.Write(ctx, websocket.MessageText, out)
-		case <-ctx.Done():
-			unsub()
+		if err := conn.Write(ctx, websocket.MessageText, reply); err != nil {
 			return
 		}
 	}

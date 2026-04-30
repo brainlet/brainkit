@@ -59,7 +59,7 @@ func TestPluginRoundTrip(t *testing.T) {
 		FSRoot:    t.TempDir(),
 		Modules: []brainkit.Module{
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{{
+				Plugins: []pluginsmod.PluginConfig{{
 					Name:         "demo",
 					Binary:       binaryPath,
 					AutoRestart:  false,

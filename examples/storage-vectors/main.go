@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -58,6 +59,7 @@ func run() error {
 		Namespace: "storage-vectors-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    tmp,
+		Modules:   []brainkit.Module{packages.New()},
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.SQLiteStorage(filepath.Join(tmp, "kv.db")),
 		},
@@ -129,7 +131,7 @@ func demoKV(ctx context.Context, kit *brainkit.Kit) error {
 			msg.reply({ found: thread !== null, thread });
 		});
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("kv-demo", "kv.ts", code)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("kv-demo", "kv.ts", code)); err != nil {
 		return fmt.Errorf("deploy kv.ts: %w", err)
 	}
 
@@ -187,7 +189,7 @@ func demoVectors(ctx context.Context, kit *brainkit.Kit) error {
 			msg.reply({ hits: hits.map((h) => ({ id: h.id, score: h.score, text: h.metadata.text })) });
 		});
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("vec-demo", "vec.ts", code)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("vec-demo", "vec.ts", code)); err != nil {
 		return fmt.Errorf("deploy vec.ts: %w", err)
 	}
 

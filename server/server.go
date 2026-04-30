@@ -19,7 +19,7 @@ import (
 	"syscall"
 
 	"github.com/brainlet/brainkit"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/stores"
 
 	// Blank-import the standard module set. Each package's init()
@@ -93,7 +93,7 @@ type Config struct {
 	Modules []brainkit.Module
 
 	// Packages are deployed after the Kit boots.
-	Packages []brainkit.Package
+	Packages []packages.Package
 }
 
 // Server is a composed runtime — Kit + YAML-driven module set,
@@ -109,7 +109,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	if len(cfg.Packages) > 0 && !hasModule(cfg.Modules, "packages") {
-		cfg.Modules = append(cfg.Modules, packagesmod.New())
+		cfg.Modules = append(cfg.Modules, packages.New())
 	}
 
 	storePath := cfg.KitStorePath
@@ -146,7 +146,7 @@ func New(cfg Config) (*Server, error) {
 // method is the long-running supervisor loop.
 func (s *Server) Start(ctx context.Context) error {
 	for _, pkg := range s.cfg.Packages {
-		if _, err := s.kit.Deploy(ctx, pkg); err != nil {
+		if _, err := packages.Deploy(ctx, s.kit, pkg); err != nil {
 			return fmt.Errorf("server: deploy package: %w", err)
 		}
 	}

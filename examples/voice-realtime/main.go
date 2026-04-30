@@ -33,6 +33,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/audio/local"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/packages"
 )
 
 //go:embed web
@@ -80,7 +81,7 @@ func run(addr string) error {
 		// local sink is here so future .ts additions (status
 		// pings, alerts) have a zero-config path.
 		Audio:   local.New(),
-		Modules: []brainkit.Module{gw},
+		Modules: []brainkit.Module{packages.New(), gw},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -90,7 +91,7 @@ func run(addr string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("voice-realtime", "voice.ts", voiceSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("voice-realtime", "voice.ts", voiceSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

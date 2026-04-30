@@ -25,7 +25,12 @@ func TestRootImportBoundary(t *testing.T) {
 		{"github.com/brainlet/brainkit/internal/jsbridge", "JS bridge belongs behind modules/jsruntime"},
 		{"github.com/brainlet/brainkit/internal/jsruntime", "concrete JS runtime must stay outside the root API graph"},
 		{"github.com/brainlet/brainkit/internal/embed/agent", "agent execution belongs behind the JS runtime module"},
+		{"github.com/brainlet/brainkit/modules", "root must not depend on optional module packages"},
 		{"github.com/brainlet/brainkit/modules/jsruntime", "root must not auto-register the concrete JS runtime module"},
+		{"github.com/brainlet/brainkit/modules/packages", "package deployment helpers and commands belong in modules/packages"},
+		{"github.com/brainlet/brainkit/modules/plugins", "plugin config and subprocess supervision belong in modules/plugins"},
+		{"github.com/brainlet/brainkit/modules/schedules", "schedule config and scheduler runtime belong in modules/schedules"},
+		{"github.com/brainlet/brainkit/modules/mcp", "MCP server config and clients belong in modules/mcp"},
 		{"github.com/brainlet/brainkit/storagebridges", "storage bridge registration is optional runtime wiring"},
 		{"github.com/brainlet/brainkit/internal/libsql", "embedded libsql server is optional storage/vector infrastructure"},
 		{"github.com/brainlet/brainkit/internal/transport/backends", "concrete transport backends belong behind transports or tests"},
@@ -158,6 +163,62 @@ func TestTopLevelModulesAreMountableModules(t *testing.T) {
 	}
 }
 
+func TestModulesUseDescriptorRequiresForDependencies(t *testing.T) {
+	var violations []string
+	for _, file := range goFilesUnder(t, "modules") {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		if strings.Contains(string(body), "Dependencies()") {
+			violations = append(violations, file)
+		}
+	}
+	if len(violations) > 0 {
+		t.Fatalf("module dependencies must be declared through module.Descriptor.Requires, not Dependencies methods:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestModuleHostDoesNotExposeRawRuntimeCallerOrStore(t *testing.T) {
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, filepath.Join("module", "module.go"), nil, 0)
+	if err != nil {
+		t.Fatalf("parse module/module.go: %v", err)
+	}
+	var hostFound bool
+	for _, decl := range parsed.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != "Host" {
+				continue
+			}
+			hostFound = true
+			iface, ok := ts.Type.(*ast.InterfaceType)
+			if !ok {
+				t.Fatalf("module.Host must be an interface")
+			}
+			for _, field := range iface.Methods.List {
+				for _, name := range field.Names {
+					switch name.Name {
+					case "Runtime", "Caller", "Store":
+						t.Fatalf("module.Host must not expose %s; modules should use Messages, Commands, or named capabilities", name.Name)
+					}
+				}
+			}
+		}
+	}
+	if !hostFound {
+		t.Fatalf("module.Host interface not found")
+	}
+}
+
 func TestEngineCommandDomainsStayInModules(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join("internal", "engine", "handlers_*.go"))
 	if err != nil {
@@ -171,7 +232,7 @@ func TestEngineCommandDomainsStayInModules(t *testing.T) {
 func TestProviderRegistryImplementationStaysModuleOwned(t *testing.T) {
 	internalDir := filepath.Join("internal", "providers")
 	if _, err := os.Stat(internalDir); err == nil {
-		t.Fatalf("%s must not exist; provider/storage/vector registry implementation belongs in modules/registry/providerreg", internalDir)
+		t.Fatalf("%s must not exist; provider/storage/vector registry implementation belongs in modulehost/providerhost/providerreg", internalDir)
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat %s: %v", internalDir, err)
 	}
@@ -187,7 +248,7 @@ func TestProviderRegistryImplementationStaysModuleOwned(t *testing.T) {
 		}
 	}
 	if len(violations) > 0 {
-		t.Fatalf("provider registry imports must point at modules/registry/providerreg, not internal/providers:\n%s", strings.Join(violations, "\n"))
+		t.Fatalf("provider registry imports must point at modulehost/providerhost/providerreg, not internal/providers:\n%s", strings.Join(violations, "\n"))
 	}
 }
 
@@ -359,6 +420,66 @@ func TestRuntimePersistenceHostImplementationStaysModuleOwned(t *testing.T) {
 func TestJSRuntimeCapabilityContractsStayModuleOwned(t *testing.T) {
 	if _, err := os.Stat(filepath.Join("modulecap", "runtime", "runtime.go")); err != nil {
 		t.Fatalf("JS runtime capability contracts must live in modulecap/runtime: %v", err)
+	}
+
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, filepath.Join("modulecap", "runtime", "runtime.go"), nil, 0)
+	if err != nil {
+		t.Fatalf("parse modulecap/runtime/runtime.go: %v", err)
+	}
+	var hostFound bool
+	for _, decl := range parsed.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != "Host" {
+				continue
+			}
+			hostFound = true
+			iface, ok := ts.Type.(*ast.InterfaceType)
+			if !ok {
+				t.Fatalf("runtimecap.Host must be an interface")
+			}
+			for _, field := range iface.Methods.List {
+				if len(field.Names) > 0 {
+					t.Fatalf("runtimecap.Host must compose smaller interfaces, not declare method %s directly", field.Names[0].Name)
+				}
+			}
+		}
+	}
+	if !hostFound {
+		t.Fatalf("runtimecap.Host interface not found")
+	}
+
+	enableParsed, err := parser.ParseFile(fset, filepath.Join("internal", "jsruntime", "enable.go"), nil, 0)
+	if err != nil {
+		t.Fatalf("parse internal/jsruntime/enable.go: %v", err)
+	}
+	for _, decl := range enableParsed.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			ts, ok := spec.(*ast.TypeSpec)
+			if !ok || ts.Name.Name != "Runtime" {
+				continue
+			}
+			st, ok := ts.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == "host" {
+						t.Fatalf("internal/jsruntime.Runtime must not store the composed runtimecap.Host; store grouped subinterfaces instead")
+					}
+				}
+			}
+		}
 	}
 
 	var violations []string

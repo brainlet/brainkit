@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
@@ -27,6 +27,7 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store: store, SecretKey: "exfil-test-key-32-characters!!",
+		Modules: []brainkit.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -34,11 +35,11 @@ func testSecretPublishToBus(t *testing.T, env *suite.TestEnv) {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes", Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
 		},
-	})
+	})))
 
 	ctx := context.Background()
 	secSetSecret(t, k, "DB_PASSWORD_SEC", "super-secret-pw-123")

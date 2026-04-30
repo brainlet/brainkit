@@ -11,11 +11,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"log"
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
+	"github.com/brainlet/brainkit/modules/tools/toolmsg"
+	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -54,33 +57,25 @@ func run() error {
 		Namespace: "go-tools-demo",
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
+		Modules: append(standard.CommandSet(),
+			toolsmod.GoTool("weather", toolsmod.TypedTool[WeatherInput]{
+				Description: "Stubbed weather lookup for demo purposes.",
+				Execute: func(_ context.Context, in WeatherInput) (any, error) {
+					return WeatherOutput{City: in.City, TempC: 18, Condition: "cloudy"}, nil
+				},
+			}),
+			toolsmod.GoTool("math.add", toolsmod.TypedTool[AddInput]{
+				Description: "Return a + b as a typed sum.",
+				Execute: func(_ context.Context, in AddInput) (any, error) {
+					return AddOutput{Sum: in.A + in.B}, nil
+				},
+			}),
+		),
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
 	}
 	defer kit.Close()
-
-	// Register two typed Go tools. Schema is derived from
-	// `WeatherInput` / `AddInput` struct tags via reflection;
-	// `tools.list` returns the generated schema so callers can
-	// validate inputs up-front.
-	if err := brainkit.RegisterTool(kit, "weather", brainkit.TypedTool[WeatherInput]{
-		Description: "Stubbed weather lookup for demo purposes.",
-		Execute: func(_ context.Context, in WeatherInput) (any, error) {
-			return WeatherOutput{City: in.City, TempC: 18, Condition: "cloudy"}, nil
-		},
-	}); err != nil {
-		return fmt.Errorf("register weather: %w", err)
-	}
-
-	if err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
-		Description: "Return a + b as a typed sum.",
-		Execute: func(_ context.Context, in AddInput) (any, error) {
-			return AddOutput{Sum: in.A + in.B}, nil
-		},
-	}); err != nil {
-		return fmt.Errorf("register math.add: %w", err)
-	}
 
 	// Deploy a .ts that calls both tools via bus.call and
 	// collates the results.
@@ -103,7 +98,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("go-tools-demo", "demo.ts", tsCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("go-tools-demo", "demo.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy demo.ts: %w", err)
 	}
 

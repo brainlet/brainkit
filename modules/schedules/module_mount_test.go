@@ -42,7 +42,21 @@ func TestSchedulesModuleHotMountsCommandsAndHook(t *testing.T) {
 	require.Len(t, list.Schedules, 1)
 	require.Equal(t, create.ID, list.Schedules[0].ID)
 
-	require.True(t, k.HasCommand("schedules.list"))
+	require.True(t, mountedCommand(k, "schedules", "schedules.list"))
 	require.NoError(t, k.Unmount(ctx, "schedules"))
-	require.False(t, k.HasCommand("schedules.list"))
+	require.False(t, mountedCommand(k, "schedules", "schedules.list"))
+}
+
+func mountedCommand(k *brainkit.Kit, moduleID, topic string) bool {
+	for _, desc := range k.MountedModules() {
+		if desc.Name != moduleID {
+			continue
+		}
+		for _, cmd := range desc.Commands {
+			if cmd.Topic == topic {
+				return true
+			}
+		}
+	}
+	return false
 }

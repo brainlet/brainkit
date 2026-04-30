@@ -31,6 +31,66 @@ func CallClusterPeers(rt sdk.CallerRuntime, ctx context.Context, msg ClusterPeer
 	return sdk.Call[ClusterPeersMsg, ClusterPeersResp](rt, ctx, msg, opts...)
 }
 
+// PublishKitModuleDescribe publishes a KitModuleDescribeMsg and returns routing info for the response.
+func PublishKitModuleDescribe(rt sdk.Runtime, ctx context.Context, msg KitModuleDescribeMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error) {
+	return sdk.Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitModuleDescribeResp subscribes to the response topic for a KitModuleDescribeMsg command.
+func SubscribeKitModuleDescribeResp(rt sdk.Runtime, ctx context.Context, topic string, handler func(KitModuleDescribeResp, sdk.Message)) (func(), error) {
+	return sdk.SubscribeTo[KitModuleDescribeResp](rt, ctx, topic, handler)
+}
+
+// CallKitModuleDescribe issues a synchronous request-response Call for KitModuleDescribeMsg.
+func CallKitModuleDescribe(rt sdk.CallerRuntime, ctx context.Context, msg KitModuleDescribeMsg, opts ...sdk.CallOption) (KitModuleDescribeResp, error) {
+	return sdk.Call[KitModuleDescribeMsg, KitModuleDescribeResp](rt, ctx, msg, opts...)
+}
+
+// PublishKitModuleMount publishes a KitModuleMountMsg and returns routing info for the response.
+func PublishKitModuleMount(rt sdk.Runtime, ctx context.Context, msg KitModuleMountMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error) {
+	return sdk.Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitModuleMountResp subscribes to the response topic for a KitModuleMountMsg command.
+func SubscribeKitModuleMountResp(rt sdk.Runtime, ctx context.Context, topic string, handler func(KitModuleMountResp, sdk.Message)) (func(), error) {
+	return sdk.SubscribeTo[KitModuleMountResp](rt, ctx, topic, handler)
+}
+
+// CallKitModuleMount issues a synchronous request-response Call for KitModuleMountMsg.
+func CallKitModuleMount(rt sdk.CallerRuntime, ctx context.Context, msg KitModuleMountMsg, opts ...sdk.CallOption) (KitModuleMountResp, error) {
+	return sdk.Call[KitModuleMountMsg, KitModuleMountResp](rt, ctx, msg, opts...)
+}
+
+// PublishKitModuleUnmount publishes a KitModuleUnmountMsg and returns routing info for the response.
+func PublishKitModuleUnmount(rt sdk.Runtime, ctx context.Context, msg KitModuleUnmountMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error) {
+	return sdk.Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitModuleUnmountResp subscribes to the response topic for a KitModuleUnmountMsg command.
+func SubscribeKitModuleUnmountResp(rt sdk.Runtime, ctx context.Context, topic string, handler func(KitModuleUnmountResp, sdk.Message)) (func(), error) {
+	return sdk.SubscribeTo[KitModuleUnmountResp](rt, ctx, topic, handler)
+}
+
+// CallKitModuleUnmount issues a synchronous request-response Call for KitModuleUnmountMsg.
+func CallKitModuleUnmount(rt sdk.CallerRuntime, ctx context.Context, msg KitModuleUnmountMsg, opts ...sdk.CallOption) (KitModuleUnmountResp, error) {
+	return sdk.Call[KitModuleUnmountMsg, KitModuleUnmountResp](rt, ctx, msg, opts...)
+}
+
+// PublishKitModules publishes a KitModulesMsg and returns routing info for the response.
+func PublishKitModules(rt sdk.Runtime, ctx context.Context, msg KitModulesMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error) {
+	return sdk.Publish(rt, ctx, msg, opts...)
+}
+
+// SubscribeKitModulesResp subscribes to the response topic for a KitModulesMsg command.
+func SubscribeKitModulesResp(rt sdk.Runtime, ctx context.Context, topic string, handler func(KitModulesResp, sdk.Message)) (func(), error) {
+	return sdk.SubscribeTo[KitModulesResp](rt, ctx, topic, handler)
+}
+
+// CallKitModules issues a synchronous request-response Call for KitModulesMsg.
+func CallKitModules(rt sdk.CallerRuntime, ctx context.Context, msg KitModulesMsg, opts ...sdk.CallOption) (KitModulesResp, error) {
+	return sdk.Call[KitModulesMsg, KitModulesResp](rt, ctx, msg, opts...)
+}
+
 // PublishKitSetDraining publishes a KitSetDrainingMsg and returns routing info for the response.
 func PublishKitSetDraining(rt sdk.Runtime, ctx context.Context, msg KitSetDrainingMsg, opts ...sdk.PublishOption) (sdk.PublishResult, error) {
 	return sdk.Publish(rt, ctx, msg, opts...)

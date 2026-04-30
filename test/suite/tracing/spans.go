@@ -8,10 +8,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	tracingpkg "github.com/brainlet/brainkit/internal/tracing"
 	"github.com/brainlet/brainkit/internal/transport"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	tracingmod "github.com/brainlet/brainkit/modules/tracing"
@@ -43,7 +42,7 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 		TraceStore: store,
 		Modules: []brainkit.Module{
 			toolsmod.New(),
-			packagesmod.New(),
+			packages.New(),
 			tracingmod.New(tracingmod.Config{Store: store}),
 		},
 	})
@@ -53,12 +52,12 @@ func tracingEnv(t *testing.T) (*suite.TestEnv, *tracingpkg.MemoryTraceStore) {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute: func(ctx context.Context, in echoIn) (any, error) {
 			return map[string]string{"echoed": in.Message}, nil
 		},
-	})
+	})))
 
 	env.Kit = k
 	return env, store
@@ -246,10 +245,10 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echoes",
 		Execute:     func(ctx context.Context, in echoIn) (any, error) { return in, nil },
-	})
+	})))
 
 	ctx := context.Background()
 	pr, _ := sdk.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})

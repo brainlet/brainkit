@@ -13,8 +13,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
@@ -220,7 +221,7 @@ func secEnsurePackages(k *brainkit.Kit) error {
 	if _, ok := k.Module("packages"); ok {
 		return nil
 	}
-	if err := k.Mount(context.Background(), packagesmod.New()); err != nil {
+	if err := k.Mount(context.Background(), packages.New()); err != nil {
 		if _, ok := k.Module("packages"); ok {
 			return nil
 		}
@@ -298,7 +299,7 @@ func secAlive(t *testing.T, k *brainkit.Kit) bool {
 }
 
 // secSchedule creates a schedule via the SDK bus command.
-func secSchedule(t *testing.T, k *brainkit.Kit, cfg brainkit.ScheduleConfig) (string, error) {
+func secSchedule(t *testing.T, k *brainkit.Kit, cfg schedulesmod.ScheduleConfig) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

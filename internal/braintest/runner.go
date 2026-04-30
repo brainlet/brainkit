@@ -49,9 +49,9 @@ type RunResult struct {
 
 // TestRunnerConfig configures a TestRunner.
 type TestRunnerConfig struct {
-	TestDir string        // directory with *.test.ts files
-	Pattern string        // glob pattern (default: "*.test.ts")
-	Timeout time.Duration // per-file timeout (default: 60s)
+	TestDir    string        // directory with *.test.ts files
+	Pattern    string        // glob pattern (default: "*.test.ts")
+	Timeout    time.Duration // per-file timeout (default: 60s)
 	SkipAI     bool          // skip tests whose names start with "AI:" (need API keys)
 	ExpectJSON bool          // fixture mode: compare output() against expect.json
 }
@@ -282,7 +282,7 @@ func (r *TestRunner) executeTestCode(ctx context.Context, name, code string) (*S
 	start := time.Now()
 	suite := &SuiteResult{File: name}
 
-	// Strip ES imports from test code (same as kit.Deploy does for .ts)
+	// Strip ES imports from test code (same as packages.Deploy does for .ts)
 	// The "test" module exports come from Compartment endowments
 	cleanCode := code
 	if strings.HasSuffix(name, ".ts") {

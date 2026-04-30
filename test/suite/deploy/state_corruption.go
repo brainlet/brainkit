@@ -12,7 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	"github.com/brainlet/brainkit/stores"
@@ -46,7 +46,7 @@ func testStateCorruptionBadTranspile(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -99,7 +99,7 @@ func testStateCorruptionDuplicatePersistedSource(t *testing.T, _ *suite.TestEnv)
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -123,7 +123,7 @@ func testStateCorruptionStoreWipedMidlife(t *testing.T, _ *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir, Store: store,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -166,7 +166,7 @@ func testStateCorruptionEmptyCode(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 		ErrorHandler: func(err error) {
 			mu.Lock()
 			received = append(received, err)
@@ -204,7 +204,7 @@ func testStateCorruptionZeroDurationSchedule(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -236,7 +236,7 @@ func testStateCorruptionPastScheduleFires(t *testing.T, _ *suite.TestEnv) {
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -275,7 +275,7 @@ func testStateCorruptionNonexistentRoleOnDeploy(t *testing.T, _ *suite.TestEnv) 
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
 		Store:   store2,
-		Modules: []brainkit.Module{packagesmod.New()},
+		Modules: []brainkit.Module{packages.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()

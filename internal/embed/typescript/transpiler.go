@@ -1,7 +1,7 @@
 // Package typescript provides Kit-level TypeScript transpilation.
 //
 // Wraps vendor_typescript.Transpile() with brainkit-specific defaults.
-// Used by brainkit.Deploy when source is .ts and by the fixture test runner.
+// Used by package deployment when source is .ts and by the fixture test runner.
 package typescript
 
 import (

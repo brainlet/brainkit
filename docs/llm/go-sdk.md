@@ -206,7 +206,6 @@ func (k *Kit) Shutdown(ctx context.Context) error // graceful drain
 func (k *Kit) Alive(ctx context.Context) bool
 func (k *Kit) Ready(ctx context.Context) bool
 func (k *Kit) IsDraining() bool
-func (k *Kit) ShutdownSignal() <-chan struct{}
 ```
 
 ### 4.3 Identity + introspection
@@ -214,16 +213,6 @@ func (k *Kit) ShutdownSignal() <-chan struct{}
 ```go
 func (k *Kit) Namespace() string
 func (k *Kit) CallerID() string
-func (k *Kit) Logger() *slog.Logger
-func (k *Kit) TransportKind() string // "memory", "embedded", "nats", "amqp", "redis"
-func (k *Kit) PresenceTransport() transport.Presence
-func (k *Kit) Remote() *transport.RemoteClient
-func (k *Kit) Tracer() *tracing.Tracer
-func (k *Kit) Tools() *tools.ToolRegistry
-func (k *Kit) Store() types.KitStore
-func (k *Kit) SecretStore() secrets.SecretStore
-func (k *Kit) Audit() *audit.Recorder
-func (k *Kit) HasCommand(topic string) bool
 ```
 
 ### 4.4 Deployments
@@ -254,6 +243,8 @@ func (k *Kit) List(ctx context.Context) ([]DeploymentInfo, error)
 ### 4.5 Packages
 
 ```go
+type Package = packages.Package
+
 type Package struct {
     Name    string
     Version string
@@ -262,63 +253,47 @@ type Package struct {
 }
 
 // Inline — name, entry filename, single source string.
-func PackageInline(name, entry, source string) Package
+func packages.Inline(name, entry, source string) Package
 
 // Directory containing manifest.json + source files. Bundled via esbuild
 // at deploy time.
-func PackageFromDir(dir string) (Package, error)
+func packages.FromDir(dir string) (Package, error)
 
 // Single .ts file. Name = filename stem, imports resolved at deploy.
-func PackageFromFile(path string) (Package, error)
+func packages.FromFile(path string) (Package, error)
 ```
 
-### 4.6 Accessors (`Providers`, `Storages`, `Vectors`, `Secrets`)
+### 4.6 Runtime Admin Modules
 
 ```go
-func (k *Kit) Providers() *Providers
-func (k *Kit) Storages()  *Storages
-func (k *Kit) Vectors()   *Vectors
-func (k *Kit) Secrets()   *Secrets
+registrymsg.CallProviderAdd(...)
+registrymsg.CallProviderRemove(...)
+registrymsg.CallStorageAdd(...)
+registrymsg.CallStorageRemove(...)
+registrymsg.CallVectorAdd(...)
+registrymsg.CallVectorRemove(...)
+registrymsg.CallRegistryList(...)
+registrymsg.CallRegistryHas(...)
+registrymsg.CallRegistryResolve(...)
 
-type Providers struct{ /* opaque */ }
-func (p *Providers) Register(name string, typ AIProviderType, config any) error
-func (p *Providers) Unregister(name string)
-func (p *Providers) List() []ProviderInfo
-func (p *Providers) Get(name string) (AIProviderRegistration, bool)
-func (p *Providers) Has(name string) bool
-
-type Storages struct{ /* opaque */ }
-func (s *Storages) Register(name string, typ StorageType, config any) error
-func (s *Storages) Unregister(name string)
-func (s *Storages) List() []StorageInfo
-func (s *Storages) Get(name string) (types.StorageRegistration, bool)
-func (s *Storages) Has(name string) bool
-
-type Vectors struct{ /* opaque */ }
-// symmetric: Register / Unregister / List / Get / Has over VectorStoreType
-
-type Secrets struct{ /* opaque */ }
-func (s *Secrets) Set(ctx, name, value string) error
-func (s *Secrets) Get(ctx, name string) (string, error)
-func (s *Secrets) Delete(ctx, name string) error
-func (s *Secrets) List(ctx) ([]SecretMeta, error)
-func (s *Secrets) Rotate(ctx, name, newValue string) error
+secretmsg.CallSecretsSet(...)
+secretmsg.CallSecretsGet(...)
+secretmsg.CallSecretsDelete(...)
+secretmsg.CallSecretsList(...)
+secretmsg.CallSecretsRotate(...)
 ```
 
-Without `Config.SecretKey`, `Secrets.*` return a cleartext-env-only fallback; mutators return `"no secret store configured"` error. `Rotate` is `Set`; restart-on-rotation is handled by the plugins module when present.
+Mount `modules/registry` for provider/storage/vector runtime
+administration. Mount `modules/secrets` for `secrets.*` command handling.
+Startup configuration remains on `brainkit.Config`.
 
 ### 4.7 Tools
 
 ```go
-type TypedTool[T any] = tools.TypedTool[T]
-type RegisteredTool     = tools.RegisteredTool
-type GoFuncExecutor     = tools.GoFuncExecutor
-
-func RegisterTool[T any](k *Kit, name string, tool TypedTool[T]) error
-func (k *Kit) RegisterRawTool(t RegisteredTool) error
+toolsmod.GoTool[T](name string, tool toolsmod.TypedTool[T]) module.Module
 ```
 
-`RegisterTool` is the typed path; `RegisterRawTool` is used by modules that proxy non-Go executors (MCP, plugin tools).
+`modules/tools.GoTool` is the typed Go path. It returns a scoped module that registers the tool through `module.Host.Tools()`, so unmount removes the tool and the mounted module manifest includes it as a resource.
 
 ### 4.8 Modules
 
@@ -339,31 +314,15 @@ type StatusReporter interface {
     Status() ModuleStatus
 }
 
-// Commands
-type CommandSpec = engine.CommandSpec
-func Command[Req sdk.BrainkitMessage, Resp any](
-    handler func(context.Context, Req) (*Resp, error),
-) CommandSpec
+// Module lifecycle
 func (k *Kit) Mount(ctx context.Context, mod Module) error
 func (k *Kit) Unmount(ctx context.Context, id string) error
 
 // Lookup / control
 func (k *Kit) Module(name string) (Module, bool)
-func (k *Kit) CallJS(ctx context.Context, fn string, args any) (json.RawMessage, error)
-func (k *Kit) ProbeAll()
-func (k *Kit) ReportError(err error, ctx ErrorContext)
-
-// Hooks modules use to wire into the kit
-func (k *Kit) SetScheduleHandler(h ScheduleHandler)
-func (k *Kit) SetAuditStore(s AuditStore)
-func (k *Kit) SetAuditVerbosity(v AuditVerbosity)
-func (k *Kit) SetTraceStore(store TraceStore)
-func (k *Kit) SetPluginChecker(pc deploy.PluginChecker)
-func (k *Kit) SetPluginRestarter(r PluginRestarter)
-func (k *Kit) HarnessRuntime() any
 ```
 
-Modules extend a `Kit` by mounting scoped commands, tools, subscriptions, and capabilities through `module.Host`. Configured modules mount in order after the router starts; later linked-code modules can mount through `Kit.Mount`. Mounted scopes close in reverse order on `Kit.Close` / `Kit.Shutdown`, or individually through `Kit.Unmount`. See `go-config.md` for the bundled module constructors.
+Modules extend a `Kit` by mounting scoped commands, tools, subscriptions, capabilities, and generic resources through `module.Host`. Configured modules mount in order after the router starts; later linked-code modules can mount through `Kit.Mount`. When `modules/control` is mounted, operators can use `kit.module.mount`, `kit.module.unmount`, and `kit.module.describe` against the registered module factories compiled into the running binary. Mounted manifests include live command/subscription topics, provided capabilities, registered tools, and explicit `Scope.Resource(...)` entries. Mounted scopes close in reverse order on `Kit.Close` / `Kit.Shutdown`, or individually through `Kit.Unmount`. See `go-config.md` for the bundled module constructors.
 
 ---
 
@@ -637,10 +596,10 @@ resp, err := toolmsg.CallToolList(kit, ctx, toolmsg.ToolListMsg{})
 ### Deploy a `.ts` package, call its mailbox
 
 ```go
-pkg := brainkit.PackageInline("echo", "echo.ts", `
+pkg := packages.Inline("echo", "echo.ts", `
     bus.on("ask", (msg) => msg.reply({ text: msg.payload.prompt }));
 `)
-if _, err := kit.Deploy(ctx, pkg); err != nil { log.Fatal(err) }
+if _, err := packages.Deploy(ctx, kit, pkg); err != nil { log.Fatal(err) }
 
 reply, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx,
     sdk.CustomMsg{Topic: "ts.echo.ask", Payload: json.RawMessage(`{"prompt":"hi"}`)},

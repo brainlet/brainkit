@@ -14,6 +14,7 @@ type ClusterPeerInfo struct {
 // RuntimeControl is the neutral capability shape used by runtime-control
 // modules without making core depend on any concrete control module package.
 type RuntimeControl interface {
+	IsDraining() bool
 	SetDraining(bool)
 	ClusterPeers(context.Context) ([]ClusterPeerInfo, error)
 }

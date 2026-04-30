@@ -24,7 +24,7 @@ func testInputAbuseBusLargePayload(t *testing.T, env *suite.TestEnv) {
 	result := testutil.EvalTS(t, env.Kit, "__big_payload_adv.ts", `
 		var big = { data: "x".repeat(100000) };
 		var r = bus.publish("incoming.big-adv", big);
-		return r.replyTo ? "ok" : "fail";
+		return r === undefined ? "ok" : "fail";
 	`)
 	assert.Equal(t, "ok", result)
 }
@@ -40,7 +40,7 @@ func testInputAbuseBusDeeplyNestedJSON(t *testing.T, env *suite.TestEnv) {
 		}
 		curr.value = "deep";
 		var r = bus.publish("incoming.nested-adv", obj);
-		return r.replyTo ? "ok" : "fail";
+		return r === undefined ? "ok" : "fail";
 	`)
 	assert.Equal(t, "ok", result)
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	secretsmod "github.com/brainlet/brainkit/modules/secrets"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
@@ -16,7 +16,7 @@ import (
 )
 
 func stressModules() []brainkit.Module {
-	return []brainkit.Module{secretsmod.New(), toolsmod.New(), packagesmod.New()}
+	return []brainkit.Module{secretsmod.New(), toolsmod.New(), packages.New()}
 }
 
 func stressTeardown(t *testing.T, rt sdk.CallerRuntime, sourceOrName string) error {

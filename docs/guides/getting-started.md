@@ -52,7 +52,7 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    if _, err := kit.Deploy(ctx, brainkit.PackageInline(
+    if _, err := packages.Deploy(ctx, kit, packages.Inline(
         "greeter", "greeter.ts",
         `bus.on("hello", (msg) => msg.reply({ greeting: "hello, " + msg.payload.name }));`,
     )); err != nil {
@@ -90,7 +90,7 @@ What each piece does:
   [transport-backends.md](transport-backends.md).
 - `FSRoot` is the filesystem sandbox for deployed `.ts` code. The
   Kit never reads or writes outside that directory.
-- `PackageInline(name, entry, code)` wraps a single source string as
+- `packages.Inline(name, entry, code)` wraps a single source string as
   a deployable package. A deployed `.ts` service bound to
   `ts.<name>.<topic>` — here `ts.greeter.hello`.
 - `brainkit.Call[Req, Resp]` is the typed generic call helper. It
@@ -175,12 +175,12 @@ type AddOutput struct {
     Sum int `json:"sum"`
 }
 
-err := brainkit.RegisterTool(kit, "math.add", brainkit.TypedTool[AddInput]{
+err := kit.Mount(ctx, toolsmod.GoTool("math.add", toolsmod.TypedTool[AddInput]{
     Description: "Return a + b as a typed sum.",
     Execute: func(_ context.Context, in AddInput) (any, error) {
         return AddOutput{Sum: in.A + in.B}, nil
     },
-})
+}))
 ```
 
 Call it directly from Go:
@@ -296,7 +296,7 @@ current directory.
 
 | Guide | What it covers |
 |---|---|
-| [go-sdk.md](go-sdk.md) | `Config`, accessors, typed Call wrappers, `Module` composition, `server` package. |
+| [go-sdk.md](go-sdk.md) | `Config`, startup builders, typed Call wrappers, `Module` composition, `server` package. |
 | [ts-services.md](ts-services.md) | `bus.on`, `msg.reply`, `msg.send`, `kit.register`, mailbox topics, streaming. |
 | [ai-and-agents.md](ai-and-agents.md) | Providers, `generateText` / `streamText`, `Agent`, tools, memory. |
 | [storage-and-memory.md](storage-and-memory.md) | Storage backends, Mastra Memory, thread / resource IDs. |

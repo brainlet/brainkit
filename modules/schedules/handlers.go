@@ -3,13 +3,12 @@ package schedules
 import (
 	"context"
 
-	"github.com/brainlet/brainkit/internal/types"
 	"github.com/brainlet/brainkit/modules/schedules/schedulemsg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 )
 
 func (m *Module) handleCreate(ctx context.Context, req schedulemsg.ScheduleCreateMsg) (*schedulemsg.ScheduleCreateResp, error) {
-	id, err := m.scheduler.Schedule(ctx, types.ScheduleConfig{
+	id, err := m.scheduler.Schedule(ctx, ScheduleConfig{
 		Expression: req.Expression,
 		Topic:      req.Topic,
 		Payload:    req.Payload,

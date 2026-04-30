@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 
 	js "github.com/brainlet/brainkit/internal/contract"
-	"github.com/brainlet/brainkit/modules/agents/agentmsg"
-	provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/modulehost/agenthost"
+	provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/sdk/sdkerrors"
 	quickjs "github.com/buke/quickjs-go"
 )
@@ -34,7 +34,7 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				if err = json.Unmarshal(payload, &req); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
-				fullName, regErr := r.host.ToolsDomain().Register(context.Background(), req.Name, req.Description, req.InputSchema, r.host.CallerID())
+				fullName, regErr := r.toolAgents.ToolsDomain().Register(context.Background(), req.Name, req.Description, req.InputSchema, r.core.CallerID())
 				if regErr != nil {
 					return r.throwBrainkitError(qctx, regErr)
 				}
@@ -46,16 +46,16 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				if err = json.Unmarshal(payload, &req); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
-				if err = r.host.ToolsDomain().Unregister(context.Background(), req.Name); err != nil {
+				if err = r.toolAgents.ToolsDomain().Unregister(context.Background(), req.Name); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			case "agents.register":
-				var req agentmsg.AgentInfo
+				var req agenthost.AgentInfo
 				if err = json.Unmarshal(payload, &req); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
-				if err = r.host.AgentsDomain().Register(context.Background(), req); err != nil {
+				if err = r.toolAgents.AgentsDomain().Register(context.Background(), req); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]string{"registered": req.Name})
@@ -66,7 +66,7 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				if err = json.Unmarshal(payload, &req); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
-				if err = r.host.AgentsDomain().Unregister(context.Background(), req.Name); err != nil {
+				if err = r.toolAgents.AgentsDomain().Unregister(context.Background(), req.Name); err != nil {
 					return r.throwBrainkitError(qctx, err)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
@@ -85,15 +85,15 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				json.Unmarshal(req.Config, &typeHolder)
 				switch req.Category {
 				case "provider":
-					r.host.ProviderRegistry().RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
+					r.registry.ProviderRegistry().RegisterAIProvider(req.Name, provreg.AIProviderRegistration{
 						Type: provreg.AIProviderType(typeHolder.Type),
 					})
 				case "vectorStore":
-					r.host.ProviderRegistry().RegisterVectorStore(req.Name, provreg.VectorStoreRegistration{
+					r.registry.ProviderRegistry().RegisterVectorStore(req.Name, provreg.VectorStoreRegistration{
 						Type: provreg.VectorStoreType(typeHolder.Type),
 					})
 				case "storage":
-					r.host.ProviderRegistry().RegisterStorage(req.Name, provreg.StorageRegistration{
+					r.registry.ProviderRegistry().RegisterStorage(req.Name, provreg.StorageRegistration{
 						Type: provreg.StorageType(typeHolder.Type),
 					})
 				}
@@ -108,11 +108,11 @@ func (r *Runtime) registerControlBridges(qctx *quickjs.Context) {
 				}
 				switch req.Category {
 				case "provider":
-					r.host.ProviderRegistry().UnregisterAIProvider(req.Name)
+					r.registry.ProviderRegistry().UnregisterAIProvider(req.Name)
 				case "vectorStore":
-					r.host.ProviderRegistry().UnregisterVectorStore(req.Name)
+					r.registry.ProviderRegistry().UnregisterVectorStore(req.Name)
 				case "storage":
-					r.host.ProviderRegistry().UnregisterStorage(req.Name)
+					r.registry.ProviderRegistry().UnregisterStorage(req.Name)
 				}
 				resp, _ = json.Marshal(map[string]bool{"ok": true})
 			default:

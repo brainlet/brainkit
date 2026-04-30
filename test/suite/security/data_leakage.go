@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -106,6 +106,7 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 	k, err := brainkit.New(brainkit.Config{
 		Transport: brainkit.Memory(),
 		Namespace: "test", CallerID: "test", FSRoot: tmpDir,
+		Modules: []brainkit.Module{toolsmod.New()},
 	})
 	require.NoError(t, err)
 	defer k.Close()
@@ -114,14 +115,14 @@ func testLeakageToolStateLeak(t *testing.T, env *suite.TestEnv) {
 	type leakyIn struct {
 		Data string `json:"data"`
 	}
-	brainkit.RegisterTool(k, "leaky-sec", tools.TypedTool[leakyIn]{
+	require.NoError(t, k.Mount(context.Background(), toolsmod.GoTool("leaky-sec", toolsmod.TypedTool[leakyIn]{
 		Description: "returns previous caller's data",
 		Execute: func(ctx context.Context, in leakyIn) (any, error) {
 			prev := lastInput
 			lastInput = in.Data
 			return map[string]string{"previous": prev, "current": in.Data}, nil
 		},
-	})
+	})))
 
 	payload1, _ := secSendAndReceive(t, k, toolmsg.ToolCallMsg{Name: "leaky-sec", Input: map[string]any{"data": "CALLER_A_SECRET"}}, 5*time.Second)
 	_ = payload1

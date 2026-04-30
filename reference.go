@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/brainlet/brainkit/modules/reference/referencemsg"
+	bkmodule "github.com/brainlet/brainkit/module"
 )
 
 // referenceFS bundles the brainkit reference corpus that an LLM
@@ -213,11 +213,11 @@ func ReferenceNames() []string {
 	return out
 }
 
-func referenceListEntries() []referencemsg.KitReferenceListEntry {
+func referenceListEntries() []bkmodule.ReferenceEntry {
 	infos := ReferenceList()
-	entries := make([]referencemsg.KitReferenceListEntry, len(infos))
+	entries := make([]bkmodule.ReferenceEntry, len(infos))
 	for i, info := range infos {
-		entries[i] = referencemsg.KitReferenceListEntry{
+		entries[i] = bkmodule.ReferenceEntry{
 			Name:        info.Name,
 			Kind:        string(info.Kind),
 			Description: info.Description,
@@ -234,7 +234,7 @@ func (referenceCatalogCapability) GetReference(name string) (string, error) {
 	return Reference(name)
 }
 
-func (referenceCatalogCapability) ListReferences() []referencemsg.KitReferenceListEntry {
+func (referenceCatalogCapability) ListReferences() []bkmodule.ReferenceEntry {
 	return referenceListEntries()
 }
 

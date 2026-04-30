@@ -29,7 +29,6 @@ type Config struct {
 func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
 func (m *Module) ID() string              { return "harness" }
-func (m *Module) Dependencies() []string  { return []string{"jsruntime"} }
 func (m *Module) Status() bkmodule.Status { return bkmodule.StatusWIP }
 
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {

@@ -1,6 +1,6 @@
 package engine
 
-import provreg "github.com/brainlet/brainkit/modules/registry/providerreg"
+import provreg "github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 
 // ProbeAIProvider runs a live HTTP probe against a registered AI provider.
 func (k *Kernel) ProbeAIProvider(name string) provreg.ProbeResult {

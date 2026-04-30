@@ -23,6 +23,7 @@ import (
 	"github.com/brainlet/brainkit/modules/audit"
 	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	auditstores "github.com/brainlet/brainkit/modules/audit/stores"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/tracing"
 	"github.com/brainlet/brainkit/modules/tracing/tracingmsg"
 	"github.com/brainlet/brainkit/sdk"
@@ -62,7 +63,7 @@ func run() error {
 		Transport:       brainkit.Memory(),
 		FSRoot:          tmp,
 		TraceSampleRate: 1.0,
-		Modules: []brainkit.Module{
+		Modules: []brainkit.Module{packages.New(),
 			audit.NewModule(audit.Config{Store: auditStore}),
 			tracing.New(tracing.Config{Store: traceStore}),
 		},
@@ -79,7 +80,7 @@ func run() error {
 	tsCode := `
 		bus.on("ping", (msg) => { msg.reply({pong: true}); });
 	`
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("observability-demo", "obs.ts", tsCode)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("observability-demo", "obs.ts", tsCode)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	for i := 0; i < 2; i++ {

@@ -209,7 +209,7 @@ podman-start:
 	@podman --connection $(PODMAN_MACHINE) info >/dev/null 2>&1 || { echo "ERROR: $(PODMAN_MACHINE) socket unreachable after foreground start"; exit 1; }
 
 podman-up: podman-init
-	@$(MAKE) --no-print-directory podman-start || $(MAKE) --no-print-directory podman-launchd-up
+	@$(MAKE) --no-print-directory podman-launchd-up || $(MAKE) --no-print-directory podman-start
 	@$(MAKE) --no-print-directory podman-link-socket
 	@$(MAKE) --no-print-directory podman-verify
 
@@ -217,10 +217,22 @@ podman-launchd-up:
 	@command -v podman >/dev/null 2>&1 || { echo "ERROR: podman binary not found"; exit 1; }
 	@command -v launchctl >/dev/null 2>&1 || { echo "ERROR: launchctl binary not found"; exit 1; }
 	@mkdir -p /tmp/podman
-	@launchctl remove $(PODMAN_LAUNCHD_LABEL) >/dev/null 2>&1 || true
-	@echo "Starting $(PODMAN_MACHINE) under launchd keepalive $(PODMAN_LAUNCHD_LABEL)..."
-	@launchctl submit -l $(PODMAN_LAUNCHD_LABEL) -- /bin/zsh -lc 'podman machine start $(PODMAN_MACHINE) >$(PODMAN_LAUNCHD_LOG) 2>&1 || true; sleep 86400'
-	@i=0; \
+	@if launchctl list | grep -q '$(PODMAN_LAUNCHD_LABEL)' && podman --connection $(PODMAN_MACHINE) info >/dev/null 2>&1; then \
+		echo "$(PODMAN_MACHINE) launchd machine already ready."; \
+		podman system connection default $(PODMAN_MACHINE); \
+		exit 0; \
+	fi; \
+	launchctl remove $(PODMAN_LAUNCHD_LABEL) >/dev/null 2>&1 || true; \
+	other=$$(podman machine list --format '{{.Name}} {{.Running}}' | awk '$$2 == "true" {print $$1}' | sed 's/\*$$//'); \
+	if [ -n "$$other" ]; then \
+		for machine in $$other; do \
+			echo "Stopping currently running machine '$$machine' so $(PODMAN_MACHINE) can start under launchd..."; \
+			podman machine stop "$$machine" || true; \
+		done; \
+	fi; \
+	echo "Starting $(PODMAN_MACHINE) under launchd keepalive $(PODMAN_LAUNCHD_LABEL)..."; \
+	launchctl submit -l $(PODMAN_LAUNCHD_LABEL) -- /bin/zsh -lc 'podman machine start $(PODMAN_MACHINE) >$(PODMAN_LAUNCHD_LOG) 2>&1 || true; sleep 86400'; \
+	i=0; \
 	while [ $$i -lt 90 ]; do \
 		if podman machine list --format '{{.Name}} {{.Running}}' | sed 's/\*//' | awk '$$1 == "$(PODMAN_MACHINE)" && $$2 == "true" {found=1} END {exit !found}'; then \
 			if podman --connection $(PODMAN_MACHINE) info >/dev/null 2>&1; then \
@@ -247,7 +259,7 @@ podman-link-socket:
 		echo "ERROR: cannot inspect $(PODMAN_MACHINE) socket path"; \
 		exit 1; \
 	fi; \
-	if [ -S "$$expected" ]; then \
+	if [ -S "$$expected" ] && curl --unix-socket "$$expected" -sS http://d/_ping 2>/dev/null | grep -q '^OK$$'; then \
 		echo "$(PODMAN_MACHINE) socket ready at $$expected"; \
 		exit 0; \
 	fi; \

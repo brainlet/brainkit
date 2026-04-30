@@ -43,11 +43,6 @@ func NewModule(cfg Config) *Module { return &Module{cfg: cfg} }
 
 func (m *Module) ID() string { return "plugins" }
 
-// Dependencies reports modules that must mount before plugins. Plugins can
-// register tools, so the tools.* command surface has to be present for callers
-// to invoke those tools over the bus.
-func (m *Module) Dependencies() []string { return []string{"tools"} }
-
 func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	ph, err := newMountedPluginHost(host)
 	if err != nil {
@@ -57,6 +52,8 @@ func (m *Module) Mount(_ context.Context, host bkmodule.Host) error {
 	if err := m.start(ph); err != nil {
 		return err
 	}
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindProcess, "plugins.manager", "Subprocess plugin manager."))
+	host.Scope().Resource(bkmodule.Resource(bkmodule.ResourceKindHTTP, "plugins.websocket", "Plugin WebSocket control plane."))
 	for _, spec := range []bkmodule.CommandSpec{
 		bkmodule.Command(m.lifecycle.Start),
 		bkmodule.Command(m.lifecycle.Stop),
@@ -183,7 +180,7 @@ func (m *Module) IsPluginRunning(name string) bool {
 
 // StartPlugin starts a plugin dynamically at runtime. Equivalent to the
 // pre-module Node.StartPlugin.
-func (m *Module) StartPlugin(ctx context.Context, cfg types.PluginConfig) error {
+func (m *Module) StartPlugin(ctx context.Context, cfg PluginConfig) error {
 	if kind := m.kit.TransportKind(); kind == "" || kind == "memory" {
 		return &sdkerrors.ValidationError{Field: "transport", Message: "plugins require non-memory transport"}
 	}
@@ -285,7 +282,7 @@ func (m *Module) restoreRunningPlugins() {
 			continue
 		}
 
-		cfg := types.PluginConfig{
+		cfg := PluginConfig{
 			Name:   r.Name,
 			Binary: r.BinaryPath,
 			Env:    r.Env,
@@ -451,7 +448,7 @@ func (Factory) Build(ctx bkmodule.BuildContext) (bkmodule.Module, error) {
 	}
 	cfg := Config{}
 	for _, p := range y {
-		cfg.Plugins = append(cfg.Plugins, types.PluginConfig{
+		cfg.Plugins = append(cfg.Plugins, PluginConfig{
 			Name:   p.Name,
 			Binary: p.Binary,
 			Env:    p.Env,
@@ -481,6 +478,10 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.EventMessage[pluginmsg.PluginRegisteredEvent](),
 			bkmodule.EventMessage[pluginmsg.PluginStartedEvent](),
 			bkmodule.EventMessage[pluginmsg.PluginStoppedEvent](),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindProcess, "plugins.manager", "Subprocess plugin manager."),
+			bkmodule.Resource(bkmodule.ResourceKindHTTP, "plugins.websocket", "Plugin WebSocket control plane."),
 		},
 	}
 }

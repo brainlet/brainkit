@@ -1277,10 +1277,10 @@ declare module "agent" {
     updateThread(opts: { threadId: string; title?: string; metadata?: Record<string, unknown> }): Promise<Thread>;
     /** List threads with optional filter. */
     listThreads(filter?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;
-    /** Save messages. Each message carries its own threadId. */
-    saveMessages(opts: { messages: Message[] }): Promise<void>;
-    /** Delete messages by IDs. */
-    deleteMessages(messageIds: string | string[] | { id: string }[]): Promise<void>;
+    /** Save messages. Callers may pass threadId once or on each message. */
+    saveMessages(opts: { threadId?: string; messages: Array<Message & { threadId?: string }> }): Promise<void>;
+    /** Delete messages by IDs, or delete all messages for a thread. */
+    deleteMessages(messageIds: string | string[] | { id: string }[] | { threadId: string }): Promise<void>;
     /** Recall messages from a thread with optional semantic search. */
     recall(opts: { threadId: string; query?: string; resourceId?: string }): Promise<RecallResult>;
     /** Delete a thread and its messages. */
@@ -2646,7 +2646,7 @@ declare module "agent" {
     readonly __storageType: string;
     abstract getThreadById(opts: { threadId: string }): Promise<Thread | null>;
     abstract saveThread(opts: { thread: Thread }): Promise<Thread>;
-    abstract saveMessages(opts: { messages: Message[] }): Promise<void>;
+    abstract saveMessages(opts: { threadId?: string; messages: Array<Message & { threadId?: string }> }): Promise<void>;
     abstract getMessagesByThreadId(opts: { threadId: string; limit?: number }): Promise<Message[]>;
     abstract deleteThread(threadId: string): Promise<void>;
     abstract listThreads(opts?: { resourceId?: string; page?: number; perPage?: number }): Promise<Thread[]>;

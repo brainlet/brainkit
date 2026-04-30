@@ -9,7 +9,7 @@ Tests core kit APIs: output(), registry, filesystem, lifecycle, storage pool, an
 | Fixture | AI | Container | What it tests |
 |---------|----|-----------|---------------|
 | deploy-throws-init | no | none | Verifies `output()` works before any error in deployment init phase |
-| error-code-inspection | no | none | Calling nonexistent tool returns descriptive error; `bus.publish` returns replyTo; `bus.emit` does not throw on valid topic |
+| error-code-inspection | no | none | Calling nonexistent tool returns descriptive error; `bus.publish` returns void; `bus.emit` does not throw on valid topic |
 | file-url-blocked | no | none | `LibSQLStore` and `LibSQLVector` with `file:` URLs throw VALIDATION_ERROR; `http:` and `libsql:` URLs are not blocked by validation |
 | multi-tool-register | no | none | Registers 5 tools in a loop via `kit.register("tool", ...)`, verifies all 5 appear in `tools.list()` |
 | register-invalid-type | no | none | `kit.register("banana", ...)` throws with descriptive error listing valid types (tool, agent, workflow, memory) |

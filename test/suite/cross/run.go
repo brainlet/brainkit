@@ -9,7 +9,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -126,7 +126,7 @@ func makeNodeWithConfig(t *testing.T, env *suite.TestEnv, namespace string, tf t
 func packageModules(extra ...brainkit.Module) []brainkit.Module {
 	modules := make([]brainkit.Module, 0, 2+len(extra))
 	modules = append(modules, toolsmod.New())
-	modules = append(modules, packagesmod.New())
+	modules = append(modules, packages.New())
 	modules = append(modules, extra...)
 	return modules
 }

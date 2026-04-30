@@ -9,9 +9,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -143,7 +143,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-cross-plugin")),
 				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
-						Plugins: []brainkit.PluginConfig{
+						Plugins: []pluginsmod.PluginConfig{
 							{
 								Name:         "testplugin",
 								Binary:       pluginBinary,
@@ -156,7 +156,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 			require.NoError(t, err)
 			defer kit.Close()
 
-			brainkit.RegisterTool(kit, "host-multiply", tools.TypedTool[struct {
+			require.NoError(t, kit.Mount(context.Background(), toolsmod.GoTool("host-multiply", toolsmod.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{
@@ -167,7 +167,7 @@ func testPluginToolCalledFromGo(t *testing.T, env *suite.TestEnv) {
 				}) (any, error) {
 					return map[string]int{"product": input.A * input.B}, nil
 				},
-			})
+			})))
 
 			time.Sleep(2 * time.Second)
 
@@ -216,7 +216,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-cross-plugin-list")),
 				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
-						Plugins: []brainkit.PluginConfig{
+						Plugins: []pluginsmod.PluginConfig{
 							{
 								Name:         "testplugin",
 								Binary:       pluginBinary,
@@ -229,7 +229,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 			require.NoError(t, err)
 			defer kit.Close()
 
-			brainkit.RegisterTool(kit, "host-multiply", tools.TypedTool[struct {
+			require.NoError(t, kit.Mount(context.Background(), toolsmod.GoTool("host-multiply", toolsmod.TypedTool[struct {
 				A int `json:"a"`
 				B int `json:"b"`
 			}]{
@@ -240,7 +240,7 @@ func testGoToolVisibleInList(t *testing.T, env *suite.TestEnv) {
 				}) (any, error) {
 					return map[string]int{"product": input.A * input.B}, nil
 				},
-			})
+			})))
 
 			time.Sleep(2 * time.Second)
 
@@ -289,7 +289,7 @@ func testTSCallsPluginTool(t *testing.T, env *suite.TestEnv) {
 				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-ts-plugin")),
 				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
-						Plugins: []brainkit.PluginConfig{
+						Plugins: []pluginsmod.PluginConfig{
 							{
 								Name:         "testplugin",
 								Binary:       pluginBinary,
@@ -366,7 +366,7 @@ func testTSDeployedToolVisibleAlongsidePlugin(t *testing.T, env *suite.TestEnv) 
 				Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-ts-plugin-alongside")),
 				Modules: packageModules(
 					pluginsmod.NewModule(pluginsmod.Config{
-						Plugins: []brainkit.PluginConfig{
+						Plugins: []pluginsmod.PluginConfig{
 							{
 								Name:         "testplugin",
 								Binary:       pluginBinary,

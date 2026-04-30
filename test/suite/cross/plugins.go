@@ -11,9 +11,9 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
@@ -250,7 +250,7 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 		Transport: transports.NATS(natsURL, transports.WithNATSName("brainkit-test-cross")),
 		Modules: packageModules(
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{
+				Plugins: []pluginsmod.PluginConfig{
 					{
 						Name:         "testplugin",
 						Binary:       pluginBinary,
@@ -262,12 +262,12 @@ func buildSubprocessKit(t *testing.T, env *suite.TestEnv) *brainkit.Kit {
 	})
 	require.NoError(t, err)
 
-	brainkit.RegisterTool(kit, "host-add", tools.TypedTool[testutil.AddInput]{
+	require.NoError(t, kit.Mount(context.Background(), toolsmod.GoTool("host-add", toolsmod.TypedTool[testutil.AddInput]{
 		Description: "adds two numbers (host-side)",
 		Execute: func(ctx context.Context, input testutil.AddInput) (any, error) {
 			return map[string]int{"sum": input.A + input.B}, nil
 		},
-	})
+	})))
 
 	time.Sleep(2 * time.Second)
 

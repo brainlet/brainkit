@@ -24,8 +24,8 @@ func testTwoServiceInteraction(t *testing.T, env *suite.TestEnv) {
 
 	err = env.Deploy("service-a-int.ts", `
 		bus.on("ask", async (msg) => {
-			var resp = await bus.sendTo("service-b-int.ts", "process", { data: msg.payload.data });
-			msg.reply({ forwarded: resp.processed || resp });
+			var resp = await bus.callService("service-b-int.ts", "process", { data: msg.payload.data }, { timeoutMs: 5000 });
+			msg.reply({ forwarded: resp.processed });
 		});
 	`)
 	require.NoError(t, err)
@@ -43,6 +43,7 @@ func testTwoServiceInteraction(t *testing.T, env *suite.TestEnv) {
 	select {
 	case raw := <-replyCh:
 		assert.NotEmpty(t, raw, "should receive response from two-service chain")
+		assert.Contains(t, string(raw), "hello-done")
 		t.Logf("two-service response: %s", string(raw))
 	case <-time.After(10 * time.Second):
 		t.Fatal("timeout — two-service interaction failed")

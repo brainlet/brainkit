@@ -243,8 +243,12 @@ func testAttackRouteRemovalViaBus(t *testing.T, env *suite.TestEnv) {
 
 	// Attacker tries to remove the route via bus
 	testutil.Deploy(t, k, "gw-attacker.ts", `
-		var r = bus.publish("gateway.http.route.remove", {method: "GET", path: "/protected"});
-		output({replyTo: r.replyTo});
+		try {
+			var r = await bus.call("gateway.http.route.remove", {method: "GET", path: "/protected"}, {timeoutMs: 1000});
+			output({removed: r});
+		} catch (e) {
+			output({error: e.message});
+		}
 	`)
 
 	// Check if route still works (attacker shouldn't have removed it)

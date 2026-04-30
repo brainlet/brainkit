@@ -18,13 +18,14 @@ const (
 	JSBridgeControl = "__go_brainkit_control"
 
 	// Bus bridges — publish, emit, send, reply, subscribe
-	JSBridgeBusSend      = "__go_brainkit_bus_send"
-	JSBridgeBusPublish   = "__go_brainkit_bus_publish"
-	JSBridgeBusEmit      = "__go_brainkit_bus_emit"
-	JSBridgeBusReply     = "__go_brainkit_bus_reply"
-	JSBridgeBusCall      = "__go_brainkit_bus_call"
-	JSBridgeSubscribe    = "__go_brainkit_subscribe"
-	JSBridgeUnsubscribe  = "__go_brainkit_unsubscribe"
+	JSBridgeBusSend       = "__go_brainkit_bus_send"
+	JSBridgeBusPublish    = "__go_brainkit_bus_publish"
+	JSBridgeBusEmit       = "__go_brainkit_bus_emit"
+	JSBridgeBusReply      = "__go_brainkit_bus_reply"
+	JSBridgeBusCall       = "__go_brainkit_bus_call"
+	JSBridgeBusCallStream = "__go_brainkit_bus_call_stream"
+	JSBridgeSubscribe     = "__go_brainkit_subscribe"
+	JSBridgeUnsubscribe   = "__go_brainkit_unsubscribe"
 
 	// Scheduling bridges
 	JSBridgeBusSchedule   = "__go_brainkit_bus_schedule"
@@ -61,9 +62,10 @@ const (
 // ── Runtime State (JS creates on globalThis, Go references) ──
 
 const (
-	JSCompartments = "__kit_compartments"
-	JSBusSubs      = "__bus_subs"
-	JSDispatch     = "__brainkit"
+	JSCompartments      = "__kit_compartments"
+	JSBusSubs           = "__bus_subs"
+	JSBusStreamHandlers = "__kit_bus_stream_handlers"
+	JSDispatch          = "__brainkit"
 )
 
 // ── Harness Bridge Functions ──
@@ -118,44 +120,44 @@ const (
 
 // Filesystem
 const (
-	JSFSReadFileSync     = "__go_fs_readFileSync"
-	JSFSWriteFileSync    = "__go_fs_writeFileSync"
-	JSFSAppendFileSync   = "__go_fs_appendFileSync"
-	JSFSReaddirSync      = "__go_fs_readdirSync"
-	JSFSStatSync         = "__go_fs_statSync"
-	JSFSLstatSync        = "__go_fs_lstatSync"
-	JSFSMkdirSync        = "__go_fs_mkdirSync"
-	JSFSMkdtempSync      = "__go_fs_mkdtempSync"
-	JSFSRmdirSync        = "__go_fs_rmdirSync"
-	JSFSRmSync           = "__go_fs_rmSync"
-	JSFSUnlinkSync       = "__go_fs_unlinkSync"
-	JSFSRenameSync       = "__go_fs_renameSync"
-	JSFSCopyFileSync     = "__go_fs_copyFileSync"
-	JSFSCpSync           = "__go_fs_cpSync"
-	JSFSLinkSync         = "__go_fs_linkSync"
-	JSFSSymlinkSync      = "__go_fs_symlinkSync"
-	JSFSReadlinkSync     = "__go_fs_readlinkSync"
-	JSFSRealpathSync     = "__go_fs_realpathSync"
-	JSFSChmodSync        = "__go_fs_chmodSync"
-	JSFSChownSync        = "__go_fs_chownSync"
-	JSFSTruncateSync     = "__go_fs_truncateSync"
-	JSFSUtimesSync       = "__go_fs_utimesSync"
-	JSFSAccessSync       = "__go_fs_accessSync"
-	JSFSExistsSync       = "__go_fs_existsSync"
-	JSFSAsync            = "__go_fs_async"
-	JSFSConstantsJSON    = "__go_fs_constants_json"
-	JSFSCreateReadStream = "__go_fs_createReadStream"
+	JSFSReadFileSync      = "__go_fs_readFileSync"
+	JSFSWriteFileSync     = "__go_fs_writeFileSync"
+	JSFSAppendFileSync    = "__go_fs_appendFileSync"
+	JSFSReaddirSync       = "__go_fs_readdirSync"
+	JSFSStatSync          = "__go_fs_statSync"
+	JSFSLstatSync         = "__go_fs_lstatSync"
+	JSFSMkdirSync         = "__go_fs_mkdirSync"
+	JSFSMkdtempSync       = "__go_fs_mkdtempSync"
+	JSFSRmdirSync         = "__go_fs_rmdirSync"
+	JSFSRmSync            = "__go_fs_rmSync"
+	JSFSUnlinkSync        = "__go_fs_unlinkSync"
+	JSFSRenameSync        = "__go_fs_renameSync"
+	JSFSCopyFileSync      = "__go_fs_copyFileSync"
+	JSFSCpSync            = "__go_fs_cpSync"
+	JSFSLinkSync          = "__go_fs_linkSync"
+	JSFSSymlinkSync       = "__go_fs_symlinkSync"
+	JSFSReadlinkSync      = "__go_fs_readlinkSync"
+	JSFSRealpathSync      = "__go_fs_realpathSync"
+	JSFSChmodSync         = "__go_fs_chmodSync"
+	JSFSChownSync         = "__go_fs_chownSync"
+	JSFSTruncateSync      = "__go_fs_truncateSync"
+	JSFSUtimesSync        = "__go_fs_utimesSync"
+	JSFSAccessSync        = "__go_fs_accessSync"
+	JSFSExistsSync        = "__go_fs_existsSync"
+	JSFSAsync             = "__go_fs_async"
+	JSFSConstantsJSON     = "__go_fs_constants_json"
+	JSFSCreateReadStream  = "__go_fs_createReadStream"
 	JSFSCreateWriteStream = "__go_fs_createWriteStream"
-	JSFSWatch            = "__go_fs_watch"
-	JSFSWsWrite          = "__go_fs_ws_write"
-	JSFSWsClose          = "__go_fs_ws_close"
-	JSFSFhRead           = "__go_fs_fh_read"
-	JSFSFhReadFile       = "__go_fs_fh_readFile"
-	JSFSFhWrite          = "__go_fs_fh_write"
-	JSFSFhWriteFile      = "__go_fs_fh_writeFile"
-	JSFSFhStat           = "__go_fs_fh_stat"
-	JSFSFhTruncate       = "__go_fs_fh_truncate"
-	JSFSFhClose          = "__go_fs_fh_close"
+	JSFSWatch             = "__go_fs_watch"
+	JSFSWsWrite           = "__go_fs_ws_write"
+	JSFSWsClose           = "__go_fs_ws_close"
+	JSFSFhRead            = "__go_fs_fh_read"
+	JSFSFhReadFile        = "__go_fs_fh_readFile"
+	JSFSFhWrite           = "__go_fs_fh_write"
+	JSFSFhWriteFile       = "__go_fs_fh_writeFile"
+	JSFSFhStat            = "__go_fs_fh_stat"
+	JSFSFhTruncate        = "__go_fs_fh_truncate"
+	JSFSFhClose           = "__go_fs_fh_close"
 )
 
 // Net
@@ -195,15 +197,15 @@ const (
 
 // Exec / child_process
 const (
-	JSExec          = "__go_exec"
-	JSExecSync      = "__go_exec_sync"
-	JSExecFileSync  = "__go_exec_file_sync"
-	JSSpawn         = "__go_spawn"
-	JSSpawnWrite    = "__go_spawn_write"
-	JSSpawnRead     = "__go_spawn_read"
+	JSExec           = "__go_exec"
+	JSExecSync       = "__go_exec_sync"
+	JSExecFileSync   = "__go_exec_file_sync"
+	JSSpawn          = "__go_spawn"
+	JSSpawnWrite     = "__go_spawn_write"
+	JSSpawnRead      = "__go_spawn_read"
 	JSSpawnReadChunk = "__go_spawn_read_chunk"
-	JSSpawnWait     = "__go_spawn_wait"
-	JSSpawnKill     = "__go_spawn_kill"
+	JSSpawnWait      = "__go_spawn_wait"
+	JSSpawnKill      = "__go_spawn_kill"
 )
 
 // Timers
@@ -226,10 +228,10 @@ const (
 
 // Zlib
 const (
-	JSZlibInflate      = "__go_zlib_inflate"
-	JSZlibDeflate      = "__go_zlib_deflate"
-	JSGzipDecompress   = "__go_gzip_decompress"
-	JSGzipCompress     = "__go_gzip_compress"
-	JSRawInflate       = "__go_raw_inflate"
-	JSRawDeflate       = "__go_raw_deflate"
+	JSZlibInflate    = "__go_zlib_inflate"
+	JSZlibDeflate    = "__go_zlib_deflate"
+	JSGzipDecompress = "__go_gzip_decompress"
+	JSGzipCompress   = "__go_gzip_compress"
+	JSRawInflate     = "__go_raw_inflate"
+	JSRawDeflate     = "__go_raw_deflate"
 )

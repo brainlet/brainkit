@@ -16,6 +16,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	mcppkg "github.com/brainlet/brainkit/modules/mcp"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -398,7 +399,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 
 	switch relPath {
 	case "tools/call-from-ts":
-		brainkit.RegisterTool(k, "uppercase", brainkit.TypedTool[struct {
+		if err := k.Mount(context.Background(), toolsmod.GoTool("uppercase", toolsmod.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "converts text to uppercase",
@@ -407,9 +408,11 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 			}) (any, error) {
 				return map[string]string{"text": strings.ToUpper(input.Text)}, nil
 			},
-		})
+		})); err != nil {
+			t.Fatalf("mount uppercase tool: %v", err)
+		}
 	case "agent/tools/with-registered-tool":
-		brainkit.RegisterTool(k, "multiply", brainkit.TypedTool[struct {
+		if err := k.Mount(context.Background(), toolsmod.GoTool("multiply", toolsmod.TypedTool[struct {
 			A float64 `json:"a"`
 			B float64 `json:"b"`
 		}]{
@@ -420,7 +423,9 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 			}) (any, error) {
 				return map[string]float64{"result": input.A * input.B}, nil
 			},
-		})
+		})); err != nil {
+			t.Fatalf("mount multiply tool: %v", err)
+		}
 	case "agent/hitl/bus-approval":
 		// Go-side auto-approver: subscribes to the approval topic and auto-approves.
 		// Uses sdk.Reply — the clean Go equivalent of JS msg.reply().
@@ -435,7 +440,7 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 			t.Cleanup(func() { cancel() })
 		}
 	case "composition/agent-workflow-memory":
-		brainkit.RegisterTool(k, "reverse", brainkit.TypedTool[struct {
+		if err := k.Mount(context.Background(), toolsmod.GoTool("reverse", toolsmod.TypedTool[struct {
 			Text string `json:"text"`
 		}]{
 			Description: "reverses a string",
@@ -448,7 +453,9 @@ func registerFixtureTools(t *testing.T, k *brainkit.Kit, relPath string) {
 				}
 				return map[string]string{"result": string(runes)}, nil
 			},
-		})
+		})); err != nil {
+			t.Fatalf("mount reverse tool: %v", err)
+		}
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	packagesmod "github.com/brainlet/brainkit/modules/packages"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	registrymod "github.com/brainlet/brainkit/modules/registry"
 	"github.com/brainlet/brainkit/modules/registry/registrymsg"
@@ -37,7 +37,7 @@ func registryEnv(t *testing.T) *brainkit.Kit {
 		Storages: map[string]brainkit.StorageConfig{
 			"default": brainkit.InMemoryStorage(),
 		},
-		Modules: []brainkit.Module{registrymod.New(), toolsmod.New(), packagesmod.New()},
+		Modules: []brainkit.Module{registrymod.New(), toolsmod.New(), packages.New()},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { k.Close() })

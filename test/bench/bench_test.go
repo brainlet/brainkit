@@ -11,8 +11,8 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
-	tools "github.com/brainlet/brainkit/internal/tools"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
+	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/stores"
@@ -155,6 +155,7 @@ func benchKit(b *testing.B) *brainkit.Kit {
 		Namespace: "bench",
 		CallerID:  "bench",
 		FSRoot:    tmpDir,
+		Modules:   []brainkit.Module{toolsmod.New()},
 	})
 	if err != nil {
 		b.Fatalf("benchKit: %v", err)
@@ -163,12 +164,14 @@ func benchKit(b *testing.B) *brainkit.Kit {
 	type echoIn struct {
 		Message string `json:"message"`
 	}
-	brainkit.RegisterTool(k, "echo", tools.TypedTool[echoIn]{
+	if err := k.Mount(context.Background(), toolsmod.GoTool("echo", toolsmod.TypedTool[echoIn]{
 		Description: "echo",
 		Execute: func(ctx context.Context, input echoIn) (any, error) {
 			return map[string]string{"echoed": input.Message}, nil
 		},
-	})
+	})); err != nil {
+		b.Fatalf("benchKit mount echo tool: %v", err)
+	}
 
 	b.Cleanup(func() { k.Close() })
 	return k

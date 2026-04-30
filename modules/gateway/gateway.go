@@ -120,6 +120,7 @@ type HealthChecker interface {
 // Gateway is the HTTP/WS/SSE protocol bridge to the bus.
 type Gateway struct {
 	rt           sdk.Runtime
+	caller       bkmodule.RequestCaller
 	config       Config
 	logger       *slog.Logger
 	streamConfig StreamConfig
@@ -175,13 +176,22 @@ func (Factory) Describe() bkmodule.Descriptor {
 			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayRouteRemoveMsg, gatewaymsg.GatewayRouteRemoveResp](),
 			bkmodule.SubscriptionMessageWithResponse[gatewaymsg.GatewayStatusMsg, gatewaymsg.GatewayStatusResp](),
 		},
+		Capabilities: []bkmodule.CapabilityDescriptor{
+			bkmodule.RequiredCapabilityOf[bkmodule.HealthProbes](bkmodule.CapabilityHealthProbes),
+			bkmodule.RequiredCapabilityOf[bkmodule.RequestCaller](bkmodule.CapabilityRequestCaller),
+			bkmodule.RequiredCapabilityOf[bkmodule.RuntimeControl](bkmodule.CapabilityRuntimeControl),
+		},
+		Resources: []bkmodule.ResourceDescriptor{
+			bkmodule.Resource(bkmodule.ResourceKindHTTP, "gateway.listener", "HTTP gateway listener."),
+			bkmodule.Resource(bkmodule.ResourceKindHTTP, "gateway.routes", "Runtime HTTP route table."),
+		},
 	}
 }
 
 func init() { bkmodule.Register("gateway", Factory{}) }
 
 // New creates an HTTP gateway module. Pass the returned *Gateway to
-// brainkit.Config.Modules; Mount captures the Kit as the runtime and calls
+// brainkit.Config.Modules; Mount captures the scoped module bus and calls
 // Start. For standalone use, call SetRuntime(rt) before Start.
 func New(cfg Config) *Gateway {
 	if cfg.Timeout == 0 {
@@ -210,6 +220,11 @@ func New(cfg Config) *Gateway {
 // Mount calls this automatically; standalone users set it before Start.
 func (gw *Gateway) SetRuntime(rt sdk.Runtime) {
 	gw.rt = rt
+	if holder, ok := rt.(interface{ Caller() *sdk.Caller }); ok {
+		gw.caller = holder.Caller()
+	} else {
+		gw.caller = nil
+	}
 }
 
 // Handle registers a request/response route.
@@ -302,7 +317,7 @@ func (gw *Gateway) Start() error {
 		registerHealthRoutes(mux, gw.rt)
 	}
 	if !gw.config.NoBusAPI {
-		registerBusAPIRoutes(mux, gw.rt)
+		registerBusAPIRoutes(mux, gw.caller)
 	}
 	mux.HandleFunc("/", gw.dispatch)
 

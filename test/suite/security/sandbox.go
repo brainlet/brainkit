@@ -211,7 +211,7 @@ func testSandboxEndowmentOverwrite(t *testing.T, env *suite.TestEnv) {
 
 	secDeploy(t, k, "check-intact-sec.ts", `
 		var r = bus.publish("incoming.test-intact-sec", {check: true});
-		output(r.replyTo ? "INTACT" : "BROKEN");
+		output(r === undefined ? "INTACT" : "BROKEN");
 	`)
 
 	result, _ := secEvalTSErr(k, "__check.ts", `return String(globalThis.__module_result || "");`)

@@ -18,12 +18,14 @@ Every deployment has a stable namespace:
   `brainkit.Call[sdk.CustomMsg, Resp](..., sdk.CustomMsg{Topic: "ts.my-service.ask", ...})`
   or `sdk.SendToService(kit, ctx, "my-service", "ask", payload)`.
 - Other `.ts` code reaches it with
-  `bus.sendTo("my-service", "ask", data)` (or `bus.callTo(...)` for
-  request/response).
+  `bus.sendTo("my-service", "ask", data)` for fire-and-forget or
+  `bus.callService("my-service", "ask", data, { timeoutMs })` for
+  request/response. Use `bus.callServiceStream(...)` when the
+  callee sends chunks before the terminal reply.
 
-The deployment name is the first argument to `PackageInline`, the
+The deployment name is the first argument to `packages.Inline`, the
 `name` field in a package `manifest.yaml`, or the directory basename
-for `PackageFromDir`.
+for `packages.FromDir`.
 
 ## Endowments
 
@@ -49,14 +51,16 @@ Symmetric with the Go surface:
 
 | Go | TypeScript |
 |---|---|
-| `sdk.Publish` | `bus.publish(topic, payload)` |
+| `sdk.Emit` / event publish | `bus.publish(topic, payload)` or `bus.emit(topic, payload)` |
 | `sdk.Emit` | `bus.emit(topic, payload)` |
 | `sdk.SubscribeTo` | `bus.subscribe(topic, handler)` |
 | `brainkit.Call` | `bus.call(topic, payload, { timeoutMs })` |
-| `sdk.SendToService` | `bus.sendTo(service, topic, payload)` |
-| `brainkit.CallStream` | `bus.callStream(topic, payload, onChunk)` |
-| `WithCallTo("peer")` | `bus.callTo("peer", topic, payload)` |
-| `Kit.Deploy` handler | `bus.on(topic, handler)` |
+| `brainkit.Call` to a service topic | `bus.callService(service, topic, payload, { timeoutMs })` |
+| `sdk.SendToService` / event send | `bus.sendTo(service, topic, payload)` |
+| `brainkit.CallStream` | `bus.callStream(topic, payload, { timeoutMs, onChunk })` |
+| `brainkit.CallStream` to a service topic | `bus.callServiceStream(service, topic, payload, { timeoutMs, onChunk })` |
+| `WithCallTo("peer")` | `bus.callTo("peer", topic, payload, { timeoutMs })` / `bus.callToStream(...)` |
+| `packages.Deploy` handler | `bus.on(topic, handler)` |
 
 ### bus.on — subscribe to the mailbox
 
@@ -77,13 +81,16 @@ scheduled callbacks.
 ### bus.publish / bus.subscribe — arbitrary topics
 
 ```typescript
-const pr = bus.publish("inventory.update", { sku: "X", qty: 5 });
-// pr.replyTo, pr.correlationId
-
-bus.subscribe(pr.replyTo, (msg) => {
-    // one-shot reply
+const sub = bus.subscribe("inventory.update", (msg) => {
+    // event payload
 });
+
+bus.publish("inventory.update", { sku: "X", qty: 5 });
+bus.unsubscribe(sub);
 ```
+
+`bus.publish` does not attach a reply inbox. Use `bus.call` or
+`bus.callService` when a response is part of the contract.
 
 ### bus.emit — fire-and-forget
 
@@ -100,18 +107,48 @@ const resp = await bus.call("tools.call", {
 }, { timeoutMs: 2000 });
 ```
 
-`bus.call` is the `.ts` twin of `brainkit.Call`. It publishes,
-subscribes to the private reply, and resolves with the decoded
-payload.
+`bus.call` is the `.ts` twin of `brainkit.Call`. It uses the Kit's
+shared caller inbox and resolves with the decoded payload.
 
-### bus.sendTo / bus.callTo — service addressing
+### bus.callStream — stream chunks and await the final reply
+
+```typescript
+const chunks: any[] = [];
+const final = await bus.callStream("ts.counter.count", { n: 3 }, {
+    timeoutMs: 5000,
+    onChunk: async (chunk, streamMsg) => {
+        chunks.push(chunk);
+        // streamMsg carries topic/correlationId metadata for tracing.
+    },
+    bufferSize: 16,
+    bufferPolicy: "block",
+});
+```
+
+`callStream` uses the same shared caller inbox as `call`. Intermediate
+`msg.send(...)` or `msg.stream.*(...)` replies are delivered to
+`onChunk`, and the returned promise resolves only after the terminal
+`msg.reply(...)` is received and queued chunks have drained. `onChunk`
+may be async; chunks are processed one at a time. `bufferPolicy` is one
+of `"block"`, `"dropNewest"`, `"dropOldest"`, or `"error"`.
+
+### bus.sendTo / bus.callService / bus.callServiceStream / bus.callTo — service addressing
 
 ```typescript
 // Fire-and-forget send to another service's mailbox.
 bus.sendTo("logger", "write", { line: "ok" });
 
+// Request/reply against a local service mailbox.
+const local = await bus.callService("logger", "status", {}, { timeoutMs: 2000 });
+
+// Streaming request/reply against a local service mailbox.
+const streamed = await bus.callServiceStream("logger", "tail", {}, {
+    timeoutMs: 5000,
+    onChunk: (chunk) => console.log(chunk),
+});
+
 // Request/response against a named peer via topology.
-const r = await bus.callTo("analytics", "summary.get", { day: "2024-11-14" });
+const r = await bus.callTo("analytics", "summary.get", { day: "2024-11-14" }, { timeoutMs: 2000 });
 ```
 
 ## The message object
@@ -151,8 +188,9 @@ bus.on("count", (msg) => {
 ```
 
 The Go side distinguishes chunks from the terminal reply via the
-`done` flag in metadata. Use `brainkit.CallStream` to consume
-them in order.
+`done` flag in metadata. Use `brainkit.CallStream` from Go or
+`bus.callStream` / `bus.callServiceStream` from TypeScript to consume
+them.
 
 See [`examples/streaming/`](../../examples/streaming/).
 

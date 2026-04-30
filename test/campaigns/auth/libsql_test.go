@@ -14,14 +14,9 @@ import (
 // Ported from test/auth/auth_test.go:TestLibSQL_EmbeddedNoAuth.
 func TestLibSQL_EmbeddedNoAuth(t *testing.T) {
 	k := newKit(t, nil)
-	libsqlURL := k.StorageURL("default")
-	require.NotEmpty(t, libsqlURL)
 
 	result := evalStore(t, k, "libsql-embedded", `
-		var store = new embed.LibSQLStore({
-			id: "libsql-auth-test",
-			url: "`+libsqlURL+`",
-		});
+		var store = storage("default");
 	`)
 	require.Contains(t, result, `"ok":true`)
 }

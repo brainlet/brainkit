@@ -27,7 +27,7 @@ kit, _ := brainkit.New(brainkit.Config{
     Transport: brainkit.EmbeddedNATS(),
     Modules: []brainkit.Module{
         pluginsmod.NewModule(pluginsmod.Config{
-            Plugins: []brainkit.PluginConfig{{
+            Plugins: []pluginsmod.PluginConfig{{
                 Name:   "demo",
                 Binary: "./examples/plugin-author/plugin-author",
             }},
@@ -36,7 +36,7 @@ kit, _ := brainkit.New(brainkit.Config{
 })
 ```
 
-After `kit.Deploy` or a bus `tools.call` for `echo`, the host
+After `packages.Deploy` or a bus `tools.call` for `echo`, the host
 dispatches to this plugin over the WS control plane.
 
 ## Run + verify end-to-end

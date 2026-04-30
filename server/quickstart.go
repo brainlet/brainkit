@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/transports"
 )
@@ -53,7 +54,7 @@ func WithSecretKey(key string) QuickStartOption {
 }
 
 // WithPackages auto-deploys packages on Start.
-func WithPackages(pkgs ...brainkit.Package) QuickStartOption {
+func WithPackages(pkgs ...packages.Package) QuickStartOption {
 	return func(c *Config) { c.Packages = append(c.Packages, pkgs...) }
 }
 

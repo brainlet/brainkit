@@ -112,7 +112,7 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 		Modules: []brainkit.Module{
 			toolsmod.New(),
 			pluginsmod.NewModule(pluginsmod.Config{
-				Plugins: []brainkit.PluginConfig{{
+				Plugins: []pluginsmod.PluginConfig{{
 					Name: "sub-test", Binary: binaryPath, AutoRestart: false,
 				}},
 			}),

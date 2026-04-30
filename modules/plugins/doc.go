@@ -23,7 +23,7 @@
 //	    Transport: transports.EmbeddedNATS(),
 //	    Modules: []brainkit.Module{
 //	        plugins.NewModule(plugins.Config{
-//	            Plugins: []brainkit.PluginConfig{{Name: "foo", Binary: "./foo"}},
+//	            Plugins: []plugins.PluginConfig{{Name: "foo", Binary: "./foo"}},
 //	            Store:   kitStore, // optional, enables restart recovery
 //	        }),
 //	    },

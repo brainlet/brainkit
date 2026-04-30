@@ -23,7 +23,7 @@ func TestZeroConfigStartsLightCoreWithoutJSRuntime(t *testing.T) {
 
 	_, err = k.kernel.EvalTS(context.Background(), "__disabled.ts", `return "ok"`)
 	require.ErrorAs(t, err, new(*sdkerrors.NotConfiguredError))
-	require.False(t, k.HasCommand("kit.eval"))
+	require.False(t, k.hasCommand("kit.eval"))
 }
 
 func TestExplicitEmptyProvidersDisableEnvAutoDetect(t *testing.T) {
@@ -36,7 +36,7 @@ func TestExplicitEmptyProvidersDisableEnvAutoDetect(t *testing.T) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	require.Empty(t, k.Providers().List())
+	require.Empty(t, k.kernel.ProviderRegistry().ListAIProviders())
 }
 
 func TestNilProvidersAutoDetectFromEnv(t *testing.T) {
@@ -46,7 +46,7 @@ func TestNilProvidersAutoDetectFromEnv(t *testing.T) {
 	require.NoError(t, err)
 	defer k.Close()
 
-	require.NotEmpty(t, k.Providers().List())
+	require.NotEmpty(t, k.kernel.ProviderRegistry().ListAIProviders())
 }
 
 func TestJSRuntimeExplicitlyEnablesEvalRuntime(t *testing.T) {
@@ -66,7 +66,7 @@ func TestStandardCommandSetAutoEnablesJSRuntime(t *testing.T) {
 	defer k.Close()
 
 	require.True(t, k.kernel.HasJSRuntime())
-	require.True(t, k.HasCommand("kit.eval"))
+	require.True(t, k.hasCommand("kit.eval"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -112,7 +112,7 @@ func TestJSRuntimeModuleIsMountedBeforeDependents(t *testing.T) {
 	defer k.Close()
 
 	require.True(t, k.kernel.HasJSRuntime())
-	require.True(t, k.HasCommand("kit.eval"))
+	require.True(t, k.hasCommand("kit.eval"))
 }
 
 func TestJSDependentHotMountAutoMountsJSRuntime(t *testing.T) {
@@ -125,5 +125,5 @@ func TestJSDependentHotMountAutoMountsJSRuntime(t *testing.T) {
 	defer cancel()
 	require.NoError(t, k.Mount(ctx, evalmod.New()))
 	require.True(t, k.kernel.HasJSRuntime())
-	require.True(t, k.HasCommand("kit.eval"))
+	require.True(t, k.hasCommand("kit.eval"))
 }

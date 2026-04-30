@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -80,6 +81,7 @@ func run(rerank bool) error {
 		Namespace: "rag-pipeline-demo",
 		Transport: brainkit.Memory(),
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
+		Modules:   []brainkit.Module{packages.New()},
 		Vectors: map[string]brainkit.VectorConfig{
 			"docs": brainkit.PgVectorStore(pgURL),
 		},
@@ -93,7 +95,7 @@ func run(rerank bool) error {
 	defer cancel()
 
 	fmt.Println("[1/4] deploying rag-pipeline")
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("rag-pipeline", "rag.ts", ragSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("rag-pipeline", "rag.ts", ragSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 

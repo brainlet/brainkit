@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/brainlet/brainkit/internal/types"
-	"github.com/brainlet/brainkit/modules/registry/providerreg"
+	"github.com/brainlet/brainkit/modulehost/providerhost/providerreg"
 	"github.com/brainlet/brainkit/sdk"
 )
 

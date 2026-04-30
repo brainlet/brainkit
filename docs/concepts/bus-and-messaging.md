@@ -14,7 +14,7 @@ A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
 - **Generated topics.** Typed messages in `sdk/**/*_messages.go` and
   module-owned `modules/**/*_messages.go` files declare a `BusTopic()`
   string. The generator in `scripts/gen-bus-topics.go` writes
-  `docs/bus-topics.md` from those declarations. 1.0-rc.1 ships ~75
+  `docs/bus-topics.md` from those declarations. 1.0-rc.1 ships ~79
   topics covering
   `package.*`, `kit.*`, `plugin.*`, `workflow.*`, `audit.*`,
   `schedules.*`, `secrets.*`, `storages.*`, `vectors.*`,
@@ -29,10 +29,18 @@ A bus topic is a dotted string (`tools.call`, `ts.greeter.hello`,
 
 The Kit maintains a live command catalog for request/reply routing, and
 modules publish a manifest that describes the topics they own or consume:
-commands, emitted events, raw subscriptions, and host capabilities.
+commands, emitted events, raw subscriptions, host capabilities, and generic
+non-bus resources such as tools, hooks, schedulers, processes, runtimes, and
+HTTP listeners.
 The generated topic list still comes from `BusTopic()` declarations, but
 runtime availability comes from which modules are mounted. Deployments and
 plugins can add their own topics at runtime.
+
+The control module exposes the live module catalog and linked-code runtime
+module lifecycle through `kit.modules`, `kit.module.describe`,
+`kit.module.mount`, and `kit.module.unmount`. These commands use the same
+registered module factories as server YAML startup, so only modules compiled
+into the running binary can be mounted.
 
 ## Typed Calls from Go
 
@@ -194,7 +202,9 @@ runtime must implement `sdk.CrossNamespaceRuntime` — every
 ## The JS Bus API
 
 Inside a deployed `.ts` package, `bus` is a global object endowed by
-the runtime. Six primary methods plus three helpers:
+the runtime. It covers publish/subscribe, fire-and-forget service
+sends, request/reply, streaming request/reply, cross-namespace calls,
+and schedules:
 
 ```typescript
 // Publish typed, wait for reply
@@ -208,7 +218,7 @@ bus.on("demo", async (msg) => {
 });
 
 // Fire-and-forget
-bus.emit("app.ready", { at: Date.now() });
+bus.publish("app.ready", { at: Date.now() });
 
 // Subscribe anywhere on the bus
 const id = bus.subscribe("orders.completed", (msg) => { /* … */ });
@@ -220,6 +230,17 @@ await bus.callTo("analytics", "ts.report-svc.quarterly", { quarter: "Q4" },
 
 // Fire-and-forget to another service
 bus.sendTo("other-service.ts", "topic", data);
+
+// Request/reply to another service through the shared caller
+await bus.callService("other-service.ts", "topic", data,
+    { timeoutMs: 10000 });
+
+// Stream chunks from another service, then await its terminal reply
+const chunks: any[] = [];
+const final = await bus.callServiceStream("other-service.ts", "stream", data, {
+    timeoutMs: 10000,
+    onChunk: (chunk) => chunks.push(chunk),
+});
 
 // Schedule a publish via the schedules module
 bus.schedule(cronSpec, topic, payload);
@@ -236,8 +257,12 @@ bus.on("count", (msg) => {
 });
 ```
 
-`msg.send` emits a chunk; `msg.reply` emits the terminal reply. See
-`examples/streaming/main.go` for the matched Go side.
+`msg.send` emits a chunk; `msg.reply` emits the terminal reply. Go
+callers consume this with `brainkit.CallStream`; TypeScript callers
+use `bus.callStream`, `bus.callServiceStream`, or `bus.callToStream`.
+Each stream API uses the shared caller inbox, runs `onChunk` one chunk
+at a time, and resolves only after the terminal reply and queued chunks
+have drained. See `examples/streaming/main.go` for the matched Go side.
 
 ## The Topic Catalog
 
@@ -298,8 +323,10 @@ messages on its own dedicated prefix.
 - `brainkit.Call` is the Go front door for typed request/reply.
 - `brainkit.CallStream` adds chunked replies.
 - `sdk.Publish` / `sdk.Emit` + `sdk.SubscribeTo` give low-level access.
-- JS uses `bus.call`, `bus.on`, `bus.emit`, `bus.subscribe`,
-  `bus.callTo`, `bus.sendTo`, `bus.schedule`.
+- JS uses `bus.call`, `bus.callStream`, `bus.callService`,
+  `bus.callServiceStream`, `bus.callTo`, `bus.callToStream`, `bus.on`,
+  `bus.publish`, `bus.emit`, `bus.subscribe`, `bus.sendTo`,
+  and `bus.schedule`.
 - Every typed message carries its own topic via `BusTopic()`.
 - Envelopes carry typed errors across the wire.
 - Cross-Kit traffic flows through the same machinery with

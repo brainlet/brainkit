@@ -64,7 +64,7 @@ binary-safe — fetch responses, FormData uploads, and
               brainkit.Config{Providers: [OpenAI(key)]}
                               │
                               ▼
-         kit.Deploy("voice-agent", voice.ts)
+         packages.Deploy("voice-agent", voice.ts)
                               │
                               ▼
    bus.on("ask", async msg => {

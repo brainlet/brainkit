@@ -14,8 +14,8 @@
 //
 // Both topics are mapped to gateway routes so curl can hit them:
 //
-//   SSE plain: curl -N http://127.0.0.1:<port>/sse/haiku?prompt=…
-//   SSE plan:  curl -N http://127.0.0.1:<port>/sse/plan?goal=…
+//	SSE plain: curl -N http://127.0.0.1:<port>/sse/haiku?prompt=…
+//	SSE plan:  curl -N http://127.0.0.1:<port>/sse/plan?goal=…
 //
 // Requires OPENAI_API_KEY.
 //
@@ -37,6 +37,7 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/gateway"
+	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
 )
 
@@ -68,7 +69,7 @@ func run() error {
 		Transport: brainkit.Memory(),
 		FSRoot:    ".",
 		Providers: []brainkit.ProviderConfig{brainkit.OpenAI(key)},
-		Modules:   []brainkit.Module{gw},
+		Modules:   []brainkit.Module{packages.New(), gw},
 	})
 	if err != nil {
 		return fmt.Errorf("new kit: %w", err)
@@ -78,7 +79,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if _, err := kit.Deploy(ctx, brainkit.PackageInline("agent-stream", "stream.ts", streamSource)); err != nil {
+	if _, err := packages.Deploy(ctx, kit, packages.Inline("agent-stream", "stream.ts", streamSource)); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 	fmt.Println("[1/3] agent-stream deployed")
