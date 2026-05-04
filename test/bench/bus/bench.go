@@ -4,13 +4,13 @@ package bus
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/bench"
 )
 
@@ -28,56 +28,45 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 	b.Run("roundtrip", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
+			_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](k, ctx, sdk.CustomMsg{
+				Topic:   benchServiceTopic("bench-handler.ts", "bench"),
+				Payload: json.RawMessage(`{"x":true}`),
+			})
 			if err != nil {
-				b.Fatalf("send: %v", err)
+				b.Fatalf("call: %v", err)
 			}
-			ch := make(chan struct{}, 1)
-			unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
-			if err != nil {
-				b.Fatalf("subscribe: %v", err)
-			}
-			<-ch
-			unsub()
 		}
 	})
 
 	b.Run("tool_call", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{
+			_, err := toolmsg.CallToolCall(k, ctx, toolmsg.ToolCallMsg{
 				Name:  "echo",
 				Input: json.RawMessage(`{"message":"bench"}`),
 			})
 			if err != nil {
-				b.Fatalf("publish: %v", err)
+				b.Fatalf("call: %v", err)
 			}
-			ch := make(chan struct{}, 1)
-			unsub, err := sdk.SubscribeTo[toolmsg.ToolCallResp](k, ctx, pr.ReplyTo, func(_ toolmsg.ToolCallResp, _ sdk.Message) {
-				ch <- struct{}{}
-			})
-			if err != nil {
-				b.Fatalf("subscribe: %v", err)
-			}
-			<-ch
-			unsub()
 		}
 	})
 
 	b.Run("pump_throughput", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			pr, err := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
+			_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](k, ctx, sdk.CustomMsg{
+				Topic:   benchServiceTopic("bench-handler.ts", "bench"),
+				Payload: json.RawMessage(`{"x":true}`),
+			})
 			if err != nil {
-				b.Fatalf("send: %v", err)
+				b.Fatalf("call: %v", err)
 			}
-			ch := make(chan struct{}, 1)
-			unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
-			if err != nil {
-				b.Fatalf("subscribe: %v", err)
-			}
-			<-ch
-			unsub()
 		}
 	})
+}
+
+func benchServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
 }

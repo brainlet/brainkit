@@ -25,8 +25,9 @@ func testNodeCommandsPluginList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, pluginmsg.PluginListRunningMsg{})
-	assert.Contains(t, string(p), "plugins")
+	resp, err := pluginmsg.CallPluginListRunning(kit, ctx, pluginmsg.PluginListRunningMsg{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Plugins)
 }
 
 func testNodeCommandsPluginStopNonexistent(t *testing.T, env *suite.TestEnv) {
@@ -34,8 +35,8 @@ func testNodeCommandsPluginStopNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginStopMsg{Name: "ghost-plugin"})
-	assert.True(t, suite.ResponseHasError(p), "stopping nonexistent plugin should error")
+	_, err := pluginmsg.CallPluginStop(kit, ctx, pluginmsg.PluginStopMsg{Name: "ghost-plugin"})
+	assertErrorCode(t, err, "NOT_FOUND")
 }
 
 func testNodeCommandsPluginRestartNonexistent(t *testing.T, env *suite.TestEnv) {
@@ -43,8 +44,8 @@ func testNodeCommandsPluginRestartNonexistent(t *testing.T, env *suite.TestEnv) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginRestartMsg{Name: "ghost-plugin"})
-	assert.True(t, suite.ResponseHasError(p))
+	_, err := pluginmsg.CallPluginRestart(kit, ctx, pluginmsg.PluginRestartMsg{Name: "ghost-plugin"})
+	assertErrorCode(t, err, "NOT_FOUND")
 }
 
 func testNodeCommandsPluginStatusNonexistent(t *testing.T, env *suite.TestEnv) {
@@ -52,8 +53,8 @@ func testNodeCommandsPluginStatusNonexistent(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitJSON(t, kit, ctx, pluginmsg.PluginStatusMsg{Name: "ghost-plugin"})
-	assert.True(t, suite.ResponseHasError(p))
+	_, err := pluginmsg.CallPluginStatus(kit, ctx, pluginmsg.PluginStatusMsg{Name: "ghost-plugin"})
+	require.Error(t, err)
 }
 
 func testNodeCommandsPackageListEmpty(t *testing.T, env *suite.TestEnv) {
@@ -61,8 +62,9 @@ func testNodeCommandsPackageListEmpty(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, packagemsg.PackageListDeployedMsg{})
-	assert.Contains(t, string(p), "packages")
+	resp, err := packagemsg.CallPackageListDeployed(kit, ctx, packagemsg.PackageListDeployedMsg{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Packages)
 }
 
 func testNodeCommandsDeployOnNode(t *testing.T, env *suite.TestEnv) {
@@ -76,10 +78,11 @@ func testNodeCommandsDeployOnNode(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Call
-	p := publishAndWaitRaw(t, kit, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.CustomMsg{
 		Topic: "ts.node-deploy-cross.hello", Payload: json.RawMessage(`{}`),
 	})
-	assert.Contains(t, string(p), "node")
+	require.NoError(t, err)
+	assert.Contains(t, string(resp), "node")
 
 	// Teardown
 	testutil.Teardown(t, kit, "node-deploy-cross.ts")

@@ -11,8 +11,6 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,16 +37,9 @@ func testLogHandlerTSCompartment(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(logEnv.Kit, ctx, pkgDeployMsg("log-test.ts", `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`))
+	resp, err := packagemsg.CallPackageDeploy(logEnv.Kit, ctx, pkgDeployMsg("log-test.ts", `console.log("hello from ts"); console.warn("warning!"); console.error("error!");`))
 	require.NoError(t, err)
-	ch := make(chan packagemsg.PackageDeployResp, 1)
-	us, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](logEnv.Kit, ctx, pr.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch <- r })
-	defer us()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	require.True(t, resp.Deployed)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -78,27 +69,13 @@ func testLogHandlerMultipleFiles(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr1, err := protocol.Publish(logEnv.Kit, ctx, pkgDeployMsg("file-a.ts", `console.log("from file A");`))
+	resp1, err := packagemsg.CallPackageDeploy(logEnv.Kit, ctx, pkgDeployMsg("file-a.ts", `console.log("from file A");`))
 	require.NoError(t, err)
-	ch1 := make(chan packagemsg.PackageDeployResp, 1)
-	us1, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](logEnv.Kit, ctx, pr1.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch1 <- r })
-	defer us1()
-	select {
-	case <-ch1:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	require.True(t, resp1.Deployed)
 
-	pr2, err := protocol.Publish(logEnv.Kit, ctx, pkgDeployMsg("file-b.ts", `console.log("from file B");`))
+	resp2, err := packagemsg.CallPackageDeploy(logEnv.Kit, ctx, pkgDeployMsg("file-b.ts", `console.log("from file B");`))
 	require.NoError(t, err)
-	ch2 := make(chan packagemsg.PackageDeployResp, 1)
-	us2, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](logEnv.Kit, ctx, pr2.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch2 <- r })
-	defer us2()
-	select {
-	case <-ch2:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	require.True(t, resp2.Deployed)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -145,14 +122,7 @@ func testLogHandlerNilDefault(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(nilEnv.Kit, ctx, pkgDeployMsg("nil-test.ts", `console.log("should not panic");`))
+	resp, err := packagemsg.CallPackageDeploy(nilEnv.Kit, ctx, pkgDeployMsg("nil-test.ts", `console.log("should not panic");`))
 	require.NoError(t, err)
-	ch := make(chan packagemsg.PackageDeployResp, 1)
-	us, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](nilEnv.Kit, ctx, pr.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch <- r })
-	defer us()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
+	require.True(t, resp.Deployed)
 }

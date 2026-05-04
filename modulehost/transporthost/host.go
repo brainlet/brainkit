@@ -34,6 +34,8 @@ type Host struct {
 	closedTransport  atomic.Bool
 }
 
+var _ sdk.CrossNamespaceRuntime = (*Host)(nil)
+
 // DebugSnapshot is a test/debug view of transport-host lifecycle bookkeeping.
 type DebugSnapshot struct {
 	Router              transport.RouterDebugSnapshot
@@ -311,6 +313,16 @@ func (h *Host) SubscribeRawHandle(ctx context.Context, topic string, handler fun
 		return nil, err
 	}
 	return bkmodule.HandleFunc(handle.CloseContext), nil
+}
+
+// PublishRawTo publishes to a target namespace.
+func (h *Host) PublishRawTo(ctx context.Context, targetNamespace, topic string, payload json.RawMessage) (string, error) {
+	return h.PublishRawToNamespace(ctx, targetNamespace, topic, payload)
+}
+
+// SubscribeRawTo subscribes in a target namespace.
+func (h *Host) SubscribeRawTo(ctx context.Context, targetNamespace, topic string, handler func(sdk.Message)) (func(), error) {
+	return h.SubscribeRawToNamespace(ctx, targetNamespace, topic, handler)
 }
 
 // PublishRawToNamespace publishes to a target namespace.

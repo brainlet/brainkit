@@ -7,8 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	healthmod "github.com/brainlet/brainkit/modules/health"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -30,22 +28,7 @@ func testNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(k, ctx, healthmod.KitHealthMsg{})
-	if err != nil {
-		t.Fatalf("publish kit.health: %v", err)
-	}
-
-	ch := make(chan sdk.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case m := <-ch:
-		t.Fatalf("expected no reply for kit.health without health module, got payload=%s", string(m.Payload))
-	case <-ctx.Done():
-		// Expected: no command handler registered.
+	if _, err := healthmod.CallKitHealth(k, ctx, healthmod.KitHealthMsg{}); err == nil {
+		t.Fatal("expected kit.health to fail without health module")
 	}
 }

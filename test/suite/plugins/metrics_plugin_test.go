@@ -10,7 +10,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -22,8 +21,6 @@ import (
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/test/suite"
 	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -149,31 +146,10 @@ func TestMetricsPluginE2E(t *testing.T) {
 // callPluginTool calls a tool via the bus and returns the result payload.
 func callPluginTool(t *testing.T, kit *brainkit.Kit, ctx context.Context, toolName string, input any) json.RawMessage {
 	t.Helper()
-
-	replyTo := "tools.call.reply.metrics-" + toolName
-	ch := make(chan sdk.Message, 1)
-	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		ch <- m
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	protocol.Publish(kit, ctx, toolmsg.ToolCallMsg{
+	resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  toolName,
 		Input: input,
-	}, protocol.WithReplyTo(replyTo))
-
-	select {
-	case msg := <-ch:
-		if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
-			t.Fatalf("tool %s error: %s", toolName, errMsg)
-		}
-		data := suite.ResponseDataFromMsg(msg)
-		var resp toolmsg.ToolCallResp
-		require.NoError(t, json.Unmarshal(data, &resp))
-		return resp.Result
-	case <-ctx.Done():
-		t.Fatalf("timeout calling %s", toolName)
-		return nil
-	}
+	})
+	require.NoError(t, err)
+	return resp.Result
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -269,23 +268,9 @@ func testExhaustionSecretValueBomb(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	bigValue := strings.Repeat("s", 10*1024*1024)
-	pr, err := protocol.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue})
+	resp, err := secretmsg.CallSecretsSet(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-big-secret", Value: bigValue}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-
-	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		s := string(p)
-		if len(s) > 100 {
-			s = s[:100]
-		}
-		t.Logf("10MB secret: %s", s)
-	case <-ctx.Done():
-		t.Fatal("timeout storing 10MB secret")
-	}
+	t.Logf("10MB secret stored=%v version=%d", resp.Stored, resp.Version)
 
 	_, err = tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
 	assert.NoError(t, err, "kit should survive 10MB secret")

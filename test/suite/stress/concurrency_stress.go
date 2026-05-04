@@ -14,7 +14,6 @@ import (
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 )
@@ -103,11 +102,8 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	ctx := context.Background()
 
 	// Set initial value
-	pr, _ := protocol.Publish(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-rotating", Value: "v0"})
-	ch := make(chan []byte, 1)
-	unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	<-ch
-	unsub()
+	_, err := secretmsg.CallSecretsSet(tk, ctx, secretmsg.SecretsSetMsg{Name: "stress-rotating", Value: "v0"}, sdk.WithCallTimeout(5*time.Second))
+	assert.NoError(t, err)
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -133,13 +129,9 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 1; i <= 10; i++ {
-			pr, _ := protocol.Publish(tk, ctx, secretmsg.SecretsRotateMsg{
+			_, _ = secretmsg.CallSecretsRotate(tk, ctx, secretmsg.SecretsRotateMsg{
 				Name: "stress-rotating", NewValue: fmt.Sprintf("v%d", i),
-			})
-			ch := make(chan []byte, 1)
-			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-			<-ch
-			unsub()
+			}, sdk.WithCallTimeout(5*time.Second))
 			time.Sleep(50 * time.Millisecond)
 		}
 		close(stop)
@@ -148,7 +140,7 @@ func testSecretRotationDuringReads(t *testing.T, env *suite.TestEnv) {
 	wg.Wait()
 	t.Logf("reads during rotation: %d", readCount.Load())
 	assert.Greater(t, readCount.Load(), int64(0))
-	_, err := tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
+	_, err = tk.PublishRaw(ctx, "test.alive", json.RawMessage(`{}`))
 	assert.NoError(t, err)
 }
 
@@ -280,16 +272,7 @@ func testMultiSurfaceSimultaneous(t *testing.T, env *suite.TestEnv) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 20; i++ {
-			pr, _ := protocol.Publish(tk, ctx, sdk.CustomMsg{
-				Topic: "ts.multi-stress-surface.ts-ping", Payload: json.RawMessage(`{}`),
-			})
-			ch := make(chan []byte, 1)
-			unsub, _ := tk.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-			select {
-			case <-ch:
-			case <-time.After(5 * time.Second):
-			}
-			unsub()
+			_, _ = callStressService(t, tk, ctx, "multi-stress-surface.ts", "ts-ping", json.RawMessage(`{}`), 5*time.Second)
 		}
 	}()
 

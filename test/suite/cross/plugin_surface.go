@@ -3,9 +3,10 @@ package cross
 import (
 	"context"
 	"encoding/json"
-	bkmodule "github.com/brainlet/brainkit/module"
 	"testing"
 	"time"
+
+	bkmodule "github.com/brainlet/brainkit/module"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -80,11 +81,12 @@ func testPluginSurfaceTSFromPlugin(t *testing.T, env *suite.TestEnv) {
 	`)
 
 	// Simulate plugin calling the .ts via bus
-	p := publishAndWaitRaw(t, kit, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kit, ctx, sdk.CustomMsg{
 		Topic:   "ts.plugin-target-cross.ask",
 		Payload: json.RawMessage(`{"q":"hello?"}`),
 	})
-	assert.Contains(t, string(p), "from-ts")
+	require.NoError(t, err)
+	assert.Contains(t, string(resp), "from-ts")
 }
 
 func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
@@ -116,8 +118,15 @@ func testPluginSurfaceToolsList(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	p := publishAndWaitRaw(t, kit, ctx, toolmsg.ToolListMsg{})
-	assert.Contains(t, string(p), "add")
+	resp, err := toolmsg.CallToolList(kit, ctx, toolmsg.ToolListMsg{})
+	require.NoError(t, err)
+	found := false
+	for _, tool := range resp.Tools {
+		if tool.ShortName == "add" || tool.Name == "add" {
+			found = true
+		}
+	}
+	assert.True(t, found, "tools.list should include add")
 }
 
 func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
@@ -139,9 +148,8 @@ func testPluginSurfaceErrorCodeFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Call nonexistent tool
-	p := publishAndWaitJSON(t, kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-plugin-tool"})
-	code := suite.ResponseCode(p)
-	assert.Equal(t, "NOT_FOUND", code)
+	_, err = toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{Name: "ghost-plugin-tool"})
+	assertErrorCode(t, err, "NOT_FOUND")
 }
 
 func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
@@ -163,12 +171,14 @@ func testPluginSurfaceSecretsFromNode(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set secret
-	p1 := publishAndWaitRaw(t, kit, ctx, secretmsg.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
-	_ = p1
+	setResp, err := secretmsg.CallSecretsSet(kit, ctx, secretmsg.SecretsSetMsg{Name: "plugin-key", Value: "plugin-val"})
+	require.NoError(t, err)
+	assert.True(t, setResp.Stored)
 
 	// Get secret
-	p2 := publishAndWaitRaw(t, kit, ctx, secretmsg.SecretsGetMsg{Name: "plugin-key"})
-	assert.Contains(t, string(p2), "plugin-val")
+	getResp, err := secretmsg.CallSecretsGet(kit, ctx, secretmsg.SecretsGetMsg{Name: "plugin-key"})
+	require.NoError(t, err)
+	assert.Equal(t, "plugin-val", getResp.Value)
 }
 
 func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
@@ -191,13 +201,15 @@ func testPluginSurfaceDeployFromNode(t *testing.T, env *suite.TestEnv) {
 
 	// Deploy via bus command
 	nodeManifest, _ := json.Marshal(map[string]string{"name": "node-deploy-cross", "entry": "node-deploy-cross.ts"})
-	p := publishAndWaitRaw(t, kit, ctx, packagemsg.PackageDeployMsg{
+	deployResp, err := packagemsg.CallPackageDeploy(kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: nodeManifest,
 		Files:    map[string]string{"node-deploy-cross.ts": `const t = createTool({id: "node-tool", description: "test", execute: async () => ({ok:true})}); kit.register("tool", "node-tool", t);`},
 	})
-	assert.Contains(t, string(p), "deployed")
+	require.NoError(t, err)
+	assert.True(t, deployResp.Deployed)
 
 	// Verify tool is registered
-	p = publishAndWaitRaw(t, kit, ctx, toolmsg.ToolResolveMsg{Name: "node-tool"})
-	assert.Contains(t, string(p), "node-tool")
+	resolveResp, err := toolmsg.CallToolResolve(kit, ctx, toolmsg.ToolResolveMsg{Name: "node-tool"})
+	require.NoError(t, err)
+	assert.Contains(t, resolveResp.Name, "node-tool")
 }

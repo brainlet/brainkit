@@ -4,20 +4,17 @@
 package workflows
 
 import (
-	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages"
 	"github.com/brainlet/brainkit/sdk"
+	"github.com/brainlet/brainkit/test/internal/protocoltest"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,40 +85,8 @@ func wfPublishAndWait[Req sdk.BrainkitMessage, Resp any](
 	t *testing.T, k *brainkit.Kit, msg Req, timeout time.Duration,
 ) (Resp, sdk.Message) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
-	var resp Resp
-	var respMsg sdk.Message
-	ch := make(chan sdk.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		select {
-		case ch <- m:
-		default:
-		}
-	})
+	resp, respMsg, err := protocoltest.PublishAndWaitDecodedErr[Resp](t, k, msg, timeout)
 	require.NoError(t, err)
-	defer unsub()
-
-	_, err = protocol.Publish(k, ctx, msg, protocol.WithReplyTo(replyTo))
-	require.NoError(t, err)
-
-	select {
-	case respMsg = <-ch:
-		payload := respMsg.Payload
-		if respMsg.Metadata["envelope"] == "true" {
-			env, err := sdk.DecodeEnvelope(payload)
-			require.NoError(t, err)
-			if !env.Ok {
-				return resp, respMsg
-			}
-			payload = env.Data
-		}
-		require.NoError(t, json.Unmarshal(payload, &resp))
-	case <-ctx.Done():
-		require.NoError(t, ctx.Err())
-	}
 	return resp, respMsg
 }
 

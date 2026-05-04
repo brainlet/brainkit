@@ -10,9 +10,7 @@ import (
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -125,31 +123,15 @@ func installApprover(t *testing.T, env *suite.TestEnv, ctx context.Context, appr
 // reply payload.
 func triggerHitl(t *testing.T, env *suite.TestEnv, ctx context.Context, service string) map[string]any {
 	t.Helper()
-	replyTo := protocol.ResolveServiceTopic(service, "run") + ".reply." + uuid.NewString()
-	replyCh := make(chan sdk.Message, 1)
-	unsub, err := env.Kit.SubscribeRaw(ctx, replyTo, func(msg sdk.Message) {
-		if msg.Metadata["done"] == "true" {
-			select {
-			case replyCh <- msg:
-			default:
-			}
-		}
-	})
-	require.NoError(t, err)
-	defer unsub()
-
-	_, err = protocol.SendToService(env.Kit, ctx, service, "run", json.RawMessage(`{}`), protocol.WithReplyTo(replyTo))
+	payload, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   tsServiceTopic(service, "run"),
+		Payload: json.RawMessage(`{}`),
+	}, sdk.WithCallTimeout(45*time.Second))
 	require.NoError(t, err)
 
-	select {
-	case msg := <-replyCh:
-		var parsed map[string]any
-		require.NoError(t, json.Unmarshal(suite.ResponseDataFromMsg(msg), &parsed))
-		return parsed
-	case <-ctx.Done():
-		t.Fatalf("triggerHitl: timeout waiting for reply on %s", replyTo)
-		return nil
-	}
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(payload, &parsed))
+	return parsed
 }
 
 // hitlAgentBlock builds the deployment code that wires the agent and

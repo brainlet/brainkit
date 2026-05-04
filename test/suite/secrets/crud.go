@@ -10,10 +10,8 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // secretsEnv creates a fresh kernel with persistence + secret key.
@@ -26,66 +24,23 @@ func testSetAndGet(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "api-key", Value: "sk-test-12345"})
-	require.NoError(t, err)
-	respCh := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { respCh <- resp })
-	defer cancel()
+	resp := callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "api-key", Value: "sk-test-12345"})
+	assert.True(t, resp.Stored)
+	assert.Equal(t, 1, resp.Version)
 
-	select {
-	case resp := <-respCh:
-		assert.True(t, resp.Stored)
-		assert.Equal(t, 1, resp.Version)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "api-key"})
-	getCh := make(chan secretmsg.SecretsGetResp, 1)
-	cancel2, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-getCh:
-		assert.Equal(t, "sk-test-12345", resp.Value)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	getResp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "api-key"})
+	assert.Equal(t, "sk-test-12345", getResp.Value)
 }
 
 func testDelete(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "temp", Value: "val"})
-	setCh := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
-	<-setCh
-	cancel()
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsDeleteMsg{Name: "temp"})
-	delCh := make(chan secretmsg.SecretsDeleteResp, 1)
-	cancel2, _ := sdk.SubscribeTo[secretmsg.SecretsDeleteResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsDeleteResp, _ sdk.Message) { delCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-delCh:
-		assert.True(t, resp.Deleted)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
-
-	pub3, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "temp"})
-	getCh := make(chan secretmsg.SecretsGetResp, 1)
-	cancel3, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
-	defer cancel3()
-
-	select {
-	case resp := <-getCh:
-		assert.Empty(t, resp.Value)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "temp", Value: "val"})
+	delResp := callSecretDelete(t, env.Kit, ctx, secretmsg.SecretsDeleteMsg{Name: "temp"})
+	assert.True(t, delResp.Deleted)
+	getResp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "temp"})
+	assert.Empty(t, getResp.Value)
 }
 
 func testList(t *testing.T, _ *suite.TestEnv) {
@@ -93,26 +48,13 @@ func testList(t *testing.T, _ *suite.TestEnv) {
 	ctx := context.Background()
 
 	for _, name := range []string{"key-a", "key-b"} {
-		pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: name, Value: "val-" + name})
-		ch := make(chan secretmsg.SecretsSetResp, 1)
-		cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-		<-ch
-		cancel()
+		callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: name, Value: "val-" + name})
 	}
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
-	listCh := make(chan secretmsg.SecretsListResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
-	defer cancel()
-
-	select {
-	case resp := <-listCh:
-		assert.Len(t, resp.Secrets, 2)
-		for _, s := range resp.Secrets {
-			assert.NotEmpty(t, s.Name)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
+	resp := callSecretList(t, env.Kit, ctx, secretmsg.SecretsListMsg{})
+	assert.Len(t, resp.Secrets, 2)
+	for _, s := range resp.Secrets {
+		assert.NotEmpty(t, s.Name)
 	}
 }
 
@@ -120,47 +62,19 @@ func testRotate(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "rotate-me", Value: "old-value"})
-	ch := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	cancel()
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "rotate-me", NewValue: "new-value", Restart: false})
-	rotateCh := make(chan secretmsg.SecretsRotateResp, 1)
-	cancel2, _ := sdk.SubscribeTo[secretmsg.SecretsRotateResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsRotateResp, _ sdk.Message) { rotateCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-rotateCh:
-		assert.True(t, resp.Rotated)
-		assert.Equal(t, 2, resp.Version)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
-
-	pub3, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "rotate-me"})
-	getCh := make(chan secretmsg.SecretsGetResp, 1)
-	cancel3, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub3.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
-	defer cancel3()
-
-	select {
-	case resp := <-getCh:
-		assert.Equal(t, "new-value", resp.Value)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "rotate-me", Value: "old-value"})
+	rotateResp := callSecretRotate(t, env.Kit, ctx, secretmsg.SecretsRotateMsg{Name: "rotate-me", NewValue: "new-value", Restart: false})
+	assert.True(t, rotateResp.Rotated)
+	assert.Equal(t, 2, rotateResp.Version)
+	getResp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "rotate-me"})
+	assert.Equal(t, "new-value", getResp.Value)
 }
 
 func testJSBridge(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "js-test-token", Value: "tok_abc123"})
-	ch := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	cancel()
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "js-test-token", Value: "tok_abc123"})
 
 	result := testutil.EvalTS(t, env.Kit, "__test_secret.ts", `
 		var val = secrets.get("js-test-token");
@@ -177,11 +91,7 @@ func testAuditEvents(t *testing.T, _ *suite.TestEnv) {
 	cancelStored, _ := sdk.SubscribeTo[secretmsg.SecretsStoredEvent](env.Kit, ctx, "secrets.stored", func(evt secretmsg.SecretsStoredEvent, _ sdk.Message) { storedCh <- evt })
 	defer cancelStored()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "audit-test", Value: "val"})
-	setCh := make(chan secretmsg.SecretsSetResp, 1)
-	cancelSet, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
-	<-setCh
-	cancelSet()
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "audit-test", Value: "val"})
 
 	select {
 	case evt := <-storedCh:
@@ -196,27 +106,14 @@ func testConcurrentAccess(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "concurrent", Value: "v0"})
-	ch := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	cancel()
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "concurrent", Value: "v0"})
 
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "concurrent"})
-			getCh := make(chan secretmsg.SecretsGetResp, 1)
-			cancel, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
-			select {
-			case resp := <-getCh:
-				cancel()
-				if resp.Value != "v0" {
-					t.Errorf("concurrent get: expected %q, got %q", "v0", resp.Value)
-				}
-			case <-time.After(5 * time.Second):
-				cancel()
-				t.Error("concurrent get: timeout")
+			resp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "concurrent"})
+			if resp.Value != "v0" {
+				t.Errorf("concurrent get: expected %q, got %q", "v0", resp.Value)
 			}
 			done <- true
 		}()
@@ -230,47 +127,19 @@ func testDevModeNoEncryption(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Full(t, suite.WithPersistence()) // no secret key
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "dev-secret", Value: "unencrypted"})
-	setCh := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
-	<-setCh
-	cancel()
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "dev-secret"})
-	getCh := make(chan secretmsg.SecretsGetResp, 1)
-	cancel2, _ := sdk.SubscribeTo[secretmsg.SecretsGetResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsGetResp, _ sdk.Message) { getCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-getCh:
-		assert.Equal(t, "unencrypted", resp.Value)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "dev-secret", Value: "unencrypted"})
+	resp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "dev-secret"})
+	assert.Equal(t, "unencrypted", resp.Value)
 }
 
 func testListNeverLeaksValues(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "sensitive-key", Value: "sk-super-secret-do-not-leak"})
-	ch := make(chan secretmsg.SecretsSetResp, 1)
-	cancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	cancel()
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
-	listCh := make(chan secretmsg.SecretsListResp, 1)
-	cancel2, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub2.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-listCh:
-		raw, _ := json.Marshal(resp)
-		assert.False(t, strings.Contains(string(raw), "sk-super-secret-do-not-leak"), "list response must never contain secret value")
-		assert.Len(t, resp.Secrets, 1)
-		assert.Equal(t, "sensitive-key", resp.Secrets[0].Name)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "sensitive-key", Value: "sk-super-secret-do-not-leak"})
+	resp := callSecretList(t, env.Kit, ctx, secretmsg.SecretsListMsg{})
+	raw, _ := json.Marshal(resp)
+	assert.False(t, strings.Contains(string(raw), "sk-super-secret-do-not-leak"), "list response must never contain secret value")
+	assert.Len(t, resp.Secrets, 1)
+	assert.Equal(t, "sensitive-key", resp.Secrets[0].Name)
 }

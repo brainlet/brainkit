@@ -11,7 +11,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	pluginsmod "github.com/brainlet/brainkit/modules/plugins"
@@ -19,7 +18,6 @@ import (
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/test/suite"
 	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,34 +158,17 @@ replace github.com/brainlet/brainkit/sdk => %s/sdk
 	time.Sleep(1 * time.Second)
 
 	// Call the "status" tool to check what the plugin received
-	replyTo := "tools.call.reply.ws-sub-test"
-	replyCh := make(chan sdk.Message, 1)
-	unsubReply, _ := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		replyCh <- m
-	})
-	defer unsubReply()
-
-	protocol.Publish(kit, ctx, toolmsg.ToolCallMsg{
+	resp, err := toolmsg.CallToolCall(kit, ctx, toolmsg.ToolCallMsg{
 		Name:  "status",
 		Input: map[string]any{},
-	}, protocol.WithReplyTo(replyTo))
+	})
+	require.NoError(t, err)
 
-	select {
-	case msg := <-replyCh:
-		require.Empty(t, suite.ResponseErrorMessage(msg.Payload))
-		data := suite.ResponseDataFromMsg(msg)
-		var resp toolmsg.ToolCallResp
-		require.NoError(t, json.Unmarshal(data, &resp))
-
-		var status struct {
-			Count    int               `json:"count"`
-			Messages []json.RawMessage `json:"messages"`
-		}
-		require.NoError(t, json.Unmarshal(resp.Result, &status))
-		assert.GreaterOrEqual(t, status.Count, 1, "plugin should have received at least 1 event")
-		t.Logf("plugin received %d events", status.Count)
-
-	case <-ctx.Done():
-		t.Fatal("timeout calling status tool")
+	var status struct {
+		Count    int               `json:"count"`
+		Messages []json.RawMessage `json:"messages"`
 	}
+	require.NoError(t, json.Unmarshal(resp.Result, &status))
+	assert.GreaterOrEqual(t, status.Count, 1, "plugin should have received at least 1 event")
+	t.Logf("plugin received %d events", status.Count)
 }

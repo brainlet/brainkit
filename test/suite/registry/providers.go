@@ -19,7 +19,6 @@ import (
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,47 +54,19 @@ func testGoSideRegisterAndList(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	// Verify provider is registered via registry.list bus command
-	pr, err := protocol.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "provider"})
+	resp, err := registrymsg.CallRegistryList(k, ctx, registrymsg.RegistryListMsg{Category: "provider"})
 	require.NoError(t, err)
-	listCh := make(chan registrymsg.RegistryListResp, 1)
-	unsub, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr.ReplyTo,
-		func(resp registrymsg.RegistryListResp, _ sdk.Message) { listCh <- resp })
-	defer unsub()
-
-	select {
-	case resp := <-listCh:
-		assert.Contains(t, string(resp.Items), "openai")
-	case <-ctx.Done():
-		t.Fatal("timeout listing providers")
-	}
+	assert.Contains(t, string(resp.Items), "openai")
 
 	// Verify vector store via registry.list
-	pr2, _ := protocol.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "vectorStore"})
-	vecCh := make(chan registrymsg.RegistryListResp, 1)
-	unsub2, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr2.ReplyTo,
-		func(resp registrymsg.RegistryListResp, _ sdk.Message) { vecCh <- resp })
-	defer unsub2()
-
-	select {
-	case resp := <-vecCh:
-		assert.Contains(t, string(resp.Items), "main")
-	case <-ctx.Done():
-		t.Fatal("timeout listing vectors")
-	}
+	vecResp, err := registrymsg.CallRegistryList(k, ctx, registrymsg.RegistryListMsg{Category: "vectorStore"})
+	require.NoError(t, err)
+	assert.Contains(t, string(vecResp.Items), "main")
 
 	// Verify storage via registry.list
-	pr3, _ := protocol.Publish(k, ctx, registrymsg.RegistryListMsg{Category: "storage"})
-	storCh := make(chan registrymsg.RegistryListResp, 1)
-	unsub3, _ := sdk.SubscribeTo[registrymsg.RegistryListResp](k, ctx, pr3.ReplyTo,
-		func(resp registrymsg.RegistryListResp, _ sdk.Message) { storCh <- resp })
-	defer unsub3()
-
-	select {
-	case resp := <-storCh:
-		assert.Contains(t, string(resp.Items), "default")
-	case <-ctx.Done():
-		t.Fatal("timeout listing storages")
-	}
+	storResp, err := registrymsg.CallRegistryList(k, ctx, registrymsg.RegistryListMsg{Category: "storage"})
+	require.NoError(t, err)
+	assert.Contains(t, string(storResp.Items), "default")
 }
 
 func testGoSideRuntimeRegisterUnregister(t *testing.T, _ *suite.TestEnv) {
@@ -180,7 +151,7 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 	defer cancel()
 
 	mp, _ := json.Marshal(map[string]string{"name": "registry-user", "entry": "registry-user.ts"})
-	pr, err := protocol.Publish(k, ctx, packagemsg.PackageDeployMsg{
+	_, err := packagemsg.CallPackageDeploy(k, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp,
 		Files: map[string]string{"registry-user.ts": `
 			const registryTool = createTool({
@@ -197,26 +168,9 @@ func testWithDeployedTS(t *testing.T, _ *suite.TestEnv) {
 		`},
 	})
 	require.NoError(t, err)
-	ch := make(chan packagemsg.PackageDeployResp, 1)
-	unsub, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](k, ctx, pr.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch <- r })
-	defer unsub()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
-	pr2, err := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
+	resp, err := toolmsg.CallToolCall(k, ctx, toolmsg.ToolCallMsg{Name: "check-providers", Input: map[string]any{}})
 	require.NoError(t, err)
-	ch2 := make(chan toolmsg.ToolCallResp, 1)
-	unsub2, _ := sdk.SubscribeTo[toolmsg.ToolCallResp](k, ctx, pr2.ReplyTo, func(r toolmsg.ToolCallResp, m sdk.Message) { ch2 <- r })
-	defer unsub2()
-	var resp toolmsg.ToolCallResp
-	select {
-	case resp = <-ch2:
-	case <-ctx.Done():
-		t.Fatal("timeout")
-	}
 
 	var result map[string]any
 	json.Unmarshal(resp.Result, &result)

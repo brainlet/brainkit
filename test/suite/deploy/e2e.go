@@ -10,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,33 +78,15 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 
 	// Deploy v1
 	mp1, _ := json.Marshal(map[string]string{"name": "lifecycle-e2e-deploy", "entry": "lifecycle-e2e-deploy.ts"})
-	pr1, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
+	_, err := packagemsg.CallPackageDeploy(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp1,
 		Files:    map[string]string{"lifecycle-e2e-deploy.ts": `const v1 = createTool({ id: "version-check-e2e", description: "v1", execute: async () => ({ version: 1 }) }); kit.register("tool", "version-check-e2e", v1);`},
-	})
+	}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-	ch1 := make(chan packagemsg.PackageDeployResp, 1)
-	us1, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](freshEnv.Kit, ctx, pr1.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch1 <- r })
-	defer us1()
-	select {
-	case <-ch1:
-	case <-ctx.Done():
-		t.Fatal("timeout deploying")
-	}
 
 	// List — should show lifecycle-e2e-deploy
-	pr2, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	listResp, err := packagemsg.CallPackageListDeployed(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-	ch2 := make(chan packagemsg.PackageListDeployedResp, 1)
-	us2, err := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](freshEnv.Kit, ctx, pr2.ReplyTo, func(r packagemsg.PackageListDeployedResp, m sdk.Message) { ch2 <- r })
-	require.NoError(t, err)
-	defer us2()
-	var listResp packagemsg.PackageListDeployedResp
-	select {
-	case listResp = <-ch2:
-	case <-ctx.Done():
-		t.Fatal("timeout listing")
-	}
 	sources := make(map[string]bool)
 	for _, d := range listResp.Packages {
 		sources[d.Source] = true
@@ -114,45 +95,19 @@ func testE2EDeployListRedeployTeardown(t *testing.T, _ *suite.TestEnv) {
 
 	// Redeploy with v2 (hot-replace via same deploy message)
 	mp3, _ := json.Marshal(map[string]string{"name": "lifecycle-e2e-deploy", "entry": "lifecycle-e2e-deploy.ts"})
-	pr3, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
+	_, err = packagemsg.CallPackageDeploy(freshEnv.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: mp3,
 		Files:    map[string]string{"lifecycle-e2e-deploy.ts": `const v2 = createTool({ id: "version-check-e2e-v2", description: "v2", execute: async () => ({ version: 2 }) }); kit.register("tool", "version-check-e2e-v2", v2);`},
-	})
+	}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-	ch3 := make(chan packagemsg.PackageDeployResp, 1)
-	us3, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](freshEnv.Kit, ctx, pr3.ReplyTo, func(r packagemsg.PackageDeployResp, m sdk.Message) { ch3 <- r })
-	defer us3()
-	select {
-	case <-ch3:
-	case <-ctx.Done():
-		t.Fatal("timeout redeploying")
-	}
 
 	// Teardown
-	pr4, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "lifecycle-e2e-deploy"})
+	_, err = packagemsg.CallPackageTeardown(freshEnv.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "lifecycle-e2e-deploy"}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-	ch4 := make(chan packagemsg.PackageTeardownResp, 1)
-	us4, err := sdk.SubscribeTo[packagemsg.PackageTeardownResp](freshEnv.Kit, ctx, pr4.ReplyTo, func(r packagemsg.PackageTeardownResp, m sdk.Message) { ch4 <- r })
-	require.NoError(t, err)
-	defer us4()
-	select {
-	case <-ch4:
-	case <-ctx.Done():
-		t.Fatal("timeout tearing down")
-	}
 
 	// List — should not contain lifecycle-e2e-deploy.ts
-	pr5, err := protocol.Publish(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{})
+	listResp, err = packagemsg.CallPackageListDeployed(freshEnv.Kit, ctx, packagemsg.PackageListDeployedMsg{}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-	ch5 := make(chan packagemsg.PackageListDeployedResp, 1)
-	us5, err := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](freshEnv.Kit, ctx, pr5.ReplyTo, func(r packagemsg.PackageListDeployedResp, m sdk.Message) { ch5 <- r })
-	require.NoError(t, err)
-	defer us5()
-	select {
-	case listResp = <-ch5:
-	case <-ctx.Done():
-		t.Fatal("timeout listing after teardown")
-	}
 	for _, d := range listResp.Packages {
 		assert.NotEqual(t, "lifecycle-e2e-deploy.ts", d.Source, "should be torn down")
 	}

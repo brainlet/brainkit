@@ -7,11 +7,11 @@ package stress
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -84,32 +84,30 @@ func Run(t *testing.T, env *suite.TestEnv) {
 
 // --- helpers ---
 
-// sendAndReceive publishes a typed message and waits for the raw response.
-func sendAndReceive(t *testing.T, rt sdk.Runtime, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, bool) {
+// sendAndReceive issues a typed request and returns the raw response data.
+func sendAndReceive[Req sdk.BrainkitMessage](t *testing.T, rt sdk.CallerRuntime, msg Req, timeout time.Duration) (json.RawMessage, bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pr, err := protocol.Publish(rt, ctx, msg)
+	payload, err := sdk.Call[Req, json.RawMessage](rt, ctx, msg, sdk.WithCallTimeout(timeout))
 	if err != nil {
-		t.Logf("publish failed: %v", err)
+		t.Logf("call failed: %v", err)
 		return nil, false
 	}
+	return payload, true
+}
 
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) {
-		ch <- json.RawMessage(m.Payload)
-	})
-	if err != nil {
-		t.Logf("subscribe failed: %v", err)
-		return nil, false
-	}
-	defer unsub()
+func callStressService(t *testing.T, rt sdk.CallerRuntime, ctx context.Context, service, topic string, payload json.RawMessage, timeout time.Duration) (json.RawMessage, error) {
+	t.Helper()
+	return sdk.Call[sdk.CustomMsg, json.RawMessage](rt, ctx, sdk.CustomMsg{
+		Topic:   stressServiceTopic(service, topic),
+		Payload: payload,
+	}, sdk.WithCallTimeout(timeout))
+}
 
-	select {
-	case payload := <-ch:
-		return payload, true
-	case <-ctx.Done():
-		return nil, false
-	}
+func stressServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
 }

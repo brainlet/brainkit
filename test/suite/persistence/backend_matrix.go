@@ -8,7 +8,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -84,15 +83,8 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	pr, _ := protocol.Publish(k1, ctx, secretmsg.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"})
-	ch := make(chan []byte, 1)
-	unsub, _ := k1.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	select {
-	case <-ch:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout setting secret")
-	}
-	unsub()
+	_, err = secretmsg.CallSecretsSet(k1, ctx, secretmsg.SecretsSetMsg{Name: "persist-secret-matrix", Value: "secret-value-123"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
 	k1.Close()
 
 	// Phase 2: Reopen — secret should be retrievable
@@ -106,21 +98,9 @@ func testSecretsSurviveRestart(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer k2.Close()
 
-	pr2, _ := protocol.Publish(k2, ctx, secretmsg.SecretsGetMsg{Name: "persist-secret-matrix"})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := k2.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	defer unsub2()
-
-	select {
-	case p := <-ch2:
-		var resp struct {
-			Value string `json:"value"`
-		}
-		json.Unmarshal(suite.ResponseData(p), &resp)
-		assert.Equal(t, "secret-value-123", resp.Value, "secret should survive restart")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout getting secret after restart")
-	}
+	resp, err := secretmsg.CallSecretsGet(k2, ctx, secretmsg.SecretsGetMsg{Name: "persist-secret-matrix"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, "secret-value-123", resp.Value, "secret should survive restart")
 }
 
 // testMultiDeployOrderAndMetadata — multiple deployments restart with metadata.
@@ -234,21 +214,8 @@ func testDeployWithBusHandlerSurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pr, _ := protocol.Publish(k2, ctx, sdk.CustomMsg{
-		Topic:   "ts.handler-matrix.ping",
-		Payload: json.RawMessage(`{}`),
-	})
-
-	ch := make(chan []byte, 1)
-	unsub, _ := k2.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "alive")
-	case <-ctx.Done():
-		t.Fatal("timeout — handler should be active after restart")
-	}
+	payload := callPersistService(t, k2, ctx, "handler-matrix.ts", "ping", json.RawMessage(`{}`))
+	assert.Contains(t, string(payload), "alive")
 }
 
 // listSchedules queries the schedule list via bus command.

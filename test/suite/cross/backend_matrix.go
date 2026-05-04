@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/tools/toolmsg"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testCrossKitPublishReply — Kit A publishes to Kit B, gets reply.
@@ -32,9 +34,12 @@ func testCrossKitPublishReply(t *testing.T, env *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({from: "kit-b", test: "suite"}); });
 	`)
 
-	p := publishToAndWaitRaw(t, kitA, ctx, "xk-b-suite",
-		sdk.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)})
-	assert.Contains(t, string(p), "kit-b")
+	resp, err := brainkit.Call[sdk.CustomMsg, json.RawMessage](kitA, ctx,
+		sdk.CustomMsg{Topic: "ts.xk-handler-suite.ping", Payload: json.RawMessage(`{}`)},
+		brainkit.WithCallTo("xk-b-suite"),
+	)
+	require.NoError(t, err)
+	assert.Contains(t, string(resp), "kit-b")
 }
 
 // testCrossKitErrorPropagation — error codes survive cross-Kit.
@@ -51,8 +56,9 @@ func testCrossKitErrorPropagation(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	payload := publishToAndWaitRaw(t, kitA, ctx, "xe-b-suite",
-		toolmsg.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"})
-	code := suite.ResponseCode(json.RawMessage(payload))
-	assert.Equal(t, "NOT_FOUND", code, "error code should survive cross-Kit")
+	_, err := brainkit.Call[toolmsg.ToolCallMsg, toolmsg.ToolCallResp](kitA, ctx,
+		toolmsg.ToolCallMsg{Name: "ghost-cross-kit-tool-suite"},
+		brainkit.WithCallTo("xe-b-suite"),
+	)
+	assertErrorCode(t, err, "NOT_FOUND")
 }

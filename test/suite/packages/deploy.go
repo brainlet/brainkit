@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,39 +42,16 @@ func testMultiFileProject(t *testing.T, _ *suite.TestEnv) {
 		});
 	`)
 
-	pub, err := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
+	deployResp, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-
-	deployCh := make(chan packagemsg.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
-	defer cancel()
-
-	select {
-	case resp := <-deployCh:
-		require.True(t, resp.Deployed)
-		assert.Equal(t, "test-pkg", resp.Name)
-		assert.Equal(t, "test-pkg.ts", resp.Source)
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for package deploy")
-	}
+	require.True(t, deployResp.Deployed)
+	assert.Equal(t, "test-pkg", deployResp.Name)
+	assert.Equal(t, "test-pkg.ts", deployResp.Source)
 
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := protocol.SendToService(env.Kit, ctx, "test-pkg", "greet", map[string]string{"name": "World"})
-	replyCh := make(chan map[string]any, 1)
-	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(suite.ResponseDataFromMsg(msg), &resp)
-		replyCh <- resp
-	})
-	defer replyCancel()
-
-	select {
-	case resp := <-replyCh:
-		assert.Equal(t, "Hello World", resp["text"])
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for greeter response")
-	}
+	serviceResp := sendToServiceAndWait(t, env.Kit, "test-pkg", "greet", map[string]string{"name": "World"})
+	assert.Equal(t, "Hello World", serviceResp["text"])
 }
 
 func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
@@ -89,49 +66,23 @@ func testListAndTeardown(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("ping", (msg) => { msg.reply({pong: true}); });`)
 
-	pub, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
-	ch := make(chan packagemsg.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { ch <- resp })
-	<-ch
-	cancel()
+	deployResp, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir}, sdk.WithCallTimeout(10*time.Second))
+	require.NoError(t, err)
+	require.True(t, deployResp.Deployed)
 
-	pub2, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageListDeployedMsg{})
-	listCh := make(chan packagemsg.PackageListDeployedResp, 1)
-	cancel2, _ := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](env.Kit, ctx, pub2.ReplyTo, func(resp packagemsg.PackageListDeployedResp, _ sdk.Message) { listCh <- resp })
+	listResp, err := packagemsg.CallPackageListDeployed(env.Kit, ctx, packagemsg.PackageListDeployedMsg{}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	require.Len(t, listResp.Packages, 1)
+	assert.Equal(t, "list-test", listResp.Packages[0].Name)
+	assert.Equal(t, "list-test.ts", listResp.Packages[0].Source)
 
-	select {
-	case resp := <-listCh:
-		cancel2()
-		require.Len(t, resp.Packages, 1)
-		assert.Equal(t, "list-test", resp.Packages[0].Name)
-		assert.Equal(t, "list-test.ts", resp.Packages[0].Source)
-	case <-time.After(5 * time.Second):
-		cancel2()
-		t.Fatal("timeout listing packages")
-	}
+	tearResp, err := packagemsg.CallPackageTeardown(env.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "list-test"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.True(t, tearResp.Removed)
 
-	pub3, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageTeardownMsg{Name: "list-test"})
-	tearCh := make(chan packagemsg.PackageTeardownResp, 1)
-	cancel3, _ := sdk.SubscribeTo[packagemsg.PackageTeardownResp](env.Kit, ctx, pub3.ReplyTo, func(resp packagemsg.PackageTeardownResp, _ sdk.Message) { tearCh <- resp })
-	select {
-	case resp := <-tearCh:
-		cancel3()
-		assert.True(t, resp.Removed)
-	case <-time.After(5 * time.Second):
-		cancel3()
-		t.Fatal("timeout")
-	}
-
-	pub4, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageListDeployedMsg{})
-	listCh2 := make(chan packagemsg.PackageListDeployedResp, 1)
-	cancel4, _ := sdk.SubscribeTo[packagemsg.PackageListDeployedResp](env.Kit, ctx, pub4.ReplyTo, func(resp packagemsg.PackageListDeployedResp, _ sdk.Message) { listCh2 <- resp })
-	defer cancel4()
-	select {
-	case resp := <-listCh2:
-		assert.Len(t, resp.Packages, 0)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	listResp2, err := packagemsg.CallPackageListDeployed(env.Kit, ctx, packagemsg.PackageListDeployedMsg{}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.Len(t, listResp2.Packages, 0)
 }
 
 func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
@@ -147,40 +98,18 @@ func testSecretDependencyCheck(t *testing.T, _ *suite.TestEnv) {
 	}`)
 	writePackageFile(t, dir, "index.ts", `bus.on("x", (msg) => { msg.reply({}); });`)
 
-	pub, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
-	errCh := make(chan string, 1)
-	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
-		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
-			errCh <- m
-		}
-	})
-	defer cancel()
+	_, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir}, sdk.WithCallTimeout(5*time.Second))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "MY_REQUIRED_SECRET")
+	assert.Contains(t, err.Error(), "not set")
 
-	select {
-	case errMsg := <-errCh:
-		assert.Contains(t, errMsg, "MY_REQUIRED_SECRET")
-		assert.Contains(t, errMsg, "not set")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	setResp, err := secretmsg.CallSecretsSet(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.True(t, setResp.Stored)
 
-	setPub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "MY_REQUIRED_SECRET", Value: "secret-value"})
-	setCh := make(chan secretmsg.SecretsSetResp, 1)
-	setCancel, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, setPub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { setCh <- resp })
-	<-setCh
-	setCancel()
-
-	pub2, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
-	deployCh := make(chan packagemsg.PackageDeployResp, 1)
-	cancel2, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub2.ReplyTo, func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
-	defer cancel2()
-
-	select {
-	case resp := <-deployCh:
-		assert.True(t, resp.Deployed)
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout")
-	}
+	deployResp, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir}, sdk.WithCallTimeout(10*time.Second))
+	require.NoError(t, err)
+	assert.True(t, deployResp.Deployed)
 }
 
 func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
@@ -195,24 +124,13 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v1Code := `bus.on("check", (msg) => { msg.reply({ version: "v1" }); });`
 
-	pub, err := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{
+	resp, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v1Code},
-	})
+	}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-
-	deployCh := make(chan packagemsg.PackageDeployResp, 1)
-	cancel, _ := sdk.SubscribeTo[packagemsg.PackageDeployResp](env.Kit, ctx, pub.ReplyTo,
-		func(resp packagemsg.PackageDeployResp, _ sdk.Message) { deployCh <- resp })
-	select {
-	case resp := <-deployCh:
-		cancel()
-		require.True(t, resp.Deployed)
-		t.Logf("v1 deployed: %s", resp.Source)
-	case <-time.After(10 * time.Second):
-		cancel()
-		t.Fatal("timeout deploying v1")
-	}
+	require.True(t, resp.Deployed)
+	t.Logf("v1 deployed: %s", resp.Source)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -221,33 +139,12 @@ func testInlineFilesRedeployPicksUpNewCode(t *testing.T, _ *suite.TestEnv) {
 
 	v2Code := `bus.on("check", (msg) => { msg.reply({ version: "v2" }); });`
 
-	pub2, err := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{
+	resp2, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{
 		Manifest: json.RawMessage(manifest),
 		Files:    map[string]string{"index.ts": v2Code},
-	})
+	}, sdk.WithCallTimeout(10*time.Second))
 	require.NoError(t, err)
-
-	// Listen for raw response to capture errors
-	v2ReplyCh := make(chan sdk.Message, 1)
-	cancel2, _ := env.Kit.SubscribeRaw(ctx, pub2.ReplyTo, func(msg sdk.Message) {
-		select {
-		case v2ReplyCh <- msg:
-		default:
-		}
-	})
-	select {
-	case msg := <-v2ReplyCh:
-		cancel2()
-		if errMsg := suite.ResponseErrorMessage(msg.Payload); errMsg != "" {
-			t.Fatalf("v2 deploy error: %s", errMsg)
-		}
-		var resp packagemsg.PackageDeployResp
-		json.Unmarshal(suite.ResponseData(msg.Payload), &resp)
-		require.True(t, resp.Deployed)
-	case <-time.After(10 * time.Second):
-		cancel2()
-		t.Fatal("timeout deploying v2")
-	}
+	require.True(t, resp2.Deployed)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -270,51 +167,31 @@ func testTopicCollision(t *testing.T, _ *suite.TestEnv) {
 		bus.on("greet", (msg) => { msg.reply({ from: "second" }); });
 	`)
 
-	pub, _ := protocol.Publish(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir})
-	errCh := make(chan string, 1)
-	cancel, _ := env.Kit.SubscribeRaw(ctx, pub.ReplyTo, func(msg sdk.Message) {
-		if m := suite.ResponseErrorMessage(msg.Payload); m != "" {
-			errCh <- m
-		}
-	})
-	defer cancel()
-
-	select {
-	case errMsg := <-errCh:
-		assert.Contains(t, errMsg, "already subscribed")
-	case <-time.After(10 * time.Second):
-		t.Fatal("expected topic collision error")
-	}
+	_, err := packagemsg.CallPackageDeploy(env.Kit, ctx, packagemsg.PackageDeployMsg{Path: dir}, sdk.WithCallTimeout(10*time.Second))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already subscribed")
 }
 
 func sendToServiceAndWait(t *testing.T, k interface {
 	sdk.Runtime
-	SubscribeRaw(context.Context, string, func(sdk.Message)) (func(), error)
+	sdk.CallerRuntime
 }, service, topic string, payload any) map[string]any {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pr, err := protocol.SendToService(k.(sdk.Runtime), ctx, service, topic, payload)
+	data, err := json.Marshal(payload)
 	require.NoError(t, err)
-
-	replyCh := make(chan map[string]any, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		var resp map[string]any
-		json.Unmarshal(suite.ResponseDataFromMsg(msg), &resp)
-		select {
-		case replyCh <- resp:
-		default:
-		}
+	resp, err := sdk.Call[sdk.CustomMsg, map[string]any](k, ctx, sdk.CustomMsg{
+		Topic:   packageServiceTopic(service, topic),
+		Payload: data,
 	})
 	require.NoError(t, err)
-	defer unsub()
+	return resp
+}
 
-	select {
-	case resp := <-replyCh:
-		return resp
-	case <-ctx.Done():
-		t.Fatalf("timeout waiting for response from %s/%s", service, topic)
-		return nil
-	}
+func packageServiceTopic(service, topic string) string {
+	name := strings.TrimSuffix(service, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
 }

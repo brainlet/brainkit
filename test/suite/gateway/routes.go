@@ -13,7 +13,6 @@ import (
 	bkgw "github.com/brainlet/brainkit/modules/gateway"
 	"github.com/brainlet/brainkit/modules/gateway/gatewaymsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
@@ -212,24 +211,12 @@ func testBusRouteAdd(t *testing.T, _ *suite.TestEnv) {
 	gw, addr := gwStart(t, env.Kit)
 
 	// Add route via bus command
-	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteAddMsg{
+	addResp, err := gatewaymsg.CallGatewayRouteAdd(env.Kit, context.Background(), gatewaymsg.GatewayRouteAddMsg{
 		Method: "POST", Path: "/api/dynamic", Topic: "ts.gw-bus.dynamic",
 		Type: "handle", Owner: "gw-bus.ts",
-	})
+	}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-
-	done := make(chan gatewaymsg.GatewayRouteAddResp, 1)
-	unsub, _ := sdk.SubscribeTo[gatewaymsg.GatewayRouteAddResp](env.Kit, context.Background(), pr.ReplyTo, func(resp gatewaymsg.GatewayRouteAddResp, msg sdk.Message) {
-		done <- resp
-	})
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		assert.True(t, resp.Added)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for route.add reply")
-	}
+	assert.True(t, addResp.Added)
 
 	// Verify route exists
 	routes := gw.ListRoutes()
@@ -284,19 +271,9 @@ func testBusRouteRemoveByOwner(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/c", "topic.c", bkgw.OwnedBy("other.ts"))
 	assert.Len(t, gw.ListRoutes(), 3)
 
-	pr, _ := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteRemoveMsg{Owner: "svc.ts"})
-	done := make(chan gatewaymsg.GatewayRouteRemoveResp, 1)
-	unsub, _ := sdk.SubscribeTo[gatewaymsg.GatewayRouteRemoveResp](env.Kit, context.Background(), pr.ReplyTo, func(resp gatewaymsg.GatewayRouteRemoveResp, msg sdk.Message) {
-		done <- resp
-	})
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		assert.Equal(t, 2, resp.Removed)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	resp, err := gatewaymsg.CallGatewayRouteRemove(env.Kit, context.Background(), gatewaymsg.GatewayRouteRemoveMsg{Owner: "svc.ts"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.Equal(t, 2, resp.Removed)
 
 	assert.Len(t, gw.ListRoutes(), 1)
 	assert.Equal(t, "topic.c", gw.ListRoutes()[0].Topic)
@@ -456,21 +433,9 @@ func testBusRouteList(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/a", "topic.a")
 	gw.HandleWebhook("POST", "/b", "topic.b")
 
-	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayRouteListMsg{})
+	resp, err := gatewaymsg.CallGatewayRouteList(env.Kit, context.Background(), gatewaymsg.GatewayRouteListMsg{}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-
-	done := make(chan gatewaymsg.GatewayRouteListResp, 1)
-	unsub, _ := sdk.SubscribeTo[gatewaymsg.GatewayRouteListResp](env.Kit, context.Background(), pr.ReplyTo, func(resp gatewaymsg.GatewayRouteListResp, msg sdk.Message) {
-		done <- resp
-	})
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		assert.Len(t, resp.Routes, 2)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	assert.Len(t, resp.Routes, 2)
 }
 
 func testBusStatus(t *testing.T, _ *suite.TestEnv) {
@@ -481,24 +446,12 @@ func testBusStatus(t *testing.T, _ *suite.TestEnv) {
 	gw.Handle("POST", "/b", "topic.b")
 	gw.Handle("POST", "/c", "topic.c")
 
-	pr, err := protocol.Publish(env.Kit, context.Background(), gatewaymsg.GatewayStatusMsg{})
+	resp, err := gatewaymsg.CallGatewayStatus(env.Kit, context.Background(), gatewaymsg.GatewayStatusMsg{}, sdk.WithCallTimeout(5*time.Second))
 	require.NoError(t, err)
-
-	done := make(chan gatewaymsg.GatewayStatusResp, 1)
-	unsub, _ := sdk.SubscribeTo[gatewaymsg.GatewayStatusResp](env.Kit, context.Background(), pr.ReplyTo, func(resp gatewaymsg.GatewayStatusResp, msg sdk.Message) {
-		done <- resp
-	})
-	defer unsub()
-
-	select {
-	case resp := <-done:
-		assert.True(t, resp.Listening)
-		assert.True(t, resp.ServerAttached)
-		assert.Equal(t, 3, resp.RouteCount)
-		assert.NotEmpty(t, resp.Address)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
+	assert.True(t, resp.Listening)
+	assert.True(t, resp.ServerAttached)
+	assert.Equal(t, 3, resp.RouteCount)
+	assert.NotEmpty(t, resp.Address)
 }
 
 func testWebSocket(t *testing.T, _ *suite.TestEnv) {

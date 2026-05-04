@@ -7,7 +7,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -191,17 +190,14 @@ func testTopologyCallToResolvesAcrossKits(t *testing.T, env *suite.TestEnv) {
 
 	// CustomMsg with a string topic lets us address ts.<source>.ping
 	// through the resolved namespace without a dedicated typed command.
-	pr, err := protocol.Publish(caller, ctx, sdk.CustomMsg{
+	resp, err := brainkit.Call[sdk.CustomMsg, struct {
+		From string `json:"from"`
+	}](caller, ctx, sdk.CustomMsg{
 		Topic:   "ts.topo-ping.ping",
 		Payload: json.RawMessage(`{}`),
-	})
+	}, brainkit.WithCallTo("target-peer"))
 	require.NoError(t, err)
-	// protocol.Publish does not expose WithCallTo — bypass with a direct
-	// PublishTo that confirms routing works. The name-based route path
-	// is covered by the higher-level brainkit.Call tests once
-	// CustomMsg becomes Call-shaped. For now assert topology.Resolve
-	// reports the configured mapping.
-	_ = pr
+	assert.Equal(t, "target", resp.From)
 
 	// Resolve round-trip: topology returns the target namespace for the
 	// peer name, matching the round-trip we just exercised.

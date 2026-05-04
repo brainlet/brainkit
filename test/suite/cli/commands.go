@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +13,6 @@ import (
 	messagingmod "github.com/brainlet/brainkit/modules/messaging"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,27 +20,31 @@ import (
 
 func publishAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runtime, ctx context.Context, req Req) Resp {
 	t.Helper()
-	pr, err := protocol.Publish(rt, ctx, req)
+	callerRT, ok := rt.(sdk.CallerRuntime)
+	require.True(t, ok, "runtime must expose sdk.Caller for %s", req.BusTopic())
+	resp, err := sdk.Call[Req, Resp](callerRT, ctx, req)
 	require.NoError(t, err)
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := rt.SubscribeRaw(ctx, pr.ReplyTo, func(msg sdk.Message) {
-		select {
-		case ch <- suite.ResponseDataFromMsg(msg):
-		default:
-		}
+	return resp
+}
+
+func serviceTopic(service, topic string) string {
+	name := strings.TrimSuffix(service, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
+}
+
+func callService[Resp any](t *testing.T, rt sdk.Runtime, ctx context.Context, service, topic string, payload any) Resp {
+	t.Helper()
+	callerRT, ok := rt.(sdk.CallerRuntime)
+	require.True(t, ok, "runtime must expose sdk.Caller for %s/%s", service, topic)
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
+	resp, err := sdk.Call[sdk.CustomMsg, Resp](callerRT, ctx, sdk.CustomMsg{
+		Topic:   serviceTopic(service, topic),
+		Payload: data,
 	})
-	require.NoError(t, err)
-	defer unsub()
-	select {
-	case payload := <-ch:
-		var resp Resp
-		require.NoError(t, json.Unmarshal(payload, &resp))
-		return resp
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for response")
-		var zero Resp
-		return zero
-	}
+	require.NoError(t, err, fmt.Sprintf("call service %s/%s", service, topic))
+	return resp
 }
 
 func testKitEval(t *testing.T, env *suite.TestEnv) {

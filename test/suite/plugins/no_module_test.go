@@ -7,8 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/plugins/pluginmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,18 +28,6 @@ func TestPluginsNoModule(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(k, ctx, pluginmsg.PluginListRunningMsg{})
-	require.NoError(t, err)
-
-	ch := make(chan sdk.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
-	require.NoError(t, err)
-	defer unsub()
-
-	select {
-	case m := <-ch:
-		t.Fatalf("expected no reply for plugin.list without plugins module, got payload=%s", string(m.Payload))
-	case <-ctx.Done():
-		// Expected — no handler, no reply.
-	}
+	_, err = pluginmsg.CallPluginListRunning(k, ctx, pluginmsg.PluginListRunningMsg{})
+	require.Error(t, err)
 }

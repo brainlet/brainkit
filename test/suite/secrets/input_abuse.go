@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,18 +26,8 @@ func testInputAbuseLargeValue(t *testing.T, _ *suite.TestEnv) {
 	env := secretsEnv(t)
 	big := strings.Repeat("x", 100000) // 100KB secret
 	ctx := context.Background()
-	pub, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
-	require.NoError(t, err)
-
-	ch := make(chan secretmsg.SecretsSetResp, 1)
-	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-	defer unsub()
-	select {
-	case resp := <-ch:
-		assert.True(t, resp.Stored)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout storing large secret")
-	}
+	resp := callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "big-secret-sec-adv", Value: big})
+	assert.True(t, resp.Stored)
 }
 
 // testInputAbuseSpecialCharsInName — secret names with special characters don't panic.
@@ -63,29 +51,13 @@ func testInputAbuseBulkOperations(t *testing.T, _ *suite.TestEnv) {
 
 	for i := 0; i < 20; i++ {
 		name := strings.Join([]string{"bulk-sec-adv", strings.Repeat("x", i%5)}, "-")
-		pub, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{
+		resp := callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{
 			Name: name, Value: strings.Repeat("v", i+1),
 		})
-		require.NoError(t, err)
-		ch := make(chan secretmsg.SecretsSetResp, 1)
-		unsub, _ := sdk.SubscribeTo[secretmsg.SecretsSetResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsSetResp, _ sdk.Message) { ch <- resp })
-		select {
-		case <-ch:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("timeout on bulk set %d", i)
-		}
-		unsub()
+		assert.True(t, resp.Stored)
 	}
 
 	// List should return without error or hang
-	pub, _ := protocol.Publish(env.Kit, ctx, secretmsg.SecretsListMsg{})
-	listCh := make(chan secretmsg.SecretsListResp, 1)
-	unsub, _ := sdk.SubscribeTo[secretmsg.SecretsListResp](env.Kit, ctx, pub.ReplyTo, func(resp secretmsg.SecretsListResp, _ sdk.Message) { listCh <- resp })
-	defer unsub()
-	select {
-	case resp := <-listCh:
-		assert.Greater(t, len(resp.Secrets), 0, "should list at least some secrets")
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout on bulk list")
-	}
+	resp := callSecretList(t, env.Kit, ctx, secretmsg.SecretsListMsg{})
+	assert.Greater(t, len(resp.Secrets), 0, "should list at least some secrets")
 }

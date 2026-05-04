@@ -2,13 +2,12 @@ package cross
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -16,7 +15,6 @@ import (
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
 	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
-	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -158,53 +156,6 @@ func startNATSContainer(t *testing.T) string {
 	return fmt.Sprintf("nats://%s:%s", host, port.Port())
 }
 
-// publishAndWaitRaw publishes on a Kit and waits for raw payload.
-func publishAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg sdk.BrainkitMessage) []byte {
-	t.Helper()
-	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
-	ch := make(chan []byte, 1)
-	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) { ch <- m.Payload })
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer unsub()
-
-	if _, err := protocol.Publish(kit, ctx, msg, protocol.WithReplyTo(replyTo)); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-
-	select {
-	case p := <-ch:
-		return p
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for response")
-		return nil
-	}
-}
-
-func publishToAndWaitRaw(t *testing.T, kit *brainkit.Kit, ctx context.Context, targetNamespace string, msg sdk.BrainkitMessage) []byte {
-	t.Helper()
-	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
-	ch := make(chan []byte, 1)
-	unsub, err := kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) { ch <- m.Payload })
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer unsub()
-
-	if _, err := protocol.PublishTo(kit, ctx, targetNamespace, msg, protocol.WithReplyTo(replyTo)); err != nil {
-		t.Fatalf("publish to %s: %v", targetNamespace, err)
-	}
-
-	select {
-	case p := <-ch:
-		return p
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for response")
-		return nil
-	}
-}
-
 func callAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runtime, ctx context.Context, req Req) Resp {
 	t.Helper()
 	callerRT, ok := rt.(sdk.CallerRuntime)
@@ -218,8 +169,20 @@ func callAndWait[Req sdk.BrainkitMessage, Resp any](t *testing.T, rt sdk.Runtime
 	return resp
 }
 
-// publishAndWaitJSON publishes on a Kit and returns the raw JSON payload.
-func publishAndWaitJSON(t *testing.T, kit *brainkit.Kit, ctx context.Context, msg sdk.BrainkitMessage) json.RawMessage {
+type codedError interface {
+	Code() string
+}
+
+func assertErrorCode(t *testing.T, err error, want string) {
 	t.Helper()
-	return json.RawMessage(publishAndWaitRaw(t, kit, ctx, msg))
+	if err == nil {
+		t.Fatalf("expected error code %s, got nil", want)
+	}
+	var coded codedError
+	if !errors.As(err, &coded) {
+		t.Fatalf("expected error with Code(), got %T: %v", err, err)
+	}
+	if got := coded.Code(); got != want {
+		t.Fatalf("expected error code %s, got %s: %v", want, got, err)
+	}
 }

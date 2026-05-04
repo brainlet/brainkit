@@ -3,11 +3,11 @@ package tracing
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -91,11 +91,11 @@ func testHandlerCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	sendPR, _ := protocol.SendToService(env.Kit, ctx, "traced.ts", "ping", map[string]bool{"x": true})
-	replyCh := make(chan struct{}, 1)
-	replyCancel, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(_ sdk.Message) { replyCh <- struct{}{} })
-	defer replyCancel()
-	<-replyCh
+	_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   tracingServiceTopic("traced.ts", "ping"),
+		Payload: json.RawMessage(`{"x":true}`),
+	}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -118,51 +118,28 @@ func testQueryViaBus(t *testing.T, _ *suite.TestEnv) {
 	span := tracingpkg.NewTracer(store, 1.0).StartSpan("test.op", ctx)
 	span.End(nil)
 
-	pub, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 10})
-	listCh := make(chan tracingmsg.TraceListResp, 1)
-	cancel, _ := sdk.SubscribeTo[tracingmsg.TraceListResp](env.Kit, ctx, pub.ReplyTo, func(resp tracingmsg.TraceListResp, _ sdk.Message) {
-		listCh <- resp
-	})
-	defer cancel()
-
-	select {
-	case resp := <-listCh:
-		var traces []tracingpkg.TraceSummary
-		json.Unmarshal(resp.Traces, &traces)
-		assert.Greater(t, len(traces), 0, "expected traces from bus query")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout querying traces")
-	}
+	resp, err := tracingmsg.CallTraceList(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 10}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	var traces []tracingpkg.TraceSummary
+	json.Unmarshal(resp.Traces, &traces)
+	assert.Greater(t, len(traces), 0, "expected traces from bus query")
 }
 
 func testNoStoreNoOp(t *testing.T, _ *suite.TestEnv) {
 	env := suite.Minimal(t)
 	ctx := context.Background()
 
-	pub, _ := protocol.Publish(env.Kit, ctx, toolmsg.ToolListMsg{})
-	ch := make(chan toolmsg.ToolListResp, 1)
-	cancel, _ := sdk.SubscribeTo[toolmsg.ToolListResp](env.Kit, ctx, pub.ReplyTo, func(resp toolmsg.ToolListResp, _ sdk.Message) {
-		ch <- resp
-	})
-	defer cancel()
-
-	select {
-	case resp := <-ch:
-		assert.NotNil(t, resp.Tools)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout — tracing should be transparent no-op")
-	}
+	resp, err := toolmsg.CallToolList(env.Kit, ctx, toolmsg.ToolListMsg{}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Tools)
 }
 
 func testToolCallCreatesSpan(t *testing.T, _ *suite.TestEnv) {
 	env, store := tracingEnv(t)
 	ctx := context.Background()
 
-	pr, _ := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-	<-ch
+	_, err := toolmsg.CallToolCall(env.Kit, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "traced"}}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -202,30 +179,16 @@ func testQueryBySource(t *testing.T, _ *suite.TestEnv) {
 		bus.on("ping", function(msg) { msg.reply({ok:true}); });
 	`)
 
-	pr, _ := protocol.Publish(env.Kit, ctx, sdk.CustomMsg{
+	_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
 		Topic: "ts.source-a.ping", Payload: json.RawMessage(`{}`),
-	})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-	select {
-	case <-ch:
-	case <-time.After(3 * time.Second):
-	}
+	}, sdk.WithCallTimeout(3*time.Second))
+	require.NoError(t, err)
 
 	time.Sleep(200 * time.Millisecond)
 
-	pr2, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 100})
-	ch2 := make(chan []byte, 1)
-	unsub2, _ := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	defer unsub2()
-
-	select {
-	case p := <-ch2:
-		assert.NotEmpty(t, p)
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout querying traces")
-	}
+	resp, err := tracingmsg.CallTraceList(env.Kit, ctx, tracingmsg.TraceListMsg{Limit: 100}, sdk.WithCallTimeout(3*time.Second))
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Traces)
 }
 
 // testSampleRate — with 0 sample rate, no spans recorded (or minimal).
@@ -254,11 +217,8 @@ func testSampleRate(t *testing.T, _ *suite.TestEnv) {
 	})))
 
 	ctx := context.Background()
-	pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}})
-	ch := make(chan []byte, 1)
-	unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
-	<-ch
+	_, err = toolmsg.CallToolCall(k, ctx, toolmsg.ToolCallMsg{Name: "echo", Input: map[string]any{"message": "no-trace"}}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 	traces, _ := store.ListTraces(tracingpkg.TraceQuery{Limit: 10})
@@ -317,15 +277,13 @@ func testEmptyStore(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	assert.Empty(t, traces)
 
-	pr, _ := protocol.Publish(env.Kit, ctx, tracingmsg.TraceGetMsg{TraceID: "nonexistent-trace-id"})
-	ch := make(chan []byte, 1)
-	unsub, _ := env.Kit.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m.Payload })
-	defer unsub()
+	resp, err := tracingmsg.CallTraceGet(env.Kit, ctx, tracingmsg.TraceGetMsg{TraceID: "nonexistent-trace-id"}, sdk.WithCallTimeout(3*time.Second))
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Spans)
+}
 
-	select {
-	case p := <-ch:
-		assert.Contains(t, string(p), "spans")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout")
-	}
+func tracingServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
 }

@@ -2,13 +2,13 @@ package health
 
 import (
 	"context"
-	"sync/atomic"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,21 +24,16 @@ func testDrainsBeforeClose(t *testing.T, _ *suite.TestEnv) {
 	});`)
 	time.Sleep(100 * time.Millisecond)
 
-	replyCh := make(chan struct{}, 1)
-	sendPR, _ := protocol.SendToService(env.Kit, ctx, "slow.ts", "slow", map[string]bool{"x": true})
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- struct{}{} })
-	defer replyUnsub()
-
-	select {
-	case <-replyCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("handler did not reply")
-	}
+	_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   healthServiceTopic("slow.ts", "slow"),
+		Payload: json.RawMessage(`{"x":true}`),
+	}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
 
 	start := time.Now()
 	shutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	err := env.Kit.Shutdown(shutCtx)
+	err = env.Kit.Shutdown(shutCtx)
 	require.NoError(t, err)
 	elapsed := time.Since(start)
 	assert.Less(t, elapsed, 1*time.Second, "drain should be instant when no handlers active")
@@ -54,7 +49,16 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 	});`)
 	time.Sleep(100 * time.Millisecond)
 
-	protocol.SendToService(env.Kit, ctx, "stuck.ts", "stuck", map[string]bool{"x": true})
+	callCtx, callCancel := context.WithCancel(ctx)
+	defer callCancel()
+	callDone := make(chan struct{}, 1)
+	go func() {
+		defer close(callDone)
+		_, _ = sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, callCtx, sdk.CustomMsg{
+			Topic:   healthServiceTopic("stuck.ts", "stuck"),
+			Payload: json.RawMessage(`{"x":true}`),
+		}, sdk.WithCallTimeout(10*time.Second))
+	}()
 	time.Sleep(50 * time.Millisecond)
 
 	start := time.Now()
@@ -63,8 +67,14 @@ func testDrainTimeoutForcesClose(t *testing.T, _ *suite.TestEnv) {
 
 	// Instrument: call Shutdown but log timing
 	env.Kit.Shutdown(shutCtx)
+	callCancel()
 	elapsed := time.Since(start)
 	assert.Less(t, elapsed, 5*time.Second, "should force-close after drain timeout")
+	select {
+	case <-callDone:
+	case <-time.After(time.Second):
+		t.Fatal("stuck call did not unblock after shutdown")
+	}
 }
 
 func testCloseStillWorks(t *testing.T, _ *suite.TestEnv) {
@@ -86,13 +96,11 @@ func testMessagesDroppedDuringDrain(t *testing.T, _ *suite.TestEnv) {
 
 	testutil.SetDraining(t, env.Kit, true)
 
-	sendPR, _ := protocol.SendToService(env.Kit, ctx, "dropper.ts", "ping", map[string]bool{"x": true})
-	var replied atomic.Bool
-	replyUnsub, _ := env.Kit.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replied.Store(true) })
-	defer replyUnsub()
-
-	time.Sleep(500 * time.Millisecond)
-	assert.False(t, replied.Load(), "message should be dropped during drain")
+	_, err := sdk.Call[sdk.CustomMsg, json.RawMessage](env.Kit, ctx, sdk.CustomMsg{
+		Topic:   healthServiceTopic("dropper.ts", "ping"),
+		Payload: json.RawMessage(`{"x":true}`),
+	}, sdk.WithCallTimeout(500*time.Millisecond))
+	assert.Error(t, err, "message should be dropped during drain")
 }
 
 func testEvalTSWorksDuringDrain(t *testing.T, _ *suite.TestEnv) {
@@ -101,4 +109,10 @@ func testEvalTSWorksDuringDrain(t *testing.T, _ *suite.TestEnv) {
 
 	result := testutil.EvalTS(t, env.Kit, "__test.ts", `return "works"`)
 	assert.Equal(t, "works", result)
+}
+
+func healthServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
 }

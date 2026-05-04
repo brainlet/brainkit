@@ -22,3 +22,9 @@ func pkgDeploy(entry, code string) packagemsg.PackageDeployMsg {
 func pkgTeardown(source string) packagemsg.PackageTeardownMsg {
 	return packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}
 }
+
+func tsServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
+}

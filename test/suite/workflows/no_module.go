@@ -7,8 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/workflow/workflowmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -29,22 +27,7 @@ func testNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(k, ctx, workflowmsg.WorkflowListMsg{})
-	if err != nil {
-		t.Fatalf("publish workflow.list: %v", err)
-	}
-
-	ch := make(chan sdk.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case m := <-ch:
-		t.Fatalf("expected no reply for workflow.list without workflow module, got payload=%s", string(m.Payload))
-	case <-ctx.Done():
-		// Expected — no handler registered.
+	if _, err := workflowmsg.CallWorkflowList(k, ctx, workflowmsg.WorkflowListMsg{}); err == nil {
+		t.Fatal("expected workflow.list to fail without workflow module")
 	}
 }

@@ -653,6 +653,107 @@ func TestRawReplyTopicAPIsStayLowLevel(t *testing.T) {
 	}
 }
 
+func TestPluginAppCodeDoesNotImportSDKProtocol(t *testing.T) {
+	allowed := map[string]string{
+		filepath.Join("test", "suite", "plugins", "tool_call_bus_test.go"): "low-level plugin pass-through protocol regression test",
+	}
+	roots := []string{
+		filepath.Join("test", "suite", "plugins"),
+	}
+	if _, err := os.Stat(filepath.Join("..", "plugins")); err == nil {
+		roots = append(roots, filepath.Join("..", "plugins"))
+	}
+
+	var violations []string
+	for _, root := range roots {
+		for _, file := range goFilesUnder(t, root) {
+			file = filepath.Clean(file)
+			if _, ok := allowed[file]; ok {
+				continue
+			}
+			parsed := parseImportsOnly(t, file)
+			for _, imp := range parsed.Imports {
+				path, err := strconv.Unquote(imp.Path.Value)
+				if err != nil {
+					t.Fatalf("unquote import %s in %s: %v", imp.Path.Value, file, err)
+				}
+				if path == "github.com/brainlet/brainkit/sdk/protocol" {
+					violations = append(violations, file+": use sdk.Call/CallStream or generated CallXxx helpers; sdk/protocol is only for bridge, diagnostics, and protocol tests")
+				}
+			}
+		}
+	}
+	if len(violations) > 0 {
+		t.Fatalf("plugin app and normal plugin-suite code must not import sdk/protocol:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestRootSuiteSDKProtocolImportsAreLowLevelAllowlisted(t *testing.T) {
+	allowed := map[string]string{
+		filepath.Join("test", "suite", "bus", "async.go"):                  "bus async fire-and-forget/protocol diagnostics",
+		filepath.Join("test", "suite", "bus", "async_diag.go"):             "bus async diagnostic service-topic assertion",
+		filepath.Join("test", "suite", "bus", "audit.go"):                  "bus audit raw envelope diagnostic",
+		filepath.Join("test", "suite", "bus", "backend_advanced.go"):       "raw backend envelope/transport behavior",
+		filepath.Join("test", "suite", "bus", "call_cancel_failfast.go"):   "caller cancellation and reply-topic failure behavior",
+		filepath.Join("test", "suite", "bus", "cross_feature.go"):          "cross-feature raw envelope diagnostics",
+		filepath.Join("test", "suite", "bus", "e2e.go"):                    "bus e2e raw envelope regression coverage",
+		filepath.Join("test", "suite", "bus", "errors.go"):                 "reply-without-replyTo and raw error paths",
+		filepath.Join("test", "suite", "bus", "failure.go"):                "caller failure/retry/dead-letter protocol coverage",
+		filepath.Join("test", "suite", "bus", "failure_cascade.go"):        "failure cascade raw envelope coverage",
+		filepath.Join("test", "suite", "bus", "integration.go"):            "bus integration raw response metadata assertions",
+		filepath.Join("test", "suite", "bus", "messaging_no_module.go"):    "no-module envelope assertion for messaging bridge",
+		filepath.Join("test", "suite", "bus", "publish.go"):                "explicit JS raw publish/reply-topic bridge coverage",
+		filepath.Join("test", "suite", "bus", "pump.go"):                   "pump latency diagnostic service-topic coverage",
+		filepath.Join("test", "suite", "bus", "reference.go"):              "reference no-module/raw envelope assertion",
+		filepath.Join("test", "suite", "bus", "sdk_reply.go"):              "SDK reply-topic regression coverage",
+		filepath.Join("test", "suite", "bus", "transport_matrix.go"):       "transport matrix protocol behavior",
+		filepath.Join("test", "suite", "bus", "ts_call.go"):                "TS call diagnostic service-topic coverage",
+		filepath.Join("test", "suite", "cross", "plugins.go"):              "cross-kit plugin raw envelope assertion",
+		filepath.Join("test", "suite", "envelope", "shape.go"):             "wire envelope shape assertions",
+		filepath.Join("test", "suite", "envelope", "typed_errors.go"):      "typed error envelope assertions",
+		filepath.Join("test", "suite", "plugins", "tool_call_bus_test.go"): "plugin pass-through reply-topic regression test",
+		filepath.Join("test", "suite", "scheduling", "no_module.go"):       "no-module eval envelope assertion",
+		filepath.Join("test", "suite", "security", "bus_forgery.go"):       "reply-topic forgery/collision security tests",
+		filepath.Join("test", "suite", "security", "cross_deploy.go"):      "cross-deploy isolation raw protocol tests",
+		filepath.Join("test", "suite", "security", "data_leakage.go"):      "data leakage raw protocol security test",
+		filepath.Join("test", "suite", "security", "internal_exploit.go"):  "internal exploit raw protocol tests",
+		filepath.Join("test", "suite", "security", "run.go"):               "security suite raw message helper",
+		filepath.Join("test", "suite", "security", "secrets.go"):           "secret leakage raw protocol security test",
+		filepath.Join("test", "suite", "security", "timing.go"):            "timing/side-channel raw protocol tests",
+	}
+
+	seen := make(map[string]bool, len(allowed))
+	var violations []string
+	for _, root := range []string{filepath.Join("test", "suite"), filepath.Join("test", "bench")} {
+		for _, file := range goFilesUnder(t, root) {
+			parsed := parseImportsOnly(t, file)
+			for _, imp := range parsed.Imports {
+				path, err := strconv.Unquote(imp.Path.Value)
+				if err != nil {
+					t.Fatalf("unquote import %s in %s: %v", imp.Path.Value, file, err)
+				}
+				if path != "github.com/brainlet/brainkit/sdk/protocol" {
+					continue
+				}
+				if _, ok := allowed[file]; !ok {
+					violations = append(violations, file+": sdk/protocol imports in root suite/bench must be explicit low-level protocol, envelope, cross-namespace, or security coverage")
+					continue
+				}
+				seen[file] = true
+			}
+		}
+	}
+	for file, reason := range allowed {
+		if !seen[file] {
+			violations = append(violations, file+": stale sdk/protocol allowlist entry ("+reason+")")
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("root suite/bench sdk/protocol imports must stay narrowly allowlisted:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
 func TestSDKProtocolPublishingLivesInProtocolPackage(t *testing.T) {
 	forbiddenRootNames := map[string]struct{}{
 		"PublishProtocol":       {},

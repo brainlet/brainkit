@@ -12,7 +12,7 @@ import (
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/packages/packagemsg"
-	"github.com/brainlet/brainkit/sdk/protocol"
+	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/bench"
 )
@@ -30,7 +30,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			_, _ = packagemsg.CallPackageTeardown(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}, sdk.WithCallTimeout(5*time.Second))
 			cancel()
 		}
 	})
@@ -44,7 +44,7 @@ func Run(b *testing.B, env *bench.BenchEnv) {
 				b.Fatalf("deploy: %v", err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")})
+			_, _ = packagemsg.CallPackageTeardown(k, ctx, packagemsg.PackageTeardownMsg{Name: strings.TrimSuffix(source, ".ts")}, sdk.WithCallTimeout(5*time.Second))
 			cancel()
 		}
 	})

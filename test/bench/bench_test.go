@@ -10,7 +10,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
@@ -25,6 +24,12 @@ func benchTeardownName(source string) string {
 	return strings.TrimSuffix(source, ".ts")
 }
 
+func benchServiceTopic(source, topic string) string {
+	name := strings.TrimSuffix(source, ".ts")
+	name = strings.ReplaceAll(name, "/", ".")
+	return "ts." + name + "." + topic
+}
+
 func BenchmarkDeploy_1KB(b *testing.B) {
 	k := benchKit(b)
 	code := `bus.on("x", (msg) => msg.reply({}));`
@@ -35,7 +40,7 @@ func BenchmarkDeploy_1KB(b *testing.B) {
 		testutil.DeployErr(k, source, code)
 		// Teardown via bus — fire and forget for bench
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
+		_, _ = packagemsg.CallPackageTeardown(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)}, sdk.WithCallTimeout(5*time.Second))
 		cancel()
 	}
 }
@@ -49,7 +54,7 @@ func BenchmarkDeploy_10KB(b *testing.B) {
 		source := fmt.Sprintf("bench10k-%d.ts", i)
 		testutil.DeployErr(k, source, code)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		protocol.Publish(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)})
+		_, _ = packagemsg.CallPackageTeardown(k, ctx, packagemsg.PackageTeardownMsg{Name: benchTeardownName(source)}, sdk.WithCallTimeout(5*time.Second))
 		cancel()
 	}
 }
@@ -82,11 +87,10 @@ func BenchmarkBusRoundtrip(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := protocol.SendToService(k, ctx, "bench-handler.ts", "bench", map[string]bool{"x": true})
-		ch := make(chan struct{}, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
-		<-ch
-		unsub()
+		_, _ = sdk.Call[sdk.CustomMsg, json.RawMessage](k, ctx, sdk.CustomMsg{
+			Topic:   benchServiceTopic("bench-handler.ts", "bench"),
+			Payload: json.RawMessage(`{"x":true}`),
+		})
 	}
 }
 
@@ -96,16 +100,10 @@ func BenchmarkToolCall(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := protocol.Publish(k, ctx, toolmsg.ToolCallMsg{
+		_, _ = toolmsg.CallToolCall(k, ctx, toolmsg.ToolCallMsg{
 			Name:  "echo",
 			Input: json.RawMessage(`{"message":"bench"}`),
 		})
-		ch := make(chan struct{}, 1)
-		unsub, _ := sdk.SubscribeTo[toolmsg.ToolCallResp](k, ctx, pr.ReplyTo, func(_ toolmsg.ToolCallResp, _ sdk.Message) {
-			ch <- struct{}{}
-		})
-		<-ch
-		unsub()
 	}
 }
 
@@ -118,11 +116,10 @@ func BenchmarkPumpThroughput(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pr, _ := protocol.SendToService(k, ctx, "pump-bench.ts", "pump", map[string]bool{"x": true})
-		ch := make(chan struct{}, 1)
-		unsub, _ := k.SubscribeRaw(ctx, pr.ReplyTo, func(_ sdk.Message) { ch <- struct{}{} })
-		<-ch
-		unsub()
+		_, _ = sdk.Call[sdk.CustomMsg, json.RawMessage](k, ctx, sdk.CustomMsg{
+			Topic:   benchServiceTopic("pump-bench.ts", "pump"),
+			Payload: json.RawMessage(`{"x":true}`),
+		})
 	}
 }
 

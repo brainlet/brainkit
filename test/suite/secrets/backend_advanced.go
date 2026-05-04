@@ -6,11 +6,8 @@ import (
 	"time"
 
 	"github.com/brainlet/brainkit/modules/secrets/secretmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // testSecretsOnTransport — secrets set+get roundtrip on the transport.
@@ -20,30 +17,9 @@ func testSecretsOnTransport(t *testing.T, env *suite.TestEnv) {
 	defer cancel()
 
 	// Set
-	pr1, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "transport-key-suite", Value: "transport-val"})
-	require.NoError(t, err)
-	ch1 := make(chan []byte, 1)
-	unsub1, err := env.Kit.SubscribeRaw(ctx, pr1.ReplyTo, func(m sdk.Message) { ch1 <- m.Payload })
-	require.NoError(t, err)
-	select {
-	case <-ch1:
-	case <-ctx.Done():
-		t.Fatal("timeout set")
-	}
-	unsub1()
+	callSecretSet(t, env.Kit, ctx, secretmsg.SecretsSetMsg{Name: "transport-key-suite", Value: "transport-val"})
 
 	// Get
-	pr2, err := protocol.Publish(env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "transport-key-suite"})
-	require.NoError(t, err)
-	ch2 := make(chan []byte, 1)
-	unsub2, err := env.Kit.SubscribeRaw(ctx, pr2.ReplyTo, func(m sdk.Message) { ch2 <- m.Payload })
-	require.NoError(t, err)
-	defer unsub2()
-
-	select {
-	case p := <-ch2:
-		assert.Contains(t, string(p), "transport-val")
-	case <-ctx.Done():
-		t.Fatal("timeout get")
-	}
+	resp := callSecretGet(t, env.Kit, ctx, secretmsg.SecretsGetMsg{Name: "transport-key-suite"})
+	assert.Equal(t, "transport-val", resp.Value)
 }

@@ -24,10 +24,9 @@ import (
 	"github.com/brainlet/brainkit/modules/workflow"
 	"github.com/brainlet/brainkit/presets/standard"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	_ "github.com/brainlet/brainkit/storagebridges"
 	"github.com/brainlet/brainkit/stores"
-	"github.com/google/uuid"
+	"github.com/brainlet/brainkit/test/internal/protocoltest"
 )
 
 // TestEnv is the shared test environment for all suite domains.
@@ -324,33 +323,7 @@ func (e *TestEnv) EvalTS(code string) (string, error) {
 // PublishAndWait publishes a typed message and waits for the reply payload.
 func (e *TestEnv) PublishAndWait(t *testing.T, msg sdk.BrainkitMessage, timeout time.Duration) (json.RawMessage, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	replyTo := msg.BusTopic() + ".reply." + uuid.NewString()
-	ch := make(chan json.RawMessage, 1)
-	unsub, err := e.Kit.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		select {
-		case ch <- json.RawMessage(m.Payload):
-		default:
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	defer unsub()
-
-	_, err = protocol.Publish(e.Kit, ctx, msg, protocol.WithReplyTo(replyTo))
-	if err != nil {
-		return nil, err
-	}
-
-	select {
-	case payload := <-ch:
-		return payload, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return protocoltest.PublishAndWaitPayloadErr(t, e.Kit, msg, timeout)
 }
 
 // SendAndReceive publishes a typed message and waits for the raw response.

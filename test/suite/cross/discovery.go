@@ -2,17 +2,14 @@ package cross
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/discovery"
 	"github.com/brainlet/brainkit/modules/topology"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/brainlet/brainkit/transports"
 	"github.com/stretchr/testify/assert"
@@ -132,27 +129,16 @@ func testDiscoveryBusPeers(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan topology.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](kit1, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
-		listCh <- resp
-	})
-	defer unsub()
-	protocol.Publish(kit1, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
-
-	select {
-	case resp := <-listCh:
-		found := false
-		for _, p := range resp.Peers {
-			if p.Namespace == "disc-workers-cross" {
-				found = true
-			}
+	resp, err := topology.CallPeersList(kit1, ctx, topology.PeersListMsg{})
+	require.NoError(t, err)
+	found := false
+	for _, p := range resp.Peers {
+		if p.Namespace == "disc-workers-cross" {
+			found = true
 		}
-		assert.True(t, found, "kit1 should discover kit2's namespace")
-		assert.Contains(t, resp.Namespaces, "disc-workers-cross", "namespaces should include kit2")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for peers.list")
 	}
+	assert.True(t, found, "kit1 should discover kit2's namespace")
+	assert.Contains(t, resp.Namespaces, "disc-workers-cross", "namespaces should include kit2")
 }
 
 // testDiscoveryBusLeave — Kit discovered, then closed, verify evicted.
@@ -185,16 +171,18 @@ func testDiscoveryBusLeave(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp1 := publishAndWaitJSON(t, kit1, ctx, topology.PeersListMsg{})
-	assert.Contains(t, string(resp1), "disc-leave-cross", "kit2 should be discovered before leave")
+	resp1, err := topology.CallPeersList(kit1, ctx, topology.PeersListMsg{})
+	require.NoError(t, err)
+	assert.Contains(t, peerNamespaces(resp1.Peers), "disc-leave-cross", "kit2 should be discovered before leave")
 
 	// Graceful close — sends leave message
 	kit2.Close()
 	time.Sleep(1 * time.Second)
 
 	// Verify kit2 is removed immediately (leave message, not TTL)
-	resp2 := publishAndWaitJSON(t, kit1, ctx, topology.PeersListMsg{})
-	assert.NotContains(t, string(resp2), "disc-leave-cross", "kit2 should be gone after graceful leave")
+	resp2, err := topology.CallPeersList(kit1, ctx, topology.PeersListMsg{})
+	require.NoError(t, err)
+	assert.NotContains(t, peerNamespaces(resp2.Peers), "disc-leave-cross", "kit2 should be gone after graceful leave")
 }
 
 // testDiscoveryBusNamespaces — 3 Kits (2 "agents" replicas + 1 "gateway"), verify BrowseNamespaces dedup.
@@ -226,29 +214,18 @@ func testDiscoveryBusNamespaces(t *testing.T, env *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan topology.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](observer, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
-		listCh <- resp
-	})
-	defer unsub()
-	protocol.Publish(observer, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
-
-	select {
-	case resp := <-listCh:
-		// 3 individual peers (not counting self)
-		assert.GreaterOrEqual(t, len(resp.Peers), 3, "should see 3 peer nodes")
-		// But only 2 unique namespaces (agents deduped)
-		assert.Len(t, resp.Namespaces, 2, "should see agents + gateway (deduplicated)")
-		nsMap := map[string]bool{}
-		for _, ns := range resp.Namespaces {
-			nsMap[ns] = true
-		}
-		assert.True(t, nsMap["disc-agents-ns-cross"], "should find agents namespace")
-		assert.True(t, nsMap["disc-gateway-ns-cross"], "should find gateway namespace")
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for peers.list")
+	resp, err := topology.CallPeersList(observer, ctx, topology.PeersListMsg{})
+	require.NoError(t, err)
+	// 3 individual peers (not counting self)
+	assert.GreaterOrEqual(t, len(resp.Peers), 3, "should see 3 peer nodes")
+	// But only 2 unique namespaces (agents deduped)
+	assert.Len(t, resp.Namespaces, 2, "should see agents + gateway (deduplicated)")
+	nsMap := map[string]bool{}
+	for _, ns := range resp.Namespaces {
+		nsMap[ns] = true
 	}
+	assert.True(t, nsMap["disc-agents-ns-cross"], "should find agents namespace")
+	assert.True(t, nsMap["disc-gateway-ns-cross"], "should find gateway namespace")
 }
 
 func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
@@ -268,29 +245,25 @@ func testDiscoveryStaticPeersBus(t *testing.T, _ *suite.TestEnv) {
 	require.NoError(t, err)
 	defer kit.Close()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	// peers.list via bus — subscribe BEFORE publish (GoChannel delivers synchronously)
-	replyTo := "peers.list.reply." + fmt.Sprintf("%d", time.Now().UnixNano())
-	listCh := make(chan topology.PeersListResp, 1)
-	unsub, _ := sdk.SubscribeTo[topology.PeersListResp](kit, ctx, replyTo, func(resp topology.PeersListResp, _ sdk.Message) {
-		listCh <- resp
-	})
-	defer unsub()
-
-	_, err = protocol.Publish(kit, ctx, topology.PeersListMsg{}, protocol.WithReplyTo(replyTo))
+	resp, err := topology.CallPeersList(kit, ctx, topology.PeersListMsg{})
 	require.NoError(t, err)
 
-	select {
-	case resp := <-listCh:
-		assert.GreaterOrEqual(t, len(resp.Peers), 2, "should have at least 2 static peers")
-		names := make(map[string]bool)
-		for _, p := range resp.Peers {
-			names[p.Name] = true
-		}
-		assert.True(t, names["peer-a"], "should find peer-a")
-		assert.True(t, names["peer-b"], "should find peer-b")
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for peers.list response")
+	assert.GreaterOrEqual(t, len(resp.Peers), 2, "should have at least 2 static peers")
+	names := make(map[string]bool)
+	for _, p := range resp.Peers {
+		names[p.Name] = true
 	}
+	assert.True(t, names["peer-a"], "should find peer-a")
+	assert.True(t, names["peer-b"], "should find peer-b")
+}
+
+func peerNamespaces(peers []topology.PeerInfo) []string {
+	namespaces := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		namespaces = append(namespaces, peer.Namespace)
+	}
+	return namespaces
 }

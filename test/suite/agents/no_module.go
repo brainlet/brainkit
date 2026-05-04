@@ -7,8 +7,6 @@ import (
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/modules/agents/agentmsg"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 )
 
@@ -29,22 +27,7 @@ func testNoModuleCommandsAbsent(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	pr, err := protocol.Publish(k, ctx, agentmsg.AgentListMsg{})
-	if err != nil {
-		t.Fatalf("publish agents.list: %v", err)
-	}
-
-	ch := make(chan sdk.Message, 1)
-	unsub, err := k.SubscribeRaw(ctx, pr.ReplyTo, func(m sdk.Message) { ch <- m })
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer unsub()
-
-	select {
-	case m := <-ch:
-		t.Fatalf("expected no reply for agents.list without agents module, got payload=%s", string(m.Payload))
-	case <-ctx.Done():
-		// Expected: no command handler registered.
+	if _, err := agentmsg.CallAgentList(k, ctx, agentmsg.AgentListMsg{}); err == nil {
+		t.Fatal("expected agents.list to fail without agents module")
 	}
 }

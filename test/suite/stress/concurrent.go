@@ -2,13 +2,12 @@ package stress
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/brainlet/brainkit/internal/testutil"
-	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,13 +52,12 @@ func testParallelPublish(t *testing.T, env *suite.TestEnv) {
 
 	results := make([]bool, 10)
 	testutil.ConcurrentDo(t, 10, func(i int) {
-		sendPR, err := protocol.SendToService(k, ctx, "echo-stress.ts", "echo", map[string]int{"id": i})
+		payload, err := callStressService(t, k, ctx, "echo-stress.ts", "echo", json.RawMessage(fmt.Sprintf(`{"id":%d}`, i)), 10*time.Second)
 		if err != nil {
-			t.Errorf("goroutine %d: publish failed: %v", i, err)
+			t.Errorf("goroutine %d: call failed: %v", i, err)
 			return
 		}
-		msg := testutil.WaitForBusMessage(t, k, sendPR.ReplyTo, 10*time.Second)
-		if len(msg.Payload) > 0 {
+		if len(payload) > 0 {
 			results[i] = true
 		}
 	})
@@ -111,7 +109,9 @@ func testDeployDuringHandler(t *testing.T, env *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	protocol.SendToService(k, ctx, "slow-stress.ts", "slow", map[string]bool{"go": true})
+	go func() {
+		_, _ = callStressService(t, k, ctx, "slow-stress.ts", "slow", json.RawMessage(`{"go":true}`), 2*time.Second)
+	}()
 
 	done := make(chan error, 1)
 	go func() {
@@ -142,7 +142,9 @@ func testTeardownDuringHandler(t *testing.T, env *suite.TestEnv) {
 	`)
 	time.Sleep(200 * time.Millisecond)
 
-	protocol.SendToService(k, ctx, "teardown-stress-target.ts", "work", map[string]bool{"go": true})
+	go func() {
+		_, _ = callStressService(t, k, ctx, "teardown-stress-target.ts", "work", json.RawMessage(`{"go":true}`), 2*time.Second)
+	}()
 	time.Sleep(50 * time.Millisecond)
 
 	done := make(chan struct{}, 1)
@@ -272,23 +274,8 @@ func testDeployDuringDrain(t *testing.T, env *suite.TestEnv) {
 	if err != nil {
 		t.Logf("deploy during drain returned error (acceptable): %v", err)
 	} else {
-		pr, pubErr := protocol.SendToService(k, ctx, "drain-stress-deploy.ts", "ping", map[string]bool{"go": true})
-		if pubErr == nil {
-			replyCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			defer cancel()
-			gotReply := make(chan bool, 1)
-			unsub, _ := k.SubscribeRaw(replyCtx, pr.ReplyTo, func(msg sdk.Message) {
-				gotReply <- true
-			})
-			if unsub != nil {
-				defer unsub()
-			}
-			select {
-			case <-gotReply:
-				t.Log("handler replied despite drain")
-			case <-replyCtx.Done():
-				// Expected: handler rejected by drain
-			}
+		if _, callErr := callStressService(t, k, ctx, "drain-stress-deploy.ts", "ping", json.RawMessage(`{"go":true}`), 2*time.Second); callErr == nil {
+			t.Log("handler replied despite drain")
 		}
 	}
 

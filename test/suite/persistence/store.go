@@ -9,13 +9,11 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/internal/types"
 	schedulesmod "github.com/brainlet/brainkit/modules/schedules"
-	"github.com/brainlet/brainkit/sdk"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -47,15 +45,8 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Verify service works
 	time.Sleep(100 * time.Millisecond)
-	sendPR, _ := protocol.SendToService(k1, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
-	replyCh := make(chan bool, 1)
-	replyUnsub, _ := k1.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
-	select {
-	case <-replyCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout")
-	}
-	replyUnsub()
+	payload := callPersistService(t, k1, ctx, "greeter-persist.ts", "greet", json.RawMessage(`{"x":true}`))
+	assert.Contains(t, string(payload), "hello")
 
 	// Close Kernel 1
 	k1.Close()
@@ -76,17 +67,8 @@ func testDeploySurvivesRestart(t *testing.T, _ *suite.TestEnv) {
 
 	// Service should be running
 	time.Sleep(200 * time.Millisecond)
-	sendPR2, _ := protocol.SendToService(k2, ctx, "greeter-persist.ts", "greet", map[string]bool{"x": true})
-	replyCh2 := make(chan bool, 1)
-	replyUnsub2, _ := k2.SubscribeRaw(ctx, sendPR2.ReplyTo, func(msg sdk.Message) { replyCh2 <- true })
-	defer replyUnsub2()
-
-	select {
-	case <-replyCh2:
-		// auto-redeployed and responded
-	case <-time.After(5 * time.Second):
-		t.Fatal("redeployed service did not respond")
-	}
+	payload = callPersistService(t, k2, ctx, "greeter-persist.ts", "greet", json.RawMessage(`{"x":true}`))
+	assert.Contains(t, string(payload), "hello")
 }
 
 func testTeardownRemovesFromStore(t *testing.T, _ *suite.TestEnv) {
@@ -197,17 +179,8 @@ func testFailedRedeployDoesNotBlock(t *testing.T, _ *suite.TestEnv) {
 
 	// The good service should still work
 	time.Sleep(200 * time.Millisecond)
-	sendPR, _ := protocol.SendToService(k2, ctx, "good-persist.ts", "ping", map[string]bool{"x": true})
-	replyCh := make(chan bool, 1)
-	replyUnsub, _ := k2.SubscribeRaw(ctx, sendPR.ReplyTo, func(msg sdk.Message) { replyCh <- true })
-	defer replyUnsub()
-
-	select {
-	case <-replyCh:
-		// good-persist.ts works despite broken-persist.ts failure
-	case <-time.After(5 * time.Second):
-		t.Fatal("good-persist.ts should work even when broken-persist.ts fails to redeploy")
-	}
+	payload := callPersistService(t, k2, ctx, "good-persist.ts", "ping", json.RawMessage(`{"x":true}`))
+	assert.Contains(t, string(payload), "ok")
 }
 
 // ── Metadata persistence ────────────────────────────────────────────────

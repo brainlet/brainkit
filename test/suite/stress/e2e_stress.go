@@ -8,7 +8,6 @@ import (
 	"time"
 
 	bkmodule "github.com/brainlet/brainkit/module"
-	"github.com/brainlet/brainkit/sdk/protocol"
 
 	"github.com/brainlet/brainkit"
 	toolsmod "github.com/brainlet/brainkit/modules/tools"
@@ -69,31 +68,17 @@ func testE2EConcurrentOperations(t *testing.T, env *suite.TestEnv) {
 
 	for i := range n {
 		go func(val int) {
-			pubResult, err := protocol.Publish(env.Kit, ctx, toolmsg.ToolCallMsg{
+			resp, err := toolmsg.CallToolCall(env.Kit, ctx, toolmsg.ToolCallMsg{
 				Name:  "add",
 				Input: map[string]any{"a": val, "b": val},
-			})
+			}, sdk.WithCallTimeout(10*time.Second))
 			if err != nil {
 				errors <- err
 				return
 			}
-			done := make(chan toolmsg.ToolCallResp, 1)
-			unsub, err := sdk.SubscribeTo[toolmsg.ToolCallResp](env.Kit, ctx, pubResult.ReplyTo, func(r toolmsg.ToolCallResp, m sdk.Message) {
-				done <- r
-			})
-			if err != nil {
-				errors <- err
-				return
-			}
-			defer unsub()
-			select {
-			case resp := <-done:
-				var result map[string]int
-				json.Unmarshal(resp.Result, &result)
-				results <- result["sum"]
-			case <-ctx.Done():
-				errors <- ctx.Err()
-			}
+			var result map[string]int
+			json.Unmarshal(resp.Result, &result)
+			results <- result["sum"]
 		}(i)
 	}
 

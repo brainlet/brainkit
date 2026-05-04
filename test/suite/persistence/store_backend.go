@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/brainlet/brainkit/internal/testutil"
 	"github.com/brainlet/brainkit/modules/audit/auditmsg"
 	"github.com/brainlet/brainkit/sdk"
-	"github.com/brainlet/brainkit/sdk/protocol"
 	"github.com/brainlet/brainkit/stores"
 	"github.com/brainlet/brainkit/test/suite"
 	"github.com/stretchr/testify/assert"
@@ -98,24 +96,10 @@ func testStoreBackendSQLiteAuditViaConfig(t *testing.T, _ *suite.TestEnv) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	replyTo := fmt.Sprintf("audit.query.reply.%d", time.Now().UnixNano())
-	ch := make(chan json.RawMessage, 1)
-	unsub, _ := k.SubscribeRaw(ctx, replyTo, func(m sdk.Message) {
-		ch <- json.RawMessage(m.Payload)
-	})
-	defer unsub()
-
-	protocol.Publish(k, ctx, auditmsg.AuditQueryMsg{Category: "deploy"}, protocol.WithReplyTo(replyTo))
-
-	select {
-	case resp := <-ch:
-		var result auditmsg.AuditQueryResp
-		json.Unmarshal(suite.ResponseData(resp), &result)
-		assert.GreaterOrEqual(t, len(result.Events), 1, "audit should have deploy events")
-		t.Logf("audit events: %d", len(result.Events))
-	case <-ctx.Done():
-		t.Fatal("timeout querying audit")
-	}
+	resp, err := auditmsg.CallAuditQuery(k, ctx, auditmsg.AuditQueryMsg{Category: "deploy"}, sdk.WithCallTimeout(5*time.Second))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(resp.Events), 1, "audit should have deploy events")
+	t.Logf("audit events: %d", len(resp.Events))
 }
 
 // testStoreBackendPostgresViaConfig proves that Config.StoreBackend="postgres"
