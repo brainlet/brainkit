@@ -25,6 +25,8 @@ internal/docs/*
 
 playground
 
+.factory
+
 bin/**.go binary
 
 # Runtime state produced by examples / ad-hoc runs
